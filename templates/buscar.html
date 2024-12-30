@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Búsqueda de Candidatas</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(120deg, #f8f9fa, #e9ecef);
+        }
+        .container {
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+            padding: 20px;
+        }
+        h1 {
+            color: #4a69bd;
+        }
+        .btn-primary {
+            background-color: #4a69bd;
+            border: none;
+        }
+        .btn-primary:hover {
+            background-color: #3b5998;
+        }
+        .form-control {
+            border-radius: 20px;
+        }
+        .card {
+            border: none;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center"><i class="fas fa-search"></i> Búsqueda de Candidatas</h1>
+        <hr>
+
+        <!-- Mensaje de retroalimentación -->
+        {% if mensaje %}
+            <div class="alert alert-info text-center">{{ mensaje }}</div>
+        {% endif %}
+
+        <!-- Formulario de búsqueda -->
+        <form method="POST" action="/buscar">
+            <div class="mt-4 text-center">
+                <a href="/" class="btn btn-secondary">
+                    <i class="fas fa-home"></i> Volver a Inicio
+                </a>
+            </div>
+            <div class="mb-3">
+                <label for="busqueda" class="form-label">Buscar por Código, Nombre o Cédula:</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="busqueda" name="busqueda" placeholder="Ejemplo: CAN-001, Ana Pérez o 304-1234567-8" required>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Resultados de la búsqueda -->
+        {% if datos_candidata %}
+            <div class="card mt-4">
+                <div class="card-header bg-primary text-white">
+                    <h3>Detalles de la Candidata</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>Código:</strong> {{ datos_candidata.codigo }}</p>
+                    <p><strong>Nombre:</strong> {{ datos_candidata.nombre }}</p>
+                    <p><strong>Edad:</strong> {{ datos_candidata.edad }}</p>
+                    <p><strong>Teléfono:</strong> {{ datos_candidata.telefono }}</p>
+                    <p><strong>Dirección:</strong> {{ datos_candidata.direccion }}</p>
+                    <p><strong>Modalidad:</strong> {{ datos_candidata.modalidad }}</p>
+                    <p><strong>Experiencia:</strong> {{ datos_candidata.experiencia }}</p>
+                    <p><strong>Cédula:</strong> {{ datos_candidata.cedula }}</p>
+                    <p><strong>Estado:</strong> {{ datos_candidata.estado }}</p>
+                    <p><strong>Inscripción:</strong> {{ datos_candidata.inscripcion }}</p>
+                    <p><strong>Fecha de Inscripción:</strong> {{ datos_candidata.fecha_inscripcion }}</p>
+                    <p><strong>Monto Total:</strong> {{ datos_candidata.monto_total }}</p>
+                    <p><strong>Monto Pendiente:</strong> {{ datos_candidata.monto_debe }}</p>
+                    <p><strong>Calificación:</strong> {{ datos_candidata.calificacion }}</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filtrar Candidatas</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(120deg, #f8f9fa, #e9ecef);
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            margin-top: 50px;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+            padding: 20px;
+        }
+        h1 {
+            color: #4a69bd;
+        }
+        .btn-primary {
+            background-color: #4a69bd;
+            border: none;
+        }
+        .btn-primary:hover {
+            background-color: #3b5998;
+        }
+        .form-select, .form-control {
+            border-radius: 20px;
+        }
+        .result-table {
+            margin-top: 20px;
+        }
+        .result-table th, .result-table td {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center"><i class="fas fa-filter"></i> Filtrar Candidatas</h1>
+        <hr>
+
+        <!-- Mensaje de retroalimentación -->
+        {% if mensaje %}
+            <div class="alert alert-warning text-center">{{ mensaje }}</div>
+        {% endif %}
+
+        <!-- Formulario de filtros -->
+        <form method="POST" action="/filtrar">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="ciudad" class="form-label">Ciudad:</label>
+                    <input type="text" class="form-control" id="ciudad" name="ciudad" placeholder="Ejemplo: Santiago">
+                </div>
+                <div class="col-md-6">
+                    <label for="modalidad" class="form-label">Modalidad:</label>
+                    <select class="form-select" id="modalidad" name="modalidad">
+                        <option value="">Selecciona...</option>
+                        <option value="dormida">Dormida</option>
+                        <option value="salida diaria">Salida diaria</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="experiencia_anos" class="form-label">Experiencia (Años):</label>
+                    <select class="form-select" id="experiencia_anos" name="experiencia_anos">
+                        <option value="">Selecciona...</option>
+                        <option value="1 año">1 año</option>
+                        <option value="2 años">2 años</option>
+                        <option value="3 años o más">3 años o más</option>
+                        <option value="sin experiencia">Sin experiencia</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="areas_experiencia" class="form-label">Áreas de Experiencia:</label>
+                    <select class="form-select" id="areas_experiencia" name="areas_experiencia">
+                        <option value="">Selecciona...</option>
+                        <option value="limpieza">Limpieza</option>
+                        <option value="cocinera">Cocinera</option>
+                        <option value="niñera">Niñera</option>
+                        <option value="cuidar envejeciente">Cuidar envejeciente</option>
+                        <option value="todas las anteriores">Todas las anteriores</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Filtrar</button>
+        </form>
+
+        <!-- Tabla de resultados -->
+        {% if resultados %}
+            <table class="table table-striped result-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Edad</th>
+                        <th>Teléfono</th>
+                        <th>Dirección</th>
+                        <th>Modalidad</th>
+                        <th>Años de Experiencia</th>
+                        <th>Áreas de Experiencia</th>
+                        <th>Cédula</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for resultado in resultados %}
+                        <tr>
+                            <td>{{ resultado.codigo }}</td>
+                            <td>{{ resultado.nombre }}</td>
+                            <td>{{ resultado.edad }}</td>
+                            <td>{{ resultado.telefono }}</td>
+                            <td>{{ resultado.direccion }}</td>
+                            <td>{{ resultado.modalidad }}</td>
+                            <td>{{ resultado.experiencia_anos }}</td>
+                            <td>{{ resultado.areas_experiencia }}</td>
+                            <td>{{ resultado.cedula }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+</body>
+</html>
