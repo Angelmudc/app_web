@@ -859,5 +859,5 @@ def referencias():
 
     return render_template('referencias.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
-Si  if __name__ == "__main__":
-       app.run(debug=True)
+if __name__ == "__main__":
+  app.run(debug=True)
