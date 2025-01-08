@@ -7,6 +7,7 @@ import os
 import json
 from flask import Flask, render_template, request, redirect, url_for, session
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask import send_from_directory
 
 
 # Configuración de la API de Google Sheets
@@ -25,7 +26,7 @@ app.secret_key = "clave_secreta_segura"
 
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
-    "admin": generate_password_hash("12345"),  # Usuario: admin, Clave: 12345
+    "angel": generate_password_hash("1234"),  # Usuario: admin, Clave: 12345
     "usuario1": generate_password_hash("clave123")
 }
 
@@ -365,6 +366,10 @@ def login():
             mensaje = "Usuario o clave incorrectos."
 
     return render_template('login.html', mensaje=mensaje)
+
+@app.route('/robots.txt')
+def robots_txt():
+    return send_from_directory(app.static_folder, "robots.txt")
 
 # Ruta de Logout
 @app.route('/logout')
