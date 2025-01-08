@@ -14,12 +14,10 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg'
 RANGE_NAME = 'Hoja de trabajo!A1:AA'
 
-credentials = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-service = build('sheets', 'v4', credentials=credentials)
-
 # Cargar credenciales desde la variable de entorno
 clave1 = json.loads(os.environ.get("CLAVE1_JSON"))
 credentials = Credentials.from_service_account_info(clave1, scopes=SCOPES)
+service = build('sheets', 'v4', credentials=credentials)
 
 # Configuración básica de Flask
 app = Flask(__name__)
