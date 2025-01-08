@@ -36,25 +36,19 @@ def normalizar_texto(texto):
     return ''.join(c for c in texto if c.isalnum())
 
 # Función para buscar datos por código, nombre o cédula
-def buscar_datos(busqueda):
+def buscar_en_columna(valor, columna_index):
     """
-    Busca datos en la hoja de cálculo basándose en Código (columna A),
-    Nombre (columna B) o Cédula (columna R).
+    Busca un valor específico en una columna y devuelve la fila correspondiente.
+    :param valor: Valor a buscar.
+    :param columna_index: Índice de la columna (0-based).
+    :return: Índice de la fila y la fila completa si se encuentra; None si no.
     """
     datos = obtener_datos()
     for fila_index, fila in enumerate(datos):
-        if len(fila) > 17:  # Asegura que la fila tiene al menos 18 columnas
-            codigo = fila[0].strip().lower() if len(fila) > 0 else ""
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-            cedula = fila[17].strip() if len(fila) > 17 else ""
+        if len(fila) > columna_index and valor.lower() == fila[columna_index].strip().lower():
+            return fila_index, fila
+    return None, None
 
-            if (
-                busqueda.lower() == codigo or  # Coincide con el Código
-                busqueda.lower() == nombre or  # Coincide con el Nombre
-                busqueda == cedula             # Coincide con la Cédula
-            ):
-                return fila_index, fila  # Devuelve el índice y los datos si encuentra coincidencia
-    return None, None  # Devuelve None si no encuentra resultados
 def obtener_datos():
     try:
         result = service.spreadsheets().values().get(
@@ -79,60 +73,40 @@ def buscar_datos_por_nombre_o_cedula(busqueda):
     return None, None
 
 # Función para actualizar datos en la hoja
-def actualizar_datos(fila_index, nuevos_datos):
+def actualizar_dato_en_columna(fila_index, columna_index, nuevo_valor):
+    """
+    Actualiza un valor específico en una fila y columna dadas.
+    :param fila_index: Índice de la fila (0-based).
+    :param columna_index: Índice de la columna (0-based).
+    :param nuevo_valor: Valor nuevo a insertar.
+    :return: True si se actualiza correctamente, False en caso de error.
+    """
     try:
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Incluye hasta la columna AA
-        fila_actual = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango
-        ).execute().get('values', [[]])[0]
-        
-        # Asegúrate de extender la fila para incluir todas las columnas necesarias
-        fila_actual.extend([''] * (27 - len(fila_actual)))  # 27 columnas en total (A a AA)
-
-        # Actualizar valores existentes y agregar las nuevas columnas
-        valores = [
-            nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
-            nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
-            nuevos_datos.get('Edad', fila_actual[2]),  # Columna C
-            nuevos_datos.get('Telefono', fila_actual[3]),  # Columna D
-            nuevos_datos.get('Direccion', fila_actual[4]),  # Columna E
-            nuevos_datos.get('Modalidad', fila_actual[5]),  # Columna F
-            fila_actual[6],  # Columna G
-            fila_actual[7],  # Columna H
-            fila_actual[8],  # Columna I
-            nuevos_datos.get('Experiencia', fila_actual[9]),  # Columna J
-            fila_actual[10],  # Columna K
-            fila_actual[11],  # Columna L
-            fila_actual[12],  # Columna M
-            fila_actual[13],  # Columna N
-            fila_actual[14],  # Columna O
-            fila_actual[15],  # Columna P
-            fila_actual[16],  # Columna Q
-            nuevos_datos.get('Cedula', fila_actual[17]),  # Columna R
-            nuevos_datos.get('Estado', fila_actual[18]),  # Columna S
-            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Columna T
-            nuevos_datos.get('Monto', fila_actual[20]),  # Columna U
-            nuevos_datos.get('Fecha', fila_actual[21]),  # Columna V
-            nuevos_datos.get('Fecha_pago', fila_actual[22]),  # Columna W
-            nuevos_datos.get('Inicio', fila_actual[23]),  # Columna X
-            nuevos_datos.get('Monto_total', fila_actual[24]),  # Columna Y
-            nuevos_datos.get('Porciento', fila_actual[25]),  # Columna Z
-            nuevos_datos.get('Calificacion', fila_actual[26])  # Columna AA
-        ]
-
-        # Actualizar los valores en la hoja
+        rango = f"Hoja de trabajo!{chr(65 + columna_index)}{fila_index + 1}"
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
             valueInputOption="RAW",
-            body={"values": [valores]}
+            body={"values": [[nuevo_valor]]}
         ).execute()
-
+        print(f"Valor actualizado en fila {fila_index + 1}, columna {columna_index + 1}: {nuevo_valor}")
         return True
     except Exception as e:
-        print(f"Error al actualizar los datos: {e}")
+        print(f"Error al actualizar valor: {e}")
         return False
+
+def calcular_porcentaje(monto_total, porcentaje=0.25):
+    """
+    Calcula el porcentaje de un monto total.
+    :param monto_total: Monto total sobre el cual se calcula el porcentaje.
+    :param porcentaje: Porcentaje a calcular (por defecto 25%).
+    :return: Monto calculado como porcentaje.
+    """
+    try:
+        return round(monto_total * porcentaje, 2)
+    except Exception as e:
+        print(f"Error al calcular el porcentaje: {e}")
+        return 0.0
 
 
 def generar_codigo_unico():
@@ -621,7 +595,6 @@ def inscripcion():
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
 
-
 @app.route('/porciento', methods=['GET', 'POST'])
 def porciento():
     mensaje = ""
@@ -630,60 +603,38 @@ def porciento():
     if request.method == 'POST':
         if 'buscar_btn' in request.form:  # Botón para buscar
             buscar = request.form.get('buscar', '').strip()
-            if not buscar:
-                mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
+            fila_index, fila = buscar_en_columna(buscar, 0)  # Busca por código en columna A
+            if fila:
+                datos_candidata = {
+                    'fila_index': fila_index + 1,  # Índice de fila en formato 1-based
+                    'codigo': fila[0],
+                    'nombre': fila[1],
+                    'inicio': fila[23],
+                    'monto_total': fila[24],
+                    'porciento': fila[25],
+                    'fecha_pago': fila[22]
+                }
             else:
-                # Buscar en la hoja de cálculo
-                datos = obtener_datos()
-                for index, fila in enumerate(datos):
-                    if len(fila) >= 27 and (
-                        buscar.lower() == fila[0].lower() or  # Código
-                        buscar.lower() == fila[1].lower() or  # Nombre
-                        buscar == fila[17]  # Cédula
-                    ):
-                        datos_candidata = {
-                            'fila_index': index + 1,  # Guardar el índice de la fila (1-based index)
-                            'codigo': fila[0],
-                            'nombre': fila[1],
-                            'inicio': fila[23],        # Fecha de Inicio (X)
-                            'monto_total': fila[24],  # Monto_total (Y)
-                            'porciento': fila[25],    # Porciento (Z)
-                            'fecha_pago': fila[22]    # Fecha_pago (W)
-                        }
-                        break
-                if not datos_candidata:
-                    mensaje = f"No se encontraron resultados para: {buscar}"
+                mensaje = f"No se encontraron resultados para: {buscar}"
 
         elif 'guardar_btn' in request.form:  # Botón para guardar
             try:
-                fila_index = int(request.form.get('fila_index', -1))  # Índice de la fila
+                fila_index = int(request.form.get('fila_index', -1))
                 monto_total = float(request.form.get('monto_total', 0))
-                inicio = request.form.get('inicio', '').strip()  # Fecha de Inicio ingresada
+                inicio = request.form.get('inicio', '').strip()
 
                 if fila_index == -1 or not inicio:
                     mensaje = "Error: No se especificó correctamente la fila o la fecha de inicio."
                 else:
-                    # Calcular la fecha de pago (15 días después de la fecha de inicio)
-                    fecha_inicio = datetime.strptime(inicio, "%Y-%m-%d")
-                    fecha_pago = (fecha_inicio + timedelta(days=15)).strftime("%Y-%m-%d")
+                    porciento = calcular_porcentaje(monto_total)
+                    fecha_pago = (datetime.strptime(inicio, "%Y-%m-%d") + timedelta(days=15)).strftime("%Y-%m-%d")
 
-                    # Calcular el porcentaje
-                    porciento = round(monto_total * 0.25, 2)
+                    # Actualizar la fila correspondiente
+                    actualizar_dato_en_columna(fila_index - 1, 22, fecha_pago)  # Fecha de Pago (Columna W)
+                    actualizar_dato_en_columna(fila_index - 1, 23, inicio)  # Inicio (Columna X)
+                    actualizar_dato_en_columna(fila_index - 1, 24, monto_total)  # Monto Total (Columna Y)
+                    actualizar_dato_en_columna(fila_index - 1, 25, porciento)  # Porciento (Columna Z)
 
-                    # Actualizar los datos en la hoja
-                    rango = f"Hoja de trabajo!W{fila_index}:Z{fila_index}"  # Desde Fecha_pago (W) hasta Porciento (Z)
-                    valores = [
-                        fecha_pago,   # Fecha_pago (W)
-                        inicio,       # Inicio (X)
-                        monto_total,  # Monto_total (Y)
-                        porciento     # Porciento (Z)
-                    ]
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=rango,
-                        valueInputOption="RAW",
-                        body={"values": [valores]}
-                    ).execute()
                     mensaje = f"Porciento calculado y guardado correctamente para la fila {fila_index}."
             except Exception as e:
                 mensaje = f"Error al guardar los datos: {str(e)}"
