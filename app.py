@@ -108,6 +108,61 @@ def calcular_porcentaje(monto_total, porcentaje=0.25):
         print(f"Error al calcular el porcentaje: {e}")
         return 0.0
 
+def actualizar_datos(fila_index, nuevos_datos):
+    try:
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Incluye hasta la columna AA
+        fila_actual = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango
+        ).execute().get('values', [[]])[0]
+        
+        # Asegúrate de extender la fila para incluir todas las columnas necesarias
+        fila_actual.extend([''] * (27 - len(fila_actual)))  # 27 columnas en total (A a AA)
+
+        # Actualizar valores existentes y agregar las nuevas columnas
+        valores = [
+            nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
+            nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
+            nuevos_datos.get('Edad', fila_actual[2]),  # Columna C
+            nuevos_datos.get('Telefono', fila_actual[3]),  # Columna D
+            nuevos_datos.get('Direccion', fila_actual[4]),  # Columna E
+            nuevos_datos.get('Modalidad', fila_actual[5]),  # Columna F
+            fila_actual[6],  # Columna G
+            fila_actual[7],  # Columna H
+            fila_actual[8],  # Columna I
+            nuevos_datos.get('Experiencia', fila_actual[9]),  # Columna J
+            fila_actual[10],  # Columna K
+            fila_actual[11],  # Columna L
+            fila_actual[12],  # Columna M
+            fila_actual[13],  # Columna N
+            fila_actual[14],  # Columna O
+            fila_actual[15],  # Columna P
+            fila_actual[16],  # Columna Q
+            nuevos_datos.get('Cedula', fila_actual[17]),  # Columna R
+            nuevos_datos.get('Estado', fila_actual[18]),  # Columna S
+            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Columna T
+            nuevos_datos.get('Monto', fila_actual[20]),  # Columna U
+            nuevos_datos.get('Fecha', fila_actual[21]),  # Columna V
+            nuevos_datos.get('Fecha_pago', fila_actual[22]),  # Columna W
+            nuevos_datos.get('Inicio', fila_actual[23]),  # Columna X
+            nuevos_datos.get('Monto_total', fila_actual[24]),  # Columna Y
+            nuevos_datos.get('Porciento', fila_actual[25]),  # Columna Z
+            nuevos_datos.get('Calificacion', fila_actual[26])  # Columna AA
+        ]
+
+        # Actualizar los valores en la hoja
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": [valores]}
+        ).execute()
+
+        return True
+    except Exception as e:
+        print(f"Error al actualizar los datos: {e}")
+        return False
+
 
 def generar_codigo_unico():
     """
