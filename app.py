@@ -109,47 +109,47 @@ def calcular_porcentaje(monto_total, porcentaje=0.25):
 
 def actualizar_datos(fila_index, nuevos_datos):
     try:
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualizar solo en la fila buscada.
-        fila_actual = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango
-        ).execute().get('values', [[]])[0]
+        # Define el rango para la fila encontrada
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualiza solo la fila encontrada.
+        datos = obtener_datos()
 
-        # Asegúrate de extender la fila para incluir todas las columnas necesarias
-        fila_actual.extend([''] * (27 - len(fila_actual)))  # 27 columnas en total (A a AA)
+        # Obtén la fila actual
+        fila_actual = datos[fila_index]
+        while len(fila_actual) < 27:  # Asegúrate de que la fila tenga al menos 27 columnas
+            fila_actual.append("")
 
-        # Actualizar valores existentes y agregar los nuevos valores
+        # Actualizar valores existentes y usar los nuevos datos proporcionados
         valores = [
-            nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
-            nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
-            nuevos_datos.get('Edad', fila_actual[2]),  # Columna C
-            nuevos_datos.get('Telefono', fila_actual[3]),  # Columna D
-            nuevos_datos.get('Direccion', fila_actual[4]),  # Columna E
-            nuevos_datos.get('Modalidad', fila_actual[5]),  # Columna F
-            fila_actual[6],  # Columna G
-            fila_actual[7],  # Columna H
-            fila_actual[8],  # Columna I
-            nuevos_datos.get('Experiencia', fila_actual[9]),  # Columna J
-            fila_actual[10],  # Columna K
-            fila_actual[11],  # Columna L
-            fila_actual[12],  # Columna M
-            fila_actual[13],  # Columna N
-            fila_actual[14],  # Columna O
-            fila_actual[15],  # Columna P
-            fila_actual[16],  # Columna Q
-            nuevos_datos.get('Cedula', fila_actual[17]),  # Columna R
-            nuevos_datos.get('Estado', fila_actual[18]),  # Columna S
-            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Columna T
-            nuevos_datos.get('Monto', fila_actual[20]),  # Columna U
-            nuevos_datos.get('Fecha', fila_actual[21]),  # Columna V
-            nuevos_datos.get('Fecha_pago', fila_actual[22]),  # Columna W
-            nuevos_datos.get('Inicio', fila_actual[23]),  # Columna X
-            nuevos_datos.get('Monto_total', fila_actual[24]),  # Columna Y
-            nuevos_datos.get('Porciento', fila_actual[25]),  # Columna Z
-            nuevos_datos.get('Calificacion', fila_actual[26])  # Columna AA
+            nuevos_datos.get("Codigo", fila_actual[0]),  # Columna A
+            nuevos_datos.get("Nombre", fila_actual[1]),  # Columna B
+            nuevos_datos.get("Edad", fila_actual[2]),  # Columna C
+            nuevos_datos.get("Telefono", fila_actual[3]),  # Columna D
+            nuevos_datos.get("Direccion", fila_actual[4]),  # Columna E
+            nuevos_datos.get("Modalidad", fila_actual[5]),  # Columna F
+            fila_actual[6],  # Columna G (Sin cambios)
+            fila_actual[7],  # Columna H (Sin cambios)
+            fila_actual[8],  # Columna I (Sin cambios)
+            nuevos_datos.get("Experiencia", fila_actual[9]),  # Columna J
+            fila_actual[10],  # Columna K (Sin cambios)
+            fila_actual[11],  # Columna L (Sin cambios)
+            fila_actual[12],  # Columna M (Sin cambios)
+            fila_actual[13],  # Columna N (Sin cambios)
+            fila_actual[14],  # Columna O (Sin cambios)
+            fila_actual[15],  # Columna P (Sin cambios)
+            fila_actual[16],  # Columna Q (Sin cambios)
+            nuevos_datos.get("Cedula", fila_actual[17]),  # Columna R
+            nuevos_datos.get("Estado", fila_actual[18]),  # Columna S
+            nuevos_datos.get("Inscripcion", fila_actual[19]),  # Columna T
+            fila_actual[20],  # Columna U (Sin cambios)
+            fila_actual[21],  # Columna V (Sin cambios)
+            fila_actual[22],  # Columna W (Sin cambios)
+            fila_actual[23],  # Columna X (Sin cambios)
+            fila_actual[24],  # Columna Y (Sin cambios)
+            fila_actual[25],  # Columna Z (Sin cambios)
+            fila_actual[26],  # Columna AA (Sin cambios)
         ]
 
-        # Actualizar los valores en la hoja
+        # Actualizar la fila en la hoja
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -161,7 +161,7 @@ def actualizar_datos(fila_index, nuevos_datos):
     except Exception as e:
         print(f"Error al actualizar los datos: {e}")
         return False
-
+        
 def generar_codigo_unico():
     """
     Genera un código único para las candidatas en formato 'CAN-XXX',
@@ -412,6 +412,18 @@ def buscar_candidatas_por_texto(busqueda):
 
     return resultados
 
+def buscar_candidata(valor):
+    datos = obtener_datos()
+    for fila_index, fila in enumerate(datos):
+        if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
+            if (
+                valor.lower() == fila[0].strip().lower() or  # Código
+                valor.lower() == fila[1].strip().lower() or  # Nombre
+                valor == fila[17].strip()  # Cédula
+            ):
+                return fila_index, fila
+    return None, None
+
 
 # Ruta de Login
 @app.route('/login', methods=['GET', 'POST'])
@@ -529,22 +541,11 @@ def editar():
     mensaje = ""
 
     if request.method == "POST":
-        busqueda = request.form.get("codigo", "").strip()  # Código, nombre o cédula para buscar.
-        fila_index = -1
+        busqueda = request.form.get("codigo", "").strip()
+        fila_index, fila = buscar_candidata(busqueda)
 
-        # Buscar la fila correspondiente en los datos
-        datos = obtener_datos()
-        for index, fila in enumerate(datos):
-            if len(fila) > 16 and (
-                busqueda.lower() == fila[0].strip().lower() or
-                busqueda.lower() == fila[1].strip().lower() or
-                busqueda == fila[17].strip()
-            ):
-                fila_index = index
-                datos_candidata = fila
-                break
-
-        if datos_candidata:
+        if fila:
+            datos_candidata = fila
             if "guardar" in request.form:
                 nuevos_datos = {
                     "Codigo": request.form.get("codigo", "").strip(),
