@@ -108,60 +108,60 @@ def calcular_porcentaje(monto_total, porcentaje=0.25):
         return 0.0
 
 def actualizar_datos(fila_index, nuevos_datos):
+    """
+    Actualiza los datos en la fila exacta especificada.
+    :param fila_index: Índice de la fila en formato 0-based.
+    :param nuevos_datos: Diccionario con los nuevos valores.
+    :return: True si la actualización es exitosa, False si hay un error.
+    """
     try:
-        # Define el rango para la fila encontrada
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualiza solo la fila encontrada.
-        datos = obtener_datos()
+        # Define el rango exacto para actualizar la fila encontrada
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"
+        datos = obtener_datos()  # Obtén todos los datos de la hoja
+        fila_actual = datos[fila_index]  # Obtén la fila específica
 
-        # Obtén la fila actual
-        fila_actual = datos[fila_index]
-        while len(fila_actual) < 27:  # Asegúrate de que la fila tenga al menos 27 columnas
+        # Extiende la fila para asegurar que tenga al menos 27 columnas
+        while len(fila_actual) < 27:
             fila_actual.append("")
 
-        # Actualizar valores existentes y usar los nuevos datos proporcionados
-        valores = [
-            nuevos_datos.get("Codigo", fila_actual[0]),  # Columna A
-            nuevos_datos.get("Nombre", fila_actual[1]),  # Columna B
-            nuevos_datos.get("Edad", fila_actual[2]),  # Columna C
-            nuevos_datos.get("Telefono", fila_actual[3]),  # Columna D
-            nuevos_datos.get("Direccion", fila_actual[4]),  # Columna E
-            nuevos_datos.get("Modalidad", fila_actual[5]),  # Columna F
-            fila_actual[6],  # Columna G (Sin cambios)
-            fila_actual[7],  # Columna H (Sin cambios)
-            fila_actual[8],  # Columna I (Sin cambios)
-            nuevos_datos.get("Experiencia", fila_actual[9]),  # Columna J
-            fila_actual[10],  # Columna K (Sin cambios)
-            fila_actual[11],  # Columna L (Sin cambios)
-            fila_actual[12],  # Columna M (Sin cambios)
-            fila_actual[13],  # Columna N (Sin cambios)
-            fila_actual[14],  # Columna O (Sin cambios)
-            fila_actual[15],  # Columna P (Sin cambios)
-            fila_actual[16],  # Columna Q (Sin cambios)
-            nuevos_datos.get("Cedula", fila_actual[17]),  # Columna R
-            nuevos_datos.get("Estado", fila_actual[18]),  # Columna S
-            nuevos_datos.get("Inscripcion", fila_actual[19]),  # Columna T
-            fila_actual[20],  # Columna U (Sin cambios)
-            fila_actual[21],  # Columna V (Sin cambios)
-            fila_actual[22],  # Columna W (Sin cambios)
-            fila_actual[23],  # Columna X (Sin cambios)
-            fila_actual[24],  # Columna Y (Sin cambios)
-            fila_actual[25],  # Columna Z (Sin cambios)
-            fila_actual[26],  # Columna AA (Sin cambios)
-        ]
+        # Actualiza solo las columnas que vienen en nuevos_datos
+        for key, value in nuevos_datos.items():
+            if key == "Codigo":
+                fila_actual[0] = value  # Columna A
+            elif key == "Nombre":
+                fila_actual[1] = value  # Columna B
+            elif key == "Edad":
+                fila_actual[2] = value  # Columna C
+            elif key == "Telefono":
+                fila_actual[3] = value  # Columna D
+            elif key == "Direccion":
+                fila_actual[4] = value  # Columna E
+            elif key == "Modalidad":
+                fila_actual[5] = value  # Columna F
+            elif key == "Experiencia":
+                fila_actual[9] = value  # Columna J
+            elif key == "Cedula":
+                fila_actual[17] = value  # Columna R
+            elif key == "Estado":
+                fila_actual[18] = value  # Columna S
+            elif key == "Inscripcion":
+                fila_actual[19] = value  # Columna T
 
-        # Actualizar la fila en la hoja
+        # Actualiza la fila en la hoja de cálculo
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
             valueInputOption="RAW",
-            body={"values": [valores]}
+            body={"values": [fila_actual]}  # Solo actualiza esta fila
         ).execute()
 
+        print(f"Datos actualizados correctamente en la fila {fila_index + 1}")
         return True
+
     except Exception as e:
         print(f"Error al actualizar los datos: {e}")
         return False
-        
+
 def generar_codigo_unico():
     """
     Genera un código único para las candidatas en formato 'CAN-XXX',
@@ -413,6 +413,11 @@ def buscar_candidatas_por_texto(busqueda):
     return resultados
 
 def buscar_candidata(valor):
+    """
+    Busca una candidata por Código, Nombre o Cédula.
+    :param valor: Valor a buscar.
+    :return: Índice de la fila y la fila completa si se encuentra; None si no.
+    """
     datos = obtener_datos()
     for fila_index, fila in enumerate(datos):
         if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
@@ -537,16 +542,24 @@ def buscar():
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
+    """
+    Ruta para buscar y actualizar una candidata específica.
+    """
     datos_candidata = None
     mensaje = ""
 
     if request.method == "POST":
+        # Obtén el valor de búsqueda
         busqueda = request.form.get("codigo", "").strip()
+
+        # Busca la candidata
         fila_index, fila = buscar_candidata(busqueda)
 
-        if fila:
-            datos_candidata = fila
+        if fila is not None:
+            datos_candidata = fila  # Guarda los datos de la candidata encontrada
+
             if "guardar" in request.form:
+                # Captura los datos nuevos del formulario
                 nuevos_datos = {
                     "Codigo": request.form.get("codigo", "").strip(),
                     "Nombre": request.form.get("nombre", "").strip(),
@@ -560,7 +573,7 @@ def editar():
                     "Inscripcion": request.form.get("inscripcion", "").strip(),
                 }
 
-                # Actualizar los datos en la fila encontrada
+                # Actualiza los datos en la fila encontrada
                 if actualizar_datos(fila_index, nuevos_datos):
                     mensaje = "Los datos se han actualizado correctamente."
                 else:
