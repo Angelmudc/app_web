@@ -76,13 +76,12 @@ def buscar_datos_por_nombre_o_cedula(busqueda):
 def actualizar_dato_en_columna(fila_index, columna_index, nuevo_valor):
     """
     Actualiza un valor específico en una fila y columna dadas.
-    :param fila_index: Índice de la fila (0-based).
-    :param columna_index: Índice de la columna (0-based).
-    :param nuevo_valor: Valor nuevo a insertar.
-    :return: True si se actualiza correctamente, False en caso de error.
     """
     try:
-        rango = f"Hoja de trabajo!{chr(65 + columna_index)}{fila_index + 1}"
+        if fila_index < 0 or columna_index < 0:
+            raise ValueError("Índices de fila o columna no válidos.")
+
+        rango = f"Hoja de trabajo!{chr(65 + columna_index)}{fila_index + 1}"  # Convierte índice en letra de columna
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -110,14 +109,17 @@ def calcular_porcentaje(monto_total, porcentaje=0.25):
 
 def actualizar_datos(fila_index, nuevos_datos):
     try:
+        if fila_index < 0:
+            raise ValueError("El índice de la fila no es válido.")
+
         rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Incluye hasta la columna AA
         fila_actual = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=rango
         ).execute().get('values', [[]])[0]
-        
-        # Asegúrate de extender la fila para incluir todas las columnas necesarias
-        fila_actual.extend([''] * (27 - len(fila_actual)))  # 27 columnas en total (A a AA)
+
+        # Extiende la fila actual para 27 columnas
+        fila_actual.extend([''] * (27 - len(fila_actual)))
 
         # Actualizar valores existentes y agregar las nuevas columnas
         valores = [
@@ -163,7 +165,7 @@ def actualizar_datos(fila_index, nuevos_datos):
         print(f"Error al actualizar los datos: {e}")
         return False
 
-
+   
 def generar_codigo_unico():
     """
     Genera un código único para las candidatas en formato 'CAN-XXX',
