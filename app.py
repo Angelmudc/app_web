@@ -547,50 +547,66 @@ def buscar():
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
-    """
-    Permite buscar y actualizar datos de una candidata en la hoja de cálculo.
-    No valida por código, se basa en nombre o cédula.
-    """
     datos_candidata = None
     mensaje = ""
 
     if request.method == "POST":
-        busqueda = request.form.get("busqueda", "").strip()  # Buscar por nombre o cédula
-        fila_index = -1
+        if "buscar_btn" in request.form:  # Botón de buscar
+            busqueda = request.form.get("busqueda", "").strip().lower()
+            datos = obtener_datos()
+            for fila_index, fila in enumerate(datos):
+                if len(fila) >= 27:  # Asegurarnos que tenga suficientes columnas
+                    codigo = fila[0].strip().lower()
+                    nombre = fila[1].strip().lower()
+                    cedula = fila[17].strip()
 
-        # Buscar la fila correspondiente en los datos
-        datos = obtener_datos()
-        for index, fila in enumerate(datos):
-            if len(fila) > 16 and (
-                busqueda.lower() == fila[1].strip().lower() or  # Nombre (Columna B)
-                busqueda == fila[17].strip()  # Cédula (Columna R)
-            ):
-                fila_index = index
-                datos_candidata = fila
-                break
+                    # Coincidir por código, nombre o cédula
+                    if (
+                        busqueda == codigo
+                        or busqueda == nombre
+                        or busqueda == cedula
+                    ):
+                        datos_candidata = {
+                            "fila_index": fila_index + 1,
+                            "codigo": fila[0],
+                            "nombre": fila[1],
+                            "edad": fila[2],
+                            "telefono": fila[3],
+                            "direccion": fila[4],
+                            "modalidad": fila[5],
+                            "experiencia": fila[9],
+                            "cedula": fila[17],
+                            "estado": fila[18],
+                            "inscripcion": fila[19],
+                        }
+                        break
 
-        if datos_candidata:
-            if "guardar" in request.form:
-                # Capturar los datos actualizados del formulario
+            if not datos_candidata:
+                mensaje = f"No se encontraron resultados para: {busqueda}"
+
+        elif "guardar_btn" in request.form:  # Botón de guardar
+            try:
+                fila_index = int(request.form.get("fila_index")) - 1
                 nuevos_datos = {
-                    "Nombre": request.form.get("nombre", "").strip(),
-                    "Edad": request.form.get("edad", "").strip(),
-                    "Telefono": request.form.get("telefono", "").strip(),
-                    "Direccion": request.form.get("direccion", "").strip(),
-                    "Modalidad": request.form.get("modalidad", "").strip(),
-                    "Experiencia": request.form.get("experiencia", "").strip(),
-                    "Cedula": request.form.get("cedula", "").strip(),
-                    "Estado": request.form.get("estado", "").strip(),
-                    "Inscripcion": request.form.get("inscripcion", "").strip(),
+                    "codigo": request.form.get("codigo", "").strip(),
+                    "nombre": request.form.get("nombre", "").strip(),
+                    "edad": request.form.get("edad", "").strip(),
+                    "telefono": request.form.get("telefono", "").strip(),
+                    "direccion": request.form.get("direccion", "").strip(),
+                    "modalidad": request.form.get("modalidad", "").strip(),
+                    "experiencia": request.form.get("experiencia", "").strip(),
+                    "cedula": request.form.get("cedula", "").strip(),
+                    "estado": request.form.get("estado", "").strip(),
+                    "inscripcion": request.form.get("inscripcion", "").strip(),
                 }
 
-                # Actualizar los datos en la fila encontrada
+                # Actualizar en la fila correspondiente
                 if actualizar_datos(fila_index, nuevos_datos):
-                    mensaje = "Los datos se han actualizado correctamente."
+                    mensaje = "Datos actualizados correctamente."
                 else:
                     mensaje = "Error al actualizar los datos."
-        else:
-            mensaje = "No se encontraron resultados para actualizar."
+            except Exception as e:
+                mensaje = f"Error al guardar los datos: {str(e)}"
 
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
