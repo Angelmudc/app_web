@@ -128,16 +128,16 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
 
 def actualizar_datos(fila_index, nuevos_datos):
     try:
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Especificar rango exacto de la fila
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualiza solo en la fila buscada
         fila_actual = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=rango
         ).execute().get('values', [[]])[0]
 
-        # Extender la fila actual para garantizar 27 columnas
+        # Extender la fila para garantizar 27 columnas
         fila_actual.extend([''] * (27 - len(fila_actual)))
 
-        # Actualizar columnas específicas
+        # Actualizar las columnas específicas con los nuevos datos
         valores = [
             nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
             nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
@@ -165,10 +165,10 @@ def actualizar_datos(fila_index, nuevos_datos):
             fila_actual[23],  # Columna X
             fila_actual[24],  # Columna Y
             fila_actual[25],  # Columna Z
-            fila_actual[26]  # Columna AA
+            fila_actual[26],  # Columna AA
         ]
 
-        # Actualizar los valores en la hoja
+        # Actualizar en la hoja de cálculo
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -550,29 +550,41 @@ def editar():
     mensaje = ""
 
     if request.method == "POST":
-        if 'buscar_btn' in request.form:
-            busqueda = request.form.get("busqueda", "").strip()  # Captura el valor de búsqueda
+        if "buscar_btn" in request.form:
+            # Capturar el valor de búsqueda desde el formulario
+            busqueda = request.form.get("busqueda", "").strip().lower()
             fila_index = -1
 
-            # Buscar en las filas
+            # Buscar en las filas de la hoja de cálculo
             datos = obtener_datos()
             for index, fila in enumerate(datos):
-                if (
-                    len(fila) > 16 and (
-                        busqueda.lower() == fila[0].strip().lower() or  # Código
-                        busqueda.lower() == fila[1].strip().lower() or  # Nombre
+                if len(fila) > 16:  # Verificar que haya al menos 17 columnas
+                    if (
+                        busqueda == fila[0].strip().lower() or  # Código
+                        busqueda == fila[1].strip().lower() or  # Nombre
                         busqueda == fila[17].strip()  # Cédula
-                    )
-                ):
-                    fila_index = index
-                    datos_candidata = fila
-                    break
+                    ):
+                        fila_index = index
+                        datos_candidata = {
+                            'fila_index': fila_index + 1,  # Índice en formato 1-based
+                            'codigo': fila[0],
+                            'nombre': fila[1],
+                            'edad': fila[2],
+                            'telefono': fila[3],
+                            'direccion': fila[4],
+                            'modalidad': fila[5],
+                            'experiencia': fila[9],
+                            'cedula': fila[17],
+                            'estado': fila[18],
+                            'inscripcion': fila[19],
+                        }
+                        break
 
             if not datos_candidata:
                 mensaje = "No se encontraron datos para la búsqueda."
 
-        elif 'guardar' in request.form:
-            # Actualizar datos
+        elif "guardar" in request.form:
+            # Capturar datos para guardar
             fila_index = int(request.form.get("fila_index", -1)) - 1  # Convertir a índice 0-based
             if fila_index < 0:
                 mensaje = "Error al determinar la fila para actualizar."
@@ -590,6 +602,7 @@ def editar():
                     "Inscripcion": request.form.get("inscripcion", "").strip(),
                 }
 
+                # Actualizar los datos en la hoja
                 if actualizar_datos(fila_index, nuevos_datos):
                     mensaje = "Los datos se han actualizado correctamente."
                 else:
@@ -597,6 +610,7 @@ def editar():
 
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
+    )
     )
 
 @app.route('/filtrar', methods=['GET', 'POST'])

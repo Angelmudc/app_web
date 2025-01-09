@@ -50,7 +50,7 @@
             <div class="mb-3">
                 <label for="busqueda" class="form-label">Buscar por Código, Nombre o Cédula:</label>
                 <div class="input-group">
-                    <input type="text" class="form-control" id="busqueda" name="busqueda" placeholder="Ejemplo: CAN-001, Ana Pérez o 304-1234567-8" required>
+                    <input type="text" class="form-control" id="busqueda" name="busqueda" placeholder="Ejemplo: CAN-001, Ana Perez o 304-1234567-8" required>
                     <button type="submit" name="buscar_btn" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
                 </div>
             </div>
@@ -65,7 +65,11 @@
                 <div class="card-body">
                     <form method="POST" action="/editar">
                         <input type="hidden" name="fila_index" value="{{ datos_candidata['fila_index'] }}">
-
+                        <div class="mt-4 text-center">
+                            <a href="/" class="btn btn-secondary">
+                                <i class="fas fa-home"></i> Volver a Inicio
+                            </a>
+                        </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="codigo" class="form-label">Código:</label>
@@ -119,7 +123,7 @@
                                 <input type="text" class="form-control" id="inscripcion" name="inscripcion" value="{{ datos_candidata['inscripcion'] }}">
                             </div>
                         </div>
-                        <button type="submit" name="guardar_btn" class="btn btn-success w-100"><i class="fas fa-save"></i> Guardar Cambios</button>
+                        <button type="submit" name="guardar" class="btn btn-success w-100"><i class="fas fa-save"></i> Guardar Cambios</button>
                     </form>
                 </div>
             </div>
