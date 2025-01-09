@@ -378,6 +378,42 @@ def prueba_actualizacion_basica():
     except Exception as e:
         print(f"Error en la prueba de actualización: {e}")
 
+def buscar_candidatas_por_texto(busqueda):
+    """
+    Realiza una búsqueda más flexible en los datos de la hoja de cálculo.
+    Retorna una lista de candidatas que coincidan con la búsqueda (parcial, sin acentos, etc.).
+    """
+    datos = obtener_datos()
+    resultados = []
+
+    # Normaliza el texto de búsqueda
+    busqueda = normalizar_texto(busqueda)
+
+    for fila in datos:
+        if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
+            codigo = normalizar_texto(fila[0])  # Columna A
+            nombre = normalizar_texto(fila[1])  # Columna B
+            cedula = fila[17]  # Columna R (sin normalizar)
+
+            # Verifica si la búsqueda coincide de forma parcial
+            if (
+                busqueda in codigo or
+                busqueda in nombre or
+                busqueda in cedula
+            ):
+                resultados.append({
+                    'codigo': fila[0],  # Columna A
+                    'nombre': fila[1],  # Columna B
+                    'edad': fila[2],    # Columna C
+                    'telefono': fila[3],  # Columna D
+                    'direccion': fila[4],  # Columna E
+                    'modalidad': fila[5],  # Columna F
+                    'experiencia': fila[9],  # Columna J
+                    'cedula': fila[17],  # Columna R
+                })
+
+    return resultados
+
 
 # Ruta de Login
 @app.route('/login', methods=['GET', 'POST'])
@@ -418,64 +454,67 @@ def home():
 def buscar():
     """
     Busca información de una candidata en la hoja de cálculo.
-    Incluye todos los detalles: ciudad, número, edad, modalidad, monto que debe, calificación, inscripción, etc.
+    Muestra todas las coincidencias y permite seleccionar una candidata para ver más detalles.
     """
+    resultados = []
     datos_candidata = None
     mensaje = None
 
     if request.method == 'POST':
-        # Captura el valor ingresado
-        busqueda = request.form.get('busqueda', '').strip()
-
-        if not busqueda:
-            mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
-        else:
-            # Lógica para buscar en la hoja de cálculo
+        if 'seleccion' in request.form:
+            # Mostrar detalles de la candidata seleccionada
+            seleccion = request.form.get('seleccion', '').strip()
             datos = obtener_datos()
             for fila in datos:
-                # Asegurarse de que la fila tenga suficientes columnas
-                if len(fila) >= 27:
-                    codigo = fila[0].strip().lower()  # Columna A
-                    nombre = fila[1].strip().lower()  # Columna B
-                    cedula = fila[17].strip()  # Columna R
-
-                    # Coincidencia por Código, Nombre o Cédula
-                    if (
-                        busqueda.lower() == codigo or
-                        busqueda.lower() == nombre or
-                        busqueda == cedula
-                    ):
-                        # Construir el diccionario con todos los detalles de la candidata
-                        datos_candidata = {
-                            'codigo': fila[0],  # Columna A
-                            'nombre': fila[1],  # Columna B
-                            'edad': fila[2],  # Columna C
-                            'telefono': fila[3],  # Columna D
-                            'direccion': fila[4],  # Columna E
-                            'modalidad': fila[5],  # Columna F
-                            'experiencia': fila[9],  # Columna J
-                            'cedula': fila[17],  # Columna R
-                            'estado': fila[18],  # Columna S
-                            'inscripcion': fila[19],  # Columna T
-                            'monto': fila[20],  # Columna U
-                            'fecha_inscripcion': fila[21],  # Columna V
-                            'monto_total': fila[24],  # Columna Y
-                            'porciento': fila[25],  # Columna Z
-                            'calificacion': fila[26],  # Columna AA
-                        }
-
-                        # Calcular el monto que debe basado en el porcentaje
-                        try:
-                            datos_candidata['monto_debe'] = round(float(fila[25]), 2) if fila[25] else 0.0
-                        except ValueError:
-                            datos_candidata['monto_debe'] = 0.0
-
-                        mensaje = f"Resultados encontrados para: {busqueda}"
-                        break
+                if len(fila) >= 27 and fila[0] == seleccion:
+                    datos_candidata = {
+                        'codigo': fila[0],
+                        'nombre': fila[1],
+                        'edad': fila[2],
+                        'telefono': fila[3],
+                        'direccion': fila[4],
+                        'modalidad': fila[5],
+                        'experiencia': fila[9],
+                        'plancha': fila[10] if len(fila) > 10 else "No especificado",
+                        'cedula': fila[17],
+                        'estado': fila[18],
+                        'inscripcion': fila[19],
+                        'monto': fila[20],
+                        'fecha_inscripcion': fila[21],
+                        'monto_total': fila[24],
+                        'porciento': fila[25],
+                        'calificacion': fila[26],
+                    }
+                    break
+        else:
+            # Búsqueda inicial
+            busqueda = request.form.get('busqueda', '').strip().lower()
+            if not busqueda:
+                mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
             else:
-                mensaje = f"No se encontraron resultados para: {busqueda}"
+                datos = obtener_datos()
+                for fila in datos:
+                    if len(fila) >= 27:
+                        codigo = fila[0].strip().lower()
+                        nombre = fila[1].strip().lower()
+                        cedula = fila[17].strip()
 
-    return render_template('buscar.html', datos_candidata=datos_candidata, mensaje=mensaje)
+                        if (
+                            busqueda in codigo or
+                            busqueda in nombre or
+                            busqueda in cedula
+                        ):
+                            resultados.append({
+                                'codigo': fila[0],
+                                'nombre': fila[1],
+                                'cedula': fila[17],
+                                'modalidad': fila[5],
+                            })
+                if not resultados:
+                    mensaje = f"No se encontraron resultados para: {busqueda}"
+
+    return render_template('buscar.html', resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
+
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():

@@ -61,7 +61,39 @@
             </div>
         </form>
 
-        <!-- Resultados de la búsqueda -->
+        <!-- Resultados de la búsqueda (varias candidatas) -->
+        {% if resultados %}
+            <h3 class="mt-4 text-center">Resultados de la Búsqueda</h3>
+            <table class="table table-striped mt-4">
+                <thead class="table-primary">
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Cédula</th>
+                        <th>Modalidad</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for candidata in resultados %}
+                    <tr>
+                        <td>{{ candidata.codigo }}</td>
+                        <td>{{ candidata.nombre }}</td>
+                        <td>{{ candidata.cedula }}</td>
+                        <td>{{ candidata.modalidad }}</td>
+                        <td>
+                            <form method="POST" action="/buscar">
+                                <input type="hidden" name="seleccion" value="{{ candidata.codigo }}">
+                                <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-eye"></i> Ver Detalles</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+
+        <!-- Detalles de la candidata seleccionada -->
         {% if datos_candidata %}
             <div class="card mt-4">
                 <div class="card-header bg-primary text-white">
@@ -75,6 +107,7 @@
                     <p><strong>Dirección:</strong> {{ datos_candidata.direccion }}</p>
                     <p><strong>Modalidad:</strong> {{ datos_candidata.modalidad }}</p>
                     <p><strong>Experiencia:</strong> {{ datos_candidata.experiencia }}</p>
+                    <p><strong>¿Plancha?:</strong> {{ datos_candidata.plancha }}</p>
                     <p><strong>Cédula:</strong> {{ datos_candidata.cedula }}</p>
                     <p><strong>Estado:</strong> {{ datos_candidata.estado }}</p>
                     <p><strong>Inscripción:</strong> {{ datos_candidata.inscripcion }}</p>
