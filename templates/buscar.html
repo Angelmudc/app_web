@@ -47,74 +47,70 @@
 
         <!-- Formulario de búsqueda -->
         <form method="POST" action="/buscar">
-            <div class="mt-4 text-center">
-                <a href="/" class="btn btn-secondary">
-                    <i class="fas fa-home"></i> Volver a Inicio
-                </a>
-            </div>
             <div class="mb-3">
                 <label for="busqueda" class="form-label">Buscar por Código, Nombre o Cédula:</label>
                 <div class="input-group">
                     <input type="text" class="form-control" id="busqueda" name="busqueda" placeholder="Ejemplo: CAN-001, Ana Pérez o 304-1234567-8" required>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
+                    <button type="submit" name="buscar_btn" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
                 </div>
             </div>
         </form>
 
-        <!-- Resultados de la búsqueda (varias candidatas) -->
+        <!-- Resultados de la búsqueda -->
         {% if resultados %}
-            <h3 class="mt-4 text-center">Resultados de la Búsqueda</h3>
-            <table class="table table-striped mt-4">
-                <thead class="table-primary">
+            <h3 class="mt-4">Resultados encontrados:</h3>
+            <table class="table table-striped">
+                <thead>
                     <tr>
                         <th>Código</th>
                         <th>Nombre</th>
+                        <th>Teléfono</th>
                         <th>Cédula</th>
-                        <th>Modalidad</th>
                         <th>Acción</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for candidata in resultados %}
-                    <tr>
-                        <td>{{ candidata.codigo }}</td>
-                        <td>{{ candidata.nombre }}</td>
-                        <td>{{ candidata.cedula }}</td>
-                        <td>{{ candidata.modalidad }}</td>
-                        <td>
-                            <form method="POST" action="/buscar">
-                                <input type="hidden" name="seleccion" value="{{ candidata.codigo }}">
-                                <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-eye"></i> Ver Detalles</button>
-                            </form>
-                        </td>
-                    </tr>
+                    {% for resultado in resultados %}
+                        <tr>
+                            <td>{{ resultado.codigo }}</td>
+                            <td>{{ resultado.nombre }}</td>
+                            <td>{{ resultado.telefono }}</td>
+                            <td>{{ resultado.cedula }}</td>
+                            <td>
+                                <form method="POST" action="/buscar" style="display:inline;">
+                                    <input type="hidden" name="fila_index" value="{{ resultado.fila_index }}">
+                                    <button type="submit" name="seleccionar_btn" class="btn btn-success btn-sm">
+                                        <i class="fas fa-eye"></i> Seleccionar
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
                     {% endfor %}
                 </tbody>
             </table>
         {% endif %}
 
         <!-- Detalles de la candidata seleccionada -->
-        {% if datos_candidata %}
+        {% if detalles_candidata %}
             <div class="card mt-4">
                 <div class="card-header bg-primary text-white">
                     <h3>Detalles de la Candidata</h3>
                 </div>
                 <div class="card-body">
-                    <p><strong>Código:</strong> {{ datos_candidata.codigo }}</p>
-                    <p><strong>Nombre:</strong> {{ datos_candidata.nombre }}</p>
-                    <p><strong>Edad:</strong> {{ datos_candidata.edad }}</p>
-                    <p><strong>Teléfono:</strong> {{ datos_candidata.telefono }}</p>
-                    <p><strong>Dirección:</strong> {{ datos_candidata.direccion }}</p>
-                    <p><strong>Modalidad:</strong> {{ datos_candidata.modalidad }}</p>
-                    <p><strong>Experiencia:</strong> {{ datos_candidata.experiencia }}</p>
-                    <p><strong>¿Plancha?:</strong> {{ datos_candidata.plancha }}</p>
-                    <p><strong>Cédula:</strong> {{ datos_candidata.cedula }}</p>
-                    <p><strong>Estado:</strong> {{ datos_candidata.estado }}</p>
-                    <p><strong>Inscripción:</strong> {{ datos_candidata.inscripcion }}</p>
-                    <p><strong>Fecha de Inscripción:</strong> {{ datos_candidata.fecha_inscripcion }}</p>
-                    <p><strong>Monto Total:</strong> {{ datos_candidata.monto_total }}</p>
-                    <p><strong>Monto Pendiente:</strong> {{ datos_candidata.monto_debe }}</p>
-                    <p><strong>Calificación:</strong> {{ datos_candidata.calificacion }}</p>
+                    <p><strong>Código:</strong> {{ detalles_candidata.codigo }}</p>
+                    <p><strong>Nombre:</strong> {{ detalles_candidata.nombre }}</p>
+                    <p><strong>Edad:</strong> {{ detalles_candidata.edad }}</p>
+                    <p><strong>Teléfono:</strong> {{ detalles_candidata.telefono }}</p>
+                    <p><strong>Dirección:</strong> {{ detalles_candidata.direccion }}</p>
+                    <p><strong>Modalidad:</strong> {{ detalles_candidata.modalidad }}</p>
+                    <p><strong>Experiencia:</strong> {{ detalles_candidata.experiencia }}</p>
+                    <p><strong>Plancha:</strong> {{ detalles_candidata.plancha }}</p>
+                    <p><strong>Cédula:</strong> {{ detalles_candidata.cedula }}</p>
+                    <p><strong>Estado:</strong> {{ detalles_candidata.estado }}</p>
+                    <p><strong>Inscripción:</strong> {{ detalles_candidata.inscripcion }}</p>
+                    <p><strong>Monto Total:</strong> {{ detalles_candidata.monto_total }}</p>
+                    <p><strong>Porciento:</strong> {{ detalles_candidata.porciento }}</p>
+                    <p><strong>Calificación:</strong> {{ detalles_candidata.calificacion }}</p>
                 </div>
             </div>
         {% endif %}

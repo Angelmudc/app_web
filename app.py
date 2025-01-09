@@ -453,67 +453,76 @@ def home():
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
     """
-    Busca información de una candidata en la hoja de cálculo.
-    Muestra todas las coincidencias y permite seleccionar una candidata para ver más detalles.
+    Busca información de una candidata en la hoja de cálculo y permite seleccionar una candidata
+    para ver sus detalles completos.
     """
-    resultados = []
-    datos_candidata = None
+    resultados = []  # Lista para almacenar los resultados de búsqueda
+    detalles_candidata = None  # Datos completos de la candidata seleccionada
     mensaje = None
 
     if request.method == 'POST':
-        if 'seleccion' in request.form:
-            # Mostrar detalles de la candidata seleccionada
-            seleccion = request.form.get('seleccion', '').strip()
-            datos = obtener_datos()
-            for fila in datos:
-                if len(fila) >= 27 and fila[0] == seleccion:
-                    datos_candidata = {
-                        'codigo': fila[0],
-                        'nombre': fila[1],
-                        'edad': fila[2],
-                        'telefono': fila[3],
-                        'direccion': fila[4],
-                        'modalidad': fila[5],
-                        'experiencia': fila[9],
-                        'plancha': fila[10] if len(fila) > 10 else "No especificado",
-                        'cedula': fila[17],
-                        'estado': fila[18],
-                        'inscripcion': fila[19],
-                        'monto': fila[20],
-                        'fecha_inscripcion': fila[21],
-                        'monto_total': fila[24],
-                        'porciento': fila[25],
-                        'calificacion': fila[26],
-                    }
-                    break
-        else:
-            # Búsqueda inicial
+        if 'buscar_btn' in request.form:  # Botón para buscar
             busqueda = request.form.get('busqueda', '').strip().lower()
+
             if not busqueda:
                 mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
             else:
                 datos = obtener_datos()
-                for fila in datos:
-                    if len(fila) >= 27:
+                for fila_index, fila in enumerate(datos):
+                    if len(fila) >= 27:  # Verifica que la fila tenga suficientes columnas
                         codigo = fila[0].strip().lower()
                         nombre = fila[1].strip().lower()
-                        cedula = fila[17].strip()
+                        cedula = fila[17].strip().lower()
 
+                        # Coincidencia parcial en Código, Nombre o Cédula
                         if (
                             busqueda in codigo or
                             busqueda in nombre or
                             busqueda in cedula
                         ):
                             resultados.append({
+                                'fila_index': fila_index + 1,  # Índice 1-based
                                 'codigo': fila[0],
                                 'nombre': fila[1],
-                                'cedula': fila[17],
-                                'modalidad': fila[5],
+                                'telefono': fila[3],
+                                'cedula': fila[17]
                             })
+
                 if not resultados:
                     mensaje = f"No se encontraron resultados para: {busqueda}"
 
-    return render_template('buscar.html', resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
+        elif 'seleccionar_btn' in request.form:  # Botón para seleccionar una candidata
+            fila_index = int(request.form.get('fila_index')) - 1
+            datos = obtener_datos()
+            if 0 <= fila_index < len(datos):
+                fila = datos[fila_index]
+                detalles_candidata = {
+                    'codigo': fila[0],
+                    'nombre': fila[1],
+                    'edad': fila[2],
+                    'telefono': fila[3],
+                    'direccion': fila[4],
+                    'modalidad': fila[5],
+                    'experiencia': fila[9],
+                    'plancha': fila[10],
+                    'cedula': fila[17],
+                    'estado': fila[18],
+                    'inscripcion': fila[19],
+                    'monto': fila[20],
+                    'fecha_inscripcion': fila[21],
+                    'monto_total': fila[24],
+                    'porciento': fila[25],
+                    'calificacion': fila[26]
+                }
+            else:
+                mensaje = "Error: La fila seleccionada no es válida."
+
+    return render_template(
+        'buscar.html',
+        resultados=resultados,
+        detalles_candidata=detalles_candidata,
+        mensaje=mensaje
+    )
 
 
 @app.route("/editar", methods=["GET", "POST"])
