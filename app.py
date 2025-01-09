@@ -560,30 +560,22 @@ def editar():
                 busqueda == fila[17].strip()  # Cédula (Columna R)
             ):
                 fila_index = index
-                datos_candidata = fila
+                datos_candidata = {
+                    "codigo": fila[0],
+                    "nombre": fila[1],
+                    "edad": fila[2],
+                    "telefono": fila[3],
+                    "direccion": fila[4],
+                    "modalidad": fila[5],
+                    "experiencia": fila[9],
+                    "cedula": fila[17],
+                    "estado": fila[18],
+                    "inscripcion": fila[19],
+                }
                 break
 
-        if datos_candidata:
-            if "guardar" in request.form:
-                nuevos_datos = {
-                    "Nombre": request.form.get("nombre", "").strip(),
-                    "Edad": request.form.get("edad", "").strip(),
-                    "Telefono": request.form.get("telefono", "").strip(),
-                    "Direccion": request.form.get("direccion", "").strip(),
-                    "Modalidad": request.form.get("modalidad", "").strip(),
-                    "Experiencia": request.form.get("experiencia", "").strip(),
-                    "Cedula": request.form.get("cedula", "").strip(),
-                    "Estado": request.form.get("estado", "").strip(),
-                    "Inscripcion": request.form.get("inscripcion", "").strip(),
-                }
-
-                # Actualizar los datos en la fila encontrada
-                if actualizar_datos(fila_index, nuevos_datos):
-                    mensaje = "Los datos se han actualizado correctamente."
-                else:
-                    mensaje = "Error al actualizar los datos."
-        else:
-            mensaje = "No se encontraron resultados para actualizar. Por favor, verifica el nombre o la cédula."
+        if not datos_candidata:
+            mensaje = "No se encontraron resultados para la búsqueda."
 
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
