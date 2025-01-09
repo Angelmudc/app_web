@@ -545,41 +545,117 @@ def buscar():
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
+    """
+    Permite buscar y actualizar la información de una candidata en la hoja de cálculo.
+    """
     datos_candidata = None
     mensaje = ""
 
     if request.method == "POST":
-        busqueda = request.form.get("busqueda", "").strip()  # Buscar por nombre o cédula
-        fila_index = -1
+        # Buscar candidata
+        if "buscar" in request.form:  # Botón de buscar
+            busqueda = request.form.get("codigo", "").strip().lower()
+            datos = obtener_datos()
 
-        # Buscar la fila correspondiente en los datos
-        datos = obtener_datos()
-        for index, fila in enumerate(datos):
-            if len(fila) > 17 and (
-                busqueda.lower() == fila[1].strip().lower() or  # Nombre (Columna B)
-                busqueda == fila[17].strip()  # Cédula (Columna R)
-            ):
-                fila_index = index
-                datos_candidata = {
-                    "codigo": fila[0],
-                    "nombre": fila[1],
-                    "edad": fila[2],
-                    "telefono": fila[3],
-                    "direccion": fila[4],
-                    "modalidad": fila[5],
-                    "experiencia": fila[9],
-                    "cedula": fila[17],
-                    "estado": fila[18],
-                    "inscripcion": fila[19],
-                }
-                break
+            for index, fila in enumerate(datos):
+                if len(fila) >= 18:  # Asegurarse de que la fila tenga las columnas necesarias
+                    codigo = fila[0].strip().lower()
+                    nombre = fila[1].strip().lower()
+                    cedula = fila[17].strip()
 
-        if not datos_candidata:
-            mensaje = "No se encontraron resultados para la búsqueda."
+                    if (
+                        busqueda == codigo or
+                        busqueda == nombre or
+                        busqueda == cedula
+                    ):
+                        # Mapear datos para enviarlos al HTML
+                        datos_candidata = {
+                            'codigo': fila[0],
+                            'nombre': fila[1],
+                            'edad': fila[2],
+                            'telefono': fila[3],
+                            'direccion': fila[4],
+                            'modalidad': fila[5],
+                            'experiencia': fila[9],
+                            'cedula': fila[17],
+                            'estado': fila[18],
+                            'inscripcion': fila[19],
+                        }
+                        datos_candidata["fila_index"] = index + 1  # Índice 1-based para actualizar la fila
+                        break
 
-    return render_template(
-        "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
-    )
+            if not datos_candidata:
+                mensaje = "No se encontraron resultados para la búsqueda."
+
+        # Guardar cambios
+        elif "guardar" in request.form:  # Botón de guardar
+            try:
+                fila_index = int(request.form.get("fila_index", -1)) - 1  # Índice 0-based
+                if fila_index < 0:
+                    mensaje = "Error: Índice de fila no válido."
+                else:
+                    nuevos_datos = {
+                        "codigo": request.form.get("codigo", "").strip(),
+                        "nombre": request.form.get("nombre", "").strip(),
+                        "edad": request.form.get("edad", "").strip(),
+                        "telefono": request.form.get("telefono", "").strip(),
+                        "direccion": request.form.get("direccion", "").strip(),
+                        "modalidad": request.form.get("modalidad", "").strip(),
+                        "experiencia": request.form.get("experiencia", "").strip(),
+                        "cedula": request.form.get("cedula", "").strip(),
+                        "estado": request.form.get("estado", "").strip(),
+                        "inscripcion": request.form.get("inscripcion", "").strip(),
+                    }
+
+                    # Actualizar la fila correspondiente
+                    if actualizar_datos(fila_index, nuevos_datos):
+                        mensaje = "Los datos se han actualizado correctamente."
+                    else:
+                        mensaje = "Error al actualizar los datos."
+            except Exception as e:
+                mensaje = f"Error: {e}"
+
+    return render_template("editar.html", datos_candidata=datos_candidata, mensaje=mensaje)
+
+
+def actualizar_datos(fila_index, nuevos_datos):
+    """
+    Actualiza los datos de una fila específica en la hoja de cálculo.
+    """
+    try:
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Desde A hasta AA
+        fila_actual = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango
+        ).execute().get("values", [[]])[0]
+
+        # Completar columnas vacías si es necesario
+        fila_actual.extend([""] * (27 - len(fila_actual)))
+
+        # Actualizar las columnas con los nuevos valores
+        fila_actual[0] = nuevos_datos.get("codigo", fila_actual[0])  # Columna A
+        fila_actual[1] = nuevos_datos.get("nombre", fila_actual[1])  # Columna B
+        fila_actual[2] = nuevos_datos.get("edad", fila_actual[2])  # Columna C
+        fila_actual[3] = nuevos_datos.get("telefono", fila_actual[3])  # Columna D
+        fila_actual[4] = nuevos_datos.get("direccion", fila_actual[4])  # Columna E
+        fila_actual[5] = nuevos_datos.get("modalidad", fila_actual[5])  # Columna F
+        fila_actual[9] = nuevos_datos.get("experiencia", fila_actual[9])  # Columna J
+        fila_actual[17] = nuevos_datos.get("cedula", fila_actual[17])  # Columna R
+        fila_actual[18] = nuevos_datos.get("estado", fila_actual[18])  # Columna S
+        fila_actual[19] = nuevos_datos.get("inscripcion", fila_actual[19])  # Columna T
+
+        # Enviar los datos actualizados a la hoja
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": [fila_actual]}
+        ).execute()
+
+        return True
+    except Exception as e:
+        print(f"Error al actualizar datos: {e}")
+        return False
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
