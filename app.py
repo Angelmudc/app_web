@@ -109,19 +109,17 @@ def calcular_porcentaje(monto_total, porcentaje=0.25):
 
 def actualizar_datos(fila_index, nuevos_datos):
     try:
-        if fila_index < 0:
-            raise ValueError("El índice de la fila no es válido.")
-
+        # Calcula el rango de la fila específica
         rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Incluye hasta la columna AA
         fila_actual = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=rango
         ).execute().get('values', [[]])[0]
 
-        # Extiende la fila actual para 27 columnas
+        # Asegúrate de que la fila tenga al menos 27 columnas
         fila_actual.extend([''] * (27 - len(fila_actual)))
 
-        # Actualizar valores existentes y agregar las nuevas columnas
+        # Actualiza los valores con los nuevos datos proporcionados
         valores = [
             nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
             nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
@@ -152,7 +150,7 @@ def actualizar_datos(fila_index, nuevos_datos):
             nuevos_datos.get('Calificacion', fila_actual[26])  # Columna AA
         ]
 
-        # Actualizar los valores en la hoja
+        # Actualiza la fila en la hoja de cálculo
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -160,7 +158,9 @@ def actualizar_datos(fila_index, nuevos_datos):
             body={"values": [valores]}
         ).execute()
 
+        print(f"Datos actualizados correctamente en la fila {fila_index + 1}")
         return True
+
     except Exception as e:
         print(f"Error al actualizar los datos: {e}")
         return False
