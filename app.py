@@ -127,37 +127,55 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
     return None, None  # No se encontró
 
 def actualizar_datos(fila_index, nuevos_datos):
-    """
-    Actualiza los datos en la fila correspondiente.
-    """
     try:
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualiza la fila correcta
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualizar solo en la fila buscada
+        fila_actual = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango
+        ).execute().get('values', [[]])[0]
+
+        # Asegurarte de que la fila tenga suficientes columnas
+        fila_actual.extend([''] * (27 - len(fila_actual)))  # Completa hasta 27 columnas
+
+        # Actualizar solo las columnas relevantes
         valores = [
-            nuevos_datos.get('Codigo', ''),  # Columna A
-            nuevos_datos.get('Nombre', ''),  # Columna B
-            nuevos_datos.get('Edad', ''),  # Columna C
-            nuevos_datos.get('Telefono', ''),  # Columna D
-            nuevos_datos.get('Direccion', ''),  # Columna E
-            nuevos_datos.get('Modalidad', ''),  # Columna F
-            '', '', '', '', '', '', '', '', '', '',  # Relleno para otras columnas
-            nuevos_datos.get('Cedula', ''),  # Columna R
-            nuevos_datos.get('Estado', ''),  # Columna S
-            nuevos_datos.get('Inscripcion', ''),  # Columna T
-            nuevos_datos.get('Monto', ''),  # Columna U
-            nuevos_datos.get('Fecha', ''),  # Columna V
-            nuevos_datos.get('Fecha_pago', ''),  # Columna W
-            nuevos_datos.get('Inicio', ''),  # Columna X
-            nuevos_datos.get('Monto_total', ''),  # Columna Y
-            nuevos_datos.get('Porciento', ''),  # Columna Z
-            nuevos_datos.get('Calificacion', '')  # Columna AA
+            fila_actual[0],  # Columna A: Código (No se modifica porque no es obligatorio)
+            nuevos_datos.get("Nombre", fila_actual[1]),  # Columna B: Nombre
+            nuevos_datos.get("Edad", fila_actual[2]),  # Columna C: Edad
+            nuevos_datos.get("Telefono", fila_actual[3]),  # Columna D: Teléfono
+            nuevos_datos.get("Direccion", fila_actual[4]),  # Columna E: Dirección
+            nuevos_datos.get("Modalidad", fila_actual[5]),  # Columna F: Modalidad
+            fila_actual[6],  # Columna G: (Sin cambios)
+            fila_actual[7],  # Columna H: (Sin cambios)
+            fila_actual[8],  # Columna I: (Sin cambios)
+            nuevos_datos.get("Experiencia", fila_actual[9]),  # Columna J: Experiencia
+            fila_actual[10],  # Columna K: (Sin cambios)
+            fila_actual[11],  # Columna L: (Sin cambios)
+            fila_actual[12],  # Columna M: (Sin cambios)
+            fila_actual[13],  # Columna N: (Sin cambios)
+            fila_actual[14],  # Columna O: (Sin cambios)
+            fila_actual[15],  # Columna P: (Sin cambios)
+            fila_actual[16],  # Columna Q: (Sin cambios)
+            nuevos_datos.get("Cedula", fila_actual[17]),  # Columna R: Cédula
+            nuevos_datos.get("Estado", fila_actual[18]),  # Columna S: Estado
+            nuevos_datos.get("Inscripcion", fila_actual[19]),  # Columna T: Inscripción
+            fila_actual[20],  # Columna U: (Sin cambios)
+            fila_actual[21],  # Columna V: (Sin cambios)
+            fila_actual[22],  # Columna W: (Sin cambios)
+            fila_actual[23],  # Columna X: (Sin cambios)
+            fila_actual[24],  # Columna Y: (Sin cambios)
+            fila_actual[25],  # Columna Z: (Sin cambios)
+            fila_actual[26]   # Columna AA: (Sin cambios)
         ]
-        # Actualizar la fila en la hoja
+
+        # Actualizar los valores en la hoja
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
             valueInputOption="RAW",
             body={"values": [valores]}
         ).execute()
+
         return True
     except Exception as e:
         print(f"Error al actualizar los datos: {e}")
@@ -531,29 +549,41 @@ def editar():
     mensaje = ""
 
     if request.method == "POST":
-        busqueda = request.form.get("codigo", "").strip()
-        fila_index, fila = buscar_fila_por_codigo_nombre_cedula(busqueda)
+        busqueda = request.form.get("busqueda", "").strip()  # Buscar por nombre o cédula
+        fila_index = -1
 
-        if fila:
-            datos_candidata = fila
+        # Buscar la fila correspondiente en los datos
+        datos = obtener_datos()
+        for index, fila in enumerate(datos):
+            if len(fila) > 17 and (
+                busqueda.lower() == fila[1].strip().lower() or  # Nombre (Columna B)
+                busqueda == fila[17].strip()  # Cédula (Columna R)
+            ):
+                fila_index = index
+                datos_candidata = fila
+                break
+
+        if datos_candidata:
             if "guardar" in request.form:
                 nuevos_datos = {
-                    "Codigo": request.form.get("codigo", "").strip(),
                     "Nombre": request.form.get("nombre", "").strip(),
                     "Edad": request.form.get("edad", "").strip(),
                     "Telefono": request.form.get("telefono", "").strip(),
                     "Direccion": request.form.get("direccion", "").strip(),
                     "Modalidad": request.form.get("modalidad", "").strip(),
+                    "Experiencia": request.form.get("experiencia", "").strip(),
                     "Cedula": request.form.get("cedula", "").strip(),
                     "Estado": request.form.get("estado", "").strip(),
                     "Inscripcion": request.form.get("inscripcion", "").strip(),
                 }
+
+                # Actualizar los datos en la fila encontrada
                 if actualizar_datos(fila_index, nuevos_datos):
                     mensaje = "Los datos se han actualizado correctamente."
                 else:
                     mensaje = "Error al actualizar los datos."
         else:
-            mensaje = "No se encontraron resultados para actualizar."
+            mensaje = "No se encontraron resultados para actualizar. Por favor, verifica el nombre o la cédula."
 
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
