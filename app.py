@@ -611,7 +611,6 @@ def editar():
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
     )
-    )
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
