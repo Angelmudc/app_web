@@ -108,35 +108,45 @@ def calcular_porcentaje(monto_total, porcentaje=0.25):
         return 0.0
 
 def actualizar_datos(fila_index, nuevos_datos):
-    """
-    Actualiza los datos en la fila correspondiente basada en fila_index.
-    """
     try:
-        # Construye el rango basado en fila_index (1-based index)
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Cubre todas las columnas relevantes
-        print(f"Actualizando rango: {rango}")  # Depuración
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualizar solo en la fila buscada.
+        fila_actual = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango
+        ).execute().get('values', [[]])[0]
 
-        # Generar valores actualizados directamente desde nuevos_datos
+        # Asegúrate de extender la fila para incluir todas las columnas necesarias
+        fila_actual.extend([''] * (27 - len(fila_actual)))  # 27 columnas en total (A a AA)
+
+        # Actualizar valores existentes y agregar los nuevos valores
         valores = [
-            nuevos_datos.get('Codigo', ''),       # Columna A
-            nuevos_datos.get('Nombre', ''),       # Columna B
-            nuevos_datos.get('Edad', ''),         # Columna C
-            nuevos_datos.get('Telefono', ''),     # Columna D
-            nuevos_datos.get('Direccion', ''),    # Columna E
-            nuevos_datos.get('Modalidad', ''),    # Columna F
-            '', '', '', '',                       # Columnas G, H, I, J (vacías por defecto)
-            nuevos_datos.get('Experiencia', ''),  # Columna J
-            '', '', '', '', '', '',               # Columnas K-Q (vacías por defecto)
-            nuevos_datos.get('Cedula', ''),       # Columna R
-            nuevos_datos.get('Estado', ''),       # Columna S
-            nuevos_datos.get('Inscripcion', ''),  # Columna T
-            nuevos_datos.get('Monto', ''),        # Columna U
-            nuevos_datos.get('Fecha', ''),        # Columna V
-            nuevos_datos.get('Fecha_pago', ''),   # Columna W
-            nuevos_datos.get('Inicio', ''),       # Columna X
-            nuevos_datos.get('Monto_total', ''),  # Columna Y
-            nuevos_datos.get('Porciento', ''),    # Columna Z
-            nuevos_datos.get('Calificacion', '')  # Columna AA
+            nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
+            nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
+            nuevos_datos.get('Edad', fila_actual[2]),  # Columna C
+            nuevos_datos.get('Telefono', fila_actual[3]),  # Columna D
+            nuevos_datos.get('Direccion', fila_actual[4]),  # Columna E
+            nuevos_datos.get('Modalidad', fila_actual[5]),  # Columna F
+            fila_actual[6],  # Columna G
+            fila_actual[7],  # Columna H
+            fila_actual[8],  # Columna I
+            nuevos_datos.get('Experiencia', fila_actual[9]),  # Columna J
+            fila_actual[10],  # Columna K
+            fila_actual[11],  # Columna L
+            fila_actual[12],  # Columna M
+            fila_actual[13],  # Columna N
+            fila_actual[14],  # Columna O
+            fila_actual[15],  # Columna P
+            fila_actual[16],  # Columna Q
+            nuevos_datos.get('Cedula', fila_actual[17]),  # Columna R
+            nuevos_datos.get('Estado', fila_actual[18]),  # Columna S
+            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Columna T
+            nuevos_datos.get('Monto', fila_actual[20]),  # Columna U
+            nuevos_datos.get('Fecha', fila_actual[21]),  # Columna V
+            nuevos_datos.get('Fecha_pago', fila_actual[22]),  # Columna W
+            nuevos_datos.get('Inicio', fila_actual[23]),  # Columna X
+            nuevos_datos.get('Monto_total', fila_actual[24]),  # Columna Y
+            nuevos_datos.get('Porciento', fila_actual[25]),  # Columna Z
+            nuevos_datos.get('Calificacion', fila_actual[26])  # Columna AA
         ]
 
         # Actualizar los valores en la hoja
@@ -147,9 +157,7 @@ def actualizar_datos(fila_index, nuevos_datos):
             body={"values": [valores]}
         ).execute()
 
-        print(f"Datos actualizados correctamente en la fila {fila_index + 1}.")
         return True
-
     except Exception as e:
         print(f"Error al actualizar los datos: {e}")
         return False
@@ -521,26 +529,23 @@ def editar():
     mensaje = ""
 
     if request.method == "POST":
-        # Captura el valor buscado
-        busqueda = request.form.get("codigo", "").strip().lower()  # Permitir búsqueda con minúsculas
+        busqueda = request.form.get("codigo", "").strip()  # Código, nombre o cédula para buscar.
         fila_index = -1
 
-        # Buscar en las filas
+        # Buscar la fila correspondiente en los datos
         datos = obtener_datos()
         for index, fila in enumerate(datos):
-            if (
-                fila[0].strip().lower() == busqueda or  # Comparar con Código (A)
-                fila[1].strip().lower() == busqueda or  # Comparar con Nombre (B)
-                fila[16].strip() == busqueda            # Comparar con Cédula (R)
+            if len(fila) > 16 and (
+                busqueda.lower() == fila[0].strip().lower() or
+                busqueda.lower() == fila[1].strip().lower() or
+                busqueda == fila[17].strip()
             ):
                 fila_index = index
                 datos_candidata = fila
-                print(f"Fila encontrada: {fila_index + 1}")  # Depuración
                 break
 
         if datos_candidata:
             if "guardar" in request.form:
-                # Capturar nuevos datos del formulario
                 nuevos_datos = {
                     "Codigo": request.form.get("codigo", "").strip(),
                     "Nombre": request.form.get("nombre", "").strip(),
@@ -554,7 +559,7 @@ def editar():
                     "Inscripcion": request.form.get("inscripcion", "").strip(),
                 }
 
-                # Actualizar los datos en la hoja
+                # Actualizar los datos en la fila encontrada
                 if actualizar_datos(fila_index, nuevos_datos):
                     mensaje = "Los datos se han actualizado correctamente."
                 else:
