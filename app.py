@@ -127,48 +127,45 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
     return None, None  # No se encontró
 
 def actualizar_datos(fila_index, nuevos_datos):
-    """
-    Actualiza los datos en la fila específica de la hoja de cálculo.
-    """
     try:
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Fila específica
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Especificar rango exacto de la fila
         fila_actual = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=rango
         ).execute().get('values', [[]])[0]
 
-        # Asegúrate de extender la fila para incluir todas las columnas necesarias
-        fila_actual.extend([''] * (27 - len(fila_actual)))  # 27 columnas en total (A a AA)
+        # Extender la fila actual para garantizar 27 columnas
+        fila_actual.extend([''] * (27 - len(fila_actual)))
 
-        # Actualizar valores existentes y agregar los nuevos valores
+        # Actualizar columnas específicas
         valores = [
-            fila_actual[0],  # Código (se mantiene)
-            nuevos_datos.get('Nombre', fila_actual[1]),  # Nombre
-            nuevos_datos.get('Edad', fila_actual[2]),  # Edad
-            nuevos_datos.get('Telefono', fila_actual[3]),  # Teléfono
-            nuevos_datos.get('Direccion', fila_actual[4]),  # Dirección
-            nuevos_datos.get('Modalidad', fila_actual[5]),  # Modalidad
-            fila_actual[6],  # Relleno
-            fila_actual[7],  # Relleno
-            fila_actual[8],  # Relleno
-            nuevos_datos.get('Experiencia', fila_actual[9]),  # Experiencia
-            fila_actual[10],  # Relleno
-            fila_actual[11],  # Relleno
-            fila_actual[12],  # Relleno
-            fila_actual[13],  # Relleno
-            fila_actual[14],  # Relleno
-            fila_actual[15],  # Relleno
-            fila_actual[16],  # Relleno
-            nuevos_datos.get('Cedula', fila_actual[17]),  # Cédula
-            nuevos_datos.get('Estado', fila_actual[18]),  # Estado
-            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Inscripción
-            fila_actual[20],  # Monto
-            fila_actual[21],  # Fecha
-            fila_actual[22],  # Fecha_pago
-            fila_actual[23],  # Inicio
-            fila_actual[24],  # Monto_total
-            fila_actual[25],  # Porcentaje
-            fila_actual[26]   # Calificación
+            nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
+            nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
+            nuevos_datos.get('Edad', fila_actual[2]),  # Columna C
+            nuevos_datos.get('Telefono', fila_actual[3]),  # Columna D
+            nuevos_datos.get('Direccion', fila_actual[4]),  # Columna E
+            nuevos_datos.get('Modalidad', fila_actual[5]),  # Columna F
+            fila_actual[6],  # Columna G
+            fila_actual[7],  # Columna H
+            fila_actual[8],  # Columna I
+            nuevos_datos.get('Experiencia', fila_actual[9]),  # Columna J
+            fila_actual[10],  # Columna K
+            fila_actual[11],  # Columna L
+            fila_actual[12],  # Columna M
+            fila_actual[13],  # Columna N
+            fila_actual[14],  # Columna O
+            fila_actual[15],  # Columna P
+            fila_actual[16],  # Columna Q
+            nuevos_datos.get('Cedula', fila_actual[17]),  # Columna R
+            nuevos_datos.get('Estado', fila_actual[18]),  # Columna S
+            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Columna T
+            fila_actual[20],  # Columna U
+            fila_actual[21],  # Columna V
+            fila_actual[22],  # Columna W
+            fila_actual[23],  # Columna X
+            fila_actual[24],  # Columna Y
+            fila_actual[25],  # Columna Z
+            fila_actual[26]  # Columna AA
         ]
 
         # Actualizar los valores en la hoja
@@ -183,6 +180,8 @@ def actualizar_datos(fila_index, nuevos_datos):
     except Exception as e:
         print(f"Error al actualizar los datos: {e}")
         return False
+
+
 def generar_codigo_unico():
     """
     Genera un código único para las candidatas en formato 'CAN-XXX',
@@ -551,62 +550,50 @@ def editar():
     mensaje = ""
 
     if request.method == "POST":
-        if "buscar_btn" in request.form:  # Botón de buscar
-            busqueda = request.form.get("busqueda", "").strip().lower()
-            datos = obtener_datos()
-            for fila_index, fila in enumerate(datos):
-                if len(fila) >= 27:  # Asegurarnos que tenga suficientes columnas
-                    codigo = fila[0].strip().lower()
-                    nombre = fila[1].strip().lower()
-                    cedula = fila[17].strip()
+        if 'buscar_btn' in request.form:
+            busqueda = request.form.get("busqueda", "").strip()  # Captura el valor de búsqueda
+            fila_index = -1
 
-                    # Coincidir por código, nombre o cédula
-                    if (
-                        busqueda == codigo
-                        or busqueda == nombre
-                        or busqueda == cedula
-                    ):
-                        datos_candidata = {
-                            "fila_index": fila_index + 1,
-                            "codigo": fila[0],
-                            "nombre": fila[1],
-                            "edad": fila[2],
-                            "telefono": fila[3],
-                            "direccion": fila[4],
-                            "modalidad": fila[5],
-                            "experiencia": fila[9],
-                            "cedula": fila[17],
-                            "estado": fila[18],
-                            "inscripcion": fila[19],
-                        }
-                        break
+            # Buscar en las filas
+            datos = obtener_datos()
+            for index, fila in enumerate(datos):
+                if (
+                    len(fila) > 16 and (
+                        busqueda.lower() == fila[0].strip().lower() or  # Código
+                        busqueda.lower() == fila[1].strip().lower() or  # Nombre
+                        busqueda == fila[17].strip()  # Cédula
+                    )
+                ):
+                    fila_index = index
+                    datos_candidata = fila
+                    break
 
             if not datos_candidata:
-                mensaje = f"No se encontraron resultados para: {busqueda}"
+                mensaje = "No se encontraron datos para la búsqueda."
 
-        elif "guardar_btn" in request.form:  # Botón de guardar
-            try:
-                fila_index = int(request.form.get("fila_index")) - 1
+        elif 'guardar' in request.form:
+            # Actualizar datos
+            fila_index = int(request.form.get("fila_index", -1)) - 1  # Convertir a índice 0-based
+            if fila_index < 0:
+                mensaje = "Error al determinar la fila para actualizar."
+            else:
                 nuevos_datos = {
-                    "codigo": request.form.get("codigo", "").strip(),
-                    "nombre": request.form.get("nombre", "").strip(),
-                    "edad": request.form.get("edad", "").strip(),
-                    "telefono": request.form.get("telefono", "").strip(),
-                    "direccion": request.form.get("direccion", "").strip(),
-                    "modalidad": request.form.get("modalidad", "").strip(),
-                    "experiencia": request.form.get("experiencia", "").strip(),
-                    "cedula": request.form.get("cedula", "").strip(),
-                    "estado": request.form.get("estado", "").strip(),
-                    "inscripcion": request.form.get("inscripcion", "").strip(),
+                    "Codigo": request.form.get("codigo", "").strip(),
+                    "Nombre": request.form.get("nombre", "").strip(),
+                    "Edad": request.form.get("edad", "").strip(),
+                    "Telefono": request.form.get("telefono", "").strip(),
+                    "Direccion": request.form.get("direccion", "").strip(),
+                    "Modalidad": request.form.get("modalidad", "").strip(),
+                    "Experiencia": request.form.get("experiencia", "").strip(),
+                    "Cedula": request.form.get("cedula", "").strip(),
+                    "Estado": request.form.get("estado", "").strip(),
+                    "Inscripcion": request.form.get("inscripcion", "").strip(),
                 }
 
-                # Actualizar en la fila correspondiente
                 if actualizar_datos(fila_index, nuevos_datos):
-                    mensaje = "Datos actualizados correctamente."
+                    mensaje = "Los datos se han actualizado correctamente."
                 else:
                     mensaje = "Error al actualizar los datos."
-            except Exception as e:
-                mensaje = f"Error al guardar los datos: {str(e)}"
 
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
