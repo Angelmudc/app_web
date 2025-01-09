@@ -113,50 +113,33 @@ def actualizar_datos(fila_index, nuevos_datos):
     """
     try:
         # Construye el rango basado en fila_index (1-based index)
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Asegúrate de cubrir todas las columnas
+        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Cubre todas las columnas relevantes
         print(f"Actualizando rango: {rango}")  # Depuración
 
-        # Obtén la fila actual desde la hoja de cálculo
-        fila_actual = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango
-        ).execute().get('values', [[]])[0]
-
-        # Asegúrate de extender la fila para incluir todas las columnas necesarias
-        fila_actual.extend([''] * (27 - len(fila_actual)))  # 27 columnas en total (A a AA)
-
-        # Actualizar valores existentes y combinar con los nuevos datos
+        # Generar valores actualizados directamente desde nuevos_datos
         valores = [
-            nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
-            nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
-            nuevos_datos.get('Edad', fila_actual[2]),  # Columna C
-            nuevos_datos.get('Telefono', fila_actual[3]),  # Columna D
-            nuevos_datos.get('Direccion', fila_actual[4]),  # Columna E
-            nuevos_datos.get('Modalidad', fila_actual[5]),  # Columna F
-            fila_actual[6],  # Columna G
-            fila_actual[7],  # Columna H
-            fila_actual[8],  # Columna I
-            nuevos_datos.get('Experiencia', fila_actual[9]),  # Columna J
-            fila_actual[10],  # Columna K
-            fila_actual[11],  # Columna L
-            fila_actual[12],  # Columna M
-            fila_actual[13],  # Columna N
-            fila_actual[14],  # Columna O
-            fila_actual[15],  # Columna P
-            fila_actual[16],  # Columna Q
-            nuevos_datos.get('Cedula', fila_actual[17]),  # Columna R
-            nuevos_datos.get('Estado', fila_actual[18]),  # Columna S
-            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Columna T
-            nuevos_datos.get('Monto', fila_actual[20]),  # Columna U
-            nuevos_datos.get('Fecha', fila_actual[21]),  # Columna V
-            nuevos_datos.get('Fecha_pago', fila_actual[22]),  # Columna W
-            nuevos_datos.get('Inicio', fila_actual[23]),  # Columna X
-            nuevos_datos.get('Monto_total', fila_actual[24]),  # Columna Y
-            nuevos_datos.get('Porciento', fila_actual[25]),  # Columna Z
-            nuevos_datos.get('Calificacion', fila_actual[26])  # Columna AA
+            nuevos_datos.get('Codigo', ''),       # Columna A
+            nuevos_datos.get('Nombre', ''),       # Columna B
+            nuevos_datos.get('Edad', ''),         # Columna C
+            nuevos_datos.get('Telefono', ''),     # Columna D
+            nuevos_datos.get('Direccion', ''),    # Columna E
+            nuevos_datos.get('Modalidad', ''),    # Columna F
+            '', '', '', '',                       # Columnas G, H, I, J (vacías por defecto)
+            nuevos_datos.get('Experiencia', ''),  # Columna J
+            '', '', '', '', '', '',               # Columnas K-Q (vacías por defecto)
+            nuevos_datos.get('Cedula', ''),       # Columna R
+            nuevos_datos.get('Estado', ''),       # Columna S
+            nuevos_datos.get('Inscripcion', ''),  # Columna T
+            nuevos_datos.get('Monto', ''),        # Columna U
+            nuevos_datos.get('Fecha', ''),        # Columna V
+            nuevos_datos.get('Fecha_pago', ''),   # Columna W
+            nuevos_datos.get('Inicio', ''),       # Columna X
+            nuevos_datos.get('Monto_total', ''),  # Columna Y
+            nuevos_datos.get('Porciento', ''),    # Columna Z
+            nuevos_datos.get('Calificacion', '')  # Columna AA
         ]
 
-        # Actualiza los datos en la hoja
+        # Actualizar los valores en la hoja
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -170,7 +153,7 @@ def actualizar_datos(fila_index, nuevos_datos):
     except Exception as e:
         print(f"Error al actualizar los datos: {e}")
         return False
-   
+
 def generar_codigo_unico():
     """
     Genera un código único para las candidatas en formato 'CAN-XXX',
@@ -538,19 +521,26 @@ def editar():
     mensaje = ""
 
     if request.method == "POST":
-        busqueda = request.form.get("codigo", "").strip()  # Aquí usaremos 'codigo' para recibir código, nombre o cédula.
+        # Captura el valor buscado
+        busqueda = request.form.get("codigo", "").strip().lower()  # Permitir búsqueda con minúsculas
         fila_index = -1
 
-        # Buscar en las filas por código, nombre o cédula
+        # Buscar en las filas
         datos = obtener_datos()
         for index, fila in enumerate(datos):
-            if len(fila) > 16 and (fila[0].strip() == busqueda or fila[1].strip() == busqueda or fila[16].strip() == busqueda):
+            if (
+                fila[0].strip().lower() == busqueda or  # Comparar con Código (A)
+                fila[1].strip().lower() == busqueda or  # Comparar con Nombre (B)
+                fila[16].strip() == busqueda            # Comparar con Cédula (R)
+            ):
                 fila_index = index
                 datos_candidata = fila
+                print(f"Fila encontrada: {fila_index + 1}")  # Depuración
                 break
 
         if datos_candidata:
             if "guardar" in request.form:
+                # Capturar nuevos datos del formulario
                 nuevos_datos = {
                     "Codigo": request.form.get("codigo", "").strip(),
                     "Nombre": request.form.get("nombre", "").strip(),
