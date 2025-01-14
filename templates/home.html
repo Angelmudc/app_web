@@ -14,7 +14,13 @@
         .navbar {
             background-color: #4a69bd;
         }
+        .navbar-brand img {
+            max-height: 50px;
+            margin-right: 10px;
+        }
         .navbar-brand {
+            display: flex;
+            align-items: center;
             color: #ffffff;
             font-weight: bold;
             font-size: 1.5rem;
@@ -37,12 +43,6 @@
         .card:hover {
             transform: scale(1.05);
             box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.2);
-        }
-        .search-bar {
-            margin-top: 20px;
-        }
-        .form-control {
-            border-radius: 20px;
         }
         footer {
             background-color: #4a69bd;
@@ -67,7 +67,10 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg">
         <div class="container">
-            <a class="navbar-brand" href="#">Doméstica del Cibao A&D</a>
+            <a class="navbar-brand" href="#">
+                <img src="/static/logo.png" alt="Logo Doméstica del Cibao A&D">
+                Doméstica del Cibao A&D
+            </a>
         </div>
     </nav>
 
@@ -79,12 +82,20 @@
         </div>
     </div>
 
-    <!-- Barra de búsqueda -->
-    <div class="container search-bar">
-        <form method="POST" action="/buscar" class="d-flex justify-content-center">
-            <input type="text" class="form-control w-50" name="busqueda" placeholder="Buscar por Código, Nombre o Cédula" required>
-            <button type="submit" class="btn btn-primary ms-2"><i class="fas fa-search"></i> Buscar</button>
-        </form>
+    <!-- Barra de búsqueda como cuadro -->
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-search fa-3x text-primary"></i>
+                        <h5 class="card-title mt-3">Buscar Candidatas</h5>
+                        <p class="card-text">Encuentra candidatas por Código, Nombre o Cédula.</p>
+                        <a href="/buscar" class="btn btn-primary">Ir a Buscar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Cards -->
