@@ -8,37 +8,70 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f8f9fa;
         }
+
+        h1 {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
         .card-hover:hover {
-            transform: scale(1.02);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transform: scale(1.03);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
         }
+
         .btn-animated {
-            transition: all 0.3s ease;
-            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            transition: all 0.3s ease-in-out;
         }
+
         .btn-animated:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.3);
+            background-color: #0056b3;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
         }
+
         table {
             transition: all 0.3s ease;
         }
+
         table:hover {
             transform: scale(1.01);
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-back {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .btn-back:hover {
+            background-color: #5a6268;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .list-group-item {
+            font-size: 1rem;
+            font-weight: 500;
         }
     </style>
 </head>
 <body>
     <div class="container mt-5">
-        <h1 class="text-center text-primary mb-4">Buscar Candidata</h1>
+        <h1 class="text-center mb-4">Buscar Candidata</h1>
+
         <!-- Formulario de búsqueda -->
         <form method="POST" action="/buscar" class="mb-4">
             <div class="input-group">
                 <input type="text" name="busqueda" class="form-control" placeholder="Buscar por Código, Nombre, Cédula o Teléfono" required>
-                <button type="submit" name="buscar_btn" class="btn btn-primary btn-animated">
+                <button type="submit" name="buscar_btn" class="btn btn-animated">
                     <i class="fas fa-search"></i> Buscar
                 </button>
             </div>
@@ -122,16 +155,16 @@
                             <li class="list-group-item"><strong>Modalidad:</strong> {{ detalles_candidata.modalidad or 'No disponible' }}</li>
                             <li class="list-group-item"><strong>Años de Experiencia:</strong> {{ detalles_candidata.experiencia or 'No disponible' }}</li>
                             <li class="list-group-item"><strong>Sabe planchar:</strong> {{ detalles_candidata.planchar or 'No disponible' }}</li>
-                            <li class="list-group-item"><strong>Acepta porcentaje:</strong> {{ detalles_candidata.acepta_porcentaje or 'No disponible' }}</li>
+                            <li class="list-group-item"><strong>Acepta porcentaje:</strong> {{ detalles_candidata.porcentaje or 'No disponible' }}</li>
                         </ul>
                     </div>
                 </div>
                 <div class="mt-4">
-                    <a href="/" class="btn btn-secondary btn-animated">
+                    <a href="/" class="btn btn-back">
                         <i class="fas fa-home"></i> Volver al Inicio
                     </a>
-                    <a href="/buscar" class="btn btn-primary btn-animated">
-                        <i class="fas fa-arrow-left"></i> Volver a la Búsqueda
+                    <a href="/buscar" class="btn btn-back">
+                        <i class="fas fa-arrow-left"></i> Volver a la búsqueda
                     </a>
                 </div>
             </div>
