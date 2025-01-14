@@ -341,20 +341,6 @@ def actualizar_datos_porciento(fila_index, monto_total, fecha_pago, porciento, c
         print(f"Error al actualizar datos en la fila {fila_index + 1}: {str(e)}")
         return False
 
-def prueba_actualizacion():
-    try:
-        rango = "Hoja de trabajo!A1"  # Cualquier celda para prueba
-        valores = [["Prueba de conexión"]]
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": valores}
-        ).execute()
-        print("Prueba de conexión exitosa.")
-    except Exception as e:
-        print(f"Error en la prueba de conexión: {e}")
-
 def insertar_datos_en_hoja(fila_datos):
     """
     Inserta una fila de datos en la hoja de cálculo.
@@ -382,19 +368,6 @@ def insertar_datos_en_hoja(fila_datos):
         print(f"Error al insertar datos en la hoja: {e}")
         return False
 
-def prueba_actualizacion_basica():
-    try:
-        rango = "Hoja de trabajo!A1:AA1"
-        valores = [["Prueba de conexión", "123", "OK"] + [""] * 24]
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": valores}
-        ).execute()
-        print("Prueba de actualización exitosa.")
-    except Exception as e:
-        print(f"Error en la prueba de actualización: {e}")
 
 def buscar_candidatas_por_texto(busqueda):
     """
@@ -472,10 +445,10 @@ def home():
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
     """
-    Busca información de una candidata en la hoja de cálculo y permite seleccionar una candidata
-    para ver sus detalles completos.
+    Ruta para buscar candidatas por Código, Nombre, Cédula o Número de Teléfono.
+    Muestra coincidencias iniciales y permite seleccionar una candidata específica para más detalles.
     """
-    resultados = []  # Lista para almacenar los resultados de búsqueda
+    resultados = []  # Lista para almacenar las coincidencias
     detalles_candidata = None  # Datos completos de la candidata seleccionada
     mensaje = None
 
@@ -484,19 +457,22 @@ def buscar():
             busqueda = request.form.get('busqueda', '').strip().lower()
 
             if not busqueda:
-                mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
+                mensaje = "Por favor, introduce un Código, Nombre, Cédula o Número de Teléfono para buscar."
             else:
-                datos = obtener_datos()
+                datos = obtener_datos()  # Obtiene los datos desde la hoja de cálculo
                 for fila_index, fila in enumerate(datos):
                     if len(fila) >= 27:  # Verifica que la fila tenga suficientes columnas
-                        codigo = fila[0].strip().lower()
-                        nombre = fila[1].strip().lower()
-                        cedula = fila[17].strip().lower()
+                        codigo = fila[0].strip().lower()  # Columna A: Código
+                        nombre = fila[1].strip().lower()  # Columna B: Nombre
+                        telefono = fila[3].strip().lower()  # Columna D: Teléfono
+                        ciudad = fila[4].strip().lower()  # Columna E: Ciudad
+                        cedula = fila[17].strip()  # Columna R: Cédula
 
-                        # Coincidencia parcial en Código, Nombre o Cédula
+                        # Coincidencia parcial en Código, Nombre, Teléfono o Cédula
                         if (
                             busqueda in codigo or
                             busqueda in nombre or
+                            busqueda in telefono or
                             busqueda in cedula
                         ):
                             resultados.append({
@@ -504,6 +480,7 @@ def buscar():
                                 'codigo': fila[0],
                                 'nombre': fila[1],
                                 'telefono': fila[3],
+                                'ciudad': fila[4],
                                 'cedula': fila[17]
                             })
 
@@ -523,15 +500,12 @@ def buscar():
                     'direccion': fila[4],
                     'modalidad': fila[5],
                     'experiencia': fila[9],
-                    'plancha': fila[10],
+                    'planchar': fila[10],
+                    'referencias_laborales': fila[11],
+                    'referencias_familiares': fila[12],
+                    'porcentaje': fila[18],
                     'cedula': fila[17],
-                    'estado': fila[18],
-                    'inscripcion': fila[19],
-                    'monto': fila[20],
-                    'fecha_inscripcion': fila[21],
-                    'monto_total': fila[24],
-                    'porciento': fila[25],
-                    'calificacion': fila[26]
+                    'ciudad': fila[4]
                 }
             else:
                 mensaje = "Error: La fila seleccionada no es válida."
