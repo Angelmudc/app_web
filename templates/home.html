@@ -8,19 +8,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body {
-            background: linear-gradient(120deg, #f8f9fa, #e9ecef);
+            background: linear-gradient(120deg, #ffffff, #e9ecef);
             font-family: 'Arial', sans-serif;
         }
         .navbar {
             background-color: #4a69bd;
         }
-        .navbar-brand img {
-            max-height: 50px;
-            margin-right: 10px;
-        }
         .navbar-brand {
-            display: flex;
-            align-items: center;
             color: #ffffff;
             font-weight: bold;
             font-size: 1.5rem;
@@ -29,13 +23,18 @@
             color: #dfe4ea;
         }
         .jumbotron {
-            background: linear-gradient(120deg, #4a69bd, #6a89cc);
-            color: white;
-            padding: 50px 20px;
             text-align: center;
+            padding: 20px;
+            background-color: #4a69bd;
+            border-radius: 10px;
+            margin-top: 20px;
+            animation: fadeIn 1.5s ease-in-out;
+        }
+        .jumbotron img {
+            max-width: 100%;
+            height: auto;
             border-radius: 10px;
             box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
-            animation: fadeIn 1.5s ease-in-out;
         }
         .card {
             transition: transform 0.3s, box-shadow 0.3s;
@@ -67,40 +66,33 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg">
         <div class="container">
-            <a class="navbar-brand" href="#">
-                <img src="/static/logo.png" alt="Logo Doméstica del Cibao A&D">
-                Doméstica del Cibao A&D
-            </a>
+            <a class="navbar-brand" href="#">Doméstica del Cibao A&D</a>
         </div>
     </nav>
 
     <!-- Jumbotron -->
-    <div class="container mt-5">
+    <div class="container">
         <div class="jumbotron">
-            <h1>Bienvenido a Doméstica del Cibao A&D</h1>
-            <p>Gestión profesional y confiable de empleadas domésticas.</p>
-        </div>
-    </div>
-
-    <!-- Barra de búsqueda como cuadro -->
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-md-4">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <i class="fas fa-search fa-3x text-primary"></i>
-                        <h5 class="card-title mt-3">Buscar Candidatas</h5>
-                        <p class="card-text">Encuentra candidatas por Código, Nombre o Cédula.</p>
-                        <a href="/buscar" class="btn btn-primary">Ir a Buscar</a>
-                    </div>
-                </div>
-            </div>
+            <img src="static/logo.png" alt="Doméstica del Cibao A&D">
+            <p class="text-white mt-3">Gestión profesional y confiable de empleadas domésticas.</p>
         </div>
     </div>
 
     <!-- Cards -->
     <div class="container mt-5">
         <div class="row">
+            <!-- Buscar -->
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-search fa-3x text-primary"></i>
+                        <h5 class="card-title mt-3">Buscar Candidatas</h5>
+                        <p class="card-text">Encuentra candidatas por Código, Nombre, Cédula o Teléfono.</p>
+                        <a href="/buscar" class="btn btn-primary">Ir a Buscar</a>
+                    </div>
+                </div>
+            </div>
+            <!-- Inscripción -->
             <div class="col-md-4">
                 <div class="card text-center">
                     <div class="card-body">
@@ -111,6 +103,7 @@
                     </div>
                 </div>
             </div>
+            <!-- Cálculo de Porcentaje -->
             <div class="col-md-4">
                 <div class="card text-center">
                     <div class="card-body">
@@ -121,6 +114,9 @@
                     </div>
                 </div>
             </div>
+        </div>
+        <div class="row mt-4">
+            <!-- Gestión de Pagos -->
             <div class="col-md-4">
                 <div class="card text-center">
                     <div class="card-body">
@@ -131,8 +127,7 @@
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="row mt-4">
+            <!-- Editar Datos -->
             <div class="col-md-4">
                 <div class="card text-center">
                     <div class="card-body">
@@ -143,6 +138,7 @@
                     </div>
                 </div>
             </div>
+            <!-- Filtrar Candidatas -->
             <div class="col-md-4">
                 <div class="card text-center">
                     <div class="card-body">
@@ -153,6 +149,9 @@
                     </div>
                 </div>
             </div>
+        </div>
+        <div class="row mt-4">
+            <!-- Reporte de Pagos -->
             <div class="col-md-4">
                 <div class="card text-center">
                     <div class="card-body">
@@ -163,8 +162,7 @@
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="row mt-4">
+            <!-- Referencias -->
             <div class="col-md-4">
                 <div class="card text-center">
                     <div class="card-body">
