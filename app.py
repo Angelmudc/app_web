@@ -78,6 +78,20 @@ def obtener_datos_referencias():
     ).execute()
     return hoja.get('values', [])
 
+def obtener_datos_editar():
+    try:
+        service = build('sheets', 'v4', credentials=credenciales)
+        sheet = service.spreadsheets()
+        result = sheet.values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Hoja de trabajo!A:T"
+        ).execute()
+        datos = result.get('values', [])
+        return datos
+    except Exception as e:
+        print(f"Error al obtener datos para edición: {e}")
+        return []
+
 @cache.memoize(timeout=120)
 def obtener_datos_cache():
     result = service.spreadsheets().values().get(
@@ -577,7 +591,7 @@ def editar():
             fila_index = -1
 
             # Buscar en las filas de la hoja de cálculo
-            datos = obtener_datos()
+            datos = obtener_datos_editar()
             for index, fila in enumerate(datos):
                 if len(fila) > 17:  # Verificar que haya al menos 18 columnas
                     if (
