@@ -62,11 +62,21 @@ def buscar_en_columna(valor, columna_index):
             return fila_index, fila
     return None, None
 
-def obtener_datos():
-    gc = gspread.service_account(filename="CLAVE1_JSON")  # Asegúrate de tener tu archivo de credenciales
-    hoja = gc.open("Hoja de trabajo").worksheet("Hoja de trabajo")
-    datos = hoja.get_all_records()
-    return datos
+def obtener_datos_generales():
+    # Obtener solo columnas generales necesarias para editar
+    hoja = service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, 
+        range="Hoja de trabajo!A:AA"
+    ).execute()
+    return hoja.get('values', [])
+
+def obtener_datos_referencias():
+    # Obtener solo columnas necesarias para referencias
+    hoja = service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, 
+        range="Hoja de trabajo!A:AA"
+    ).execute()
+    return hoja.get('values', [])
 
 @cache.memoize(timeout=120)
 def obtener_datos_cache():
@@ -567,9 +577,9 @@ def editar():
             fila_index = -1
 
             # Buscar en las filas de la hoja de cálculo
-            datos = obtener_datos()
+            datos = obtener_datos_generales()
             for index, fila in enumerate(datos):
-                if len(fila) > 16:  # Verificar que haya al menos 17 columnas
+                if len(fila) > 19:  # Verificar que haya suficientes columnas
                     if (
                         busqueda == fila[0].strip().lower() or  # Código
                         busqueda == fila[1].strip().lower() or  # Nombre
@@ -592,7 +602,7 @@ def editar():
                         break
 
             if not datos_candidata:
-                mensaje = "No se encontraron datos para la búsqueda."
+                mensaje = f"No se encontraron datos para: {busqueda}"
 
         elif "guardar" in request.form:
             # Capturar datos para guardar
@@ -614,14 +624,26 @@ def editar():
                 }
 
                 # Actualizar los datos en la hoja
-                if actualizar_datos(fila_index, nuevos_datos):
-                    mensaje = "Los datos se han actualizado correctamente."
-                else:
-                    mensaje = "Error al actualizar los datos."
+                rango = f"Hoja de trabajo!A{fila_index + 1}:T{fila_index + 1}"  # Asegurar el rango correcto
+                valores = [[
+                    nuevos_datos["Codigo"], nuevos_datos["Nombre"], nuevos_datos["Edad"],
+                    nuevos_datos["Telefono"], nuevos_datos["Direccion"], nuevos_datos["Modalidad"],
+                    nuevos_datos["Experiencia"], nuevos_datos["Cedula"], nuevos_datos["Estado"],
+                    nuevos_datos["Inscripcion"]
+                ]]
 
-    return render_template(
-        "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
-    )
+                try:
+                    service.spreadsheets().values().update(
+                        spreadsheetId=SPREADSHEET_ID,
+                        range=rango,
+                        valueInputOption="RAW",
+                        body={"values": valores}
+                    ).execute()
+                    mensaje = "Los datos se han actualizado correctamente."
+                except Exception as e:
+                    mensaje = f"Error al actualizar los datos: {str(e)}"
+
+    return render_template("editar.html", datos_candidata=datos_candidata, mensaje=mensaje)
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
@@ -916,55 +938,45 @@ def referencias():
     mensaje = ""
 
     if request.method == 'POST':
-        # Captura el valor ingresado
         busqueda = request.form.get('busqueda', '').strip()
 
         if not busqueda:
             mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
         else:
+            datos = obtener_datos_referencias()  # Obtener solo datos necesarios
+            for index, fila in enumerate(datos):
+                if len(fila) >= 18:
+                    codigo = fila[0].strip().lower()
+                    nombre = fila[1].strip().lower()
+                    cedula = fila[17].strip()
+
+                    if (
+                        busqueda.lower() == codigo or
+                        busqueda.lower() == nombre or
+                        busqueda == cedula
+                    ):
+                        datos_candidata = {
+                            'fila_index': index + 1,
+                            'codigo': fila[0],
+                            'nombre': fila[1],
+                            'cedula': fila[17],
+                            'laborales': fila[11],
+                            'familiares': fila[12]
+                        }
+                        break
+            else:
+                mensaje = f"No se encontraron resultados para: {busqueda}"
+
+        if 'guardar_btn' in request.form:
             try:
-                # Obtener los datos de la hoja de cálculo
-                datos = obtener_datos()
-                for index, fila in enumerate(datos):
-                    # Verificar si la fila tiene suficientes columnas
-                    if len(fila) >= 27:
-                        codigo = fila[0].strip().lower() if fila[0] else ''
-                        nombre = fila[1].strip().lower() if fila[1] else ''
-                        cedula = fila[17].strip() if fila[17] else ''
-
-                        # Buscar por Código, Nombre o Cédula
-                        if (
-                            busqueda.lower() == codigo or
-                            busqueda.lower() == nombre or
-                            busqueda == cedula
-                        ):
-                            datos_candidata = {
-                                'fila_index': index + 1,  # Índice de fila (1-based index)
-                                'codigo': fila[0],       # Columna A
-                                'nombre': fila[1],       # Columna B
-                                'cedula': fila[17],      # Columna R
-                                'laborales': fila[11],   # Columna L
-                                'familiares': fila[12]   # Columna M
-                            }
-                            break
-                else:
-                    mensaje = f"No se encontraron resultados para: {busqueda}"
-
-            except Exception as e:
-                mensaje = f"Error al obtener datos: {str(e)}"
-
-        # Guardar cambios si se presiona el botón "guardar"
-        if 'guardar_btn' in request.form and datos_candidata:
-            try:
-                fila_index = int(request.form.get('fila_index', -1))  # Índice de fila
+                fila_index = int(request.form.get('fila_index', -1))
                 laborales = request.form.get('laborales', '').strip()
                 familiares = request.form.get('familiares', '').strip()
 
                 if fila_index == -1:
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    # Actualizar los valores en la hoja de cálculo
-                    rango = f"Hoja de trabajo!L{fila_index}:M{fila_index}"  # Actualizar columnas L y M
+                    rango = f"Hoja de trabajo!L{fila_index}:M{fila_index}"
                     valores = [[laborales, familiares]]
                     service.spreadsheets().values().update(
                         spreadsheetId=SPREADSHEET_ID,
