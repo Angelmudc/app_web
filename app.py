@@ -12,6 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import send_from_directory
 from flask_caching import Cache
 from rapidfuzz import process
+from google.oauth2.service_account import Credentials
 
 
 # Configuración de la API de Google Sheets
