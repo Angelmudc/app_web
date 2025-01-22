@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, session
 import os
 import json
+import gspread
+from flask import request
 from flask import Flask, render_template, request, redirect, url_for, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import send_from_directory
@@ -58,6 +60,12 @@ def buscar_en_columna(valor, columna_index):
         if len(fila) > columna_index and valor.lower() == fila[columna_index].strip().lower():
             return fila_index, fila
     return None, None
+
+def obtener_datos():
+    gc = gspread.service_account(filename="credenciales.json")  # Asegúrate de tener tu archivo de credenciales
+    hoja = gc.open("Hoja de trabajo").worksheet("Hoja de trabajo")
+    datos = hoja.get_all_records()
+    return datos
 
 @cache.memoize(timeout=120)
 def obtener_datos_cache():
