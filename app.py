@@ -62,7 +62,7 @@ def buscar_en_columna(valor, columna_index):
     return None, None
 
 def obtener_datos():
-    gc = gspread.service_account(filename="credenciales.json")  # Asegúrate de tener tu archivo de credenciales
+    gc = gspread.service_account(filename="CLAVE1_JSON")  # Asegúrate de tener tu archivo de credenciales
     hoja = gc.open("Hoja de trabajo").worksheet("Hoja de trabajo")
     datos = hoja.get_all_records()
     return datos
@@ -921,35 +921,39 @@ def referencias():
         if not busqueda:
             mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
         else:
-            # Lógica para buscar en la hoja de cálculo
-            datos = obtener_datos()
-            for index, fila in enumerate(datos):
-                # Asegurar que la fila tenga suficientes columnas
-                if len(fila) >= 27:
-                    codigo = fila[0].strip().lower()
-                    nombre = fila[1].strip().lower()
-                    cedula = fila[17].strip()
+            try:
+                # Obtener los datos de la hoja de cálculo
+                datos = obtener_datos()
+                for index, fila in enumerate(datos):
+                    # Verificar si la fila tiene suficientes columnas
+                    if len(fila) >= 27:
+                        codigo = fila[0].strip().lower() if fila[0] else ''
+                        nombre = fila[1].strip().lower() if fila[1] else ''
+                        cedula = fila[17].strip() if fila[17] else ''
 
-                    # Buscar por Código, Nombre o Cédula
-                    if (
-                        busqueda.lower() == codigo or
-                        busqueda.lower() == nombre or
-                        busqueda == cedula
-                    ):
-                        datos_candidata = {
-                            'fila_index': index + 1,  # Índice de fila (1-based index)
-                            'codigo': fila[0],       # Columna A
-                            'nombre': fila[1],       # Columna B
-                            'cedula': fila[17],      # Columna R
-                            'laborales': fila[11],   # Columna L
-                            'familiares': fila[12]   # Columna M
-                        }
-                        break
-            else:
-                mensaje = f"No se encontraron resultados para: {busqueda}"
+                        # Buscar por Código, Nombre o Cédula
+                        if (
+                            busqueda.lower() == codigo or
+                            busqueda.lower() == nombre or
+                            busqueda == cedula
+                        ):
+                            datos_candidata = {
+                                'fila_index': index + 1,  # Índice de fila (1-based index)
+                                'codigo': fila[0],       # Columna A
+                                'nombre': fila[1],       # Columna B
+                                'cedula': fila[17],      # Columna R
+                                'laborales': fila[11],   # Columna L
+                                'familiares': fila[12]   # Columna M
+                            }
+                            break
+                else:
+                    mensaje = f"No se encontraron resultados para: {busqueda}"
+
+            except Exception as e:
+                mensaje = f"Error al obtener datos: {str(e)}"
 
         # Guardar cambios si se presiona el botón "guardar"
-        if 'guardar_btn' in request.form:
+        if 'guardar_btn' in request.form and datos_candidata:
             try:
                 fila_index = int(request.form.get('fila_index', -1))  # Índice de fila
                 laborales = request.form.get('laborales', '').strip()
@@ -958,7 +962,7 @@ def referencias():
                 if fila_index == -1:
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    # Actualizar los valores en la hoja
+                    # Actualizar los valores en la hoja de cálculo
                     rango = f"Hoja de trabajo!L{fila_index}:M{fila_index}"  # Actualizar columnas L y M
                     valores = [[laborales, familiares]]
                     service.spreadsheets().values().update(
