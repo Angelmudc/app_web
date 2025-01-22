@@ -604,41 +604,38 @@ def editar():
             if not datos_candidata:
                 mensaje = f"No se encontraron datos para: {busqueda}"
 
-        elif "guardar" in request.form:
-            # Capturar datos para guardar
-            fila_index = int(request.form.get("fila_index", -1))  # Convertir a índice 1-based
-            if fila_index < 1:
-                mensaje = "Error al determinar la fila para actualizar."
-            else:
-                nuevos_datos = [
-                    request.form.get("codigo", "").strip(),      # Columna A
-                    request.form.get("nombre", "").strip(),      # Columna B
-                    request.form.get("edad", "").strip(),        # Columna C
-                    request.form.get("telefono", "").strip(),    # Columna D
-                    request.form.get("direccion", "").strip(),   # Columna E
-                    request.form.get("modalidad", "").strip(),   # Columna F
-                    '', '', '', '',  # Espacios vacíos para columnas G-I
-                    request.form.get("experiencia", "").strip(), # Columna J
-                    '', '', '', '', '', '', '',  # Espacios vacíos para columnas K-Q
-                    request.form.get("cedula", "").strip(),      # Columna R
-                    request.form.get("estado", "").strip(),      # Columna S
-                    request.form.get("inscripcion", "").strip(), # Columna T
-                ]
+        if 'guardar' in request.form:
+    fila_index = int(request.form.get("fila_index", -1))  # Índice de fila
 
-                # Actualizar los datos en las columnas específicas de la hoja
-                rango = f"Hoja de trabajo!A{fila_index}:AA{fila_index}"  # Rango específico
-                valores = [nuevos_datos]
+    if fila_index < 1:
+        mensaje = "Error al determinar la fila para actualizar."
+    else:
+        try:
+            # Preparar los datos a actualizar con las columnas corregidas
+            rango = f"Hoja de trabajo!A{fila_index}:T{fila_index}"
+            valores = [[
+                request.form.get("codigo", "").strip(),      # Columna A
+                request.form.get("nombre", "").strip(),      # Columna B
+                request.form.get("edad", "").strip(),        # Columna C
+                request.form.get("telefono", "").strip(),    # Columna D
+                request.form.get("direccion", "").strip(),   # Columna E
+                request.form.get("modalidad", "").strip(),   # Columna F
+                request.form.get("experiencia", "").strip(), # Columna J
+                '', '', '', '', '', '', '', '', '', '',      # Espacios hasta la columna R
+                request.form.get("cedula", "").strip(),      # Columna R
+                request.form.get("estado", "").strip(),      # Columna S
+                request.form.get("inscripcion", "").strip()  # Columna T
+            ]]
 
-                try:
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=rango,
-                        valueInputOption="RAW",
-                        body={"values": valores}
-                    ).execute()
-                    mensaje = "Los datos se han actualizado correctamente."
-                except Exception as e:
-                    mensaje = f"Error al actualizar los datos: {str(e)}"
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango,
+                valueInputOption="RAW",
+                body={"values": valores}
+            ).execute()
+            mensaje = "Los datos se han actualizado correctamente."
+        except Exception as e:
+            mensaje = f"Error al actualizar los datos: {str(e)}"
 
     return render_template("editar.html", datos_candidata=datos_candidata, mensaje=mensaje)
 
