@@ -535,7 +535,17 @@ def buscar():
         mensaje=mensaje
     )
 
+@app.route('/sugerir')
+def sugerir():
+    query = request.args.get('busqueda', '')
+    if not query:
+        return jsonify([])
 
+    # Aquí deberías obtener los datos de la cache o de la base de datos
+    datos_filtrados = [dato for dato in lista_candidatas if query.lower() in dato['nombre'].lower()]
+    
+    return jsonify(datos_filtrados)
+    
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
     datos_candidata = None
