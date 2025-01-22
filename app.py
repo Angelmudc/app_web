@@ -627,7 +627,7 @@ def editar():
                     ]
 
                     # Definir el rango a actualizar
-                    rango = f"Hoja de trabajo!A{fila_index}:T{fila_index}"
+                    rango = f"Hoja de trabajo!A{fila_index}:AA{fila_index}"
 
                     # Enviar la actualización a Google Sheets
                     service.spreadsheets().values().update(
