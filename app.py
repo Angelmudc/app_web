@@ -61,8 +61,20 @@ def buscar_en_columna(valor, columna_index):
             return fila_index, fila
     return None, None
 
+# Obtener las credenciales desde la variable de entorno CLAVE1 en Render
+creds_json = os.environ.get("CLAVE1")
+
+if creds_json:
+    creds_dict = json.loads(creds_json)
+    credentials = Credentials.from_service_account_info(creds_dict)
+    client = gspread.authorize(credentials)
+    sheet = client.open("Hoja de trabajo").worksheet("Hoja de trabajo")
+    data = sheet.get_all_records()
+else:
+    raise ValueError("Las credenciales de Google no están configuradas correctamente en CLAVE1.")
+
 def obtener_datos():
-    gc = gspread.service_account(filename="CLAVE1_JSON")  # Asegúrate de tener tu archivo de credenciales
+    gc = gspread.service_account(filename="CLAVE1")  # Asegúrate de tener tu archivo de credenciales
     hoja = gc.open("Hoja de trabajo").worksheet("Hoja de trabajo")
     datos = hoja.get_all_records()
     return datos
