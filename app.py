@@ -545,7 +545,7 @@ def sugerir():
     datos_filtrados = [dato for dato in lista_candidatas if query.lower() in dato['nombre'].lower()]
     
     return jsonify(datos_filtrados)
-    
+
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
     datos_candidata = None
@@ -967,4 +967,4 @@ def referencias():
 
 if __name__ == "__main__":
     from waitress import serve
-    serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
