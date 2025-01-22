@@ -200,6 +200,17 @@
         {% endif %}
     </div>
 
+<script>
+        function sugerirResultados(valor) {
+            if (valor.length < 2) return;
+            fetch(/sugerir?busqueda=${valor})
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data);
+                });
+        }
+</script>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -8,6 +8,8 @@ import json
 from flask import Flask, render_template, request, redirect, url_for, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import send_from_directory
+from flask_caching import Cache
+from rapidfuzz import process
 
 
 # Configuración de la API de Google Sheets
@@ -30,6 +32,14 @@ usuarios = {
     "usuario1": generate_password_hash("clave123")
 }
 
+# Configuración de caché
+cache_config = {
+    "CACHE_TYPE": "simple",  # Uso de caché en memoria
+    "CACHE_DEFAULT_TIMEOUT": 120  # Caché de búsqueda por 2 minutos
+}
+app.config.from_mapping(cache_config)
+cache = Cache(app)
+
 # Normaliza texto (elimina acentos, espacios y pasa a minúsculas)
 def normalizar_texto(texto):
     texto = texto.strip().lower()
@@ -49,19 +59,13 @@ def buscar_en_columna(valor, columna_index):
             return fila_index, fila
     return None, None
 
-def obtener_datos():
-    try:
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=RANGE_NAME
-        ).execute()
-        valores = result.get('values', [])
-        # Asegura que todas las filas tengan al menos 27 columnas
-        datos_completos = [fila + [''] * (27 - len(fila)) for fila in valores]
-        return datos_completos
-    except Exception as e:
-        print(f"Error al obtener datos: {e}")
-        return []
+@cache.memoize(timeout=120)
+def obtener_datos_cache():
+    result = service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME
+    ).execute()
+    valores = result.get('values', [])
+    return [fila + [''] * (27 - len(fila)) for fila in valores]  # Asegurar columnas mínimas
 
 # Función para buscar datos por nombre o cédula
 def buscar_datos_por_nombre_o_cedula(busqueda):
@@ -71,6 +75,52 @@ def buscar_datos_por_nombre_o_cedula(busqueda):
             if fila[1].strip().lower() == busqueda.lower() or fila[16].strip() == busqueda:
                 return fila_index, fila
     return None, None
+
+def buscar_candidata_rapida(busqueda):
+    datos = obtener_datos_cache()
+    candidatos = []
+
+    for fila_index, fila in enumerate(datos):
+        if len(fila) >= 27:
+            codigo = fila[0].strip().lower()
+            nombre = fila[1].strip().lower()
+            cedula = fila[17].strip()
+            telefono = fila[3].strip()
+            direccion = fila[4].strip().lower()
+            estado = fila[18].strip().lower()
+            inscripcion = fila[19].strip().lower()
+            modalidad = fila[5].strip().lower()
+            experiencia = fila[9].strip()
+            referencias_laborales = fila[11].strip().lower()
+            referencias_familiares = fila[12].strip().lower()
+
+            # Lista de campos a evaluar
+            campos_a_buscar = [
+                codigo, nombre, cedula, telefono, direccion, estado, 
+                inscripcion, modalidad, experiencia, referencias_laborales, referencias_familiares
+            ]
+
+            # Coincidencia aproximada usando RapidFuzz
+            resultado = process.extractOne(busqueda.lower(), campos_a_buscar)
+
+            if resultado and resultado[1] > 80:  # Umbral de coincidencia 80%
+                candidatos.append({
+                    'fila_index': fila_index + 1,
+                    'codigo': fila[0],
+                    'nombre': fila[1],
+                    'ciudad': fila[4],
+                    'cedula': fila[17],
+                    'telefono': fila[3],
+                    'direccion': fila[4],
+                    'estado': fila[18],
+                    'inscripcion': fila[19],
+                    'modalidad': fila[5],
+                    'experiencia': fila[9],
+                    'referencias_laborales': fila[11],
+                    'referencias_familiares': fila[12]
+                })
+    
+    return candidatos
 
 # Función para actualizar datos en la hoja
 def actualizar_dato_en_columna(fila_index, columna_index, nuevo_valor):
@@ -444,72 +494,40 @@ def home():
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
-    """
-    Ruta para buscar candidatas por Código, Nombre, Cédula o Número de Teléfono.
-    Muestra coincidencias iniciales y permite seleccionar una candidata específica para más detalles.
-    """
-    resultados = []  # Lista para almacenar las coincidencias
-    detalles_candidata = None  # Datos completos de la candidata seleccionada
-    mensaje = None
+    resultados = []
+    detalles_candidata = None
+    mensaje = ""
 
     if request.method == 'POST':
-        if 'buscar_btn' in request.form:  # Botón para buscar
-            busqueda = request.form.get('busqueda', '').strip().lower()
+        busqueda = request.form.get('busqueda', '').strip().lower()
 
-            if not busqueda:
-                mensaje = "Por favor, introduce un Código, Nombre, Cédula o Número de Teléfono para buscar."
-            else:
-                datos = obtener_datos()  # Obtiene los datos desde la hoja de cálculo
-                for fila_index, fila in enumerate(datos):
-                    if len(fila) >= 27:  # Verifica que la fila tenga suficientes columnas
-                        codigo = fila[0].strip().lower()  # Columna A: Código
-                        nombre = fila[1].strip().lower()  # Columna B: Nombre
-                        telefono = fila[3].strip().lower()  # Columna D: Teléfono
-                        ciudad = fila[4].strip().lower()  # Columna E: Ciudad
-                        cedula = fila[17].strip()  # Columna R: Cédula
+        if not busqueda:
+            mensaje = "Por favor, introduce un Código, Nombre, Cédula o Teléfono para buscar."
+        else:
+            resultados = buscar_candidata_rapida(busqueda)
 
-                        # Coincidencia parcial en Código, Nombre, Teléfono o Cédula
-                        if (
-                            busqueda in codigo or
-                            busqueda in nombre or
-                            busqueda in telefono or
-                            busqueda in cedula
-                        ):
-                            resultados.append({
-                                'fila_index': fila_index + 1,  # Índice 1-based
-                                'codigo': fila[0],
-                                'nombre': fila[1],
-                                'telefono': fila[3],
-                                'ciudad': fila[4],
-                                'cedula': fila[17]
-                            })
+            if not resultados:
+                mensaje = f"No se encontraron resultados para: {busqueda}"
 
-                if not resultados:
-                    mensaje = f"No se encontraron resultados para: {busqueda}"
-
-        elif 'seleccionar_btn' in request.form:  # Botón para seleccionar una candidata
+        if 'seleccionar_btn' in request.form:
             fila_index = int(request.form.get('fila_index')) - 1
-            datos = obtener_datos()
+            datos = obtener_datos_cache()
             if 0 <= fila_index < len(datos):
                 fila = datos[fila_index]
                 detalles_candidata = {
                     'codigo': fila[0],
                     'nombre': fila[1],
-                    'edad': fila[2],
+                    'ciudad': fila[4],
+                    'cedula': fila[17],
                     'telefono': fila[3],
-                    'direccion': fila[4],
+                    'referencias_laborales': fila[11],
+                    'referencias_familiares': fila[12],
                     'modalidad': fila[5],
                     'experiencia': fila[9],
                     'planchar': fila[10],
-                    'referencias_laborales': fila[11],
-                    'referencias_familiares': fila[12],
-                    'porcentaje': fila[18],
-                    'cedula': fila[17],
-                    'ciudad': fila[4]
+                    'porcentaje': fila[13]
                 }
-            else:
-                mensaje = "Error: La fila seleccionada no es válida."
-
+    
     return render_template(
         'buscar.html',
         resultados=resultados,
