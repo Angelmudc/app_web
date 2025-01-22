@@ -588,16 +588,16 @@ def editar():
                         fila_index = index
                         datos_candidata = {
                             'fila_index': fila_index + 1,  # Índice en formato 1-based
-                            'codigo': fila[0],
-                            'nombre': fila[1],
-                            'edad': fila[2],
-                            'telefono': fila[3],
-                            'direccion': fila[4],
-                            'modalidad': fila[5],
-                            'experiencia': fila[9],
-                            'cedula': fila[17],
-                            'estado': fila[18],
-                            'inscripcion': fila[19],
+                            'codigo': fila[0],        # Columna A
+                            'nombre': fila[1],        # Columna B
+                            'edad': fila[2],          # Columna C
+                            'telefono': fila[3],      # Columna D
+                            'direccion': fila[4],     # Columna E
+                            'modalidad': fila[5],     # Columna F
+                            'experiencia': fila[9],   # Columna J
+                            'cedula': fila[17],       # Columna R
+                            'estado': fila[18],       # Columna S
+                            'inscripcion': fila[19],  # Columna T
                         }
                         break
 
@@ -606,31 +606,28 @@ def editar():
 
         elif "guardar" in request.form:
             # Capturar datos para guardar
-            fila_index = int(request.form.get("fila_index", -1)) - 1  # Convertir a índice 0-based
-            if fila_index < 0:
+            fila_index = int(request.form.get("fila_index", -1))  # Convertir a índice 1-based
+            if fila_index < 1:
                 mensaje = "Error al determinar la fila para actualizar."
             else:
-                nuevos_datos = {
-                    "Codigo": request.form.get("codigo", "").strip(),
-                    "Nombre": request.form.get("nombre", "").strip(),
-                    "Edad": request.form.get("edad", "").strip(),
-                    "Telefono": request.form.get("telefono", "").strip(),
-                    "Direccion": request.form.get("direccion", "").strip(),
-                    "Modalidad": request.form.get("modalidad", "").strip(),
-                    "Experiencia": request.form.get("experiencia", "").strip(),
-                    "Cedula": request.form.get("cedula", "").strip(),
-                    "Estado": request.form.get("estado", "").strip(),
-                    "Inscripcion": request.form.get("inscripcion", "").strip(),
-                }
+                nuevos_datos = [
+                    request.form.get("codigo", "").strip(),      # Columna A
+                    request.form.get("nombre", "").strip(),      # Columna B
+                    request.form.get("edad", "").strip(),        # Columna C
+                    request.form.get("telefono", "").strip(),    # Columna D
+                    request.form.get("direccion", "").strip(),   # Columna E
+                    request.form.get("modalidad", "").strip(),   # Columna F
+                    '', '', '', '',  # Espacios vacíos para columnas G-I
+                    request.form.get("experiencia", "").strip(), # Columna J
+                    '', '', '', '', '', '', '',  # Espacios vacíos para columnas K-Q
+                    request.form.get("cedula", "").strip(),      # Columna R
+                    request.form.get("estado", "").strip(),      # Columna S
+                    request.form.get("inscripcion", "").strip(), # Columna T
+                ]
 
-                # Actualizar los datos en la hoja
-                rango = f"Hoja de trabajo!A{fila_index + 1}:T{fila_index + 1}"  # Asegurar el rango correcto
-                valores = [[
-                    nuevos_datos["Codigo"], nuevos_datos["Nombre"], nuevos_datos["Edad"],
-                    nuevos_datos["Telefono"], nuevos_datos["Direccion"], nuevos_datos["Modalidad"],
-                    nuevos_datos["Experiencia"], nuevos_datos["Cedula"], nuevos_datos["Estado"],
-                    nuevos_datos["Inscripcion"]
-                ]]
+                # Actualizar los datos en las columnas específicas de la hoja
+                rango = f"Hoja de trabajo!A{fila_index}:T{fila_index}"  # Rango específico
+                valores = [nuevos_datos]
 
                 try:
                     service.spreadsheets().values().update(
