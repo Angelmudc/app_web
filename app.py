@@ -78,6 +78,7 @@ def obtener_datos_referencias():
     ).execute()
     return hoja.get('values', [])
 
+
 def obtener_datos_editar():
     try:
         service = build('sheets', 'v4', credentials=credenciales)
@@ -599,19 +600,19 @@ def editar():
                         busqueda == fila[1].strip().lower() or  # Nombre
                         busqueda == fila[17].strip()  # Cédula
                     ):
-                        fila_index = index
+                        fila_index = index + 1  # Convertir a formato 1-based
                         datos_candidata = {
-                            'fila_index': fila_index + 1,  # Índice en formato 1-based
-                            'codigo': fila[0],
-                            'nombre': fila[1],
-                            'edad': fila[2],
-                            'telefono': fila[3],
-                            'direccion': fila[4],
-                            'modalidad': fila[5],
-                            'experiencia': fila[9],
-                            'cedula': fila[17],  # Columna R
-                            'estado': fila[18],  # Columna S
-                            'inscripcion': fila[19]  # Columna T
+                            'fila_index': fila_index,
+                            'codigo': fila[0],        # Columna A
+                            'nombre': fila[1],        # Columna B
+                            'edad': fila[2],          # Columna C
+                            'telefono': fila[3],      # Columna D
+                            'direccion': fila[4],     # Columna E
+                            'modalidad': fila[5],     # Columna F
+                            'experiencia': fila[9],   # Columna J
+                            'cedula': fila[17],       # Columna R
+                            'estado': fila[18],       # Columna S
+                            'inscripcion': fila[19]   # Columna T
                         }
                         break
 
@@ -620,36 +621,28 @@ def editar():
 
         elif "guardar" in request.form:
             try:
-                # Capturar datos para guardar
-                fila_index = int(request.form.get("fila_index", -1))  # Convertir a índice 0-based
-                if fila_index < 0:
+                fila_index = int(request.form.get("fila_index", -1))  # Índice de fila 1-based
+                if fila_index < 1:
                     mensaje = "Error al determinar la fila para actualizar."
                 else:
-                    nuevos_datos = [
-                        request.form.get("codigo", "").strip(),    # Columna A
-                        request.form.get("nombre", "").strip(),    # Columna B
-                        request.form.get("edad", "").strip(),      # Columna C
-                        request.form.get("telefono", "").strip(),  # Columna D
-                        request.form.get("direccion", "").strip(), # Columna E
-                        request.form.get("modalidad", "").strip(), # Columna F
-                        request.form.get("experiencia", "").strip(), # Columna J
-                        request.form.get("cedula", "").strip(),    # Columna R
-                        request.form.get("estado", "").strip(),    # Columna S
-                        request.form.get("inscripcion", "").strip() # Columna T
-                    ]
+                    nuevos_datos = {
+                        "codigo": request.form.get("codigo", "").strip(),
+                        "nombre": request.form.get("nombre", "").strip(),
+                        "edad": request.form.get("edad", "").strip(),
+                        "telefono": request.form.get("telefono", "").strip(),
+                        "direccion": request.form.get("direccion", "").strip(),
+                        "modalidad": request.form.get("modalidad", "").strip(),
+                        "experiencia": request.form.get("experiencia", "").strip(),
+                        "cedula": request.form.get("cedula", "").strip(),
+                        "estado": request.form.get("estado", "").strip(),
+                        "inscripcion": request.form.get("inscripcion", "").strip()
+                    }
 
-                    # Definir el rango correcto para la actualización
-                    rango = f"Hoja de trabajo!A{fila_index}:AA{fila_index}"
-
-                    # Actualizar los datos en la hoja
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=rango,
-                        valueInputOption="RAW",
-                        body={"values": [nuevos_datos]}
-                    ).execute()
-
-                    mensaje = "Los datos se han actualizado correctamente."
+                    # Llamar a la función para actualizar la hoja de cálculo
+                    if actualizar_datos_editar(fila_index, nuevos_datos):
+                        mensaje = "Los datos se han actualizado correctamente."
+                    else:
+                        mensaje = "Error al actualizar los datos."
 
             except Exception as e:
                 mensaje = f"Error al actualizar los datos: {str(e)}"
@@ -663,13 +656,46 @@ def obtener_datos_editar():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Hoja de trabajo!A:AA"
+            range="Hoja de trabajo!A:T"
         ).execute()
 
         return hoja.get("values", [])
     except Exception as e:
         print(f"Error al obtener datos de la hoja: {e}")
         return []
+
+def actualizar_datos_editar(fila_index, nuevos_datos):
+    """ Actualiza solo las columnas específicas para la edición. """
+    try:
+        # Mapeo de columnas específicas
+        columnas = {
+            "codigo": "A",
+            "nombre": "B",
+            "edad": "C",
+            "telefono": "D",
+            "direccion": "E",
+            "modalidad": "F",
+            "experiencia": "J",
+            "cedula": "R",
+            "estado": "S",
+            "inscripcion": "T"
+        }
+
+        # Actualizar cada dato en su columna correspondiente
+        for campo, valor in nuevos_datos.items():
+            rango = f"Hoja de trabajo!{columnas[campo]}{fila_index}"
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango,
+                valueInputOption="RAW",
+                body={"values": [[valor]]}
+            ).execute()
+
+        return True
+    except Exception as e:
+        print(f"Error al actualizar datos: {e}")
+        return False
+
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
