@@ -626,7 +626,7 @@ def editar():
                 ]
 
                 # Actualizar los datos en las columnas específicas de la hoja
-                rango = f"Hoja de trabajo!A{fila_index}:T{fila_index}"  # Rango específico
+                rango = f"Hoja de trabajo!A{fila_index}:AA{fila_index}"  # Rango específico
                 valores = [nuevos_datos]
 
                 try:
