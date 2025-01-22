@@ -593,25 +593,25 @@ def editar():
             # Buscar en las filas de la hoja de cálculo
             datos = obtener_datos_editar()
             for index, fila in enumerate(datos):
-                if len(fila) > 17:  # Verificar que haya al menos 18 columnas
+                if len(fila) > 17:  # Verificar que haya suficientes columnas
                     if (
                         busqueda == fila[0].strip().lower() or  # Código
                         busqueda == fila[1].strip().lower() or  # Nombre
                         busqueda == fila[17].strip()  # Cédula
                     ):
-                        fila_index = index + 1  # Índice 1-based
+                        fila_index = index
                         datos_candidata = {
-                            'fila_index': fila_index,
-                            'codigo': fila[0],        # Columna A
-                            'nombre': fila[1],        # Columna B
-                            'edad': fila[2],          # Columna C
-                            'telefono': fila[3],      # Columna D
-                            'direccion': fila[4],     # Columna E
-                            'modalidad': fila[5],     # Columna F
-                            'experiencia': fila[9],   # Columna J
-                            'cedula': fila[17],       # Columna R
-                            'estado': fila[18],       # Columna S
-                            'inscripcion': fila[19],  # Columna T
+                            'fila_index': fila_index + 1,  # Índice en formato 1-based
+                            'codigo': fila[0],
+                            'nombre': fila[1],
+                            'edad': fila[2],
+                            'telefono': fila[3],
+                            'direccion': fila[4],
+                            'modalidad': fila[5],
+                            'experiencia': fila[9],
+                            'cedula': fila[17],  # Columna R
+                            'estado': fila[18],  # Columna S
+                            'inscripcion': fila[19]  # Columna T
                         }
                         break
 
@@ -620,30 +620,28 @@ def editar():
 
         elif "guardar" in request.form:
             try:
-                fila_index = int(request.form.get("fila_index", -1))  # Convertir a índice 1-based
-                if fila_index < 1:
+                # Capturar datos para guardar
+                fila_index = int(request.form.get("fila_index", -1))  # Convertir a índice 0-based
+                if fila_index < 0:
                     mensaje = "Error al determinar la fila para actualizar."
                 else:
-                    # Capturar los datos actualizados
                     nuevos_datos = [
-                        request.form.get("codigo", "").strip(),      # Columna A
-                        request.form.get("nombre", "").strip(),      # Columna B
-                        request.form.get("edad", "").strip(),        # Columna C
-                        request.form.get("telefono", "").strip(),    # Columna D
-                        request.form.get("direccion", "").strip(),   # Columna E
-                        request.form.get("modalidad", "").strip(),   # Columna F
-                        '', '', '', '', '', '', '', '', '',          # Espacios hasta la columna J
+                        request.form.get("codigo", "").strip(),    # Columna A
+                        request.form.get("nombre", "").strip(),    # Columna B
+                        request.form.get("edad", "").strip(),      # Columna C
+                        request.form.get("telefono", "").strip(),  # Columna D
+                        request.form.get("direccion", "").strip(), # Columna E
+                        request.form.get("modalidad", "").strip(), # Columna F
                         request.form.get("experiencia", "").strip(), # Columna J
-                        '', '', '', '', '', '',                      # Espacios hasta la columna R
-                        request.form.get("cedula", "").strip(),      # Columna R
-                        request.form.get("estado", "").strip(),      # Columna S
-                        request.form.get("inscripcion", "").strip()  # Columna T
+                        request.form.get("cedula", "").strip(),    # Columna R
+                        request.form.get("estado", "").strip(),    # Columna S
+                        request.form.get("inscripcion", "").strip() # Columna T
                     ]
 
-                    # Definir el rango a actualizar
+                    # Definir el rango correcto para la actualización
                     rango = f"Hoja de trabajo!A{fila_index}:AA{fila_index}"
 
-                    # Enviar la actualización a Google Sheets
+                    # Actualizar los datos en la hoja
                     service.spreadsheets().values().update(
                         spreadsheetId=SPREADSHEET_ID,
                         range=rango,
@@ -652,12 +650,26 @@ def editar():
                     ).execute()
 
                     mensaje = "Los datos se han actualizado correctamente."
+
             except Exception as e:
                 mensaje = f"Error al actualizar los datos: {str(e)}"
 
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
     )
+
+def obtener_datos_editar():
+    """ Función para obtener datos de la hoja de cálculo para editar. """
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Hoja de trabajo!A:AA"
+        ).execute()
+
+        return hoja.get("values", [])
+    except Exception as e:
+        print(f"Error al obtener datos de la hoja: {e}")
+        return []
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
