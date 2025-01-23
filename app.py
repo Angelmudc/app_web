@@ -656,7 +656,7 @@ def obtener_datos_editar():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Hoja de trabajo!A:T"
+            range="Hoja de trabajo!A:AA"
         ).execute()
 
         return hoja.get("values", [])
