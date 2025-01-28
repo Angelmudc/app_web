@@ -806,7 +806,7 @@ def inscripcion():
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
                     # Generar un código único si no existe
-                    datos = obtener_datos_editar
+                    datos = obtener_datos_editar()
                     fila = datos[fila_index - 1]
                     codigo = fila[0] if len(fila) > 0 and fila[0] else generar_codigo_unico()
 
