@@ -271,7 +271,7 @@ def generar_codigo_unico():
     Genera un código único para las candidatas en formato 'CAN-XXX',
     asegurándose de que no haya duplicados, incluso si el orden en la hoja no es secuencial.
     """
-    datos = obtener_datos()  # Obtener todos los datos de la hoja de cálculo
+    datos = obtener_datos_editar()  # Obtener todos los datos de la hoja de cálculo
     codigos_existentes = set(fila[0] for fila in datos if len(fila) > 0 and fila[0].startswith("CAN-"))
     
     # Busca el primer número no utilizado (permite huecos en la secuencia)
