@@ -268,16 +268,15 @@ def actualizar_datos(fila_index, nuevos_datos):
 
 def generar_codigo_unico():
     """
-    Genera un código único para las candidatas en formato 'CAN-XXX',
-    asegurándose de que no haya duplicados, incluso si el orden en la hoja no es secuencial.
+    Genera un código único para las candidatas en formato 'CAN-XXXXXX', permitiendo llegar a CAN-999999 o más.
     """
     datos = obtener_datos_editar()  # Obtener todos los datos de la hoja de cálculo
     codigos_existentes = set(fila[0] for fila in datos if len(fila) > 0 and fila[0].startswith("CAN-"))
-    
-    # Busca el primer número no utilizado (permite huecos en la secuencia)
+
+    # Inicia en 1 y sigue hasta encontrar un número disponible
     numero = 1
     while True:
-        nuevo_codigo = f"CAN-{str(numero).zfill(3)}"
+        nuevo_codigo = f"CAN-{str(numero).zfill(6)}"  # Ahora usa 6 dígitos (CAN-000001 hasta CAN-999999)
         if nuevo_codigo not in codigos_existentes:  # Verifica si el código ya existe
             return nuevo_codigo
         numero += 1
