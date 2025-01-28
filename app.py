@@ -308,6 +308,37 @@ def buscar_candidata(valor):
                 return fila
     return None
 
+def buscar_datos_inscripcion(buscar):
+    """
+    Función para buscar datos específicos en la hoja de cálculo en el contexto de inscripción.
+    Busca por Código (A), Nombre (B) o Cédula (R).
+    """
+    try:
+        datos = obtener_datos_editar()  # Obtiene los datos de la hoja de cálculo
+        for index, fila in enumerate(datos):
+            # Validar que la fila tenga datos y buscar por Código, Nombre o Cédula
+            if len(fila) > 1 and (
+                buscar.lower() == fila[0].lower() or  # Código (A)
+                buscar.lower() == fila[1].lower() or  # Nombre (B)
+                buscar == fila[17]  # Cédula (R)
+            ):
+                # Si encuentra resultados, devuelve un diccionario con los datos relevantes
+                return {
+                    'fila_index': index + 1,  # Índice de fila (1-based index)
+                    'codigo': fila[0] if len(fila) > 0 else "",  # Código (A)
+                    'nombre': fila[1],                           # Nombre (B)
+                    'cedula': fila[17],                          # Cédula (R)
+                    'estado': fila[18],                          # Estado (S)
+                    'inscripcion': fila[19],                     # Inscripción (T)
+                    'monto': fila[20],                           # Monto (U)
+                    'fecha': fila[21]                            # Fecha (V)
+                }
+        # Si no encuentra resultados, devuelve None
+        return None
+    except Exception as e:
+        print(f"Error al buscar datos: {e}")
+        return None
+
 # Ajuste en el manejo de datos
 def procesar_fila(fila, fila_index):
     # Asegúrate de que la fila tenga el tamaño suficiente
@@ -746,6 +777,7 @@ def filtrar():
             mensaje = "No se encontraron resultados para los criterios seleccionados."
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
+
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
@@ -756,26 +788,8 @@ def inscripcion():
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
-            datos = obtener_datos()
-
-            # Buscar por Nombre (B), Cédula (R) o Código (A)
-            for index, fila in enumerate(datos):
-                if len(fila) > 1 and (
-                    buscar.lower() == fila[0].lower() or  # Código (A)
-                    buscar.lower() == fila[1].lower() or  # Nombre (B)
-                    buscar == fila[17]  # Cédula (R)
-                ):
-                    datos_candidata = {
-                        'fila_index': index + 1,  # Índice de fila (1-based index)
-                        'codigo': fila[0] if len(fila) > 0 else "",  # Código (A)
-                        'nombre': fila[1],                           # Nombre (B)
-                        'cedula': fila[17],                          # Cédula (R)
-                        'estado': fila[18],                          # Estado (S)
-                        'inscripcion': fila[19],                     # Inscripción (T)
-                        'monto': fila[20],                           # Monto (U)
-                        'fecha': fila[21]                            # Fecha (V)
-                    }
-                    break
+            # Uso de la nueva función para buscar datos
+            datos_candidata = buscar_datos_inscripcion(buscar)
             if not datos_candidata:
                 mensaje = "No se encontraron resultados para el nombre, código o cédula proporcionados."
 
@@ -824,7 +838,6 @@ def inscripcion():
                 mensaje = f"Error al guardar los datos: {str(e)}"
 
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
-
 
 @app.route('/porciento', methods=['GET', 'POST'])
 def porciento():
