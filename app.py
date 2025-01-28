@@ -43,10 +43,18 @@ cache_config = {
 app.config.from_mapping(cache_config)
 cache = Cache(app)
 
-# Normaliza texto (elimina acentos, espacios y pasa a minúsculas)
+import unicodedata
+
 def normalizar_texto(texto):
+    """
+    Convierte un texto a minúsculas, elimina acentos y espacios extras.
+    """
+    if not texto:
+        return ""
     texto = texto.strip().lower()
-    return ''.join(c for c in texto if c.isalnum())
+    return ''.join(
+        c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn'
+    )
 
 # Función para buscar datos por código, nombre o cédula
 def buscar_en_columna(valor, columna_index):
