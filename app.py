@@ -101,6 +101,54 @@ def obtener_datos_editar():
         print(f"Error al obtener datos para edición: {e}")
         return []
 
+def buscar_en_columna(valor, columna_index):
+    """
+    Busca un valor específico en una columna y devuelve la fila correspondiente.
+    
+    :param valor: Valor a buscar.
+    :param columna_index: Índice de la columna (0-based).
+    :return: Índice de la fila y la fila completa si se encuentra; None si no.
+    """
+    datos = obtener_datos_editar()  # Asegúrate de que esta función devuelve los datos correctamente
+    valor_normalizado = normalizar_texto(valor)  # 🔹 Normaliza la búsqueda
+
+    for fila_index, fila in enumerate(datos):
+        if len(fila) > columna_index:
+            if valor_normalizado == normalizar_texto(fila[columna_index]):  # 🔹 Normaliza el valor en la hoja
+                return fila_index, fila  # Devuelve el índice de la fila y la fila completa
+    return None, None
+
+def buscar_datos_inscripcion(buscar):
+    """
+    Función para buscar datos específicos en la hoja de cálculo en el contexto de inscripción.
+    Busca por Código (Columna A), Nombre (Columna B) o Cédula (Columna R), ignorando acentos y mayúsculas/minúsculas.
+    """
+    try:
+        # Primero intentamos buscar por Código (Columna A)
+        fila_index, fila = buscar_en_columna(buscar, 0)
+        if not fila:
+            # Si no se encontró por Código, intentamos buscar por Nombre (Columna B)
+            fila_index, fila = buscar_en_columna(buscar, 1)
+        if not fila:
+            # Si no se encontró por Nombre, intentamos buscar por Cédula (Columna R)
+            fila_index, fila = buscar_en_columna(buscar, 17)
+
+        if fila:
+            return {
+                'fila_index': fila_index + 1,  # Índice de fila (1-based index)
+                'codigo': fila[0] if len(fila) > 0 else "",  # Código (A)
+                'nombre': fila[1],  # Nombre (B)
+                'cedula': fila[17],  # Cédula (R)
+                'estado': fila[18],  # Estado (S)
+                'inscripcion': fila[19],  # Inscripción (T)
+                'monto': fila[20],  # Monto (U)
+                'fecha': fila[21]  # Fecha (V)
+            }
+        return None  # No se encontraron resultados
+    except Exception as e:
+        print(f"Error al buscar datos: {e}")
+        return None
+
 @cache.memoize(timeout=120)
 def obtener_datos_cache():
     result = service.spreadsheets().values().get(
@@ -318,34 +366,32 @@ def buscar_candidata(valor):
 def buscar_datos_inscripcion(buscar):
     """
     Función para buscar datos específicos en la hoja de cálculo en el contexto de inscripción.
-    Busca por Código (A), Nombre (B) o Cédula (R).
+    Solo busca por Nombre (Columna B) y Cédula (Columna R), ignorando acentos y mayúsculas/minúsculas.
     """
     try:
-        datos = obtener_datos_editar()  # Obtiene los datos de la hoja de cálculo
-        for index, fila in enumerate(datos):
-            # Validar que la fila tenga datos y buscar por Código, Nombre o Cédula
-            if len(fila) > 1 and (
-                buscar.lower() == fila[0].lower() or  # Código (A)
-                buscar.lower() == fila[1].lower() or  # Nombre (B)
-                buscar == fila[17]  # Cédula (R)
-            ):
-                # Si encuentra resultados, devuelve un diccionario con los datos relevantes
-                return {
-                    'fila_index': index + 1,  # Índice de fila (1-based index)
-                    'codigo': fila[0] if len(fila) > 0 else "",  # Código (A)
-                    'nombre': fila[1],                           # Nombre (B)
-                    'cedula': fila[17],                          # Cédula (R)
-                    'estado': fila[18],                          # Estado (S)
-                    'inscripcion': fila[19],                     # Inscripción (T)
-                    'monto': fila[20],                           # Monto (U)
-                    'fecha': fila[21]                            # Fecha (V)
-                }
-        # Si no encuentra resultados, devuelve None
-        return None
+        # 🔹 1️⃣ Buscar primero por Nombre (Columna B)
+        fila_index, fila = buscar_en_columna(buscar, 1)
+
+        if not fila:
+            # 🔹 2️⃣ Si no encontró por Nombre, buscar por Cédula (Columna R)
+            fila_index, fila = buscar_en_columna(buscar, 17)
+
+        if fila:
+            return {
+                'fila_index': fila_index + 1,  # Índice de fila (1-based index)
+                'codigo': fila[0] if len(fila) > 0 else "",  # Código (A)
+                'nombre': fila[1],  # Nombre (B)
+                'cedula': fila[17],  # Cédula (R)
+                'estado': fila[18],  # Estado (S)
+                'inscripcion': fila[19],  # Inscripción (T)
+                'monto': fila[20],  # Monto (U)
+                'fecha': fila[21]  # Fecha (V)
+            }
+        return None  # No se encontraron resultados
     except Exception as e:
         print(f"Error al buscar datos: {e}")
         return None
-
+        
 # Ajuste en el manejo de datos
 def procesar_fila(fila, fila_index):
     # Asegúrate de que la fila tenga el tamaño suficiente
