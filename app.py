@@ -365,33 +365,37 @@ def buscar_candidata(valor):
 
 def buscar_datos_inscripcion(buscar):
     """
-    Función para buscar datos específicos en la hoja de cálculo en el contexto de inscripción.
-    Solo busca por Nombre (Columna B) y Cédula (Columna R), ignorando acentos y mayúsculas/minúsculas.
+    Busca candidatas por Nombre (Columna B) o Cédula (Columna R).
+    Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        # 🔹 1️⃣ Buscar primero por Nombre (Columna B)
-        fila_index, fila = buscar_en_columna(buscar, 1)
+        # 🔹 Buscar primero por Nombre (Columna B)
+        fila_index, fila = buscar_en_columna(buscar, 1)  # Busca en la columna B (Nombre)
 
         if not fila:
-            # 🔹 2️⃣ Si no encontró por Nombre, buscar por Cédula (Columna R)
-            fila_index, fila = buscar_en_columna(buscar, 17)
+            # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna R)
+            fila_index, fila = buscar_en_columna(buscar, 17)  # Busca en la columna R (Cédula)
 
         if fila:
+            # Asegurar que la fila tenga las columnas necesarias
+            while len(fila) < 22:  # Completa con valores vacíos hasta la columna V
+                fila.append("")
+
             return {
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[0] if len(fila) > 0 else "",  # Código (A)
-                'nombre': fila[1],  # Nombre (B)
-                'cedula': fila[17],  # Cédula (R)
-                'estado': fila[18],  # Estado (S)
-                'inscripcion': fila[19],  # Inscripción (T)
-                'monto': fila[20],  # Monto (U)
-                'fecha': fila[21]  # Fecha (V)
+                'codigo': fila[0],  # Columna A: Código
+                'nombre': fila[1],  # Columna B: Nombre
+                'cedula': fila[17],  # Columna R: Cédula
+                'estado': fila[18],  # Columna S: Estado
+                'inscripcion': fila[19],  # Columna T: Inscripción
+                'monto': fila[20],  # Columna U: Monto
+                'fecha': fila[21]  # Columna V: Fecha
             }
-        return None  # No se encontraron resultados
+        return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
         print(f"Error al buscar datos: {e}")
         return None
-        
+
 # Ajuste en el manejo de datos
 def procesar_fila(fila, fila_index):
     # Asegúrate de que la fila tenga el tamaño suficiente
