@@ -806,12 +806,12 @@ def inscripcion():
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
                     # Generar un código único si no existe
-                    datos = obtener_datos()
+                    datos = obtener_datos_editar
                     fila = datos[fila_index - 1]
                     codigo = fila[0] if len(fila) > 0 and fila[0] else generar_codigo_unico()
 
                     # Actualizar los valores en la hoja
-                    rango = f"Hoja de trabajo!A{fila_index}:V{fila_index}"  # Desde la columna A hasta V
+                    rango = f"Hoja de trabajo!A{fila_index}:AA{fila_index}"  # Desde la columna A hasta V
                     valores = [
                         codigo,  # Código (A)
                         fila[1],  # Nombre (B) (Mantener el valor actual)
