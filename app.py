@@ -57,19 +57,22 @@ def normalizar_texto(texto):
     )
 
 # Función para buscar datos por código, nombre o cédula
-def buscar_en_columna(valor, columna_index):
+def buscar_en_columna(valor, columnas_index):
     """
-    Busca un valor específico en una columna y devuelve la fila correspondiente.
+    Busca un valor específico en varias columnas y devuelve la fila correspondiente.
     :param valor: Valor a buscar.
-    :param columna_index: Índice de la columna (0-based).
+    :param columnas_index: Lista de índices de columna (ejemplo: [15, 14, 1]).
     :return: Índice de la fila y la fila completa si se encuentra; None si no.
     """
-    datos = obtener_datos()
-    for fila_index, fila in enumerate(datos):
-        if len(fila) > columna_index and valor.lower() == fila[columna_index].strip().lower():
-            return fila_index, fila
-    return None, None
+    datos = obtener_datos_editar()
+    valor_normalizado = normalizar_texto(valor)
 
+    for fila_index, fila in enumerate(datos):
+        for columna_index in columnas_index:  # 🔹 Iteramos sobre las columnas
+            if len(fila) > columna_index:
+                if valor_normalizado == normalizar_texto(fila[columna_index]):
+                    return fila_index, fila  # ✅ Devuelve el índice de la fila y la fila completa
+    return None, None
 def actualizar_datos_editar(fila_index, nuevos_datos):
     """
     Actualiza solo las columnas específicas para la edición en la hoja de cálculo.
@@ -149,22 +152,6 @@ def actualizar_referencias(fila_index, laborales, familiares):
         print(f"Error al actualizar referencias: {e}")
         return False
 
-def buscar_en_columna(valor, columna_index):
-    """
-    Busca un valor específico en una columna y devuelve la fila correspondiente.
-    
-    :param valor: Valor a buscar.
-    :param columna_index: Índice de la columna (0-based).
-    :return: Índice de la fila y la fila completa si se encuentra; None si no.
-    """
-    datos = obtener_datos_editar()  # Asegúrate de que esta función devuelve los datos correctamente
-    valor_normalizado = normalizar_texto(valor)  # 🔹 Normaliza la búsqueda
-
-    for fila_index, fila in enumerate(datos):
-        if len(fila) > columna_index:
-            if valor_normalizado == normalizar_texto(fila[columna_index]):  # 🔹 Normaliza el valor en la hoja
-                return fila_index, fila  # Devuelve el índice de la fila y la fila completa
-    return None, None
 
 def buscar_datos_inscripcion(buscar):
     """
@@ -728,44 +715,51 @@ def sugerir():
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
-    """
-    Permite buscar y editar los datos de una candidata.
-    - ✅ Se busca por Código, Nombre o Cédula.
-    - ✅ Solo edita los datos visibles en "Buscar".
-    - ❌ No edita Código, Referencias ni Inscripción.
-    """
     datos_candidata = None
     mensaje = ""
 
     if request.method == "POST":
         if "buscar_btn" in request.form:
-            # 🔹 Buscar candidata por Código (P), Nombre (B) o Cédula (O)
+            # Capturar el valor de búsqueda desde el formulario
             busqueda = request.form.get("busqueda", "").strip().lower()
-            fila_index, fila = buscar_en_columna(busqueda, [15, 1, 14])  
+            fila_index = -1
+
+            # Buscar primero por Código (Columna P)
+            fila_index, fila = buscar_en_columna(busqueda, 15)  
+            if not fila:
+                fila_index, fila = buscar_en_columna(busqueda, 14)  # Buscar por Cédula (Columna O)
+            if not fila:
+                fila_index, fila = buscar_en_columna(busqueda, 1)   # Buscar por Nombre (Columna B)
 
             if fila:
+                # Asegurar que la fila tenga las columnas necesarias
+                while len(fila) < 25:
+                    fila.append("")
+
                 datos_candidata = {
-                    'fila_index': fila_index + 1,  # Índice en formato 1-based
-                    'nombre': fila[1],  # Nombre (B)
-                    'edad': fila[2],  # Edad (C)
-                    'telefono': fila[3],  # Teléfono (D)
-                    'direccion': fila[4],  # Dirección (E)
-                    'modalidad': fila[5],  # Modalidad (F)
-                    'experiencia': fila[9],  # Áreas de experiencia (J)
-                    'cedula': fila[14],  # Cédula (O)
-                    'estado': fila[16]  # Estado (Q)
+                    'fila_index': fila_index + 1,  # Índice de fila (1-based index)
+                    'codigo': fila[15],  # Código (Columna P)
+                    'nombre': fila[1],   # Nombre (Columna B)
+                    'edad': fila[2],     # Edad (Columna C)
+                    'telefono': fila[3], # Teléfono (Columna D)
+                    'direccion': fila[4],# Dirección (Columna E)
+                    'modalidad': fila[5],# Modalidad (Columna F)
+                    'experiencia': fila[9], # Experiencia (Columna J)
+                    'cedula': fila[14],  # Cédula (Columna O)
+                    'estado': fila[18],  # Estado (Columna S)
+                    'inscripcion': fila[19] # Inscripción (Columna T)
                 }
             else:
-                mensaje = "No se encontraron datos para la búsqueda."
+                mensaje = f"No se encontraron datos para: {busqueda}"
 
         elif "guardar" in request.form:
             try:
-                fila_index = int(request.form.get("fila_index", -1))
+                fila_index = int(request.form.get("fila_index", -1))  # Índice de fila 1-based
                 if fila_index < 1:
                     mensaje = "Error al determinar la fila para actualizar."
                 else:
-                    # 🔹 Solo guarda los datos visibles en Buscar (EXCLUYENDO Código, Referencias y Inscripción)
                     nuevos_datos = {
+                        "codigo": request.form.get("codigo", "").strip(),
                         "nombre": request.form.get("nombre", "").strip(),
                         "edad": request.form.get("edad", "").strip(),
                         "telefono": request.form.get("telefono", "").strip(),
@@ -774,8 +768,10 @@ def editar():
                         "experiencia": request.form.get("experiencia", "").strip(),
                         "cedula": request.form.get("cedula", "").strip(),
                         "estado": request.form.get("estado", "").strip(),
+                        "inscripcion": request.form.get("inscripcion", "").strip()
                     }
 
+                    # Llamar a la función para actualizar la hoja de cálculo
                     if actualizar_datos_editar(fila_index, nuevos_datos):
                         mensaje = "Los datos se han actualizado correctamente."
                     else:
