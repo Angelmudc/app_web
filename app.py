@@ -357,61 +357,6 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
                 return fila_index, fila  # Devuelve el índice de la fila y la fila completa
     return None, None  # No se encontró
 
-def actualizar_datos(fila_index, nuevos_datos):
-    try:
-        rango = f"Nueva hoja!A{fila_index + 1}:Y{fila_index + 1}"  # Actualiza solo en la fila buscada
-        fila_actual = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango
-        ).execute().get('values', [[]])[0]
-
-        # Extender la fila para garantizar 27 columnas
-        fila_actual.extend([''] * (27 - len(fila_actual)))
-
-        # Actualizar las columnas específicas con los nuevos datos
-        valores = [
-            nuevos_datos.get('Codigo', fila_actual[0]),  # Columna A
-            nuevos_datos.get('Nombre', fila_actual[1]),  # Columna B
-            nuevos_datos.get('Edad', fila_actual[2]),  # Columna C
-            nuevos_datos.get('Telefono', fila_actual[3]),  # Columna D
-            nuevos_datos.get('Direccion', fila_actual[4]),  # Columna E
-            nuevos_datos.get('Modalidad', fila_actual[5]),  # Columna F
-            fila_actual[6],  # Columna G
-            fila_actual[7],  # Columna H
-            fila_actual[8],  # Columna I
-            nuevos_datos.get('Experiencia', fila_actual[9]),  # Columna J
-            fila_actual[10],  # Columna K
-            fila_actual[11],  # Columna L
-            fila_actual[12],  # Columna M
-            fila_actual[13],  # Columna N
-            fila_actual[14],  # Columna O
-            fila_actual[15],  # Columna P
-            fila_actual[16],  # Columna Q
-            nuevos_datos.get('Cedula', fila_actual[17]),  # Columna R
-            nuevos_datos.get('Estado', fila_actual[18]),  # Columna S
-            nuevos_datos.get('Inscripcion', fila_actual[19]),  # Columna T
-            fila_actual[20],  # Columna U
-            fila_actual[21],  # Columna V
-            fila_actual[22],  # Columna W
-            fila_actual[23],  # Columna X
-            fila_actual[24],  # Columna Y
-            fila_actual[25],  # Columna Z
-            fila_actual[26],  # Columna AA
-        ]
-
-        # Actualizar en la hoja de cálculo
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": [valores]}
-        ).execute()
-
-        return True
-    except Exception as e:
-        print(f"Error al actualizar los datos: {e}")
-        return False
-
 
 def generar_codigo_unico():
     """
