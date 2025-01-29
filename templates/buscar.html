@@ -104,6 +104,7 @@
                         <tr>
                             <th>Código</th>
                             <th>Nombre</th>
+                            <th>Edad</th>  <!-- Edad agregada aquí -->
                             <th>Ciudad</th>
                             <th>Cédula</th>
                             <th>Teléfono</th>
@@ -115,6 +116,7 @@
                         <tr>
                             <td>{{ resultado.codigo or 'No asignado' }}</td>
                             <td>{{ resultado.nombre }}</td>
+                            <td>{{ resultado.edad }}</td>  <!-- Mostrando edad -->
                             <td>{{ resultado.ciudad }}</td>
                             <td>{{ resultado.cedula }}</td>
                             <td>{{ resultado.telefono }}</td>
@@ -144,6 +146,7 @@
                         <ul class="list-group">
                             <li class="list-group-item"><strong>Código:</strong> {{ detalles_candidata.codigo or 'No asignado' }}</li>
                             <li class="list-group-item"><strong>Nombre:</strong> {{ detalles_candidata.nombre }}</li>
+                            <li class="list-group-item"><strong>Edad:</strong> {{ detalles_candidata.edad }}</li> <!-- Edad aquí -->
                             <li class="list-group-item"><strong>Cédula:</strong> {{ detalles_candidata.cedula }}</li>
                             <li class="list-group-item"><strong>Teléfono:</strong> {{ detalles_candidata.telefono }}</li>
                             <li class="list-group-item"><strong>Ciudad:</strong> {{ detalles_candidata.ciudad }}</li>

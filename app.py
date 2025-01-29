@@ -677,22 +677,30 @@ def buscar():
         if 'seleccionar_btn' in request.form:
             fila_index = int(request.form.get('fila_index')) - 1
             datos = obtener_datos_cache()
+
             if 0 <= fila_index < len(datos):
                 fila = datos[fila_index]
+
+                # Verificar que la fila tenga al menos la cantidad de columnas esperadas
+                while len(fila) < 25:  # Asegurarnos de que haya suficientes columnas
+                    fila.append("")
+
                 detalles_candidata = {
-                    'codigo': fila[0],
-                    'nombre': fila[1],
-                    'ciudad': fila[4],
-                    'cedula': fila[17],
-                    'telefono': fila[3],
-                    'referencias_laborales': fila[11],
-                    'referencias_familiares': fila[12],
-                    'modalidad': fila[5],
-                    'experiencia': fila[9],
-                    'planchar': fila[10],
-                    'porcentaje': fila[13]
+                    'codigo': fila[15],  # Código (Columna P)
+                    'nombre': fila[1],   # Nombre (Columna B)
+                    'edad': fila[2],     # Edad (Columna C)
+                    'ciudad': fila[4],   # Ciudad (Columna E)
+                    'cedula': fila[17],  # Cédula (Columna R)
+                    'telefono': fila[3], # Teléfono (Columna D)
+                    'referencias_laborales': fila[11] if len(fila) > 11 else "No disponible",
+                    'referencias_familiares': fila[12] if len(fila) > 12 else "No disponible",
+                    'modalidad': fila[5] if len(fila) > 5 else "No disponible",
+                    'experiencia': fila[9] if len(fila) > 9 else "No disponible",
+                    'planchar': fila[10] if len(fila) > 10 else "No disponible",
+                    'porcentaje': fila[23] if len(fila) > 23 else "No disponible",  # Inscripción (Columna R)
+                    'estado': fila[16] if len(fila) > 16 else "No disponible"  # Estado (Columna Q)
                 }
-    
+
     return render_template(
         'buscar.html',
         resultados=resultados,
