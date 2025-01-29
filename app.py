@@ -16,7 +16,7 @@ from google.oauth2.service_account import Credentials
 
 
 # Configuración de la API de Google Sheets
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SCOPES = ['https://docs.google.com/spreadsheets/d/1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg/edit?usp=sharing']
 SPREADSHEET_ID = '1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg'
 RANGE_NAME = 'Hoja de trabajo!A1:AA'
 
