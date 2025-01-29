@@ -57,22 +57,28 @@ def normalizar_texto(texto):
     )
 
 # Función para buscar datos por código, nombre o cédula
-def buscar_en_columna(valor, columnas_index):
+def buscar_en_columna(valor, columna_index):
     """
-    Busca un valor específico en varias columnas y devuelve la fila correspondiente.
+    Busca un valor en una columna específica y devuelve la fila correspondiente.
     :param valor: Valor a buscar.
-    :param columnas_index: Lista de índices de columna (ejemplo: [15, 14, 1]).
+    :param columna_index: Índice de la columna donde buscar.
     :return: Índice de la fila y la fila completa si se encuentra; None si no.
     """
     datos = obtener_datos_editar()
     valor_normalizado = normalizar_texto(valor)
 
+    # Validar que columna_index sea un número entero
+    if isinstance(columna_index, list):
+        columna_index = columna_index[0]  # Si es lista, tomar el primer valor
+
     for fila_index, fila in enumerate(datos):
-        for columna_index in columnas_index:  # 🔹 Iteramos sobre las columnas
-            if len(fila) > columna_index:
-                if valor_normalizado == normalizar_texto(fila[columna_index]):
-                    return fila_index, fila  # ✅ Devuelve el índice de la fila y la fila completa
+        if len(fila) > columna_index:
+            if valor_normalizado == normalizar_texto(fila[columna_index]):
+                return fila_index, fila  # ✅ Devuelve la fila encontrada
+
     return None, None
+
+
 def actualizar_datos_editar(fila_index, nuevos_datos):
     """
     Actualiza solo las columnas específicas para la edición en la hoja de cálculo.
