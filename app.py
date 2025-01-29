@@ -1102,9 +1102,9 @@ def referencias():
             datos = obtener_datos_referencias()  # Obtener solo datos necesarios
             for index, fila in enumerate(datos):
                 if len(fila) >= 18:
-                    codigo = fila[0].strip().lower()
+                    codigo = fila[15].strip().lower()
                     nombre = fila[1].strip().lower()
-                    cedula = fila[17].strip()
+                    cedula = fila[14].strip()
 
                     if (
                         busqueda.lower() == codigo or
@@ -1113,9 +1113,9 @@ def referencias():
                     ):
                         datos_candidata = {
                             'fila_index': index + 1,
-                            'codigo': fila[0],
+                            'codigo': fila[15],
                             'nombre': fila[1],
-                            'cedula': fila[17],
+                            'cedula': fila[14],
                             'laborales': fila[11],
                             'familiares': fila[12]
                         }
@@ -1132,7 +1132,7 @@ def referencias():
                 if fila_index == -1:
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    rango = f"Hoja de trabajo!L{fila_index}:M{fila_index}"
+                    rango = f"Nueva hoja!L{fila_index}:M{fila_index}"
                     valores = [[laborales, familiares]]
                     service.spreadsheets().values().update(
                         spreadsheetId=SPREADSHEET_ID,
