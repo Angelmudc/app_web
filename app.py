@@ -79,13 +79,18 @@ def obtener_datos_generales():
     return hoja.get('values', [])
 
 def obtener_datos_referencias():
-    # Obtener solo columnas necesarias para referencias
-    hoja = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, 
-        range="Nueva hoja!A:Y"
-    ).execute()
-    return hoja.get('values', [])
-
+    """
+    Obtiene solo las columnas necesarias de la hoja de cálculo para referencias.
+    """
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID, 
+            range="Nueva hoja!B:M"  # 🔹 Solo columnas relevantes
+        ).execute()
+        return hoja.get('values', [])
+    except Exception as e:
+        print(f"Error al obtener datos de referencias: {e}")
+        return []
 
 def obtener_datos_editar():
     try:
@@ -100,6 +105,26 @@ def obtener_datos_editar():
     except Exception as e:
         print(f"Error al obtener datos para edición: {e}")
         return []
+
+def actualizar_referencias(fila_index, laborales, familiares):
+    """
+    Actualiza las referencias laborales y familiares en la hoja de cálculo.
+    """
+    try:
+        rango = f"Nueva hoja!L{fila_index}:M{fila_index}"  # 🔹 Columnas L y M
+        valores = [[laborales, familiares]]
+
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": valores}
+        ).execute()
+        
+        return True
+    except Exception as e:
+        print(f"Error al actualizar referencias: {e}")
+        return False
 
 def buscar_en_columna(valor, columna_index):
     """
@@ -1111,26 +1136,27 @@ def referencias():
         if not busqueda:
             mensaje = "Por favor, introduce un Nombre o Cédula para buscar."
         else:
-            datos = obtener_datos_referencias()  # Obtener solo datos necesarios
+            # 🔹 Obtener datos solo de las columnas necesarias
+            datos = obtener_datos_referencias()
             for index, fila in enumerate(datos):
-                if len(fila) >= 18:  # Asegurar que la fila tiene las columnas necesarias
-                    nombre = fila[1].strip().lower()  # Nombre en columna B
-                    cedula = fila[14].strip() if len(fila) > 14 else ""  # Cédula en columna O
+                if len(fila) >= 12:  # Asegurar que tenga suficientes columnas
+                    nombre = fila[0].strip().lower()  # Columna B (Nombre)
+                    cedula = fila[11].strip()  # Columna M (Cédula)
 
-                    # 🔹 Buscar solo por Nombre o Cédula
+                    # 🔹 Solo busca por nombre o cédula (NO por código)
                     if busqueda.lower() == nombre or busqueda == cedula:
                         datos_candidata = {
-                            'fila_index': index + 1,  # Índice de fila (1-based index)
-                            'nombre': fila[1],  # Nombre (B)
-                            'cedula': fila[14] if len(fila) > 14 else "No disponible",  # Cédula (O)
-                            'laborales': fila[11] if len(fila) > 11 else "No disponible",  # Referencias Laborales (L)
-                            'familiares': fila[12] if len(fila) > 12 else "No disponible"  # Referencias Familiares (M)
+                            'fila_index': index + 1,  # 🔹 Índice 1-based
+                            'nombre': fila[0],       # Columna B (Nombre)
+                            'cedula': fila[11],      # Columna M (Cédula)
+                            'laborales': fila[9],    # Columna L (Referencias Laborales)
+                            'familiares': fila[10]   # Columna M (Referencias Familiares)
                         }
                         break
             else:
                 mensaje = f"No se encontraron resultados para: {busqueda}"
 
-        # Guardar cambios si se presiona el botón "guardar"
+        # 🔹 Guardar cambios si se presiona el botón "guardar"
         if 'guardar_btn' in request.form:
             try:
                 fila_index = int(request.form.get('fila_index', -1))
@@ -1140,15 +1166,11 @@ def referencias():
                 if fila_index == -1:
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    rango = f"Nueva hoja!L{fila_index}:M{fila_index}"
-                    valores = [[laborales, familiares]]
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=rango,
-                        valueInputOption="RAW",
-                        body={"values": valores}
-                    ).execute()
-                    mensaje = "Referencias actualizadas correctamente."
+                    # 🔹 Llamar a la función para actualizar referencias
+                    if actualizar_referencias(fila_index, laborales, familiares):
+                        mensaje = "Referencias actualizadas correctamente."
+                    else:
+                        mensaje = "Error al actualizar referencias."
             except Exception as e:
                 mensaje = f"Error al guardar las referencias: {str(e)}"
 
