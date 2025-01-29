@@ -16,9 +16,9 @@ from google.oauth2.service_account import Credentials
 
 
 # Configuración de la API de Google Sheets
-SCOPES = ['https://docs.google.com/spreadsheets/d/1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg/edit?usp=sharing']
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg'
-RANGE_NAME = 'Hoja de trabajo!A1:AA'
+RANGE_NAME = 'Hoja de trabajo!A1:X'
 
 # Cargar credenciales desde la variable de entorno
 clave1 = json.loads(os.environ.get("CLAVE1_JSON"))
