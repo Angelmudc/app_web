@@ -143,8 +143,8 @@ def buscar_datos_inscripcion(buscar):
                 'cedula': fila[14],  # Cédula (O)
                 'estado': fila[15],  # Estado (P)
                 'inscripcion': fila[16],  # Inscripción (Q)
-                'monto': fila[17],  # Monto (R)
-                'fecha': fila[18]  # Fecha de Pago (S)
+                'monto': fila[18],  # Monto (R)
+                'fecha': fila[19]  # Fecha de Pago (S)
             }
         return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
@@ -215,13 +215,13 @@ def buscar_candidata_rapida(busqueda):
 
     for fila_index, fila in enumerate(datos):
         if len(fila) >= 27:
-            codigo = fila[0].strip().lower()
+            codigo = fila[15].strip().lower()
             nombre = fila[1].strip().lower()
-            cedula = fila[17].strip()
+            cedula = fila[14].strip()
             telefono = fila[3].strip()
             direccion = fila[4].strip().lower()
-            estado = fila[18].strip().lower()
-            inscripcion = fila[19].strip().lower()
+            estado = fila[16].strip().lower()
+            inscripcion = fila[18].strip().lower()
             modalidad = fila[5].strip().lower()
             experiencia = fila[9].strip()
             referencias_laborales = fila[11].strip().lower()
@@ -239,14 +239,14 @@ def buscar_candidata_rapida(busqueda):
             if resultado and resultado[1] > 80:  # Umbral de coincidencia 80%
                 candidatos.append({
                     'fila_index': fila_index + 1,
-                    'codigo': fila[0],
+                    'codigo': fila[15],
                     'nombre': fila[1],
                     'ciudad': fila[4],
-                    'cedula': fila[17],
+                    'cedula': fila[14],
                     'telefono': fila[3],
                     'direccion': fila[4],
-                    'estado': fila[18],
-                    'inscripcion': fila[19],
+                    'estado': fila[16],
+                    'inscripcion': fila[18],
                     'modalidad': fila[5],
                     'experiencia': fila[9],
                     'referencias_laborales': fila[11],
