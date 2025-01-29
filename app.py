@@ -400,40 +400,42 @@ def buscar_candidata(valor):
     datos = obtener_datos()
     for fila in datos:
         if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
-            if (valor.lower() == fila[0].lower() or  # Código
+            if (valor.lower() == fila[15].lower() or  # Código
                 valor.lower() == fila[1].lower() or  # Nombre
-                valor == fila[17]):  # Cédula
+                valor == fila[14]):  # Cédula
                 return fila
     return None
 
-def buscar_datos_inscripcion(buscar):
+ef buscar_datos_inscripcion(buscar):
     """
     Busca candidatas por Nombre (Columna B) o Cédula (Columna R).
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        # 🔹 Buscar primero por Nombre (Columna B)
-        fila_index, fila = buscar_en_columna(buscar, 1)  # Busca en la columna B (Nombre)
+        # 🔹 Buscar primero por Nombre (Columna B, índice 1)
+        fila_index, fila = buscar_en_columna(buscar, 1)
 
         if not fila:
-            # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna R)
-            fila_index, fila = buscar_en_columna(buscar, 17)  # Busca en la columna R (Cédula)
+            # Si no se encontró por Nombre, buscar por Cédula (Columna R, índice 17)
+            fila_index, fila = buscar_en_columna(buscar, 17)
 
         if fila:
             # Asegurar que la fila tenga las columnas necesarias
-            while len(fila) < 22:  # Completa con valores vacíos hasta la columna V
+            while len(fila) < 25:  # Ajustar hasta la última columna necesaria
                 fila.append("")
 
             return {
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[0],  # Columna A: Código
-                'nombre': fila[1],  # Columna B: Nombre
-                'cedula': fila[17],  # Columna R: Cédula
-                'estado': fila[18],  # Columna S: Estado
-                'inscripcion': fila[19],  # Columna T: Inscripción
-                'monto': fila[20],  # Columna U: Monto
-                'fecha': fila[21]  # Columna V: Fecha
+                'codigo': fila[15],      # Código (P)
+                'nombre': fila[1],       # Nombre (B)
+                'cedula': fila[17],      # Cédula (R)
+                'estado': fila[18],      # Estado (S)
+                'inscripcion': fila[19], # Inscripción (T)
+                'experiencia': fila[9],  # Áreas de experiencia (J)
+                'monto': fila[20],       # Monto (U)
+                'fecha_pago': fila[21]   # Fecha de Pago (V)
             }
+
         return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
         print(f"Error al buscar datos: {e}")
@@ -446,9 +448,9 @@ def procesar_fila(fila, fila_index):
         fila.append("")
 
     # Procesa los datos
-    codigo = fila[0]
+    codigo = fila[15]
     nombre = fila[1]
-    cedula = fila[17]
+    cedula = fila[14]
     estado = fila[18]
     monto = fila[19]
     fecha_inscripcion = fila[20]
@@ -597,7 +599,7 @@ def buscar_candidatas_por_texto(busqueda):
 
     for fila in datos:
         if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
-            codigo = normalizar_texto(fila[0])  # Columna A
+            codigo = normalizar_texto(fila[15])  # Columna O
             nombre = normalizar_texto(fila[1])  # Columna B
             cedula = fila[17]  # Columna R (sin normalizar)
 
@@ -608,14 +610,14 @@ def buscar_candidatas_por_texto(busqueda):
                 busqueda in cedula
             ):
                 resultados.append({
-                    'codigo': fila[0],  # Columna A
+                    'codigo': fila[15],  # Columna P
                     'nombre': fila[1],  # Columna B
                     'edad': fila[2],    # Columna C
                     'telefono': fila[3],  # Columna D
                     'direccion': fila[4],  # Columna E
                     'modalidad': fila[5],  # Columna F
                     'experiencia': fila[9],  # Columna J
-                    'cedula': fila[17],  # Columna R
+                    'cedula': fila[14],  # Columna O
                 })
 
     return resultados
