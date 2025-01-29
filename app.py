@@ -138,7 +138,7 @@ def buscar_datos_inscripcion(buscar):
 
             return {
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[0],  # Código (A)
+                'codigo': fila[15],  # Código (P)
                 'nombre': fila[1],  # Nombre (B)
                 'cedula': fila[14],  # Cédula (O)
                 'estado': fila[15],  # Estado (P)
@@ -690,7 +690,7 @@ def buscar():
                     'nombre': fila[1],   # Nombre (Columna B)
                     'edad': fila[2],     # Edad (Columna C)
                     'ciudad': fila[4],   # Ciudad (Columna E)
-                    'cedula': fila[17],  # Cédula (Columna R)
+                    'cedula': fila[14],  # Cédula (Columna R)
                     'telefono': fila[3], # Teléfono (Columna D)
                     'referencias_laborales': fila[11] if len(fila) > 11 else "No disponible",
                     'referencias_familiares': fila[12] if len(fila) > 12 else "No disponible",
@@ -822,7 +822,7 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
 
         # Actualizar cada dato en su columna correspondiente
         for campo, valor in nuevos_datos.items():
-            rango = f"Hoja de trabajo!{columnas[campo]}{fila_index}"
+            rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
                 range=rango,
