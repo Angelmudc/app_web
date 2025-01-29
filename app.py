@@ -758,7 +758,7 @@ def editar():
                             'experiencia': fila[9] if len(fila) > 9 else "",
                             'cedula': fila[14],
                             'estado': fila[18] if len(fila) > 18 else "",
-                            'inscripcion': fila[19] if len(fila) > 19 else ""
+                            'inscripcion': fila[17] if len(fila) > 17 else ""
                         }
                         break
 
