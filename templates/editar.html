@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -33,6 +33,14 @@
             border: none;
             box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
         }
+        .debug-section {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -40,23 +48,31 @@
         <h1 class="text-center"><i class="fas fa-edit"></i> Editar Candidata</h1>
         <hr>
 
-        <!-- Mensaje de retroalimentación -->
+        <!-- 🔹 Muestra el mensaje de retroalimentación si existe -->
         {% if mensaje %}
             <div class="alert alert-info text-center">{{ mensaje }}</div>
         {% endif %}
 
-        <!-- Formulario de búsqueda -->
+        <!-- 🔹 DEBUG: Muestra los datos enviados desde Flask (se puede quitar después) -->
+        {% if debug_datos %}
+            <div class="debug-section">
+                <strong>DEBUG:</strong>
+                <pre>{{ debug_datos }}</pre>
+            </div>
+        {% endif %}
+
+        <!-- 🔹 Formulario de búsqueda -->
         <form method="POST" action="/editar">
             <div class="mb-3">
-                <label for="busqueda" class="form-label">Buscar por Código, Nombre o Cédula:</label>
+                <label for="busqueda" class="form-label">Buscar por Nombre o Cédula:</label>
                 <div class="input-group">
-                    <input type="text" class="form-control" id="busqueda" name="busqueda" placeholder="Ejemplo: CAN-001, Ana Perez o 304-1234567-8" required>
+                    <input type="text" class="form-control" id="busqueda" name="busqueda" placeholder="Ejemplo: Ana Pérez o 304-1234567-8" required>
                     <button type="submit" name="buscar_btn" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
                 </div>
             </div>
         </form>
 
-        <!-- Detalles de la candidata -->
+        <!-- 🔹 Detalles de la candidata (solo se muestra si hay datos) -->
         {% if datos_candidata %}
             <div class="card mt-4">
                 <div class="card-header bg-primary text-white">
@@ -64,7 +80,7 @@
                 </div>
                 <div class="card-body">
                     <form method="POST" action="/editar">
-                        <input type="hidden" name="fila_index" value="{{ datos_candidata['fila_index'] }}">
+                        <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
                         <div class="mt-4 text-center">
                             <a href="/" class="btn btn-secondary">
                                 <i class="fas fa-home"></i> Volver a Inicio
@@ -73,54 +89,54 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="codigo" class="form-label">Código:</label>
-                                <input type="text" class="form-control" id="codigo" name="codigo" value="{{ datos_candidata['codigo'] }}" readonly>
+                                <input type="text" class="form-control" id="codigo" name="codigo" value="{{ datos_candidata.get('codigo', '') }}" readonly>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="nombre" class="form-label">Nombre:</label>
-                                <input type="text" class="form-control" id="nombre" name="nombre" value="{{ datos_candidata['nombre'] }}" required>
+                                <input type="text" class="form-control" id="nombre" name="nombre" value="{{ datos_candidata.get('nombre', '') }}" required>
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="edad" class="form-label">Edad:</label>
-                                <input type="number" class="form-control" id="edad" name="edad" value="{{ datos_candidata['edad'] }}">
+                                <input type="number" class="form-control" id="edad" name="edad" value="{{ datos_candidata.get('edad', '') }}">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="telefono" class="form-label">Teléfono:</label>
-                                <input type="text" class="form-control" id="telefono" name="telefono" value="{{ datos_candidata['telefono'] }}">
+                                <input type="text" class="form-control" id="telefono" name="telefono" value="{{ datos_candidata.get('telefono', '') }}">
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="direccion" class="form-label">Dirección:</label>
-                                <input type="text" class="form-control" id="direccion" name="direccion" value="{{ datos_candidata['direccion'] }}">
+                                <input type="text" class="form-control" id="direccion" name="direccion" value="{{ datos_candidata.get('direccion', '') }}">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="modalidad" class="form-label">Modalidad:</label>
-                                <input type="text" class="form-control" id="modalidad" name="modalidad" value="{{ datos_candidata['modalidad'] }}">
+                                <input type="text" class="form-control" id="modalidad" name="modalidad" value="{{ datos_candidata.get('modalidad', '') }}">
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="experiencia" class="form-label">Experiencia:</label>
-                                <input type="text" class="form-control" id="experiencia" name="experiencia" value="{{ datos_candidata['experiencia'] }}">
+                                <input type="text" class="form-control" id="experiencia" name="experiencia" value="{{ datos_candidata.get('experiencia', '') }}">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="cedula" class="form-label">Cédula:</label>
-                                <input type="text" class="form-control" id="cedula" name="cedula" value="{{ datos_candidata['cedula'] }}">
+                                <input type="text" class="form-control" id="cedula" name="cedula" value="{{ datos_candidata.get('cedula', '') }}">
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="estado" class="form-label">Estado:</label>
                                 <select class="form-control" id="estado" name="estado">
-                                    <option value="activa" {% if datos_candidata['estado'] == "activa" %}selected{% endif %}>Activa</option>
-                                    <option value="inactiva" {% if datos_candidata['estado'] == "inactiva" %}selected{% endif %}>Inactiva</option>
+                                    <option value="activa" {% if datos_candidata.get('estado', '') == "activa" %}selected{% endif %}>Activa</option>
+                                    <option value="inactiva" {% if datos_candidata.get('estado', '') == "inactiva" %}selected{% endif %}>Inactiva</option>
                                 </select>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="inscripcion" class="form-label">Inscripción:</label>
-                                <input type="text" class="form-control" id="inscripcion" name="inscripcion" value="{{ datos_candidata['inscripcion'] }}">
+                                <input type="text" class="form-control" id="inscripcion" name="inscripcion" value="{{ datos_candidata.get('inscripcion', '') }}">
                             </div>
                         </div>
                         <button type="submit" name="guardar" class="btn btn-success w-100"><i class="fas fa-save"></i> Guardar Cambios</button>
