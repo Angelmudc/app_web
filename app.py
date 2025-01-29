@@ -1088,7 +1088,7 @@ def reporte_pagos():
 def referencias():
     """
     Busca y edita las referencias laborales y familiares de una candidata.
-    Se busca por Código, Nombre o Cédula.
+    Se busca solo por Código, pero solo se muestran las que tienen Nombre y Cédula.
     """
     datos_candidata = None
     mensaje = ""
@@ -1097,33 +1097,34 @@ def referencias():
         busqueda = request.form.get('busqueda', '').strip()
 
         if not busqueda:
-            mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
+            mensaje = "Por favor, introduce un Código para buscar."
         else:
             datos = obtener_datos_referencias()  # Obtener solo datos necesarios
             for index, fila in enumerate(datos):
                 if len(fila) >= 18:
                     codigo = fila[15].strip().lower()
-                    nombre = fila[1].strip().lower()
+                    nombre = fila[1].strip()
                     cedula = fila[14].strip()
 
-                    if (
-                        busqueda.lower() == codigo or
-                        busqueda.lower() == nombre or
-                        busqueda == cedula
-                    ):
-                        datos_candidata = {
-                            'fila_index': index + 1,
-                            'codigo': fila[15],
-                            'nombre': fila[1],
-                            'cedula': fila[14],
-                            'laborales': fila[11],
-                            'familiares': fila[12]
-                        }
+                    # 🔹 Busca SOLO por Código (Columna P)
+                    if busqueda.lower() == codigo:
+                        # 🔹 Valida que tenga Nombre y Cédula antes de mostrar datos
+                        if nombre and cedula:
+                            datos_candidata = {
+                                'fila_index': index + 1,
+                                'codigo': fila[15],  # Código (Columna P)
+                                'nombre': nombre,  # Nombre (Columna B)
+                                'cedula': cedula,  # Cédula (Columna O)
+                                'laborales': fila[11] if len(fila) > 11 else "No disponible",
+                                'familiares': fila[12] if len(fila) > 12 else "No disponible"
+                            }
+                        else:
+                            mensaje = f"La candidata con código {codigo} no tiene nombre o cédula registrada."
                         break
             else:
-                mensaje = f"No se encontraron resultados para: {busqueda}"
+                mensaje = f"No se encontraron resultados para el código: {busqueda}"
 
-        if 'guardar_btn' in request.form:
+        if 'guardar_btn' in request.form and datos_candidata:
             try:
                 fila_index = int(request.form.get('fila_index', -1))
                 laborales = request.form.get('laborales', '').strip()
