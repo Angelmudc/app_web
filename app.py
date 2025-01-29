@@ -367,18 +367,30 @@ def actualizar_datos(fila_index, nuevos_datos):
 
 def generar_codigo_unico():
     """
-    Genera un código único para las candidatas en formato 'CAN-XXXXXX', permitiendo llegar a CAN-999999 o más.
+    Genera un código único para las candidatas en formato 'CAN-XXXXXX'.
+    Si el código ya existe, incrementa el número hasta encontrar uno disponible.
     """
-    datos = obtener_datos_editar()  # Obtener todos los datos de la hoja de cálculo
-    codigos_existentes = set(fila[0] for fila in datos if len(fila) > 0 and fila[0].startswith("CAN-"))
+    try:
+        # Obtener los datos de la hoja de cálculo
+        datos = obtener_datos_editar()
 
-    # Inicia en 1 y sigue hasta encontrar un número disponible
-    numero = 1
-    while True:
-        nuevo_codigo = f"CAN-{str(numero).zfill(6)}"  # Usa 6 dígitos (CAN-000001 hasta CAN-999999)
-        if nuevo_codigo not in codigos_existentes:  # Verifica si el código ya existe
-            return nuevo_codigo
-        numero += 1
+        # 🔹 Extraer todos los códigos existentes en la Columna P (índice 15)
+        codigos_existentes = set()
+        for fila in datos:
+            if len(fila) > 15 and fila[15].startswith("CAN-"):
+                codigos_existentes.add(fila[15])
+
+        # 🔹 Generar el primer código disponible
+        numero = 1
+        while True:
+            nuevo_codigo = f"CAN-{str(numero).zfill(6)}"  # CAN-000001, CAN-000002...
+            if nuevo_codigo not in codigos_existentes:  # Si no está en la lista, lo usamos
+                return nuevo_codigo
+            numero += 1  # Si ya existe, probamos el siguiente número
+
+    except Exception as e:
+        print(f"Error al generar código único: {e}")
+        return None  # Retorna None si hay un error 
 
 
 # Función para guardar los datos en la hoja de cálculo
@@ -1088,7 +1100,7 @@ def reporte_pagos():
 def referencias():
     """
     Busca y edita las referencias laborales y familiares de una candidata.
-    Se busca solo por Código, pero solo se muestran las que tienen Nombre y Cédula.
+    Se busca por Código, Nombre o Cédula.
     """
     datos_candidata = None
     mensaje = ""
@@ -1097,34 +1109,35 @@ def referencias():
         busqueda = request.form.get('busqueda', '').strip()
 
         if not busqueda:
-            mensaje = "Por favor, introduce un Código para buscar."
+            mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
         else:
             datos = obtener_datos_referencias()  # Obtener solo datos necesarios
             for index, fila in enumerate(datos):
-                if len(fila) >= 18:
-                    codigo = fila[15].strip().lower()
-                    nombre = fila[1].strip()
-                    cedula = fila[14].strip()
+                if len(fila) >= 18:  # Asegurar que la fila tiene las columnas necesarias
+                    codigo = fila[15].strip().lower() if len(fila) > 15 else ""  # Código en columna P
+                    nombre = fila[1].strip().lower()  # Nombre en columna B
+                    cedula = fila[14].strip() if len(fila) > 14 else ""  # Cédula en columna O
 
-                    # 🔹 Busca SOLO por Código (Columna P)
-                    if busqueda.lower() == codigo:
-                        # 🔹 Valida que tenga Nombre y Cédula antes de mostrar datos
-                        if nombre and cedula:
-                            datos_candidata = {
-                                'fila_index': index + 1,
-                                'codigo': fila[15],  # Código (Columna P)
-                                'nombre': nombre,  # Nombre (Columna B)
-                                'cedula': cedula,  # Cédula (Columna O)
-                                'laborales': fila[11] if len(fila) > 11 else "No disponible",
-                                'familiares': fila[12] if len(fila) > 12 else "No disponible"
-                            }
-                        else:
-                            mensaje = f"La candidata con código {codigo} no tiene nombre o cédula registrada."
+                    # 🔹 Buscar por Código, Nombre o Cédula
+                    if (
+                        (busqueda.lower() == codigo and codigo) or  # Si hay código, lo busca
+                        busqueda.lower() == nombre or  # Nombre
+                        busqueda == cedula  # Cédula
+                    ):
+                        datos_candidata = {
+                            'fila_index': index + 1,  # Índice de fila (1-based index)
+                            'codigo': fila[15] if len(fila) > 15 else "No asignado",  # Código (P)
+                            'nombre': fila[1],  # Nombre (B)
+                            'cedula': fila[14] if len(fila) > 14 else "No disponible",  # Cédula (O)
+                            'laborales': fila[11] if len(fila) > 11 else "No disponible",  # Referencias Laborales (L)
+                            'familiares': fila[12] if len(fila) > 12 else "No disponible"  # Referencias Familiares (M)
+                        }
                         break
             else:
-                mensaje = f"No se encontraron resultados para el código: {busqueda}"
+                mensaje = f"No se encontraron resultados para: {busqueda}"
 
-        if 'guardar_btn' in request.form and datos_candidata:
+        # Guardar cambios si se presiona el botón "guardar"
+        if 'guardar_btn' in request.form:
             try:
                 fila_index = int(request.form.get('fila_index', -1))
                 laborales = request.form.get('laborales', '').strip()
