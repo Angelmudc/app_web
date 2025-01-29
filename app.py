@@ -120,34 +120,74 @@ def buscar_en_columna(valor, columna_index):
 
 def buscar_datos_inscripcion(buscar):
     """
-    Función para buscar datos específicos en la hoja de cálculo en el contexto de inscripción.
-    Busca por Código (Columna A), Nombre (Columna B) o Cédula (Columna R), ignorando acentos y mayúsculas/minúsculas.
+    Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
+    Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        # Primero intentamos buscar por Código (Columna A)
-        fila_index, fila = buscar_en_columna(buscar, 0)
+        # 🔹 Buscar primero por Nombre (Columna B, índice 1)
+        fila_index, fila = buscar_en_columna(buscar, 1)  
+
         if not fila:
-            # Si no se encontró por Código, intentamos buscar por Nombre (Columna B)
-            fila_index, fila = buscar_en_columna(buscar, 1)
-        if not fila:
-            # Si no se encontró por Nombre, intentamos buscar por Cédula (Columna R)
-            fila_index, fila = buscar_en_columna(buscar, 17)
+            # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna O, índice 14)
+            fila_index, fila = buscar_en_columna(buscar, 14)
 
         if fila:
+            # Asegurar que la fila tenga las columnas necesarias
+            while len(fila) < 23:  # Completa con valores vacíos hasta la columna W
+                fila.append("")
+
             return {
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[0] if len(fila) > 0 else "",  # Código (A)
+                'codigo': fila[0],  # Código (A)
                 'nombre': fila[1],  # Nombre (B)
-                'cedula': fila[17],  # Cédula (R)
-                'estado': fila[18],  # Estado (S)
-                'inscripcion': fila[19],  # Inscripción (T)
-                'monto': fila[20],  # Monto (U)
-                'fecha': fila[21]  # Fecha (V)
+                'cedula': fila[14],  # Cédula (O)
+                'estado': fila[15],  # Estado (P)
+                'inscripcion': fila[16],  # Inscripción (Q)
+                'monto': fila[17],  # Monto (R)
+                'fecha': fila[18]  # Fecha de Pago (S)
             }
-        return None  # No se encontraron resultados
+        return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
         print(f"Error al buscar datos: {e}")
         return None
+
+def inscribir_candidata(fila_index, cedula, estado, monto, fecha):
+    """
+    Inscribe una candidata y le asigna un código único si no tiene.
+    """
+    try:
+        # Obtener los datos actuales
+        datos = obtener_datos_editar()
+        fila = datos[fila_index - 1]  # Ajustar índice
+
+        # Generar código si no tiene
+        codigo = fila[0] if len(fila) > 0 and fila[0] else generar_codigo_unico()
+
+        # Asegurar que la fila tenga al menos hasta la columna W
+        while len(fila) < 23:
+            fila.append("")
+
+        # Actualizar los valores de inscripción
+        fila[0] = codigo  # Código (A)
+        fila[14] = cedula  # Cédula (O)
+        fila[15] = estado  # Estado (P)
+        fila[16] = "Sí"  # Inscripción (Q)
+        fila[17] = monto  # Monto (R)
+        fila[18] = fecha  # Fecha de Pago (S)
+
+        # Definir el rango y actualizar en la hoja
+        rango = f"Hoja de trabajo!A{fila_index}:W{fila_index}"
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": [fila]}
+        ).execute()
+
+        return f"Candidata inscrita con código {codigo}."
+    except Exception as e:
+        print(f"Error al inscribir candidata: {e}")
+        return "Error al inscribir candidata."
 
 @cache.memoize(timeout=120)
 def obtener_datos_cache():
@@ -332,7 +372,7 @@ def generar_codigo_unico():
     # Inicia en 1 y sigue hasta encontrar un número disponible
     numero = 1
     while True:
-        nuevo_codigo = f"CAN-{str(numero).zfill(6)}"  # Ahora usa 6 dígitos (CAN-000001 hasta CAN-999999)
+        nuevo_codigo = f"CAN-{str(numero).zfill(6)}"  # Usa 6 dígitos (CAN-000001 hasta CAN-999999)
         if nuevo_codigo not in codigos_existentes:  # Verifica si el código ya existe
             return nuevo_codigo
         numero += 1
@@ -837,6 +877,12 @@ def filtrar():
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
+    """
+    Ruta para inscribir candidatas.
+    - 🔹 Busca candidatas por Nombre o Cédula.
+    - 🔹 Si se encuentra, permite inscribirlas y asigna un código único si no tienen.
+    - 🔹 Actualiza los datos en la hoja de cálculo.
+    """
     mensaje = ""
     datos_candidata = None
 
@@ -845,14 +891,15 @@ def inscripcion():
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
-            # Uso de la nueva función para buscar datos
+            
+            # 🔹 Buscar en la hoja de cálculo (solo por Nombre o Cédula)
             datos_candidata = buscar_datos_inscripcion(buscar)
+
             if not datos_candidata:
-                mensaje = "No se encontraron resultados para el nombre, código o cédula proporcionados."
+                mensaje = "No se encontraron resultados para el nombre o cédula proporcionados."
 
         elif accion == 'guardar':
             try:
-                # Capturar los datos del formulario
                 fila_index = int(request.form.get('fila_index', -1))  # Índice de fila (1-based index)
                 cedula = request.form.get('cedula', '').strip()
                 estado = request.form.get('estado', '').strip()
@@ -862,35 +909,9 @@ def inscripcion():
                 if fila_index == -1:
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    # Generar un código único si no existe
-                    datos = obtener_datos_editar()
-                    fila = datos[fila_index - 1]
-                    codigo = fila[0] if len(fila) > 0 and fila[0] else generar_codigo_unico()
+                    # 🔹 Llamar a la función que inscribe y actualiza los datos
+                    mensaje = inscribir_candidata(fila_index, cedula, estado, monto, fecha)
 
-                    # Actualizar los valores en la hoja
-                    rango = f"Hoja de trabajo!A{fila_index}:AA{fila_index}"  # Desde la columna A hasta V
-                    valores = [
-                        codigo,  # Código (A)
-                        fila[1],  # Nombre (B) (Mantener el valor actual)
-                        fila[2] if len(fila) > 2 else "",  # Edad (C)
-                        fila[3] if len(fila) > 3 else "",  # Teléfono (D)
-                        fila[4] if len(fila) > 4 else "",  # Dirección (E)
-                        fila[5] if len(fila) > 5 else "",  # Modalidad (F)
-                        "", "", "", "", "",  # Relleno hasta la columna R
-                        "", "", "", "", "", "", 
-                        cedula,  # Cédula (R)
-                        estado,  # Estado (S)
-                        "si",    # Inscripción (T)
-                        monto,   # Monto (U)
-                        fecha    # Fecha (V)
-                    ]
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=rango,
-                        valueInputOption="RAW",
-                        body={"values": [valores]}
-                    ).execute()
-                    mensaje = f"Datos actualizados correctamente. Código asignado: {codigo}"
             except Exception as e:
                 mensaje = f"Error al guardar los datos: {str(e)}"
 
