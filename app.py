@@ -728,33 +728,32 @@ def editar():
         if "buscar_btn" in request.form:
             # Capturar el valor de búsqueda desde el formulario
             busqueda = request.form.get("busqueda", "").strip().lower()
-            fila_index = -1
 
-            # 🔹 Buscar primero por Cédula (Columna O, índice 14)
-            fila_index, fila = buscar_en_columna(busqueda, 14)
-            if not fila:
-                # 🔹 Buscar por Nombre (Columna B, índice 1)
-                fila_index, fila = buscar_en_columna(busqueda, 1)
+            # 🔹 Obtener los datos de la hoja de cálculo
+            datos = obtener_datos_editar()
 
-            if fila:
-                # Asegurar que la fila tenga suficientes columnas
-                while len(fila) < 25:
-                    fila.append("")
+            for index, fila in enumerate(datos):
+                if len(fila) >= 15:  # Asegurar que la fila tenga suficientes columnas
+                    nombre = fila[1].strip().lower()  # Columna B: Nombre
+                    cedula = fila[14].strip()  # Columna O: Cédula
 
-                datos_candidata = {
-                    'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                    'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
-                    'nombre': fila[1],   # Nombre (Columna B)
-                    'edad': fila[2],     # Edad (Columna C)
-                    'telefono': fila[3], # Teléfono (Columna D)
-                    'direccion': fila[4],# Dirección (Columna E)
-                    'modalidad': fila[5],# Modalidad (Columna F)
-                    'experiencia': fila[9], # Experiencia (Columna J)
-                    'cedula': fila[14],  # Cédula (Columna O)
-                    'estado': fila[18],  # Estado (Columna S)
-                    'inscripcion': fila[19] # Inscripción (Columna T)
-                }
-            else:
+                    if busqueda == nombre or busqueda == cedula:  # Comparar sin código
+                        datos_candidata = {
+                            'fila_index': index + 1,  # Índice de fila (1-based index)
+                            'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
+                            'nombre': fila[1],   # Nombre (Columna B)
+                            'edad': fila[2],     # Edad (Columna C)
+                            'telefono': fila[3], # Teléfono (Columna D)
+                            'direccion': fila[4],# Dirección (Columna E)
+                            'modalidad': fila[5],# Modalidad (Columna F)
+                            'experiencia': fila[9], # Experiencia (Columna J)
+                            'cedula': fila[14],  # Cédula (Columna O)
+                            'estado': fila[18],  # Estado (Columna S)
+                            'inscripcion': fila[19] # Inscripción (Columna T)
+                        }
+                        break  # Detener la búsqueda al encontrar la primera coincidencia
+
+            if not datos_candidata:
                 mensaje = f"No se encontraron datos para: {busqueda}"
 
         elif "guardar" in request.form:
@@ -786,7 +785,6 @@ def editar():
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
     )
-
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
     resultados = []
