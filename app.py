@@ -1065,16 +1065,16 @@ def referencias():
             for index, fila in enumerate(datos):
                 if len(fila) >= 12:  # Asegurar que tenga suficientes columnas
                     nombre = fila[0].strip().lower()  # Columna B (Nombre)
-                    cedula = fila[11].strip()  # Columna M (Cédula)
+                    cedula = fila[14].strip()  # Columna M (Cédula)
 
                     # 🔹 Solo busca por nombre o cédula (NO por código)
                     if busqueda.lower() == nombre or busqueda == cedula:
                         datos_candidata = {
                             'fila_index': index + 1,  # 🔹 Índice 1-based
                             'nombre': fila[0],       # Columna B (Nombre)
-                            'cedula': fila[11],      # Columna M (Cédula)
-                            'laborales': fila[9],    # Columna L (Referencias Laborales)
-                            'familiares': fila[10]   # Columna M (Referencias Familiares)
+                            'cedula': fila[14],      # Columna M (Cédula)
+                            'laborales': fila[10],    # Columna L (Referencias Laborales)
+                            'familiares': fila[11]   # Columna M (Referencias Familiares)
                         }
                         break
             else:
