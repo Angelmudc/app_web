@@ -82,7 +82,6 @@ def buscar_en_columna(valor, columna_index):
 def actualizar_datos_editar(fila_index, nuevos_datos):
     """
     Actualiza solo las columnas específicas para la edición en la hoja de cálculo.
-    ❌ No edita Código (P), Referencias (L y M) ni Inscripción (R).
     """
     try:
         columnas = {
@@ -97,17 +96,20 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
         }
 
         for campo, valor in nuevos_datos.items():
-            rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=rango,
-                valueInputOption="RAW",
-                body={"values": [[valor]]}
-            ).execute()
+            if campo in columnas:  # Asegurar que el campo está en la lista
+                rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
+                print(f"🔹 Actualizando {campo} en {rango} con valor '{valor}'")  # Debug
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=rango,
+                    valueInputOption="RAW",
+                    body={"values": [[valor]]}
+                ).execute()
 
+        print(f"✅ Datos actualizados correctamente en la fila {fila_index}")
         return True
     except Exception as e:
-        print(f"Error al actualizar datos: {e}")
+        print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
 
 def obtener_datos_referencias():
