@@ -264,7 +264,7 @@ def actualizar_dato_en_columna(fila_index, columna_index, nuevo_valor):
         if fila_index < 0 or columna_index < 0:
             raise ValueError("Índices de fila o columna no válidos.")
 
-        rango = f"Hoja de trabajo!{chr(65 + columna_index)}{fila_index + 1}"  # Convierte índice en letra de columna
+        rango = f"Nueva hoja!{chr(65 + columna_index)}{fila_index + 1}"  # Convierte índice en letra de columna
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
