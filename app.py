@@ -119,7 +119,7 @@ def obtener_datos_referencias():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!B:M"  # 🔹 Solo columnas relevantes
+            range="Nueva hoja!A:Q"  # 🔹 Solo columnas relevantes
         ).execute()
         return hoja.get('values', [])
     except Exception as e:
@@ -1063,29 +1063,34 @@ def referencias():
             # 🔹 Obtener datos solo de las columnas necesarias
             datos = obtener_datos_referencias()
 
-            # 🔹 DEBUG: Imprimir datos obtenidos de la hoja
-            print("🔹 Datos obtenidos de la hoja de cálculo:")
+            # 🔹 DEBUG: Imprimir datos obtenidos
+            print("🔹 Datos obtenidos de la hoja:")
             for fila in datos:
-                print(fila)  # Imprimir cada fila para ver qué está trayendo
+                print(fila)
+
+            busqueda_normalizada = normalizar_texto(busqueda)  # 🔹 Normalizamos la búsqueda
 
             for index, fila in enumerate(datos):
                 if len(fila) >= 15:  # Asegurar que tenga suficientes columnas
-                    nombre = normalizar_texto(fila[1])  # Columna B (Nombre)
+                    nombre_original = fila[1]  # Columna B (Nombre)
                     cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O (Cédula)
 
-                    # 🔹 DEBUG: Mostrar cómo se están comparando los datos
-                    print(f"Comparando búsqueda: '{busqueda.lower()}' con Nombre: '{nombre}', Cédula: '{cedula}'")
+                    # 🔹 Normalizar el nombre para comparar correctamente
+                    nombre_normalizado = normalizar_texto(nombre_original)
 
-                    # Permitir coincidencias exactas
-                    if busqueda.lower() == nombre or busqueda == cedula:
+                    # 🔹 DEBUG: Mostrar la comparación exacta
+                    print(f"Comparando búsqueda: '{busqueda_normalizada}' con Nombre: '{nombre_normalizado}', Cédula: '{cedula}'")
+
+                    # 🔹 Permitir coincidencias más flexibles
+                    if busqueda_normalizada in nombre_normalizado or busqueda == cedula:
                         datos_candidata = {
                             'fila_index': index + 1,  # 🔹 Índice 1-based
-                            'nombre': fila[1],       # Columna B (Nombre)
+                            'nombre': nombre_original,       # Columna B (Nombre)
                             'cedula': fila[14],      # Columna O (Cédula)
                             'laborales': fila[11],   # Columna L (Referencias Laborales)
                             'familiares': fila[12]   # Columna M (Referencias Familiares)
                         }
-                        print(f"🔹 Candidata encontrada: {datos_candidata}")  # DEBUG
+                        print(f"✅ Candidata encontrada: {datos_candidata}")  # DEBUG
                         break
             
             if not datos_candidata:
