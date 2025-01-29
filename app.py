@@ -131,7 +131,7 @@ def obtener_datos_editar():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!B:R"  # 🔹 Solo columnas B-R (Nombre - Inscripción)
+            range="Nueva hoja!A:Y"  # 🔹 Solo columnas B-R (Nombre - Inscripción)
         ).execute()
         return hoja.get("values", [])
     except Exception as e:
@@ -726,39 +726,48 @@ def editar():
 
     if request.method == "POST":
         if "buscar_btn" in request.form:
-            # Capturar el valor de búsqueda desde el formulario
             busqueda = request.form.get("busqueda", "").strip().lower()
-
-            # 🔹 Obtener los datos de la hoja de cálculo
+            fila_index = None
             datos = obtener_datos_editar()
 
-            for index, fila in enumerate(datos):
-                if len(fila) >= 15:  # Asegurar que la fila tenga suficientes columnas
-                    nombre = fila[1].strip().lower()  # Columna B: Nombre
-                    cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O: Cédula
+            # 🔹 DEBUG: Imprime todas las filas para verificar qué datos están llegando
+            print("🔹 Datos obtenidos de la hoja:")
+            for fila in datos:
+                print(fila)
 
-                    if busqueda == nombre or busqueda == cedula:  # Comparar sin código
+            # 🔹 Buscar por nombre o cédula con normalización
+            for index, fila in enumerate(datos):
+                if len(fila) > 14:  # Asegurar que haya suficientes columnas
+                    nombre = normalizar_texto(fila[1])  # Nombre (Columna B)
+                    cedula = fila[14].strip()  # Cédula (Columna O)
+
+                    # 🔹 DEBUG: Mostrar cómo se están comparando los datos
+                    print(f"Comparando: '{busqueda}' con Nombre: '{nombre}', Cédula: '{cedula}'")
+
+                    # Permitir coincidencias flexibles
+                    if busqueda in nombre or busqueda == cedula:
+                        fila_index = index + 1  # Ajuste para índices 1-based
                         datos_candidata = {
-                            'fila_index': index + 1,  # Índice de fila (1-based index)
+                            'fila_index': fila_index,
                             'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
-                            'nombre': fila[1] if len(fila) > 1 else "",
+                            'nombre': fila[1],
                             'edad': fila[2] if len(fila) > 2 else "",
                             'telefono': fila[3] if len(fila) > 3 else "",
                             'direccion': fila[4] if len(fila) > 4 else "",
                             'modalidad': fila[5] if len(fila) > 5 else "",
                             'experiencia': fila[9] if len(fila) > 9 else "",
-                            'cedula': fila[14] if len(fila) > 14 else "",
+                            'cedula': fila[14],
                             'estado': fila[18] if len(fila) > 18 else "",
                             'inscripcion': fila[19] if len(fila) > 19 else ""
                         }
-                        break  # Detener la búsqueda al encontrar la primera coincidencia
+                        break
 
             if not datos_candidata:
                 mensaje = f"No se encontraron datos para: {busqueda}"
-
+        
         elif "guardar" in request.form:
             try:
-                fila_index = int(request.form.get("fila_index", -1))  # Índice de fila (1-based index)
+                fila_index = int(request.form.get("fila_index", -1))
                 if fila_index < 1:
                     mensaje = "Error al determinar la fila para actualizar."
                 else:
@@ -770,10 +779,10 @@ def editar():
                         "modalidad": request.form.get("modalidad", "").strip(),
                         "experiencia": request.form.get("experiencia", "").strip(),
                         "cedula": request.form.get("cedula", "").strip(),
-                        "estado": request.form.get("estado", "").strip()
+                        "estado": request.form.get("estado", "").strip(),
+                        "inscripcion": request.form.get("inscripcion", "").strip()
                     }
 
-                    # 🔹 Llamar a la función para actualizar la hoja de cálculo
                     if actualizar_datos_editar(fila_index, nuevos_datos):
                         mensaje = "Los datos se han actualizado correctamente."
                     else:
@@ -783,7 +792,9 @@ def editar():
                 mensaje = f"Error al actualizar los datos: {str(e)}"
 
     return render_template(
-        "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
+        "editar.html",
+        datos_candidata=datos_candidata,
+        mensaje=mensaje
     )
 
 @app.route('/filtrar', methods=['GET', 'POST'])
