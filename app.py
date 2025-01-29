@@ -298,9 +298,9 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
     datos = obtener_datos()
     for fila_index, fila in enumerate(datos):
         if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
-            codigo = fila[0].strip().lower()
+            codigo = fila[15].strip().lower()
             nombre = fila[1].strip().lower()
-            cedula = fila[17].strip()
+            cedula = fila[14].strip()
             if (
                 busqueda.lower() == codigo or
                 busqueda.lower() == nombre or
@@ -428,7 +428,7 @@ ef buscar_datos_inscripcion(buscar):
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
                 'codigo': fila[15],      # Código (P)
                 'nombre': fila[1],       # Nombre (B)
-                'cedula': fila[17],      # Cédula (R)
+                'cedula': fila[14],      # Cédula (R)
                 'estado': fila[18],      # Estado (S)
                 'inscripcion': fila[19], # Inscripción (T)
                 'experiencia': fila[9],  # Áreas de experiencia (J)
@@ -601,7 +601,7 @@ def buscar_candidatas_por_texto(busqueda):
         if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
             codigo = normalizar_texto(fila[15])  # Columna O
             nombre = normalizar_texto(fila[1])  # Columna B
-            cedula = fila[17]  # Columna R (sin normalizar)
+            cedula = fila[14]  # Columna R (sin normalizar)
 
             # Verifica si la búsqueda coincide de forma parcial
             if (
