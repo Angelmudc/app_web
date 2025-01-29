@@ -406,7 +406,7 @@ def buscar_candidata(valor):
                 return fila
     return None
 
-ef buscar_datos_inscripcion(buscar):
+def buscar_datos_inscripcion(buscar):
     """
     Busca candidatas por Nombre (Columna B) o Cédula (Columna R).
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
