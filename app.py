@@ -433,7 +433,7 @@ ef buscar_datos_inscripcion(buscar):
                 'inscripcion': fila[19], # Inscripción (T)
                 'experiencia': fila[9],  # Áreas de experiencia (J)
                 'monto': fila[20],       # Monto (U)
-                'fecha_pago': fila[21]   # Fecha de Pago (V)
+                'fecha_pago': fila[21],   # Fecha de Pago (V)
             }
 
         return None  # Si no se encuentran resultados, devuelve None
