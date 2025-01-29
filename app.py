@@ -735,21 +735,21 @@ def editar():
             for index, fila in enumerate(datos):
                 if len(fila) >= 15:  # Asegurar que la fila tenga suficientes columnas
                     nombre = fila[1].strip().lower()  # Columna B: Nombre
-                    cedula = fila[14].strip()  # Columna O: Cédula
+                    cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O: Cédula
 
                     if busqueda == nombre or busqueda == cedula:  # Comparar sin código
                         datos_candidata = {
                             'fila_index': index + 1,  # Índice de fila (1-based index)
                             'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
-                            'nombre': fila[1],   # Nombre (Columna B)
-                            'edad': fila[2],     # Edad (Columna C)
-                            'telefono': fila[3], # Teléfono (Columna D)
-                            'direccion': fila[4],# Dirección (Columna E)
-                            'modalidad': fila[5],# Modalidad (Columna F)
-                            'experiencia': fila[9], # Experiencia (Columna J)
-                            'cedula': fila[14],  # Cédula (Columna O)
-                            'estado': fila[18],  # Estado (Columna S)
-                            'inscripcion': fila[19] # Inscripción (Columna T)
+                            'nombre': fila[1] if len(fila) > 1 else "",
+                            'edad': fila[2] if len(fila) > 2 else "",
+                            'telefono': fila[3] if len(fila) > 3 else "",
+                            'direccion': fila[4] if len(fila) > 4 else "",
+                            'modalidad': fila[5] if len(fila) > 5 else "",
+                            'experiencia': fila[9] if len(fila) > 9 else "",
+                            'cedula': fila[14] if len(fila) > 14 else "",
+                            'estado': fila[18] if len(fila) > 18 else "",
+                            'inscripcion': fila[19] if len(fila) > 19 else ""
                         }
                         break  # Detener la búsqueda al encontrar la primera coincidencia
 
@@ -785,6 +785,7 @@ def editar():
     return render_template(
         "editar.html", datos_candidata=datos_candidata, mensaje=mensaje
     )
+
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
     resultados = []
