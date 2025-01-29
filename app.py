@@ -1062,22 +1062,33 @@ def referencias():
         else:
             # 🔹 Obtener datos solo de las columnas necesarias
             datos = obtener_datos_referencias()
+
+            # 🔹 DEBUG: Imprimir datos obtenidos de la hoja
+            print("🔹 Datos obtenidos de la hoja de cálculo:")
+            for fila in datos:
+                print(fila)  # Imprimir cada fila para ver qué está trayendo
+
             for index, fila in enumerate(datos):
                 if len(fila) >= 15:  # Asegurar que tenga suficientes columnas
                     nombre = normalizar_texto(fila[1])  # Columna B (Nombre)
                     cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O (Cédula)
 
-                    # 🔹 Solo busca por nombre o cédula (NO por código)
-                    if normalizar_texto(busqueda) == nombre or busqueda == cedula:
+                    # 🔹 DEBUG: Mostrar cómo se están comparando los datos
+                    print(f"Comparando búsqueda: '{busqueda.lower()}' con Nombre: '{nombre}', Cédula: '{cedula}'")
+
+                    # Permitir coincidencias exactas
+                    if busqueda.lower() == nombre or busqueda == cedula:
                         datos_candidata = {
                             'fila_index': index + 1,  # 🔹 Índice 1-based
                             'nombre': fila[1],       # Columna B (Nombre)
                             'cedula': fila[14],      # Columna O (Cédula)
-                            'laborales': fila[11],    # Columna L (Referencias Laborales)
+                            'laborales': fila[11],   # Columna L (Referencias Laborales)
                             'familiares': fila[12]   # Columna M (Referencias Familiares)
                         }
+                        print(f"🔹 Candidata encontrada: {datos_candidata}")  # DEBUG
                         break
-            else:
+            
+            if not datos_candidata:
                 mensaje = f"No se encontraron resultados para: {busqueda}"
 
         # 🔹 Guardar cambios si se presiona el botón "guardar"
