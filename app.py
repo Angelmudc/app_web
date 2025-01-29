@@ -1100,7 +1100,7 @@ def reporte_pagos():
 def referencias():
     """
     Busca y edita las referencias laborales y familiares de una candidata.
-    Se busca por Código, Nombre o Cédula.
+    Se busca solo por Nombre o Cédula.
     """
     datos_candidata = None
     mensaje = ""
@@ -1109,24 +1109,18 @@ def referencias():
         busqueda = request.form.get('busqueda', '').strip()
 
         if not busqueda:
-            mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
+            mensaje = "Por favor, introduce un Nombre o Cédula para buscar."
         else:
             datos = obtener_datos_referencias()  # Obtener solo datos necesarios
             for index, fila in enumerate(datos):
                 if len(fila) >= 18:  # Asegurar que la fila tiene las columnas necesarias
-                    codigo = fila[15].strip().lower() if len(fila) > 15 else ""  # Código en columna P
                     nombre = fila[1].strip().lower()  # Nombre en columna B
                     cedula = fila[14].strip() if len(fila) > 14 else ""  # Cédula en columna O
 
-                    # 🔹 Buscar por Código, Nombre o Cédula
-                    if (
-                        (busqueda.lower() == codigo and codigo) or  # Si hay código, lo busca
-                        busqueda.lower() == nombre or  # Nombre
-                        busqueda == cedula  # Cédula
-                    ):
+                    # 🔹 Buscar solo por Nombre o Cédula
+                    if busqueda.lower() == nombre or busqueda == cedula:
                         datos_candidata = {
                             'fila_index': index + 1,  # Índice de fila (1-based index)
-                            'codigo': fila[15] if len(fila) > 15 else "No asignado",  # Código (P)
                             'nombre': fila[1],  # Nombre (B)
                             'cedula': fila[14] if len(fila) > 14 else "No disponible",  # Cédula (O)
                             'laborales': fila[11] if len(fila) > 11 else "No disponible",  # Referencias Laborales (L)
