@@ -151,41 +151,40 @@ def buscar_datos_inscripcion(buscar):
         print(f"Error al buscar datos: {e}")
         return None
 
-def inscribir_candidata(fila_index, cedula, estado, monto, fecha):
+def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
     """
-    Inscribe una candidata si su código (Columna A) está vacío.
-    Solo busca por Nombre (B) y Cédula (R).
+    Inscribe una candidata solo si la columna Código (P) está vacía y asigna un código único.
     """
     try:
-        datos = obtener_datos()
+        # Obtener los datos actuales
+        datos = obtener_datos_editar()
         fila = datos[fila_index - 1]  # Ajustar índice
 
-        # 📌 Si ya tiene código, no modificar nada
-        if fila[0]:  
-            return f"La candidata ya tiene un código asignado: {fila[0]}."
+        # Si la columna Código (P) ya tiene un valor, no hacer nada
+        if len(fila) > 15 and fila[15].strip():
+            return "La candidata ya tiene un código asignado."
 
-        # 🔹 Generar código único
+        # Generar código único solo si la columna P (Código) está vacía
         codigo = generar_codigo_unico()
 
-        # 🔹 Asegurar que la fila tenga al menos hasta la columna AA
-        while len(fila) < 27:
+        # Asegurar que la fila tenga al menos hasta la columna Y
+        while len(fila) < 25:
             fila.append("")
 
-        # 🔹 Insertar los datos
-        fila[0] = codigo  # Código (A)
-        fila[17] = cedula  # Cédula (R)
-        fila[18] = estado  # Estado (S)
-        fila[19] = "Sí"    # Inscripción (T)
-        fila[20] = monto   # Monto (U)
-        fila[21] = fecha   # Fecha de inscripción (V)
+        # Actualizar los valores en las columnas correctas
+        fila[15] = codigo  # *Código (P)*
+        fila[16] = estado  # *Estado (Q)*
+        fila[17] = "Sí"  # *Inscripción (R)*
+        fila[18] = monto  # *Monto (S)*
+        fila[19] = fecha_inscripcion  # *Fecha de inscripción (T)*
 
-        # 🔹 Guardar en la hoja "Nueva hoja"
-        rango = f"Nueva hoja!A{fila_index}:AA{fila_index}"
+        # Definir el rango y actualizar en la hoja
+        rango = f"Nueva hoja!P{fila_index}:Y{fila_index}"
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
             valueInputOption="RAW",
-            body={"values": [fila]}
+            body={"values": [fila[15:25]]}  # Solo enviar las columnas de P a Y
         ).execute()
 
         return f"Candidata inscrita con código {codigo}."
