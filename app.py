@@ -18,7 +18,7 @@ from google.oauth2.service_account import Credentials
 # Configuración de la API de Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg'
-RANGE_NAME = 'Nueva hoja!A1:X'
+RANGE_NAME = 'Nueva hoja!A1:Y'
 
 # Cargar credenciales desde la variable de entorno
 clave1 = json.loads(os.environ.get("CLAVE1_JSON"))
@@ -74,7 +74,7 @@ def obtener_datos_generales():
     # Obtener solo columnas generales necesarias para editar
     hoja = service.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, 
-        range="Nueva hoja!A:X"
+        range="Nueva hoja!A:Y"
     ).execute()
     return hoja.get('values', [])
 
@@ -82,7 +82,7 @@ def obtener_datos_referencias():
     # Obtener solo columnas necesarias para referencias
     hoja = service.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, 
-        range="Nueva hoja!A:X"
+        range="Nueva hoja!A:Y"
     ).execute()
     return hoja.get('values', [])
 
@@ -93,7 +93,7 @@ def obtener_datos_editar():
         sheet = service.spreadsheets()
         result = sheet.values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:X"
+            range="Nueva hoja!A:Y"
         ).execute()
         datos = result.get('values', [])
         return datos
@@ -153,30 +153,34 @@ def buscar_datos_inscripcion(buscar):
 
 def inscribir_candidata(fila_index, cedula, estado, monto, fecha):
     """
-    Inscribe una candidata y le asigna un código único si no tiene.
+    Inscribe una candidata si su código (Columna A) está vacío.
+    Solo busca por Nombre (B) y Cédula (R).
     """
     try:
-        # Obtener los datos actuales
-        datos = obtener_datos_editar()
+        datos = obtener_datos()
         fila = datos[fila_index - 1]  # Ajustar índice
 
-        # Generar código si no tiene
-        codigo = fila[0] if len(fila) > 0 and fila[0] else generar_codigo_unico()
+        # 📌 Si ya tiene código, no modificar nada
+        if fila[0]:  
+            return f"La candidata ya tiene un código asignado: {fila[0]}."
 
-        # Asegurar que la fila tenga al menos hasta la columna W
-        while len(fila) < 23:
+        # 🔹 Generar código único
+        codigo = generar_codigo_unico()
+
+        # 🔹 Asegurar que la fila tenga al menos hasta la columna AA
+        while len(fila) < 27:
             fila.append("")
 
-        # Actualizar los valores de inscripción
+        # 🔹 Insertar los datos
         fila[0] = codigo  # Código (A)
-        fila[14] = cedula  # Cédula (O)
-        fila[15] = estado  # Estado (P)
-        fila[16] = "Sí"  # Inscripción (Q)
-        fila[17] = monto  # Monto (R)
-        fila[18] = fecha  # Fecha de Pago (S)
+        fila[17] = cedula  # Cédula (R)
+        fila[18] = estado  # Estado (S)
+        fila[19] = "Sí"    # Inscripción (T)
+        fila[20] = monto   # Monto (U)
+        fila[21] = fecha   # Fecha de inscripción (V)
 
-        # Definir el rango y actualizar en la hoja
-        rango = f"Nueva hoja!A{fila_index}:X{fila_index}"
+        # 🔹 Guardar en la hoja "Nueva hoja"
+        rango = f"Nueva hoja!A{fila_index}:AA{fila_index}"
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -308,7 +312,7 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
 
 def actualizar_datos(fila_index, nuevos_datos):
     try:
-        rango = f"Nueva hoja!A{fila_index + 1}:X{fila_index + 1}"  # Actualiza solo en la fila buscada
+        rango = f"Nueva hoja!A{fila_index + 1}:Y{fila_index + 1}"  # Actualiza solo en la fila buscada
         fila_actual = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=rango
@@ -382,7 +386,7 @@ def generar_codigo_unico():
 def guardar_datos_en_hoja():
     try:
         # Construimos la estructura de los datos a enviar
-        rango = f"Nueva hoja!A1:X"
+        rango = f"Nueva hoja!A1:Y"
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -524,7 +528,7 @@ def calcular_porcentaje_y_guardar(codigo, monto_total):
 
 def actualizar_datos_porciento(fila_index, monto_total, fecha_pago, porciento, calificacion):
     try:
-        rango = f"Nueva hoja!A{fila_index + 1}:X{fila_index + 1}"
+        rango = f"Nueva hoja!A{fila_index + 1}:Y{fila_index + 1}"
         datos = obtener_datos()
 
         # Copiar la fila existente y actualizar los valores en las columnas específicas
@@ -561,7 +565,7 @@ def insertar_datos_en_hoja(fila_datos):
     """
     try:
         # Especifica el rango donde se insertará (al final de la hoja)
-        rango = "Nueva hoja!A:X"  # Ajusta según el rango de tu hoja
+        rango = "Nueva hoja!A:Y"  # Ajusta según el rango de tu hoja
         body = {"values": [fila_datos]}  # Convierte la fila en el formato esperado por la API
 
         # Llamada a la API para añadir datos al final
