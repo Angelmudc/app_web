@@ -18,7 +18,7 @@ from google.oauth2.service_account import Credentials
 # Configuración de la API de Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg'
-RANGE_NAME = 'Hoja de trabajo!A1:X'
+RANGE_NAME = 'Nueva hoja!A1:X'
 
 # Cargar credenciales desde la variable de entorno
 clave1 = json.loads(os.environ.get("CLAVE1_JSON"))
@@ -74,7 +74,7 @@ def obtener_datos_generales():
     # Obtener solo columnas generales necesarias para editar
     hoja = service.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, 
-        range="Hoja de trabajo!A:AA"
+        range="Nueva hoja!A:X"
     ).execute()
     return hoja.get('values', [])
 
@@ -82,7 +82,7 @@ def obtener_datos_referencias():
     # Obtener solo columnas necesarias para referencias
     hoja = service.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, 
-        range="Hoja de trabajo!A:AA"
+        range="Nueva hoja!A:X"
     ).execute()
     return hoja.get('values', [])
 
@@ -93,7 +93,7 @@ def obtener_datos_editar():
         sheet = service.spreadsheets()
         result = sheet.values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Hoja de trabajo!A:AA"
+            range="Nueva hoja!A:X"
         ).execute()
         datos = result.get('values', [])
         return datos
@@ -176,7 +176,7 @@ def inscribir_candidata(fila_index, cedula, estado, monto, fecha):
         fila[18] = fecha  # Fecha de Pago (S)
 
         # Definir el rango y actualizar en la hoja
-        rango = f"Hoja de trabajo!A{fila_index}:W{fila_index}"
+        rango = f"Nueva hoja!A{fila_index}:X{fila_index}"
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -308,7 +308,7 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
 
 def actualizar_datos(fila_index, nuevos_datos):
     try:
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"  # Actualiza solo en la fila buscada
+        rango = f"Nueva hoja!A{fila_index + 1}:X{fila_index + 1}"  # Actualiza solo en la fila buscada
         fila_actual = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=rango
@@ -382,7 +382,7 @@ def generar_codigo_unico():
 def guardar_datos_en_hoja():
     try:
         # Construimos la estructura de los datos a enviar
-        rango = f"Hoja de trabajo!A1:AA"
+        rango = f"Nueva hoja!A1:X"
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
@@ -505,7 +505,7 @@ def calcular_porcentaje_y_guardar(codigo, monto_total):
         fila_actual[26] = calificacion  # Columna AA: Calificación
 
         # Definir el rango de la fila para actualizar
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"
+        rango = f"Nueva hoja!A{fila_index + 1}:X{fila_index + 1}"
 
         # Enviar los datos actualizados a la hoja de cálculo
         service.spreadsheets().values().update(
@@ -524,7 +524,7 @@ def calcular_porcentaje_y_guardar(codigo, monto_total):
 
 def actualizar_datos_porciento(fila_index, monto_total, fecha_pago, porciento, calificacion):
     try:
-        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"
+        rango = f"Nueva hoja!A{fila_index + 1}:X{fila_index + 1}"
         datos = obtener_datos()
 
         # Copiar la fila existente y actualizar los valores en las columnas específicas
@@ -561,7 +561,7 @@ def insertar_datos_en_hoja(fila_datos):
     """
     try:
         # Especifica el rango donde se insertará (al final de la hoja)
-        rango = "Hoja de trabajo!A:AA"  # Ajusta según el rango de tu hoja
+        rango = "Nueva hoja!A:X"  # Ajusta según el rango de tu hoja
         body = {"values": [fila_datos]}  # Convierte la fila en el formato esperado por la API
 
         # Llamada a la API para añadir datos al final
@@ -784,7 +784,7 @@ def obtener_datos_editar():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Hoja de trabajo!A:AA"
+            range="Nueva hoja!A:X"
         ).execute()
 
         return hoja.get("values", [])
