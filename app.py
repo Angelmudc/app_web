@@ -239,7 +239,7 @@ def obtener_datos_filtrar():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!E:R"  # Ajusta el rango si es necesario
+            range="Nueva hoja!B:Y"  # Ajusta el rango si es necesario
         ).execute()
         valores = hoja.get("values", [])
         
@@ -265,7 +265,7 @@ def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
         resultados = []
 
         for fila in datos:
-            if len(fila) < 6:  # Asegurar que haya suficientes columnas
+            if len(fila) < 16:  # Asegurar que haya suficientes columnas
                 continue
 
             # 🔹 Extraer valores y normalizar
