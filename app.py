@@ -877,7 +877,7 @@ def filtrar():
         areas_experiencia = request.form.get('areas_experiencia', '').strip().lower()
 
         # Obtiene los datos actualizados de la hoja
-        datos = obtener_datos()
+        datos = obtener_datos_filtrar()
 
         # Itera sobre las filas y filtra según los criterios
         for fila in datos:
