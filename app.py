@@ -879,7 +879,7 @@ def filtrar():
 
         # Itera sobre las filas y filtra según los criterios
         for fila in datos:
-            if len(fila) < 19:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
+            if len(fila) < 18:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
                 continue
 
             # Normalizar valores de la fila
@@ -890,8 +890,9 @@ def filtrar():
             inscripcion_fila = fila[17].strip().lower()  # Columna R: Inscripción
 
             # Verificar si la candidata está inscrita
-            if inscripcion_fila.strip().lower() != "sí":
-            continue  # Solo mostrar candidatas inscritas
+            if inscripcion_fila != "sí":
+    print("Solo mostrar candidatas inscritas")  # ✅ Correcto (indentado)
+    continue
 
             # Verificar si la fila cumple los criterios
             cumple_ciudad = not ciudad or ciudad in ciudad_fila  # Coincidencia parcial en ciudad
