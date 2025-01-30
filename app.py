@@ -865,8 +865,20 @@ def editar():
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
-    resultados = []  
+    resultados = []
     mensaje = None  
+
+    try:
+        datos = obtener_datos_filtrar()  
+        print(f"🔍 Datos obtenidos ({len(datos)} filas): {datos}")  # DEPURACIÓN
+
+        if not datos:
+            mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
+            return render_template('filtrar.html', resultados=[], mensaje=mensaje)
+
+    except Exception as e:
+        mensaje = f"❌ Error al obtener los datos: {str(e)}"
+        return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
     if request.method == 'POST':
         ciudad = request.form.get('ciudad', '').strip().lower()
@@ -874,49 +886,37 @@ def filtrar():
         experiencia_anos = request.form.get('experiencia_anos', '').strip().lower()
         areas_experiencia = request.form.get('areas_experiencia', '').strip().lower()
 
-        try:
-            datos = obtener_datos_filtrar()  
-            print(f"🔍 Datos obtenidos ({len(datos)} filas): {datos}")  
+        for fila in datos:
+            if len(fila) < 16:  
+                continue
 
-            if not datos:
-                mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
-                return render_template('filtrar.html', resultados=[], mensaje=mensaje)
+            ciudad_fila = fila[4].strip().lower()  # Columna E: Dirección
+            modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad
+            experiencia_anos_fila = fila[8].strip().lower()  # Columna I: Años de experiencia
+            areas_experiencia_fila = fila[11].strip().lower()  # Columna L: Experiencia
+            inscripcion_fila = fila[15].strip()  # Columna P: Inscripción
 
-            for fila in datos:
-                if len(fila) < 16:  
-                    continue
+            if not inscripcion_fila:
+                continue  
 
-                # 📌 Corrigiendo los índices según la imagen
-                ciudad_fila = fila[4].strip().lower()  # Columna E: Dirección
-                modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad
-                experiencia_anos_fila = fila[8].strip().lower()  # 🔹 Columna I: Años de experiencia ✅ CORREGIDO
-                areas_experiencia_fila = fila[11].strip().lower()  # Columna L: Experiencia
-                inscripcion_fila = fila[15].strip()  # Columna P: Inscripción
+            cumple_ciudad = not ciudad or ciudad in ciudad_fila
+            cumple_modalidad = not modalidad or modalidad in modalidad_fila
+            cumple_experiencia = not experiencia_anos or experiencia_anos in experiencia_anos_fila
+            cumple_areas_experiencia = not areas_experiencia or areas_experiencia in areas_experiencia_fila
 
-                if not inscripcion_fila:
-                    continue  
-
-                cumple_ciudad = not ciudad or ciudad in ciudad_fila
-                cumple_modalidad = not modalidad or modalidad in modalidad_fila
-                cumple_experiencia = not experiencia_anos or experiencia_anos in experiencia_anos_fila
-                cumple_areas_experiencia = not areas_experiencia or areas_experiencia in areas_experiencia_fila
-
-                if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
-                    resultados.append({
-                        'codigo': fila[0] if len(fila) > 0 else "",  
-                        'nombre': fila[1],  
-                        'edad': fila[2] if len(fila) > 2 else "",  
-                        'telefono': fila[3] if len(fila) > 3 else "",  
-                        'direccion': fila[4],  
-                        'modalidad': fila[5],  
-                        'experiencia_anos': fila[8],  # 🔹 Ahora bien posicionado ✅
-                        'areas_experiencia': fila[11],  
-                        'cedula': fila[12] if len(fila) > 12 else "",  
-                        'inscripcion': fila[15],  
-                    })
-
-        except Exception as e:
-            mensaje = f"❌ Error al obtener los datos: {str(e)}"
+            if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
+                resultados.append({
+                    'codigo': fila[0] if len(fila) > 0 else "",  
+                    'nombre': fila[1],  
+                    'edad': fila[2] if len(fila) > 2 else "",  
+                    'telefono': fila[3] if len(fila) > 3 else "",  
+                    'direccion': fila[4],  
+                    'modalidad': fila[5],  
+                    'experiencia_anos': fila[8],  
+                    'areas_experiencia': fila[11],  
+                    'cedula': fila[12] if len(fila) > 12 else "",  
+                    'inscripcion': fila[15],  
+                })
 
         if not resultados:
             mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
