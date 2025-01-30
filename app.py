@@ -236,23 +236,21 @@ def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
         return "Error al inscribir candidata."
 
 def obtener_datos_filtrar():
-    """
-    Obtiene solo las columnas necesarias para filtrar candidatas.
-    Columnas:
-    - E: Dirección
-    - F: Modalidad
-    - I: Años de experiencia
-    - J: Áreas de experiencia
-    - R: Inscripción (solo mostrar "Sí")
-    """
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!E:J"  # 🔹 Columnas de interés
+            range="Nueva hoja!E:R"  # Ajusta el rango si es necesario
         ).execute()
-        return hoja.get("values", [])
+        valores = hoja.get("values", [])
+        
+        if not valores:
+            print("⚠️ No se obtuvieron datos de Google Sheets.")
+        else:
+            print(f"✅ Datos obtenidos ({len(valores)} filas).")
+
+        return valores
     except Exception as e:
-        print(f"Error al obtener datos para filtrar: {e}")
+        print(f"❌ Error al obtener datos para filtrar: {e}")
         return []
 
 
@@ -881,7 +879,7 @@ def filtrar():
 
         # Itera sobre las filas y filtra según los criterios
         for fila in datos:
-            if len(fila) < 18:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
+            if len(fila) < 19:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
                 continue
 
             # Normalizar valores de la fila
@@ -892,8 +890,8 @@ def filtrar():
             inscripcion_fila = fila[17].strip().lower()  # Columna R: Inscripción
 
             # Verificar si la candidata está inscrita
-            if inscripcion_fila != "sí":
-                continue
+            if inscripcion_fila.strip().lower() != "sí":
+            continue  # Solo mostrar candidatas inscritas
 
             # Verificar si la fila cumple los criterios
             cumple_ciudad = not ciudad or ciudad in ciudad_fila  # Coincidencia parcial en ciudad
