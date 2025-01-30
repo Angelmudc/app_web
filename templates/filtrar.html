@@ -4,35 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Filtrar Candidatas</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        h2 {
+            color: #333;
+        }
+        form {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background: #007bff;
+            color: white;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+    </style>
 </head>
 <body>
 
-    <div class="container">
-        <h2>Filtrar Candidatas</h2>
+    <h2>Filtrar Candidatas</h2>
 
-        <form method="POST" action="{{ url_for('filtrar') }}">
-            <label for="ciudad">Ciudad:</label>
-            <input type="text" id="ciudad" name="ciudad" placeholder="Ingrese la ciudad">
+    <form method="POST">
+        <label for="ciudad">Ciudad:</label>
+        <input type="text" name="ciudad" id="ciudad">
 
-            <label for="modalidad">Modalidad:</label>
-            <select id="modalidad" name="modalidad">
-                <option value="">Seleccione</option>
-                <option value="dormida">Dormida</option>
-                <option value="entrada y salida">Entrada y salida</option>
-            </select>
+        <label for="modalidad">Modalidad:</label>
+        <select name="modalidad" id="modalidad">
+            <option value="">Cualquier modalidad</option>
+            <option value="dormida">Dormida</option>
+            <option value="salida diaria">Salida diaria</option>
+        </select>
 
-            <label for="experiencia_anos">Años de Experiencia:</label>
-            <input type="number" id="experiencia_anos" name="experiencia_anos" min="0" placeholder="Ej: 2">
+        <label for="experiencia_anos">Años de Experiencia:</label>
+        <input type="text" name="experiencia_anos" id="experiencia_anos">
 
-            <label for="areas_experiencia">Áreas de Experiencia:</label>
-            <input type="text" id="areas_experiencia" name="areas_experiencia" placeholder="Ej: Niñera, Cocina">
+        <label for="areas_experiencia">Áreas de Experiencia:</label>
+        <input type="text" name="areas_experiencia" id="areas_experiencia">
 
-            <button type="submit">Filtrar</button>
-        </form>
+        <button type="submit" class="btn">Filtrar</button>
+    </form>
 
-        {% if resultados %}
-        <h3>Resultados</h3>
+    {% if mensaje %}
+        <p class="error">{{ mensaje }}</p>
+    {% endif %}
+
+    {% if resultados %}
+        <h3>Resultados Encontrados</h3>
         <table>
             <thead>
                 <tr>
@@ -42,35 +92,32 @@
                     <th>Teléfono</th>
                     <th>Dirección</th>
                     <th>Modalidad</th>
-                    <th>Experiencia</th>
+                    <th>Años de Experiencia</th>
                     <th>Áreas de Experiencia</th>
                     <th>Cédula</th>
                     <th>Inscripción</th>
                 </tr>
             </thead>
             <tbody>
-                {% for resultado in resultados %}
+                {% for candidata in resultados %}
                 <tr>
-                    <td>{{ resultado['codigo'] }}</td>
-                    <td>{{ resultado['nombre'] }}</td>
-                    <td>{{ resultado['edad'] }}</td>
-                    <td>{{ resultado['telefono'] }}</td>
-                    <td>{{ resultado['direccion'] }}</td>
-                    <td>{{ resultado['modalidad'] }}</td>
-                    <td>{{ resultado['experiencia_anos'] }}</td>
-                    <td>{{ resultado['areas_experiencia'] }}</td>
-                    <td>{{ resultado['cedula'] }}</td>
-                    <td>{{ resultado['inscripcion'] }}</td>
+                    <td>{{ candidata.codigo }}</td>
+                    <td>{{ candidata.nombre }}</td>
+                    <td>{{ candidata.edad }}</td>
+                    <td>{{ candidata.telefono }}</td>
+                    <td>{{ candidata.direccion }}</td>
+                    <td>{{ candidata.modalidad }}</td>
+                    <td>{{ candidata.experiencia_anos }}</td>
+                    <td>{{ candidata.areas_experiencia }}</td>
+                    <td>{{ candidata.cedula }}</td>
+                    <td>{{ candidata.inscripcion }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% else %}
-        <p>No hay resultados para los filtros aplicados.</p>
-        {% endif %}
-
-        <a href="{{ url_for('home') }}">Volver al inicio</a>
-    </div>
+    {% else %}
+        <p>No se encontraron resultados.</p>
+    {% endif %}
 
 </body>
 </html>

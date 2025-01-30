@@ -865,8 +865,8 @@ def editar():
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
-    resultados = []  # Asegurar que siempre tenga un valor
-    mensaje = None  # Asegurar que siempre tenga un valor
+    resultados = []  
+    mensaje = None  
 
     if request.method == 'POST':
         ciudad = request.form.get('ciudad', '').strip().lower()
@@ -874,26 +874,28 @@ def filtrar():
         experiencia_anos = request.form.get('experiencia_anos', '').strip().lower()
         areas_experiencia = request.form.get('areas_experiencia', '').strip().lower()
 
-        # Obtiene los datos actualizados de la hoja
         try:
-            datos = obtener_datos_filtrar()  # Asegurar que esta función está definida correctamente
+            datos = obtener_datos_filtrar()  
+            print(f"🔍 Datos obtenidos ({len(datos)} filas): {datos}")  
+
+            if not datos:
+                mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
+                return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
             for fila in datos:
-                if len(fila) < 18:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
+                if len(fila) < 16:  
                     continue
 
-                # Normalizar valores de la fila
-                ciudad_fila = fila[4].strip().lower()  # Columna E: Ciudad
-                modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad de trabajo
-                experiencia_anos_fila = fila[8].strip().lower()  # Columna I: Años de experiencia
-                areas_experiencia_fila = fila[9].strip().lower()  # Columna J: Áreas de experiencia
-                inscripcion_fila = fila[17].strip()  # Columna R: Inscripción
+                # 📌 Corrigiendo los índices según la imagen
+                ciudad_fila = fila[4].strip().lower()  # Columna E: Dirección
+                modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad
+                experiencia_anos_fila = fila[8].strip().lower()  # 🔹 Columna I: Años de experiencia ✅ CORREGIDO
+                areas_experiencia_fila = fila[11].strip().lower()  # Columna L: Experiencia
+                inscripcion_fila = fila[15].strip()  # Columna P: Inscripción
 
-                # 🔹 Solo mostrar candidatas con inscripción (evita valores vacíos)
                 if not inscripcion_fila:
-                    continue
+                    continue  
 
-                # Verificar si la fila cumple los criterios de filtro
                 cumple_ciudad = not ciudad or ciudad in ciudad_fila
                 cumple_modalidad = not modalidad or modalidad in modalidad_fila
                 cumple_experiencia = not experiencia_anos or experiencia_anos in experiencia_anos_fila
@@ -901,16 +903,16 @@ def filtrar():
 
                 if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
                     resultados.append({
-                        'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
-                        'nombre': fila[1],  # Nombre (Columna B)
-                        'edad': fila[2] if len(fila) > 2 else "",  # Edad (Columna C)
-                        'telefono': fila[3] if len(fila) > 3 else "",  # Teléfono (Columna D)
-                        'direccion': fila[4],  # Dirección (Columna E)
-                        'modalidad': fila[5],  # Modalidad (Columna F)
-                        'experiencia_anos': fila[8],  # Años de experiencia (Columna I)
-                        'areas_experiencia': fila[9],  # Áreas de experiencia (Columna J)
-                        'cedula': fila[14] if len(fila) > 14 else "",  # Cédula (Columna O)
-                        'inscripcion': fila[17],  # Inscripción (Columna R)
+                        'codigo': fila[0] if len(fila) > 0 else "",  
+                        'nombre': fila[1],  
+                        'edad': fila[2] if len(fila) > 2 else "",  
+                        'telefono': fila[3] if len(fila) > 3 else "",  
+                        'direccion': fila[4],  
+                        'modalidad': fila[5],  
+                        'experiencia_anos': fila[8],  # 🔹 Ahora bien posicionado ✅
+                        'areas_experiencia': fila[11],  
+                        'cedula': fila[12] if len(fila) > 12 else "",  
+                        'inscripcion': fila[15],  
                     })
 
         except Exception as e:
