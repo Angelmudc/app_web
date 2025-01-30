@@ -235,6 +235,72 @@ def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
         print(f"Error al inscribir candidata: {e}")
         return "Error al inscribir candidata."
 
+def obtener_datos_filtrar():
+    """
+    Obtiene solo las columnas necesarias para filtrar candidatas.
+    Columnas:
+    - E: Dirección
+    - F: Modalidad
+    - I: Años de experiencia
+    - J: Áreas de experiencia
+    - R: Inscripción (solo mostrar "Sí")
+    """
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID, 
+            range="Nueva hoja!E:J"  # 🔹 Columnas de interés
+        ).execute()
+        return hoja.get("values", [])
+    except Exception as e:
+        print(f"Error al obtener datos para filtrar: {e}")
+        return []
+
+
+def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
+    """
+    Filtra candidatas basándose en los criterios ingresados.
+    - Permite coincidencias parciales en la *Ciudad* (Columna E).
+    - Solo muestra candidatas con inscripción en "Sí" (Columna R).
+    """
+    try:
+        datos = obtener_datos_filtrar()
+        resultados = []
+
+        for fila in datos:
+            if len(fila) < 6:  # Asegurar que haya suficientes columnas
+                continue
+
+            # 🔹 Extraer valores y normalizar
+            ciudad_fila = normalizar_texto(fila[0])  # Columna E: Ciudad/Dirección
+            modalidad_fila = normalizar_texto(fila[1])  # Columna F: Modalidad
+            experiencia_fila = normalizar_texto(fila[2])  # Columna I: Años de experiencia
+            areas_fila = normalizar_texto(fila[3])  # Columna J: Áreas de experiencia
+            inscripcion_fila = fila[4].strip().lower()  # Columna R: Inscripción
+
+            # 🔹 Solo mostrar inscritas
+            if inscripcion_fila != "sí":
+                continue
+
+            # 🔹 Validar filtros
+            cumple_ciudad = not ciudad or ciudad in ciudad_fila
+            cumple_modalidad = not modalidad or modalidad == modalidad_fila
+            cumple_experiencia = not experiencia or experiencia == experiencia_fila
+            cumple_areas = not areas or areas in areas_fila
+
+            if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas:
+                resultados.append({
+                    'ciudad': fila[0],  # Columna E
+                    'modalidad': fila[1],  # Columna F
+                    'experiencia': fila[2],  # Columna I
+                    'areas_experiencia': fila[3],  # Columna J
+                })
+
+        return resultados
+
+    except Exception as e:
+        print(f"Error al filtrar candidatas: {e}")
+        return []
+
 @cache.memoize(timeout=120)
 def obtener_datos_cache():
     result = service.spreadsheets().values().get(
@@ -815,7 +881,7 @@ def filtrar():
 
         # Itera sobre las filas y filtra según los criterios
         for fila in datos:
-            if len(fila) < 11:  # Asegurar que la fila tenga al menos hasta la columna J
+            if len(fila) < 18:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
                 continue
 
             # Normalizar valores de la fila
@@ -823,24 +889,30 @@ def filtrar():
             modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad de trabajo preferida
             experiencia_anos_fila = fila[8].strip().lower()  # Columna I: Años de experiencia laboral
             areas_experiencia_fila = fila[9].strip().lower()  # Columna J: Áreas de experiencia
+            inscripcion_fila = fila[17].strip().lower()  # Columna R: Inscripción
+
+            # Verificar si la candidata está inscrita
+            if inscripcion_fila != "sí":
+                continue
 
             # Verificar si la fila cumple los criterios
-            cumple_ciudad = not ciudad or ciudad in ciudad_fila
+            cumple_ciudad = not ciudad or ciudad in ciudad_fila  # Coincidencia parcial en ciudad
             cumple_modalidad = not modalidad or modalidad == modalidad_fila
             cumple_experiencia = not experiencia_anos or experiencia_anos == experiencia_anos_fila
             cumple_areas_experiencia = not areas_experiencia or areas_experiencia in areas_experiencia_fila
 
             if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
                 resultados.append({
-                    'codigo': fila[0],  # Columna A: Código
+                    'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
                     'nombre': fila[1],  # Columna B: Nombre
-                    'edad': fila[2],  # Columna C: Edad
-                    'telefono': fila[3],  # Columna D: Teléfono
+                    'edad': fila[2] if len(fila) > 2 else "",  # Columna C: Edad
+                    'telefono': fila[3] if len(fila) > 3 else "",  # Columna D: Teléfono
                     'direccion': fila[4],  # Columna E: Dirección
                     'modalidad': fila[5],  # Columna F: Modalidad
                     'experiencia_anos': fila[8],  # Columna I: Años de experiencia laboral
                     'areas_experiencia': fila[9],  # Columna J: Áreas de experiencia
-                    'cedula': fila[17],  # Columna R: Cédula
+                    'cedula': fila[14] if len(fila) > 14 else "",  # Columna O: Cédula
+                    'inscripcion': fila[17],  # Columna R: Inscripción
                 })
 
         # Mensaje si no hay resultados
