@@ -865,8 +865,8 @@ def editar():
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
-    resultados = []
-    mensaje = None  # Variable para mostrar mensajes
+    resultados = []  # Asegurar que siempre tenga un valor
+    mensaje = None  # Asegurar que siempre tenga un valor
 
     if request.method == 'POST':
         ciudad = request.form.get('ciudad', '').strip().lower()
@@ -875,48 +875,49 @@ def filtrar():
         areas_experiencia = request.form.get('areas_experiencia', '').strip().lower()
 
         # Obtiene los datos actualizados de la hoja
-        datos = obtener_datos_filtrar()
+        try:
+            datos = obtener_datos_filtrar()  # Asegurar que esta función está definida correctamente
 
-        # Itera sobre las filas y filtra según los criterios
-        for fila in datos:
-            if len(fila) < 18:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
-                continue
+            for fila in datos:
+                if len(fila) < 18:  # Asegurar que la fila tenga al menos hasta la columna R (Inscripción)
+                    continue
 
-            # Normalizar valores de la fila
-            ciudad_fila = fila[4].strip().lower()  # Columna E: Ciudad
-            modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad de trabajo preferida
-            experiencia_anos_fila = fila[8].strip().lower()  # Columna I: Años de experiencia laboral
-            areas_experiencia_fila = fila[9].strip().lower()  # Columna J: Áreas de experiencia
-            inscripcion_fila = fila[17].strip().lower()  # Columna R: Inscripción
+                # Normalizar valores de la fila
+                ciudad_fila = fila[4].strip().lower()  # Columna E: Ciudad
+                modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad de trabajo
+                experiencia_anos_fila = fila[8].strip().lower()  # Columna I: Años de experiencia
+                areas_experiencia_fila = fila[9].strip().lower()  # Columna J: Áreas de experiencia
+                inscripcion_fila = fila[17].strip()  # Columna R: Inscripción
 
-            # Verificar si la candidata está inscrita
-            if inscripcion_fila != "sí":
-    print("Solo mostrar candidatas inscritas")  # ✅ Correcto (indentado)
-    continue
+                # 🔹 Solo mostrar candidatas con inscripción (evita valores vacíos)
+                if not inscripcion_fila:
+                    continue
 
-            # Verificar si la fila cumple los criterios
-            cumple_ciudad = not ciudad or ciudad in ciudad_fila  # Coincidencia parcial en ciudad
-            cumple_modalidad = not modalidad or modalidad == modalidad_fila
-            cumple_experiencia = not experiencia_anos or experiencia_anos == experiencia_anos_fila
-            cumple_areas_experiencia = not areas_experiencia or areas_experiencia in areas_experiencia_fila
+                # Verificar si la fila cumple los criterios de filtro
+                cumple_ciudad = not ciudad or ciudad in ciudad_fila
+                cumple_modalidad = not modalidad or modalidad in modalidad_fila
+                cumple_experiencia = not experiencia_anos or experiencia_anos in experiencia_anos_fila
+                cumple_areas_experiencia = not areas_experiencia or areas_experiencia in areas_experiencia_fila
 
-            if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
-                resultados.append({
-                    'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
-                    'nombre': fila[1],  # Columna B: Nombre
-                    'edad': fila[2] if len(fila) > 2 else "",  # Columna C: Edad
-                    'telefono': fila[3] if len(fila) > 3 else "",  # Columna D: Teléfono
-                    'direccion': fila[4],  # Columna E: Dirección
-                    'modalidad': fila[5],  # Columna F: Modalidad
-                    'experiencia_anos': fila[8],  # Columna I: Años de experiencia laboral
-                    'areas_experiencia': fila[9],  # Columna J: Áreas de experiencia
-                    'cedula': fila[14] if len(fila) > 14 else "",  # Columna O: Cédula
-                    'inscripcion': fila[17],  # Columna R: Inscripción
-                })
+                if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
+                    resultados.append({
+                        'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
+                        'nombre': fila[1],  # Nombre (Columna B)
+                        'edad': fila[2] if len(fila) > 2 else "",  # Edad (Columna C)
+                        'telefono': fila[3] if len(fila) > 3 else "",  # Teléfono (Columna D)
+                        'direccion': fila[4],  # Dirección (Columna E)
+                        'modalidad': fila[5],  # Modalidad (Columna F)
+                        'experiencia_anos': fila[8],  # Años de experiencia (Columna I)
+                        'areas_experiencia': fila[9],  # Áreas de experiencia (Columna J)
+                        'cedula': fila[14] if len(fila) > 14 else "",  # Cédula (Columna O)
+                        'inscripcion': fila[17],  # Inscripción (Columna R)
+                    })
 
-        # Mensaje si no hay resultados
+        except Exception as e:
+            mensaje = f"❌ Error al obtener los datos: {str(e)}"
+
         if not resultados:
-            mensaje = "No se encontraron resultados para los criterios seleccionados."
+            mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
 
