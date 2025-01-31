@@ -715,6 +715,11 @@ def logout():
     session.pop('usuario', None)  # Cierra la sesión
     return redirect(url_for('login'))
 
+@app.route('/test')
+def test():
+    datos = obtener_datos_filtrar()
+    return {"total_filas": len(datos), "primeras_filas": datos[:5]}
+
 # Ruta protegida (Home)
 @app.route('/')
 def home():
