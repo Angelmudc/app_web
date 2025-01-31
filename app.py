@@ -715,11 +715,6 @@ def logout():
     session.pop('usuario', None)  # Cierra la sesión
     return redirect(url_for('login'))
 
-@app.route('/test')
-def test():
-    datos = obtener_datos_filtrar()
-    return {"total_filas": len(datos), "primeras_filas": datos[:5]}
-
 # Ruta protegida (Home)
 @app.route('/')
 def home():
@@ -874,21 +869,22 @@ def filtrar():
     mensaje = None  
 
     try:
+        # Obtener los datos de la hoja de cálculo
         datos = obtener_datos_filtrar()
-        print(f"🔍 Datos obtenidos ({len(datos)} filas): {datos}")  # DEPURACIÓN
+        print(f"🔍 Datos obtenidos ({len(datos)} filas)")
 
         if not datos:
             mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
             return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
-        # 🔹 SOLO MOSTRAR CANDIDATAS INSCRITAS (SIN FILTROS)
+        # 🔹 Mostrar TODAS las candidatas inscritas al cargar la página (sin filtros)
         for fila in datos:
             if len(fila) < 16:  
                 continue  
 
             inscripcion_fila = fila[15].strip().lower()  # Columna P: Inscripción
 
-            if inscripcion_fila == "sí":  # Mostrar solo inscritas
+            if inscripcion_fila == "sí":  # Solo mostrar inscritas
                 resultados.append({
                     'codigo': fila[0] if len(fila) > 0 else "",  
                     'nombre': fila[1],  
@@ -902,8 +898,27 @@ def filtrar():
                     'inscripcion': fila[15],  
                 })
 
-        if not resultados:
-            mensaje = "⚠️ No hay candidatas inscritas."
+        # 🔹 Aplicar filtros si se hace una búsqueda
+        if request.method == 'POST':
+            ciudad = request.form.get('ciudad', '').strip().lower()
+            modalidad = request.form.get('modalidad', '').strip().lower()
+            experiencia_anos = request.form.get('experiencia_anos', '').strip().lower()
+            areas_experiencia = request.form.get('areas_experiencia', '').strip().lower()
+
+            resultados_filtrados = []
+            for candidata in resultados:
+                cumple_ciudad = not ciudad or ciudad in candidata['direccion'].lower()
+                cumple_modalidad = not modalidad or modalidad in candidata['modalidad'].lower()
+                cumple_experiencia = not experiencia_anos or experiencia_anos in candidata['experiencia_anos'].lower()
+                cumple_areas_experiencia = not areas_experiencia or areas_experiencia in candidata['areas_experiencia'].lower()
+
+                if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
+                    resultados_filtrados.append(candidata)
+
+            resultados = resultados_filtrados  # Actualizar la lista con los datos filtrados
+
+            if not resultados:
+                mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
 
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
