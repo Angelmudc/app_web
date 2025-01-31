@@ -1002,7 +1002,7 @@ def porciento():
 
     return render_template('porciento.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
-@app.route('/gestionar_pagos', methods=['GET', 'POST'])
+@app.route('/pagos', methods=['GET', 'POST'])
 def gestionar_pagos():
     mensaje = ""
     datos_candidata = None
