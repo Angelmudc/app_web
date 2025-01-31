@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🔍 Filtrar Candidatas | Doméstica del Cibao</title>
-    
+
     <!-- Bootstrap + Iconos -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -12,7 +12,7 @@
     <style>
         /* Estilos Globales */
         body {
-            background: linear-gradient(135deg, #eef2f3, #d7e1ec);
+            background: linear-gradient(135deg, #f0f2f5, #d7e1ec);
             font-family: 'Poppins', sans-serif;
             color: #333;
             margin: 0;
@@ -27,8 +27,8 @@
             background: #007bff;
             color: white;
             text-align: center;
-            padding: 20px;
-            font-size: 26px;
+            padding: 15px;
+            font-size: 24px;
             font-weight: bold;
             text-transform: uppercase;
             box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
@@ -51,7 +51,7 @@
 
         .content-box {
             background: white;
-            padding: 35px;
+            padding: 30px;
             border-radius: 14px;
             box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.2);
             width: 100%;
@@ -145,7 +145,6 @@
             transform: scale(1.2);
             color: #f8d210;
         }
-
     </style>
 </head>
 <body>
@@ -157,33 +156,33 @@
     <div class="main-container">
         <div class="content-box">
             
-            <!-- Formulario -->
-            <h2><i class="fas fa-search"></i> Aplicar Filtros</h2>
-            <form method="POST" class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label"><i class="fas fa-city"></i> Ciudad:</label>
-                    <input type="text" class="form-control" name="ciudad" placeholder="Ejemplo: Santiago">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label"><i class="fas fa-briefcase"></i> Modalidad:</label>
-                    <select class="form-select" name="modalidad">
-                        <option value="">Cualquier modalidad</option>
-                        <option value="Dormida">Dormida</option>
-                        <option value="Salida diaria">Salida diaria</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label"><i class="fas fa-award"></i> Años de Experiencia:</label>
-                    <input type="text" class="form-control" name="experiencia_anos" placeholder="Ejemplo: 2 años">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label"><i class="fas fa-star"></i> Áreas de Experiencia:</label>
-                    <input type="text" class="form-control" name="areas_experiencia" placeholder="Ejemplo: Niñera">
-                </div>
-
-                <div class="col-12 text-center">
-                    <button type="submit" class="btn-custom"><i class="fas fa-search"></i> Filtrar</button>
-                    <button type="reset" class="btn-custom bg-secondary"><i class="fas fa-sync-alt"></i> Restablecer</button>
+            <!-- Formulario con Botón Filtrar Arriba -->
+            <form method="POST">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label"><i class="fas fa-city"></i> Ciudad:</label>
+                        <input type="text" class="form-control" name="ciudad" placeholder="Ejemplo: Santiago">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label"><i class="fas fa-briefcase"></i> Modalidad:</label>
+                        <select class="form-select" name="modalidad">
+                            <option value="">Cualquier modalidad</option>
+                            <option value="Dormida">Dormida</option>
+                            <option value="Salida diaria">Salida diaria</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label"><i class="fas fa-award"></i> Años de Experiencia:</label>
+                        <input type="text" class="form-control" name="experiencia_anos" placeholder="Ejemplo: 2 años">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label"><i class="fas fa-star"></i> Áreas de Experiencia:</label>
+                        <input type="text" class="form-control" name="areas_experiencia" placeholder="Ejemplo: Niñera">
+                    </div>
+                    <div class="col-12 text-center">
+                        <button type="submit" class="btn-custom"><i class="fas fa-search"></i> Filtrar</button>
+                        <button type="reset" class="btn-custom bg-secondary"><i class="fas fa-sync-alt"></i> Restablecer</button>
+                    </div>
                 </div>
             </form>
 
