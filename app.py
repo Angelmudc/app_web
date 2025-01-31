@@ -956,7 +956,7 @@ def inscripcion():
 
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
-@app.route('/calcular_porcentaje', methods=['POST'])
+@app.route('/porciento', methods=['POST'])
 def calcular_y_guardar_porcentaje():
     """
     Recibe un código de candidata y actualiza su fecha de pago, porcentaje y calificación en la hoja de cálculo.
@@ -982,7 +982,7 @@ def calcular_y_guardar_porcentaje():
     resultado = actualizar_pago_en_hoja(fila_index, fecha_inicio, monto_total)
 
     return jsonify({"mensaje": resultado})
-    
+
 @app.route('/pagos', methods=['GET', 'POST'])
 def gestionar_pagos():
     mensaje = ""
