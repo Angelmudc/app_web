@@ -882,7 +882,7 @@ def filtrar():
             if len(fila) < 16:  
                 continue  
 
-            inscripcion_fila = fila[15].strip().lower()  # Columna P: Inscripción
+            inscripcion_fila = fila[15].strip().lower()  # Índice 15: Inscripción
 
             if inscripcion_fila == "sí":  # Solo mostrar inscritas
                 resultados.append({
@@ -890,10 +890,10 @@ def filtrar():
                     'nombre': fila[1],  
                     'edad': fila[2] if len(fila) > 2 else "",  
                     'telefono': fila[3] if len(fila) > 3 else "",  
-                    'direccion': fila[4],  
-                    'modalidad': fila[5],  
-                    'experiencia_anos': fila[8],  
-                    'areas_experiencia': fila[11],  
+                    'direccion': fila[4],  # Índice 4: Dirección
+                    'modalidad': fila[5],  # Índice 5: Modalidad
+                    'experiencia_anos': fila[8],  # Índice 8: Años de experiencia
+                    'areas_experiencia': fila[9],  # Índice 9: Áreas de experiencia
                     'cedula': fila[12] if len(fila) > 12 else "",  
                     'inscripcion': fila[15],  
                 })
