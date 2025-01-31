@@ -93,7 +93,7 @@ def obtener_datos_pagos():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!P:Y"  # Obtiene solo las columnas relevantes
+            range="Nueva hoja!B:Y"  # Obtiene solo las columnas relevantes
         ).execute()
         return hoja.get("values", [])
     except Exception as e:
@@ -1012,7 +1012,7 @@ def gestionar_pagos():
             buscar = request.form.get('buscar', '').strip()
             datos = obtener_datos_pagos()
             for fila_index, fila in enumerate(datos):
-                if len(fila) > 16 and (buscar in fila[15] or buscar in fila[1] or buscar in fila[14]):  
+                if len(fila) > 24 and (buscar in fila[15] or buscar in fila[1] or buscar in fila[14]):  
                     datos_candidata = {
                         'fila_index': fila_index + 1,
                         'codigo': fila[15],  # Código
