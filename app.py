@@ -956,52 +956,33 @@ def inscripcion():
 
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
-@app.route('/porciento', methods=['GET', 'POST'])
-def porciento():
-    mensaje = ""
-    datos_candidata = None
+@app.route('/calcular_porcentaje', methods=['POST'])
+def calcular_y_guardar_porcentaje():
+    """
+    Recibe un código de candidata y actualiza su fecha de pago, porcentaje y calificación en la hoja de cálculo.
+    """
+    codigo = request.form.get('codigo', '').strip()
+    fecha_inicio = request.form.get('fecha_inicio', '').strip()
+    monto_total = request.form.get('monto_total', '').strip()
 
-    if request.method == 'POST':
-        if 'buscar_btn' in request.form:  # Botón para buscar
-            buscar = request.form.get('buscar', '').strip()
-            fila_index, fila = buscar_en_columna(buscar, 0)  # Busca por código en columna A
-            if fila:
-                datos_candidata = {
-                    'fila_index': fila_index + 1,  # Índice de fila en formato 1-based
-                    'codigo': fila[0],
-                    'nombre': fila[1],
-                    'inicio': fila[23],
-                    'monto_total': fila[24],
-                    'porciento': fila[25],
-                    'fecha_pago': fila[22]
-                }
-            else:
-                mensaje = f"No se encontraron resultados para: {buscar}"
+    if not codigo or not fecha_inicio or not monto_total:
+        return jsonify({"error": "Todos los campos son obligatorios"}), 400
 
-        elif 'guardar_btn' in request.form:  # Botón para guardar
-            try:
-                fila_index = int(request.form.get('fila_index', -1))
-                monto_total = float(request.form.get('monto_total', 0))
-                inicio = request.form.get('inicio', '').strip()
+    datos = obtener_datos()  # Debes asegurarte de que esta función existe en tu código
+    fila_index = None
 
-                if fila_index == -1 or not inicio:
-                    mensaje = "Error: No se especificó correctamente la fila o la fecha de inicio."
-                else:
-                    porciento = calcular_porcentaje(monto_total)
-                    fecha_pago = (datetime.strptime(inicio, "%Y-%m-%d") + timedelta(days=15)).strftime("%Y-%m-%d")
+    for index, fila in enumerate(datos):
+        if len(fila) > 15 and fila[15].strip() == codigo:
+            fila_index = index + 1  # Ajustamos a índice basado en filas de Google Sheets
+            break
 
-                    # Actualizar la fila correspondiente
-                    actualizar_dato_en_columna(fila_index - 1, 22, fecha_pago)  # Fecha de Pago (Columna W)
-                    actualizar_dato_en_columna(fila_index - 1, 23, inicio)  # Inicio (Columna X)
-                    actualizar_dato_en_columna(fila_index - 1, 24, monto_total)  # Monto Total (Columna Y)
-                    actualizar_dato_en_columna(fila_index - 1, 25, porciento)  # Porciento (Columna Z)
+    if fila_index is None:
+        return jsonify({"error": "No se encontró la candidata"}), 404
 
-                    mensaje = f"Porciento calculado y guardado correctamente para la fila {fila_index}."
-            except Exception as e:
-                mensaje = f"Error al guardar los datos: {str(e)}"
+    resultado = actualizar_pago_en_hoja(fila_index, fecha_inicio, monto_total)
 
-    return render_template('porciento.html', mensaje=mensaje, datos_candidata=datos_candidata)
-
+    return jsonify({"mensaje": resultado})
+    
 @app.route('/pagos', methods=['GET', 'POST'])
 def gestionar_pagos():
     mensaje = ""

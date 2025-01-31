@@ -1,98 +1,99 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Porcentaje</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <title>Calcular Porcentaje</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <style>
         body {
-            background: linear-gradient(120deg, #f8f9fa, #e9ecef);
+            background-color: #f8f9fa;
             font-family: 'Arial', sans-serif;
         }
         .container {
-            background: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
-            padding: 20px;
+            max-width: 700px;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 50px;
         }
-        h1 {
-            color: #4a69bd;
+        h2 {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            color: #007bff;
+            margin-bottom: 20px;
         }
-        .btn-primary {
-            background-color: #4a69bd;
-            border: none;
-        }
-        .btn-primary:hover {
-            background-color: #3b5998;
+        .form-label {
+            font-weight: bold;
         }
         .form-control {
-            border-radius: 20px;
+            border-radius: 8px;
+            border: 1px solid #ced4da;
         }
-        .card {
-            border: none;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        .btn-primary {
+            width: 100%;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 8px;
+            transition: 0.3s;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .resultado {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .footer {
+            text-align: center;
+            font-size: 14px;
+            color: gray;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <h1 class="text-center"><i class="fas fa-percentage"></i> Gestión de Porcentaje</h1>
-        <hr>
-
-        <!-- Mensaje de retroalimentación -->
-        {% if mensaje %}
-            <div class="alert alert-info text-center">{{ mensaje }}</div>
-        {% endif %}
-
-        <!-- Formulario de búsqueda -->
-        <form method="POST" action="/porciento">
+    <div class="container">
+        <h2><i class="fas fa-calculator"></i> Calcular Porcentaje de Pago</h2>
+        
+        <form method="post" action="/calcular_porcentaje">
             <div class="mb-3">
-                <label for="buscar" class="form-label">Buscar por Código, Nombre o Cédula:</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="buscar" name="buscar" placeholder="Ejemplo: CAN-001, Ana Pérez, 123-4567890-1" required>
-                    <button type="submit" name="buscar_btn" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
-                </div>
+                <label class="form-label"><i class="fas fa-user"></i> Código de Candidata:</label>
+                <input type="text" class="form-control" name="codigo" placeholder="Ejemplo: CAN-000001" required>
             </div>
+            <div class="mb-3">
+                <label class="form-label"><i class="fas fa-calendar-alt"></i> Fecha de Inicio:</label>
+                <input type="date" class="form-control" name="fecha_inicio" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label"><i class="fas fa-money-bill-wave"></i> Monto Total:</label>
+                <input type="number" class="form-control" name="monto_total" step="0.01" placeholder="Ejemplo: 10000" required>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Calcular</button>
         </form>
 
-        <!-- Resultados de la búsqueda -->
-        {% if datos_candidata %}
-            <div class="card mt-4">
-                <div class="card-header bg-primary text-white">
-                    <h3>Detalles de la Candidata</h3>
-                </div>
-                <div class="card-body">
-                    <p><strong>Código:</strong> {{ datos_candidata.codigo }}</p>
-                    <p><strong>Nombre:</strong> {{ datos_candidata.nombre }}</p>
-                    <p><strong>Fecha de Inicio:</strong> {{ datos_candidata.inicio }}</p>
-                    <p><strong>Monto Total:</strong> {{ datos_candidata.monto_total }}</p>
-                    <p><strong>Porcentaje:</strong> {{ datos_candidata.porciento }}</p>
-                    <p><strong>Fecha de Pago:</strong> {{ datos_candidata.fecha_pago }}</p>
-                </div>
-            </div>
-
-            <!-- Formulario para actualizar datos -->
-            <form method="POST" action="/porciento" class="mt-4">
-                <div class="mt-4 text-center">
-                    <a href="/" class="btn btn-secondary">
-                        <i class="fas fa-home"></i> Volver a Inicio
-                    </a>
-                </div>
-                <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-                <input type="hidden" name="codigo" value="{{ datos_candidata.codigo }}">
-                <div class="mb-3">
-                    <label for="inicio" class="form-label">Fecha de Inicio:</label>
-                    <input type="date" class="form-control" id="inicio" name="inicio" value="{{ datos_candidata.inicio }}" required>
-                </div>
-                <div class="mb-3">
-                    <label for="monto_total" class="form-label">Monto Total:</label>
-                    <input type="number" step="0.01" class="form-control" id="monto_total" name="monto_total" value="{{ datos_candidata.monto_total }}" required>
-                </div>
-                <button type="submit" name="guardar_btn" class="btn btn-success w-100"><i class="fas fa-save"></i> Guardar Cambios</button>
-            </form>
+        {% if mensaje %}
+        <div class="resultado">
+            {{ mensaje }}
+        </div>
         {% endif %}
+
+        <div class="footer">
+            <p>📌 <strong>Doméstica del Cibao</strong> | Diseñado para máxima eficiencia</p>
+        </div>
     </div>
+
+    <script>
+        // Puedes agregar aquí animaciones o validaciones adicionales si lo deseas
+    </script>
 </body>
 </html>
