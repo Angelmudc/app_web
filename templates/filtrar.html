@@ -30,9 +30,8 @@
             padding: 20px;
             font-size: 26px;
             font-weight: bold;
-            letter-spacing: 1px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
             text-transform: uppercase;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
             animation: slideDown 0.8s ease-in-out;
         }
 
@@ -100,6 +99,7 @@
             font-weight: bold;
             text-decoration: none;
             transition: all 0.3s ease;
+            border: none;
         }
 
         .btn-custom:hover {
@@ -171,6 +171,19 @@
                         <option value="Dormida">Dormida</option>
                         <option value="Salida diaria">Salida diaria</option>
                     </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"><i class="fas fa-award"></i> Años de Experiencia:</label>
+                    <input type="text" class="form-control" name="experiencia_anos" placeholder="Ejemplo: 2 años">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"><i class="fas fa-star"></i> Áreas de Experiencia:</label>
+                    <input type="text" class="form-control" name="areas_experiencia" placeholder="Ejemplo: Niñera">
+                </div>
+
+                <div class="col-12 text-center">
+                    <button type="submit" class="btn-custom"><i class="fas fa-search"></i> Filtrar</button>
+                    <button type="reset" class="btn-custom bg-secondary"><i class="fas fa-sync-alt"></i> Restablecer</button>
                 </div>
             </form>
 
