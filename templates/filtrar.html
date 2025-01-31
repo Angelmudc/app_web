@@ -12,7 +12,7 @@
     <style>
         /* Estilos Globales */
         body {
-            background: linear-gradient(135deg, #f4f4f9, #e2e2e2);
+            background: linear-gradient(135deg, #eef2f3, #d7e1ec);
             font-family: 'Poppins', sans-serif;
             color: #333;
             margin: 0;
@@ -28,11 +28,17 @@
             color: white;
             text-align: center;
             padding: 20px;
-            font-size: 24px;
+            font-size: 26px;
             font-weight: bold;
             letter-spacing: 1px;
             box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
             text-transform: uppercase;
+            animation: slideDown 0.8s ease-in-out;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         /* Contenedor principal */
@@ -46,11 +52,11 @@
 
         .content-box {
             background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.15);
+            padding: 35px;
+            border-radius: 14px;
+            box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.2);
             width: 100%;
-            max-width: 1100px;
+            max-width: 1200px;
             animation: fadeIn 1s ease-in-out;
         }
 
@@ -89,7 +95,7 @@
             display: inline-block;
             background: #007bff;
             color: white;
-            padding: 10px 20px;
+            padding: 12px 22px;
             border-radius: 50px;
             font-weight: bold;
             text-decoration: none;
@@ -103,13 +109,16 @@
 
         /* Tabla */
         .table {
-            margin-top: 20px;
+            margin-top: 25px;
+            border-radius: 10px;
+            overflow: hidden;
         }
 
         .table th {
             background: #007bff;
             color: white;
             text-align: center;
+            padding: 12px;
         }
 
         .table tbody tr:hover {
@@ -142,14 +151,14 @@
 <body>
 
     <div class="header">
-        <i class="fas fa-search"></i> Filtrar Candidatas
+        <i class="fas fa-filter"></i> Filtrar Candidatas
     </div>
 
     <div class="main-container">
         <div class="content-box">
             
             <!-- Formulario -->
-            <h2><i class="fas fa-filter"></i> Aplicar Filtros</h2>
+            <h2><i class="fas fa-search"></i> Aplicar Filtros</h2>
             <form method="POST" class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label"><i class="fas fa-city"></i> Ciudad:</label>
@@ -163,26 +172,7 @@
                         <option value="Salida diaria">Salida diaria</option>
                     </select>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label"><i class="fas fa-calendar-alt"></i> Años de Experiencia:</label>
-                    <input type="text" class="form-control" name="experiencia_anos" placeholder="Ejemplo: 3 años">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label"><i class="fas fa-star"></i> Áreas de Experiencia:</label>
-                    <input type="text" class="form-control" name="areas_experiencia" placeholder="Ejemplo: Niñera">
-                </div>
-                <div class="col-12 text-center mt-3">
-                    <button type="submit" class="btn btn-custom"><i class="fas fa-search"></i> Filtrar</button>
-                    <a href="/filtrar" class="btn btn-custom btn-secondary"><i class="fas fa-sync"></i> Restablecer</a>
-                </div>
             </form>
-
-            <!-- Mensaje de Error -->
-            {% if mensaje %}
-                <div class="alert alert-warning mt-4 text-center">
-                    <i class="fas fa-exclamation-triangle"></i> {{ mensaje }}
-                </div>
-            {% endif %}
 
             <!-- Tabla de Resultados -->
             {% if resultados %}
@@ -205,7 +195,7 @@
                                     <td>{{ candidata.nombre }}</td>
                                     <td>{{ candidata.telefono }}</td>
                                     <td>{{ candidata.direccion }}</td>
-                                    <td>{{ candidata.experiencia_anos }}</td>
+                                    <td><strong>{{ candidata.experiencia_anos }}</strong> - {{ candidata.areas_experiencia }}</td>
                                     <td>{{ candidata.cedula }}</td>
                                 </tr>
                             {% endfor %}
@@ -217,7 +207,7 @@
     </div>
 
     <footer>
-        &copy; 2025 Doméstica del Cibao | Diseñado para máxima eficiencia 🚀
+        &copy; 2025 Doméstica del Cibao | Diseñado con ❤️ para máxima eficiencia 🚀
     </footer>
 
 </body>
