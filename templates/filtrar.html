@@ -3,45 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtrar Candidatas</title>
+    <title>🔍 Filtrar Candidatas | Doméstica del Cibao</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+        /* Estilos Generales */
+        body {
+            background: linear-gradient(135deg, #f9f9f9, #e0e0e0);
+            font-family: 'Poppins', sans-serif;
+        }
+        .container {
+            max-width: 900px;
+            margin-top: 40px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 1s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        h2 {
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .form-label {
+            font-weight: bold;
+        }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 2px solid #ddd;
+            transition: all 0.3s ease;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #007bff;
+            box-shadow: 0px 0px 10px rgba(0, 123, 255, 0.5);
+        }
+        .btn {
+            border-radius: 50px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0px 5px 10px rgba(0, 123, 255, 0.3);
+        }
+        .table {
+            margin-top: 20px;
+        }
+        .table th {
+            background: #007bff;
+            color: white;
+        }
+        .table tbody tr:hover {
+            background: rgba(0, 123, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        .alert {
+            border-radius: 8px;
+        }
+        /* Pie de Página */
+        footer {
+            margin-top: 30px;
+            background: #333;
+            color: white;
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        footer i {
+            margin: 0 8px;
+            transition: all 0.3s ease;
+        }
+        footer i:hover {
+            transform: scale(1.2);
+            color: #f8d210;
+        }
+    </style>
 </head>
 <body>
-    <div class="container mt-4">
-        <h2 class="text-center">🔍 Filtrar Candidatas</h2>
+
+    <div class="container">
+        <h2>🔍 Filtrar Candidatas</h2>
 
         <!-- FORMULARIO DE FILTROS -->
-        <form method="POST" class="row g-3 mt-3">
-            <div class="col-md-3">
-                <label class="form-label">Ciudad:</label>
+        <form method="POST" class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label"><i class="fas fa-city"></i> Ciudad:</label>
                 <input type="text" class="form-control" name="ciudad" placeholder="Ejemplo: Santiago">
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Modalidad:</label>
+            <div class="col-md-6">
+                <label class="form-label"><i class="fas fa-briefcase"></i> Modalidad:</label>
                 <select class="form-select" name="modalidad">
                     <option value="">Cualquier modalidad</option>
                     <option value="Dormida">Dormida</option>
                     <option value="Salida diaria">Salida diaria</option>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Años de Experiencia:</label>
+            <div class="col-md-6">
+                <label class="form-label"><i class="fas fa-calendar-alt"></i> Años de Experiencia:</label>
                 <input type="text" class="form-control" name="experiencia_anos" placeholder="Ejemplo: 3 años">
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Áreas de Experiencia:</label>
+            <div class="col-md-6">
+                <label class="form-label"><i class="fas fa-star"></i> Áreas de Experiencia:</label>
                 <input type="text" class="form-control" name="areas_experiencia" placeholder="Ejemplo: Niñera">
             </div>
             <div class="col-12 text-center mt-3">
-                <button type="submit" class="btn btn-primary">Filtrar</button>
-                <a href="/filtrar" class="btn btn-secondary">Restablecer</a>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Filtrar</button>
+                <a href="/filtrar" class="btn btn-secondary"><i class="fas fa-sync"></i> Restablecer</a>
             </div>
         </form>
 
         <!-- MENSAJE SI NO HAY RESULTADOS -->
         {% if mensaje %}
             <div class="alert alert-warning mt-4 text-center">
-                {{ mensaje }}
+                <i class="fas fa-exclamation-triangle"></i> {{ mensaje }}
             </div>
         {% endif %}
 
@@ -51,15 +133,15 @@
                 <table class="table table-striped table-bordered">
                     <thead class="table-dark">
                         <tr>
-                            <th>Código</th>
-                            <th>Nombre</th>
-                            <th>Edad</th>
-                            <th>Teléfono</th>
-                            <th>Dirección</th>
-                            <th>Modalidad</th>
-                            <th>Experiencia</th>
-                            <th>Áreas de Experiencia</th>
-                            <th>Cédula</th>
+                            <th><i class="fas fa-id-badge"></i> Código</th>
+                            <th><i class="fas fa-user"></i> Nombre</th>
+                            <th><i class="fas fa-birthday-cake"></i> Edad</th>
+                            <th><i class="fas fa-phone"></i> Teléfono</th>
+                            <th><i class="fas fa-map-marker-alt"></i> Dirección</th>
+                            <th><i class="fas fa-briefcase"></i> Modalidad</th>
+                            <th><i class="fas fa-award"></i> Experiencia</th>
+                            <th><i class="fas fa-cogs"></i> Áreas de Experiencia</th>
+                            <th><i class="fas fa-id-card"></i> Cédula</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -79,11 +161,17 @@
                     </tbody>
                 </table>
             </div>
-        {% else %}
-            <p class="text-center mt-4">No se encontraron resultados.</p>
         {% endif %}
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <footer>
+        <p>&copy; 2025 Doméstica del Cibao A&D | Desarrollado por un Súper Diseñador 🚀</p>
+        <p>Síguenos: 
+            <i class="fab fa-facebook"></i>
+            <i class="fab fa-instagram"></i>
+            <i class="fab fa-twitter"></i>
+        </p>
+    </footer>
+
 </body>
 </html>
