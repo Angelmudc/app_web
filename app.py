@@ -239,7 +239,7 @@ def obtener_datos_filtrar():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!B:Y"  # Ajusta el rango si es necesario
+            range="Nueva hoja!A:Y"  # Ajusta el rango si es necesario
         ).execute()
         valores = hoja.get("values", [])
         
@@ -276,7 +276,7 @@ def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
             inscripcion_fila = fila[4].strip().lower()  # Columna R: Inscripción
 
             # 🔹 Solo mostrar inscritas
-            if inscripcion_fila != "sí":
+            if inscripcion_fila != "si":
                 continue
 
             # 🔹 Validar filtros
@@ -865,46 +865,25 @@ def editar():
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
-    resultados = []
+    resultados = []  
     mensaje = None  
 
     try:
-        datos = obtener_datos_filtrar()  
+        datos = obtener_datos_filtrar()
         print(f"🔍 Datos obtenidos ({len(datos)} filas): {datos}")  # DEPURACIÓN
 
         if not datos:
             mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
             return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
-    except Exception as e:
-        mensaje = f"❌ Error al obtener los datos: {str(e)}"
-        return render_template('filtrar.html', resultados=[], mensaje=mensaje)
-
-    if request.method == 'POST':
-        ciudad = request.form.get('ciudad', '').strip().lower()
-        modalidad = request.form.get('modalidad', '').strip().lower()
-        experiencia_anos = request.form.get('experiencia_anos', '').strip().lower()
-        areas_experiencia = request.form.get('areas_experiencia', '').strip().lower()
-
+        # 🔹 SOLO MOSTRAR CANDIDATAS INSCRITAS (SIN FILTROS)
         for fila in datos:
             if len(fila) < 16:  
-                continue
-
-            ciudad_fila = fila[4].strip().lower()  # Columna E: Dirección
-            modalidad_fila = fila[5].strip().lower()  # Columna F: Modalidad
-            experiencia_anos_fila = fila[8].strip().lower()  # Columna I: Años de experiencia
-            areas_experiencia_fila = fila[11].strip().lower()  # Columna L: Experiencia
-            inscripcion_fila = fila[15].strip()  # Columna P: Inscripción
-
-            if not inscripcion_fila:
                 continue  
 
-            cumple_ciudad = not ciudad or ciudad in ciudad_fila
-            cumple_modalidad = not modalidad or modalidad in modalidad_fila
-            cumple_experiencia = not experiencia_anos or experiencia_anos in experiencia_anos_fila
-            cumple_areas_experiencia = not areas_experiencia or areas_experiencia in areas_experiencia_fila
+            inscripcion_fila = fila[15].strip().lower()  # Columna P: Inscripción
 
-            if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
+            if inscripcion_fila == "sí":  # Mostrar solo inscritas
                 resultados.append({
                     'codigo': fila[0] if len(fila) > 0 else "",  
                     'nombre': fila[1],  
@@ -919,7 +898,10 @@ def filtrar():
                 })
 
         if not resultados:
-            mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
+            mensaje = "⚠️ No hay candidatas inscritas."
+
+    except Exception as e:
+        mensaje = f"❌ Error al obtener los datos: {str(e)}"
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
 
