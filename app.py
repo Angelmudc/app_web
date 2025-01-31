@@ -957,32 +957,46 @@ def inscripcion():
 
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
-@app.route('/porciento', methods=['POST'])
-def calcular_y_guardar_porcentaje():
-    """
-    Recibe un código de candidata y actualiza su fecha de pago, porcentaje y calificación en la hoja de cálculo.
-    """
-    codigo = request.form.get('codigo', '').strip()
-    fecha_inicio = request.form.get('fecha_inicio', '').strip()
-    monto_total = request.form.get('monto_total', '').strip()
+@app.route('/porciento', methods=['GET', 'POST'])
+def calcular_porcentaje():
+    if request.method == 'POST':
+        # Obtener datos del formulario
+        codigo = request.form.get('codigo')
+        monto_total = request.form.get('monto_total')
+        fecha_inicio = request.form.get('fecha_inicio')
 
-    if not codigo or not fecha_inicio or not monto_total:
-        return jsonify({"error": "Todos los campos son obligatorios"}), 400
+        if not codigo or not monto_total or not fecha_inicio:
+            return jsonify({"error": "Todos los campos son obligatorios"}), 400
 
-    datos = obtener_datos()  # Debes asegurarte de que esta función existe en tu código
-    fila_index = None
+        try:
+            monto_total = float(monto_total)
+            porcentaje = round(monto_total * 0.25, 2)  # 25% del monto total
 
-    for index, fila in enumerate(datos):
-        if len(fila) > 15 and fila[15].strip() == codigo:
-            fila_index = index + 1  # Ajustamos a índice basado en filas de Google Sheets
-            break
+            # Calcular la fecha de pago
+            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+            dia_inicio = fecha_inicio_dt.day
 
-    if fila_index is None:
-        return jsonify({"error": "No se encontró la candidata"}), 404
+            if 5 <= dia_inicio <= 15:
+                fecha_pago = fecha_inicio_dt.replace(day=30)
+            else:
+                mes_siguiente = fecha_inicio_dt.month + 1 if fecha_inicio_dt.month < 12 else 1
+                anio_siguiente = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
+                fecha_pago = datetime(anio_siguiente, mes_siguiente, 15)
 
-    resultado = actualizar_pago_en_hoja(fila_index, fecha_inicio, monto_total)
+            fecha_pago_str = fecha_pago.strftime("%Y-%m-%d")
 
-    return jsonify({"mensaje": resultado})
+            return jsonify({
+                "codigo": codigo,
+                "monto_total": monto_total,
+                "porcentaje": porcentaje,
+                "fecha_pago": fecha_pago_str
+            }), 200
+
+        except ValueError:
+            return jsonify({"error": "Monto total inválido o fecha incorrecta"}), 400
+
+    # Si es GET, simplemente renderiza la plantilla
+    return render_template('porciento.html')
 
 @app.route('/pagos', methods=['GET', 'POST'])
 def gestionar_pagos():
