@@ -879,23 +879,24 @@ def filtrar():
 
         # 🔹 Mostrar TODAS las candidatas inscritas al cargar la página (sin filtros)
         for fila in datos:
-            if len(fila) < 16:  
+            if len(fila) < 18:  
                 continue  
 
-            inscripcion_fila = fila[15].strip().lower()  # Índice 15: Inscripción
+            inscripcion_fila = fila[17].strip().lower()  # Índice 17: Inscripción
 
             if inscripcion_fila == "sí":  # Solo mostrar inscritas
                 resultados.append({
-                    'codigo': fila[0] if len(fila) > 0 else "",  
-                    'nombre': fila[1],  
+                    'codigo': fila[15] if len(fila) > 15 else "",  # Código en P (15)
+                    'estado': fila[16] if len(fila) > 16 else "",  # Estado en Q (16)
+                    'inscripcion': fila[17],  # Inscripción en R (17)
+                    'nombre': fila[1],  # Nombre en B (1)
                     'edad': fila[2] if len(fila) > 2 else "",  
                     'telefono': fila[3] if len(fila) > 3 else "",  
-                    'direccion': fila[4],  # Índice 4: Dirección
-                    'modalidad': fila[5],  # Índice 5: Modalidad
-                    'experiencia_anos': fila[8],  # Índice 8: Años de experiencia
-                    'areas_experiencia': fila[9],  # Índice 9: Áreas de experiencia
-                    'cedula': fila[12] if len(fila) > 12 else "",  
-                    'inscripcion': fila[15],  
+                    'direccion': fila[4],  # Dirección en E (4)
+                    'modalidad': fila[5],  # Modalidad en F (5)
+                    'experiencia_anos': fila[8],  # Años de experiencia en I (8)
+                    'areas_experiencia': fila[9],  # Áreas de experiencia en J (9)
+                    'cedula': fila[14] if len(fila) > 14 else "",  # Cédula en O (14)
                 })
 
         # 🔹 Aplicar filtros si se hace una búsqueda
@@ -926,7 +927,6 @@ def filtrar():
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
-
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     """
