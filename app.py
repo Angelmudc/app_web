@@ -907,18 +907,20 @@ def filtrar():
 
             resultados_filtrados = []
             for candidata in resultados:
-                cumple_ciudad = not ciudad or ciudad in candidata['direccion'].lower()
-                cumple_modalidad = not modalidad or modalidad in candidata['modalidad'].lower()
-                cumple_experiencia = not experiencia_anos or experiencia_anos in candidata['experiencia_anos'].lower()
-                cumple_areas_experiencia = not areas_experiencia or areas_experiencia in candidata['areas_experiencia'].lower()
+                # 🔹 Coincidencias parciales y filtros flexibles
+                cumple_ciudad = ciudad in candidata['direccion'].lower() if ciudad else True
+                cumple_modalidad = modalidad in candidata['modalidad'].lower() if modalidad else True
+                cumple_experiencia = experiencia_anos in candidata['experiencia_anos'].lower() if experiencia_anos else True
+                cumple_areas_experiencia = areas_experiencia in candidata['areas_experiencia'].lower() if areas_experiencia else True
 
                 if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
                     resultados_filtrados.append(candidata)
 
-            resultados = resultados_filtrados  # Actualizar la lista con los datos filtrados
-
-            if not resultados:
-                mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
+            # Si no se encuentra nada, mostrar todas las candidatas inscritas
+            if resultados_filtrados:
+                resultados = resultados_filtrados
+            else:
+                mensaje = "⚠️ No se encontraron resultados para los filtros aplicados. Mostrando todas las candidatas inscritas."
 
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
