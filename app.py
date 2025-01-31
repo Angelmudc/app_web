@@ -78,6 +78,28 @@ def buscar_en_columna(valor, columna_index):
 
     return None, None
 
+def obtener_datos_pagos():
+    """
+    Obtiene solo las columnas necesarias para gestionar pagos en la hoja de cálculo.
+    Columnas: 
+    - P: Código
+    - B: Nombre
+    - U: Fecha de Pago
+    - V: Fecha de Inicio del Trabajo
+    - W: Monto Total
+    - X: Porcentaje (25%)
+    - Y: Calificación de Pago
+    """
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID, 
+            range="Nueva hoja!P:Y"  # Obtiene solo las columnas relevantes
+        ).execute()
+        return hoja.get("values", [])
+    except Exception as e:
+        print(f"Error al obtener datos de pagos: {e}")
+        return []
+
 
 def actualizar_datos_editar(fila_index, nuevos_datos):
     """
@@ -362,6 +384,64 @@ def buscar_candidata_rapida(busqueda):
     
     return candidatos
 
+def actualizar_pago(fila_index, fecha_inicio, monto_total):
+    """
+    Actualiza la información de pago en la hoja de cálculo.
+    """
+    try:
+        fecha_pago = calcular_fecha_pago(fecha_inicio)
+        porcentaje = calcular_porcentaje(monto_total)
+
+        valores = [[fecha_pago, fecha_inicio, monto_total, porcentaje, "Pendiente"]]
+
+        rango = f"Nueva hoja!U{fila_index}:Y{fila_index}"  # Columnas U - Y
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": valores}
+        ).execute()
+
+        print(f"Pago actualizado en fila {fila_index}. Fecha Pago: {fecha_pago}, Porcentaje: {porcentaje}")
+        return True
+    except Exception as e:
+        print(f"Error al actualizar el pago: {e}")
+        return False
+
+def calcular_porcentaje(monto_total):
+    """
+    Calcula el 25% del monto total.
+    """
+    try:
+        return round(float(monto_total) * 0.25, 2)
+    except Exception as e:
+        print(f"Error al calcular porcentaje: {e}")
+        return 0.0
+
+def calcular_fecha_pago(fecha_inicio):
+    """
+    Calcula la fecha de pago basada en la fecha de inicio del trabajo.
+    - Si empieza entre el día 5 y 15 → el pago será el día 30 del mismo mes.
+    - Si empieza desde el 20 en adelante → el pago será el día 15 del mes siguiente.
+    """
+    try:
+        fecha = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+        dia = fecha.day
+
+        if 5 <= dia <= 15:
+            fecha_pago = fecha.replace(day=30)
+        elif dia >= 20:
+            mes_siguiente = fecha.month + 1 if fecha.month < 12 else 1
+            año_siguiente = fecha.year if fecha.month < 12 else fecha.year + 1
+            fecha_pago = fecha.replace(day=15, month=mes_siguiente, year=año_siguiente)
+        else:
+            fecha_pago = fecha  # Si no entra en esos rangos, se queda igual
+
+        return fecha_pago.strftime("%Y-%m-%d")
+    except Exception as e:
+        print(f"Error en calcular_fecha_pago: {e}")
+        return ""
+
 # Función para actualizar datos en la hoja
 def actualizar_dato_en_columna(fila_index, columna_index, nuevo_valor):
     """
@@ -384,18 +464,7 @@ def actualizar_dato_en_columna(fila_index, columna_index, nuevo_valor):
         print(f"Error al actualizar valor: {e}")
         return False
 
-def calcular_porcentaje(monto_total, porcentaje=0.25):
-    """
-    Calcula el porcentaje de un monto total.
-    :param monto_total: Monto total sobre el cual se calcula el porcentaje.
-    :param porcentaje: Porcentaje a calcular (por defecto 25%).
-    :return: Monto calculado como porcentaje.
-    """
-    try:
-        return round(monto_total * porcentaje, 2)
-    except Exception as e:
-        print(f"Error al calcular el porcentaje: {e}")
-        return 0.0
+
 
 def buscar_fila_por_codigo_nombre_cedula(busqueda):
     """
@@ -538,89 +607,6 @@ def procesar_fila(fila, fila_index):
         "porciento": porciento,
         "calificacion": calificacion,
     }
-
-def calcular_porcentaje_y_guardar(codigo, monto_total):
-    """
-    Calcula el porcentaje basado en el monto total y actualiza los datos en la hoja de cálculo.
-    """
-    try:
-        # Obtener los datos de la hoja de cálculo
-        datos = obtener_datos()
-        fila_index = -1
-
-        # Buscar la fila correspondiente al código ingresado
-        for index, fila in enumerate(datos):
-            if len(fila) > 0 and fila[0].strip().lower() == codigo.strip().lower():
-                fila_index = index
-                break
-
-        if fila_index == -1:
-            return f"Error: No se encontró el código '{codigo}' en la hoja de cálculo."
-
-        # Asegurar que la fila tenga al menos 27 columnas
-        fila_actual = datos[fila_index]
-        while len(fila_actual) < 27:
-            fila_actual.append("")
-
-        # Calcular el porcentaje
-        porciento = round(monto_total * 0.20, 2)  # Calcula el 20% y lo redondea a 2 decimales
-        fecha_pago = (datetime.now() + timedelta(days=15)).strftime("%Y-%m-%d")  # Fecha 15 días después
-        calificacion = "Pendiente"  # Se puede ajustar según formulario
-
-        # Actualizar valores en las columnas específicas
-        fila_actual[24] = str(monto_total)  # Columna Y: Monto Total
-        fila_actual[25] = str(porciento)  # Columna Z: Porciento
-        fila_actual[22] = fecha_pago  # Columna W: Fecha de Pago
-        fila_actual[26] = calificacion  # Columna AA: Calificación
-
-        # Definir el rango de la fila para actualizar
-        rango = f"Nueva hoja!A{fila_index + 1}:X{fila_index + 1}"
-
-        # Enviar los datos actualizados a la hoja de cálculo
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": [fila_actual]}
-        ).execute()
-
-        print(f"Datos actualizados correctamente en la fila {fila_index + 1}.")
-        return f"Porciento guardado correctamente para el código {codigo}."
-
-    except Exception as e:
-        print(f"Error en calcular_porcentaje_y_guardar: {e}")
-        return f"Error al guardar el porciento para el código {codigo}."
-
-def actualizar_datos_porciento(fila_index, monto_total, fecha_pago, porciento, calificacion):
-    try:
-        rango = f"Nueva hoja!A{fila_index + 1}:Y{fila_index + 1}"
-        datos = obtener_datos()
-
-        # Copiar la fila existente y actualizar los valores en las columnas específicas
-        fila_actualizada = datos[fila_index]
-        while len(fila_actualizada) < 27:  # Asegúrate de que la fila tenga al menos 27 columnas
-            fila_actualizada.append("")
-
-        # Actualiza las columnas específicas
-        fila_actualizada[24] = str(monto_total)  # Columna Y: Monto Total
-        fila_actualizada[25] = str(porciento)  # Columna Z: Porciento
-        fila_actualizada[22] = fecha_pago  # Columna W: Fecha de Pago
-        fila_actualizada[26] = calificacion  # Columna AA: Calificación
-
-        # Actualiza la fila en la hoja de cálculo
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": [fila_actualizada]}
-        ).execute()
-
-        print(f"Datos actualizados correctamente en la fila {fila_index + 1}")
-        return True
-
-    except Exception as e:
-        print(f"Error al actualizar datos en la fila {fila_index + 1}: {str(e)}")
-        return False
 
 def insertar_datos_en_hoja(fila_datos):
     """
@@ -927,6 +913,7 @@ def filtrar():
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
+
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     """
@@ -1015,67 +1002,45 @@ def porciento():
 
     return render_template('porciento.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
-@app.route('/pagos', methods=['GET', 'POST'])
+@app.route('/gestionar_pagos', methods=['GET', 'POST'])
 def gestionar_pagos():
     mensaje = ""
     datos_candidata = None
 
     if request.method == 'POST':
-        if 'buscar_btn' in request.form:  # Botón para buscar
+        if 'buscar_btn' in request.form:
             buscar = request.form.get('buscar', '').strip()
-            if not buscar:
-                mensaje = "Por favor, introduce un Código, Nombre o Cédula para buscar."
-            else:
-                # Buscar datos en la hoja de cálculo
-                for fila in obtener_datos():
-                    if len(fila) > 17 and (
-                        buscar.lower() == fila[0].lower() or  # Código
-                        buscar.lower() == fila[1].lower() or  # Nombre
-                        buscar == fila[17]  # Cédula
-                    ):
-                        datos_candidata = {
-                            'codigo': fila[0],
-                            'nombre': fila[1],
-                            'porciento': float(fila[25]) if len(fila) > 25 else 0.0,  # Columna Z: Porciento
-                            'calificacion': fila[26] if len(fila) > 26 else "Pendiente",  # Columna AA: Calificación
-                        }
-                        break
-                if not datos_candidata:
-                    mensaje = f"No se encontraron resultados para: {buscar}"
+            datos = obtener_datos_pagos()
+            for fila_index, fila in enumerate(datos):
+                if len(fila) > 16 and (buscar in fila[15] or buscar in fila[1] or buscar in fila[14]):  
+                    datos_candidata = {
+                        'fila_index': fila_index + 1,
+                        'codigo': fila[15],  # Código
+                        'nombre': fila[1],  # Nombre
+                        'monto_total': fila[22] if len(fila) > 22 else "0",
+                        'fecha_inicio': fila[21] if len(fila) > 21 else "",
+                        'porcentaje': fila[23] if len(fila) > 23 else "",
+                        'fecha_pago': fila[20] if len(fila) > 20 else "",
+                        'calificacion': fila[24] if len(fila) > 24 else "Pendiente",
+                    }
+                    break
+            if not datos_candidata:
+                mensaje = "No se encontraron resultados."
 
-        elif 'guardar_btn' in request.form:  # Botón para guardar
-            codigo = request.form.get('codigo', '').strip()
-            pago = float(request.form.get('pago', 0))
-            calificacion = request.form.get('calificacion', 'Pendiente').strip()
+        elif 'guardar_btn' in request.form:
+            try:
+                fila_index = int(request.form.get('fila_index', -1))
+                fecha_inicio = request.form.get('fecha_inicio', '').strip()
+                monto_total = float(request.form.get('monto_total', 0))
 
-            if not codigo:
-                mensaje = "Por favor, introduce un Código válido."
-            elif pago <= 0:
-                mensaje = "El pago debe ser mayor que 0."
-            else:
-                # Actualizar el porcentaje adeudado en la hoja
-                datos = obtener_datos()
-                for fila_index, fila in enumerate(datos):
-                    if len(fila) > 0 and fila[0].strip() == codigo:
-                        while len(fila) < 27:  # Asegurarse de que la fila tenga suficientes columnas
-                            fila.append("")
-                        porciento_actual = float(fila[25]) if len(fila) > 25 else 0.0
-                        nuevo_porciento = max(0, porciento_actual - pago)  # Evitar valores negativos
-                        fila[25] = str(nuevo_porciento)  # Actualizar Columna Z: Porciento
-                        fila[26] = calificacion  # Actualizar Columna AA: Calificación
-
-                        # Definir el rango y actualizar en la hoja
-                        rango = f"Hoja de trabajo!A{fila_index + 1}:AA{fila_index + 1}"
-                        service.spreadsheets().values().update(
-                            spreadsheetId=SPREADSHEET_ID,
-                            range=rango,
-                            valueInputOption="RAW",
-                            body={"values": [fila]}
-                        ).execute()
-                        mensaje = f"Pago registrado correctamente. Porcentaje restante: {nuevo_porciento:.2f}"
-                        break
+                if fila_index == -1 or not fecha_inicio:
+                    mensaje = "Error: Faltan datos."
                 else:
-                    mensaje = "No se encontró el código para actualizar."
+                    actualizar_pago(fila_index, fecha_inicio, monto_total)
+                    mensaje = "Pago registrado correctamente."
+
+            except Exception as e:
+                mensaje = f"Error al guardar datos: {str(e)}"
 
     return render_template('pagos.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
