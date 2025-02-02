@@ -78,61 +78,6 @@ def buscar_en_columna(valor, columna_index):
 
     return resultados  # Devuelve todas las coincidencias encontradas
 
-def obtener_datos_pagos():
-    """
-    Obtiene solo las columnas necesarias para gestionar pagos en la hoja de cálculo.
-    Columnas:
-    - P: Código
-    - B: Nombre
-    - U: Fecha de Pago
-    - V: Fecha de Inicio del Trabajo
-    - W: Monto Total
-    - X: Porcentaje (25%)
-    - Y: Calificación de Pago
-    """
-
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!P:Y"  # Obtiene solo las columnas necesarias
-        ).execute()
-
-        datos = hoja.get("values", [])
-
-        # Asegurar que todas las filas tienen el mismo número de columnas
-        for fila in datos:
-            while len(fila) < 12:  # Se ajusta al número de columnas esperadas
-                fila.append("")  # Se rellenan los vacíos para evitar errores
-
-        return datos
-
-    except Exception as e:
-        print(f"⚠️ Error al obtener datos de pagos: {e}")
-        return []
-
-def actualizar_datos_pagos(fila_index, nuevos_datos):
-    """
-    Actualiza solo las columnas específicas de pagos en la hoja de cálculo.
-    Columnas afectadas:
-    - U: Fecha de Pago
-    - W: Monto Total
-    - X: Porcentaje (25%)
-    """
-    try:
-        rango = f" Nueva hoja!U{fila_index + 1}:Y{fila_index + 1}"
-
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="USER_ENTERED",
-            body={"values": [nuevos_datos]}
-        ).execute()
-
-        print(f"✅ Datos de pago actualizados en fila {fila_index}")
-
-    except Exception as e:
-        print(f"⚠️ Error al actualizar datos de pago: {e}")
-
 
 def actualizar_datos_editar(fila_index, nuevos_datos):
     """
