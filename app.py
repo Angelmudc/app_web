@@ -1031,23 +1031,30 @@ def porciento():
 ### 📌 FUNCIÓN PARA BUSCAR CANDIDATAS (FLEXIBLE)
 def buscar_candidata(valor):
     try:
-        data = sheet.get_all_records()
+        data = sheet.get_all_records()  # Obtiene todas las filas en la hoja
+        valor = valor.lower().strip()  # Convierte el valor a minúsculas para evitar errores por mayúsculas
+
         for fila in data:
-            if valor.lower() in str(fila["Código"]).lower() or valor.lower() in str(fila["Nombre"]).lower() or valor.lower() in str(fila["Cédula"]).lower():
+            # Normaliza los valores de la fila para buscar sin importar mayúsculas o espacios
+            codigo = str(fila.get("Código", "")).strip().lower()
+            nombre = str(fila.get("Nombre", "")).strip().lower()
+            cedula = str(fila.get("Cédula", "")).strip().lower()
+
+            if valor in codigo or valor in nombre or valor in cedula:
                 return {
-                    "codigo": fila["Código"],
-                    "nombre": fila["Nombre"],
-                    "cedula": fila["Cédula"],
-                    "telefono": fila["Teléfono"],
-                    "ciudad": fila["Ciudad"]
+                    "codigo": fila.get("Código", ""),
+                    "nombre": fila.get("Nombre", ""),
+                    "cedula": fila.get("Cédula", ""),
+                    "telefono": fila.get("Teléfono", ""),
+                    "ciudad": fila.get("Ciudad", "")
                 }
-        return None
+
+        return None  # Si no se encuentra nada
     except Exception as e:
-        print(f"Error al buscar candidata: {e}")
+        print(f"Error en la búsqueda de candidata: {e}")
         return None
 
 
-### 📌 API PARA BUSCAR CANDIDATAS
 @app.route("/buscar_candidata", methods=["GET"])
 def buscar_candidata_api():
     valor = request.args.get("valor", "").strip()
@@ -1058,8 +1065,7 @@ def buscar_candidata_api():
     if candidata:
         return jsonify(candidata)
     else:
-        return jsonify({"error": "No se encontraron resultados"})
-
+        return jsonify({"error": "No se encontraron resultados"}), 404
 
 ### 📌 API PARA CALCULAR EL PORCENTAJE Y FECHA DE PAGO
 @app.route("/calcular_porcentaje", methods=["POST"])
