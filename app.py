@@ -968,34 +968,37 @@ def calcular_porcentaje():
         if not codigo or not monto_total or not fecha_inicio:
             return jsonify({"error": "Todos los campos son obligatorios"}), 400
 
-        try:
-            monto_total = float(monto_total)
-            porcentaje = round(monto_total * 0.25, 2)  # 25% del monto total
+        # Convertir monto total a float y calcular el 25%
+        monto_total = float(monto_total)
+        porcentaje = round(monto_total * 0.25, 2)
 
-            # Calcular la fecha de pago
-            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
-            dia_inicio = fecha_inicio_dt.day
+        # Calcular fecha de pago según la fecha de inicio
+        fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+        dia_inicio = fecha_inicio_dt.day
 
-            if 5 <= dia_inicio <= 15:
-                fecha_pago = fecha_inicio_dt.replace(day=30)
-            else:
-                mes_siguiente = fecha_inicio_dt.month + 1 if fecha_inicio_dt.month < 12 else 1
-                anio_siguiente = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
-                fecha_pago = datetime(anio_siguiente, mes_siguiente, 15)
+        if 5 <= dia_inicio <= 15:
+            fecha_pago = fecha_inicio_dt.replace(day=30)
+        else:
+            mes_siguiente = fecha_inicio_dt.month + 1 if fecha_inicio_dt.month < 12 else 1
+            año = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
+            fecha_pago = fecha_inicio_dt.replace(year=año, month=mes_siguiente, day=15)
 
-            fecha_pago_str = fecha_pago.strftime("%Y-%m-%d")
+        fecha_pago_str = fecha_pago.strftime("%Y-%m-%d")
 
-            return jsonify({
-                "codigo": codigo,
-                "monto_total": monto_total,
-                "porcentaje": porcentaje,
-                "fecha_pago": fecha_pago_str
-            }), 200
+        # Conectar con la hoja de cálculo
+        hoja = cliente.open("Nueva hoja").sheet1  
+        datos = hoja.get_all_records()
 
-        except ValueError:
-            return jsonify({"error": "Monto total inválido o fecha incorrecta"}), 400
+        for i, fila in enumerate(datos):
+            if fila['Código'] == codigo:
+                hoja.update_cell(i + 2, 22, fecha_inicio)  # Columna "V" Fecha de Inicio
+                hoja.update_cell(i + 2, 23, monto_total)   # Columna "W" Monto Total
+                hoja.update_cell(i + 2, 24, porcentaje)    # Columna "X" Porcentaje
+                hoja.update_cell(i + 2, 21, fecha_pago_str)  # Columna "U" Fecha de Pago
+                return render_template('porciento.html', mensaje="Pago registrado correctamente")
 
-    # Si es GET, simplemente renderiza la plantilla
+        return render_template('porciento.html', mensaje="Error: Candidata no encontrada")
+
     return render_template('porciento.html')
 
 @app.route('/pagos', methods=['GET', 'POST'])
