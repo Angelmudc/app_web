@@ -5,139 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calcular Porcentaje de Pago</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
-</head>
-<body>
-
-    <div class="container">
-        <h2><i class="fas fa-calculator"></i> Calcular Porcentaje de Pago</h2>
-
-        <!-- 🔎 BUSCAR CANDIDATA -->
-        <div class="search-section">
-            <input type="text" id="buscar_candidata" placeholder="Ingrese Código o Nombre">
-            <button onclick="buscarCandidata()" class="btn-search"><i class="fas fa-search"></i> Buscar</button>
-        </div>
-
-        <!-- 📋 INFORMACIÓN DE LA CANDIDATA -->
-        <div id="info_candidata" class="info-section" style="display: none;">
-            <h3>Información de la Candidata</h3>
-            <p><strong>📌 Código:</strong> <span id="codigo"></span></p>
-            <p><strong>📝 Nombre:</strong> <span id="nombre"></span></p>
-            <p><strong>🆔 Cédula:</strong> <span id="cedula"></span></p>
-            <p><strong>📞 Teléfono:</strong> <span id="telefono"></span></p>
-            <p><strong>🏙️ Ciudad:</strong> <span id="ciudad"></span></p>
-        </div>
-
-        <!-- 📊 FORMULARIO DE PAGO -->
-        <form id="form_pago">
-            <label for="fecha_inicio"><i class="far fa-calendar-alt"></i> Fecha de Inicio:</label>
-            <input type="date" id="fecha_inicio" required>
-
-            <label for="monto_total"><i class="fas fa-dollar-sign"></i> Monto Total:</label>
-            <input type="number" id="monto_total" placeholder="Ingrese el monto total" required>
-
-            <label for="porcentaje"><i class="fas fa-percentage"></i> Porcentaje (25%):</label>
-            <input type="text" id="porcentaje" readonly>
-
-            <label for="fecha_pago"><i class="far fa-calendar-check"></i> Fecha de Pago:</label>
-            <input type="text" id="fecha_pago" readonly>
-
-            <button type="button" onclick="calcularPorcentaje()" class="btn-calculate">
-                <i class="fas fa-calculator"></i> Calcular
-            </button>
-
-            <button type="button" onclick="guardarPago()" class="btn-save">
-                <i class="fas fa-save"></i> Guardar
-            </button>
-        </form>
-    </div>
-
     <script>
-        function buscarCandidata() {
-            let codigo = document.getElementById("buscar_candidata").value;
-            if (!codigo.trim()) {
-                Swal.fire("Error", "Debe ingresar un código o nombre", "error");
-                return;
-            }
-
-            fetch(/buscar_candidata?codigo=${codigo})
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        Swal.fire("Error", data.error, "error");
-                    } else {
-                        document.getElementById("info_candidata").style.display = "block";
-                        document.getElementById("codigo").innerText = data.codigo;
-                        document.getElementById("nombre").innerText = data.nombre;
-                        document.getElementById("cedula").innerText = data.cedula;
-                        document.getElementById("telefono").innerText = data.telefono;
-                        document.getElementById("ciudad").innerText = data.ciudad;
-                    }
-                })
-                .catch(error => {
-                    Swal.fire("Error", "No se pudo conectar con el servidor", "error");
-                });
-        }
-
-        function calcularPorcentaje() {
-            let monto = document.getElementById("monto_total").value;
-            let fechaInicio = document.getElementById("fecha_inicio").value;
-
-            if (!monto || !fechaInicio) {
-                Swal.fire("Error", "Debe ingresar monto y fecha de inicio", "error");
-                return;
-            }
-
-            let porcentaje = (monto * 0.25).toFixed(2);
-            document.getElementById("porcentaje").value = porcentaje;
-
-            let fecha = new Date(fechaInicio);
-            let dia = fecha.getDate();
-
-            if (dia >= 5 && dia <= 15) {
-                fecha.setDate(30);
-            } else if (dia >= 16 && dia <= 31) {
-                fecha.setMonth(fecha.getMonth() + 1);
-                fecha.setDate(15);
-            }
-
-            let fechaPagoFormateada = fecha.toISOString().split("T")[0];
-            document.getElementById("fecha_pago").value = fechaPagoFormateada;
-
-            Swal.fire("Cálculo realizado", Porcentaje: ${porcentaje}, Fecha de Pago: ${fechaPagoFormateada}, "success");
-        }
-
-        function guardarPago() {
-            let codigo = document.getElementById("buscar_candidata").value;
-            let fechaInicio = document.getElementById("fecha_inicio").value;
-            let monto = document.getElementById("monto_total").value;
-            let porcentaje = document.getElementById("porcentaje").value;
-            let fechaPago = document.getElementById("fecha_pago").value;
-
-            if (!codigo || !fechaInicio || !monto || !porcentaje || !fechaPago) {
-                Swal.fire("Error", "Todos los campos son obligatorios", "error");
-                return;
-            }
-
-            fetch("/guardar_porcentaje", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ codigo, fecha_inicio: fechaInicio, monto_total: monto, porcentaje, fecha_pago: fechaPago })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    Swal.fire("Éxito", "Pago guardado correctamente", "success");
-                } else {
-                    Swal.fire("Error", data.error, "error");
-                }
-            })
-            .catch(error => {
-                Swal.fire("Error", "No se pudo conectar con el servidor", "error");
-            });
+        function mostrarFormulario() {
+            document.getElementById("formularioPago").style.display = "block";
         }
     </script>
+</head>
+<body>
+    <h2 style="text-align:center; color:#0056b3;">💰 Calcular Porcentaje de Pago</h2>
 
+    <form method="post">
+        <label for="busqueda">🔍 Buscar Candidata:</label>
+        <input type="text" name="busqueda" id="busqueda" required>
+        <button type="submit" name="buscar">Buscar</button>
+    </form>
+
+    {% if mensaje %}
+        <p style="color:red;">{{ mensaje }}</p>
+    {% endif %}
+
+    {% if datos_candidata %}
+        <hr>
+        <h3>📌 Datos de la Candidata</h3>
+        <p><b>🔹 Código:</b> {{ datos_candidata.codigo }}</p>
+        <p><b>🔹 Nombre:</b> {{ datos_candidata.nombre }}</p>
+        <p><b>📞 Teléfono:</b> {{ datos_candidata.telefono }}</p>
+        <p><b>📍 Ciudad:</b> {{ datos_candidata.ciudad }}</p>
+        <p><b>🆔 Cédula:</b> {{ datos_candidata.cedula }}</p>
+
+        <form method="post" id="formularioPago" style="display:block;">
+            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+
+            <label for="fecha_inicio">📅 Fecha de Inicio:</label>
+            <input type="date" name="fecha_inicio" required>
+
+            <label for="monto_total">💲 Monto Total:</label>
+            <input type="number" name="monto_total" required>
+
+            <button type="submit" name="calcular">Calcular</button>
+        </form>
+    {% endif %}
+
+    {% if datos_candidata and 'fecha_pago' in datos_candidata %}
+        <h3>📝 Resultado del Cálculo</h3>
+        <p><b>✅ Fecha de Pago:</b> {{ datos_candidata.fecha_pago }}</p>
+        <p><b>💵 Porcentaje (25%):</b> {{ datos_candidata.porcentaje }}</p>
+    {% endif %}
+
+    <footer style="margin-top:20px; text-align:center;">
+        <p>© 2025 Doméstica del Cibao | Diseñado para máxima eficiencia 🚀</p>
+    </footer>
 </body>
 </html>
