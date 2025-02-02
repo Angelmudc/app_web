@@ -1152,36 +1152,56 @@ def gestionar_pagos():
         if 'buscar_btn' in request.form:
             buscar = request.form.get('buscar', '').strip()
             datos = obtener_datos_pagos()
+
             for fila_index, fila in enumerate(datos):
-                if len(fila) > 24 and (buscar in fila[15] or buscar in fila[1] or buscar in fila[14]):  
+                if len(fila) > 24 and (buscar in fila[15] or buscar in fila[1] or buscar in fila[5]):  # Código, Nombre, Cédula
                     datos_candidata = {
                         'fila_index': fila_index + 1,
                         'codigo': fila[15],  # Código
-                        'nombre': fila[1],  # Nombre
-                        'monto_total': fila[22] if len(fila) > 22 else "0",
-                        'fecha_inicio': fila[21] if len(fila) > 21 else "",
-                        'porcentaje': fila[23] if len(fila) > 23 else "",
-                        'fecha_pago': fila[20] if len(fila) > 20 else "",
-                        'calificacion': fila[24] if len(fila) > 24 else "Pendiente",
+                        'nombre': fila[1],   # Nombre
+                        'monto_total': fila[22] if len(fila) > 22 else "",  # Monto Total
+                        'fecha_inicio': fila[21] if len(fila) > 21 else "",  # Fecha de Inicio
+                        'porcentaje': fila[23] if len(fila) > 23 else "",   # Porcentaje
+                        'fecha_pago': fila[20] if len(fila) > 20 else "",   # Fecha de Pago
+                        'calificacion': fila[24] if len(fila) > 24 else ""  # Calificación
                     }
                     break
+
             if not datos_candidata:
                 mensaje = "No se encontraron resultados."
 
         elif 'guardar_btn' in request.form:
             try:
-                fila_index = int(request.form.get('fila_index', 14))
+                fila_index = int(request.form.get('fila_index'))
                 fecha_inicio = request.form.get('fecha_inicio', '').strip()
                 monto_total = float(request.form.get('monto_total', 0))
 
-                if fila_index == 14 or not fecha_inicio:
+                if fila_index < 0 or not fecha_inicio or monto_total <= 0:
                     mensaje = "Error: Faltan datos."
                 else:
-                    actualizar_pago(fila_index, fecha_inicio, monto_total)
+                    porcentaje = round(monto_total * 0.25, 2)  # Calcular 25%
+                    fecha_inicio_dt = datetime.strptime(fecha_inicio, "%d/%m/%Y")
+
+                    # Calcular fecha de pago
+                    if 5 <= fecha_inicio_dt.day <= 15:
+                        fecha_pago_dt = fecha_inicio_dt.replace(day=30)
+                    else:
+                        mes_siguiente = fecha_inicio_dt.month + 1 if fecha_inicio_dt.month < 12 else 1
+                        año_siguiente = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
+                        fecha_pago_dt = datetime(año_siguiente, mes_siguiente, 15)
+
+                    fecha_pago_str = fecha_pago_dt.strftime("%d/%m/%Y")
+
+                    # Guardar en la hoja de cálculo
+                    hoja.update(f"W{fila_index}", monto_total)  # Monto Total
+                    hoja.update(f"X{fila_index}", porcentaje)   # Porcentaje
+                    hoja.update(f"U{fila_index}", fecha_pago_str)  # Fecha de Pago
+                    hoja.update(f"V{fila_index}", fecha_inicio)   # Fecha de Inicio
+
                     mensaje = "Pago registrado correctamente."
 
             except Exception as e:
-                mensaje = f"Error al guardar datos: {str(e)}"
+                mensaje = f"Error al guardar datos: {e}"
 
     return render_template('pagos.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
