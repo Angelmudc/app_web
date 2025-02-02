@@ -14,12 +14,7 @@ from flask_caching import Cache
 from rapidfuzz import process
 from google.oauth2.service_account import Credentials
 from flask import Flask, request, render_template, jsonify
-from flask import Flask, render_template, request, jsonify
-import datetime
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from flask import flask
- 
+
 
 
 # Configuración de la API de Google Sheets
