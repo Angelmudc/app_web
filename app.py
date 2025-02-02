@@ -1170,30 +1170,7 @@ def gestionar_pagos():
 
         elif 'guardar_btn' in request.form:
             try:
-                fila_index = int(request.form.get('fila_index', 14def buscar_candidata(valor):
-    try:
-        data = obtener_datos_pagos()  # Obtener todos los datos de pagos
-        valor = valor.lower().strip()  # Convertir a minúsculas y quitar espacios
-
-        for fila in data:
-            codigo = str(fila[0]).strip().lower()  # Código en la columna P
-            nombre = str(fila[1]).strip().lower()  # Nombre en la columna B
-            cedula = str(fila[14]).strip().lower()  # Cédula en la columna Y (última)
-
-            # Permitir coincidencias parciales
-            if valor in codigo or valor in nombre or valor in cedula:
-                return {
-                    "codigo": fila[0],
-                    "nombre": fila[1],
-                    "telefono": fila[2],
-                    "ciudad": fila[3],
-                    "cedula": fila[14]
-                }
-
-        return None  # Si no se encuentra nada
-    except Exception as e:
-        print(f"Error en la búsqueda de candidata: {e}")
-        return None))
+                fila_index = int(request.form.get('fila_index', 14))
                 fecha_inicio = request.form.get('fecha_inicio', '').strip()
                 monto_total = float(request.form.get('monto_total', 0))
 
