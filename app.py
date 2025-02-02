@@ -1061,7 +1061,7 @@ def buscar_candidata(valor):
 
 
 @app.route("/buscar_candidata", methods=["GET"])
-def buscar_candidata_api():
+def buscar_candidata():
     valor = request.args.get("valor", "").strip()
     if not valor:
         return jsonify({"error": "Debe ingresar un valor"}), 400
