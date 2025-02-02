@@ -19,12 +19,13 @@ import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from flask import flask
+ 
 
 
 # Configuración de la API de Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg'
-RANGE_NAME = 'Nueva hoja!A1:Y'
+RANGE_NAME = 'Nueva hoja!A1:Z'
 
 # Cargar credenciales desde la variable de entorno
 clave1 = json.loads(os.environ.get("CLAVE1_JSON"))
