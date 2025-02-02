@@ -4,88 +4,187 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calcular Porcentaje de Pago</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            width: 50%;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        h2 {
+            color: #0044cc;
+            margin-bottom: 20px;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0044cc;
+            color: white;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0033aa;
+        }
+        .info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .footer {
+            margin-top: 10px;
+            font-size: 14px;
+            color: gray;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
 </head>
 <body>
-
     <div class="container">
-        <h2>Calcular Porcentaje de Pago</h2>
-
-        <form id="formulario">
-            <label for="busqueda">Buscar Candidata (Código, Nombre o Cédula):</label>
-            <input type="text" id="busqueda" name="busqueda" required>
-            <button type="submit">Buscar</button>
-        </form>
-
-        <div id="info_candidata" style="display: none;">
-            <h3>Datos de la Candidata</h3>
-            <p><strong>Nombre:</strong> <span id="nombre"></span></p>
-            <p><strong>Cédula:</strong> <span id="cedula"></span></p>
-            <p><strong>Teléfono:</strong> <span id="telefono"></span></p>
-            <p><strong>Ciudad:</strong> <span id="ciudad"></span></p>
-
-            <label for="fecha_inicio">Fecha de Inicio:</label>
-            <input type="date" id="fecha_inicio" name="fecha_inicio" required>
-
-            <label for="monto_total">Monto Total:</label>
-            <input type="number" id="monto_total" name="monto_total" required>
-
-            <button id="calcular" disabled>Calcular</button>
+        <h2><i class="fas fa-calculator"></i> Calcular Porcentaje de Pago</h2>
+        
+        <!-- 🔍 Buscar candidata -->
+        <input type="text" id="buscar" placeholder="Ingrese código, nombre o cédula">
+        <button onclick="buscarCandidata()"><i class="fas fa-search"></i> Buscar</button>
+        
+        <!-- Información de la candidata (solo aparece después de buscar) -->
+        <div id="infoCandidata" class="hidden">
+            <div class="info"><strong>Nombre:</strong> <span id="nombre"></span></div>
+            <div class="info"><strong>Cédula:</strong> <span id="cedula"></span></div>
+            <div class="info"><strong>Teléfono:</strong> <span id="telefono"></span></div>
+            <div class="info"><strong>Ciudad:</strong> <span id="ciudad"></span></div>
+            
+            <!-- 🔢 Datos de pago -->
+            <label><i class="fas fa-calendar-alt"></i> Fecha de Inicio:</label>
+            <input type="date" id="fechaInicio">
+            
+            <label><i class="fas fa-money-bill-wave"></i> Monto Total:</label>
+            <input type="number" id="montoTotal">
+            
+            <label><i class="fas fa-percent"></i> Porcentaje (25%):</label>
+            <input type="text" id="porcentaje" readonly>
+            
+            <label><i class="fas fa-calendar-check"></i> Fecha de Pago:</label>
+            <input type="text" id="fechaPago" readonly>
+            
+            <button onclick="calcularPorcentaje()"><i class="fas fa-calculator"></i> Calcular</button>
+            <button onclick="guardarPago()"><i class="fas fa-save"></i> Guardar</button>
         </div>
-
-        <h3>Resultados:</h3>
-        <p><strong>Porcentaje (25%):</strong> <span id="porcentaje"></span></p>
-        <p><strong>Fecha de Pago:</strong> <span id="fecha_pago"></span></p>
+        
+        <div class="footer">© 2025 Doméstica del Cibao | Diseñado para máxima eficiencia 🚀</div>
     </div>
 
     <script>
-        $(document).ready(function() {
-            $("#formulario").submit(function(event) {
-                event.preventDefault();
-                let busqueda = $("#busqueda").val().trim();
+        function buscarCandidata() {
+            let busqueda = document.getElementById("buscar").value.trim();
+            if (busqueda === "") {
+                alert("Ingrese un código, nombre o cédula");
+                return;
+            }
 
-                $.ajax({
-                    url: "/porciento",
-                    type: "POST",
-                    data: { busqueda: busqueda },
-                    success: function(response) {
-                        $("#nombre").text(response.candidata.nombre);
-                        $("#cedula").text(response.candidata.cedula);
-                        $("#telefono").text(response.candidata.telefono);
-                        $("#ciudad").text(response.candidata.ciudad);
-                        $("#info_candidata").show();
-                        $("#calcular").prop("disabled", false);
-                    },
-                    error: function(xhr) {
-                        alert("Error: " + xhr.responseJSON.error);
+            fetch("/buscar_candidata?valor=" + encodeURIComponent(busqueda))
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert("No se encontraron resultados");
+                    } else {
+                        document.getElementById("nombre").textContent = data.nombre;
+                        document.getElementById("cedula").textContent = data.cedula;
+                        document.getElementById("telefono").textContent = data.telefono;
+                        document.getElementById("ciudad").textContent = data.ciudad;
+                        document.getElementById("infoCandidata").classList.remove("hidden");
                     }
-                });
-            });
+                })
+                .catch(error => console.error("Error en la búsqueda:", error));
+        }
 
-            $("#calcular").click(function() {
-                let fecha_inicio = $("#fecha_inicio").val();
-                let monto_total = $("#monto_total").val();
+        function calcularPorcentaje() {
+            let montoTotal = document.getElementById("montoTotal").value;
+            let fechaInicio = document.getElementById("fechaInicio").value;
 
-                $.ajax({
-                    url: "/porciento",
-                    type: "POST",
-                    data: {
-                        busqueda: $("#busqueda").val(),
-                        fecha_inicio: fecha_inicio,
-                        monto_total: monto_total
-                    },
-                    success: function(response) {
-                        $("#porcentaje").text(response.porcentaje);
-                        $("#fecha_pago").text(response.fecha_pago);
-                    },
-                    error: function(xhr) {
-                        alert("Error: " + xhr.responseJSON.error);
-                    }
-                });
-            });
-        });
+            if (!montoTotal || !fechaInicio) {
+                alert("Ingrese monto total y fecha de inicio");
+                return;
+            }
+
+            fetch("/calcular_porcentaje", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ monto_total: montoTotal, fecha_inicio: fechaInicio })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    document.getElementById("porcentaje").value = data.porcentaje;
+                    document.getElementById("fechaPago").value = data.fecha_pago;
+                }
+            })
+            .catch(error => console.error("Error en el cálculo:", error));
+        }
+
+        function guardarPago() {
+            let codigo = document.getElementById("buscar").value;
+            let montoTotal = document.getElementById("montoTotal").value;
+            let porcentaje = document.getElementById("porcentaje").value;
+            let fechaPago = document.getElementById("fechaPago").value;
+            let fechaInicio = document.getElementById("fechaInicio").value;
+
+            if (!codigo || !montoTotal || !porcentaje || !fechaPago || !fechaInicio) {
+                alert("Debe completar todos los campos");
+                return;
+            }
+
+            fetch("/guardar_pago", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    codigo: codigo,
+                    monto_total: montoTotal,
+                    porcentaje: porcentaje,
+                    fecha_pago: fechaPago,
+                    fecha_inicio: fechaInicio
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert("Pago registrado correctamente");
+                }
+            })
+            .catch(error => console.error("Error al guardar:", error));
+        }
     </script>
-
 </body>
 </html>

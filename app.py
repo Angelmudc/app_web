@@ -60,29 +60,27 @@ def normalizar_texto(texto):
 # Función para buscar datos por código, nombre o cédula
 def buscar_en_columna(valor, columna_index):
     """
-    Busca un valor en una columna específica y devuelve la fila correspondiente.
-    :param valor: Valor a buscar.
-    :param columna_index: Índice de la columna donde buscar.
-    :return: Índice de la fila y la fila completa si se encuentra; None si no.
+    Busca un valor dentro de una columna específica sin ser estricto.
+    - No distingue mayúsculas y minúsculas.
+    - Ignora espacios en blanco antes y después.
+    - Devuelve todas las coincidencias.
     """
-    datos = obtener_datos_editar()
-    valor_normalizado = normalizar_texto(valor)
+    valor_normalizado = valor.strip().lower()  # Convierte todo a minúsculas y elimina espacios
 
-    # Validar que columna_index sea un número entero
-    if isinstance(columna_index, list):
-        columna_index = columna_index[0]  # Si es lista, tomar el primer valor
+    datos = obtener_datos_pagos()
 
-    for fila_index, fila in enumerate(datos):
-        if len(fila) > columna_index:
-            if valor_normalizado == normalizar_texto(fila[columna_index]):
-                return fila_index, fila  # ✅ Devuelve la fila encontrada
+    resultados = []
+    for fila in datos:
+        if len(fila) > columna_index:  # Evita errores si la fila tiene menos columnas
+            if valor_normalizado in fila[columna_index].strip().lower():
+                resultados.append(fila)
 
-    return None, None
+    return resultados  # Devuelve todas las coincidencias encontradas
 
 def obtener_datos_pagos():
     """
     Obtiene solo las columnas necesarias para gestionar pagos en la hoja de cálculo.
-    Columnas: 
+    Columnas:
     - P: Código
     - B: Nombre
     - U: Fecha de Pago
@@ -91,15 +89,48 @@ def obtener_datos_pagos():
     - X: Porcentaje (25%)
     - Y: Calificación de Pago
     """
+
     try:
         hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!B:Y"  # Obtiene solo las columnas relevantes
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!P:Y"  # Obtiene solo las columnas necesarias
         ).execute()
-        return hoja.get("values", [])
+
+        datos = hoja.get("values", [])
+
+        # Asegurar que todas las filas tienen el mismo número de columnas
+        for fila in datos:
+            while len(fila) < 12:  # Se ajusta al número de columnas esperadas
+                fila.append("")  # Se rellenan los vacíos para evitar errores
+
+        return datos
+
     except Exception as e:
-        print(f"Error al obtener datos de pagos: {e}")
+        print(f"⚠️ Error al obtener datos de pagos: {e}")
         return []
+
+def actualizar_datos_pagos(fila_index, nuevos_datos):
+    """
+    Actualiza solo las columnas específicas de pagos en la hoja de cálculo.
+    Columnas afectadas:
+    - U: Fecha de Pago
+    - W: Monto Total
+    - X: Porcentaje (25%)
+    """
+    try:
+        rango = f" Nueva hoja!U{fila_index + 1}:Y{fila_index + 1}"
+
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="USER_ENTERED",
+            body={"values": [nuevos_datos]}
+        ).execute()
+
+        print(f"✅ Datos de pago actualizados en fila {fila_index}")
+
+    except Exception as e:
+        print(f"⚠️ Error al actualizar datos de pago: {e}")
 
 
 def actualizar_datos_editar(fila_index, nuevos_datos):
@@ -409,15 +440,47 @@ def actualizar_pago(fila_index, fecha_inicio, monto_total):
         print(f"Error al actualizar el pago: {e}")
         return False
 
-def calcular_porcentaje(monto_total):
+def calcular_porcentaje():
     """
-    Calcula el 25% del monto total.
+    Calcula el porcentaje de pago (25%) y establece la fecha de pago según la lógica establecida.
+    - Si la fecha de inicio es entre el 5 y 15 → Fecha de pago será el 30.
+    - Si la fecha de inicio es después del 15 → Fecha de pago será el 15 del mes siguiente.
     """
     try:
-        return round(float(monto_total) * 0.25, 2)
+        codigo = request.form.get('codigo')
+        monto_total = request.form.get('monto_total')
+        fecha_inicio = request.form.get('fecha_inicio')
+
+        if not codigo or not monto_total or not fecha_inicio:
+            return jsonify({"error": "Todos los campos son obligatorios"}), 400
+
+        # Calcular porcentaje (25%)
+        monto_total = float(monto_total)
+        porcentaje = round(monto_total * 0.25, 2)
+
+        # Calcular la fecha de pago
+        fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+        dia_inicio = fecha_inicio_dt.day
+
+        if 5 <= dia_inicio <= 15:
+            fecha_pago = fecha_inicio_dt.replace(day=30)
+        else:
+            mes_siguiente = fecha_inicio_dt.month + 1 if fecha_inicio_dt.month < 12 else 1
+            año_siguiente = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
+            fecha_pago = datetime(año_siguiente, mes_siguiente, 15)
+
+        fecha_pago_str = fecha_pago.strftime("%Y-%m-%d")
+
+        return jsonify({
+            "codigo": codigo,
+            "monto_total": monto_total,
+            "porcentaje": porcentaje,
+            "fecha_pago": fecha_pago_str
+        })
+
     except Exception as e:
-        print(f"Error al calcular porcentaje: {e}")
-        return 0.0
+        print(f"⚠️ Error en cálculo de porcentaje: {e}")
+        return jsonify({"error": "Error interno en el cálculo"}), 500
 
 def calcular_fecha_pago(fecha_inicio):
     """
@@ -959,54 +1022,116 @@ def inscripcion():
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
 
-# Datos de ejemplo (esto se conectará a tu base de datos en producción)
-candidatas = [
-    {"codigo": "CAN-001", "nombre": "María López", "cedula": "001-1234567-8", "telefono": "809-555-1234", "ciudad": "Santiago"},
-    {"codigo": "CAN-002", "nombre": "Ana Pérez", "cedula": "002-7654321-9", "telefono": "829-555-5678", "ciudad": "La Vega"},
-    {"codigo": "CAN-003", "nombre": "Juana Díaz", "cedula": "003-8765432-1", "telefono": "849-555-4321", "ciudad": "Moca"}
-]
+### 📌 RUTA PARA RENDERIZAR EL HTML DE PORCENTAJE
+@app.route("/porciento", methods=["GET"])
+def porciento():
+    return render_template("porciento.html")
 
-@app.route('/porciento', methods=['GET', 'POST'])
+
+### 📌 FUNCIÓN PARA BUSCAR CANDIDATAS (FLEXIBLE)
+def buscar_candidata(valor):
+    try:
+        data = sheet.get_all_records()
+        for fila in data:
+            if valor.lower() in str(fila["Código"]).lower() or valor.lower() in str(fila["Nombre"]).lower() or valor.lower() in str(fila["Cédula"]).lower():
+                return {
+                    "codigo": fila["Código"],
+                    "nombre": fila["Nombre"],
+                    "cedula": fila["Cédula"],
+                    "telefono": fila["Teléfono"],
+                    "ciudad": fila["Ciudad"]
+                }
+        return None
+    except Exception as e:
+        print(f"Error al buscar candidata: {e}")
+        return None
+
+
+### 📌 API PARA BUSCAR CANDIDATAS
+@app.route("/buscar_candidata", methods=["GET"])
+def buscar_candidata_api():
+    valor = request.args.get("valor", "").strip()
+    if not valor:
+        return jsonify({"error": "Debe ingresar un valor"}), 400
+
+    candidata = buscar_candidata(valor)
+    if candidata:
+        return jsonify(candidata)
+    else:
+        return jsonify({"error": "No se encontraron resultados"})
+
+
+### 📌 API PARA CALCULAR EL PORCENTAJE Y FECHA DE PAGO
+@app.route("/calcular_porcentaje", methods=["POST"])
 def calcular_porcentaje():
-    if request.method == 'POST':
-        busqueda = request.form.get('busqueda', '').strip().lower()
-        fecha_inicio = request.form.get('fecha_inicio')
-        monto_total = request.form.get('monto_total')
+    try:
+        datos = request.json
+        monto_total = float(datos.get("monto_total", 0))
+        fecha_inicio = datos.get("fecha_inicio", "")
 
-        # Buscar candidata con coincidencias parciales
-        candidata = next((c for c in candidatas if busqueda in c["codigo"].lower() or busqueda in c["nombre"].lower() or busqueda in c["cedula"]), None)
-
-        if not candidata:
-            return jsonify({"error": "No se encontró la candidata"}), 404
-
-        if not fecha_inicio or not monto_total:
+        if not monto_total or not fecha_inicio:
             return jsonify({"error": "Todos los campos son obligatorios"}), 400
 
         # Calcular el 25% del monto total
-        monto_total = float(monto_total)
         porcentaje = round(monto_total * 0.25, 2)
 
         # Calcular la fecha de pago
-        fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+        fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d")
         dia_inicio = fecha_inicio_dt.day
 
         if 5 <= dia_inicio <= 15:
             fecha_pago = fecha_inicio_dt.replace(day=30)
         else:
             mes_siguiente = fecha_inicio_dt.month + 1 if fecha_inicio_dt.month < 12 else 1
-            año = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
-            fecha_pago = fecha_inicio_dt.replace(year=año, month=mes_siguiente, day=15)
+            año_siguiente = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
+            fecha_pago = fecha_inicio_dt.replace(month=mes_siguiente, year=año_siguiente, day=15)
 
         fecha_pago_str = fecha_pago.strftime("%Y-%m-%d")
 
-        return jsonify({
-            "success": "Porcentaje calculado correctamente",
-            "candidata": candidata,
-            "porcentaje": porcentaje,
-            "fecha_pago": fecha_pago_str
-        })
+        return jsonify({"porcentaje": porcentaje, "fecha_pago": fecha_pago_str})
 
-    return render_template('porciento.html')
+    except Exception as e:
+        print(f"Error al calcular porcentaje: {e}")
+        return jsonify({"error": "Error en el cálculo"}), 500
+
+
+### 📌 API PARA GUARDAR EL PAGO
+@app.route("/guardar_pago", methods=["POST"])
+def guardar_pago():
+    try:
+        datos = request.json
+        codigo = datos.get("codigo", "").strip()
+        monto_total = datos.get("monto_total", "").strip()
+        porcentaje = datos.get("porcentaje", "").strip()
+        fecha_pago = datos.get("fecha_pago", "").strip()
+        fecha_inicio = datos.get("fecha_inicio", "").strip()
+
+        if not codigo or not monto_total or not porcentaje or not fecha_pago or not fecha_inicio:
+            return jsonify({"error": "Debe completar todos los campos"}), 400
+
+        # Buscar fila por código
+        data = sheet.get_all_records()
+        fila_index = None
+        for index, fila in enumerate(data):
+            if str(fila["Código"]).strip().lower() == codigo.lower():
+                fila_index = index + 2  # Ajuste por encabezados en Google Sheets
+                break
+
+        if fila_index is None:
+            return jsonify({"error": "Candidata no encontrada"}), 404
+
+        # Actualizar los datos en la hoja
+        sheet.update(f"U{fila_index}", fecha_pago)  # Fecha de Pago
+        sheet.update(f"V{fila_index}", fecha_inicio)  # Fecha de Inicio
+        sheet.update(f"W{fila_index}", monto_total)  # Monto Total
+        sheet.update(f"X{fila_index}", porcentaje)  # Porcentaje
+
+        return jsonify({"mensaje": "Pago registrado correctamente"}), 200
+
+    except Exception as e:
+        print(f"Error al guardar pago: {e}")
+        return jsonify({"error": "Error al guardar los datos"}), 500
+
 
 @app.route('/pagos', methods=['GET', 'POST'])
 def gestionar_pagos():
