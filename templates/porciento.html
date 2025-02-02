@@ -5,55 +5,87 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calcular Porcentaje de Pago</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script>
-        function mostrarFormulario() {
-            document.getElementById("formularioPago").style.display = "block";
-        }
-    </script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
-    <h2 style="text-align:center; color:#0056b3;">💰 Calcular Porcentaje de Pago</h2>
 
-    <form method="post">
-        <label for="busqueda">🔍 Buscar Candidata:</label>
-        <input type="text" name="busqueda" id="busqueda" required>
-        <button type="submit" name="buscar">Buscar</button>
-    </form>
+    <div class="container">
+        <h2>Calcular Porcentaje de Pago</h2>
 
-    {% if mensaje %}
-        <p style="color:red;">{{ mensaje }}</p>
-    {% endif %}
-
-    {% if datos_candidata %}
-        <hr>
-        <h3>📌 Datos de la Candidata</h3>
-        <p><b>🔹 Código:</b> {{ datos_candidata.codigo }}</p>
-        <p><b>🔹 Nombre:</b> {{ datos_candidata.nombre }}</p>
-        <p><b>📞 Teléfono:</b> {{ datos_candidata.telefono }}</p>
-        <p><b>📍 Ciudad:</b> {{ datos_candidata.ciudad }}</p>
-        <p><b>🆔 Cédula:</b> {{ datos_candidata.cedula }}</p>
-
-        <form method="post" id="formularioPago" style="display:block;">
-            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-
-            <label for="fecha_inicio">📅 Fecha de Inicio:</label>
-            <input type="date" name="fecha_inicio" required>
-
-            <label for="monto_total">💲 Monto Total:</label>
-            <input type="number" name="monto_total" required>
-
-            <button type="submit" name="calcular">Calcular</button>
+        <form id="formulario">
+            <label for="busqueda">Buscar Candidata (Código, Nombre o Cédula):</label>
+            <input type="text" id="busqueda" name="busqueda" required>
+            <button type="submit">Buscar</button>
         </form>
-    {% endif %}
 
-    {% if datos_candidata and 'fecha_pago' in datos_candidata %}
-        <h3>📝 Resultado del Cálculo</h3>
-        <p><b>✅ Fecha de Pago:</b> {{ datos_candidata.fecha_pago }}</p>
-        <p><b>💵 Porcentaje (25%):</b> {{ datos_candidata.porcentaje }}</p>
-    {% endif %}
+        <div id="info_candidata" style="display: none;">
+            <h3>Datos de la Candidata</h3>
+            <p><strong>Nombre:</strong> <span id="nombre"></span></p>
+            <p><strong>Cédula:</strong> <span id="cedula"></span></p>
+            <p><strong>Teléfono:</strong> <span id="telefono"></span></p>
+            <p><strong>Ciudad:</strong> <span id="ciudad"></span></p>
 
-    <footer style="margin-top:20px; text-align:center;">
-        <p>© 2025 Doméstica del Cibao | Diseñado para máxima eficiencia 🚀</p>
-    </footer>
+            <label for="fecha_inicio">Fecha de Inicio:</label>
+            <input type="date" id="fecha_inicio" name="fecha_inicio" required>
+
+            <label for="monto_total">Monto Total:</label>
+            <input type="number" id="monto_total" name="monto_total" required>
+
+            <button id="calcular" disabled>Calcular</button>
+        </div>
+
+        <h3>Resultados:</h3>
+        <p><strong>Porcentaje (25%):</strong> <span id="porcentaje"></span></p>
+        <p><strong>Fecha de Pago:</strong> <span id="fecha_pago"></span></p>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $("#formulario").submit(function(event) {
+                event.preventDefault();
+                let busqueda = $("#busqueda").val().trim();
+
+                $.ajax({
+                    url: "/porciento",
+                    type: "POST",
+                    data: { busqueda: busqueda },
+                    success: function(response) {
+                        $("#nombre").text(response.candidata.nombre);
+                        $("#cedula").text(response.candidata.cedula);
+                        $("#telefono").text(response.candidata.telefono);
+                        $("#ciudad").text(response.candidata.ciudad);
+                        $("#info_candidata").show();
+                        $("#calcular").prop("disabled", false);
+                    },
+                    error: function(xhr) {
+                        alert("Error: " + xhr.responseJSON.error);
+                    }
+                });
+            });
+
+            $("#calcular").click(function() {
+                let fecha_inicio = $("#fecha_inicio").val();
+                let monto_total = $("#monto_total").val();
+
+                $.ajax({
+                    url: "/porciento",
+                    type: "POST",
+                    data: {
+                        busqueda: $("#busqueda").val(),
+                        fecha_inicio: fecha_inicio,
+                        monto_total: monto_total
+                    },
+                    success: function(response) {
+                        $("#porcentaje").text(response.porcentaje);
+                        $("#fecha_pago").text(response.fecha_pago);
+                    },
+                    error: function(xhr) {
+                        alert("Error: " + xhr.responseJSON.error);
+                    }
+                });
+            });
+        });
+    </script>
+
 </body>
 </html>

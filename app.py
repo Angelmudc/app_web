@@ -958,14 +958,28 @@ def inscripcion():
 
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
+
+# Datos de ejemplo (esto se conectará a tu base de datos en producción)
+candidatas = [
+    {"codigo": "CAN-001", "nombre": "María López", "cedula": "001-1234567-8", "telefono": "809-555-1234", "ciudad": "Santiago"},
+    {"codigo": "CAN-002", "nombre": "Ana Pérez", "cedula": "002-7654321-9", "telefono": "829-555-5678", "ciudad": "La Vega"},
+    {"codigo": "CAN-003", "nombre": "Juana Díaz", "cedula": "003-8765432-1", "telefono": "849-555-4321", "ciudad": "Moca"}
+]
+
 @app.route('/porciento', methods=['GET', 'POST'])
 def calcular_porcentaje():
     if request.method == 'POST':
-        codigo = request.form.get('codigo')
+        busqueda = request.form.get('busqueda', '').strip().lower()
         fecha_inicio = request.form.get('fecha_inicio')
         monto_total = request.form.get('monto_total')
 
-        if not codigo or not fecha_inicio or not monto_total:
+        # Buscar candidata con coincidencias parciales
+        candidata = next((c for c in candidatas if busqueda in c["codigo"].lower() or busqueda in c["nombre"].lower() or busqueda in c["cedula"]), None)
+
+        if not candidata:
+            return jsonify({"error": "No se encontró la candidata"}), 404
+
+        if not fecha_inicio or not monto_total:
             return jsonify({"error": "Todos los campos son obligatorios"}), 400
 
         # Calcular el 25% del monto total
@@ -987,6 +1001,7 @@ def calcular_porcentaje():
 
         return jsonify({
             "success": "Porcentaje calculado correctamente",
+            "candidata": candidata,
             "porcentaje": porcentaje,
             "fecha_pago": fecha_pago_str
         })
