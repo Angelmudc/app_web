@@ -960,55 +960,39 @@ def inscripcion():
 
 @app.route('/porciento', methods=['GET', 'POST'])
 def calcular_porcentaje():
-    mensaje = ""
-    datos_candidata = None
-
     if request.method == 'POST':
-        if 'buscar' in request.form:
-            busqueda = request.form.get('busqueda', '').strip()
-            fila_index, fila = buscar_fila_por_codigo_nombre_cedula(busqueda)
+        codigo = request.form.get('codigo')
+        fecha_inicio = request.form.get('fecha_inicio')
+        monto_total = request.form.get('monto_total')
 
-            if fila:
-                datos_candidata = {
-                    'fila_index': fila_index + 1,
-                    'codigo': fila[15],
-                    'nombre': fila[1],
-                    'telefono': fila[3],
-                    'cedula': fila[14],
-                    'ciudad': fila[4],
-                }
-            else:
-                mensaje = "No se encontró la candidata."
+        if not codigo or not fecha_inicio or not monto_total:
+            return jsonify({"error": "Todos los campos son obligatorios"}), 400
 
-        elif 'calcular' in request.form:
-            try:
-                fila_index = int(request.form.get('fila_index', -1))
-                fecha_inicio = request.form.get('fecha_inicio', '').strip()
-                monto_total = float(request.form.get('monto_total', 0))
+        # Calcular el 25% del monto total
+        monto_total = float(monto_total)
+        porcentaje = round(monto_total * 0.25, 2)
 
-                if fila_index == -1 or not fecha_inicio:
-                    mensaje = "Error: Faltan datos."
-                else:
-                    fecha_pago = calcular_fecha_pago(fecha_inicio)
-                    porcentaje = calcular_porcentaje(monto_total)
+        # Calcular la fecha de pago
+        fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+        dia_inicio = fecha_inicio_dt.day
 
-                    # Actualizar en la hoja de cálculo
-                    actualizar_pago(fila_index, fecha_inicio, monto_total)
+        if 5 <= dia_inicio <= 15:
+            fecha_pago = fecha_inicio_dt.replace(day=30)
+        else:
+            mes_siguiente = fecha_inicio_dt.month + 1 if fecha_inicio_dt.month < 12 else 1
+            año = fecha_inicio_dt.year if mes_siguiente > 1 else fecha_inicio_dt.year + 1
+            fecha_pago = fecha_inicio_dt.replace(year=año, month=mes_siguiente, day=15)
 
-                    datos_candidata = {
-                        'fila_index': fila_index,
-                        'fecha_inicio': fecha_inicio,
-                        'monto_total': monto_total,
-                        'porcentaje': porcentaje,
-                        'fecha_pago': fecha_pago
-                    }
-                    mensaje = "Porcentaje y fecha de pago calculados correctamente."
+        fecha_pago_str = fecha_pago.strftime("%Y-%m-%d")
 
-            except Exception as e:
-                mensaje = f"Error en el cálculo: {str(e)}"
+        return jsonify({
+            "success": "Porcentaje calculado correctamente",
+            "porcentaje": porcentaje,
+            "fecha_pago": fecha_pago_str
+        })
 
-    return render_template('porciento.html', mensaje=mensaje, datos_candidata=datos_candidata)
-    
+    return render_template('porciento.html')
+
 @app.route('/pagos', methods=['GET', 'POST'])
 def gestionar_pagos():
     mensaje = ""
