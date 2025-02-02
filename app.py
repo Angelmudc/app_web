@@ -14,6 +14,10 @@ from flask_caching import Cache
 from rapidfuzz import process
 from google.oauth2.service_account import Credentials
 from flask import Flask, request, render_template, jsonify
+from flask import Flask, render_template, request, jsonify
+import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 
 # Configuración de la API de Google Sheets
@@ -1031,22 +1035,22 @@ def porciento():
 ### 📌 FUNCIÓN PARA BUSCAR CANDIDATAS (FLEXIBLE)
 def buscar_candidata(valor):
     try:
-        data = sheet.get_all_records()  # Obtiene todas las filas en la hoja
-        valor = valor.lower().strip()  # Convierte el valor a minúsculas para evitar errores por mayúsculas
+        data = obtener_datos_pagos()  # Obtener todos los datos de pagos
+        valor = valor.lower().strip()  # Convertir a minúsculas y quitar espacios
 
         for fila in data:
-            # Normaliza los valores de la fila para buscar sin importar mayúsculas o espacios
-            codigo = str(fila.get("Código", "")).strip().lower()
-            nombre = str(fila.get("Nombre", "")).strip().lower()
-            cedula = str(fila.get("Cédula", "")).strip().lower()
+            codigo = str(fila[0]).strip().lower()  # Código en la columna P
+            nombre = str(fila[1]).strip().lower()  # Nombre en la columna B
+            cedula = str(fila[14]).strip().lower()  # Cédula en la columna Y (última)
 
+            # Permitir coincidencias parciales
             if valor in codigo or valor in nombre or valor in cedula:
                 return {
-                    "codigo": fila.get("Código", ""),
-                    "nombre": fila.get("Nombre", ""),
-                    "cedula": fila.get("Cédula", ""),
-                    "telefono": fila.get("Teléfono", ""),
-                    "ciudad": fila.get("Ciudad", "")
+                    "codigo": fila[0],
+                    "nombre": fila[1],
+                    "telefono": fila[2],
+                    "ciudad": fila[3],
+                    "cedula": fila[14]
                 }
 
         return None  # Si no se encuentra nada
@@ -1166,11 +1170,34 @@ def gestionar_pagos():
 
         elif 'guardar_btn' in request.form:
             try:
-                fila_index = int(request.form.get('fila_index', -1))
+                fila_index = int(request.form.get('fila_index', 14def buscar_candidata(valor):
+    try:
+        data = obtener_datos_pagos()  # Obtener todos los datos de pagos
+        valor = valor.lower().strip()  # Convertir a minúsculas y quitar espacios
+
+        for fila in data:
+            codigo = str(fila[0]).strip().lower()  # Código en la columna P
+            nombre = str(fila[1]).strip().lower()  # Nombre en la columna B
+            cedula = str(fila[14]).strip().lower()  # Cédula en la columna Y (última)
+
+            # Permitir coincidencias parciales
+            if valor in codigo or valor in nombre or valor in cedula:
+                return {
+                    "codigo": fila[0],
+                    "nombre": fila[1],
+                    "telefono": fila[2],
+                    "ciudad": fila[3],
+                    "cedula": fila[14]
+                }
+
+        return None  # Si no se encuentra nada
+    except Exception as e:
+        print(f"Error en la búsqueda de candidata: {e}")
+        return None))
                 fecha_inicio = request.form.get('fecha_inicio', '').strip()
                 monto_total = float(request.form.get('monto_total', 0))
 
-                if fila_index == -1 or not fecha_inicio:
+                if fila_index == 14 or not fecha_inicio:
                     mensaje = "Error: Faltan datos."
                 else:
                     actualizar_pago(fila_index, fecha_inicio, monto_total)
