@@ -420,39 +420,43 @@ def buscar_candidata(valor):
 
 def buscar_datos_inscripcion(buscar):
     """
-    Busca candidatas por Nombre (Columna B) o Cédula (Columna R).
+    Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        # 🔹 Buscar primero por Nombre (Columna B, índice 1)
-        fila_index, fila = buscar_en_columna(buscar, 1)
+        # 🔹 Obtener todas las filas de la hoja
+        datos = obtener_datos_editar()
+        resultados = []
+        busqueda = normalizar_texto(buscar)  # 🔹 Normaliza la búsqueda
 
-        if not fila:
-            # Si no se encontró por Nombre, buscar por Cédula (Columna R, índice 17)
-            fila_index, fila = buscar_en_columna(buscar, 17)
+        for fila_index, fila in enumerate(datos):
+            if len(fila) < 15:  # 🔹 Si la fila tiene menos columnas, la ignora
+                continue 
 
-        if fila:
-            # Asegurar que la fila tenga las columnas necesarias
-            while len(fila) < 25:  # Ajustar hasta la última columna necesaria
-                fila.append("")
+            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
 
-            return {
-                'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[15],      # Código (P)
-                'nombre': fila[1],       # Nombre (B)
-                'cedula': fila[14],      # Cédula (R)
-                'estado': fila[18],      # Estado (S)
-                'inscripcion': fila[19], # Inscripción (T)
-                'experiencia': fila[9],  # Áreas de experiencia (J)
-                'monto': fila[20],       # Monto (U)
-                'fecha_pago': fila[21],   # Fecha de Pago (V)
-            }
+            # 🔹 Comparación flexible (como en editar)
+            if busqueda in nombre or busqueda == cedula:
+                # 🔹 Asegurar que la fila tenga suficientes columnas
+                while len(fila) < 25:
+                    fila.append("")
 
-        return None  # Si no se encuentran resultados, devuelve None
+                resultados.append({
+                    'fila_index': fila_index + 1,  # 🔹 Índice de fila (1-based index)
+                    'codigo': fila[15] if len(fila) > 15 else "",  # Código (P)
+                    'nombre': fila[1] if len(fila) > 1 else "",  # Nombre (B)
+                    'cedula': fila[14] if len(fila) > 14 else "",  # Cédula (O)
+                    'estado': fila[16] if len(fila) > 16 else "",  # Estado (Q)
+                    'inscripcion': fila[17] if len(fila) > 17 else "",  # Inscripción (R)
+                    'monto': fila[18] if len(fila) > 18 else "",  # Monto (S)
+                    'fecha': fila[19] if len(fila) > 19 else ""  # Fecha de Pago (T)
+                })
+
+        return resultados  # 🔹 Devuelve todas las coincidencias encontradas
     except Exception as e:
-        print(f"Error al buscar datos: {e}")
-        return None
-
+        print(f"❌ Error al buscar datos en inscripción: {e}")
+        return []
 # Ajuste en el manejo de datos
 def procesar_fila(fila, fila_index):
     # Asegúrate de que la fila tenga el tamaño suficiente
@@ -819,10 +823,10 @@ def inscripcion():
     Ruta para inscribir candidatas.
     - 🔹 Busca candidatas por Nombre o Cédula.
     - 🔹 Si se encuentra, permite inscribirlas y asigna un código único si no tienen.
-    - 🔹 Actualiza los datos en la hoja de cálculo.
+    - 🔹 Muestra todas las coincidencias encontradas.
     """
     mensaje = ""
-    datos_candidata = None
+    datos_candidatas = []  # 🔹 Ahora es una lista (para varias candidatas)
 
     if request.method == 'POST':
         accion = request.form.get('accion')
@@ -830,10 +834,10 @@ def inscripcion():
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
             
-            # 🔹 Buscar en la hoja de cálculo (solo por Nombre o Cédula)
-            datos_candidata = buscar_datos_inscripcion(buscar)
+            # 🔹 Buscar en la hoja de cálculo (Nombre o Cédula)
+            datos_candidatas = buscar_datos_inscripcion(buscar)
 
-            if not datos_candidata:
+            if not datos_candidatas:
                 mensaje = "No se encontraron resultados para el nombre o cédula proporcionados."
 
         elif accion == 'guardar':
@@ -853,7 +857,7 @@ def inscripcion():
             except Exception as e:
                 mensaje = f"Error al guardar los datos: {str(e)}"
 
-    return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
+    return render_template('inscripcion.html', mensaje=mensaje, datos_candidatas=datos_candidatas)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
