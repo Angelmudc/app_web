@@ -176,7 +176,7 @@ def buscar_datos_inscripcion(buscar):
 
         if fila:
             # 🔹 Asegurar que la fila tenga las columnas necesarias
-            fila += [""] * (25 - len(fila))  # Completar hasta la última columna necesaria
+            fila += [""] * (21 - len(fila))  # Completar hasta la última columna necesaria
 
             return {
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
