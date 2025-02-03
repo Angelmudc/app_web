@@ -14,6 +14,7 @@ from flask_caching import Cache
 from rapidfuzz import process
 from google.oauth2.service_account import Credentials
 from flask import Flask, request, render_template, jsonify
+import unicodedata
 
 
 
@@ -45,8 +46,6 @@ cache_config = {
 app.config.from_mapping(cache_config)
 cache = Cache(app)
 
-import unicodedata
-
 def normalizar_texto(texto):
     """
     Convierte un texto a minúsculas, elimina acentos y espacios extras.
@@ -57,27 +56,6 @@ def normalizar_texto(texto):
     return ''.join(
         c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn'
     )
-
-# Función para buscar datos por código, nombre o cédula
-def buscar_en_columna(valor, columna_index):
-    """
-    Busca un valor dentro de una columna específica sin ser estricto.
-    - No distingue mayúsculas y minúsculas.
-    - Ignora espacios en blanco antes y después.
-    - Devuelve todas las coincidencias.
-    """
-    valor_normalizado = valor.strip().lower()  # Convierte todo a minúsculas y elimina espacios
-
-    datos = obtener_datos_pagos()
-
-    resultados = []
-    for fila in datos:
-        if len(fila) > columna_index:  # Evita errores si la fila tiene menos columnas
-            if valor_normalizado in fila[columna_index].strip().lower():
-                resultados.append(fila)
-
-    return resultados  # Devuelve todas las coincidencias encontradas
-
 
 def actualizar_datos_editar(fila_index, nuevos_datos):
     """
@@ -167,27 +145,31 @@ def buscar_datos_inscripcion(buscar):
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        # 🔹 Buscar primero por Nombre (Columna B, índice 1)
-        fila_index, fila = buscar_en_columna(buscar, 1)
+        # 🔹 Normaliza la búsqueda
+        buscar = normalizar_texto(buscar)
 
-        if not fila:
-            # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna O, índice 14)
-            fila_index, fila = buscar_en_columna(buscar, 14)
+        # 🔹 Buscar en Nombre (Columna B) o Cédula (Columna O)
+        resultados_nombre = buscar_en_columna(buscar, 1)
+        resultados_cedula = buscar_en_columna(buscar, 14)
 
-        if fila:
-            # 🔹 Asegurar que la fila tenga las columnas necesarias
-            fila += [""] * (21 - len(fila))  # Completar hasta la última columna necesaria
+        # 🔹 Combinar los resultados y eliminar duplicados
+        resultados = resultados_nombre + resultados_cedula
+        resultados = [list(x) for x in set(tuple(x) for x in resultados)]  # Evita repetidos
+
+        if resultados:
+            fila = resultados[0]  # 🔹 Tomar el primer resultado encontrado
+            fila += [""] * (25 - len(fila))  # Completar hasta la última columna necesaria
 
             return {
-                'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[15] if len(fila) > 15 else "No tiene código",  # Código (P)
-                'nombre': fila[1] if len(fila) > 1 else "Sin nombre",  # Nombre (B)
-                'cedula': fila[14] if len(fila) > 14 else "Sin cédula",  # Cédula (O)
-                'estado': fila[18] if len(fila) > 18 else "No asignado",  # Estado (S)
-                'inscripcion': fila[19] if len(fila) > 19 else "No inscrita",  # Inscripción (T)
-                'experiencia': fila[9] if len(fila) > 9 else "Sin experiencia",  # Áreas de experiencia (J)
-                'monto': fila[20] if len(fila) > 20 else "Sin monto",  # Monto (U)
-                'fecha_pago': fila[21] if len(fila) > 21 else "Sin fecha de pago"  # Fecha de Pago (V)
+                'fila_index': resultados.index(fila) + 1,  # Índice de fila (1-based index)
+                'codigo': fila[15] if len(fila) > 15 else "No tiene código",  
+                'nombre': fila[1] if len(fila) > 1 else "Sin nombre",
+                'cedula': fila[14] if len(fila) > 14 else "Sin cédula",
+                'estado': fila[18] if len(fila) > 18 else "No asignado",
+                'inscripcion': fila[19] if len(fila) > 19 else "No inscrita",
+                'experiencia': fila[9] if len(fila) > 9 else "Sin experiencia",
+                'monto': fila[20] if len(fila) > 20 else "Sin monto",
+                'fecha_pago': fila[21] if len(fila) > 21 else "Sin fecha de pago"
             }
         return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
@@ -568,6 +550,26 @@ def buscar_candidatas_por_texto(busqueda):
                 })
 
     return resultados
+
+def buscar_en_columna(valor, columna_index):
+    """
+    Busca un valor dentro de una columna específica sin ser estricto.
+    - No distingue mayúsculas y minúsculas.
+    - Ignora espacios en blanco antes y después.
+    - Permite coincidencias parciales.
+    - Devuelve todas las coincidencias.
+    """
+    valor_normalizado = normalizar_texto(valor)  # 🔹 Convierte todo a minúsculas y elimina espacios extras
+    datos = obtener_datos_editar()
+
+    resultados = []
+    for fila in datos:
+        if len(fila) > columna_index:  # Evita errores si la fila tiene menos columnas
+            texto_fila = normalizar_texto(fila[columna_index])
+            if valor_normalizado in texto_fila:  # 🔹 Ahora permite coincidencias parciales
+                resultados.append(fila)
+
+    return resultados  # Devuelve todas las coincidencias encontradas
 
 
 
