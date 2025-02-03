@@ -168,30 +168,30 @@ def buscar_datos_inscripcion(buscar):
     """
     try:
         # 🔹 Buscar primero por Nombre (Columna B, índice 1)
-        fila_index, fila = buscar_en_columna(buscar, 1)  
+        fila_index, fila = buscar_en_columna(buscar, 1)
 
         if not fila:
             # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna O, índice 14)
             fila_index, fila = buscar_en_columna(buscar, 14)
 
         if fila:
-            # Asegurar que la fila tenga las columnas necesarias
-            while len(fila) < 23:  # Completa con valores vacíos hasta la columna W
-                fila.append("")
+            # 🔹 Asegurar que la fila tenga las columnas necesarias
+            fila += [""] * (25 - len(fila))  # Completar hasta la última columna necesaria
 
             return {
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[15],  # Código (P)
-                'nombre': fila[1],  # Nombre (B)
-                'cedula': fila[14],  # Cédula (O)
-                'estado': fila[15],  # Estado (P)
-                'inscripcion': fila[16],  # Inscripción (Q)
-                'monto': fila[18],  # Monto (R)
-                'fecha': fila[19]  # Fecha de Pago (S)
+                'codigo': fila[15] if len(fila) > 15 else "No tiene código",  # Código (P)
+                'nombre': fila[1] if len(fila) > 1 else "Sin nombre",  # Nombre (B)
+                'cedula': fila[14] if len(fila) > 14 else "Sin cédula",  # Cédula (O)
+                'estado': fila[18] if len(fila) > 18 else "No asignado",  # Estado (S)
+                'inscripcion': fila[19] if len(fila) > 19 else "No inscrita",  # Inscripción (T)
+                'experiencia': fila[9] if len(fila) > 9 else "Sin experiencia",  # Áreas de experiencia (J)
+                'monto': fila[20] if len(fila) > 20 else "Sin monto",  # Monto (U)
+                'fecha_pago': fila[21] if len(fila) > 21 else "Sin fecha de pago"  # Fecha de Pago (V)
             }
         return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
-        print(f"Error al buscar datos: {e}")
+        print(f"❌ Error al buscar datos: {e}")
         return None
 
 def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
