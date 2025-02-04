@@ -145,36 +145,49 @@ def buscar_datos_inscripcion(buscar):
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        # 🔹 Normaliza la búsqueda
-        buscar = normalizar_texto(buscar)
+        print(f"🔍 Buscando: {buscar}")  # 🔹 Imprime la búsqueda
 
-        # 🔹 Buscar en Nombre (Columna B) o Cédula (Columna O)
-        resultados_nombre = buscar_en_columna(buscar, 1)
-        resultados_cedula = buscar_en_columna(buscar, 14)
+        # 🔹 Obtener todas las filas de la hoja
+        datos = obtener_datos_editar()
+        print(f"📄 Datos obtenidos: {len(datos)} filas")  # 🔹 Muestra cuántas filas hay
 
-        # 🔹 Combinar los resultados y eliminar duplicados
-        resultados = resultados_nombre + resultados_cedula
-        resultados = [list(x) for x in set(tuple(x) for x in resultados)]  # Evita repetidos
+        resultados = []
+        busqueda = normalizar_texto(buscar)  # 🔹 Normaliza la búsqueda
 
-        if resultados:
-            fila = resultados[0]  # 🔹 Tomar el primer resultado encontrado
-            fila += [""] * (25 - len(fila))  # Completar hasta la última columna necesaria
+        for fila_index, fila in enumerate(datos):
+            if len(fila) < 15:  # 🔹 Si la fila tiene menos columnas, la ignora
+                print(f"⚠️ Fila {fila_index + 1} ignorada (demasiado corta): {fila}")
+                continue 
 
-            return {
-                'fila_index': resultados.index(fila) + 1,  # Índice de fila (1-based index)
-                'codigo': fila[15] if len(fila) > 15 else "No tiene código",  
-                'nombre': fila[1] if len(fila) > 1 else "Sin nombre",
-                'cedula': fila[14] if len(fila) > 14 else "Sin cédula",
-                'estado': fila[18] if len(fila) > 18 else "No asignado",
-                'inscripcion': fila[19] if len(fila) > 19 else "No inscrita",
-                'experiencia': fila[9] if len(fila) > 9 else "Sin experiencia",
-                'monto': fila[20] if len(fila) > 20 else "Sin monto",
-                'fecha_pago': fila[21] if len(fila) > 21 else "Sin fecha de pago"
-            }
-        return None  # Si no se encuentran resultados, devuelve None
+            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
+
+            print(f"🧐 Comparando: {busqueda} con Nombre: {nombre}, Cédula: {cedula}")  # 🔹 Depuración
+
+            # 🔹 Comparación flexible (como en editar)
+            if busqueda in nombre or busqueda == cedula:
+                # 🔹 Asegurar que la fila tenga suficientes columnas
+                while len(fila) < 25:
+                    fila.append("")
+
+                candidata = {
+                    'fila_index': fila_index + 1,
+                    'codigo': fila[15] if len(fila) > 15 else "",
+                    'nombre': fila[1] if len(fila) > 1 else "",
+                    'cedula': fila[14] if len(fila) > 14 else "",
+                    'estado': fila[16] if len(fila) > 16 else "",
+                    'inscripcion': fila[17] if len(fila) > 17 else "",
+                    'monto': fila[18] if len(fila) > 18 else "",
+                    'fecha': fila[19] if len(fila) > 19 else ""
+                }
+                print(f"✅ Candidata encontrada: {candidata}")  # 🔹 Depuración
+                resultados.append(candidata)
+
+        print(f"🔎 Resultados encontrados: {len(resultados)}")  # 🔹 Muestra cuántos resultados encontró
+        return resultados
     except Exception as e:
-        print(f"❌ Error al buscar datos: {e}")
-        return None
+        print(f"❌ Error al buscar datos en inscripción: {e}")
+        return []
 
 def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
     """
@@ -821,21 +834,21 @@ def filtrar():
 def inscripcion():
     """
     Ruta para inscribir candidatas.
-    - 🔹 Busca candidatas por Nombre o Cédula.
-    - 🔹 Si se encuentra, permite inscribirlas y asigna un código único si no tienen.
-    - 🔹 Muestra todas las coincidencias encontradas.
     """
     mensaje = ""
-    datos_candidatas = []  # 🔹 Ahora es una lista (para varias candidatas)
+    datos_candidatas = []  # Lista vacía para almacenar los resultados
 
     if request.method == 'POST':
         accion = request.form.get('accion')
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
-            
-            # 🔹 Buscar en la hoja de cálculo (Nombre o Cédula)
+            print(f"🔍 Buscando: {buscar}")  # 🔹 Depuración
+
             datos_candidatas = buscar_datos_inscripcion(buscar)
+
+            print(f"🔄 Datos encontrados: {len(datos_candidatas)}")  # 🔹 Mostrar cuántos datos se encontraron
+            print(f"🔄 Datos pasados a la vista: {datos_candidatas}")  # 🔹 Imprime los datos enviados a la plantilla
 
             if not datos_candidatas:
                 mensaje = "No se encontraron resultados para el nombre o cédula proporcionados."
