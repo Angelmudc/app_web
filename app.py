@@ -832,12 +832,6 @@ def filtrar():
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
-    """
-    Ruta para inscribir candidatas.
-    - Busca candidatas por Nombre o Cédula.
-    - Permite inscribirlas y asigna un código único si no tienen.
-    - Actualiza los datos en la hoja de cálculo.
-    """
     mensaje = ""
     datos_candidata = None
 
@@ -846,8 +840,6 @@ def inscripcion():
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
-            
-            # 🔹 Buscar en la hoja de cálculo (solo por Nombre o Cédula)
             datos_candidata = buscar_datos_inscripcion(buscar)
 
             if not datos_candidata:
@@ -855,8 +847,7 @@ def inscripcion():
 
         elif accion == 'guardar':
             try:
-                fila_index = int(request.form.get('fila_index', -1))  # Índice de fila (1-based index)
-                cedula = request.form.get('cedula', '').strip()
+                fila_index = int(request.form.get('fila_index', -1))
                 estado = request.form.get('estado', '').strip()
                 monto = request.form.get('monto', '').strip()
                 fecha = request.form.get('fecha', '').strip()
@@ -864,8 +855,7 @@ def inscripcion():
                 if fila_index == -1:
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    # 🔹 Actualizar los datos en la hoja
-                    rango = f"Nueva hoja!Q{fila_index}:T{fila_index}"  # Estado (Q), Inscripción (R), Monto (S), Fecha (T)
+                    rango = f"Nueva hoja!Q{fila_index}:T{fila_index}"
                     valores = [[estado, "Sí", monto, fecha]]
 
                     service.spreadsheets().values().update(
