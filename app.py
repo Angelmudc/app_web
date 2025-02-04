@@ -834,23 +834,23 @@ def filtrar():
 def inscripcion():
     """
     Ruta para inscribir candidatas.
+    - Busca candidatas por Nombre o Cédula.
+    - Permite inscribirlas y asigna un código único si no tienen.
+    - Actualiza los datos en la hoja de cálculo.
     """
     mensaje = ""
-    datos_candidatas = []  # Lista vacía para almacenar los resultados
+    datos_candidata = None
 
     if request.method == 'POST':
         accion = request.form.get('accion')
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
-            print(f"🔍 Buscando: {buscar}")  # 🔹 Depuración
+            
+            # 🔹 Buscar en la hoja de cálculo (solo por Nombre o Cédula)
+            datos_candidata = buscar_datos_inscripcion(buscar)
 
-            datos_candidatas = buscar_datos_inscripcion(buscar)
-
-            print(f"🔄 Datos encontrados: {len(datos_candidatas)}")  # 🔹 Mostrar cuántos datos se encontraron
-            print(f"🔄 Datos pasados a la vista: {datos_candidatas}")  # 🔹 Imprime los datos enviados a la plantilla
-
-            if not datos_candidatas:
+            if not datos_candidata:
                 mensaje = "No se encontraron resultados para el nombre o cédula proporcionados."
 
         elif accion == 'guardar':
@@ -864,13 +864,23 @@ def inscripcion():
                 if fila_index == -1:
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    # 🔹 Llamar a la función que inscribe y actualiza los datos
-                    mensaje = inscribir_candidata(fila_index, cedula, estado, monto, fecha)
+                    # 🔹 Actualizar los datos en la hoja
+                    rango = f"Nueva hoja!Q{fila_index}:T{fila_index}"  # Estado (Q), Inscripción (R), Monto (S), Fecha (T)
+                    valores = [[estado, "Sí", monto, fecha]]
+
+                    service.spreadsheets().values().update(
+                        spreadsheetId=SPREADSHEET_ID,
+                        range=rango,
+                        valueInputOption="RAW",
+                        body={"values": valores}
+                    ).execute()
+
+                    mensaje = "✅ Inscripción actualizada correctamente."
 
             except Exception as e:
-                mensaje = f"Error al guardar los datos: {str(e)}"
+                mensaje = f"❌ Error al guardar los datos: {str(e)}"
 
-    return render_template('inscripcion.html', mensaje=mensaje, datos_candidatas=datos_candidatas)
+    return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
