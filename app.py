@@ -832,6 +832,12 @@ def filtrar():
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
+    """
+    Ruta para inscribir candidatas.
+    - 🔹 Busca candidatas por Nombre o Cédula.
+    - 🔹 Si se encuentra, permite inscribirlas y asigna un código único si no tienen.
+    - 🔹 Actualiza los datos en la hoja de cálculo.
+    """
     mensaje = ""
     datos_candidata = None
 
@@ -840,6 +846,8 @@ def inscripcion():
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
+            
+            # 🔹 Buscar en la hoja de cálculo (solo por Nombre o Cédula)
             datos_candidata = buscar_datos_inscripcion(buscar)
 
             if not datos_candidata:
@@ -847,25 +855,26 @@ def inscripcion():
 
         elif accion == 'guardar':
             try:
-                fila_index = int(request.form.get('fila_index', -1))
+                fila_index = request.form.get('fila_index', '').strip()
+                cedula = request.form.get('cedula', '').strip()
                 estado = request.form.get('estado', '').strip()
                 monto = request.form.get('monto', '').strip()
                 fecha = request.form.get('fecha', '').strip()
 
-                if fila_index == -1:
+                # 🔹 Validar que la fila tiene datos correctos
+                if not fila_index or not fila_index.isdigit():
                     mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
-                    rango = f"Nueva hoja!Q{fila_index}:T{fila_index}"
-                    valores = [[estado, "Sí", monto, fecha]]
+                    fila_index = int(fila_index)  # Convertir a número
 
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=rango,
-                        valueInputOption="RAW",
-                        body={"values": valores}
-                    ).execute()
+                    # 🔹 Si el monto está vacío, asignar 0 por defecto
+                    monto = int(monto) if monto.isdigit() else 0  
 
-                    mensaje = "✅ Inscripción actualizada correctamente."
+                    # 🔹 Si la fecha está vacía, usar la actual
+                    fecha = fecha if fecha else datetime.now().strftime("%Y-%m-%d")
+
+                    # 🔹 Llamar a la función que inscribe y actualiza los datos
+                    mensaje = inscribir_candidata(fila_index, cedula, estado, monto, fecha)
 
             except Exception as e:
                 mensaje = f"❌ Error al guardar los datos: {str(e)}"

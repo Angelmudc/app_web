@@ -3,120 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📌 Inscripción de Candidatas</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <title>Inscripción de Candidatas</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <style>
         body {
             background-color: #f8f9fa;
         }
         .container {
-            max-width: 700px;
+            max-width: 600px;
             background: white;
             padding: 20px;
-            margin-top: 30px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .form-control {
             border-radius: 8px;
         }
         .btn-custom {
-            width: 100%;
+            background-color: #007bff;
+            color: white;
+            border-radius: 8px;
+        }
+        .btn-custom:hover {
+            background-color: #0056b3;
         }
         .footer {
             text-align: center;
-            padding: 15px;
-            background-color: #343a40;
-            color: white;
-            position: fixed;
-            bottom: 0;
-            width: 100%;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #6c757d;
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h2 class="text-center mb-4">📌 Inscripción de Candidatas</h2>
+<div class="container mt-4">
+    <h2 class="text-center"><i class="fas fa-thumbtack"></i> Inscripción de Candidatas</h2>
 
-        {% if mensaje %}
-            <div class="alert alert-info">{{ mensaje }}</div>
-        {% endif %}
+    {% if mensaje %}
+        <div class="alert alert-danger text-center" role="alert">
+            ❌ {{ mensaje }}
+        </div>
+    {% endif %}
 
-        <!-- Formulario de Búsqueda -->
-        <form method="POST">
-            <div class="mb-3">
-                <label for="buscar" class="form-label">🔍 Buscar por Nombre o Cédula:</label>
-                <input type="text" class="form-control" id="buscar" name="buscar" placeholder="Ejemplo: 001-1234567-8" required>
-            </div>
-            <button type="submit" name="accion" value="buscar" class="btn btn-primary btn-custom">🔎 Buscar</button>
-        </form>
+    <!-- 🔹 FORMULARIO PARA BUSCAR CANDIDATA -->
+    <form method="POST">
+        <input type="hidden" name="accion" value="buscar">
+        <div class="mb-3">
+            <label class="form-label"><i class="fas fa-search"></i> Buscar por Nombre o Cédula:</label>
+            <input type="text" name="buscar" class="form-control" placeholder="Ejemplo: 001-1234567-8" required>
+        </div>
+        <button type="submit" class="btn btn-custom w-100">
+            🔍 Buscar
+        </button>
+    </form>
 
-        {% if datos_candidata %}
-        <hr>
-        <h4>📋 Datos de la Candidata</h4>
-        <form method="POST">
-            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-            
-            <!-- Datos Estáticos -->
-            <div class="mb-3">
-                <label class="form-label">🆔 Código:</label>
-                <input type="text" class="form-control" value="{{ datos_candidata.codigo }}" disabled>
-            </div>
+    {% if datos_candidata %}
+    <hr>
 
-            <div class="mb-3">
-                <label class="form-label">👩 Nombre:</label>
-                <input type="text" class="form-control" value="{{ datos_candidata.nombre }}" disabled>
-            </div>
+    <h4><i class="fas fa-user"></i> Datos de la Candidata</h4>
+    <p><strong>📌 Código:</strong> {{ datos_candidata.codigo }}</p>
+    <p><strong>👩 Nombre:</strong> {{ datos_candidata.nombre }}</p>
+    <p><strong>📍 Cédula:</strong> {{ datos_candidata.cedula }}</p>
+    <p><strong>📞 Teléfono:</strong> {{ datos_candidata.telefono }}</p>
+    <p><strong>🏠 Dirección:</strong> {{ datos_candidata.direccion }}</p>
 
-            <div class="mb-3">
-                <label class="form-label">📌 Cédula:</label>
-                <input type="text" class="form-control" value="{{ datos_candidata.cedula }}" disabled>
-            </div>
+    <hr>
 
-            <div class="mb-3">
-                <label class="form-label">📞 Teléfono:</label>
-                <input type="text" class="form-control" value="{{ datos_candidata.telefono }}" disabled>
-            </div>
+    <!-- 🔹 FORMULARIO PARA EDITAR INSCRIPCIÓN -->
+    <h4><i class="fas fa-edit"></i> Editar Inscripción</h4>
+    <form method="POST">
+        <input type="hidden" name="accion" value="guardar">
+        <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
 
-            <div class="mb-3">
-                <label class="form-label">🏠 Dirección:</label>
-                <input type="text" class="form-control" value="{{ datos_candidata.direccion }}" disabled>
-            </div>
+        <div class="mb-3">
+            <label class="form-label"><i class="fas fa-toggle-on"></i> Estado:</label>
+            <select name="estado" class="form-control">
+                <option value="Disponible" {% if datos_candidata.estado == "Disponible" %}selected{% endif %}>Disponible</option>
+                <option value="Trabajando" {% if datos_candidata.estado == "Trabajando" %}selected{% endif %}>Trabajando</option>
+            </select>
+        </div>
 
-            <div class="mb-3">
-                <label class="form-label">📌 Modalidad:</label>
-                <input type="text" class="form-control" value="{{ datos_candidata.modalidad }}" disabled>
-            </div>
+        <div class="mb-3">
+            <label class="form-label"><i class="fas fa-dollar-sign"></i> Monto:</label>
+            <input type="number" name="monto" class="form-control" value="{{ datos_candidata.monto }}" required>
+        </div>
 
-            <hr>
-            <h4>✏️ Editar Datos de Inscripción</h4>
+        <div class="mb-3">
+            <label class="form-label"><i class="fas fa-calendar-alt"></i> Fecha de Inscripción:</label>
+            <input type="date" name="fecha" class="form-control" value="{{ datos_candidata.fecha }}">
+        </div>
 
-            <!-- Campos Editables -->
-            <div class="mb-3">
-                <label class="form-label">📌 Estado:</label>
-                <select class="form-control" name="estado">
-                    <option value="Disponible" {% if datos_candidata.estado == "Disponible" %} selected {% endif %}>Disponible</option>
-                    <option value="Ocupada" {% if datos_candidata.estado == "Ocupada" %} selected {% endif %}>Ocupada</option>
-                </select>
-            </div>
+        <button type="submit" class="btn btn-success w-100">
+            ✅ Guardar
+        </button>
+    </form>
+    {% endif %}
 
-            <div class="mb-3">
-                <label class="form-label">💰 Monto:</label>
-                <input type="text" class="form-control" name="monto" value="{{ datos_candidata.monto }}" required>
-            </div>
+</div>
 
-            <div class="mb-3">
-                <label class="form-label">📅 Fecha de Inscripción:</label>
-                <input type="date" class="form-control" name="fecha" value="{{ datos_candidata.fecha_pago }}" required>
-            </div>
-
-            <button type="submit" name="accion" value="guardar" class="btn btn-success btn-custom">💾 Guardar Cambios</button>
-        </form>
-        {% endif %}
-    </div>
-
-    <div class="footer">
-        © 2025 Doméstica del Cibao A&D | Todos los derechos reservados
-    </div>
+<div class="footer">
+    © 2025 Doméstica del Cibao A&D | Todos los derechos reservados
+</div>
 
 </body>
 </html>
