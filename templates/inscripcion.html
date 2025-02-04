@@ -14,6 +14,9 @@
             margin: 0;
             padding: 0;
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
 
         /* ======= Encabezado ======= */
@@ -47,6 +50,7 @@
             background: white;
             border-radius: 10px;
             box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+            flex: 1;
         }
 
         /* ======= Formulario de Búsqueda ======= */
@@ -138,7 +142,7 @@
             background-color: #2c3e50;
             color: white;
             padding: 15px;
-            margin-top: 30px;
+            margin-top: auto;
         }
 
         .footer p {
@@ -159,6 +163,15 @@
         .footer .social-icons a:hover {
             color: #3498db;
         }
+
+        /* ======= Campos Editables ======= */
+        input.editable {
+            border: 1px solid #ccc;
+            padding: 5px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
     </style>
 </head>
 <body>
@@ -208,8 +221,12 @@
                     <td>{{ candidata.cedula if candidata.cedula else "N/A" }}</td>
                     <td>{{ candidata.estado if candidata.estado else "N/A" }}</td>
                     <td>{{ candidata.inscripcion if candidata.inscripcion else "N/A" }}</td>
-                    <td>{{ candidata.monto if candidata.monto else "N/A" }}</td>
-                    <td>{{ candidata.fecha if candidata.fecha else "N/A" }}</td>
+                    <td>
+                        <input type="text" name="monto" value="{{ candidata.monto if candidata.monto else '' }}" class="editable">
+                    </td>
+                    <td>
+                        <input type="date" name="fecha" value="{{ candidata.fecha if candidata.fecha else '' }}" class="editable">
+                    </td>
                     <td>
                         <form method="POST">
                             <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
