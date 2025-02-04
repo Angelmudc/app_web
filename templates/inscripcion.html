@@ -3,83 +3,237 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inscripción de Candidatas</title>
+    <title>Inscripción de Candidatas | Doméstica del Cibao A&D</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <style>
+        /* ======= Estilos Globales ======= */
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f7fc;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            text-align: center;
         }
+
+        /* ======= Encabezado ======= */
+        .header {
+            background-color: #2c3e50;
+            padding: 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .header img {
+            height: 50px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin: 0;
+            flex: 1;
+            text-align: center;
+        }
+
+        /* ======= Contenedor Principal ======= */
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ======= Formulario de Búsqueda ======= */
+        .search-container {
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .search-container input {
+            width: 75%;
+            padding: 12px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: 0.3s;
+        }
+
+        .search-container input:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+
+        .search-container button {
+            background-color: #3498db;
+            border: none;
+            padding: 12px 18px;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: 0.3s;
+        }
+
+        .search-container button:hover {
+            background-color: #2980b9;
+            transform: scale(1.05);
+        }
+
+        /* ======= Tabla de Resultados ======= */
+        .table-container {
+            margin-top: 20px;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 10px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
         }
+
         th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+            text-align: center;
         }
+
         th {
-            background-color: #f2f2f2;
+            background-color: #2c3e50;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        /* ======= Botón de Inscripción ======= */
+        .inscribir-btn {
+            background-color: #27ae60;
+            border: none;
+            padding: 10px 15px;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: 0.3s;
+        }
+
+        .inscribir-btn:hover {
+            background-color: #219150;
+            transform: scale(1.05);
+        }
+
+        /* ======= Pie de Página ======= */
+        .footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px;
+            margin-top: 30px;
+        }
+
+        .footer p {
+            margin: 5px 0;
+        }
+
+        .footer .social-icons {
+            margin-top: 5px;
+        }
+
+        .footer .social-icons a {
+            color: white;
+            margin: 0 10px;
+            font-size: 18px;
+            transition: 0.3s;
+        }
+
+        .footer .social-icons a:hover {
+            color: #3498db;
         }
     </style>
 </head>
 <body>
 
-    <h2>Inscripción de Candidatas</h2>
+    <!-- Encabezado -->
+    <div class="header">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Manos.png/600px-Manos.png" alt="Logo">
+        <h1>Inscripción de Candidatas</h1>
+    </div>
 
-    <form method="POST">
-        <label for="buscar">Buscar por Nombre o Cédula:</label>
-        <input type="text" id="buscar" name="buscar" required>
-        <button type="submit" name="accion" value="buscar">Buscar</button>
-    </form>
+    <!-- Contenedor Principal -->
+    <div class="container">
 
-    <br>
+        <!-- Formulario de Búsqueda -->
+        <div class="search-container">
+            <h2>🔍 Buscar Candidata</h2>
+            <form method="POST">
+                <input type="text" name="buscar" placeholder="Ingrese Nombre o Cédula" required>
+                <button type="submit" name="accion" value="buscar">Buscar</button>
+            </form>
+        </div>
 
-    {% if mensaje %}
-        <p style="color: red;">{{ mensaje }}</p>
-    {% endif %}
+        <!-- Mensaje -->
+        {% if mensaje %}
+            <p style="color: red;">{{ mensaje }}</p>
+        {% endif %}
 
-    {% if datos_candidatas %}
-        <h3>Resultados de la búsqueda:</h3>
-        <table>
-            <tr>
-                <th>Código</th>
-                <th>Nombre</th>
-                <th>Cédula</th>
-                <th>Estado</th>
-                <th>Inscripción</th>
-                <th>Monto</th>
-                <th>Fecha</th>
-                <th>Acción</th>
-            </tr>
-            {% for candidata in datos_candidatas %}
-            <tr>
-                <td>{{ candidata.codigo if candidata.codigo else "N/A" }}</td>
-                <td>{{ candidata.nombre if candidata.nombre else "N/A" }}</td>
-                <td>{{ candidata.cedula if candidata.cedula else "N/A" }}</td>
-                <td>{{ candidata.estado if candidata.estado else "N/A" }}</td>
-                <td>{{ candidata.inscripcion if candidata.inscripcion else "N/A" }}</td>
-                <td>{{ candidata.monto if candidata.monto else "N/A" }}</td>
-                <td>{{ candidata.fecha if candidata.fecha else "N/A" }}</td>
-                <td>
-                    <form method="POST">
-                        <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-                        <input type="hidden" name="cedula" value="{{ candidata.cedula }}">
-                        <label>Estado:</label>
-                        <input type="text" name="estado" value="{{ candidata.estado if candidata.estado else '' }}" required>
-                        <label>Monto:</label>
-                        <input type="text" name="monto" value="{{ candidata.monto if candidata.monto else '' }}" required>
-                        <label>Fecha:</label>
-                        <input type="date" name="fecha" value="{{ candidata.fecha if candidata.fecha else '' }}" required>
-                        <button type="submit" name="accion" value="guardar">Guardar</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
-    {% else %}
-        <p>No hay resultados para mostrar.</p>
-    {% endif %}
+        <!-- Resultados -->
+        {% if datos_candidatas %}
+        <div class="table-container">
+            <h3>📋 Resultados Encontrados</h3>
+            <table>
+                <tr>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Cédula</th>
+                    <th>Estado</th>
+                    <th>Inscripción</th>
+                    <th>Monto</th>
+                    <th>Fecha</th>
+                    <th>Acción</th>
+                </tr>
+                {% for candidata in datos_candidatas %}
+                <tr>
+                    <td>{{ candidata.codigo if candidata.codigo else "N/A" }}</td>
+                    <td>{{ candidata.nombre if candidata.nombre else "N/A" }}</td>
+                    <td>{{ candidata.cedula if candidata.cedula else "N/A" }}</td>
+                    <td>{{ candidata.estado if candidata.estado else "N/A" }}</td>
+                    <td>{{ candidata.inscripcion if candidata.inscripcion else "N/A" }}</td>
+                    <td>{{ candidata.monto if candidata.monto else "N/A" }}</td>
+                    <td>{{ candidata.fecha if candidata.fecha else "N/A" }}</td>
+                    <td>
+                        <form method="POST">
+                            <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
+                            <button type="submit" name="accion" value="guardar" class="inscribir-btn">Guardar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <!-- Pie de Página -->
+    <div class="footer">
+        <p>📞 Contacto: +1 809-000-0000 | ✉️ info@domestica.com</p>
+        <p>© 2025 Doméstica del Cibao A&D. Todos los derechos reservados.</p>
+        <div class="social-icons">
+            <a href="#"><i class="fab fa-facebook"></i></a>
+            <a href="#"><i class="fab fa-instagram"></i></a>
+            <a href="#"><i class="fab fa-whatsapp"></i></a>
+        </div>
+    </div>
 
 </body>
 </html>
