@@ -150,28 +150,30 @@ def buscar_datos_inscripcion(buscar):
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        # 🔹 Buscar primero por Nombre (Columna B, índice 1)
-        fila_index, fila = buscar_en_columna(buscar, 1)  
+        # Buscar primero por Nombre (Columna B, índice 1)
+        fila_index, fila = buscar_en_columna(buscar, 1)
 
         if not fila:
-            # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna O, índice 14)
+            # Si no se encontró por Nombre, buscar por Cédula (Columna O, índice 14)
             fila_index, fila = buscar_en_columna(buscar, 14)
 
         if fila:
-            # Asegurar que la fila tenga las columnas necesarias
-            while len(fila) < 23:  # Completa con valores vacíos hasta la columna W
+            # Asegurar que la fila tenga suficientes columnas
+            while len(fila) < 20:  # Ajustar hasta la última columna necesaria
                 fila.append("")
 
             return {
                 'fila_index': fila_index + 1,  # Índice de fila (1-based index)
-                'codigo': fila[15],  # Código (P)
-                'nombre': fila[1],  # Nombre (B)
-                'cedula': fila[14],  # Cédula (O)
-                'estado': fila[15],  # Estado (P)
-                'inscripcion': fila[16],  # Inscripción (Q)
-                'monto': fila[18],  # Monto (R)
-                'fecha': fila[19]  # Fecha de Pago (S)
+                'codigo': fila[15],      # Código (P)
+                'nombre': fila[1],       # Nombre (B)
+                'cedula': fila[14],      # Cédula (O)
+                'telefono': fila[3],     # Teléfono (D)
+                'estado': fila[16],      # Estado (Q)
+                'inscripcion': fila[17], # Inscripción (R)
+                'monto': fila[18],       # Monto (S)
+                'fecha': fila[19]        # Fecha de Inscripción (T)
             }
+
         return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
         print(f"Error al buscar datos: {e}")
