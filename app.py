@@ -865,19 +865,14 @@ import traceback  # Importa para depuración
 def inscripcion():
     mensaje = ""
     datos_candidata = None
-    try:
-        if request.method == 'POST':
-            busqueda = request.form.get('buscar', '').strip()
-            if busqueda:
-                datos_candidata = buscar_candidata(busqueda)
-                if not datos_candidata:
-                    mensaje = "No se encontraron datos."
-        else:
-            # Cargar datos por defecto o manejar la visualización inicial
-            datos_candidata = obtener_datos_iniciales()
 
-    except Exception as e:
-        mensaje = str(e)
+    if request.method == 'POST':
+        buscar = request.form.get('buscar', '').strip()
+
+        if buscar:
+            datos_candidata = buscar_datos_inscripcion(buscar)
+            if not datos_candidata:
+                mensaje = "No se encontraron datos."
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
