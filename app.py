@@ -141,6 +141,21 @@ def actualizar_referencias(fila_index, laborales, familiares):
         print(f"Error al actualizar referencias: {e}")
         return False
 
+def actualizar_inscripcion(fila_index, estado, monto, fecha):
+    try:
+        # Aquí actualizarías la hoja de cálculo con los datos proporcionados
+        # Suponiendo que 'service' es tu cliente de la API de Sheets
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f'Nueva hoja!A{fila_index}',  # Asume que estás actualizando desde la columna A
+            valueInputOption='USER_ENTERED',
+            body={'values': [[estado, monto, fecha]]}
+        ).execute()
+        return True
+    except Exception as e:
+        print(f"Error al actualizar la hoja de cálculo: {e}")
+        return False
+
 def buscar_datos_inscripcion(buscar):
     """
     Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
@@ -792,36 +807,21 @@ def filtrar():
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = None
-
     if request.method == 'POST':
-        accion = request.form.get('accion')
-
-        if accion == 'buscar':
-            buscar = request.form.get('buscar', '').strip()
-
-            # Buscar en la hoja de cálculo por Nombre o Cédula
-            datos_candidata = buscar_datos_inscripcion(buscar)
-
-            if not datos_candidata:
-                mensaje = "No se encontraron resultados para el nombre o cédula proporcionados."
-
-        elif accion == 'guardar':
-            fila_index = request.form.get('fila_index', '').strip()
-            if not fila_index.isdigit():
-                mensaje = "Error: No se pudo determinar la fila a actualizar."
+        fila_index = request.form.get('fila_index', '').strip()
+        if fila_index.isdigit():  # Asegura que fila_index es un número
+            fila_index = int(fila_index)
+            # Aquí iría el código para actualizar la fila en Google Sheets
+            # Ejemplo de cómo podrías llamar a la función para actualizar
+            resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
+            if resultado:
+                mensaje = "Datos actualizados correctamente."
             else:
-                estado = request.form.get('estado', '').strip()
-                monto = request.form.get('monto', '').strip()
-                fecha = request.form.get('fecha', '').strip()
+                mensaje = "Error al actualizar los datos."
+        else:
+            mensaje = "Error: No se pudo determinar la fila a actualizar."
 
-                if inscribir_candidata(int(fila_index), estado, monto, fecha):
-                    mensaje = "Datos actualizados correctamente."
-                else:
-                    mensaje = "Error al actualizar los datos."
-
-    return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
-
+    return render_template('inscripcion.html', mensaje=mensaje)
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """

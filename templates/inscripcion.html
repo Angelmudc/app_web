@@ -22,8 +22,8 @@
         </div>
     </form>
     {% if datos_candidata %}
-        <form method="POST">
-            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+    <form method="POST" action="/ruta-para-actualizar">
+        <input type="hidden" name="fila_index" value="{{ fila_index }}">
             <div class="mb-3">
                 <label for="estado" class="form-label">Estado:</label>
                 <input type="text" class="form-control" id="estado" name="estado" value="{{ datos_candidata.estado }}" required>
