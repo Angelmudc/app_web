@@ -90,19 +90,33 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
         print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
 
-def obtener_datos_referencias():
-    """
-    Obtiene solo las columnas necesarias de la hoja de cálculo para referencias.
-    """
+def actualizar_datos_editar(fila_index, nuevos_datos):
     try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!A:Q"  # 🔹 Solo columnas relevantes
-        ).execute()
-        return hoja.get('values', [])
+        columnas = {
+            "codigo": "P",
+            "nombre": "B",
+            "telefono": "D",
+            "cedula": "O",
+            "estado": "Q",
+            "monto": "S",
+            "fecha": "T",
+        }
+
+        for campo, valor in nuevos_datos.items():
+            if campo in columnas and valor:
+                rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=rango,
+                    valueInputOption="RAW",
+                    body={"values": [[valor]]}
+                ).execute()
+
+        print(f"✅ Datos actualizados correctamente en la fila {fila_index}")
+        return True
     except Exception as e:
-        print(f"Error al obtener datos de referencias: {e}")
-        return []
+        print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
+        return False
 
 def obtener_datos_editar():
     """
@@ -861,11 +875,12 @@ def inscripcion():
 
         elif 'fila_index' in request.form:  
             try:
-                fila_index = int(request.form.get('fila_index', -1))
+                fila_index = request.form.get('fila_index', '').strip()
 
-                if fila_index < 1:
-                    mensaje = "Error al determinar la fila para actualizar."
+                if not fila_index.isdigit():
+                    mensaje = "Error: No se pudo determinar la fila a actualizar."
                 else:
+                    fila_index = int(fila_index)
                     nuevos_datos = {
                         "codigo": request.form.get("codigo", "").strip(),
                         "nombre": request.form.get("nombre", "").strip(),
@@ -876,16 +891,14 @@ def inscripcion():
                         "fecha": request.form.get("fecha", "").strip(),
                     }
 
-                    # Verificar si el código es vacío y generar uno nuevo
                     if not nuevos_datos["codigo"]:
                         nuevos_datos["codigo"] = generar_codigo_unico()
 
-                    # Asegurar que no se sobrescriben campos con valores vacíos
                     datos_existentes = obtener_datos_editar()
                     fila_actual = datos_existentes[fila_index - 1]
 
                     for clave, valor in nuevos_datos.items():
-                        if not valor:  # Si el campo está vacío, mantener el valor original
+                        if not valor:
                             nuevos_datos[clave] = fila_actual[obtener_indice_columna(clave)]
 
                     if actualizar_datos_editar(fila_index, nuevos_datos):
