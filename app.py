@@ -75,6 +75,10 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
 
         for campo, valor in nuevos_datos.items():
             if campo in columnas:  # Asegurar que el campo está en la lista
+                # Si el valor es vacío, asignar "No disponible" para evitar celdas vacías
+                if not valor.strip():
+                    valor = "No disponible"
+
                 rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
                 print(f"🔹 Actualizando {campo} en {rango} con valor '{valor}'")  # Debug
                 service.spreadsheets().values().update(
@@ -212,16 +216,22 @@ def inscribir_candidata(fila_index, estado, monto, fecha):
     try:
         datos = obtener_datos_editar()
         fila = datos[fila_index - 1]  # Ajusta el índice porque los índices de fila en Sheets empiezan en 1
+
+        # Generar código si no tiene
+        if len(fila) <= 15 or not fila[15].startswith("CAN-"):
+            fila[15] = generar_codigo_unico()  # Columna P
+
         # Actualizar los valores específicos en la fila
         fila[16] = estado  # Estado en la columna Q
         fila[18] = monto  # Monto en la columna S
         fila[19] = fecha  # Fecha en la columna T
+
         # Escribir los cambios de vuelta en la hoja
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f'Nueva hoja!Q{fila_index}:T{fila_index}',  # Rango de Q a T
+            range=f'Nueva hoja!P{fila_index}:T{fila_index}',  # Rango de P a T
             valueInputOption='USER_ENTERED',
-            body={'values': [fila[16:20]]}
+            body={'values': [fila[15:20]]}  # Asegurar que se escriben todos los datos necesarios
         ).execute()
         return True
     except Exception as e:
