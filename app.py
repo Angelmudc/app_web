@@ -111,9 +111,14 @@ def obtener_datos_editar():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!A:Y"  # 🔹 Solo columnas B-R (Nombre - Inscripción)
+            range="Nueva hoja!A:Y"  # 🔹 Solo columnas necesarias
         ).execute()
-        return hoja.get("values", [])
+        valores = hoja.get("values", [])
+
+        # Asegurar que cada fila tenga al menos 25 columnas
+        datos_completos = [fila + [''] * (25 - len(fila)) if len(fila) < 25 else fila for fila in valores]
+
+        return datos_completos
     except Exception as e:
         print(f"Error al obtener datos de edición: {e}")
         return []
@@ -145,32 +150,31 @@ def buscar_datos_inscripcion(buscar):
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
-        datos = obtener_datos_editar()  # 🔹 Obtener los datos de la hoja
+        # 🔹 Buscar primero por Nombre (Columna B, índice 1)
+        fila_index, fila = buscar_en_columna(buscar, 1)  
 
-        for fila_index, fila in enumerate(datos):
-            if len(fila) >= 15:  # 🔹 Asegurar que haya suficientes columnas
-                nombre = fila[1].strip().lower()  # Columna B (Nombre)
-                cedula = fila[14].strip()  # Columna O (Cédula)
+        if not fila:
+            # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna O, índice 14)
+            fila_index, fila = buscar_en_columna(buscar, 14)
 
-                if buscar.lower() in nombre or buscar == cedula:
-                    print(f"🔍 Candidata encontrada en la fila {fila_index + 1}")  # 🔹 DEBUG
+        if fila:
+            # Asegurar que la fila tenga las columnas necesarias
+            while len(fila) < 23:  # Completa con valores vacíos hasta la columna W
+                fila.append("")
 
-                    return {
-                        'fila_index': fila_index + 1,  # 🔹 Índice de fila ajustado (1-based)
-                        'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
-                        'nombre': fila[1],
-                        'cedula': fila[14],
-                        'telefono': fila[3] if len(fila) > 3 else "",
-                        'direccion': fila[4] if len(fila) > 4 else "",
-                        'estado': fila[18] if len(fila) > 18 else "",
-                        'monto': fila[19] if len(fila) > 19 else "0",
-                        'fecha': fila[20] if len(fila) > 20 else datetime.now().strftime("%Y-%m-%d"),
-                    }
-
-        return None  # 🔹 Si no encuentra resultados, devuelve None
-
+            return {
+                'fila_index': fila_index + 1,  # Índice de fila (1-based index)
+                'codigo': fila[15],  # Código (P)
+                'nombre': fila[1],  # Nombre (B)
+                'cedula': fila[14],  # Cédula (O)
+                'estado': fila[15],  # Estado (P)
+                'inscripcion': fila[16],  # Inscripción (Q)
+                'monto': fila[18],  # Monto (R)
+                'fecha': fila[19]  # Fecha de Pago (S)
+            }
+        return None  # Si no se encuentran resultados, devuelve None
     except Exception as e:
-        print(f"❌ Error al buscar datos de inscripción: {e}")
+        print(f"Error al buscar datos: {e}")
         return None
 
 def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
@@ -194,11 +198,11 @@ def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
             fila.append("")
 
         # Actualizar los valores en las columnas correctas
-        fila[15] = codigo  # *Código (P)*
-        fila[16] = estado  # *Estado (Q)*
-        fila[17] = "Sí"  # *Inscripción (R)*
-        fila[18] = monto  # *Monto (S)*
-        fila[19] = fecha_inscripcion  # *Fecha de inscripción (T)*
+        fila[15] = codigo  # Código (P)
+        fila[16] = estado  # Estado (Q)
+        fila[17] = "Sí"  # Inscripción (R)
+        fila[18] = monto  # Monto (S)
+        fila[19] = fecha_inscripcion  # Fecha de inscripción (T)
 
         # Definir el rango y actualizar en la hoja
         rango = f"Nueva hoja!P{fila_index}:Y{fila_index}"
