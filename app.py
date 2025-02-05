@@ -864,17 +864,19 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = None
+    datos = None  # Asegurar que siempre tiene un valor inicial
 
     if request.method == 'POST':
-        buscar = request.form.get('buscar', '').strip()
+        busqueda = request.form.get('buscar', '').strip()
 
-        if buscar:
-            datos_candidata = buscar_datos_inscripcion(buscar)
-            if not datos_candidata:
-                mensaje = "No se encontraron datos."
+        if busqueda:
+            resultados = buscar_datos_inscripcion(busqueda)
+            if resultados:
+                datos = resultados[0]  # Tomar el primer resultado
+            else:
+                mensaje = "No se encontraron resultados para la búsqueda."
 
-    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+    return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
