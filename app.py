@@ -832,25 +832,18 @@ import traceback  # Importa para depuración
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
-    try:
-        mensaje = ""
-        if request.method == 'POST':
-            buscar = request.form.get('buscar', '').strip()
-            print(f"📌 Búsqueda: {buscar}")
+    mensaje = ""
+    datos = None  # Asegurar que siempre tiene un valor inicial
 
-            if buscar:
-                datos = buscar_datos_inscripcion(buscar)
-                print(f"✅ Resultados: {datos}")
+    if request.method == 'POST':
+        busqueda = request.form.get('buscar', '').strip()
 
-                if not datos:
-                    mensaje = f"⚠️ No se encontraron resultados para: {buscar}"
-
-            return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
-
-    except Exception as e:
-        print(f"❌ ERROR EN INSCRIPCIÓN: {e}")
-        traceback.print_exc()  # Muestra detalles del error en Render
-        return "❌ Error interno en la inscripción", 500
+        if busqueda:
+            resultados = buscar_datos_inscripcion(busqueda)
+            if resultados:
+                datos = resultados[0]  # Tomar el primer resultado
+            else:
+                mensaje = "No se encontraron resultados para la búsqueda."
 
     return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
 
