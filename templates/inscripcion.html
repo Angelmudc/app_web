@@ -5,62 +5,71 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
     <div class="container mt-4">
         <h2 class="text-center">Inscripción de Candidatas</h2>
-
-        <!-- MENSAJE DE ERROR O ÉXITO -->
+        
         {% if mensaje %}
-            <div class="alert alert-warning text-center">
+            <div class="alert alert-info text-center">
                 {{ mensaje }}
             </div>
         {% endif %}
 
-        <!-- FORMULARIO DE BÚSQUEDA -->
-        <form method="POST" class="mb-4">
-            <label for="buscar">Buscar por Nombre o Cédula:</label>
-            <input type="text" name="buscar" id="buscar" class="form-control" placeholder="Escribe un nombre o cédula" required>
-            <button type="submit" class="btn btn-primary mt-2">Buscar</button>
+        <form method="POST" id="inscripcionForm">
+            <input type="hidden" name="fila_index" value="{{ datos.fila_index if datos else '' }}">
+
+            <div class="mb-3">
+                <label for="codigo" class="form-label">Código:</label>
+                <input type="text" class="form-control" name="codigo" id="codigo" value="{{ datos.codigo if datos else '' }}" readonly>
+            </div>
+
+            <div class="mb-3">
+                <label for="nombre" class="form-label">Nombre:</label>
+                <input type="text" class="form-control" name="nombre" id="nombre" value="{{ datos.nombre if datos else '' }}" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="telefono" class="form-label">Teléfono:</label>
+                <input type="text" class="form-control" name="telefono" id="telefono" value="{{ datos.telefono if datos else '' }}" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="cedula" class="form-label">Cédula:</label>
+                <input type="text" class="form-control" name="cedula" id="cedula" value="{{ datos.cedula if datos else '' }}" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="estado" class="form-label">Estado:</label>
+                <select class="form-select" name="estado" id="estado" required>
+                    <option value="Activo" {% if datos.estado == 'Activo' %}selected{% endif %}>Activo</option>
+                    <option value="Inactivo" {% if datos.estado == 'Inactivo' %}selected{% endif %}>Inactivo</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label for="monto" class="form-label">Monto:</label>
+                <input type="number" class="form-control" name="monto" id="monto" value="{{ datos.monto if datos else '' }}" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="fecha" class="form-label">Fecha:</label>
+                <input type="date" class="form-control" name="fecha" id="fecha" value="{{ datos.fecha if datos else '' }}" required>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
         </form>
 
-        <!-- RESULTADOS DE BÚSQUEDA -->
-        {% if datos %}
-            <div class="card mt-3">
-                <div class="card-header bg-success text-white">
-                    <h5>Datos de la Candidata</h5>
-                </div>
-                <div class="card-body">
-                    <p><strong>Código:</strong> {{ datos.codigo }}</p>
-                    <p><strong>Nombre:</strong> {{ datos.nombre }}</p>
-                    <p><strong>Cédula:</strong> {{ datos.cedula }}</p>
-                    <p><strong>Teléfono:</strong> {{ datos.telefono }}</p>
-                    <p><strong>Estado:</strong> {{ datos.estado }}</p>
-                    <p><strong>Monto:</strong> {{ datos.monto }}</p>
-                    <p><strong>Fecha de Inscripción:</strong> {{ datos.fecha }}</p>
+        <!-- Script para verificar que el formulario envía los datos -->
+        <script>
+            document.getElementById("inscripcionForm").addEventListener("submit", function(event) {
+                console.log("Formulario enviado.");
+            });
+        </script>
 
-                    <!-- FORMULARIO PARA INSCRIBIR -->
-                    <form method="POST" action="{{ url_for('inscripcion') }}">
-                        <input type="hidden" name="fila_index" value="{{ datos.fila_index }}">
-                        <div class="mb-3">
-                            <label for="estado">Estado:</label>
-                            <input type="text" name="estado" id="estado" class="form-control" value="{{ datos.estado }}" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="monto">Monto:</label>
-                            <input type="number" name="monto" id="monto" class="form-control" value="{{ datos.monto }}" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="fecha">Fecha de Inscripción:</label>
-                            <input type="date" name="fecha" id="fecha" class="form-control" value="{{ datos.fecha }}" required>
-                        </div>
-                        <button type="submit" class="btn btn-success">Guardar Inscripción</button>
-                    </form>
-                </div>
-            </div>
-        {% endif %}
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

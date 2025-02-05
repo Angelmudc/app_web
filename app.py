@@ -843,19 +843,46 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos = None  # Asegurar que siempre tiene un valor inicial
+    datos = None  
 
     if request.method == 'POST':
-        busqueda = request.form.get('buscar', '').strip()
+        fila_index = request.form.get('fila_index', '').strip()
+        nombre = request.form.get('nombre', '').strip()
+        telefono = request.form.get('telefono', '').strip()
+        cedula = request.form.get('cedula', '').strip()
+        estado = request.form.get('estado', '').strip()
+        monto = request.form.get('monto', '').strip()
+        fecha = request.form.get('fecha', '').strip()
+        codigo = request.form.get('codigo', '').strip()
 
-        if busqueda:
-            resultados = buscar_datos_inscripcion(busqueda)
-            if resultados:
-                datos = resultados[0]  # Tomar el primer resultado
+        # DEBUG: Mostrar los datos recibidos
+        print(f"🔹 Datos recibidos: {nombre}, {telefono}, {cedula}, {estado}, {monto}, {fecha}, {codigo}")
+
+        # Si no hay código, generar uno nuevo
+        if not codigo:
+            codigo = generar_codigo_unico()
+
+        if not fila_index.isdigit():
+            mensaje = "Error: No se pudo determinar la fila a actualizar."
+        else:
+            fila_index = int(fila_index)
+
+            nuevos_datos = {
+                "codigo": codigo,
+                "nombre": nombre,
+                "telefono": telefono,
+                "cedula": cedula,
+                "estado": estado,
+                "monto": monto,
+                "fecha": fecha
+            }
+
+            if actualizar_datos_editar(fila_index, nuevos_datos):
+                mensaje = "✅ Datos guardados correctamente."
             else:
-                mensaje = "No se encontraron resultados para la búsqueda."
+                mensaje = "❌ Error al guardar los datos."
 
-    return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
+    return render_template('inscripcion.html', mensaje=mensaje, datos=datos)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
