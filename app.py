@@ -864,53 +864,14 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos = None
-
+    datos_candidata = None
     if request.method == 'POST':
-        if 'buscar_btn' in request.form:
-            busqueda = request.form.get('buscar', '').strip()
-            datos = buscar_datos_inscripcion(busqueda)
-            if not datos:
-                mensaje = f"No se encontraron resultados para: {busqueda}"
+        buscar = request.form.get('buscar')
+        datos_candidata = buscar_candidata(buscar)  # Esta función debería devolver un diccionario con los datos necesarios
+        if datos_candidata is None:
+            mensaje = "No se encontraron datos para la búsqueda proporcionada."
 
-        elif 'fila_index' in request.form:  
-            try:
-                fila_index = request.form.get('fila_index', '').strip()
-
-                if not fila_index.isdigit():
-                    mensaje = "Error: No se pudo determinar la fila a actualizar."
-                else:
-                    fila_index = int(fila_index)
-                    nuevos_datos = {
-                        "codigo": request.form.get("codigo", "").strip(),
-                        "nombre": request.form.get("nombre", "").strip(),
-                        "telefono": request.form.get("telefono", "").strip(),
-                        "cedula": request.form.get("cedula", "").strip(),
-                        "estado": request.form.get("estado", "").strip(),
-                        "monto": request.form.get("monto", "").strip(),
-                        "fecha": request.form.get("fecha", "").strip(),
-                    }
-
-                    if not nuevos_datos["codigo"]:
-                        nuevos_datos["codigo"] = generar_codigo_unico()
-
-                    datos_existentes = obtener_datos_editar()
-                    fila_actual = datos_existentes[fila_index - 1]
-
-                    for clave, valor in nuevos_datos.items():
-                        if not valor:
-                            nuevos_datos[clave] = fila_actual[obtener_indice_columna(clave)]
-
-                    if actualizar_datos_editar(fila_index, nuevos_datos):
-                        mensaje = "✅ Datos actualizados correctamente."
-                        datos = nuevos_datos
-                    else:
-                        mensaje = "❌ Error al actualizar los datos."
-
-            except Exception as e:
-                mensaje = f"⚠️ Error al actualizar los datos: {str(e)}"
-
-    return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
+    return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():

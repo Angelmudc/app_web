@@ -23,40 +23,40 @@
             <button type="submit" name="buscar_btn" class="btn btn-success w-100">Buscar</button>
         </form>
 
-        {% if datos %}
+        {% if datos_candidata %}
             <hr>
             <h4 class="mt-4">Datos de la Candidata</h4>
             <form method="POST">
-                <input type="hidden" name="fila_index" value="{{ datos.fila_index }}">
+                <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
 
                 <div class="mb-3">
                     <label for="nombre" class="form-label">Nombre:</label>
-                    <input type="text" class="form-control" name="nombre" id="nombre" value="{{ datos.nombre }}" readonly>
+                    <input type="text" class="form-control" name="nombre" id="nombre" value="{{ datos_candidata.nombre }}" readonly>
                 </div>
 
                 <div class="mb-3">
                     <label for="cedula" class="form-label">Cédula:</label>
-                    <input type="text" class="form-control" name="cedula" id="cedula" value="{{ datos.cedula }}" readonly>
+                    <input type="text" class="form-control" name="cedula" id="cedula" value="{{ datos_candidata.cedula }}" readonly>
                 </div>
 
                 <div class="mb-3">
                     <label for="telefono" class="form-label">Teléfono:</label>
-                    <input type="text" class="form-control" name="telefono" id="telefono" value="{{ datos.telefono }}" readonly>
+                    <input type="text" class="form-control" name="telefono" id="telefono" value="{{ datos_candidata.telefono }}" readonly>
                 </div>
 
                 <div class="mb-3">
                     <label for="estado" class="form-label">Estado:</label>
-                    <input type="text" class="form-control" name="estado" id="estado" value="{{ datos.estado }}">
+                    <input type="text" class="form-control" name="estado" id="estado" value="{{ datos_candidata.estado }}">
                 </div>
 
                 <div class="mb-3">
                     <label for="monto" class="form-label">Monto:</label>
-                    <input type="text" class="form-control" name="monto" id="monto" value="{{ datos.monto }}">
+                    <input type="text" class="form-control" name="monto" id="monto" value="{{ datos_candidata.monto }}">
                 </div>
 
                 <div class="mb-3">
                     <label for="fecha" class="form-label">Fecha de Inscripción:</label>
-                    <input type="date" class="form-control" name="fecha" id="fecha" value="{{ datos.fecha }}">
+                    <input type="date" class="form-control" name="fecha" id="fecha" value="{{ datos_candidata.fecha }}">
                 </div>
 
                 <button type="submit" class="btn btn-primary w-100">Guardar</button>
