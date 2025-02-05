@@ -833,26 +833,28 @@ def inscripcion():
                 mensaje = "⚠️ No se encontraron resultados para la búsqueda."
 
         elif accion == 'guardar':
-            try:
-                fila_index = request.form.get('fila_index', '').strip()
+    try:
+        fila_index = request.form.get('fila_index', '').strip()
+        estado = request.form.get('estado', '').strip()
+        monto = request.form.get('monto', '').strip()
+        fecha = request.form.get('fecha', '').strip()
 
-                if not fila_index or not fila_index.isdigit():
-                    mensaje = "❌ Error: No se pudo determinar la fila a actualizar."
-                else:
-                    fila_index = int(fila_index)
-                    estado = request.form.get('estado', '').strip()
-                    monto = request.form.get('monto', '').strip()
-                    fecha = request.form.get('fecha', '').strip()
+        print(f"📌 Debug: fila_index={fila_index}, estado={estado}, monto={monto}, fecha={fecha}")
 
-                    resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
+        if not fila_index or not fila_index.isdigit():
+            mensaje = "❌ Error: No se pudo determinar la fila a actualizar."
+        else:
+            fila_index = int(fila_index)
+            resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
 
-                    if resultado:
-                        mensaje = "✅ Datos actualizados correctamente."
-                    else:
-                        mensaje = "❌ Error al actualizar los datos."
+            if resultado:
+                mensaje = "✅ Datos actualizados correctamente."
+            else:
+                mensaje = "❌ Error al actualizar los datos."
 
-            except Exception as e:
-                mensaje = f"❌ Error inesperado: {str(e)}"
+    except Exception as e:
+        mensaje = f"❌ Error inesperado: {str(e)}"
+        print(f"❌ Error en inscripción: {str(e)}")
 
     return render_template(
         'inscripcion.html',
