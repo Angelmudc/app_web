@@ -143,17 +143,22 @@ def actualizar_referencias(fila_index, laborales, familiares):
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
     try:
-        # Aquí actualizarías la hoja de cálculo con los datos proporcionados
-        # Suponiendo que 'service' es tu cliente de la API de Sheets
+        print(f"📌 Actualizando fila {fila_index} con estado={estado}, monto={monto}, fecha={fecha}")
+
+        rango = f'Nueva hoja!Q{fila_index}:T{fila_index}'  # Rango de actualización en Google Sheets
+        valores = [[estado, monto, fecha]]
+
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f'Nueva hoja!A{fila_index}',  # Asume que estás actualizando desde la columna A
-            valueInputOption='USER_ENTERED',
-            body={'values': [[estado, monto, fecha]]}
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": valores}
         ).execute()
+
+        print(f"✅ Inscripción actualizada en fila {fila_index}")
         return True
     except Exception as e:
-        print(f"Error al actualizar la hoja de cálculo: {e}")
+        print(f"❌ Error al actualizar inscripción en fila {fila_index}: {e}")
         return False
 
 def buscar_datos_inscripcion(buscar):
@@ -834,22 +839,25 @@ def inscripcion():
 
         if buscar:
             datos = buscar_datos_inscripcion(buscar)
+            print(f"✅ Resultados obtenidos: {datos}")
+
             if not datos:
                 mensaje = f"⚠️ No se encontraron resultados para: {buscar}"
-            else:
-                print(f"✅ Candidata encontrada: {datos}")
 
         elif 'fila_index' in request.form:
             fila_index = request.form.get('fila_index')
-            print(f"📌 Recibido fila_index para inscripción: {fila_index}")
+            print(f"📌 Fila index recibida: {fila_index}")
 
-            if fila_index.isdigit():
+            if fila_index and fila_index.isdigit():
                 fila_index = int(fila_index)
                 estado = "Inscrita"
                 monto = "3500"
                 fecha = datetime.now().strftime("%Y-%m-%d")
 
-                if actualizar_inscripcion(fila_index, estado, monto, fecha):
+                print(f"📌 Intentando actualizar inscripción en fila {fila_index}")
+
+                resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
+                if resultado:
                     mensaje = "✅ Inscripción realizada correctamente."
                 else:
                     mensaje = "❌ Error al actualizar la inscripción."
@@ -974,6 +982,4 @@ def referencias():
     return render_template('referencias.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
 if __name__ == "__main__":
-    from waitress import serve
-    import os
-    serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
