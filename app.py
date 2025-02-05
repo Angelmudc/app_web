@@ -867,7 +867,6 @@ def inscripcion():
     datos_candidata = None
     try:
         if request.method == 'POST':
-            # Suponiendo que recibimos un parámetro para buscar por nombre o cédula
             busqueda = request.form.get('buscar', '').strip()
             if busqueda:
                 datos_candidata = buscar_candidata(busqueda)
@@ -880,7 +879,7 @@ def inscripcion():
     except Exception as e:
         mensaje = str(e)
 
-    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje))
+    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
