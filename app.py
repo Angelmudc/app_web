@@ -828,41 +828,29 @@ def filtrar():
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
 
+import traceback  # Importa para depuración
+
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
-    mensaje = ""
-    datos = []
+    try:
+        mensaje = ""
+        if request.method == 'POST':
+            buscar = request.form.get('buscar', '').strip()
+            print(f"📌 Búsqueda: {buscar}")
 
-    if request.method == 'POST':
-        buscar = request.form.get('buscar', '').strip()
-        print(f"📌 Recibido en POST: buscar={buscar}")
+            if buscar:
+                datos = buscar_datos_inscripcion(buscar)
+                print(f"✅ Resultados: {datos}")
 
-        if buscar:
-            datos = buscar_datos_inscripcion(buscar)
-            print(f"✅ Resultados obtenidos: {datos}")
+                if not datos:
+                    mensaje = f"⚠️ No se encontraron resultados para: {buscar}"
 
-            if not datos:
-                mensaje = f"⚠️ No se encontraron resultados para: {buscar}"
+            return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
 
-        elif 'fila_index' in request.form:
-            fila_index = request.form.get('fila_index')
-            print(f"📌 Fila index recibida: {fila_index}")
-
-            if fila_index and fila_index.isdigit():
-                fila_index = int(fila_index)
-                estado = "Inscrita"
-                monto = "3500"
-                fecha = datetime.now().strftime("%Y-%m-%d")
-
-                print(f"📌 Intentando actualizar inscripción en fila {fila_index}")
-
-                resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
-                if resultado:
-                    mensaje = "✅ Inscripción realizada correctamente."
-                else:
-                    mensaje = "❌ Error al actualizar la inscripción."
-            else:
-                mensaje = "⚠️ Error: No se pudo determinar la fila a actualizar."
+    except Exception as e:
+        print(f"❌ ERROR EN INSCRIPCIÓN: {e}")
+        traceback.print_exc()  # Muestra detalles del error en Render
+        return "❌ Error interno en la inscripción", 500
 
     return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
 
