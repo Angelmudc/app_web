@@ -11,37 +11,56 @@
         <h1>Inscripción de Candidatas</h1>
 
         {% if mensaje %}
-            <div class="alert alert-warning">{{ mensaje }}</div>
+            <div class="alert alert-info">{{ mensaje }}</div>
         {% endif %}
+
+        <!-- FORMULARIO DE BÚSQUEDA -->
+        <form method="POST" action="{{ url_for('inscripcion') }}" class="mb-3">
+            <label for="buscar">Buscar por Nombre o Cédula:</label>
+            <input type="text" name="buscar" id="buscar" class="form-control" required>
+            <button type="submit" class="btn btn-primary mt-2">Buscar</button>
+        </form>
 
         {% if datos_candidata %}
-            <p>✅ *Datos recibidos en el HTML:*</p>
-            <pre>{{ datos_candidata }}</pre> <!-- 🔹 Esto imprimirá los datos en la página -->
+        <!-- FORMULARIO PARA INSCRIPCIÓN -->
+        <form method="POST" action="{{ url_for('guardar_inscripcion') }}">
+            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
 
-            <form method="POST">
-                <label>Nombre:</label>
-                <input type="text" name="nombre" value="{{ datos_candidata.nombre }}" readonly>
+            <div class="mb-3">
+                <label for="nombre">Nombre:</label>
+                <input type="text" id="nombre" class="form-control" value="{{ datos_candidata.nombre }}" readonly>
+            </div>
 
-                <label>Cédula:</label>
-                <input type="text" name="cedula" value="{{ datos_candidata.cedula }}" readonly>
+            <div class="mb-3">
+                <label for="cedula">Cédula:</label>
+                <input type="text" id="cedula" class="form-control" value="{{ datos_candidata.cedula }}" readonly>
+            </div>
 
-                <label>Teléfono:</label>
-                <input type="text" name="telefono" value="{{ datos_candidata.telefono }}" readonly>
+            <div class="mb-3">
+                <label for="telefono">Teléfono:</label>
+                <input type="text" id="telefono" class="form-control" value="{{ datos_candidata.telefono }}" readonly>
+            </div>
 
-                <label>Estado:</label>
-                <input type="text" name="estado" value="{{ datos_candidata.estado }}">
+            <div class="mb-3">
+                <label for="estado">Estado:</label>
+                <input type="text" name="estado" id="estado" class="form-control" value="{{ datos_candidata.estado }}">
+            </div>
 
-                <label>Monto:</label>
-                <input type="text" name="monto" value="{{ datos_candidata.monto }}">
+            <div class="mb-3">
+                <label for="monto">Monto:</label>
+                <input type="number" name="monto" id="monto" class="form-control" value="{{ datos_candidata.monto }}">
+            </div>
 
-                <label>Fecha:</label>
-                <input type="text" name="fecha" value="{{ datos_candidata.fecha }}">
+            <div class="mb-3">
+                <label for="fecha">Fecha de Pago:</label>
+                <input type="date" name="fecha" id="fecha" class="form-control" value="{{ datos_candidata.fecha }}">
+            </div>
 
-                <button type="submit">Guardar</button>
-            </form>
-        {% else %}
-            <p>⚠️ No se encontraron datos.</p>
+            <button type="submit" class="btn btn-success">Guardar Inscripción</button>
+        </form>
         {% endif %}
     </div>
+
+    <script src="{{ url_for('static', filename='local_storage.js') }}"></script>
 </body>
 </html>

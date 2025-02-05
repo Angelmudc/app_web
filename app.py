@@ -826,20 +826,45 @@ import traceback  # Importa para depuración
 def inscripcion():
     mensaje = ""
     datos_candidata = None
-    
+
     if request.method == 'POST':
-        buscar = request.form.get('buscar', '').strip()
-        print(f"📝 Valor recibido en la búsqueda: {buscar}")  # DEBUG
+        buscar = request.form.get("buscar", "").strip()
 
-        datos_candidata = buscar_datos_inscripcion(buscar)
+        if buscar:
+            datos_candidata = buscar_datos_inscripcion(buscar)
 
-        if datos_candidata:
-            print(f"✅ Datos encontrados: {datos_candidata}")  # DEBUG
+            if datos_candidata:
+                fila_index = datos_candidata.get('fila_index', None)
+                if fila_index:
+                    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+            else:
+                mensaje = "No se encontraron datos."
         else:
-            mensaje = "No se encontraron datos."
-            print("⚠️ No se encontraron datos para la inscripción.")  # DEBUG
+            mensaje = "Debes ingresar un nombre o cédula para buscar."
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+@app.route('/guardar_inscripcion', methods=['POST'])
+def guardar_inscripcion():
+    try:
+        fila_index = request.form.get('fila_index')
+        estado = request.form.get('estado', '').strip()
+        monto = request.form.get('monto', '').strip()
+        fecha = request.form.get('fecha', '').strip()
+
+        if not fila_index or not fila_index.isdigit():
+            return "Error: No se pudo determinar la fila a actualizar.", 400
+
+        fila_index = int(fila_index)
+
+        resultado = inscribir_candidata(fila_index, estado, monto, fecha)
+
+        if resultado:
+            return redirect(url_for('inscripcion'))
+        else:
+            return "Error al actualizar los datos.", 500
+
+    except Exception as e:
+        return f"Error inesperado: {str(e)}", 500
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
