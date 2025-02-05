@@ -47,66 +47,43 @@
 
         <!-- Formulario de búsqueda -->
         <form method="POST">
-            <div class="mb-3">
-                <label for="buscar" class="form-label"><i class="fas fa-search"></i> Buscar por Nombre o Cédula:</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="buscar" name="buscar" placeholder="Ejemplo: Ana Pérez o 001-1234567-8" required>
-                    <button type="submit" name="accion" value="buscar" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
+            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index if datos_candidata else '' }}">
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="codigo" class="form-label">Código:</label>
+                    <input type="text" class="form-control" id="codigo" name="codigo" value="{{ datos_candidata.codigo if datos_candidata else '' }}" readonly>
+                </div>
+                <div class="col-md-6">
+                    <label for="nombre" class="form-label">Nombre:</label>
+                    <input type="text" class="form-control" id="nombre" name="nombre" value="{{ datos_candidata.nombre if datos_candidata else '' }}" readonly>
                 </div>
             </div>
-        </form>
-
-        <!-- Mostrar datos de la candidata si se encontró -->
-        {% if datos_candidata %}
-            <div class="card mt-4">
-                <div class="card-header bg-primary text-white">
-                    <h3><i class="fas fa-user"></i> Datos de la Candidata</h3>
+        
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="estado" class="form-label">Estado:</label>
+                    <input type="text" class="form-control" id="estado" name="estado" value="{{ datos_candidata.estado if datos_candidata else '' }}">
                 </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-                        
-                        <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-id-badge"></i> Código:</label>
-                            <input type="text" class="form-control" name="codigo" value="{{ datos_candidata.codigo }}" readonly>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-user"></i> Nombre:</label>
-                            <input type="text" class="form-control" value="{{ datos_candidata.nombre }}" readonly>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-id-card"></i> Cédula:</label>
-                            <input type="text" class="form-control" value="{{ datos_candidata.cedula }}" readonly>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-phone"></i> Teléfono:</label>
-                            <input type="text" class="form-control" value="{{ datos_candidata.telefono }}" readonly>
-                        </div>
-
-                        <!-- Editar datos de inscripción -->
-                        <div class="card mt-3">
-                            <div class="card-header bg-warning text-dark">
-                                <h5><i class="fas fa-edit"></i> Editar Datos de Inscripción</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label class="form-label"><i class="fas fa-check-circle"></i> Estado:</label>
-                                    <input type="text" class="form-control" name="estado" value="{{ datos_candidata.estado }}" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label"><i class="fas fa-dollar-sign"></i> Monto:</label>
-                                    <input type="number" class="form-control" name="monto" value="{{ datos_candidata.monto }}" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label"><i class="fas fa-calendar-alt"></i> Fecha de Inscripción:</label>
-                                    <input type="date" class="form-control" name="fecha" value="{{ datos_candidata.fecha }}" required>
-                                </div>
-                            </div>
-                        </div>
-
-                        <button type="submit" name="accion" value="guardar" class="btn btn-success w-100 mt-3">
-                            <i class="fas fa-save"></i> Guardar
-                        </button>
+                <div class="col-md-6">
+                    <label for="inscripcion" class="form-label">Inscripción:</label>
+                    <input type="text" class="form-control" id="inscripcion" name="inscripcion" value="{{ datos_candidata.inscripcion if datos_candidata else '' }}">
+                </div>
+            </div>
+        
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="monto" class="form-label">Monto:</label>
+                    <input type="text" class="form-control" id="monto" name="monto" value="{{ datos_candidata.monto if datos_candidata else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="fecha" class="form-label">Fecha de Inscripción:</label>
+                    <input type="date" class="form-control" id="fecha" name="fecha" value="{{ datos_candidata.fecha if datos_candidata else '' }}">
+                </div>
+            </div>
+        
+            <button type="submit" name="accion" value="guardar" class="btn btn-success w-100"><i class="fas fa-save"></i> Guardar</button>
+        </form>
                     </form>
                 </div>
             </div>
