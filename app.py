@@ -165,13 +165,13 @@ def buscar_datos_inscripcion(buscar):
     """
     try:
         datos = obtener_datos_editar()
-        print(f"🔎 Buscando: {buscar}")
+        print(f"🔎 Buscando: {buscar}")  # DEBUG
 
         for fila_index, fila in enumerate(datos):
-            nombre = fila[1].strip().lower()  # Columna B: Nombre
-            cedula = fila[14].strip() if len(fila) > 14 else ''  # Columna O: Cédula
+            nombre = fila[1].strip().lower()  # Nombre en columna B
+            cedula = fila[14].strip() if len(fila) > 14 else ''  # Cédula en columna O
 
-            print(f"Comparando con: Nombre: '{nombre}', Cédula: '{cedula}'")  # Debug
+            print(f"Comparando con: Nombre: '{nombre}', Cédula: '{cedula}'")  # DEBUG
 
             if buscar.lower() in nombre or buscar == cedula:
                 print("✅ Coincidencia encontrada:", fila)
@@ -829,16 +829,15 @@ def inscripcion():
     
     if request.method == 'POST':
         buscar = request.form.get('buscar', '').strip()
-        print(f"📝 Valor recibido en la búsqueda: {buscar}")
+        print(f"📝 Valor recibido en la búsqueda: {buscar}")  # DEBUG
 
         datos_candidata = buscar_datos_inscripcion(buscar)
 
         if datos_candidata:
-            print(f"✅ Datos encontrados y enviados al HTML: {datos_candidata}")
-            return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+            print(f"✅ Datos encontrados: {datos_candidata}")  # DEBUG
         else:
             mensaje = "No se encontraron datos."
-            print("⚠️ No se encontraron datos para la inscripción.")
+            print("⚠️ No se encontraron datos para la inscripción.")  # DEBUG
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
