@@ -19,21 +19,33 @@
 
         {% if datos_candidata %}
         <!-- Formulario para mostrar y editar datos de la candidata -->
-        <form method="POST" action="/actualizar-candidata">
-            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-            <div class="mb-3">
-                <label for="nombre">Nombre:</label>
-                <input type="text" class="form-control" id="nombre" name="nombre" value="{{ datos_candidata.nombre }}" required>
-            </div>
-            <div class="mb-3">
-                <label for="cedula">Cédula:</label>
-                <input type="text" class="form-control" id="cedula" name="cedula" value="{{ datos_candidata.cedula }}" required>
-            </div>
-            <!-- Añadir más campos según necesario -->
-            <button type="submit" class="btn btn-success">Guardar Cambios</button>
+        <form method="POST">
+            <input type="hidden" name="fila_index" value="{{ datos[0]['fila_index'] if datos else '' }}">
+            <label for="buscar">Buscar por Nombre o Cédula:</label>
+            <input type="text" name="buscar" id="buscar" required>
+            <button type="submit">Buscar</button>
         </form>
+        
+        {% if datos %}
+            <h3>Resultados:</h3>
+            <ul>
+                {% for candidata in datos %}
+                    <li>
+                        <strong>Nombre:</strong> {{ candidata['nombre'] }} <br>
+                        <strong>Cédula:</strong> {{ candidata['cedula'] }} <br>
+                        <strong>Estado:</strong> {{ candidata['estado'] }} <br>
+                        <strong>Monto:</strong> {{ candidata['monto'] }} <br>
+                        <strong>Fecha de Pago:</strong> {{ candidata['fecha'] }} <br>
+                        <form method="POST">
+                            <input type="hidden" name="fila_index" value="{{ candidata['fila_index'] }}">
+                            <button type="submit" name="inscribir">Inscribir</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
         {% endif %}
-    </div>
+        
+        <p>{{ mensaje }}</p>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

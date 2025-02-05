@@ -159,27 +159,46 @@ def actualizar_inscripcion(fila_index, estado, monto, fecha):
 def buscar_datos_inscripcion(buscar):
     """
     Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
-    Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
+    Permite trabajar con filas incompletas.
     """
     try:
+        print(f"📌 Buscando en la base de datos: {buscar}")  # DEBUG
+
         datos = obtener_datos_editar()
+        resultados = []
+        busqueda = normalizar_texto(buscar)  # 🔹 Normalizar el texto para evitar errores
+
         for fila_index, fila in enumerate(datos):
-            nombre = fila[1].lower().strip()  # Nombre en la columna B
-            cedula = fila[14].strip() if len(fila) > 14 else ''  # Cédula en la columna O
-            if buscar.lower() in nombre or buscar == cedula:
-                return {
+            if len(fila) < 15:  # 🔹 Si la fila tiene menos columnas, la ignoramos
+                continue 
+
+            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
+
+            # 🔹 Mostrar lo que está comparando
+            print(f"🔍 Comparando: '{busqueda}' con Nombre: '{nombre}', Cédula: '{cedula}'")
+
+            if busqueda in nombre or busqueda == cedula:
+                while len(fila) < 25:
+                    fila.append("")  # Evitar errores con filas incompletas
+
+                resultados.append({
                     'fila_index': fila_index + 1,
-                    'nombre': fila[1],
-                    'cedula': fila[14],
-                    'telefono': fila[3],
-                    'estado': fila[16],
-                    'monto': fila[18],
-                    'fecha': fila[19]
-                }
-        return None
+                    'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
+                    'nombre': fila[1] if len(fila) > 1 else "",  # Nombre (B)
+                    'cedula': fila[14] if len(fila) > 14 else "",  # Cédula (O)
+                    'estado': fila[16] if len(fila) > 16 else "",  # Estado (Q)
+                    'inscripcion': fila[17] if len(fila) > 17 else "",  # Inscripción (R)
+                    'monto': fila[18] if len(fila) > 18 else "",  # Monto (S)
+                    'fecha': fila[19] if len(fila) > 19 else ""  # Fecha de Pago (T)
+                })
+
+        print(f"✅ Resultados encontrados: {len(resultados)}")
+        return resultados  # Retorna todas las coincidencias encontradas
+
     except Exception as e:
-        print(f"Error al buscar datos: {e}")
-        return None
+        print(f"❌ Error en buscar_datos_inscripcion(): {e}")
+        return []
 
 def inscribir_candidata(fila_index, estado, monto, fecha):
     """
@@ -807,21 +826,38 @@ def filtrar():
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    if request.method == 'POST':
-        fila_index = request.form.get('fila_index', '').strip()
-        if fila_index.isdigit():  # Asegura que fila_index es un número
-            fila_index = int(fila_index)
-            # Aquí iría el código para actualizar la fila en Google Sheets
-            # Ejemplo de cómo podrías llamar a la función para actualizar
-            resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
-            if resultado:
-                mensaje = "Datos actualizados correctamente."
-            else:
-                mensaje = "Error al actualizar los datos."
-        else:
-            mensaje = "Error: No se pudo determinar la fila a actualizar."
+    datos = []
 
-    return render_template('inscripcion.html', mensaje=mensaje)
+    if request.method == 'POST':
+        buscar = request.form.get('buscar', '').strip()
+        print(f"📌 Recibido en POST: buscar={buscar}")
+
+        if buscar:
+            datos = buscar_datos_inscripcion(buscar)
+            if not datos:
+                mensaje = f"⚠️ No se encontraron resultados para: {buscar}"
+            else:
+                print(f"✅ Candidata encontrada: {datos}")
+
+        elif 'fila_index' in request.form:
+            fila_index = request.form.get('fila_index')
+            print(f"📌 Recibido fila_index para inscripción: {fila_index}")
+
+            if fila_index.isdigit():
+                fila_index = int(fila_index)
+                estado = "Inscrita"
+                monto = "3500"
+                fecha = datetime.now().strftime("%Y-%m-%d")
+
+                if actualizar_inscripcion(fila_index, estado, monto, fecha):
+                    mensaje = "✅ Inscripción realizada correctamente."
+                else:
+                    mensaje = "❌ Error al actualizar la inscripción."
+            else:
+                mensaje = "⚠️ Error: No se pudo determinar la fila a actualizar."
+
+    return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
+
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """
