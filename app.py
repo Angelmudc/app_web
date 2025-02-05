@@ -143,93 +143,83 @@ def actualizar_referencias(fila_index, laborales, familiares):
         print(f"Error al actualizar referencias: {e}")
         return False
 
-
 def buscar_datos_inscripcion(buscar):
     """
-    Busca candidatas por Nombre (Columna B) o Cédula (Columna R).
+    Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
     Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
         datos = obtener_datos_editar()
-        fila_index = None
-        fila = None
 
         # 🔹 Buscar primero por Nombre (Columna B, índice 1)
-        for index, f in enumerate(datos):
-            if len(f) > 1 and buscar.strip().lower() in f[1].strip().lower():  # Nombre en columna B
-                fila_index = index + 1
-                fila = f
-                break
+        for fila_index, fila in enumerate(datos):
+            if len(fila) < 15:  # Asegurar que haya suficientes columnas
+                continue
 
-        # 🔹 Si no se encontró por Nombre, buscar por Cédula (Columna R, índice 17)
-        if not fila:
-            for index, f in enumerate(datos):
-                if len(f) > 17 and buscar.strip() == f[17].strip():  # Cédula en columna R
-                    fila_index = index + 1
-                    fila = f
-                    break
+            nombre = fila[1].strip().lower()  # Nombre (Columna B)
+            cedula = fila[14].strip() if len(fila) > 14 else ""  # Cédula (Columna O)
 
-        if fila:
-            while len(fila) < 25:
-                fila.append("")  # Rellenar columnas vacías
+            if buscar.lower() in nombre or buscar == cedula:
+                # Asegurar que la fila tenga espacio hasta la columna necesaria
+                while len(fila) < 25:
+                    fila.append("")
 
-            return {
-                'fila_index': fila_index,
-                'codigo': fila[15] if len(fila) > 15 else "",
-                'nombre': fila[1] if len(fila) > 1 else "",
-                'cedula': fila[17] if len(fila) > 17 else "",
-                'telefono': fila[3] if len(fila) > 3 else "",
-                'estado': fila[18] if len(fila) > 18 else "",
-                'inscripcion': fila[19] if len(fila) > 19 else "",
-                'monto': fila[20] if len(fila) > 20 else "",
-                'fecha': fila[21] if len(fila) > 21 else ""
-            }
-        return None
+                return {
+                    'fila_index': fila_index + 1,  # Índice de fila (1-based index)
+                    'codigo': fila[15] if len(fila) > 15 else "Sin Código",  # Código (P)
+                    'nombre': fila[1],  # Nombre (B)
+                    'cedula': fila[14] if len(fila) > 14 else "Sin Cédula",  # Cédula (O)
+                    'telefono': fila[3] if len(fila) > 3 else "Sin Teléfono",  # Teléfono (D)
+                    'estado': fila[16] if len(fila) > 16 else "Sin Estado",  # Estado (Q)
+                    'inscripcion': fila[17] if len(fila) > 17 else "No Inscrita",  # Inscripción (R)
+                    'monto': fila[18] if len(fila) > 18 else "0",  # Monto (S)
+                    'fecha': fila[19] if len(fila) > 19 else "",  # Fecha de Inscripción (T)
+                }
 
+        return None  # Si no se encuentra nada, devolver None
     except Exception as e:
-        print(f"Error en buscar_datos_inscripcion: {e}")
+        print(f"❌ Error al buscar datos: {e}")
         return None
 
-def inscribir_candidata(fila_index, cedula, estado, monto, fecha_inscripcion):
+def inscribir_candidata(fila_index, estado, monto, fecha):
     """
-    Inscribe una candidata solo si la columna Código (P) está vacía y asigna un código único.
+    Inscribe una candidata actualizando las columnas necesarias.
+    - 🔹 Código (P) → Se asigna si está vacío.
+    - 🔹 Estado (Q) → Se actualiza con el valor ingresado.
+    - 🔹 Inscripción (R) → Se marca como 'Sí'.
+    - 🔹 Monto (S) → Se actualiza con el valor ingresado.
+    - 🔹 Fecha de Inscripción (T) → Se actualiza con el valor ingresado.
     """
     try:
-        # Obtener los datos actuales
         datos = obtener_datos_editar()
         fila = datos[fila_index - 1]  # Ajustar índice
 
-        # Si la columna Código (P) ya tiene un valor, no hacer nada
-        if len(fila) > 15 and fila[15].strip():
-            return "La candidata ya tiene un código asignado."
-
-        # Generar código único solo si la columna P (Código) está vacía
-        codigo = generar_codigo_unico()
-
-        # Asegurar que la fila tenga al menos hasta la columna Y
+        # Asegurar que la fila tenga suficiente espacio
         while len(fila) < 25:
             fila.append("")
 
-        # Actualizar los valores en las columnas correctas
-        fila[15] = codigo  # Código (P)
+        # Si el código está vacío, asignar un código único
+        if not fila[15].strip():
+            fila[15] = generar_codigo_unico()  # Código (P)
+
         fila[16] = estado  # Estado (Q)
         fila[17] = "Sí"  # Inscripción (R)
         fila[18] = monto  # Monto (S)
-        fila[19] = fecha_inscripcion  # Fecha de inscripción (T)
+        fila[19] = fecha  # Fecha de inscripción (T)
 
         # Definir el rango y actualizar en la hoja
-        rango = f"Nueva hoja!P{fila_index}:Y{fila_index}"
+        rango = f"Nueva hoja!P{fila_index}:T{fila_index}"
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=rango,
             valueInputOption="RAW",
-            body={"values": [fila[15:25]]}  # Solo enviar las columnas de P a Y
+            body={"values": [fila[15:20]]}  # Solo enviar las columnas de P a T
         ).execute()
 
-        return f"Candidata inscrita con código {codigo}."
+        return True
     except Exception as e:
-        print(f"Error al inscribir candidata: {e}")
-        return "Error al inscribir candidata."
+        print(f"❌ Error al inscribir candidata: {e}")
+        return False
 
 def obtener_datos_filtrar():
     try:
@@ -837,7 +827,7 @@ def inscripcion():
     Ruta para inscribir candidatas.
     - 🔹 Busca candidatas por Nombre o Cédula.
     - 🔹 Si se encuentra, permite inscribirlas y asigna un código único si no tienen.
-    - 🔹 Actualiza los datos en la hoja de cálculo.
+    - 🔹 Actualiza los datos en la hoja de cálculo correctamente.
     """
     mensaje = ""
     datos_candidata = None
@@ -848,33 +838,35 @@ def inscripcion():
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
             
-            # 🔹 Buscar en la hoja de cálculo por Nombre o Cédula
+            # 🔹 Buscar en la hoja de cálculo (solo por Nombre o Cédula)
             datos_candidata = buscar_datos_inscripcion(buscar)
 
             if not datos_candidata:
                 mensaje = "⚠️ No se encontraron resultados para el nombre o cédula proporcionados."
-            else:
-                print(f"✅ Candidata encontrada: {datos_candidata}")  # 🔹 DEBUG
 
         elif accion == 'guardar':
-    try:
-        fila_index = request.form.get("fila_index")
-        
-        if not fila_index or not fila_index.isdigit():
-            mensaje = "Error: No se pudo determinar la fila a actualizar."
-        else:
-            fila_index = int(fila_index)  # Convertir a entero
-            estado = request.form.get("estado", "").strip()
-            monto = request.form.get("monto", "").strip()
-            fecha = request.form.get("fecha", "").strip()
+            try:
+                fila_index = request.form.get('fila_index', '').strip()
+                estado = request.form.get('estado', '').strip()
+                monto = request.form.get('monto', '').strip()
+                fecha = request.form.get('fecha', '').strip()
 
-            if actualizar_inscripcion(fila_index, estado, monto, fecha):
-                mensaje = "✅ Datos actualizados correctamente."
-            else:
-                mensaje = "❌ Error al actualizar los datos."
+                # Validar que la fila indexada es válida
+                if not fila_index.isdigit():
+                    mensaje = "❌ Error: No se pudo determinar la fila a actualizar."
+                else:
+                    fila_index = int(fila_index)
 
-    except Exception as e:
-        mensaje = f"❌ Error inesperado: {str(e)}"
+                    # 🔹 Llamar a la función que inscribe y actualiza los datos
+                    resultado = inscribir_candidata(fila_index, estado, monto, fecha)
+
+                    if resultado:
+                        mensaje = "✅ Datos actualizados correctamente."
+                    else:
+                        mensaje = "❌ Error al actualizar los datos."
+
+            except Exception as e:
+                mensaje = f"❌ Error al guardar los datos: {str(e)}"
 
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 

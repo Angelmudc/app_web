@@ -4,84 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f8f9fa;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
+            background-color: #f4f4f4;
+            font-family: 'Arial', sans-serif;
         }
-
         .container {
-            width: 60%;
             background: white;
-            padding: 25px;
-            margin-top: 20px;
-            border-radius: 8px;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+            margin-top: 30px;
         }
-
-        h2 {
-            text-align: center;
-            color: #333;
-        }
-
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-            padding: 10px;
-            margin-bottom: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        label {
+        .btn-custom {
+            background-color: #007bff;
+            color: white;
             font-weight: bold;
-            display: block;
         }
-
-        input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ced4da;
-            border-radius: 5px;
-            font-size: 16px;
+        .btn-custom:hover {
+            background-color: #0056b3;
         }
-
-        .input-disabled {
-            background-color: #e9ecef;
-        }
-
-        .btn {
-            display: block;
-            width: 100%;
-            padding: 10px;
-            border: none;
-            background-color: #28a745;
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-            border-radius: 5px;
-            transition: 0.3s;
-        }
-
-        .btn:hover {
-            background-color: #218838;
-        }
-
-        .footer {
-            text-align: center;
+        footer {
             margin-top: 20px;
             padding: 10px;
-            background: #343a40;
+            background: black;
             color: white;
+            text-align: center;
             border-radius: 5px;
         }
     </style>
@@ -89,77 +38,53 @@
 <body>
 
 <div class="container">
-    <h2>📌 Inscripción de Candidatas</h2>
+    <h2 class="text-center mb-4">📌 Inscripción de Candidatas</h2>
 
     {% if mensaje %}
-        <div class="error">
-            <i class="fas fa-times-circle"></i> {{ mensaje }}
+        <div class="alert {% if '✅' in mensaje %}alert-success{% else %}alert-danger{% endif %}">
+            {{ mensaje }}
         </div>
     {% endif %}
 
-    <!-- 🔎 Formulario de búsqueda -->
     <form method="POST">
-        <label for="buscar">🔍 <b>Buscar por Nombre o Cédula:</b></label>
-        <input type="text" id="buscar" name="buscar" placeholder="Ejemplo: 001-1234567-8">
-        <button type="submit" name="accion" value="buscar" class="btn">🔍 Buscar</button>
+        <div class="mb-3">
+            <label class="form-label">🔍 Buscar por Nombre o Cédula:</label>
+            <input type="text" class="form-control" name="buscar" placeholder="Ejemplo: 001-1234567-8">
+        </div>
+        <button type="submit" name="accion" value="buscar" class="btn btn-custom w-100">🔎 Buscar</button>
     </form>
 
     {% if datos_candidata %}
-        <hr>
+    <div class="mt-4 p-3 border rounded bg-light">
+        <h4>📋 Datos de la Candidata</h4>
+        <p><strong>📌 Código:</strong> {{ datos_candidata.codigo }}</p>
+        <p><strong>😊 Nombre:</strong> {{ datos_candidata.nombre }}</p>
+        <p><strong>📍 Cédula:</strong> {{ datos_candidata.cedula }}</p>
+        <p><strong>📞 Teléfono:</strong> {{ datos_candidata.telefono }}</p>
 
-        <!-- 📋 Datos de la Candidata -->
-        <h3>📋 Datos de la Candidata</h3>
+        <hr>
+        <h4>✏️ Editar Datos de Inscripción</h4>
         <form method="POST">
             <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-
-            <div class="form-group">
-                <label>🆔 Código:</label>
-                <input type="text" value="{{ datos_candidata.codigo }}" disabled class="input-disabled">
+            <div class="mb-3">
+                <label class="form-label">📌 Estado:</label>
+                <input type="text" class="form-control" name="estado" value="{{ datos_candidata.estado }}">
             </div>
-
-            <div class="form-group">
-                <label>😊 Nombre:</label>
-                <input type="text" value="{{ datos_candidata.nombre }}" disabled class="input-disabled">
+            <div class="mb-3">
+                <label class="form-label">💲 Monto:</label>
+                <input type="text" class="form-control" name="monto" value="{{ datos_candidata.monto }}">
             </div>
-
-            <div class="form-group">
-                <label>📌 Cédula:</label>
-                <input type="text" value="{{ datos_candidata.cedula }}" disabled class="input-disabled">
+            <div class="mb-3">
+                <label class="form-label">📅 Fecha de Inscripción:</label>
+                <input type="date" class="form-control" name="fecha" value="{{ datos_candidata.fecha }}">
             </div>
-
-            <div class="form-group">
-                <label>📞 Teléfono:</label>
-                <input type="text" value="{{ datos_candidata.telefono }}" disabled class="input-disabled">
-            </div>
-
-            <hr>
-
-            <!-- 📝 Editar Datos de Inscripción -->
-            <h3>✏️ Editar Datos de Inscripción</h3>
-
-            <div class="form-group">
-                <label>📌 Estado:</label>
-                <input type="text" name="estado" value="{{ datos_candidata.estado }}">
-            </div>
-
-            <div class="form-group">
-                <label>💰 Monto:</label>
-                <input type="text" name="monto" value="{{ datos_candidata.monto }}">
-            </div>
-
-            <div class="form-group">
-                <label>📅 Fecha de Inscripción:</label>
-                <input type="date" name="fecha" value="{{ datos_candidata.fecha }}">
-            </div>
-
-            <button type="submit" name="accion" value="guardar" class="btn">✅ Guardar</button>
+            <button type="submit" name="accion" value="guardar" class="btn btn-success w-100">💾 Guardar</button>
         </form>
+    </div>
     {% endif %}
 </div>
 
-<div class="footer">
-    © 2025 Doméstica del Cibao A&D | Todos los derechos reservados
-</div>
+<footer>© 2025 Doméstica del Cibao A&D | Todos los derechos reservados</footer>
 
 </body>
 </html>
