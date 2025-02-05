@@ -10,59 +10,38 @@
     <div class="container mt-4">
         <h1>Inscripción de Candidatas</h1>
 
-        <!-- Mensaje de error -->
         {% if mensaje %}
-            <div class="alert alert-danger">{{ mensaje }}</div>
+            <div class="alert alert-warning">{{ mensaje }}</div>
         {% endif %}
 
-        <!-- Formulario de búsqueda -->
-        <form method="POST" class="mb-4">
-            <label for="buscar">Buscar por Nombre o Cédula:</label>
-            <input type="text" name="buscar" id="buscar" class="form-control" required>
-            <button type="submit" class="btn btn-primary mt-2">Buscar</button>
-        </form>
-
-        <!-- Si se encontraron datos, mostrarlos -->
         {% if datos_candidata %}
-            <h3>Datos Encontrados</h3>
+            <p>✅ *Datos recibidos en el HTML:*</p>
+            <pre>{{ datos_candidata }}</pre> <!-- 🔹 Esto imprimirá los datos en la página -->
+
             <form method="POST">
-                <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+                <label>Nombre:</label>
+                <input type="text" name="nombre" value="{{ datos_candidata.nombre }}" readonly>
 
-                <div class="mb-3">
-                    <label class="form-label">Nombre:</label>
-                    <input type="text" name="nombre" class="form-control" value="{{ datos_candidata.nombre }}" readonly>
-                </div>
+                <label>Cédula:</label>
+                <input type="text" name="cedula" value="{{ datos_candidata.cedula }}" readonly>
 
-                <div class="mb-3">
-                    <label class="form-label">Cédula:</label>
-                    <input type="text" name="cedula" class="form-control" value="{{ datos_candidata.cedula }}" readonly>
-                </div>
+                <label>Teléfono:</label>
+                <input type="text" name="telefono" value="{{ datos_candidata.telefono }}" readonly>
 
-                <div class="mb-3">
-                    <label class="form-label">Teléfono:</label>
-                    <input type="text" name="telefono" class="form-control" value="{{ datos_candidata.telefono }}" readonly>
-                </div>
+                <label>Estado:</label>
+                <input type="text" name="estado" value="{{ datos_candidata.estado }}">
 
-                <div class="mb-3">
-                    <label class="form-label">Estado:</label>
-                    <input type="text" name="estado" class="form-control" value="{{ datos_candidata.estado }}">
-                </div>
+                <label>Monto:</label>
+                <input type="text" name="monto" value="{{ datos_candidata.monto }}">
 
-                <div class="mb-3">
-                    <label class="form-label">Monto:</label>
-                    <input type="text" name="monto" class="form-control" value="{{ datos_candidata.monto }}">
-                </div>
+                <label>Fecha:</label>
+                <input type="text" name="fecha" value="{{ datos_candidata.fecha }}">
 
-                <div class="mb-3">
-                    <label class="form-label">Fecha:</label>
-                    <input type="text" name="fecha" class="form-control" value="{{ datos_candidata.fecha }}">
-                </div>
-
-                <button type="submit" name="guardar" class="btn btn-success">Guardar</button>
+                <button type="submit">Guardar</button>
             </form>
+        {% else %}
+            <p>⚠️ No se encontraron datos.</p>
         {% endif %}
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
