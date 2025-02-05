@@ -58,39 +58,6 @@ def normalizar_texto(texto):
     )
 
 def actualizar_datos_editar(fila_index, nuevos_datos):
-    """
-    Actualiza solo las columnas específicas para la edición en la hoja de cálculo.
-    Se asegura de no borrar datos existentes si un campo está vacío.
-    """
-    try:
-        columnas = {
-            "codigo": "P",
-            "nombre": "B",
-            "telefono": "D",
-            "cedula": "O",
-            "estado": "Q",
-            "monto": "S",
-            "fecha": "T",
-        }
-
-        for campo, valor in nuevos_datos.items():
-            if campo in columnas:
-                if valor:  # Evitar sobreescribir con valores vacíos
-                    rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=rango,
-                        valueInputOption="RAW",
-                        body={"values": [[valor]]}
-                    ).execute()
-
-        print(f"✅ Datos actualizados correctamente en la fila {fila_index}")
-        return True
-    except Exception as e:
-        print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
-        return False
-
-def actualizar_datos_editar(fila_index, nuevos_datos):
     try:
         columnas = {
             "codigo": "P",
@@ -120,21 +87,27 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
 
 def obtener_datos_editar():
     """
-    Obtiene solo las columnas necesarias para editar candidatas.
+    Obtiene los datos de la hoja de cálculo y se asegura de que cada fila tenga suficientes columnas.
     """
     try:
         result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID, 
+            spreadsheetId=SPREADSHEET_ID,
             range='Nueva hoja!A:Y'
         ).execute()
         valores = result.get('values', [])
+        
         # Asegurar que cada fila tenga al menos 25 columnas
         datos_completos = [fila + [''] * (25 - len(fila)) for fila in valores]
+
+        # 🔹 Depuración
+        print("✅ Datos obtenidos de Google Sheets:")
+        for fila in datos_completos[:5]:  # Mostrar solo las primeras 5 filas
+            print(fila)
+
         return datos_completos
     except Exception as e:
-        print(f"Error al obtener datos de edición: {e}")
+        print(f"❌ Error al obtener datos de edición: {e}")
         return []
-
 
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
@@ -189,46 +162,34 @@ def inscribir_candidata(fila_index, estado, monto, fecha):
 def buscar_datos_inscripcion(buscar):
     """
     Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
-    Permite trabajar con filas incompletas.
     """
     try:
-        print(f"📌 Buscando en la base de datos: {buscar}")  # DEBUG
-
         datos = obtener_datos_editar()
-        resultados = []
-        busqueda = normalizar_texto(buscar)  # 🔹 Normalizar el texto para evitar errores
+        print(f"🔎 Buscando: {buscar}")
 
         for fila_index, fila in enumerate(datos):
-            if len(fila) < 15:  # 🔹 Si la fila tiene menos columnas, la ignoramos
-                continue 
+            nombre = fila[1].strip().lower()  # Columna B: Nombre
+            cedula = fila[14].strip() if len(fila) > 14 else ''  # Columna O: Cédula
 
-            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
+            print(f"Comparando con: Nombre: '{nombre}', Cédula: '{cedula}'")  # Debug
 
-            # 🔹 Mostrar lo que está comparando
-            print(f"🔍 Comparando: '{busqueda}' con Nombre: '{nombre}', Cédula: '{cedula}'")
-
-            if busqueda in nombre or busqueda == cedula:
-                while len(fila) < 25:
-                    fila.append("")  # Evitar errores con filas incompletas
-
-                resultados.append({
+            if buscar.lower() in nombre or buscar == cedula:
+                print("✅ Coincidencia encontrada:", fila)
+                return {
                     'fila_index': fila_index + 1,
-                    'codigo': fila[15] if len(fila) > 15 else "",  # Código (Columna P)
-                    'nombre': fila[1] if len(fila) > 1 else "",  # Nombre (B)
-                    'cedula': fila[14] if len(fila) > 14 else "",  # Cédula (O)
-                    'estado': fila[16] if len(fila) > 16 else "",  # Estado (Q)
-                    'inscripcion': fila[17] if len(fila) > 17 else "",  # Inscripción (R)
-                    'monto': fila[18] if len(fila) > 18 else "",  # Monto (S)
-                    'fecha': fila[19] if len(fila) > 19 else ""  # Fecha de Pago (T)
-                })
+                    'nombre': fila[1],
+                    'cedula': fila[14],
+                    'telefono': fila[3],
+                    'estado': fila[16],
+                    'monto': fila[18],
+                    'fecha': fila[19]
+                }
 
-        print(f"✅ Resultados encontrados: {len(resultados)}")
-        return resultados  # Retorna todas las coincidencias encontradas
-
+        print("⚠️ No se encontraron coincidencias.")
+        return None
     except Exception as e:
-        print(f"❌ Error en buscar_datos_inscripcion(): {e}")
-        return []
+        print(f"❌ Error al buscar datos: {e}")
+        return None
 
 def inscribir_candidata(fila_index, estado, monto, fecha):
     """
@@ -864,19 +825,22 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos = None  # Asegurar que siempre tiene un valor inicial
-
+    datos_candidata = None
+    
     if request.method == 'POST':
-        busqueda = request.form.get('buscar', '').strip()
+        buscar = request.form.get('buscar', '').strip()
+        print(f"📝 Valor recibido en la búsqueda: {buscar}")
 
-        if busqueda:
-            resultados = buscar_datos_inscripcion(busqueda)
-            if resultados:
-                datos = resultados[0]  # Tomar el primer resultado
-            else:
-                mensaje = "No se encontraron resultados para la búsqueda."
+        datos_candidata = buscar_datos_inscripcion(buscar)
 
-    return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
+        if datos_candidata:
+            print(f"✅ Datos encontrados y enviados al HTML: {datos_candidata}")
+            return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+        else:
+            mensaje = "No se encontraron datos."
+            print("⚠️ No se encontraron datos para la inscripción.")
+
+    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
