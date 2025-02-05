@@ -865,13 +865,22 @@ import traceback  # Importa para depuración
 def inscripcion():
     mensaje = ""
     datos_candidata = None
-    if request.method == 'POST':
-        buscar = request.form.get('buscar')
-        datos_candidata = buscar_candidata(buscar)  # Esta función debería devolver un diccionario con los datos necesarios
-        if datos_candidata is None:
-            mensaje = "No se encontraron datos para la búsqueda proporcionada."
+    try:
+        if request.method == 'POST':
+            # Suponiendo que recibimos un parámetro para buscar por nombre o cédula
+            busqueda = request.form.get('buscar', '').strip()
+            if busqueda:
+                datos_candidata = buscar_candidata(busqueda)
+                if not datos_candidata:
+                    mensaje = "No se encontraron datos."
+        else:
+            # Cargar datos por defecto o manejar la visualización inicial
+            datos_candidata = obtener_datos_iniciales()
 
-    return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
+    except Exception as e:
+        mensaje = str(e)
+
+    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje))
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
