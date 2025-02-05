@@ -451,7 +451,7 @@ def guardar_datos_en_hoja():
         print(f"Error al guardar datos en la hoja: {e}")
 
 def buscar_candidata(valor):
-    datos = obtener_datos()
+    datos = obtener_datos_editar()
     for fila in datos:
         if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
             if (valor.lower() == fila[15].lower() or  # Código
