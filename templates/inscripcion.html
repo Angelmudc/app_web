@@ -17,7 +17,7 @@
             </div>
         {% endif %}
 
-        <form method="POST" id="inscripcionForm">
+        <form method="POST">
             <input type="hidden" name="fila_index" value="{{ datos.fila_index if datos else '' }}">
 
             <div class="mb-3">
@@ -54,22 +54,26 @@
             </div>
 
             <div class="mb-3">
-                <label for="fecha" class="form-label">Fecha:</label>
+
+
+```html
+                <label for="fecha" class="form-label">Fecha de Inscripción:</label>
                 <input type="date" class="form-control" name="fecha" id="fecha" value="{{ datos.fecha if datos else '' }}" required>
             </div>
 
-            <div class="text-center">
-                <button type="submit" class="btn btn-primary">Guardar</button>
-            </div>
+            <button type="submit" class="btn btn-primary w-100">Guardar</button>
         </form>
+        
+        <hr>
 
-        <!-- Script para verificar que el formulario envía los datos -->
-        <script>
-            document.getElementById("inscripcionForm").addEventListener("submit", function(event) {
-                console.log("Formulario enviado.");
-            });
-        </script>
-
+        <h3 class="text-center mt-4">Buscar Candidata</h3>
+        <form method="POST">
+            <div class="mb-3">
+                <label for="buscar" class="form-label">Buscar por Nombre o Cédula:</label>
+                <input type="text" class="form-control" name="buscar" id="buscar" required>
+            </div>
+            <button type="submit" name="buscar_btn" class="btn btn-success w-100">Buscar</button>
+        </form>
     </div>
 </body>
 </html>

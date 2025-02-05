@@ -60,33 +60,29 @@ def normalizar_texto(texto):
 def actualizar_datos_editar(fila_index, nuevos_datos):
     """
     Actualiza solo las columnas específicas para la edición en la hoja de cálculo.
+    Se asegura de no borrar datos existentes si un campo está vacío.
     """
     try:
         columnas = {
+            "codigo": "P",
             "nombre": "B",
-            "edad": "C",
             "telefono": "D",
-            "direccion": "E",
-            "modalidad": "F",
-            "experiencia": "J",
             "cedula": "O",
             "estado": "Q",
+            "monto": "S",
+            "fecha": "T",
         }
 
         for campo, valor in nuevos_datos.items():
-            if campo in columnas:  # Asegurar que el campo está en la lista
-                # Si el valor es vacío, asignar "No disponible" para evitar celdas vacías
-                if not valor.strip():
-                    valor = "No disponible"
-
-                rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
-                print(f"🔹 Actualizando {campo} en {rango} con valor '{valor}'")  # Debug
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango,
-                    valueInputOption="RAW",
-                    body={"values": [[valor]]}
-                ).execute()
+            if campo in columnas:
+                if valor:  # Evitar sobreescribir con valores vacíos
+                    rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
+                    service.spreadsheets().values().update(
+                        spreadsheetId=SPREADSHEET_ID,
+                        range=rango,
+                        valueInputOption="RAW",
+                        body={"values": [[valor]]}
+                    ).execute()
 
         print(f"✅ Datos actualizados correctamente en la fila {fila_index}")
         return True
@@ -125,25 +121,7 @@ def obtener_datos_editar():
         print(f"Error al obtener datos de edición: {e}")
         return []
 
-def actualizar_referencias(fila_index, laborales, familiares):
-    """
-    Actualiza las referencias laborales y familiares en la hoja de cálculo.
-    """
-    try:
-        rango = f"Nueva hoja!L{fila_index}:M{fila_index}"  # 🔹 Columnas L y M
-        valores = [[laborales, familiares]]
 
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": valores}
-        ).execute()
-        
-        return True
-    except Exception as e:
-        print(f"Error al actualizar referencias: {e}")
-        return False
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
     try:
@@ -163,6 +141,35 @@ def actualizar_inscripcion(fila_index, estado, monto, fecha):
         return True
     except Exception as e:
         print(f"❌ Error al actualizar inscripción en fila {fila_index}: {e}")
+        return False
+    
+def inscribir_candidata(fila_index, estado, monto, fecha):
+    """
+    Actualiza los datos de la candidata en la hoja de cálculo para registrar su inscripción.
+    """
+    try:
+        datos = obtener_datos_editar()
+        fila = datos[fila_index - 1]  # Ajusta el índice porque los índices de fila en Sheets empiezan en 1
+
+        # Generar código si no tiene
+        if len(fila) <= 15 or not fila[15].startswith("CAN-"):
+            fila[15] = generar_codigo_unico()  # Columna P
+
+        # Actualizar los valores específicos en la fila
+        fila[16] = estado  # Estado en la columna Q
+        fila[18] = monto  # Monto en la columna S
+        fila[19] = fecha  # Fecha en la columna T
+
+        # Escribir los cambios de vuelta en la hoja
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f'Nueva hoja!P{fila_index}:T{fila_index}',  # Rango de P a T
+            valueInputOption='USER_ENTERED',
+            body={'values': [fila[15:20]]}  # Asegurar que se escriben todos los datos necesarios
+        ).execute()
+        return True
+    except Exception as e:
+        print(f"Error al inscribir candidata: {e}")
         return False
 
 def buscar_datos_inscripcion(buscar):
@@ -843,46 +850,54 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos = None  
+    datos = None
 
     if request.method == 'POST':
-        fila_index = request.form.get('fila_index', '').strip()
-        nombre = request.form.get('nombre', '').strip()
-        telefono = request.form.get('telefono', '').strip()
-        cedula = request.form.get('cedula', '').strip()
-        estado = request.form.get('estado', '').strip()
-        monto = request.form.get('monto', '').strip()
-        fecha = request.form.get('fecha', '').strip()
-        codigo = request.form.get('codigo', '').strip()
+        if 'buscar_btn' in request.form:
+            busqueda = request.form.get('buscar', '').strip()
+            datos = buscar_datos_inscripcion(busqueda)
+            if not datos:
+                mensaje = f"No se encontraron resultados para: {busqueda}"
 
-        # DEBUG: Mostrar los datos recibidos
-        print(f"🔹 Datos recibidos: {nombre}, {telefono}, {cedula}, {estado}, {monto}, {fecha}, {codigo}")
+        elif 'fila_index' in request.form:  
+            try:
+                fila_index = int(request.form.get('fila_index', -1))
 
-        # Si no hay código, generar uno nuevo
-        if not codigo:
-            codigo = generar_codigo_unico()
+                if fila_index < 1:
+                    mensaje = "Error al determinar la fila para actualizar."
+                else:
+                    nuevos_datos = {
+                        "codigo": request.form.get("codigo", "").strip(),
+                        "nombre": request.form.get("nombre", "").strip(),
+                        "telefono": request.form.get("telefono", "").strip(),
+                        "cedula": request.form.get("cedula", "").strip(),
+                        "estado": request.form.get("estado", "").strip(),
+                        "monto": request.form.get("monto", "").strip(),
+                        "fecha": request.form.get("fecha", "").strip(),
+                    }
 
-        if not fila_index.isdigit():
-            mensaje = "Error: No se pudo determinar la fila a actualizar."
-        else:
-            fila_index = int(fila_index)
+                    # Verificar si el código es vacío y generar uno nuevo
+                    if not nuevos_datos["codigo"]:
+                        nuevos_datos["codigo"] = generar_codigo_unico()
 
-            nuevos_datos = {
-                "codigo": codigo,
-                "nombre": nombre,
-                "telefono": telefono,
-                "cedula": cedula,
-                "estado": estado,
-                "monto": monto,
-                "fecha": fecha
-            }
+                    # Asegurar que no se sobrescriben campos con valores vacíos
+                    datos_existentes = obtener_datos_editar()
+                    fila_actual = datos_existentes[fila_index - 1]
 
-            if actualizar_datos_editar(fila_index, nuevos_datos):
-                mensaje = "✅ Datos guardados correctamente."
-            else:
-                mensaje = "❌ Error al guardar los datos."
+                    for clave, valor in nuevos_datos.items():
+                        if not valor:  # Si el campo está vacío, mantener el valor original
+                            nuevos_datos[clave] = fila_actual[obtener_indice_columna(clave)]
 
-    return render_template('inscripcion.html', mensaje=mensaje, datos=datos)
+                    if actualizar_datos_editar(fila_index, nuevos_datos):
+                        mensaje = "✅ Datos actualizados correctamente."
+                        datos = nuevos_datos
+                    else:
+                        mensaje = "❌ Error al actualizar los datos."
+
+            except Exception as e:
+                mensaje = f"⚠️ Error al actualizar los datos: {str(e)}"
+
+    return render_template('inscripcion.html', datos=datos, mensaje=mensaje)
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
