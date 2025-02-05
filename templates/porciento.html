@@ -1,190 +1,78 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calcular Porcentaje de Pago</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .container {
-            width: 50%;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-        h2 {
-            color: #0044cc;
-            margin-bottom: 20px;
-        }
-        input, select {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            background: #0044cc;
-            color: white;
-            font-size: 16px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        button:hover {
-            background: #0033aa;
-        }
-        .info {
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-        }
-        .footer {
-            margin-top: 10px;
-            font-size: 14px;
-            color: gray;
-        }
-        .hidden {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2><i class="fas fa-calculator"></i> Calcular Porcentaje de Pago</h2>
-        
-        <!-- 🔍 Buscar candidata -->
-        <input type="text" id="buscar" placeholder="Ingrese código, nombre o cédula">
-        <button onclick="buscarCandidata()"><i class="fas fa-search"></i> Buscar</button>
-        
-        <!-- Información de la candidata (solo aparece después de buscar) -->
-        <div id="infoCandidata" class="hidden">
-            <div class="info"><strong>Nombre:</strong> <span id="nombre"></span></div>
-            <div class="info"><strong>Cédula:</strong> <span id="cedula"></span></div>
-            <div class="info"><strong>Teléfono:</strong> <span id="telefono"></span></div>
-            <div class="info"><strong>Ciudad:</strong> <span id="ciudad"></span></div>
-            
-            <!-- 🔢 Datos de pago -->
-            <label><i class="fas fa-calendar-alt"></i> Fecha de Inicio:</label>
-            <input type="date" id="fechaInicio">
-            
-            <label><i class="fas fa-money-bill-wave"></i> Monto Total:</label>
-            <input type="number" id="montoTotal">
-            
-            <label><i class="fas fa-percent"></i> Porcentaje (25%):</label>
-            <input type="text" id="porcentaje" readonly>
-            
-            <label><i class="fas fa-calendar-check"></i> Fecha de Pago:</label>
-            <input type="text" id="fechaPago" readonly>
-            
-            <button onclick="calcularPorcentaje()"><i class="fas fa-calculator"></i> Calcular</button>
-            <button onclick="guardarPago()"><i class="fas fa-save"></i> Guardar</button>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center">
+        📌 <b>Inscripción de Candidatas</b>
+    </h2>
+
+    <!-- 🛑 Mensajes de Error/Éxito -->
+    {% if mensaje %}
+        <div class="alert {% if 'Error' in mensaje or '⚠️' in mensaje %} alert-danger {% else %} alert-success {% endif %}">
+            {{ mensaje }}
         </div>
-        
-        <div class="footer">© 2025 Doméstica del Cibao | Diseñado para máxima eficiencia 🚀</div>
+    {% endif %}
+
+    <!-- 🔍 Formulario de Búsqueda -->
+    <div class="card shadow-sm p-3 mb-4">
+        <h5>🔍 <b>Buscar Candidata</b></h5>
+        <form method="POST">
+            <div class="input-group mb-3">
+                <span class="input-group-text">🔍</span>
+                <input type="text" name="buscar" class="form-control" placeholder="Buscar por Nombre o Cédula..." required>
+                <button type="submit" name="accion" value="buscar" class="btn btn-primary">🔎 Buscar</button>
+            </div>
+        </form>
     </div>
 
-    <script>
-        function buscarCandidata() {
-            let busqueda = document.getElementById("buscar").value.trim();
-            if (busqueda === "") {
-                alert("Ingrese un código, nombre o cédula");
-                return;
-            }
+    {% if datos_candidata %}
+    <form method="POST">
+        <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
 
-            fetch("/buscar_candidata?valor=" + encodeURIComponent(busqueda))
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        alert("No se encontraron resultados");
-                    } else {
-                        document.getElementById("nombre").textContent = data.nombre;
-                        document.getElementById("cedula").textContent = data.cedula;
-                        document.getElementById("telefono").textContent = data.telefono;
-                        document.getElementById("ciudad").textContent = data.ciudad;
-                        document.getElementById("infoCandidata").classList.remove("hidden");
-                    }
-                })
-                .catch(error => console.error("Error en la búsqueda:", error));
-        }
+        <!-- 🆔 Datos de la Candidata -->
+        <div class="card shadow-sm p-3 mb-4">
+            <h5>📄 <b>Datos de la Candidata</b></h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><b>🆔 Código:</b> {{ datos_candidata.codigo }}</p>
+                    <p><b>😊 Nombre:</b> {{ datos_candidata.nombre }}</p>
+                    <p><b>📌 Cédula:</b> {{ datos_candidata.cedula }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><b>📞 Teléfono:</b> {{ datos_candidata.telefono }}</p>
+                    <p><b>🏡 Dirección:</b> {{ datos_candidata.direccion }}</p>
+                    <p><b>🛠️ Modalidad:</b> {{ datos_candidata.modalidad }}</p>
+                </div>
+            </div>
+        </div>
 
-        function calcularPorcentaje() {
-            let montoTotal = document.getElementById("montoTotal").value;
-            let fechaInicio = document.getElementById("fechaInicio").value;
+        <!-- ✏️ Editar Inscripción -->
+        <div class="card shadow-sm p-3">
+            <h5>✏️ <b>Editar Datos de Inscripción</b></h5>
+            
+            <div class="mb-3">
+                <label for="estado"><b>📌 Estado:</b></label>
+                <input type="text" name="estado" class="form-control" value="{{ datos_candidata.estado }}" required>
+            </div>
 
-            if (!montoTotal || !fechaInicio) {
-                alert("Ingrese monto total y fecha de inicio");
-                return;
-            }
+            <div class="mb-3">
+                <label for="monto"><b>💰 Monto:</b></label>
+                <input type="number" name="monto" class="form-control" value="{{ datos_candidata.monto }}" required>
+            </div>
 
-            fetch("/calcular_porcentaje", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ monto_total: montoTotal, fecha_inicio: fechaInicio })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                } else {
-                    document.getElementById("porcentaje").value = data.porcentaje;
-                    document.getElementById("fechaPago").value = data.fecha_pago;
-                }
-            })
-            .catch(error => console.error("Error en el cálculo:", error));
-        }
+            <div class="mb-3">
+                <label for="fecha"><b>📅 Fecha de Inscripción:</b></label>
+                <input type="date" name="fecha" class="form-control" value="{{ datos_candidata.fecha_inscripcion }}" required>
+            </div>
 
-        function guardarPago() {
-            let codigo = document.getElementById("buscar").value;
-            let montoTotal = document.getElementById("montoTotal").value;
-            let porcentaje = document.getElementById("porcentaje").value;
-            let fechaPago = document.getElementById("fechaPago").value;
-            let fechaInicio = document.getElementById("fechaInicio").value;
+            <button type="submit" name="accion" value="guardar" class="btn btn-success w-100">💾 Guardar</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
 
-            if (!codigo || !montoTotal || !porcentaje || !fechaPago || !fechaInicio) {
-                alert("Debe completar todos los campos");
-                return;
-            }
-
-            fetch("/guardar_pago", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    codigo: codigo,
-                    monto_total: montoTotal,
-                    porcentaje: porcentaje,
-                    fecha_pago: fechaPago,
-                    fecha_inicio: fechaInicio
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                } else {
-                    alert("Pago registrado correctamente");
-                }
-            })
-            .catch(error => console.error("Error al guardar:", error));
-        }
-    </script>
-</body>
-</html>
+<!-- 👣 Pie de Página -->
+<footer class="mt-5 text-center text-muted">
+    © 2025 <b>Doméstica del Cibao A&D</b> | Todos los derechos reservados
+</footer>
+{% endblock %}

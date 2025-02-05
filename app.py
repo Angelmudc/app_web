@@ -824,10 +824,8 @@ def filtrar():
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     """
-    Ruta para inscribir candidatas.
-    - 🔹 Busca candidatas por Nombre o Cédula.
-    - 🔹 Si se encuentra, permite inscribirlas y asigna un código único si no tienen.
-    - 🔹 Actualiza los datos en la hoja de cálculo correctamente.
+    Inscribe candidatas con Código, Estado, Monto y Fecha.
+    - 📌 Solo edita columnas vacías, sin sobrescribir datos previos.
     """
     mensaje = ""
     datos_candidata = None
@@ -837,12 +835,12 @@ def inscripcion():
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
-            
-            # 🔹 Buscar en la hoja de cálculo (solo por Nombre o Cédula)
+
+            # 🔍 Buscar en la hoja de cálculo (Nombre o Cédula)
             datos_candidata = buscar_datos_inscripcion(buscar)
 
             if not datos_candidata:
-                mensaje = "⚠️ No se encontraron resultados para el nombre o cédula proporcionados."
+                mensaje = "⚠️ No se encontraron resultados para la búsqueda."
 
         elif accion == 'guardar':
             try:
@@ -851,14 +849,11 @@ def inscripcion():
                 monto = request.form.get('monto', '').strip()
                 fecha = request.form.get('fecha', '').strip()
 
-                # Validar que la fila indexada es válida
-                if not fila_index.isdigit():
+                if not fila_index or not fila_index.isdigit():
                     mensaje = "❌ Error: No se pudo determinar la fila a actualizar."
                 else:
                     fila_index = int(fila_index)
-
-                    # 🔹 Llamar a la función que inscribe y actualiza los datos
-                    resultado = inscribir_candidata(fila_index, estado, monto, fecha)
+                    resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
 
                     if resultado:
                         mensaje = "✅ Datos actualizados correctamente."
@@ -866,9 +861,13 @@ def inscripcion():
                         mensaje = "❌ Error al actualizar los datos."
 
             except Exception as e:
-                mensaje = f"❌ Error al guardar los datos: {str(e)}"
+                mensaje = f"❌ Error inesperado: {str(e)}"
 
-    return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
+    return render_template(
+        'inscripcion.html',
+        mensaje=mensaje,
+        datos_candidata=datos_candidata
+    )
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
