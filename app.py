@@ -105,16 +105,17 @@ def obtener_datos_referencias():
         return []
 
 def obtener_datos_editar():
+    """
+    Obtiene solo las columnas necesarias para editar candidatas.
+    """
     try:
-        hoja = service.spreadsheets().values().get(
+        result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!A:Y"
+            range='Nueva hoja!A:Y'
         ).execute()
-        valores = hoja.get("values", [])
-
+        valores = result.get('values', [])
         # Asegurar que cada fila tenga al menos 25 columnas
-        datos_completos = [fila + [''] * (25 - len(fila)) if len(fila) < 25 else fila for fila in valores]
-
+        datos_completos = [fila + [''] * (25 - len(fila)) for fila in valores]
         return datos_completos
     except Exception as e:
         print(f"Error al obtener datos de edición: {e}")
@@ -143,75 +144,49 @@ def actualizar_referencias(fila_index, laborales, familiares):
 def buscar_datos_inscripcion(buscar):
     """
     Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
+    Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
     """
     try:
         datos = obtener_datos_editar()
-
         for fila_index, fila in enumerate(datos):
-            if len(fila) < 15:  # Evitar errores si la fila tiene menos columnas
-                continue 
-
-            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
-
+            nombre = fila[1].lower().strip()  # Nombre en la columna B
+            cedula = fila[14].strip() if len(fila) > 14 else ''  # Cédula en la columna O
             if buscar.lower() in nombre or buscar == cedula:
-                while len(fila) < 25:
-                    fila.append("")
-
                 return {
-                    'fila_index': fila_index + 1,  # Índice de fila correcto
-                    'codigo': fila[15] if len(fila) > 15 else "SIN CÓDIGO",  # Código (P)
+                    'fila_index': fila_index + 1,
                     'nombre': fila[1],
-                    'cedula': fila[14] if len(fila) > 14 else "SIN CÉDULA",
-                    'telefono': fila[3] if len(fila) > 3 else "SIN TELÉFONO",
-                    'estado': fila[16] if len(fila) > 16 else "SIN ESTADO",
-                    'inscripcion': fila[17] if len(fila) > 17 else "NO INSCRITA",
-                    'monto': fila[18] if len(fila) > 18 else "0",
-                    'fecha': fila[19] if len(fila) > 19 else ""
+                    'cedula': fila[14],
+                    'telefono': fila[3],
+                    'estado': fila[16],
+                    'monto': fila[18],
+                    'fecha': fila[19]
                 }
         return None
     except Exception as e:
-        print(f"❌ Error al buscar datos en inscripción: {e}")
+        print(f"Error al buscar datos: {e}")
         return None
 
 def inscribir_candidata(fila_index, estado, monto, fecha):
     """
-    Inscribe una candidata actualizando las columnas necesarias.
-    - 🔹 Código (P) → Se asigna si está vacío.
-    - 🔹 Estado (Q) → Se actualiza con el valor ingresado.
-    - 🔹 Inscripción (R) → Se marca como 'Sí'.
-    - 🔹 Monto (S) → Se actualiza con el valor ingresado.
-    - 🔹 Fecha de Inscripción (T) → Se actualiza con el valor ingresado.
+    Actualiza los datos de la candidata en la hoja de cálculo para registrar su inscripción.
     """
     try:
         datos = obtener_datos_editar()
-        fila = datos[fila_index - 1]  # Ajustar índice
-
-        # Asegurar que la fila tenga suficiente espacio
-        while len(fila) < 25:
-            fila.append("")
-
-        # Si el código está vacío, asignar un código único
-        if not fila[15].strip():
-            fila[15] = generar_codigo_unico()  # Código (P)
-
-        fila[16] = estado  # Estado (Q)
-        fila[17] = "Sí"  # Inscripción (R)
-        fila[18] = monto  # Monto (S)
-        fila[19] = fecha  # Fecha de inscripción (T)
-
-        # Definir el rango y actualizar en la hoja
-        rango = f"Nueva hoja!P{fila_index}:T{fila_index}"
+        fila = datos[fila_index - 1]  # Ajusta el índice porque los índices de fila en Sheets empiezan en 1
+        # Actualizar los valores específicos en la fila
+        fila[16] = estado  # Estado en la columna Q
+        fila[18] = monto  # Monto en la columna S
+        fila[19] = fecha  # Fecha en la columna T
+        # Escribir los cambios de vuelta en la hoja
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": [fila[15:20]]}  # Solo enviar las columnas de P a T
+            range=f'Nueva hoja!Q{fila_index}:T{fila_index}',  # Rango de Q a T
+            valueInputOption='USER_ENTERED',
+            body={'values': [fila[16:20]]}
         ).execute()
-
         return True
     except Exception as e:
-        print(f"❌ Error al inscribir candidata: {e}")
+        print(f"Error al inscribir candidata: {e}")
         return False
 
 def obtener_datos_filtrar():
@@ -824,24 +799,26 @@ def inscripcion():
 
         if accion == 'buscar':
             buscar = request.form.get('buscar', '').strip()
+
+            # Buscar en la hoja de cálculo por Nombre o Cédula
             datos_candidata = buscar_datos_inscripcion(buscar)
 
             if not datos_candidata:
                 mensaje = "No se encontraron resultados para el nombre o cédula proporcionados."
 
         elif accion == 'guardar':
-            fila_index = request.form.get('fila_index', '')
-            if fila_index.isdigit():
-                fila_index = int(fila_index)
+            fila_index = request.form.get('fila_index', '').strip()
+            if not fila_index.isdigit():
+                mensaje = "Error: No se pudo determinar la fila a actualizar."
+            else:
                 estado = request.form.get('estado', '').strip()
                 monto = request.form.get('monto', '').strip()
                 fecha = request.form.get('fecha', '').strip()
-                if actualizar_inscripcion(fila_index, estado, monto, fecha):
+
+                if inscribir_candidata(int(fila_index), estado, monto, fecha):
                     mensaje = "Datos actualizados correctamente."
                 else:
                     mensaje = "Error al actualizar los datos."
-            else:
-                mensaje = "Error: No se pudo determinar la fila a actualizar."
 
     return render_template('inscripcion.html', mensaje=mensaje, datos_candidata=datos_candidata)
 
