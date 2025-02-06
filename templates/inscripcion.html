@@ -4,83 +4,80 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body {
-            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: Arial, sans-serif;
+            background: linear-gradient(120deg, #f8f9fa, #e9ecef);
         }
         .container {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
+            background: #ffffff;
+            border-radius: 8px;
             box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
-            width: 90%;
+            padding: 20px;
             max-width: 600px;
+            margin-top: 50px;
         }
         h1 {
-            color: #1a237e;
-            font-weight: bold;
-            text-align: center;
+            color: #4a69bd;
         }
-        .btn-search {
-            background-color: #3949ab;
-            color: white;
+        .btn-primary {
+            background-color: #4a69bd;
             border: none;
-            font-weight: 600;
-            transition: all 0.3s ease-in-out;
         }
-        .btn-search:hover {
-            background-color: #283593;
-            transform: scale(1.05);
+        .btn-primary:hover {
+            background-color: #3b5998;
         }
-        .alert {
-            text-align: center;
+        .form-control {
+            border-radius: 20px;
         }
         .card {
             border: none;
             box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
         }
+        .alert-warning {
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1><i class="fas fa-user-plus"></i> Inscripción de Candidatas</h1>
-        <hr>
-
-        <!-- 🔹 Mensaje de error o éxito -->
+        <h1 class="text-center"><i class="fas fa-user-plus"></i> Inscripción de Candidatas</h1>
+        
+        <!-- 🔹 Mostrar mensaje si no se encuentra la candidata -->
         {% if mensaje %}
-            <div class="alert alert-warning">{{ mensaje }}</div>
+            <div class="alert alert-warning text-center">
+                <i class="fas fa-exclamation-triangle"></i> {{ mensaje }}
+            </div>
         {% endif %}
 
         <!-- 🔹 Formulario de búsqueda -->
         <form method="POST" action="/inscripcion">
-            <div class="input-group mb-3">
-                <input type="text" class="form-control" name="buscar" id="buscar" placeholder="Buscar por cédula o nombre" required>
-                <button type="submit" class="btn btn-search"><i class="fas fa-search"></i> Buscar</button>
+            <div class="mb-3">
+                <label for="busqueda" class="form-label">Buscar por cédula o nombre:</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="busqueda" name="buscar" placeholder="Ejemplo: Ana Pérez o 304-1234567-8" required>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Buscar</button>
+                </div>
             </div>
         </form>
 
-        <!-- 🔹 Muestra los datos de la candidata si se encontró -->
-        {% if datos %}
-        <div class="card mt-4">
-            <div class="card-header bg-primary text-white">
-                <h3>Detalles de la Candidata</h3>
+        <!-- 🔹 Mostrar detalles de la candidata si se encuentra -->
+        {% if datos_candidata %}
+            <div class="card mt-4">
+                <div class="card-header bg-primary text-white">
+                    <h3>Detalles de la Candidata</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>Nombre:</strong> {{ datos_candidata.get("Nombre", "No disponible") }}</p>
+                    <p><strong>Edad:</strong> {{ datos_candidata.get("Edad", "No disponible") }}</p>
+                    <p><strong>Teléfono:</strong> {{ datos_candidata.get("Telefono", "No disponible") }}</p>
+                    <p><strong>Dirección:</strong> {{ datos_candidata.get("Direccion", "No disponible") }}</p>
+                </div>
             </div>
-            <div class="card-body">
-                <ul class="list-group">
-                    <li class="list-group-item"><strong>Nombre:</strong> {{ datos["Nombre"] }}</li>
-                    <li class="list-group-item"><strong>Edad:</strong> {{ datos["Edad"] }}</li>
-                    <li class="list-group-item"><strong>Teléfono:</strong> {{ datos["Telefono"] }}</li>
-                    <li class="list-group-item"><strong>Dirección:</strong> {{ datos["Direccion"] }}</li>
-                </ul>
-            </div>
-        </div>
+
+            <!-- 🔹 Depuración: Mostrar los datos en crudo -->
+            <pre>{{ datos_candidata }}</pre>
         {% endif %}
     </div>
 </body>
