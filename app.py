@@ -848,7 +848,7 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['POST'])
+@app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     buscar = request.form.get("buscar", "").strip()
     print(f"🔍 Buscando candidata con: {buscar}")  # Depuración
