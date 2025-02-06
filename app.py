@@ -897,7 +897,7 @@ def inscripcion():
     
     print("Datos encontrados:", datos_candidata)  # Debug en consola
 
-    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+    return render_template('inscripcion.html', datos_candidata=datos[0] if isinstance(datos, list) and datos else {})
 
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
