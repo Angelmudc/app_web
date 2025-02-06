@@ -17,6 +17,8 @@ from flask import Flask, request, render_template, jsonify
 import unicodedata
 from flask import Flask, render_template, request, send_from_directory
 import os
+import traceback
+from flask import Flask, request, render_template
 
 
 
@@ -829,43 +831,44 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['POST'])
+@app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
-    cedula = request.form.get("buscar", "").strip()
-    datos_candidata = buscar_candidata(cedula)
+    cédula = request.form.get("buscar", "").strip()
 
-    if not datos_candidata:  # Si no encuentra la candidata, manejar el error
-        return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con esa cédula.")
+    if not cédula:
+        return render_template("inscripcion.html", mensaje="Ingrese una cédula para buscar.")
 
-    fila_index = datos_candidata.get("fila_index")  # Asegurar que la clave exista
-    if fila_index is None:
-        return render_template('inscripcion.html', mensaje="Error al determinar la fila de la candidata.")
+    datos_candidata = buscar_candidata(cédula)
 
-    return render_template('inscripcion.html', datos_candidata=datos_candidata)
+    if not datos_candidata:
+        return render_template("inscripcion.html", mensaje="No se encontró ninguna candidata con esa cédula.")
+
+    fila_index = datos_candidata.get("fila_index")
+
+    if not fila_index:
+        return render_template("inscripcion.html", mensaje="Error al determinar la fila de la candidata.")
+
+    return render_template("inscripcion.html", datos_candidata=datos_candidata)
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
-        fila_index = request.form.get('fila_index')
-        estado = request.form.get('estado', '').strip()
-        monto = request.form.get('monto', '').strip()
-        fecha = request.form.get('fecha', '').strip()
+        fila_index = request.form.get("fila_index", "").strip()
+        estado = request.form.get("estado", "").strip()
+        monto = request.form.get("monto", "").strip()
+        fecha = request.form.get("fecha", "").strip()
 
         if not fila_index or not fila_index.isdigit():
             return "Error: No se pudo determinar la fila a actualizar.", 400
 
-        fila_index = int(fila_index)
+        # Aquí debes agregar la función que guarda los datos en la hoja
+        guardar_datos(fila_index, estado, monto, fecha)
 
-        resultado = inscribir_candidata(fila_index, estado, monto, fecha)
-
-        if resultado:
-            return redirect(url_for('inscripcion'))
-        else:
-            return "Error al actualizar los datos.", 500
+        return "Inscripción guardada exitosamente."
 
     except Exception as e:
-        return f"Error inesperado: {str(e)}", 500
-
+        print("Error al guardar inscripción:", str(e))
+        return "Error interno en la inscripción.", 500
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """
