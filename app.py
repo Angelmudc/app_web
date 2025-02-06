@@ -856,48 +856,53 @@ import traceback  # Importa para depuración
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
+    mensaje = None
+    datos_candidata = None
+
+    if request.method == 'POST':
+        buscar = request.form.get('buscar', '').strip()
+
+        if buscar:
+            try:
+                sheet = gc.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
+                # Supongamos que 'Cédula' está en la columna 'O' y 'Nombre' en 'B'
+                cell = sheet.find(buscar, in_column=14)  # Busca en la columna de cédula
+                if not cell:
+                    cell = sheet.find(buscar, in_column=2)  # Busca en la columna de nombre
+
+                if cell:
+                    # Obtén toda la fila
+                    fila = sheet.row_values(cell.row)
+                    datos_candidata = {
+                        'nombre': fila[1],
+                        'cedula': fila[13],
+                        'fila_index': cell.row
+                    }
+                else:
+                    mensaje = "No se encontró ninguna candidata con ese criterio de búsqueda."
+            except Exception as e:
+                mensaje = f"Error al buscar la candidata: {str(e)}"
+
+    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+
+# Ruta para procesar la inscripción
+@app.route('/procesar_inscripcion', methods=['POST'])
+def procesar_inscripcion():
+    fila_index = request.form.get('fila_index')
+    estado = request.form.get('estado')
+    monto = request.form.get('monto')
+    fecha = request.form.get('fecha')
+
     try:
-        if request.method == 'POST':
-            valor_busqueda = request.form.get('buscar', '').strip()
+        sheet = gc.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
+        # Actualiza los datos de la fila
+        sheet.update_acell(f'P{fila_index}', estado)  # Estado en la columna P
+        sheet.update_acell(f'S{fila_index}', monto)   # Monto en la columna S
+        sheet.update_acell(f'T{fila_index}', fecha)   # Fecha en la columna T
 
-            if not valor_busqueda:
-                return render_template('inscripcion.html', mensaje="Ingrese un valor para buscar.", datos_candidata=None)
-
-            datos_candidata = buscar_candidata(valor_busqueda)
-
-            if not datos_candidata:
-                return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con ese valor.", datos_candidata=None)
-
-            return render_template('inscripcion.html', datos_candidata=datos_candidata)
-
-        return render_template('inscripcion.html', datos_candidata=None)
-
+        return jsonify({'success': "Inscripción actualizada correctamente."})
     except Exception as e:
-        return jsonify({"error": f"Hubo un problema en la inscripción: {str(e)}"}), 500
-
-@app.route('/guardar_inscripcion', methods=['POST'])
-def guardar_inscripcion():
-    try:
-        fila_index = request.form.get('fila_index')
-        estado = request.form.get('estado', '').strip()
-        monto = request.form.get('monto', '').strip()
-        fecha = request.form.get('fecha', '').strip()
-
-        if not fila_index or not fila_index.isdigit():
-            return jsonify({"error": "Error: No se pudo determinar la fila a actualizar."}), 400
-
-        fila_index = int(fila_index) + 1  # Ajuste para hoja de cálculo
-
-        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-        hoja.update(f'P{fila_index}', generar_codigo_unico())  # Asigna Código
-        hoja.update(f'Q{fila_index}', estado)
-        hoja.update(f'S{fila_index}', monto)
-        hoja.update(f'T{fila_index}', fecha)
-
-        return jsonify({"mensaje": "Inscripción guardada correctamente."})
-
-    except Exception as e:
-        return jsonify({"error": f"Error al guardar la inscripción: {str(e)}"}), 500
+        return jsonify({'error': f"Error al actualizar la inscripción: {str(e)}"}), 500
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
