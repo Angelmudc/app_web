@@ -828,21 +828,32 @@ def inscripcion():
     datos_candidata = None
 
     if request.method == 'POST':
-        buscar = request.form.get("buscar", "").strip()
+        buscar = request.form.get('buscar', '').strip()
+        
+        # Buscar en la hoja de cálculo
+        datos_candidata = buscar_datos_inscripcion(buscar)
 
-        if buscar:
-            datos_candidata = buscar_datos_inscripcion(buscar)
+        if isinstance(datos_candidata, list) and len(datos_candidata) > 0:
+            datos_candidata = datos_candidata[0]  # Tomar el primer elemento si es una lista
 
-            if datos_candidata:
-                fila_index = datos_candidata.get('fila_index', None)
-                if fila_index:
-                    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
-            else:
-                mensaje = "No se encontraron datos."
+        fila_index = datos_candidata.get('fila_index', None)
+
+        if fila_index is None:
+            mensaje = "Error: No se pudo determinar la fila a actualizar."
         else:
-            mensaje = "Debes ingresar un nombre o cédula para buscar."
+            estado = request.form.get('estado', '').strip()
+            monto = request.form.get('monto', '').strip()
+            fecha = request.form.get('fecha', '').strip()
+
+            resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
+            if resultado:
+                mensaje = "Datos actualizados correctamente."
+            else:
+                mensaje = "Error al actualizar los datos."
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
+
+
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
