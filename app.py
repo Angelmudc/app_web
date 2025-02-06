@@ -1,3 +1,5 @@
+import logging
+logging.basicConfig(level=logging.DEBUG)
 from flask import Flask, render_template, request
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
@@ -126,49 +128,29 @@ def obtener_datos_editar():
         print(f"❌ Error al obtener datos de edición: {e}")
         return []
 
-def buscar_candidata(valor_busqueda):
+def obtener_datos_editar():
+    """
+    Obtiene los datos de la hoja de cálculo y se asegura de que cada fila tenga suficientes columnas.
+    """
     try:
-        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-        datos = hoja.get_all_values()
+        print("📌 Intentando obtener datos de Google Sheets...")  # DEBUG
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range='Nueva hoja!A:Y'
+        ).execute()
+        valores = result.get('values', [])
 
-        # 🔴 IMPRIMIR TODOS LOS DATOS PARA DEPURACIÓN
-        print(f"📌 Datos obtenidos de la hoja: {datos}")
+        print(f"🔹 Datos obtenidos ({len(valores)} filas):")  # DEBUG
+        for fila in valores[:5]:  # Solo muestra las primeras 5 filas
+            print(fila)
 
-        if not datos or len(datos) < 2:
-            print("⚠️ La hoja está vacía o solo tiene encabezados.")
-            return None  # Si la hoja está vacía o solo tiene encabezados
+        # Asegurar que cada fila tenga al menos 25 columnas
+        datos_completos = [fila + [''] * (25 - len(fila)) for fila in valores]
 
-        encabezados = datos[0]  # Obtener los encabezados
-        print(f"🔹 Encabezados encontrados: {encabezados}")  # Verifica los encabezados
-
-        resultados = []
-
-        for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados
-            if len(fila) < len(encabezados):
-                continue  # Ignorar filas incompletas
-
-            cedula = fila[encabezados.index("Cédula")].strip().lower() if "Cédula" in encabezados else ""
-            nombre = fila[encabezados.index("Nombre")].strip().lower() if "Nombre" in encabezados else ""
-            telefono = fila[encabezados.index("Teléfono")].strip().lower() if "Teléfono" in encabezados else ""
-
-            valor_busqueda = valor_busqueda.strip().lower()
-
-            if valor_busqueda in cedula or valor_busqueda in nombre or valor_busqueda in telefono:
-                print(f"✅ Candidata encontrada: {fila}")  # IMPRIMIR LA FILA ENCONTRADA
-                return {
-                    "fila_index": i,
-                    "nombre": fila[encabezados.index("Nombre")].strip().title(),
-                    "cedula": cedula,
-                    "telefono": telefono,
-                    "ciudad": fila[encabezados.index("Ciudad")].strip().title() if "Ciudad" in encabezados else "No especificado"
-                }
-
-        print("⚠️ No se encontraron coincidencias.")
-        return None  # No se encontró ninguna coincidencia
-
+        return datos_completos
     except Exception as e:
-        print(f"❌ Error en buscar_candidata: {str(e)}")
-        return None
+        logging.error(f"❌ Error al obtener datos de edición: {e}", exc_info=True)
+        return []
 
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
@@ -281,24 +263,6 @@ def inscribir_candidata(fila_index, estado, monto, fecha):
         print(f"Error al inscribir candidata: {e}")
         return False
 
-def obtener_datos_filtrar():
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID, 
-            range="Nueva hoja!A:Y"  # Ajusta el rango si es necesario
-        ).execute()
-        valores = hoja.get("values", [])
-        
-        if not valores:
-            print("⚠️ No se obtuvieron datos de Google Sheets.")
-        else:
-            print(f"✅ Datos obtenidos ({len(valores)} filas).")
-
-        return valores
-    except Exception as e:
-        print(f"❌ Error al obtener datos para filtrar: {e}")
-        return []
-
 
 def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
     """
@@ -344,6 +308,50 @@ def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
     except Exception as e:
         print(f"Error al filtrar candidatas: {e}")
         return []
+
+def buscar_candidata(valor_busqueda):
+    try:
+        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
+        datos = hoja.get_all_values()
+
+        # 🔴 IMPRIMIR TODOS LOS DATOS PARA DEPURACIÓN
+        print(f"📌 Datos obtenidos de la hoja: {datos}")
+
+        if not datos or len(datos) < 2:
+            print("⚠️ La hoja está vacía o solo tiene encabezados.")
+            return None  # Si la hoja está vacía o solo tiene encabezados
+
+        encabezados = datos[0]  # Obtener los encabezados
+        print(f"🔹 Encabezados encontrados: {encabezados}")  # Verifica los encabezados
+
+        resultados = []
+
+        for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados
+            if len(fila) < len(encabezados):
+                continue  # Ignorar filas incompletas
+
+            cedula = fila[encabezados.index("Cédula")].strip().lower() if "Cédula" in encabezados else ""
+            nombre = fila[encabezados.index("Nombre")].strip().lower() if "Nombre" in encabezados else ""
+            telefono = fila[encabezados.index("Teléfono")].strip().lower() if "Teléfono" in encabezados else ""
+
+            valor_busqueda = valor_busqueda.strip().lower()
+
+            if valor_busqueda in cedula or valor_busqueda in nombre or valor_busqueda in telefono:
+                print(f"✅ Candidata encontrada: {fila}")  # IMPRIMIR LA FILA ENCONTRADA
+                return {
+                    "fila_index": i,
+                    "nombre": fila[encabezados.index("Nombre")].strip().title(),
+                    "cedula": cedula,
+                    "telefono": telefono,
+                    "ciudad": fila[encabezados.index("Ciudad")].strip().title() if "Ciudad" in encabezados else "No especificado"
+                }
+
+        print("⚠️ No se encontraron coincidencias.")
+        return None  # No se encontró ninguna coincidencia
+
+    except Exception as e:
+        print(f"❌ Error en buscar_candidata: {str(e)}")
+        return None
 
 @cache.memoize(timeout=120)
 def obtener_datos_cache():
@@ -1035,5 +1043,5 @@ def referencias():
 
     return render_template('referencias.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
-if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=10000)
