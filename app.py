@@ -418,15 +418,15 @@ def guardar_datos_en_hoja():
     except Exception as e:
         print(f"Error al guardar datos en la hoja: {e}")
 
-def buscar_candidata(valor):
-    datos = obtener_datos_editar()
+def buscar_candidata(cedula):
+    hoja = client.open("Hoja de trabajo").worksheet("Nueva hoja")
+    datos = hoja.get_all_records()
+
     for fila in datos:
-        if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
-            if (valor.lower() == fila[15].lower() or  # Código
-                valor.lower() == fila[1].lower() or  # Nombre
-                valor == fila[14]):  # Cédula
-                return fila
-    return None
+        if str(fila.get("Cedula", "")).strip() == str(cedula).strip():
+            return fila  # Devuelve el diccionario completo si encuentra la candidata
+
+    return {}  # Si no encuentra la candidata, devuelve un diccionario vacío en lugar de None
 
 def buscar_datos_inscripcion(buscar):
     """
@@ -829,35 +829,19 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['GET', 'POST'])
+@app.route('/inscripcion', methods=['POST'])
 def inscripcion():
-    mensaje = ""
-    datos_candidata = {}
+    cédula = request.form.get("buscar", "").strip()
+    datos_candidata = buscar_candidata(cédula)
 
-    if request.method == 'POST':
-        nombre = request.form.get('nombre', '').strip()
-        cedula = request.form.get('cedula', '').strip()
+    if not datos_candidata:  # Si no encuentra la candidata, manejar el error
+        return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con esa cédula.")
 
-        # Buscar fila en la hoja de cálculo
-        fila_index, datos_candidata = buscar_candidata(cedula)
+    fila_index = datos_candidata.get("fila_index", None)  # Asegurar que la clave exista
+    if fila_index is None:
+        return render_template('inscripcion.html', mensaje="Error al determinar la fila de la candidata.")
 
-        if fila_index is not None:
-            # Asignar código único si no tiene
-            codigo = datos_candidata.get('Código', '').strip()
-            if not codigo:
-                codigo = generar_codigo_unico()
-                actualizar_hoja(fila_index, 'Código', codigo)
-
-            # Guardar en la hoja de cálculo
-            actualizar_hoja(fila_index, 'Nombre', nombre)
-            actualizar_hoja(fila_index, 'Cédula', cedula)
-
-            mensaje = "Datos actualizados correctamente."
-        else:
-            mensaje = "No se pudo determinar la fila a actualizar."
-
-    return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
-
+    return render_template('inscripcion.html', datos_candidata=datos_candidata)
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
