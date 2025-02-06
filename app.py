@@ -423,8 +423,10 @@ def buscar_candidata(cedula):
     datos = hoja.get_all_records()
 
     for fila in datos:
-        if str(fila.get("Cedula", "")).strip() == str(cedula).strip():
+        if str(fila.get("Cédula", "")).strip() == str(cedula).strip():
             return fila  # Devuelve el diccionario completo si encuentra la candidata
+
+    return {}  # Si no encuentra la candidata, devuelve un diccionario vacío en lugar de None
 
     return {}  # Si no encuentra la candidata, devuelve un diccionario vacío en lugar de None
 
