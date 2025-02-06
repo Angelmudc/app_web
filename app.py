@@ -893,6 +893,10 @@ def inscripcion():
             datos = buscar_candidata(busqueda)
             if not datos:
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
+                
+                 if candidata_encontrada:
+    print("Datos de la candidata encontrados:", candidata_encontrada)  # 🔍 Verifica los datos
+    return render_template("inscripcion.html", datos_candidata=candidata_encontrada)
     
     return render_template("inscripcion.html", datos=datos, mensaje=mensaje)
 
