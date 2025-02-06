@@ -46,6 +46,12 @@ service = build('sheets', 'v4', credentials=credentials)
 app = Flask(__name__)
 app.secret_key = "clave_secreta_segura"
 
+try:
+    resultado = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+    print("✅ Conexión exitosa a Google Sheets:", resultado)
+except Exception as e:
+    print("❌ Error conectando a Google Sheets:", e)
+
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
     "angel": generate_password_hash("1234"),  # Usuario: admin, Clave: 12345
