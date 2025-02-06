@@ -887,17 +887,19 @@ import traceback  # Importa para depuración
 def inscripcion():
     mensaje = ""
     datos = None
-    if request.method == "POST":
-        busqueda = request.form.get("buscar")
+
+    if request.method == 'POST':
+        busqueda = request.form.get('buscar')
+
         if busqueda:
             datos = buscar_candidata(busqueda)
+
             if not datos:
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
-                
-                 if candidata_encontrada:
-    print("Datos de la candidata encontrados:", candidata_encontrada)  # 🔍 Verifica los datos
-    return render_template("inscripcion.html", datos_candidata=candidata_encontrada)
-    
+            else:
+                print("Datos de la candidata encontrados:", datos)  # ✅ Verifica los datos en consola
+                return render_template("inscripcion.html", datos_candidata=datos)
+
     return render_template("inscripcion.html", datos=datos, mensaje=mensaje)
 
 @app.route('/procesar_inscripcion', methods=['POST'])
