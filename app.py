@@ -864,27 +864,29 @@ def inscripcion():
 
         if buscar:
             try:
-                sheet = gc.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
-                # Supongamos que 'Cédula' está en la columna 'O' y 'Nombre' en 'B'
-                cell = sheet.find(buscar, in_column=14)  # Busca en la columna de cédula
-                if not cell:
-                    cell = sheet.find(buscar, in_column=2)  # Busca en la columna de nombre
+                hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
+                datos = hoja.get_all_values()
 
-                if cell:
-                    # Obtén toda la fila
-                    fila = sheet.row_values(cell.row)
-                    datos_candidata = {
-                        'nombre': fila[1],
-                        'cedula': fila[13],
-                        'fila_index': cell.row
-                    }
-                else:
+                encabezados = datos[0]  # Obtener los encabezados
+                for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados, contar desde 2
+                    cedula = fila[14].strip() if len(fila) > 14 else ""
+                    nombre = fila[1].strip() if len(fila) > 1 else ""
+
+                    if buscar == cedula or buscar.lower() in nombre.lower():
+                        datos_candidata = {
+                            'fila_index': i,
+                            'nombre': nombre,
+                            'cedula': cedula,
+                            'telefono': fila[3] if len(fila) > 3 else "No disponible"
+                        }
+                        break
+
+                if not datos_candidata:
                     mensaje = "No se encontró ninguna candidata con ese criterio de búsqueda."
             except Exception as e:
                 mensaje = f"Error al buscar la candidata: {str(e)}"
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
-
 # Ruta para procesar la inscripción
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
@@ -894,11 +896,18 @@ def procesar_inscripcion():
     fecha = request.form.get('fecha')
 
     try:
-        sheet = gc.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
-        # Actualiza los datos de la fila
-        sheet.update_acell(f'P{fila_index}', estado)  # Estado en la columna P
-        sheet.update_acell(f'S{fila_index}', monto)   # Monto en la columna S
-        sheet.update_acell(f'T{fila_index}', fecha)   # Fecha en la columna T
+        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
+
+        # Verificar si ya tiene código
+        codigo_actual = hoja.cell(fila_index, 16).value  # Columna P (Código)
+        if not codigo_actual:
+            nuevo_codigo = f"CAN-{fila_index:06d}"
+            hoja.update_acell(f'P{fila_index}', nuevo_codigo)
+
+        # Actualizar los datos en la hoja
+        hoja.update_acell(f'Q{fila_index}', estado)  # Estado en la columna Q
+        hoja.update_acell(f'S{fila_index}', monto)   # Monto en la columna S
+        hoja.update_acell(f'T{fila_index}', fecha)   # Fecha en la columna T
 
         return jsonify({'success': "Inscripción actualizada correctamente."})
     except Exception as e:
