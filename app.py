@@ -131,12 +131,16 @@ def buscar_candidata(valor_busqueda):
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
         datos = hoja.get_all_values()
 
-        print(f"📌 Datos obtenidos de la hoja: {datos}")  # 🔴 IMPRIMIR LOS DATOS PARA DEBUG
+        # 🔴 IMPRIMIR TODOS LOS DATOS PARA DEPURACIÓN
+        print(f"📌 Datos obtenidos de la hoja: {datos}")
 
         if not datos or len(datos) < 2:
+            print("⚠️ La hoja está vacía o solo tiene encabezados.")
             return None  # Si la hoja está vacía o solo tiene encabezados
 
         encabezados = datos[0]  # Obtener los encabezados
+        print(f"🔹 Encabezados encontrados: {encabezados}")  # Verifica los encabezados
+
         resultados = []
 
         for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados
@@ -150,7 +154,7 @@ def buscar_candidata(valor_busqueda):
             valor_busqueda = valor_busqueda.strip().lower()
 
             if valor_busqueda in cedula or valor_busqueda in nombre or valor_busqueda in telefono:
-                print(f"✅ Candidata encontrada: {fila}")  # 🔴 IMPRIMIR LA FILA PARA DEBUG
+                print(f"✅ Candidata encontrada: {fila}")  # IMPRIMIR LA FILA ENCONTRADA
                 return {
                     "fila_index": i,
                     "nombre": fila[encabezados.index("Nombre")].strip().title(),
@@ -165,6 +169,8 @@ def buscar_candidata(valor_busqueda):
     except Exception as e:
         print(f"❌ Error en buscar_candidata: {str(e)}")
         return None
+
+
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
     try:
         print(f"📌 Actualizando fila {fila_index} con estado={estado}, monto={monto}, fecha={fecha}")
