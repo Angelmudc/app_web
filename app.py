@@ -131,10 +131,16 @@ def buscar_candidata(valor_busqueda):
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
         datos = hoja.get_all_values()
 
-        encabezados = datos[0]  # Obtener los encabezados
+        if not datos or len(datos) < 2:
+            return None  # Si la hoja está vacía o solo tiene encabezados
+
+        encabezados = datos[0]  # Obtener los encabezados de la primera fila
         resultados = []
 
-        for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados, contar desde 2
+        for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados, contar desde la fila 2
+            if len(fila) < len(encabezados):
+                continue  # Ignorar filas incompletas
+
             cedula = fila[encabezados.index("Cédula")].strip().lower() if "Cédula" in encabezados else ""
             nombre = fila[encabezados.index("Nombre")].strip().lower() if "Nombre" in encabezados else ""
             telefono = fila[encabezados.index("Teléfono")].strip().lower() if "Teléfono" in encabezados else ""
@@ -142,18 +148,18 @@ def buscar_candidata(valor_busqueda):
             valor_busqueda = valor_busqueda.strip().lower()
 
             if valor_busqueda in cedula or valor_busqueda in nombre or valor_busqueda in telefono:
-                resultados.append({
-                    "fila_index": i - 1,
-                    "nombre": nombre.title(),
+                return {
+                    "fila_index": i,
+                    "nombre": fila[encabezados.index("Nombre")].strip().title(),
                     "cedula": cedula,
                     "telefono": telefono,
                     "ciudad": fila[encabezados.index("Ciudad")].strip().title() if "Ciudad" in encabezados else "No especificado"
-                })
+                }
 
-        return resultados[0] if resultados else None  # Devolver el primer resultado encontrado
+        return None  # No se encontró ninguna coincidencia
 
     except Exception as e:
-        print(f"Error en buscar_candidata: {str(e)}")
+        print(f"❌ Error en buscar_candidata: {str(e)}")
         return None
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
