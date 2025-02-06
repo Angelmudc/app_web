@@ -5,50 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <script src="{{ url_for('static', filename='local-storage.js') }}" defer></script>
 </head>
 <body>
-
     <div class="container mt-5">
-        <h2>Inscripción de Candidatas</h2>
+        <h2 class="text-center">Inscripción de Candidatas</h2>
+        
+        <form id="buscarCandidataForm" method="POST" action="{{ url_for('inscripcion') }}">
+            <div class="mb-3">
+                <label for="buscar" class="form-label">Buscar candidata por cédula</label>
+                <input type="text" class="form-control" id="buscar" name="buscar" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Buscar</button>
+        </form>
+
+        {% if mensaje %}
+            <div class="alert alert-warning mt-3">{{ mensaje }}</div>
+        {% endif %}
 
         {% if datos_candidata %}
-            <div class="alert alert-success">
-                <strong>Candidata encontrada:</strong>
+        <form id="guardarInscripcionForm" method="POST" action="{{ url_for('guardar_inscripcion') }}">
+            <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
+            
+            <div class="mt-4">
+                <h4>Datos de la Candidata</h4>
                 <p><strong>Nombre:</strong> {{ datos_candidata.get('nombre', 'No disponible') }}</p>
-                <p><strong>Cédula:</strong> {{ datos_candidata.get('cédula', 'No disponible') }}</p>
+                <p><strong>Cédula:</strong> {{ datos_candidata.get('cedula', 'No disponible') }}</p>
                 <p><strong>Teléfono:</strong> {{ datos_candidata.get('telefono', 'No disponible') }}</p>
-                <p><strong>Estado:</strong> {{ datos_candidata.get('estado', 'No disponible') }}</p>
-                <p><strong>Inscripción:</strong> {{ datos_candidata.get('inscripcion', 'No disponible') }}</p>
+                <p><strong>Ciudad:</strong> {{ datos_candidata.get('ciudad', 'No disponible') }}</p>
+
+                <div class="mb-3">
+                    <label for="estado" class="form-label">Estado</label>
+                    <input type="text" class="form-control" id="estado" name="estado" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="monto" class="form-label">Monto</label>
+                    <input type="text" class="form-control" id="monto" name="monto" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="fecha" class="form-label">Fecha de Inscripción</label>
+                    <input type="date" class="form-control" id="fecha" name="fecha" required>
+                </div>
+
+                <button type="submit" class="btn btn-success">Inscribir</button>
             </div>
-
-            <form action="{{ url_for('guardar_inscripcion') }}" method="post">
-                <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
-                <input type="hidden" name="cédula" value="{{ datos_candidata.get('cédula', '') }}">
-
-                <div class="mb-3">
-                    <label for="estado" class="form-label">Estado:</label>
-                    <input type="text" class="form-control" name="estado" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="monto" class="form-label">Monto:</label>
-                    <input type="number" class="form-control" name="monto" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="fecha" class="form-label">Fecha:</label>
-                    <input type="date" class="form-control" name="fecha" required>
-                </div>
-
-                <button type="submit" class="btn btn-primary">Guardar Inscripción</button>
-            </form>
-
-        {% else %}
-            <div class="alert alert-warning">No se encontró ninguna candidata con esa cédula.</div>
+        </form>
         {% endif %}
     </div>
-
-    <script src="{{ url_for('static', filename='local-storage.js') }}"></script>
-
 </body>
 </html>

@@ -121,24 +121,35 @@ def obtener_datos_editar():
         print(f"❌ Error al obtener datos de edición: {e}")
         return []
 
-def buscar_candidata(cedula):
-    hoja = client.open("Nueva hoja").worksheet("Nueva hoja")  # Asegura que la hoja sea la correcta
-    datos = hoja.get_all_records()
+def buscar_candidata(valor_busqueda):
+    try:
+        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
+        datos = hoja.get_all_values()
 
-    for index, fila in enumerate(datos):
-        if str(fila.get("Cédula", "")).strip() == cedula.strip():
-            return {
-                "fila_index": index + 2,  # Ajustar al índice correcto en la hoja de cálculo
-                "nombre": fila.get("Nombre", ""),
-                "cedula": fila.get("Cédula", ""),
-                "telefono": fila.get("Teléfono", ""),  # Asegurar que el teléfono también se obtiene
-                "codigo": fila.get("Código", ""),  # Asegurar que el código se obtenga si ya está asignado
-                "estado": fila.get("Estado", ""),
-                "inscripcion": fila.get("Inscripción", ""),
-                "monto": fila.get("Monto", ""),
-                "fecha": fila.get("Fecha", "")
-            }
-    return None
+        encabezados = datos[0]  # Obtener los encabezados
+        resultados = []
+
+        for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados, contar desde 2
+            cedula = fila[encabezados.index("Cédula")].strip().lower() if "Cédula" in encabezados else ""
+            nombre = fila[encabezados.index("Nombre")].strip().lower() if "Nombre" in encabezados else ""
+            telefono = fila[encabezados.index("Teléfono")].strip().lower() if "Teléfono" in encabezados else ""
+
+            valor_busqueda = valor_busqueda.strip().lower()
+
+            if valor_busqueda in cedula or valor_busqueda in nombre or valor_busqueda in telefono:
+                resultados.append({
+                    "fila_index": i - 1,
+                    "nombre": nombre.title(),
+                    "cedula": cedula,
+                    "telefono": telefono,
+                    "ciudad": fila[encabezados.index("Ciudad")].strip().title() if "Ciudad" in encabezados else "No especificado"
+                })
+
+        return resultados[0] if resultados else None  # Devolver el primer resultado encontrado
+
+    except Exception as e:
+        print(f"Error en buscar_candidata: {str(e)}")
+        return None
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
     try:
@@ -847,52 +858,46 @@ import traceback  # Importa para depuración
 def inscripcion():
     try:
         if request.method == 'POST':
-            cédula = request.form.get('buscar', '').strip()
-        else:
-            cédula = request.args.get('buscar', '').strip()
+            valor_busqueda = request.form.get('buscar', '').strip()
 
-        if not cédula:
-            return render_template('inscripcion.html', mensaje="Debe ingresar una cédula para buscar.")
+            if not valor_busqueda:
+                return render_template('inscripcion.html', mensaje="Ingrese un valor para buscar.", datos_candidata=None)
 
-        datos_candidata = buscar_candidata(cédula)
+            datos_candidata = buscar_candidata(valor_busqueda)
 
-        if not datos_candidata:
-            return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con esa cédula.")
+            if not datos_candidata:
+                return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con ese valor.", datos_candidata=None)
 
-        fila_index = datos_candidata.get('fila_index')
+            return render_template('inscripcion.html', datos_candidata=datos_candidata)
 
-        if fila_index is None:
-            return render_template('inscripcion.html', mensaje="Error al determinar la fila de la candidata.")
-
-        return render_template('inscripcion.html', datos_candidata=datos_candidata)
+        return render_template('inscripcion.html', datos_candidata=None)
 
     except Exception as e:
-        return render_template('inscripcion.html', mensaje=f"Hubo un problema en la inscripción: {str(e)}")
+        return jsonify({"error": f"Hubo un problema en la inscripción: {str(e)}"}), 500
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
-        fila_index = request.form.get("fila_index")
-        estado = request.form.get("estado", "").strip()
-        monto = request.form.get("monto", "").strip()
-        fecha = request.form.get("fecha", "").strip()
+        fila_index = request.form.get('fila_index')
+        estado = request.form.get('estado', '').strip()
+        monto = request.form.get('monto', '').strip()
+        fecha = request.form.get('fecha', '').strip()
 
         if not fila_index or not fila_index.isdigit():
-            return "Error: No se pudo determinar la fila a actualizar.", 400
+            return jsonify({"error": "Error: No se pudo determinar la fila a actualizar."}), 400
 
-        fila_index = int(fila_index)
+        fila_index = int(fila_index) + 1  # Ajuste para hoja de cálculo
 
-        # Actualizar la fila en Google Sheets
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-        hoja.update_cell(fila_index, 17, estado)  # Columna Q (Estado)
-        hoja.update_cell(fila_index, 18, monto)   # Columna R (Monto)
-        hoja.update_cell(fila_index, 19, fecha)   # Columna S (Fecha de inscripción)
+        hoja.update(f'P{fila_index}', generar_codigo_unico())  # Asigna Código
+        hoja.update(f'Q{fila_index}', estado)
+        hoja.update(f'S{fila_index}', monto)
+        hoja.update(f'T{fila_index}', fecha)
 
-        return jsonify({"mensaje": "Inscripción guardada correctamente"}), 200
+        return jsonify({"mensaje": "Inscripción guardada correctamente."})
 
     except Exception as e:
-        print("Error al guardar inscripción:", str(e))
-        return jsonify({"error": "Hubo un error al guardar la inscripción"}), 500
+        return jsonify({"error": f"Error al guardar la inscripción: {str(e)}"}), 500
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
