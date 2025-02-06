@@ -843,27 +843,31 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['GET', 'POST'])
+@@app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     try:
-        cédula = request.form.get("buscar", "").strip()
-        datos_candidata = buscar_candidata(cédula)  # Buscar en la hoja de cálculo
+        if request.method == 'POST':
+            cédula = request.form.get('buscar', '').strip()
+        else:
+            cédula = request.args.get('buscar', '').strip()
+
+        if not cédula:
+            return render_template('inscripcion.html', mensaje="Debe ingresar una cédula para buscar.")
+
+        datos_candidata = buscar_candidata(cédula)
 
         if not datos_candidata:
-            mensaje = "No se encontró ninguna candidata con esa cédula."
-            return render_template('inscripcion.html', mensaje=mensaje)
+            return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con esa cédula.")
 
-        fila_index = datos_candidata.get("fila_index")
+        fila_index = datos_candidata.get('fila_index')
 
         if fila_index is None:
-            mensaje = "Error al determinar la fila de la candidata."
-            return render_template('inscripcion.html', mensaje=mensaje)
+            return render_template('inscripcion.html', mensaje="Error al determinar la fila de la candidata.")
 
         return render_template('inscripcion.html', datos_candidata=datos_candidata)
 
     except Exception as e:
-        print("Error en /inscripcion:", str(e))
-        return jsonify({"error": "Hubo un problema en la inscripción"}), 500
+        return render_template('inscripcion.html', mensaje=f"Hubo un problema en la inscripción: {str(e)}")
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
