@@ -120,7 +120,7 @@ def obtener_datos_editar():
     except Exception as e:
         print(f"❌ Error al obtener datos de edición: {e}")
         return []
-        
+
 def buscar_candidata(cedula):
     hoja = client.open("Nueva hoja").worksheet("Nueva hoja")  # Asegura que la hoja sea la correcta
     datos = hoja.get_all_records()
@@ -843,7 +843,7 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['POST'])
+@app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     cedula = request.form.get("buscar", "").strip()
     datos_candidata = buscar_candidata(cedula)
@@ -860,32 +860,30 @@ def inscripcion():
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata)
 
-    @app.route('/guardar_inscripcion', methods=['POST'])
+@app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
         fila_index = request.form.get("fila_index")
-        estado = request.form.get("estado", "").strip()
-        inscripcion = request.form.get("inscripcion", "").strip()
-        monto = request.form.get("monto", "").strip()
-        fecha = request.form.get("fecha", "").strip()
+        estado = request.form.get("estado").strip()
+        monto = request.form.get("monto").strip()
+        fecha = request.form.get("fecha").strip()
 
         if not fila_index or not fila_index.isdigit():
             return "Error: No se pudo determinar la fila a actualizar.", 400
 
+        fila_index = int(fila_index)
+
+        # Actualizar la fila en Google Sheets
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-        
-        # Si la candidata no tiene código, generar uno nuevo
-        codigo = request.form.get("codigo", "").strip()
-        if not codigo:
-            codigo = f"C-{fila_index}"  # Generar código basado en el índice de la fila
+        hoja.update_cell(fila_index, 17, estado)  # Columna Q (Estado)
+        hoja.update_cell(fila_index, 18, monto)   # Columna R (Monto)
+        hoja.update_cell(fila_index, 19, fecha)   # Columna S (Fecha de inscripción)
 
-        hoja.update(f"P{fila_index}", [[codigo, estado, inscripcion, monto, fecha]])
-
-        return redirect(url_for('inscripcion'))
+        return jsonify({"mensaje": "Inscripción guardada correctamente"}), 200
 
     except Exception as e:
-        return f"Error al guardar la inscripción: {str(e)}", 500
-
+        print("Error al guardar inscripción:", str(e))
+        return jsonify({"error": "Hubo un error al guardar la inscripción"}), 500
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """
