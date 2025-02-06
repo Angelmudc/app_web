@@ -5,68 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <script src="{{ url_for('static', filename='local-storage.js') }}"></script>
 </head>
-<body class="container mt-4">
-    <h1 class="text-center">Inscripción de Candidatas</h1>
+<body>
+    <div class="container mt-4">
+        <h1>Inscripción de Candidatas</h1>
 
-    <!-- Sección de mensaje de error -->
-    {% if mensaje %}
-        <div class="alert alert-danger">{{ mensaje }}</div>
-    {% endif %}
+        <!-- 📌 Mensaje de error si no se encuentra la candidata -->
+        {% if mensaje %}
+            <div class="alert alert-warning">{{ mensaje }}</div>
+        {% endif %}
 
-    <!-- Formulario de búsqueda -->
-    <form method="POST" action="{{ url_for('inscripcion') }}" class="mb-4">
-        <label for="buscar">Buscar por cédula:</label>
-        <input type="text" id="buscar" name="buscar" class="form-control" required>
-        <button type="submit" class="btn btn-primary mt-2">Buscar</button>
-    </form>
+        <!-- 📌 Formulario de búsqueda -->
+        <form method="POST" class="mb-4">
+            <div class="input-group">
+                <input type="text" name="buscar" class="form-control" placeholder="Buscar candidata por cédula, nombre o teléfono" required>
+                <button type="submit" class="btn btn-primary">Buscar</button>
+            </div>
+        </form>
 
-    {% if datos_candidata %}
-        <div class="card p-3">
-            <h3>Datos de la Candidata</h3>
-            <form method="POST" action="{{ url_for('guardar_inscripcion') }}">
-                <input type="hidden" name="fila_index" value="{{ datos_candidata['fila_index'] }}">
-
+        <!-- 📌 Si se encontraron datos, mostrarlos -->
+        {% if datos_candidata %}
+            <form method="POST" action="/guardar_inscripcion">
                 <div class="mb-3">
-                    <label>Código Único:</label>
-                    <input type="text" class="form-control" value="{{ datos_candidata.get('codigo', 'No asignado') }}" readonly>
+                    <label class="form-label">Código Asignado:</label>
+                    <input type="text" name="codigo" class="form-control" value="{{ datos_candidata.get('codigo', '') }}" readonly>
                 </div>
 
                 <div class="mb-3">
-                    <label>Nombre:</label>
-                    <input type="text" class="form-control" value="{{ datos_candidata.get('nombre', '') }}" readonly>
+                    <label class="form-label">Nombre:</label>
+                    <input type="text" name="nombre" class="form-control" value="{{ datos_candidata.get('nombre', '') }}" readonly>
                 </div>
 
                 <div class="mb-3">
-                    <label>Cédula:</label>
-                    <input type="text" class="form-control" value="{{ datos_candidata.get('cedula', '') }}" readonly>
+                    <label class="form-label">Cédula:</label>
+                    <input type="text" name="cedula" class="form-control" value="{{ datos_candidata.get('cedula', '') }}" readonly>
                 </div>
 
                 <div class="mb-3">
-                    <label>Teléfono:</label>
-                    <input type="text" class="form-control" value="{{ datos_candidata.get('telefono', '') }}" readonly>
+                    <label class="form-label">Teléfono:</label>
+                    <input type="text" name="telefono" class="form-control" value="{{ datos_candidata.get('telefono', '') }}" readonly>
                 </div>
 
                 <div class="mb-3">
-                    <label>Estado:</label>
-                    <input type="text" name="estado" class="form-control" value="{{ datos_candidata.get('estado', '') }}" required>
+                    <label class="form-label">Estado:</label>
+                    <select name="estado" class="form-control">
+                        <option value="Activa" {% if datos_candidata.get('estado') == "Activa" %}selected{% endif %}>Activa</option>
+                        <option value="Inactiva" {% if datos_candidata.get('estado') == "Inactiva" %}selected{% endif %}>Inactiva</option>
+                    </select>
                 </div>
 
                 <div class="mb-3">
-                    <label>Monto:</label>
-                    <input type="number" name="monto" class="form-control" value="{{ datos_candidata.get('monto', '') }}" required>
+                    <label class="form-label">Monto:</label>
+                    <input type="text" name="monto" class="form-control" value="{{ datos_candidata.get('monto', '') }}">
                 </div>
 
                 <div class="mb-3">
-                    <label>Fecha de Inscripción:</label>
-                    <input type="date" name="fecha" class="form-control" value="{{ datos_candidata.get('fecha', '') }}" required>
+                    <label class="form-label">Fecha de Inscripción:</label>
+                    <input type="date" name="fecha" class="form-control" value="{{ datos_candidata.get('fecha', '') }}">
                 </div>
+
+                <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
 
                 <button type="submit" class="btn btn-success">Guardar Inscripción</button>
             </form>
-        </div>
-    {% endif %}
+        {% endif %}
+    </div>
 
+    <!-- 📌 Script para manejar el Local Storage -->
+    <script src="{{ url_for('static', filename='local-storage.js') }}"></script>
+
+    <!-- 📌 Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
