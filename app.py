@@ -107,19 +107,19 @@ def obtener_datos_editar():
     Obtiene los datos de la hoja de cálculo y se asegura de que cada fila tenga suficientes columnas.
     """
     try:
+        print("📌 Intentando obtener datos de Google Sheets...")  # DEBUG
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range='Nueva hoja!A:Y'
         ).execute()
         valores = result.get('values', [])
-        
+
+        print(f"🔹 Datos obtenidos ({len(valores)} filas):")  # DEBUG
+        for fila in valores[:5]:  # Solo muestra las primeras 5 filas
+            print(fila)
+
         # Asegurar que cada fila tenga al menos 25 columnas
         datos_completos = [fila + [''] * (25 - len(fila)) for fila in valores]
-
-        # 🔹 Depuración
-        print("✅ Datos obtenidos de Google Sheets:")
-        for fila in datos_completos[:5]:  # Mostrar solo las primeras 5 filas
-            print(fila)
 
         return datos_completos
     except Exception as e:
