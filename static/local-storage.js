@@ -18,13 +18,13 @@ function obtenerDatosDeLocalStorage(clave) {
     }
 }
 
-// Simulación de datos (prueba real)
+// Simulación de datos (para pruebas)
 let candidatas = [
-    { nombre: "Ana Pérez", edad: 30, ciudad: "Santiago" },
-    { nombre: "María López", edad: 28, ciudad: "Santo Domingo" }
+    { nombre: "Ana Pérez", edad: 30, ciudad: "Santiago", telefono: "809-123-4567" },
+    { nombre: "María López", edad: 28, ciudad: "Santo Domingo", telefono: "829-456-7890" }
 ];
 
-// Solo guarda los datos si no existen en localStorage
+// Guardar datos si no existen en localStorage
 if (!localStorage.getItem("candidatas")) {
     guardarDatosEnLocalStorage("candidatas", candidatas);
 }
@@ -35,16 +35,16 @@ function mostrarCandidatas() {
     let datos = obtenerDatosDeLocalStorage("candidatas");
 
     if (datos && datos.length > 0) {
-        contenedor.innerHTML = ""; // Limpia el contenido previo
+        contenedor.innerHTML = ""; // Limpiar contenido previo
 
         datos.forEach(candidata => {
             let div = document.createElement("div");
-            div.classList.add("candidata-item"); // Agregar clase para estilos
-            div.innerHTML = <p><strong>Nombre:</strong> ${candidata.nombre} - <strong>Edad:</strong> ${candidata.edad} - <strong>Ciudad:</strong> ${candidata.ciudad}</p>;
+            div.classList.add("candidata-item");
+            div.innerHTML = <p><strong>Nombre:</strong> ${candidata.nombre} - <strong>Teléfono:</strong> ${candidata.telefono} - <strong>Ciudad:</strong> ${candidata.ciudad}</p>;
             contenedor.appendChild(div);
         });
     } else {
-        contenedor.innerHTML = "<p>No se encontraron datos.</p>";
+        contenedor.innerHTML = "<p>No se encontraron candidatas.</p>";
     }
 }
 

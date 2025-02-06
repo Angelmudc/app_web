@@ -120,30 +120,25 @@ def obtener_datos_editar():
     except Exception as e:
         print(f"❌ Error al obtener datos de edición: {e}")
         return []
+        
+def buscar_candidata(cedula):
+    hoja = client.open("Nueva hoja").worksheet("Nueva hoja")  # Asegura que la hoja sea la correcta
+    datos = hoja.get_all_records()
 
-def buscar_candidata(buscar):
-    try:
-        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-        datos = hoja.get_all_records()
-
-        for i, fila in enumerate(datos, start=2):  # Start en 2 para coincidir con el índice en la hoja
-            if (str(fila.get("Cédula", "")).strip() == buscar or 
-                str(fila.get("Nombre", "")).strip().lower() == buscar.lower() or
-                str(fila.get("Teléfono", "")).strip() == buscar):
-                
-                print(f"✅ Candidata encontrada en fila {i}: {fila}")  # Debugging
-
-                # Si la candidata no tiene código, aún debe mostrarse
-                if not fila.get("Código", "").strip():
-                    fila["fila_index"] = i  # Guardar índice de fila
-                    return fila  # Retornar los datos de la candidata
-
-        print("⚠️ No se encontró ninguna candidata con ese criterio.")
-        return None
-    except Exception as e:
-        print(f"❌ Error al buscar candidata: {str(e)}")
-        return None
-
+    for index, fila in enumerate(datos):
+        if str(fila.get("Cédula", "")).strip() == cedula.strip():
+            return {
+                "fila_index": index + 2,  # Ajustar al índice correcto en la hoja de cálculo
+                "nombre": fila.get("Nombre", ""),
+                "cedula": fila.get("Cédula", ""),
+                "telefono": fila.get("Teléfono", ""),  # Asegurar que el teléfono también se obtiene
+                "codigo": fila.get("Código", ""),  # Asegurar que el código se obtenga si ya está asignado
+                "estado": fila.get("Estado", ""),
+                "inscripcion": fila.get("Inscripción", ""),
+                "monto": fila.get("Monto", ""),
+                "fecha": fila.get("Fecha", "")
+            }
+    return None
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
     try:
@@ -848,39 +843,48 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['GET', 'POST'])
+@app.route('/inscripcion', methods=['POST'])
 def inscripcion():
-    buscar = request.form.get("buscar", "").strip()
-    print(f"🔍 Buscando candidata con: {buscar}")  # Depuración
-
-    datos_candidata = buscar_candidata(buscar)
+    cedula = request.form.get("buscar", "").strip()
+    datos_candidata = buscar_candidata(cedula)
 
     if not datos_candidata:
-        print("⚠️ No se encontró ninguna candidata con ese criterio.")
-        return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con esa cédula.")
+        mensaje = "No se encontró ninguna candidata con esa cédula."
+        return render_template('inscripcion.html', mensaje=mensaje)
 
-    print(f"✅ Candidata encontrada: {datos_candidata}")
+    # Asegurarse de que la clave 'fila_index' exista antes de usarla
+    fila_index = datos_candidata.get("fila_index")
+    if fila_index is None:
+        mensaje = "Error al determinar la fila de la candidata."
+        return render_template('inscripcion.html', mensaje=mensaje)
+
     return render_template('inscripcion.html', datos_candidata=datos_candidata)
 
-@app.route('/guardar_inscripcion', methods=['POST'])
+    @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
-        fila_index = request.form.get("fila_index", "").strip()
+        fila_index = request.form.get("fila_index")
         estado = request.form.get("estado", "").strip()
+        inscripcion = request.form.get("inscripcion", "").strip()
         monto = request.form.get("monto", "").strip()
         fecha = request.form.get("fecha", "").strip()
 
         if not fila_index or not fila_index.isdigit():
             return "Error: No se pudo determinar la fila a actualizar.", 400
 
-        # Aquí debes agregar la función que guarda los datos en la hoja
-        guardar_datos(fila_index, estado, monto, fecha)
+        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
+        
+        # Si la candidata no tiene código, generar uno nuevo
+        codigo = request.form.get("codigo", "").strip()
+        if not codigo:
+            codigo = f"C-{fila_index}"  # Generar código basado en el índice de la fila
 
-        return "Inscripción guardada exitosamente."
+        hoja.update(f"P{fila_index}", [[codigo, estado, inscripcion, monto, fecha]])
+
+        return redirect(url_for('inscripcion'))
 
     except Exception as e:
-        print("Error al guardar inscripción:", str(e))
-        return "Error interno en la inscripción.", 500
+        return f"Error al guardar la inscripción: {str(e)}", 500
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
