@@ -1,58 +1,35 @@
+<!-- inscripcion.html -->
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
-    <script src="{{ url_for('static', filename='local-storage.js') }}" defer></script>
 </head>
 <body>
-    <div class="container mt-5">
-        <h2 class="text-center">Inscripción de Candidatas</h2>
-        
-        <form id="buscarCandidataForm" method="POST" action="{{ url_for('inscripcion') }}">
-            <div class="mb-3">
-                <label for="buscar" class="form-label">Buscar candidata por cédula</label>
-                <input type="text" class="form-control" id="buscar" name="buscar" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Buscar</button>
+    <h1>Inscripción de Candidatas</h1>
+    {% if mensaje %}
+        <p>{{ mensaje }}</p>
+    {% endif %}
+    <form method="POST">
+        <label for="buscar">Buscar por cédula o nombre:</label>
+        <input type="text" name="buscar" id="buscar" required>
+        <button type="submit">Buscar</button>
+    </form>
+    {% if datos_candidata %}
+        <h2>Datos de la Candidata</h2>
+        <p>Nombre: {{ datos_candidata.nombre }}</p>
+        <p>Cédula: {{ datos_candidata.cedula }}</p>
+        <form action="/procesar_inscripcion" method="POST">
+            <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+            <label for="estado">Estado:</label>
+            <input type="text" name="estado" id="estado" required>
+            <label for="monto">Monto:</label>
+            <input type="number" name="monto" id="monto" required>
+            <label for="fecha">Fecha:</label>
+            <input type="date" name="fecha" id="fecha" required>
+            <button type="submit">Actualizar Inscripción</button>
         </form>
-
-        {% if mensaje %}
-            <div class="alert alert-warning mt-3">{{ mensaje }}</div>
-        {% endif %}
-
-        {% if datos_candidata %}
-        <form id="guardarInscripcionForm" method="POST" action="{{ url_for('guardar_inscripcion') }}">
-            <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
-            
-            <div class="mt-4">
-                <h4>Datos de la Candidata</h4>
-                <p><strong>Nombre:</strong> {{ datos_candidata.get('nombre', 'No disponible') }}</p>
-                <p><strong>Cédula:</strong> {{ datos_candidata.get('cedula', 'No disponible') }}</p>
-                <p><strong>Teléfono:</strong> {{ datos_candidata.get('telefono', 'No disponible') }}</p>
-                <p><strong>Ciudad:</strong> {{ datos_candidata.get('ciudad', 'No disponible') }}</p>
-
-                <div class="mb-3">
-                    <label for="estado" class="form-label">Estado</label>
-                    <input type="text" class="form-control" id="estado" name="estado" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="monto" class="form-label">Monto</label>
-                    <input type="text" class="form-control" id="monto" name="monto" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="fecha" class="form-label">Fecha de Inscripción</label>
-                    <input type="date" class="form-control" id="fecha" name="fecha" required>
-                </div>
-
-                <button type="submit" class="btn btn-success">Inscribir</button>
-            </div>
-        </form>
-        {% endif %}
-    </div>
+    {% endif %}
 </body>
 </html>
