@@ -883,21 +883,18 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['GET', 'POST'])
+@@app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = None  # Inicializa como None para evitar errores
-
+    datos = None  # Definir datos antes de usarlo
     if request.method == "POST":
         busqueda = request.form.get("buscar")
         if busqueda:
-            datos_candidata = buscar_candidata(busqueda)  # Buscar candidata
-            if not datos_candidata:
+            datos = buscar_candidata(busqueda)
+            if not datos:
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
     
-    print("Datos encontrados:", datos_candidata)  # Debug en consola
-
-    return render_template('inscripcion.html', datos_candidata=datos[0] if isinstance(datos, list) and datos else {})
+    return render_template("inscripcion.html", datos_candidata=datos if isinstance(datos, list) else {}, mensaje=mensaje)
 
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
