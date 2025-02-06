@@ -19,6 +19,8 @@ from flask import Flask, render_template, request, send_from_directory
 import os
 import traceback
 from flask import Flask, request, render_template
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 
 
@@ -30,6 +32,7 @@ RANGE_NAME = 'Nueva hoja!A1:Z'
 # Cargar credenciales desde la variable de entorno
 clave1 = json.loads(os.environ.get("CLAVE1_JSON"))
 credentials = Credentials.from_service_account_info(clave1, scopes=SCOPES)
+client = gspread.authorize(credentials)
 service = build('sheets', 'v4', credentials=credentials)
 
 # Configuración básica de Flask
@@ -421,14 +424,19 @@ def guardar_datos_en_hoja():
         print(f"Error al guardar datos en la hoja: {e}")
 
 def buscar_candidata(cedula):
-    hoja = client.open("Nueva hoja").worksheet("Nueva hoja")  # Usamos la hoja correcta
-    datos = hoja.get_all_records()
+    try:
+        hoja = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
+        datos = hoja.get_all_records()
 
-    for fila in datos:
-        if str(fila.get("Cédula", "")).strip() == str(cedula).strip():
-            return fila  # Devuelve el diccionario completo si encuentra la candidata
+        for index, fila in enumerate(datos):
+            if str(fila.get("Cédula")) == str(cedula):
+                return {"fila_index": index + 2, "datos": fila}
 
-    return {}  # Si no encuentra la candidata, devuelve un diccionario vacío
+        return None  # Si no se encuentra la cédula, retorna None
+    
+    except Exception as e:
+        print(f"Error al buscar candidata: {str(e)}")
+        return None
 
 def buscar_datos_inscripcion(buscar):
     """
