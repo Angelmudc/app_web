@@ -25,12 +25,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 
 # Configuración de la API de Google Sheets
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-SPREADSHEET_ID = '1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg'
-RANGE_NAME = 'Nueva hoja!A1:Z'
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.file'
+]
 
-# Cargar credenciales desde la variable de entorno
-clave1 = json.loads(os.environ.get("CLAVE1_JSON"))
+# Verifica que CLAVE1_JSON está cargando correctamente
+clave1_json = os.environ.get("CLAVE1_JSON")
+if not clave1_json:
+    raise ValueError("❌ ERROR: La variable de entorno CLAVE1_JSON no está configurada correctamente.")
+
+clave1 = json.loads(clave1_json)
 credentials = Credentials.from_service_account_info(clave1, scopes=SCOPES)
 client = gspread.authorize(credentials)
 service = build('sheets', 'v4', credentials=credentials)
