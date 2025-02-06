@@ -332,13 +332,26 @@ def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
 
 def buscar_candidata(busqueda):
     try:
-        datos = sheet.get_all_records()  # Obtiene todos los registros
-        for fila in datos:
-            if str(busqueda).lower() in str(fila['Nombre']).lower() or str(busqueda) in str(fila['Telefono']):
-                return fila  # Devuelve los datos si encuentra coincidencia
-        return None  # No se encontró la candidata
+        sheet = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range="Nueva hoja!A:Z").execute()
+        valores = sheet.get("values", [])
+
+        if not valores:
+            return None  # Si la hoja está vacía
+
+        encabezados = valores[1]  # Segunda fila como nombres de columna
+        datos_candidatas = [dict(zip(encabezados, fila)) for fila in valores[2:] if len(fila) > 1]  # Solo filas con datos
+
+        # Filtrar por nombre o cédula
+        resultado = [
+            candidata for candidata in datos_candidatas
+            if busqueda.lower() in candidata.get("Nombre", "").lower()
+            or busqueda in candidata.get("Telefono", "")
+        ]
+
+        return resultado if resultado else None
+
     except Exception as e:
-        print("❌ Error en la búsqueda:", e)
+        print(f"❌ Error en la búsqueda: {e}")
         return None
 
 @cache.memoize(timeout=120)
@@ -882,7 +895,7 @@ def inscripcion():
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
     
     return render_template("inscripcion.html", datos=datos, mensaje=mensaje)
-    
+
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     fila_index = request.form.get('fila_index')
