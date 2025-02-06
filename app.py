@@ -121,6 +121,29 @@ def obtener_datos_editar():
         print(f"❌ Error al obtener datos de edición: {e}")
         return []
 
+def buscar_candidata(buscar):
+    try:
+        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
+        datos = hoja.get_all_records()
+
+        for i, fila in enumerate(datos, start=2):  # Start en 2 para coincidir con el índice en la hoja
+            if (str(fila.get("Cédula", "")).strip() == buscar or 
+                str(fila.get("Nombre", "")).strip().lower() == buscar.lower() or
+                str(fila.get("Teléfono", "")).strip() == buscar):
+                
+                print(f"✅ Candidata encontrada en fila {i}: {fila}")  # Debugging
+
+                # Si la candidata no tiene código, aún debe mostrarse
+                if not fila.get("Código", "").strip():
+                    fila["fila_index"] = i  # Guardar índice de fila
+                    return fila  # Retornar los datos de la candidata
+
+        print("⚠️ No se encontró ninguna candidata con ese criterio.")
+        return None
+    except Exception as e:
+        print(f"❌ Error al buscar candidata: {str(e)}")
+        return None
+
 
 def actualizar_inscripcion(fila_index, estado, monto, fecha):
     try:
@@ -423,41 +446,6 @@ def guardar_datos_en_hoja():
     except Exception as e:
         print(f"Error al guardar datos en la hoja: {e}")
 
-def buscar_candidata(cedula):
-    try:
-        hoja = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range='Nueva hoja!A:Z').execute()
-        valores = hoja.get('values', [])
-
-        if not valores:
-            return None  # No hay datos en la hoja
-
-        encabezados = valores[0]  # Encabezados de las columnas
-        datos = valores[1:]  # Datos sin los encabezados
-
-        # Buscar por coincidencia parcial en la columna de nombres
-        cedula = cedula.strip().lower()  # Limpiar espacios y convertir a minúscula
-
-        for i, fila in enumerate(datos):
-            if len(fila) > 17:  # Asegurar que haya suficientes columnas
-                nombre_candidata = fila[1].strip().lower()  # Columna del nombre
-                cedula_candidata = fila[17].strip() if len(fila) > 17 else ""
-
-                if cedula in cedula_candidata or cedula in nombre_candidata:
-                    return {
-                        "fila_index": i + 2,  # Índice real en la hoja
-                        "nombre": fila[1],
-                        "cedula": fila[17],
-                        "telefono": fila[3] if len(fila) > 3 else "",
-                        "codigo": fila[15] if len(fila) > 15 else "",
-                        "estado": fila[16] if len(fila) > 16 else "",
-                        "inscripcion": fila[18] if len(fila) > 18 else ""
-                    }
-
-        return None  # No se encontró la candidata
-
-    except Exception as e:
-        print(f"Error en la búsqueda: {e}")
-        return None
 
 def buscar_datos_inscripcion(buscar):
     """
@@ -860,24 +848,19 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['GET', 'POST'])
+@app.route('/inscripcion', methods=['POST'])
 def inscripcion():
-    cédula = request.form.get("buscar", "").strip()
+    buscar = request.form.get("buscar", "").strip()
+    print(f"🔍 Buscando candidata con: {buscar}")  # Depuración
 
-    if not cédula:
-        return render_template("inscripcion.html", mensaje="Ingrese una cédula para buscar.")
-
-    datos_candidata = buscar_candidata(cédula)
+    datos_candidata = buscar_candidata(buscar)
 
     if not datos_candidata:
-        return render_template("inscripcion.html", mensaje="No se encontró ninguna candidata con esa cédula.")
+        print("⚠️ No se encontró ninguna candidata con ese criterio.")
+        return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con esa cédula.")
 
-    fila_index = datos_candidata.get("fila_index")
-
-    if not fila_index:
-        return render_template("inscripcion.html", mensaje="Error al determinar la fila de la candidata.")
-
-    return render_template("inscripcion.html", datos_candidata=datos_candidata)
+    print(f"✅ Candidata encontrada: {datos_candidata}")
+    return render_template('inscripcion.html', datos_candidata=datos_candidata)
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
@@ -898,6 +881,7 @@ def guardar_inscripcion():
     except Exception as e:
         print("Error al guardar inscripción:", str(e))
         return "Error interno en la inscripción.", 500
+
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """
