@@ -52,7 +52,7 @@
         {% if datos_candidata %}
         <div class="result-container">
             <h4 class="bg-primary text-white p-2">Detalles de la Candidata</h4>
-            <p><strong>Nombre:</strong> {{ datos_candidata.get('Nombre', 'No disponible') }}</p>
+            <p><strong>Nombre:</strong> {{ datos_candidata.get('Nombre', "No disponible") }}</p>
             <p><strong>Edad:</strong> {{ datos_candidata.get('Edad', 'No disponible') }}</p>
             <p><strong>Teléfono:</strong> {{ datos_candidata.get('Telefono', 'No disponible') }}</p>
             <p><strong>Dirección:</strong> {{ datos_candidata.get('Direccion', 'No disponible') }}</p>

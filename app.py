@@ -894,7 +894,7 @@ def inscripcion():
             if not datos:
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
     
-    return render_template("inscripcion.html", datos_candidata=datos if isinstance(datos, list) else {}, mensaje=mensaje)
+    return render_template("inscripcion.html", datos_candidata=datos[0] if isinstance(datos, list) and datos else {}, mensaje=mensaje)
 
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
