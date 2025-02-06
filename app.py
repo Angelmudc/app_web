@@ -15,6 +15,8 @@ from rapidfuzz import process
 from google.oauth2.service_account import Credentials
 from flask import Flask, request, render_template, jsonify
 import unicodedata
+from flask import Flask, render_template, request, send_from_directory
+import os
 
 
 
@@ -45,6 +47,11 @@ cache_config = {
 }
 app.config.from_mapping(cache_config)
 cache = Cache(app)
+
+# Ruta para servir archivos estáticos correctamente
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory(os.path.join(app.root_path, 'static'), filename)
 
 def normalizar_texto(texto):
     """
@@ -825,31 +832,29 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = None
+    datos_candidata = {}
 
     if request.method == 'POST':
-        buscar = request.form.get('buscar', '').strip()
-        
-        # Buscar en la hoja de cálculo
-        datos_candidata = buscar_datos_inscripcion(buscar)
+        nombre = request.form.get('nombre', '').strip()
+        cedula = request.form.get('cedula', '').strip()
 
-        if isinstance(datos_candidata, list) and len(datos_candidata) > 0:
-            datos_candidata = datos_candidata[0]  # Tomar el primer elemento si es una lista
+        # Buscar fila en la hoja de cálculo
+        fila_index, datos_candidata = buscar_candidata(cedula)
 
-        fila_index = datos_candidata.get('fila_index', None)
+        if fila_index is not None:
+            # Asignar código único si no tiene
+            codigo = datos_candidata.get('Código', '').strip()
+            if not codigo:
+                codigo = generar_codigo_unico()
+                actualizar_hoja(fila_index, 'Código', codigo)
 
-        if fila_index is None:
-            mensaje = "Error: No se pudo determinar la fila a actualizar."
+            # Guardar en la hoja de cálculo
+            actualizar_hoja(fila_index, 'Nombre', nombre)
+            actualizar_hoja(fila_index, 'Cédula', cedula)
+
+            mensaje = "Datos actualizados correctamente."
         else:
-            estado = request.form.get('estado', '').strip()
-            monto = request.form.get('monto', '').strip()
-            fecha = request.form.get('fecha', '').strip()
-
-            resultado = actualizar_inscripcion(fila_index, estado, monto, fecha)
-            if resultado:
-                mensaje = "Datos actualizados correctamente."
-            else:
-                mensaje = "Error al actualizar los datos."
+            mensaje = "No se pudo determinar la fila a actualizar."
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
 
