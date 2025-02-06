@@ -42,6 +42,15 @@ credentials = Credentials.from_service_account_info(clave1, scopes=SCOPES)
 client = gspread.authorize(credentials)
 service = build('sheets', 'v4', credentials=credentials)
 
+try:
+    resultado = service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range="Nueva hoja!A1:Z100"
+    ).execute()
+    print("✅ Conexión exitosa a Google Sheets. Datos obtenidos:", resultado)
+except Exception as e:
+    print("❌ Error conectando a Google Sheets:", e)
+
 # Configuración básica de Flask
 app = Flask(__name__)
 app.secret_key = "clave_secreta_segura"
