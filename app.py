@@ -843,30 +843,35 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@app.route('/inscripcion', methods=['GET', 'POST'])
+@app.route('/inscripcion', methods=['POST'])
 def inscripcion():
-    cedula = request.form.get("buscar", "").strip()
-    datos_candidata = buscar_candidata(cedula)
+    try:
+        cédula = request.form.get("buscar", "").strip()
+        datos_candidata = buscar_candidata(cédula)  # Buscar en la hoja de cálculo
 
-    if not datos_candidata:
-        mensaje = "No se encontró ninguna candidata con esa cédula."
-        return render_template('inscripcion.html', mensaje=mensaje)
+        if not datos_candidata:
+            mensaje = "No se encontró ninguna candidata con esa cédula."
+            return render_template('inscripcion.html', mensaje=mensaje)
 
-    # Asegurarse de que la clave 'fila_index' exista antes de usarla
-    fila_index = datos_candidata.get("fila_index")
-    if fila_index is None:
-        mensaje = "Error al determinar la fila de la candidata."
-        return render_template('inscripcion.html', mensaje=mensaje)
+        fila_index = datos_candidata.get("fila_index")
 
-    return render_template('inscripcion.html', datos_candidata=datos_candidata)
+        if fila_index is None:
+            mensaje = "Error al determinar la fila de la candidata."
+            return render_template('inscripcion.html', mensaje=mensaje)
+
+        return render_template('inscripcion.html', datos_candidata=datos_candidata)
+
+    except Exception as e:
+        print("Error en /inscripcion:", str(e))
+        return jsonify({"error": "Hubo un problema en la inscripción"}), 500
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
         fila_index = request.form.get("fila_index")
-        estado = request.form.get("estado").strip()
-        monto = request.form.get("monto").strip()
-        fecha = request.form.get("fecha").strip()
+        estado = request.form.get("estado", "").strip()
+        monto = request.form.get("monto", "").strip()
+        fecha = request.form.get("fecha", "").strip()
 
         if not fila_index or not fila_index.isdigit():
             return "Error: No se pudo determinar la fila a actualizar.", 400
@@ -884,6 +889,7 @@ def guardar_inscripcion():
     except Exception as e:
         print("Error al guardar inscripción:", str(e))
         return jsonify({"error": "Hubo un error al guardar la inscripción"}), 500
+
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """
