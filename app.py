@@ -878,30 +878,17 @@ def inscripcion():
 
         if buscar:
             try:
-                hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-                datos = hoja.get_all_values()
+                resultado = buscar_candidata(buscar)  # Busca en Google Sheets
 
-                encabezados = datos[0]  # Obtener los encabezados
-                for i, fila in enumerate(datos[1:], start=2):  # Saltar encabezados, contar desde 2
-                    cedula = fila[14].strip() if len(fila) > 14 else ""
-                    nombre = fila[1].strip() if len(fila) > 1 else ""
+                if resultado:
+                    datos_candidata = resultado  # Guarda los datos de la candidata
+                else:
+                    mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
 
-                    if buscar == cedula or buscar.lower() in nombre.lower():
-                        datos_candidata = {
-                            'fila_index': i,
-                            'nombre': nombre,
-                            'cedula': cedula,
-                            'telefono': fila[3] if len(fila) > 3 else "No disponible"
-                        }
-                        break
-
-                if not datos_candidata:
-                    mensaje = "No se encontró ninguna candidata con ese criterio de búsqueda."
             except Exception as e:
-                mensaje = f"Error al buscar la candidata: {str(e)}"
+                mensaje = f"❌ Error al buscar la candidata: {str(e)}"
 
     return render_template('inscripcion.html', datos_candidata=datos_candidata, mensaje=mensaje)
-# Ruta para procesar la inscripción
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     fila_index = request.form.get('fila_index')
