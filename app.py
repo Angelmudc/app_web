@@ -843,7 +843,7 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
-@@app.route('/inscripcion', methods=['GET', 'POST'])
+@app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     try:
         if request.method == 'POST':
