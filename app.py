@@ -419,16 +419,14 @@ def guardar_datos_en_hoja():
         print(f"Error al guardar datos en la hoja: {e}")
 
 def buscar_candidata(cedula):
-    hoja = client.open("Hoja de trabajo").worksheet("Nueva hoja")
+    hoja = client.open("Nueva hoja").worksheet("Nueva hoja")  # Usamos la hoja correcta
     datos = hoja.get_all_records()
 
     for fila in datos:
         if str(fila.get("Cédula", "")).strip() == str(cedula).strip():
             return fila  # Devuelve el diccionario completo si encuentra la candidata
 
-    return {}  # Si no encuentra la candidata, devuelve un diccionario vacío en lugar de None
-
-    return {}  # Si no encuentra la candidata, devuelve un diccionario vacío en lugar de None
+    return {}  # Si no encuentra la candidata, devuelve un diccionario vacío
 
 def buscar_datos_inscripcion(buscar):
     """
@@ -833,13 +831,13 @@ import traceback  # Importa para depuración
 
 @app.route('/inscripcion', methods=['POST'])
 def inscripcion():
-    cédula = request.form.get("buscar", "").strip()
-    datos_candidata = buscar_candidata(cédula)
+    cedula = request.form.get("buscar", "").strip()
+    datos_candidata = buscar_candidata(cedula)
 
     if not datos_candidata:  # Si no encuentra la candidata, manejar el error
         return render_template('inscripcion.html', mensaje="No se encontró ninguna candidata con esa cédula.")
 
-    fila_index = datos_candidata.get("fila_index", None)  # Asegurar que la clave exista
+    fila_index = datos_candidata.get("fila_index")  # Asegurar que la clave exista
     if fila_index is None:
         return render_template('inscripcion.html', mensaje="Error al determinar la fila de la candidata.")
 
