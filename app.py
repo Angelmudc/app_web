@@ -425,17 +425,38 @@ def guardar_datos_en_hoja():
 
 def buscar_candidata(cedula):
     try:
-        hoja = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
-        datos = hoja.get_all_records()
+        hoja = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range='Nueva hoja!A:Z').execute()
+        valores = hoja.get('values', [])
 
-        for index, fila in enumerate(datos):
-            if str(fila.get("Cédula")) == str(cedula):
-                return {"fila_index": index + 2, "datos": fila}
+        if not valores:
+            return None  # No hay datos en la hoja
 
-        return None  # Si no se encuentra la cédula, retorna None
-    
+        encabezados = valores[0]  # Encabezados de las columnas
+        datos = valores[1:]  # Datos sin los encabezados
+
+        # Buscar por coincidencia parcial en la columna de nombres
+        cedula = cedula.strip().lower()  # Limpiar espacios y convertir a minúscula
+
+        for i, fila in enumerate(datos):
+            if len(fila) > 17:  # Asegurar que haya suficientes columnas
+                nombre_candidata = fila[1].strip().lower()  # Columna del nombre
+                cedula_candidata = fila[17].strip() if len(fila) > 17 else ""
+
+                if cedula in cedula_candidata or cedula in nombre_candidata:
+                    return {
+                        "fila_index": i + 2,  # Índice real en la hoja
+                        "nombre": fila[1],
+                        "cedula": fila[17],
+                        "telefono": fila[3] if len(fila) > 3 else "",
+                        "codigo": fila[15] if len(fila) > 15 else "",
+                        "estado": fila[16] if len(fila) > 16 else "",
+                        "inscripcion": fila[18] if len(fila) > 18 else ""
+                    }
+
+        return None  # No se encontró la candidata
+
     except Exception as e:
-        print(f"Error al buscar candidata: {str(e)}")
+        print(f"Error en la búsqueda: {e}")
         return None
 
 def buscar_datos_inscripcion(buscar):
