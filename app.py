@@ -37,10 +37,16 @@ clave1_json = os.environ.get("CLAVE1_JSON")
 if not clave1_json:
     raise ValueError("❌ ERROR: La variable de entorno CLAVE1_JSON no está configurada correctamente.")
 
+SPREADSHEET_ID = "1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg"
+
 clave1 = json.loads(clave1_json)
 credentials = Credentials.from_service_account_info(clave1, scopes=SCOPES)
 client = gspread.authorize(credentials)
 service = build('sheets', 'v4', credentials=credentials)
+
+# Accede a la hoja de cálculo y obtiene la hoja "Nueva hoja"
+spreadsheet = client.open_by_key(SPREADSHEET_ID)
+sheet = spreadsheet.worksheet("Nueva hoja")
 
 try:
     resultado = service.spreadsheets().values().get(
