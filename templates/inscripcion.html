@@ -44,61 +44,41 @@
     </form>
 
     <script>
-        // Función para buscar candidata
-        document.getElementById('buscar-form').addEventListener('submit', function(event) {
-            event.preventDefault();
-            let busqueda = document.getElementById('buscar').value;
-
-            fetch('/buscar_inscripcion', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ buscar: busqueda })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert("❌ " + data.error);
-                } else {
-                    document.getElementById('codigo').textContent = data.codigo || '';
-                    document.getElementById('nombre').textContent = data.nombre || '';
-                    document.getElementById('cedula').textContent = data.cedula || '';
-                    document.getElementById('telefono').textContent = data.telefono || '';
-                    document.getElementById('ciudad').textContent = data.ciudad || '';
-                    document.getElementById('fila_index').value = data.fila_index;
-                }
-            })
-            .catch(error => console.error('Error:', error));
-        });
-
-        // Función para guardar inscripción
-        document.getElementById('inscripcion-form').addEventListener('submit', function(event) {
-            event.preventDefault();
-            let fila_index = document.getElementById('fila_index').value;
-            let estado = document.getElementById('estado').value;
-            let monto = document.getElementById('monto').value;
-            let fecha = document.getElementById('fecha').value;
-
-            if (!fila_index) {
-                alert("⚠️ No se encontró el índice de la fila. Realiza una búsqueda antes de guardar.");
+        document.getElementById("guardarInscripcion").addEventListener("click", function() {
+            let filaIndex = document.getElementById("fila_index").value; // Asegurar que el índice se obtiene bien
+            let estado = document.getElementById("estado").value;
+            let monto = document.getElementById("monto").value;
+            let fecha = document.getElementById("fecha").value;
+        
+            if (!filaIndex || isNaN(filaIndex) || filaIndex < 1) {
+                alert("Error: Índice de fila no válido.");
                 return;
             }
-
-            fetch('/procesar_inscripcion', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fila_index, estado, monto, fecha })
+        
+            let datos = {
+                fila_index: filaIndex,
+                estado: estado,
+                monto: monto,
+                fecha: fecha
+            };
+        
+            fetch("/procesar_inscripcion", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(datos)
             })
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert("❌ " + data.error);
+                    alert("Error: " + data.error);
                 } else {
                     alert("✅ Inscripción guardada correctamente.");
-                    document.getElementById('inscripcion-form').reset();
                 }
             })
-            .catch(error => console.error('Error:', error));
+            .catch(error => {
+                alert("Error en la solicitud: " + error);
+            });
         });
-    </script>
+        </script>
 </body>
 </html>

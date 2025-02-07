@@ -905,36 +905,31 @@ def inscripcion():
 
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
-    fila_index = request.form.get('fila_index')
-
-    if not fila_index or not fila_index.isdigit():
-        return jsonify({'error': "❌ Error: No se encontró un índice de fila válido."}), 400
-
-    fila_index = int(fila_index)  # Convertimos a entero
-
-    estado = request.form.get('estado')
-    monto = request.form.get('monto')
-    fecha = request.form.get('fecha')
-
     try:
+        datos = request.json  # Obtener los datos enviados en la solicitud
+        fila_index = datos.get('fila_index')  # Obtener el índice de la fila
+
+        # Validar que fila_index sea un número válido
+        if not fila_index or not str(fila_index).isdigit() or int(fila_index) < 1:
+            return jsonify({"error": "Índice de fila inválido"}), 400
+
+        fila_index = int(fila_index)  # Convertirlo a número entero
+
+        # Obtener los demás valores
+        estado = datos.get('estado', 'Sí')
+        monto = datos.get('monto', '0')
+        fecha = datos.get('fecha', '')
+
+        # Actualizar en la hoja de cálculo
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
+        hoja.update_acell(f'Q{fila_index}', estado)  # Estado (Columna Q)
+        hoja.update_acell(f'S{fila_index}', monto)   # Monto (Columna S)
+        hoja.update_acell(f'T{fila_index}', fecha)   # Fecha (Columna T)
 
-        # Verificar si ya tiene código
-        codigo_actual = hoja.cell(fila_index, 16).value  
-        if not codigo_actual:
-            nuevo_codigo = f"CAN-{fila_index:06d}"
-            hoja.update_acell(f'P{fila_index}', nuevo_codigo)
+        return jsonify({"success": "Inscripción actualizada correctamente."})
 
-        # Actualizar los datos en la hoja
-        hoja.update_acell(f'Q{fila_index}', estado)  
-        hoja.update_acell(f'S{fila_index}', monto)   
-        hoja.update_acell(f'T{fila_index}', fecha)   
-
-        print(f"✅ Inscripción actualizada en fila {fila_index}")  # 🔍 DEPURACIÓN
-        return jsonify({'success': "✅ Inscripción actualizada correctamente."})
     except Exception as e:
-        print(f"❌ Error al actualizar la inscripción: {e}")
-        return jsonify({'error': f"❌ Error al actualizar la inscripción: {str(e)}"}), 500
+        return jsonify({"error": f"Error al actualizar: {str(e)}"}), 500
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
