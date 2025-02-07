@@ -224,33 +224,29 @@ def inscribir_candidata(fila_index, estado, monto, fecha):
         return False
 
 def buscar_candidata(busqueda):
-    """
-    Busca la candidata por Nombre (Columna B) o Cédula (Columna O)
-    y devuelve la fila exacta donde está ubicada.
-    """
     try:
-        datos = obtener_datos_editar()
-        for fila_index, fila in enumerate(datos):
-            nombre = fila[1].strip() if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
+        sheet = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range="Nueva hoja!A:Y").execute()
+        valores = sheet.get("values", [])
 
-            if busqueda.lower() in nombre.lower() or busqueda == cedula:
-                return {
-                    'fila_index': fila_index + 1,  # La fila exacta en Sheets
-                    'nombre': nombre,
-                    'cedula': cedula,
-                    'telefono': fila[3] if len(fila) > 3 else "",
-                    'estado': fila[16] if len(fila) > 16 else "",
-                    'monto': fila[18] if len(fila) > 18 else "0",
-                    'fecha': fila[19] if len(fila) > 19 else "",
-                    'codigo': fila[15] if len(fila) > 15 and fila[15].startswith("CAN-") else "Pendiente"
-                }
+        if not valores:
+            return None  
 
-        return None
+        encabezados = valores[1]  
+        datos_candidatas = [dict(zip(encabezados, fila)) for fila in valores[2:] if len(fila) > 1]  
+
+        # Buscar por nombre o cédula
+        for fila_index, candidata in enumerate(datos_candidatas, start=3):  
+            if (busqueda.lower() in candidata.get("Nombre", "").lower() or busqueda == candidata.get("Telefono", "")):
+                candidata["fila_index"] = fila_index  
+                print(f"✅ Fila encontrada: {fila_index}")  # 🔍 DEPURACIÓN
+                return candidata  
+
+        print("❌ No se encontró la candidata.")
+        return None  
+
     except Exception as e:
-        print(f"❌ Error en búsqueda: {e}")
+        print(f"❌ Error en la búsqueda: {e}")
         return None
-
 def inscribir_candidata(fila_index, estado, monto, fecha):
     """
     Actualiza los datos de la candidata en la hoja de cálculo para registrar su inscripción.
@@ -906,12 +902,15 @@ def inscripcion():
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
 
     return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
+
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     fila_index = request.form.get('fila_index')
 
-    if not fila_index:
-        return jsonify({'error': "Error: No se encontró el índice de la fila."}), 400
+    if not fila_index or not fila_index.isdigit():
+        return jsonify({'error': "❌ Error: No se encontró un índice de fila válido."}), 400
+
+    fila_index = int(fila_index)  # Convertimos a entero
 
     estado = request.form.get('estado')
     monto = request.form.get('monto')
@@ -921,19 +920,21 @@ def procesar_inscripcion():
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
 
         # Verificar si ya tiene código
-        codigo_actual = hoja.cell(int(fila_index), 16).value  # Columna P (Código)
+        codigo_actual = hoja.cell(fila_index, 16).value  
         if not codigo_actual:
-            nuevo_codigo = f"CAN-{int(fila_index):06d}"
+            nuevo_codigo = f"CAN-{fila_index:06d}"
             hoja.update_acell(f'P{fila_index}', nuevo_codigo)
 
         # Actualizar los datos en la hoja
-        hoja.update_acell(f'Q{fila_index}', estado)  # Estado en la columna Q
-        hoja.update_acell(f'S{fila_index}', monto)   # Monto en la columna S
-        hoja.update_acell(f'T{fila_index}', fecha)   # Fecha en la columna T
+        hoja.update_acell(f'Q{fila_index}', estado)  
+        hoja.update_acell(f'S{fila_index}', monto)   
+        hoja.update_acell(f'T{fila_index}', fecha)   
 
-        return jsonify({'success': "Inscripción actualizada correctamente."})
+        print(f"✅ Inscripción actualizada en fila {fila_index}")  # 🔍 DEPURACIÓN
+        return jsonify({'success': "✅ Inscripción actualizada correctamente."})
     except Exception as e:
-        return jsonify({'error': f"Error al actualizar la inscripción: {str(e)}"}), 500
+        print(f"❌ Error al actualizar la inscripción: {e}")
+        return jsonify({'error': f"❌ Error al actualizar la inscripción: {str(e)}"}), 500
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():

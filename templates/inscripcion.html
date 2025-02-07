@@ -30,7 +30,13 @@
     <h2>📝 Completar Inscripción</h2>
     <form id="inscripcionForm" method="POST" action="{{ url_for('procesar_inscripcion') }}">
         <input type="hidden" id="fila_index" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
-        
+    
+        <label for="nombre">Nombre:</label>
+        <input type="text" id="nombre" value="{{ datos_candidata.get('nombre', 'No disponible') }}" readonly>
+    
+        <label for="telefono">Teléfono:</label>
+        <input type="text" id="telefono" value="{{ datos_candidata.get('telefono', 'No disponible') }}" readonly>
+    
         <label for="estado">Estado:</label>
         <select name="estado" required>
             <option value="Sí">Sí</option>
@@ -49,10 +55,10 @@
     <script>
     document.addEventListener("DOMContentLoaded", function() {
         let filaIndex = document.getElementById("fila_index").value;
-        
+    
         if (!filaIndex) {
             console.error("❌ Error: Fila index no está definido en el HTML.");
-            alert("Error interno: No se encontró el índice de la fila.");
+            alert("⚠️ Error interno: No se encontró el índice de la fila.");
         }
     });
     </script>
