@@ -917,21 +917,21 @@ def procesar_inscripcion():
             return jsonify({"success": False, "error": "Índice de fila no válido"})
 
         # ✅ Conectar a la hoja de Google Sheets
-        sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")  # 🔹 Asegura la conexión correcta
-        datos_hoja = sheet.get_all_values()  # Obtener todas las filas como lista
-        fila = datos_hoja[fila_index - 1]  # Obtener valores actuales de la fila
+        sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")  # Asegurar conexión
+        datos_hoja = sheet.get_all_values()  # Obtener todas las filas
+        fila = datos_hoja[fila_index - 1]  # Obtener valores actuales
 
         # ✅ Verificar si la candidata ya tiene un código en la columna P (índice 15)
         codigo_actual = fila[15] if len(fila) > 15 else ""
 
         if not codigo_actual or codigo_actual.strip() == "":
-            nuevo_codigo = generar_codigo_unico()  # Generar un código solo si no existe
+            nuevo_codigo = generar_codigo_unico()  # Generar solo si no existe
+            sheet.update(f"P{fila_index}", [[nuevo_codigo]])  # Guardar en la columna P
         else:
-            nuevo_codigo = codigo_actual  # Mantener el código si ya existe
+            nuevo_codigo = codigo_actual  # Mantener código existente
 
-        # ✅ Guardar los datos en la hoja de cálculo en la fila correcta
-        sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])  # 🔹 Estado, monto y fecha
-        sheet.update(f"P{fila_index}", [[nuevo_codigo]])  # 🔹 Código en la columna P
+        # ✅ Guardar los datos en la hoja de cálculo en las columnas correctas
+        sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])  # Solo estado, monto y fecha
 
         return jsonify({"success": True, "codigo": nuevo_codigo})
 
