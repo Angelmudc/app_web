@@ -4,62 +4,77 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .container {
-            margin-top: 50px;
-            max-width: 600px;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        .title {
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .form-control {
-            margin-bottom: 10px;
-        }
-        .result-container {
-            background: #f1f1f1;
-            padding: 10px;
-            border-radius: 5px;
-        }
-    </style>
 </head>
 <body>
     <div class="container">
-        <h2 class="title">🔍 Inscripción de Candidatas</h2>
-        <form method="POST">
-            <div class="input-group mb-3">
-                <input type="text" name="buscar" id="buscar" class="form-control" placeholder="Buscar por cédula o nombre" required>
-                <button type="submit" class="btn btn-primary">🔍 Buscar</button>
-            </div>
+        <h2>🔎 Inscripción de Candidatas</h2>
+
+        <form method="POST" action="{{ url_for('inscripcion') }}">
+            <label for="buscar">Buscar por cédula o nombre:</label>
+            <input type="text" id="buscar" name="buscar" required>
+            <button type="submit">🔍 Buscar</button>
         </form>
 
         {% if mensaje %}
-            <div class="alert alert-warning" role="alert">
-                ⚠️ {{ mensaje }}
-            </div>
+            <p class="mensaje">{{ mensaje }}</p>
         {% endif %}
 
         {% if datos_candidata %}
-        <div class="result-container">
-            <h4 class="bg-primary text-white p-2">Detalles de la Candidata</h4>
-            <p><strong>Nombre:</strong> {{ datos_candidata.get('Nombre', "No disponible") }}</p>
-            <p><strong>Edad:</strong> {{ datos_candidata.get('Edad', 'No disponible') }}</p>
-            <p><strong>Teléfono:</strong> {{ datos_candidata.get('Telefono', 'No disponible') }}</p>
-            <p><strong>Dirección:</strong> {{ datos_candidata.get('Direccion', 'No disponible') }}</p>
+        <div class="formulario">
+            <h3>📌 Detalles de la Candidata</h3>
+            <form id="formInscripcion">
+                <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+                
+                <p><strong>Nombre:</strong> {{ datos_candidata.nombre if datos_candidata.nombre else "No disponible" }}</p>
+                <p><strong>Cédula:</strong> {{ datos_candidata.cedula if datos_candidata.cedula else "No disponible" }}</p>
+                <p><strong>Teléfono:</strong> {{ datos_candidata.telefono if datos_candidata.telefono else "No disponible" }}</p>
+                <p><strong>Estado Actual:</strong> {{ datos_candidata.estado if datos_candidata.estado else "No disponible" }}</p>
+                
+                <label for="monto">Monto:</label>
+                <input type="text" id="monto" name="monto" value="{{ datos_candidata.monto }}" required>
+
+                <label for="fecha">Fecha de Inscripción:</label>
+                <input type="date" id="fecha" name="fecha" value="{{ datos_candidata.fecha }}" required>
+
+                <input type="hidden" name="estado" value="Sí">
+                
+                <button type="button" id="guardarBtn">💾 Guardar Inscripción</button>
+            </form>
+            
+            <div id="resultado">
+                {% if datos_candidata.codigo %}
+                <p><strong>Código Asignado:</strong> 
+                    {% if datos_candidata.codigo and datos_candidata.codigo.startswith("CAN-") %}
+                        {{ datos_candidata.codigo }}
+                    {% else %}
+                        Código pendiente de generación
+                    {% endif %}
+                </p>
+                {% endif %}
+            </div>
         </div>
-        {% else %}
-            <p class="text-center">No se encontró información de la candidata.</p>
         {% endif %}
     </div>
+
+    <script>
+        $(document).ready(function() {
+            $("#guardarBtn").click(function() {
+                var formData = $("#formInscripcion").serialize();
+
+                $.post("{{ url_for('procesar_inscripcion') }}", formData, function(response) {
+                    if (response.success) {
+                        alert(response.success);
+                        location.reload();
+                    } else {
+                        alert(response.error);
+                    }
+                }, "json").fail(function() {
+                    alert("❌ Error al guardar la inscripción.");
+                });
+            });
+        });
+    </script>
 </body>
 </html>
