@@ -13,9 +13,6 @@
             padding: 20px;
             text-align: center;
         }
-        h1, h2 {
-            color: #333;
-        }
         .container {
             max-width: 500px;
             background: white;
@@ -41,13 +38,41 @@
         button:hover {
             background-color: #218838;
         }
-        .error {
-            color: red;
-            font-weight: bold;
+        .alert-box {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            z-index: 1000;
+            width: 300px;
         }
-        .success {
-            color: green;
-            font-weight: bold;
+        .alert-box p {
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .alert-success {
+            border-left: 5px solid #28a745;
+        }
+        .alert-error {
+            border-left: 5px solid #dc3545;
+        }
+        .alert-box button {
+            background: #007bff;
+            color: white;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .alert-box button:hover {
+            background: #0056b3;
         }
     </style>
 </head>
@@ -87,17 +112,34 @@
         <input type="date" id="fecha">
 
         <button id="guardar">💾 Guardar Inscripción</button>
+    </div>
 
-        <p id="mensaje" class=""></p>
+    <!-- Modal de Alerta -->
+    <div id="alerta" class="alert-box">
+        <p id="alerta-mensaje"></p>
+        <button onclick="cerrarAlerta()">Aceptar</button>
     </div>
 
     <script>
+        function mostrarAlerta(mensaje, tipo) {
+            const alerta = document.getElementById("alerta");
+            const alertaMensaje = document.getElementById("alerta-mensaje");
+
+            alertaMensaje.textContent = mensaje;
+            alerta.className = "alert-box " + (tipo === "success" ? "alert-success" : "alert-error");
+            alerta.style.display = "block";
+        }
+
+        function cerrarAlerta() {
+            document.getElementById("alerta").style.display = "none";
+        }
+
         // Función para buscar candidata
         document.getElementById("buscar").addEventListener("click", function() {
             const busqueda = document.getElementById("busqueda").value.trim();
 
             if (!busqueda) {
-                alert("⚠️ Ingresa un nombre o cédula para buscar.");
+                mostrarAlerta("⚠️ Ingresa un nombre o cédula para buscar.", "error");
                 return;
             }
 
@@ -112,7 +154,7 @@
                     document.getElementById("telefono").textContent = data.telefono || "No disponible";
                     document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
                 } else {
-                    alert("❌ No se encontró la candidata.");
+                    mostrarAlerta("❌ No se encontró la candidata.", "error");
                 }
             })
             .catch(error => console.error("Error en la búsqueda:", error));
@@ -139,19 +181,16 @@
             .then(data => {
                 console.log("📌 Respuesta del servidor:", data);
                 if (data.success) {
-                    document.getElementById("mensaje").textContent = '✅ Inscripción guardada correctamente. Código: ${data.codigo}';
-                    document.getElementById("mensaje").className = "success";
-                    location.reload();
+                    mostrarAlerta('✅ Inscripción guardada correctamente. Código: ${data.codigo}', "success");
+                    document.getElementById("codigo").textContent = data.codigo; // Ahora el código aparece
                 } else {
                     let errorMessage = data.error ? data.error : "Respuesta inesperada";
-                    document.getElementById("mensaje").textContent = '❌ Error al actualizar: ${errorMessage}';
-                    document.getElementById("mensaje").className = "error";
+                    mostrarAlerta('❌ Error al actualizar: ${errorMessage}', "error");
                 }
             })
             .catch(error => {
                 console.error("Error al guardar:", error);
-                document.getElementById("mensaje").textContent = "❌ Error en la conexión.";
-                document.getElementById("mensaje").className = "error";
+                mostrarAlerta("❌ Error en la conexión.", "error");
             });
         });
     </script>
