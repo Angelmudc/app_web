@@ -3,202 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscar Candidata</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <title>Inscripción de Candidatas</title>
     <style>
         body {
-            font-family: 'Roboto', Arial, sans-serif;
-            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-        }
-
-        .container {
-            background-color: white;
-            border-radius: 15px;
-            padding: 2rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        h1 {
-            font-weight: 700;
-            color: #1a237e;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-animated {
-            background-color: #3949ab;
-            color: white;
-            border: none;
-            font-weight: 600;
-            transition: all 0.3s ease-in-out;
-        }
-
-        .btn-animated:hover {
-            background-color: #283593;
-            transform: scale(1.05);
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
-        }
-
-        .card-hover:hover {
-            transform: scale(1.02);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-        }
-
-        table {
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
-        }
-
-        table thead {
-            background-color: #3949ab;
-            color: white;
-        }
-
-        table th, table td {
-            vertical-align: middle;
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
             text-align: center;
+            padding: 20px;
         }
-
-        .list-group-item {
-            background-color: #f4f6f8;
+        table {
+            width: 80%;
+            margin: 20px auto;
+            border-collapse: collapse;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            padding: 10px;
             border: none;
-            font-size: 1rem;
+            cursor: pointer;
         }
-
-        .list-group-item strong {
-            color: #1a237e;
+        button:hover {
+            background-color: #218838;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="text-center mb-4">Buscar Candidata</h1>
 
-        <form method="POST" action="/buscar" class="mb-4">
-            <div class="input-group">
-                <input type="text" name="busqueda" class="form-control" placeholder="Buscar por Código, Nombre, Cédula o Teléfono" required>
-                <button type="submit" name="buscar_btn" class="btn btn-animated">
-                    <i class="fas fa-search"></i> Buscar
-                </button>
-            </div>
-        </form>
+    <h1>🔍 Inscripción de Candidatas</h1>
 
-        {% if mensaje %}
-        <div class="alert alert-info text-center">
-            {{ mensaje }}
-        </div>
-        {% endif %}
+    <label for="busqueda">Buscar por Código, Cédula o Nombre:</label>
+    <input type="text" id="busqueda">
+    <button id="buscar">🔍 Buscar</button>
 
-        {% if resultados %}
-        <div class="card card-hover mb-4">
-            <div class="card-header bg-primary text-white">Resultados de la búsqueda</div>
-            <div class="card-body">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Código</th>
-                            <th>Nombre</th>
-                            <th>Edad</th>  <!-- Edad agregada aquí -->
-                            <th>Ciudad</th>
-                            <th>Cédula</th>
-                            <th>Teléfono</th>
-                            <th>Seleccionar</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for resultado in resultados %}
-                        <tr>
-                            <td>{{ resultado.codigo or 'No asignado' }}</td>
-                            <td>{{ resultado.nombre }}</td>
-                            <td>{{ resultado.edad }}</td>  <!-- Mostrando edad -->
-                            <td>{{ resultado.ciudad }}</td>
-                            <td>{{ resultado.cedula }}</td>
-                            <td>{{ resultado.telefono }}</td>
-                            <td>
-                                <form method="POST" action="/buscar">
-                                    <input type="hidden" name="fila_index" value="{{ resultado.fila_index }}">
-                                    <button type="submit" name="seleccionar_btn" class="btn btn-success btn-sm btn-animated">
-                                        <i class="fas fa-eye"></i> Ver Detalles
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        {% endif %}
+    <h2>📄 Datos de la Candidata</h2>
+    <table>
+        <tr><th>Código</th><td id="codigo">Se generará automáticamente</td></tr>
+        <tr><th>Nombre</th><td id="nombre">No disponible</td></tr>
+        <tr><th>Cédula</th><td id="cedula">No disponible</td></tr>
+        <tr><th>Teléfono</th><td id="telefono">No disponible</td></tr>
+        <tr><th>Ciudad</th><td id="ciudad">No disponible</td></tr>
+        <tr><th>Modalidad</th><td id="modalidad">No disponible</td></tr>
+        <tr><th>Experiencia</th><td id="experiencia">No disponible</td></tr>
+        <tr><th>Áreas de Experiencia</th><td id="areas_experiencia">No disponible</td></tr>
+        <tr><th>Referencias Laborales</th><td id="referencias_laborales">No disponible</td></tr>
+        <tr><th>Referencias Familiares</th><td id="referencias_familiares">No disponible</td></tr>
+        <tr><th>Estado</th><td id="estado_texto">No disponible</td></tr>
+        <tr><th>Inscripción</th><td id="inscripcion">No disponible</td></tr>
+        <tr><th>Monto</th><td id="monto">No disponible</td></tr>
+        <tr><th>Fecha de Inscripción</th><td id="fecha_inscripcion">No disponible</td></tr>
+    </table>
 
-        {% if detalles_candidata %}
-        <div class="card card-hover">
-            <div class="card-header bg-primary text-white">Detalles de la Candidata</div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5>Información General</h5>
-                        <ul class="list-group">
-                            <li class="list-group-item"><strong>Código:</strong> {{ detalles_candidata.codigo or 'No asignado' }}</li>
-                            <li class="list-group-item"><strong>Nombre:</strong> {{ detalles_candidata.nombre }}</li>
-                            <li class="list-group-item"><strong>Edad:</strong> {{ detalles_candidata.edad }}</li> <!-- Edad aquí -->
-                            <li class="list-group-item"><strong>Cédula:</strong> {{ detalles_candidata.cedula }}</li>
-                            <li class="list-group-item"><strong>Teléfono:</strong> {{ detalles_candidata.telefono }}</li>
-                            <li class="list-group-item"><strong>Ciudad:</strong> {{ detalles_candidata.ciudad }}</li>
-                        </ul>
-                    </div>
-                    <div class="col-md-6">
-                        <h5>Referencias</h5>
-                        <ul class="list-group">
-                            <li class="list-group-item"><strong>Laborales:</strong> {{ detalles_candidata.referencias_laborales or 'No disponible' }}</li>
-                            <li class="list-group-item"><strong>Familiares:</strong> {{ detalles_candidata.referencias_familiares or 'No disponible' }}</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="row mt-4">
-                    <div class="col-md-6">
-                        <h5>Información Adicional</h5>
-                        <ul class="list-group">
-                            <li class="list-group-item"><strong>Modalidad:</strong> {{ detalles_candidata.modalidad or 'No disponible' }}</li>
-                            <li class="list-group-item"><strong>Años de Experiencia:</strong> {{ detalles_candidata.experiencia or 'No disponible' }}</li>
-                            <li class="list-group-item"><strong>Sabe planchar:</strong> {{ detalles_candidata.planchar or 'No disponible' }}</li>
-                            <li class="list-group-item"><strong>Acepta porcentaje:</strong> {{ detalles_candidata.porcentaje or 'No disponible' }}</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="mt-4">
-                    <a href="/" class="btn btn-back">
-                        <i class="fas fa-home"></i> Volver al Inicio
-                    </a>
-                    <a href="/buscar" class="btn btn-back">
-                        <i class="fas fa-arrow-left"></i> Volver a la búsqueda
-                    </a>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
+    <h2>📝 Completar Inscripción</h2>
+    <input type="hidden" id="fila_index">
+
+    <label for="estado">Estado:</label>
+    <select id="estado">
+        <option value="Sí">Sí</option>
+        <option value="No">No</option>
+    </select>
+
+    <label for="monto">Monto:</label>
+    <input type="text" id="monto_input" value="500">
+
+    <label for="fecha">Fecha:</label>
+    <input type="date" id="fecha">
+
+    <button id="guardar">💾 Guardar Inscripción</button>
 
     <script>
-        function sugerirResultados(valor) {
-            if (valor.length < 2) return;
-            fetch('https://tu-app.onrender.com/sugerir?busqueda=' + encodeURIComponent(valor))
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Error en la respuesta del servidor');
-                    }
-                    return response.json();
+        // Función para buscar candidata
+        document.getElementById("buscar").addEventListener("click", function() {
+            const busqueda = document.getElementById("busqueda").value.trim();
+
+            if (!busqueda) {
+                alert("⚠️ Ingresa un nombre, cédula o código para buscar.");
+                return;
+            }
+
+            fetch('/buscar_inscripcion?query=' + encodeURIComponent(busqueda))
+            .then(response => response.json())
+            .then(data => {
+                if (data.fila_index) {
+                    document.getElementById("fila_index").value = data.fila_index;
+                    document.getElementById("codigo").textContent = data.codigo || "Se generará automáticamente";
+                    document.getElementById("nombre").textContent = data.nombre || "No disponible";
+                    document.getElementById("cedula").textContent = data.cedula || "No disponible";
+                    document.getElementById("telefono").textContent = data.telefono || "No disponible";
+                    document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
+                    document.getElementById("modalidad").textContent = data.modalidad || "No disponible";
+                    document.getElementById("experiencia").textContent = data.experiencia || "No disponible";
+                    document.getElementById("areas_experiencia").textContent = data.areas_experiencia || "No disponible";
+                    document.getElementById("referencias_laborales").textContent = data.referencias_laborales || "No disponible";
+                    document.getElementById("referencias_familiares").textContent = data.referencias_familiares || "No disponible";
+                    document.getElementById("estado_texto").textContent = data.estado || "No disponible";
+                    document.getElementById("inscripcion").textContent = data.inscripcion || "No disponible";
+                    document.getElementById("monto").textContent = data.monto || "No disponible";
+                    document.getElementById("fecha_inscripcion").textContent = data.fecha_inscripcion || "No disponible";
+                } else {
+                    alert("❌ No se encontró la candidata.");
+                }
+            })
+            .catch(error => console.error("Error en la búsqueda:", error));
+        });
+
+        // Función para guardar inscripción
+        document.getElementById("guardar").addEventListener("click", function() {
+            const filaIndex = document.getElementById("fila_index").value;
+            const estado = document.getElementById("estado").value;
+            const monto = document.getElementById("monto_input").value;
+            const fecha = document.getElementById("fecha").value;
+
+            fetch("/procesar_inscripcion", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    fila_index: filaIndex,
+                    estado: estado,
+                    monto: monto,
+                    fecha: fecha
                 })
-                .then(data => {
-                    console.log(data);
-                })
-                .catch(error => console.error('Error en la búsqueda:', error));
-        }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Inscripción guardada correctamente. Código: ${data.codigo}');
+                    location.reload();
+                } else {
+                    alert('❌ Error al actualizar: ${data.error}');
+                }
+            })
+            .catch(error => console.error("Error en la inscripción:", error));
+        });
     </script>
+
 </body>
 </html>

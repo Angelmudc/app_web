@@ -668,56 +668,59 @@ def home():
     return render_template('home.html', usuario=session['usuario'])
 
 
-@app.route('/buscar', methods=['GET', 'POST'])
-def buscar():
-    resultados = []
-    detalles_candidata = None
-    mensaje = ""
+@app.route('/buscar_inscripcion', methods=['GET'])
+def buscar_inscripcion():
+    try:
+        query = request.args.get("query", "").strip().lower()
+        if not query:
+            return jsonify({"error": "Debe ingresar un valor para buscar"}), 400
 
-    if request.method == 'POST':
-        busqueda = request.form.get('busqueda', '').strip().lower()
+        # Obtener datos de la hoja
+        hoja = obtener_datos_editar()
+        resultado = None
 
-        if not busqueda:
-            mensaje = "Por favor, introduce un Código, Nombre, Cédula o Teléfono para buscar."
+        for i, fila in enumerate(hoja):
+            if len(fila) > 20:  # Asegurar que la fila tiene suficientes columnas
+                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+                cedula = fila[14].strip() if len(fila) > 14 else ""
+                codigo = fila[15].strip() if len(fila) > 15 else ""
+
+                # Buscar por código (coincidencia exacta)
+                if query == codigo:
+                    resultado = (i, fila)
+                    break
+                
+                # Buscar por cédula o nombre (coincidencia parcial)
+                if query in nombre or query in cedula:
+                    resultado = (i, fila)
+                    break
+
+        if resultado:
+            fila_index, fila = resultado
+            datos_candidata = {
+                "fila_index": fila_index,
+                "codigo": fila[15] if len(fila) > 15 else "",
+                "nombre": fila[1] if len(fila) > 1 else "No disponible",
+                "cedula": fila[14] if len(fila) > 14 else "No disponible",
+                "telefono": fila[3] if len(fila) > 3 else "No disponible",
+                "ciudad": fila[4] if len(fila) > 4 else "No disponible",
+                "modalidad": fila[5] if len(fila) > 5 else "No disponible",
+                "experiencia": fila[8] if len(fila) > 8 else "No disponible",
+                "areas_experiencia": fila[9] if len(fila) > 9 else "No disponible",
+                "referencias_laborales": fila[11] if len(fila) > 11 else "No disponible",
+                "referencias_familiares": fila[12] if len(fila) > 12 else "No disponible",
+                "estado": fila[16] if len(fila) > 16 else "No disponible",
+                "inscripcion": fila[17] if len(fila) > 17 else "No disponible",
+                "monto": fila[18] if len(fila) > 18 else "No disponible",
+                "fecha_inscripcion": fila[19] if len(fila) > 19 else "No disponible",
+                "fecha_pago": fila[20] if len(fila) > 20 else "No disponible"
+            }
+            return jsonify(datos_candidata)
         else:
-            resultados = buscar_candidata_rapida(busqueda)
+            return jsonify({"error": "No se encontró la candidata"}), 404
 
-            if not resultados:
-                mensaje = f"No se encontraron resultados para: {busqueda}"
-
-        if 'seleccionar_btn' in request.form:
-            fila_index = int(request.form.get('fila_index')) - 1
-            datos = obtener_datos_cache()
-
-            if 0 <= fila_index < len(datos):
-                fila = datos[fila_index]
-
-                # Verificar que la fila tenga al menos la cantidad de columnas esperadas
-                while len(fila) < 25:  # Asegurarnos de que haya suficientes columnas
-                    fila.append("")
-
-                detalles_candidata = {
-                    'codigo': fila[15],  # Código (Columna P)
-                    'nombre': fila[1],   # Nombre (Columna B)
-                    'edad': fila[2],     # Edad (Columna C)
-                    'ciudad': fila[4],   # Ciudad (Columna E)
-                    'cedula': fila[14],  # Cédula (Columna R)
-                    'telefono': fila[3], # Teléfono (Columna D)
-                    'referencias_laborales': fila[11] if len(fila) > 11 else "No disponible",
-                    'referencias_familiares': fila[12] if len(fila) > 12 else "No disponible",
-                    'modalidad': fila[5] if len(fila) > 5 else "No disponible",
-                    'experiencia': fila[9] if len(fila) > 9 else "No disponible",
-                    'planchar': fila[10] if len(fila) > 10 else "No disponible",
-                    'porcentaje': fila[23] if len(fila) > 23 else "No disponible",  # Inscripción (Columna R)
-                    'estado': fila[16] if len(fila) > 16 else "No disponible"  # Estado (Columna Q)
-                }
-
-    return render_template(
-        'buscar.html',
-        resultados=resultados,
-        detalles_candidata=detalles_candidata,
-        mensaje=mensaje
-    )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/sugerir')
 def sugerir():
