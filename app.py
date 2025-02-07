@@ -223,30 +223,26 @@ def inscribir_candidata(fila_index, estado, monto, fecha):
         print(f"Error al inscribir candidata: {e}")
         return False
 
-def buscar_datos_inscripcion(buscar):
+def buscar_candidata(busqueda):
     """
-    Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
-    Si una columna está vacía, se asigna un valor por defecto.
+    Busca la candidata por Nombre (Columna B) o Cédula (Columna O)
+    y devuelve la fila exacta donde está ubicada.
     """
     try:
         datos = obtener_datos_editar()
         for fila_index, fila in enumerate(datos):
-            nombre = fila[1].strip() if len(fila) > 1 else "No disponible"
-            cedula = fila[14].strip() if len(fila) > 14 else "No disponible"
-            telefono = fila[3].strip() if len(fila) > 3 else "No disponible"
-            estado = fila[16].strip() if len(fila) > 16 else "No disponible"
-            monto = fila[18].strip() if len(fila) > 18 else "0"
-            fecha = fila[19].strip() if len(fila) > 19 else ""
+            nombre = fila[1].strip() if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
 
-            if buscar.lower() in nombre.lower() or buscar == cedula:
+            if busqueda.lower() in nombre.lower() or busqueda == cedula:
                 return {
-                    'fila_index': fila_index + 1,
+                    'fila_index': fila_index + 1,  # La fila exacta en Sheets
                     'nombre': nombre,
                     'cedula': cedula,
-                    'telefono': telefono,
-                    'estado': estado,
-                    'monto': monto,
-                    'fecha': fecha,
+                    'telefono': fila[3] if len(fila) > 3 else "",
+                    'estado': fila[16] if len(fila) > 16 else "",
+                    'monto': fila[18] if len(fila) > 18 else "0",
+                    'fecha': fila[19] if len(fila) > 19 else "",
                     'codigo': fila[15] if len(fila) > 15 and fila[15].startswith("CAN-") else "Pendiente"
                 }
 
@@ -886,21 +882,24 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos = None  
-
+    datos = None  # Definir datos antes de usarlo
+    
     if request.method == "POST":
         busqueda = request.form.get("buscar")
         if busqueda:
             datos = buscar_candidata(busqueda)
             if not datos:
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
-
-    return render_template("inscripcion.html", datos_candidata=datos[0] if isinstance(datos, list) and datos else {}, mensaje=mensaje)
+    
+    return render_template("inscripcion.html", datos_candidata=datos, mensaje=mensaje)
 
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
-    fila_index = request.form.get('fila_index')
-    estado = request.form.get('estado', 'Sí')
+    fila_index = int(request.form.get('fila_index', -1))
+    if fila_index < 1:
+        return jsonify({'error': "Error en la fila de inscripción."}), 400
+
+    estado = "Sí"
     monto = request.form.get('monto', '0')
     fecha = request.form.get('fecha', datetime.today().strftime('%Y-%m-%d'))
 
@@ -912,6 +911,8 @@ def procesar_inscripcion():
         if not codigo_actual or not codigo_actual.startswith("CAN-"):
             nuevo_codigo = f"CAN-{fila_index:06d}"
             hoja.update_acell(f'P{fila_index}', nuevo_codigo)
+        else:
+            nuevo_codigo = codigo_actual
 
         # Actualizar los datos en la hoja
         hoja.update_acell(f'Q{fila_index}', estado)  # Estado en la columna Q
@@ -921,7 +922,6 @@ def procesar_inscripcion():
         return jsonify({'success': "Inscripción actualizada correctamente.", 'codigo': nuevo_codigo})
     except Exception as e:
         return jsonify({'error': f"Error al actualizar la inscripción: {str(e)}"}), 500
-
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """
