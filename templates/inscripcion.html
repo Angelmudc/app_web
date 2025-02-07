@@ -93,7 +93,7 @@
         const busqueda = document.getElementById("busqueda").value.trim();
 
         if (!busqueda) {
-            mostrarMensaje("⚠️ Ingresa un nombre o cédula para buscar.", "error");
+            alert("⚠️ Ingresa un nombre o cédula para buscar.");
             return;
         }
 
@@ -133,29 +133,25 @@
         })
         .then(response => response.json())
         .then(data => {
+            console.log("📌 Respuesta del servidor:", data); // Debug para revisar qué devuelve el servidor
             if (data.success) {
-                mostrarMensaje('✅ Inscripción guardada correctamente. Código asignado: ${data.codigo}', "success");
-                document.getElementById("codigo").textContent = data.codigo; // Mostrar código asignado
+                mostrarMensaje('✅ Inscripción guardada correctamente. Código: ${data.codigo}', "success");
             } else {
                 let errorMessage = data.error ? data.error : "Respuesta inesperada";
                 mostrarMensaje('❌ Error al actualizar: ${errorMessage}', "error");
             }
         })
-        .catch(error => {
-            console.error("Error al guardar:", error);
-            mostrarMensaje("❌ Error en la solicitud. Inténtalo de nuevo.", "error");
-        });
+        .catch(error => mostrarMensaje("❌ Error en la solicitud. Inténtalo de nuevo.", "error"));
     });
 
-    // Función para mostrar mensajes de éxito o error
+    // Función para mostrar mensajes en pantalla
     function mostrarMensaje(mensaje, tipo) {
-        const alerta = document.getElementById("alerta");
+        let alerta = document.getElementById("alerta");
         alerta.textContent = mensaje;
-        alerta.className = tipo === "success" ? "alert alert-success" : "alert alert-error";
         alerta.style.display = "block";
-        setTimeout(() => { alerta.style.display = "none"; }, 5000);
+        alerta.style.color = tipo === "success" ? "green" : "red";
     }
 </script>
-
+<div id="alerta" style="display: none; padding: 10px; margin-top: 10px; font-weight: bold;"></div>
 </body>
 </html>
