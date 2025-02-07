@@ -920,24 +920,25 @@ def procesar_inscripcion():
         fila = hoja[fila_index]
 
         # Obtener código desde la columna P (índice 15)
-        codigo_asignado = fila[15] if len(fila) > 15 and fila[15] else generar_codigo_unico()
+        # Obtener código desde la columna P (índice 15)
+codigo_asignado = fila[15] if len(fila) > 15 and fila[15] else generar_codigo_unico()
 
-        # Si no tiene código, se genera y se guarda en la columna P
-        if not fila or len(fila) <= 15 or fila[15].strip() == "":
-            sheet.values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=f"Nueva hoja!P{fila_index + 1}",
-                valueInputOption="RAW",
-                body={"values": [[codigo_asignado]]}
-            ).execute()
+# Si no tiene código, se genera y se guarda en la columna P
+if not fila or len(fila) <= 15 or fila[15].strip() == "":
+    service.spreadsheets().values().update(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"Nueva hoja!P{fila_index + 1}",
+        valueInputOption="RAW",
+        body={"values": [[codigo_asignado]]}
+    ).execute()
 
-        # Guardar los datos en las columnas correspondientes (R, S, T)
-        sheet.values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!R{fila_index + 1}:T{fila_index + 1}",
-            valueInputOption="RAW",
-            body={"values": [[estado, monto, fecha]]}
-        ).execute()
+# Guardar los datos en las columnas correspondientes (R, S, T)
+service.spreadsheets().values().update(
+    spreadsheetId=SPREADSHEET_ID,
+    range=f"Nueva hoja!R{fila_index + 1}:T{fila_index + 1}",
+    valueInputOption="RAW",
+    body={"values": [[estado, monto, fecha]]}
+).execute()
 
         return jsonify({"success": True, "codigo": codigo_asignado})
 
