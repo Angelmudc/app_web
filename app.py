@@ -937,15 +937,25 @@ def procesar_inscripcion():
         else:
             nuevo_codigo = codigo_actual  # Mantiene el código si ya existe
 
-        # 🔹 Guardar los datos actualizados en la hoja (columnas R, S, T y código en P)
-        fila[17:20] = [estado, monto, fecha]  # Actualiza los valores en la fila
-        fila[15] = nuevo_codigo  # Asegura que el código se guarde
+        # 🔹 Guardar los datos en la hoja de cálculo (columnas R, S, T y código en P)
+        hoja[fila_index][15] = nuevo_codigo  # Código
+        hoja[fila_index][17] = estado  # Estado
+        hoja[fila_index][18] = monto  # Monto
+        hoja[fila_index][19] = fecha  # Fecha
+
+        # 🔹 Actualizar la hoja en Google Sheets
+        rango_actualizar = f"P{fila_index+1}:T{fila_index+1}"  # Asegurar que el rango está correcto
+        cliente.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango_actualizar,
+            valueInputOption="RAW",
+            body={"values": [[nuevo_codigo, estado, monto, fecha]]}
+        ).execute()
 
         return jsonify({"success": True, "codigo": nuevo_codigo})
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
-
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
