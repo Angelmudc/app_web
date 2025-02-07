@@ -882,29 +882,31 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos = None  
+    datos_candidata = {}  # Siempre inicializar como un diccionario vacío
 
     if request.method == "POST":
-        busqueda = request.form.get("buscar")
+        busqueda = request.form.get("buscar", "").strip()
+        
         if busqueda:
             datos = buscar_candidata(busqueda)  # Buscar en Google Sheets
 
-            if datos:
-                # Asegurar que todas las claves existen en el diccionario
+            if datos and isinstance(datos, list) and len(datos) > 0:
+                primera_coincidencia = datos[0]  # Tomar la primera coincidencia válida
                 datos_candidata = {
-                    'fila_index': datos.get('fila_index', ''),
-                    'codigo': datos.get('codigo', 'Se generará automáticamente'),
-                    'nombre': datos.get('nombre', 'No disponible'),
-                    'edad': datos.get('edad', 'No disponible'),
-                    'telefono': datos.get('telefono', 'No disponible'),
-                    'direccion': datos.get('direccion', 'No disponible'),
-                    'cedula': datos.get('cedula', 'No disponible'),
-                    'estado': datos.get('estado', 'No disponible')
+                    'fila_index': primera_coincidencia.get('fila_index', ''),
+                    'codigo': primera_coincidencia.get('codigo', 'Se generará automáticamente'),
+                    'nombre': primera_coincidencia.get('nombre', 'No disponible'),
+                    'edad': primera_coincidencia.get('edad', 'No disponible'),
+                    'telefono': primera_coincidencia.get('telefono', 'No disponible'),
+                    'direccion': primera_coincidencia.get('direccion', 'No disponible'),
+                    'cedula': primera_coincidencia.get('cedula', 'No disponible'),
+                    'estado': primera_coincidencia.get('estado', 'No disponible')
                 }
             else:
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
-    
-    return render_template("inscripcion.html", datos_candidata=datos_candidata if datos else {}, mensaje=mensaje)
+
+    return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
+
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     fila_index = request.form.get('fila_index')
