@@ -936,6 +936,58 @@ def procesar_inscripcion():
         print(f"❌ Error al actualizar la inscripción: {e}")
         return jsonify({'error': f"❌ Error al actualizar la inscripción: {str(e)}"}), 500
 
+@app.route('/guardar_inscripcion', methods=['POST'])
+def guardar_inscripcion():
+    try:
+        datos = request.json
+        fila_index = datos.get('fila_index')
+        estado = datos.get('estado')
+        monto = datos.get('monto')
+        fecha = datos.get('fecha')
+
+        if not fila_index:
+            return jsonify({'error': 'Error: No se encontró el índice de la fila.'}), 400
+
+        # Actualizar los datos en Google Sheets
+        rango = f'Nueva hoja!Q{fila_index}:T{fila_index}'  # Actualiza estado, monto y fecha
+        valores = [[estado, monto, fecha]]
+
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": valores}
+        ).execute()
+
+        return jsonify({'success': 'Inscripción guardada correctamente.'})
+    except Exception as e:
+        return jsonify({'error': f'Error al guardar la inscripción: {str(e)}'}), 500
+
+@app.route('/buscar_inscripcion', methods=['POST'])
+def buscar_inscripcion():
+    try:
+        datos = obtener_datos_editar()
+        busqueda = request.json.get('buscar', '').strip().lower()
+
+        for fila_index, fila in enumerate(datos, start=1):
+            if len(fila) > 14:  # Asegurar que haya suficientes columnas
+                nombre = fila[1].strip().lower()
+                cedula = fila[14].strip()
+
+                if busqueda in nombre or busqueda == cedula:
+                    return jsonify({
+                        'fila_index': fila_index,
+                        'codigo': fila[15] if len(fila) > 15 else "",
+                        'nombre': fila[1],
+                        'cedula': fila[14],
+                        'telefono': fila[3] if len(fila) > 3 else "",
+                        'ciudad': fila[4] if len(fila) > 4 else ""
+                    })
+
+        return jsonify({'error': 'Candidata no encontrada.'})
+    except Exception as e:
+        return jsonify({'error': f'Error en la búsqueda: {str(e)}'}), 500
+
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
     """

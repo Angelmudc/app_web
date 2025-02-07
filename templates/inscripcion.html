@@ -4,70 +4,101 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
     <h1>🔍 Inscripción de Candidatas</h1>
-    
-    <!-- Formulario de búsqueda -->
-    <form id="buscarForm" method="POST" action="{{ url_for('inscripcion') }}">
-        <input type="text" name="buscar" placeholder="Buscar por cédula o nombre" required>
+
+    <!-- Formulario de Búsqueda -->
+    <form id="buscar-form">
+        <input type="text" id="buscar" name="buscar" placeholder="Buscar por cédula o nombre">
         <button type="submit">🔍 Buscar</button>
     </form>
 
-    {% if datos_candidata %}
-    <div class="candidata-info">
-        <h2>📋 Datos de la Candidata</h2>
-        <p><strong>Código:</strong> {{ datos_candidata.get('codigo', 'No asignado') }}</p>
-        <p><strong>Nombre:</strong> {{ datos_candidata.get('nombre', 'No disponible') }}</p>
-        <p><strong>Cédula:</strong> {{ datos_candidata.get('cedula', 'No disponible') }}</p>
-        <p><strong>Teléfono:</strong> {{ datos_candidata.get('telefono', 'No disponible') }}</p>
-        <p><strong>Ciudad:</strong> {{ datos_candidata.get('ciudad', 'No disponible') }}</p>
-    </div>
+    <hr>
 
-    <!-- Formulario para inscribir -->
+    <!-- Datos de la Candidata -->
+    <h2>📋 Datos de la Candidata</h2>
+    <p><strong>Código:</strong> <span id="codigo"></span></p>
+    <p><strong>Nombre:</strong> <span id="nombre"></span></p>
+    <p><strong>Cédula:</strong> <span id="cedula"></span></p>
+    <p><strong>Teléfono:</strong> <span id="telefono"></span></p>
+    <p><strong>Ciudad:</strong> <span id="ciudad"></span></p>
+    <input type="hidden" id="fila_index" name="fila_index">
+
+    <hr>
+
+    <!-- Formulario para completar inscripción -->
     <h2>📝 Completar Inscripción</h2>
-    <form id="inscripcionForm" method="POST" action="{{ url_for('procesar_inscripcion') }}">
-        <input type="hidden" id="fila_index" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
-    
-        <label for="nombre">Nombre:</label>
-        <input type="text" id="nombre" value="{{ datos_candidata.get('nombre', 'No disponible') }}" readonly>
-    
-        <label for="telefono">Teléfono:</label>
-        <input type="text" id="telefono" value="{{ datos_candidata.get('telefono', 'No disponible') }}" readonly>
-    
+    <form id="inscripcion-form">
         <label for="estado">Estado:</label>
-        <select name="estado" required>
-            <option value="Sí">Sí</option>
-            <option value="No">No</option>
-        </select>
-    
-        <label for="monto">Monto (DOP):</label>
-        <input type="number" name="monto" required>
-    
-        <label for="fecha">Fecha:</label>
-        <input type="date" name="fecha" value="{{ fecha_hoy }}" required>
-    
-        <button type="submit">💾 Guardar Inscripción</button>
-    </form>
-    
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        let filaIndex = document.getElementById("fila_index").value;
-    
-        if (!filaIndex) {
-            console.error("❌ Error: Fila index no está definido en el HTML.");
-            alert("⚠️ Error interno: No se encontró el índice de la fila.");
-        }
-    });
-    </script>
-    {% endif %}
+        <input type="text" id="estado" name="estado" value="Sí" readonly>
 
-    {% if mensaje %}
-    <div class="mensaje">
-        <p>{{ mensaje }}</p>
-    </div>
-    {% endif %}
+        <label for="monto">Monto:</label>
+        <input type="number" id="monto" name="monto" required>
+
+        <label for="fecha">Fecha:</label>
+        <input type="date" id="fecha" name="fecha" required>
+
+        <button type="submit">✅ Guardar Inscripción</button>
+    </form>
+
+    <script>
+        // Función para buscar candidata
+        document.getElementById('buscar-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+            let busqueda = document.getElementById('buscar').value;
+
+            fetch('/buscar_inscripcion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ buscar: busqueda })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert("❌ " + data.error);
+                } else {
+                    document.getElementById('codigo').textContent = data.codigo || '';
+                    document.getElementById('nombre').textContent = data.nombre || '';
+                    document.getElementById('cedula').textContent = data.cedula || '';
+                    document.getElementById('telefono').textContent = data.telefono || '';
+                    document.getElementById('ciudad').textContent = data.ciudad || '';
+                    document.getElementById('fila_index').value = data.fila_index;
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+
+        // Función para guardar inscripción
+        document.getElementById('inscripcion-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+            let fila_index = document.getElementById('fila_index').value;
+            let estado = document.getElementById('estado').value;
+            let monto = document.getElementById('monto').value;
+            let fecha = document.getElementById('fecha').value;
+
+            if (!fila_index) {
+                alert("⚠️ No se encontró el índice de la fila. Realiza una búsqueda antes de guardar.");
+                return;
+            }
+
+            fetch('/procesar_inscripcion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fila_index, estado, monto, fecha })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert("❌ " + data.error);
+                } else {
+                    alert("✅ Inscripción guardada correctamente.");
+                    document.getElementById('inscripcion-form').reset();
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+    </script>
 </body>
 </html>
