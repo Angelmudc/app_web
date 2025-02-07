@@ -906,26 +906,32 @@ def inscripcion():
 def procesar_inscripcion():
     try:
         data = request.json
-        fila_index = int(data.get("fila_index"))  # Asegurar que sea un número válido
+        fila_index = data.get("fila_index", "").strip()
+
+        # Validar que fila_index sea un número antes de convertirlo a int
+        if not fila_index.isdigit():
+            return jsonify({"success": False, "error": "Índice de fila no válido"})
+
+        fila_index = int(fila_index)  # Ahora es seguro convertirlo en número
         estado = data.get("estado", "").strip()
         monto = data.get("monto", "").strip()
         fecha = data.get("fecha", "").strip()
 
-        # 🔹 Obtener la hoja de cálculo
-        hoja = obtener_datos_editar()  # Función para conectar con Google Sheets
-        fila = hoja[fila_index]  # Obtener los valores actuales de la fila
+        # Obtener la hoja de cálculo
+        sheet = cliente.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")  # Asegurar que sea la hoja correcta
+        fila = sheet.row_values(fila_index + 1)  # Obtener los valores actuales de la fila
 
         # Verificar si la candidata ya tiene un código en la columna P (índice 15)
         codigo_actual = fila[15] if len(fila) > 15 else ""
 
         if not codigo_actual or codigo_actual.strip() == "":
             nuevo_codigo = generar_codigo_unico()  # Genera un código si no tiene
-            hoja.update_cell(fila_index, 16, nuevo_codigo)  # Guarda en la columna P
+            sheet.update_cell(fila_index + 1, 16, nuevo_codigo)  # Guarda en la columna P
         else:
             nuevo_codigo = codigo_actual  # Mantiene el código si ya existe
 
-        # 🔹 Guardar los datos en la hoja de cálculo (Columnas R, S, T y el código en P)
-        hoja.update(f"R{fila_index}:U{fila_index}", [[estado, monto, fecha]])
+        # Guardar los datos en la hoja de cálculo (Columnas R, S, T y el código en P)
+        sheet.update(f"R{fila_index + 1}:U{fila_index + 1}", [[estado, monto, fecha]])
 
         return jsonify({"success": True, "codigo": nuevo_codigo})
 
