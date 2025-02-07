@@ -906,30 +906,32 @@ def inscripcion():
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     try:
-        datos = request.json  # Obtener los datos enviados en la solicitud
-        fila_index = datos.get('fila_index')  # Obtener el índice de la fila
+        datos = request.get_json()
+        fila_index = datos.get("fila_index")
+        estado = datos.get("estado")
+        monto = datos.get("monto")
+        fecha = datos.get("fecha")
 
-        # Validar que fila_index sea un número válido
-        if not fila_index or not str(fila_index).isdigit() or int(fila_index) < 1:
+        if not fila_index or not fila_index.isdigit():
             return jsonify({"error": "Índice de fila inválido"}), 400
+        
+        fila_index = int(fila_index)
 
-        fila_index = int(fila_index)  # Convertirlo a número entero
-
-        # Obtener los demás valores
-        estado = datos.get('estado', 'Sí')
-        monto = datos.get('monto', '0')
-        fecha = datos.get('fecha', '')
-
-        # Actualizar en la hoja de cálculo
+        # Verificar que la fila existe antes de actualizar
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-        hoja.update_acell(f'Q{fila_index}', estado)  # Estado (Columna Q)
-        hoja.update_acell(f'S{fila_index}', monto)   # Monto (Columna S)
-        hoja.update_acell(f'T{fila_index}', fecha)   # Fecha (Columna T)
+        filas_existentes = hoja.row_count  # Número de filas en la hoja
+
+        if fila_index > filas_existentes:
+            return jsonify({"error": "El índice de la fila no existe en la hoja"}), 400
+
+        # Actualizar los datos en la hoja
+        hoja.update_acell(f'Q{fila_index}', estado)  # Estado en la columna Q
+        hoja.update_acell(f'S{fila_index}', monto)   # Monto en la columna S
+        hoja.update_acell(f'T{fila_index}', fecha)   # Fecha en la columna T
 
         return jsonify({"success": "Inscripción actualizada correctamente."})
-
     except Exception as e:
-        return jsonify({"error": f"Error al actualizar: {str(e)}"}), 500
+        return jsonify({"error": f"Error al actualizar la inscripción: {str(e)}"}), 500
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
@@ -957,31 +959,22 @@ def guardar_inscripcion():
         return jsonify({'success': 'Inscripción guardada correctamente.'})
     except Exception as e:
         return jsonify({'error': f'Error al guardar la inscripción: {str(e)}'}), 500
-
-@app.route('/buscar_inscripcion', methods=['POST'])
+        
+@app.route('/buscar_inscripcion', methods=['GET'])
 def buscar_inscripcion():
-    try:
-        datos = obtener_datos_editar()
-        busqueda = request.json.get('buscar', '').strip().lower()
+    busqueda = request.args.get("query", "").strip()
+    datos = obtener_datos_editar()  # Leer la hoja completa
 
-        for fila_index, fila in enumerate(datos, start=1):
-            if len(fila) > 14:  # Asegurar que haya suficientes columnas
-                nombre = fila[1].strip().lower()
-                cedula = fila[14].strip()
+    for fila_index, fila in enumerate(datos, start=1):  # Empezar desde la fila 1
+        if len(fila) > 14 and (busqueda.lower() in fila[1].lower() or busqueda == fila[14]):
+            return jsonify({
+                "fila_index": fila_index,  # 🔹 Asegurar que devuelve el índice correcto
+                "nombre": fila[1],
+                "telefono": fila[3],
+                "cedula": fila[14]
+            })
 
-                if busqueda in nombre or busqueda == cedula:
-                    return jsonify({
-                        'fila_index': fila_index,
-                        'codigo': fila[15] if len(fila) > 15 else "",
-                        'nombre': fila[1],
-                        'cedula': fila[14],
-                        'telefono': fila[3] if len(fila) > 3 else "",
-                        'ciudad': fila[4] if len(fila) > 4 else ""
-                    })
-
-        return jsonify({'error': 'Candidata no encontrada.'})
-    except Exception as e:
-        return jsonify({'error': f'Error en la búsqueda: {str(e)}'}), 500
+    return jsonify({"error": "No se encontró la candidata"}), 404
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():

@@ -4,81 +4,120 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <script defer src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
-    <h1>🔍 Inscripción de Candidatas</h1>
 
-    <!-- Formulario de Búsqueda -->
-    <form id="buscar-form">
-        <input type="text" id="buscar" name="buscar" placeholder="Buscar por cédula o nombre">
-        <button type="submit">🔍 Buscar</button>
-    </form>
+    <h2>🔍 Inscripción de Candidatas</h2>
+
+    <!-- Buscar Candidata -->
+    <input type="text" id="busqueda" placeholder="Buscar por cédula o nombre">
+    <button id="buscar">🔎 Buscar</button>
 
     <hr>
 
     <!-- Datos de la Candidata -->
-    <h2>📋 Datos de la Candidata</h2>
-    <p><strong>Código:</strong> <span id="codigo"></span></p>
-    <p><strong>Nombre:</strong> <span id="nombre"></span></p>
-    <p><strong>Cédula:</strong> <span id="cedula"></span></p>
-    <p><strong>Teléfono:</strong> <span id="telefono"></span></p>
-    <p><strong>Ciudad:</strong> <span id="ciudad"></span></p>
-    <input type="hidden" id="fila_index" name="fila_index">
+    <h3>📄 Datos de la Candidata</h3>
+    <p><strong>Código:</strong> <span id="codigo">Se generará automáticamente</span></p>
+    <p><strong>Nombre:</strong> <span id="nombre">No disponible</span></p>
+    <p><strong>Cédula:</strong> <span id="cedula">No disponible</span></p>
+    <p><strong>Teléfono:</strong> <span id="telefono">No disponible</span></p>
+    <p><strong>Ciudad:</strong> <span id="ciudad">No disponible</span></p>
 
     <hr>
 
     <!-- Formulario para completar inscripción -->
-    <h2>📝 Completar Inscripción</h2>
-    <form id="inscripcion-form">
+    <h3>📝 Completar Inscripción</h3>
+    <form id="formInscripcion">
+        <input type="hidden" id="fila_index"> <!-- Guarda la fila index para la actualización -->
+
         <label for="estado">Estado:</label>
-        <input type="text" id="estado" name="estado" value="Sí" readonly>
+        <select id="estado">
+            <option value="Sí" selected>Sí</option>
+            <option value="No">No</option>
+        </select>
 
         <label for="monto">Monto:</label>
-        <input type="number" id="monto" name="monto" required>
+        <input type="number" id="monto" placeholder="Ingrese el monto">
 
         <label for="fecha">Fecha:</label>
-        <input type="date" id="fecha" name="fecha" required>
+        <input type="date" id="fecha">
 
-        <button type="submit">✅ Guardar Inscripción</button>
+        <button type="button" id="guardar">💾 Guardar Inscripción</button>
     </form>
 
     <script>
-        document.getElementById("guardarInscripcion").addEventListener("click", function() {
-            let filaIndex = document.getElementById("fila_index").value; // Asegurar que el índice se obtiene bien
-            let estado = document.getElementById("estado").value;
-            let monto = document.getElementById("monto").value;
-            let fecha = document.getElementById("fecha").value;
-        
-            if (!filaIndex || isNaN(filaIndex) || filaIndex < 1) {
-                alert("Error: Índice de fila no válido.");
+        // 🔹 Función para buscar candidata
+        document.getElementById("buscar").addEventListener("click", function() {
+            const busqueda = document.getElementById("busqueda").value.trim();
+
+            if (!busqueda) {
+                alert("⚠️ Ingresa un nombre o cédula para buscar.");
                 return;
             }
-        
-            let datos = {
-                fila_index: filaIndex,
-                estado: estado,
-                monto: monto,
-                fecha: fecha
-            };
-        
-            fetch("/procesar_inscripcion", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(datos)
-            })
+
+            fetch('/buscar_inscripcion?query=${encodeURIComponent(busqueda)}')
             .then(response => response.json())
             .then(data => {
-                if (data.error) {
-                    alert("Error: " + data.error);
+                if (data.fila_index) {
+                    document.getElementById("fila_index").value = data.fila_index;
+                    document.getElementById("codigo").textContent = data.codigo || "Se generará automáticamente";
+                    document.getElementById("nombre").textContent = data.nombre || "No disponible";
+                    document.getElementById("cedula").textContent = data.cedula || "No disponible";
+                    document.getElementById("telefono").textContent = data.telefono || "No disponible";
+                    document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
                 } else {
-                    alert("✅ Inscripción guardada correctamente.");
+                    alert("❌ No se encontró la candidata.");
                 }
             })
             .catch(error => {
-                alert("Error en la solicitud: " + error);
+                console.error("❌ Error en la búsqueda:", error);
+                alert("❌ Hubo un error al buscar la candidata.");
             });
         });
-        </script>
+
+        // 🔹 Función para guardar inscripción
+        document.getElementById("guardar").addEventListener("click", function() {
+            const filaIndex = document.getElementById("fila_index").value.trim();
+            const estado = document.getElementById("estado").value;
+            const monto = document.getElementById("monto").value.trim();
+            const fecha = document.getElementById("fecha").value;
+
+            if (!filaIndex) {
+                alert("⚠️ Error: No se encontró el índice de la fila. Realiza la búsqueda antes de guardar.");
+                return;
+            }
+
+            if (!monto || !fecha) {
+                alert("⚠️ Debes ingresar un monto y una fecha.");
+                return;
+            }
+
+            fetch("/procesar_inscripcion", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    fila_index: filaIndex,
+                    estado: estado,
+                    monto: monto,
+                    fecha: fecha
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+    if (data.success) {
+        alert("✅ Inscripción guardada exitosamente.");
+        location.reload();
+    } else {
+        alert('❌ Error al actualizar: ${data.error}');
+    }
+})
+.catch(error => {
+    console.error("❌ Error en la solicitud:", error);
+    alert("❌ Error al guardar la inscripción. Inténtalo de nuevo.");
+});
+        });
+    </script>
+
 </body>
 </html>
