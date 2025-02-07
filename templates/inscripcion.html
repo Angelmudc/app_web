@@ -88,8 +88,8 @@
         alert('✅ Inscripción guardada correctamente. Código: ${data.codigo}');
         location.reload();
     } else {
-        const errorMessage = data.error ? data.error : "Respuesta inesperada";
-        alert('❌ Error al actualizar: ${errorMessage}');
+        let errorMessage = data.error ? data.error : "Respuesta inesperada";
+        alert(`❌ Error al actualizar: ` + errorMessage);
     }
 })
         });
