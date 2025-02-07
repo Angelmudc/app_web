@@ -116,41 +116,49 @@
 
     // Función para guardar inscripción
     document.getElementById("guardar").addEventListener("click", function() {
-        const filaIndex = document.getElementById("fila_index").value;
-        const estado = document.getElementById("estado").value;
-        const monto = document.getElementById("monto").value;
-        const fecha = document.getElementById("fecha").value;
+    const filaIndex = document.getElementById("fila_index").value.trim();
+    const estado = document.getElementById("estado").value.trim();
+    const monto = document.getElementById("monto").value.trim();
+    const fecha = document.getElementById("fecha").value.trim();
 
-        fetch("/procesar_inscripcion", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                fila_index: filaIndex,
-                estado: estado,
-                monto: monto,
-                fecha: fecha
-            })
+    if (!filaIndex || !estado || !monto || !fecha) {
+        mostrarMensaje("❌ Todos los campos son obligatorios.", "error");
+        return;
+    }
+
+    fetch("/procesar_inscripcion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            fila_index: filaIndex,
+            estado: estado,
+            monto: monto,
+            fecha: fecha
         })
-        .then(response => response.json())
-        .then(data => {
-    console.log("📌 Respuesta del servidor:", data); // 🔍 Debug para revisar qué devuelve el servidor
-    if (data.success) {
-        mostrarMensaje('✅ Inscripción guardada correctamente. Código: ${data.codigo}', "success");
-    } else {
-        let errorMessage = data.error ? data.error : "Respuesta inesperada";
-        mostrarMensaje('❌ Error al actualizar: ${errorMessage}', "error");
-    }
-})
-        .catch(error => mostrarMensaje("❌ Error en la solicitud. Inténtalo de nuevo.", "error"));
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("📌 Respuesta del servidor:", data);
+        if (data.success) {
+            mostrarMensaje('✅ Inscripción guardada correctamente. Código: ${data.codigo || "No asignado"}', "success");
+        } else {
+            let errorMessage = data.error ? data.error : "Respuesta inesperada";
+            mostrarMensaje('❌ Error al actualizar: ${errorMessage}', "error");
+        }
+    })
+    .catch(error => {
+        console.error("Error en la solicitud:", error);
+        mostrarMensaje("❌ Error en la solicitud. Inténtalo de nuevo.", "error");
     });
+}); // <<--- Posiblemente falte este cierre
 
-    // Función para mostrar mensajes en pantalla
-    function mostrarMensaje(mensaje, tipo) {
-        let alerta = document.getElementById("alerta");
-        alerta.textContent = mensaje;
-        alerta.style.display = "block";
-        alerta.style.color = tipo === "success" ? "green" : "red";
-    }
+// Función para mostrar mensajes en pantalla
+function mostrarMensaje(mensaje, tipo) {
+    let alerta = document.getElementById("alerta");
+    alerta.textContent = mensaje;
+    alerta.style.display = "block";
+    alerta.style.color = tipo === "success" ? "green" : "red";
+} // <<--- Asegúrate de que esta función esté cerrada
 </script>
 <div id="alerta" style="display: none; padding: 10px; margin-top: 10px; font-weight: bold;"></div>
 </body>
