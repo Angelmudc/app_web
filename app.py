@@ -916,12 +916,12 @@ def procesar_inscripcion():
         if fila_index < 1:
             return jsonify({"success": False, "error": "Índice de fila no válido"})
 
-        # Conectar a la hoja de Google Sheets
+        # ✅ Conectar a la hoja de Google Sheets
         sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")  # 🔹 Asegura la conexión correcta
         datos_hoja = sheet.get_all_values()  # Obtener todas las filas como lista
         fila = datos_hoja[fila_index - 1]  # Obtener valores actuales de la fila
 
-        # Verificar si la candidata ya tiene un código en la columna P (índice 15)
+        # ✅ Verificar si la candidata ya tiene un código en la columna P (índice 15)
         codigo_actual = fila[15] if len(fila) > 15 else ""
 
         if not codigo_actual or codigo_actual.strip() == "":
@@ -929,8 +929,9 @@ def procesar_inscripcion():
         else:
             nuevo_codigo = codigo_actual  # Mantener el código si ya existe
 
-        # Guardar los datos en la hoja de cálculo en la fila correcta
-        sheet.update(f"R{fila_index}:U{fila_index}", [[estado, monto, fecha, nuevo_codigo]])  # 🔹 'Se usa sheet.update()', no en la lista
+        # ✅ Guardar los datos en la hoja de cálculo en la fila correcta
+        sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])  # 🔹 Estado, monto y fecha
+        sheet.update(f"P{fila_index}", [[nuevo_codigo]])  # 🔹 Código en la columna P
 
         return jsonify({"success": True, "codigo": nuevo_codigo})
 
