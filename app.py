@@ -907,29 +907,29 @@ def inscripcion():
 def procesar_inscripcion():
     try:
         data = request.json
-        fila_index = int(data.get("fila_index", "").strip())  # Asegurar número válido
+        fila_index = int(data.get("fila_index", "0"))  # Asegurar que sea un número válido
         estado = data.get("estado", "").strip()
         monto = data.get("monto", "").strip()
         fecha = data.get("fecha", "").strip()
 
-        # Obtener los datos de la hoja de cálculo
-        hoja = sheet.get_all_values()  # Asegurar que sheet está bien definido
-        fila = hoja[fila_index] if len(hoja) > fila_index else None  # Obtener fila específica
-
-        if not fila:
+        # Verificar que el índice de fila sea válido
+        if fila_index < 1:
             return jsonify({"success": False, "error": "Índice de fila no válido"})
 
-        # Verificar si ya tiene código en la columna P (índice 15)
+        # Obtener la hoja de cálculo
+        hoja = obtener_datos_editar()  # Conectar con Google Sheets
+        fila = hoja[fila_index - 1]  # Obtener valores actuales de la fila
+
+        # Verificar si la candidata ya tiene un código en la columna P (índice 15)
         codigo_actual = fila[15] if len(fila) > 15 else ""
 
         if not codigo_actual or codigo_actual.strip() == "":
-            nuevo_codigo = generar_codigo_unico()  # Generar un código si no tiene
-            sheet.update_cell(fila_index + 1, 16, nuevo_codigo)  # Guardar en la columna P
+            nuevo_codigo = generar_codigo_unico()  # Generar un código solo si no existe
         else:
             nuevo_codigo = codigo_actual  # Mantener el código si ya existe
 
-        # Guardar los datos en la hoja de cálculo
-        sheet.update(f"R{fila_index+1}:U{fila_index+1}", [[estado, monto, fecha, nuevo_codigo]])
+        # Guardar los datos en la hoja de cálculo en la fila correcta
+        hoja.update(f"R{fila_index}:U{fila_index}", [[estado, monto, fecha, nuevo_codigo]])
 
         return jsonify({"success": True, "codigo": nuevo_codigo})
 
