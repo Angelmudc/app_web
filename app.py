@@ -882,7 +882,7 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = {}  # Siempre inicializar como un diccionario vacío
+    datos_candidata = {}  # Aseguramos que siempre sea un diccionario
 
     if request.method == "POST":
         busqueda = request.form.get("buscar", "").strip()
@@ -891,7 +891,7 @@ def inscripcion():
             datos = buscar_candidata(busqueda)  # Buscar en Google Sheets
 
             if datos and isinstance(datos, list) and len(datos) > 0:
-                primera_coincidencia = datos[0]  # Tomar la primera coincidencia válida
+                primera_coincidencia = datos[0]  # Tomar la primera candidata encontrada
                 datos_candidata = {
                     'fila_index': primera_coincidencia.get('fila_index', ''),
                     'codigo': primera_coincidencia.get('codigo', 'Se generará automáticamente'),
@@ -906,7 +906,6 @@ def inscripcion():
                 mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
 
     return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
-
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     fila_index = request.form.get('fila_index')
@@ -914,16 +913,16 @@ def procesar_inscripcion():
     monto = request.form.get('monto')
     fecha = request.form.get('fecha')
 
-    try:
-        if not fila_index:
-            return jsonify({'error': "❌ Error: No se encontró el índice de la fila."}), 400
+    if not fila_index:
+        return jsonify({'error': "Error: No se encontró el índice de la fila."}), 400
 
+    try:
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
 
-        # Verificar si ya tiene código, si no, generarlo
-        codigo_actual = hoja.cell(fila_index, 16).value  # Columna P (Código)
+        # Verificar si ya tiene código
+        codigo_actual = hoja.cell(int(fila_index), 16).value  # Columna P (Código)
         if not codigo_actual:
-            nuevo_codigo = f"CAN-{fila_index:06d}"
+            nuevo_codigo = f"CAN-{int(fila_index):06d}"
             hoja.update_acell(f'P{fila_index}', nuevo_codigo)
 
         # Actualizar los datos en la hoja
@@ -931,10 +930,9 @@ def procesar_inscripcion():
         hoja.update_acell(f'S{fila_index}', monto)   # Monto en la columna S
         hoja.update_acell(f'T{fila_index}', fecha)   # Fecha en la columna T
 
-        return jsonify({'success': "✅ Inscripción actualizada correctamente.", 'codigo': nuevo_codigo})
-    
+        return jsonify({'success': "Inscripción actualizada correctamente."})
     except Exception as e:
-        return jsonify({'error': f"❌ Error al actualizar la inscripción: {str(e)}"}), 500
+        return jsonify({'error': f"Error al actualizar la inscripción: {str(e)}"}), 500
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():

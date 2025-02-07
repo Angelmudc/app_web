@@ -31,19 +31,28 @@
                 <p><strong>Código:</strong> {{ datos_candidata.get('codigo', 'Se generará automáticamente') }}</p>
             </div>
 
-            <form method="POST" action="{{ url_for('procesar_inscripcion') }}">
-                <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
-                
+            <form method="POST" action="/procesar_inscripcion">
+                <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+            
+                <label for="nombre">Nombre:</label>
+                <input type="text" id="nombre" name="nombre" value="{{ datos_candidata.nombre }}" readonly>
+            
+                <label for="telefono">Teléfono:</label>
+                <input type="text" id="telefono" name="telefono" value="{{ datos_candidata.telefono if datos_candidata.telefono != 'No disponible' else '' }}" readonly>
+            
                 <label for="estado">Estado:</label>
-                <input type="text" name="estado" value="Sí" readonly>
-
+                <select id="estado" name="estado">
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
+            
                 <label for="monto">Monto:</label>
-                <input type="number" name="monto" required>
-
+                <input type="text" id="monto" name="monto" required>
+            
                 <label for="fecha">Fecha:</label>
-                <input type="date" name="fecha" required>
-
-                <button type="submit">💾 Guardar Inscripción</button>
+                <input type="date" id="fecha" name="fecha" required>
+            
+                <button type="submit">Guardar Inscripción</button>
             </form>
         {% endif %}
     </div>
