@@ -23,6 +23,7 @@ import traceback
 from flask import Flask, request, render_template
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from googleapiclient.discovery import build
 
 
 
@@ -906,56 +907,35 @@ def inscripcion():
 def procesar_inscripcion():
     try:
         data = request.json
-        fila_index_str = data.get("fila_index", "").strip()
-
-        # 🔹 Verificar si fila_index es un número válido
-        if not fila_index_str.isdigit():
-            return jsonify({"success": False, "error": "Índice de fila no válido (no es un número)"})
-
-        fila_index = int(fila_index_str)  # Convertir a entero después de validar
-
-        # 🔹 Obtener la hoja de cálculo
-        hoja = obtener_datos_editar()  # Función que conecta con Google Sheets
-
-        # 🔹 Verificar que el índice de fila esté dentro del rango de la hoja
-        if fila_index < 1 or fila_index >= len(hoja):
-            return jsonify({"success": False, "error": f"Índice de fila {fila_index} fuera de rango"})
-
-        # 🔹 Obtener la fila específica
-        fila = hoja[fila_index]  # Acceder a la fila correspondiente
-
+        fila_index = int(data.get("fila_index", "").strip())  # Asegurar número válido
         estado = data.get("estado", "").strip()
         monto = data.get("monto", "").strip()
         fecha = data.get("fecha", "").strip()
 
-        # 🔹 Verificar si la candidata ya tiene un código en la columna P (índice 15)
+        # Obtener los datos de la hoja de cálculo
+        hoja = sheet.get_all_values()  # Asegurar que sheet está bien definido
+        fila = hoja[fila_index] if len(hoja) > fila_index else None  # Obtener fila específica
+
+        if not fila:
+            return jsonify({"success": False, "error": "Índice de fila no válido"})
+
+        # Verificar si ya tiene código en la columna P (índice 15)
         codigo_actual = fila[15] if len(fila) > 15 else ""
 
         if not codigo_actual or codigo_actual.strip() == "":
-            nuevo_codigo = generar_codigo_unico()  # Genera un código único
-            fila[15] = nuevo_codigo  # Guarda el código en la columna P
+            nuevo_codigo = generar_codigo_unico()  # Generar un código si no tiene
+            sheet.update_cell(fila_index + 1, 16, nuevo_codigo)  # Guardar en la columna P
         else:
-            nuevo_codigo = codigo_actual  # Mantiene el código si ya existe
+            nuevo_codigo = codigo_actual  # Mantener el código si ya existe
 
-        # 🔹 Guardar los datos en la hoja de cálculo (columnas R, S, T y código en P)
-        hoja[fila_index][15] = nuevo_codigo  # Código
-        hoja[fila_index][17] = estado  # Estado
-        hoja[fila_index][18] = monto  # Monto
-        hoja[fila_index][19] = fecha  # Fecha
-
-        # 🔹 Actualizar la hoja en Google Sheets
-        rango_actualizar = f"P{fila_index+1}:T{fila_index+1}"  # Asegurar que el rango está correcto
-        cliente.values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_actualizar,
-            valueInputOption="RAW",
-            body={"values": [[nuevo_codigo, estado, monto, fecha]]}
-        ).execute()
+        # Guardar los datos en la hoja de cálculo
+        sheet.update(f"R{fila_index+1}:U{fila_index+1}", [[estado, monto, fecha, nuevo_codigo]])
 
         return jsonify({"success": True, "codigo": nuevo_codigo})
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
     try:
