@@ -4,50 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
-    <script defer src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
 
-    <h2>🔍 Inscripción de Candidatas</h2>
+    <h1>🔍 Inscripción de Candidatas</h1>
 
-    <!-- Buscar Candidata -->
-    <input type="text" id="busqueda" placeholder="Buscar por cédula o nombre">
-    <button id="buscar">🔎 Buscar</button>
+    <label for="busqueda">Buscar por cédula o nombre:</label>
+    <input type="text" id="busqueda">
+    <button id="buscar">🔍 Buscar</button>
 
-    <hr>
+    <h2>📄 Datos de la Candidata</h2>
+    <p>Código: <span id="codigo">Se generará automáticamente</span></p>
+    <p>Nombre: <span id="nombre">No disponible</span></p>
+    <p>Cédula: <span id="cedula">No disponible</span></p>
+    <p>Teléfono: <span id="telefono">No disponible</span></p>
+    <p>Ciudad: <span id="ciudad">No disponible</span></p>
 
-    <!-- Datos de la Candidata -->
-    <h3>📄 Datos de la Candidata</h3>
-    <p><strong>Código:</strong> <span id="codigo">Se generará automáticamente</span></p>
-    <p><strong>Nombre:</strong> <span id="nombre">No disponible</span></p>
-    <p><strong>Cédula:</strong> <span id="cedula">No disponible</span></p>
-    <p><strong>Teléfono:</strong> <span id="telefono">No disponible</span></p>
-    <p><strong>Ciudad:</strong> <span id="ciudad">No disponible</span></p>
+    <h2>📝 Completar Inscripción</h2>
+    <input type="hidden" id="fila_index">
 
-    <hr>
+    <label for="estado">Estado:</label>
+    <select id="estado">
+        <option value="Sí">Sí</option>
+        <option value="No">No</option>
+    </select>
 
-    <!-- Formulario para completar inscripción -->
-    <h3>📝 Completar Inscripción</h3>
-    <form id="formInscripcion">
-        <input type="hidden" id="fila_index"> <!-- Guarda la fila index para la actualización -->
+    <label for="monto">Monto:</label>
+    <input type="text" id="monto" value="500">
 
-        <label for="estado">Estado:</label>
-        <select id="estado">
-            <option value="Sí" selected>Sí</option>
-            <option value="No">No</option>
-        </select>
+    <label for="fecha">Fecha:</label>
+    <input type="date" id="fecha">
 
-        <label for="monto">Monto:</label>
-        <input type="number" id="monto" placeholder="Ingrese el monto">
-
-        <label for="fecha">Fecha:</label>
-        <input type="date" id="fecha">
-
-        <button type="button" id="guardar">💾 Guardar Inscripción</button>
-    </form>
+    <button id="guardar">💾 Guardar Inscripción</button>
 
     <script>
-        // 🔹 Función para buscar candidata
+        // Función para buscar candidata
         document.getElementById("buscar").addEventListener("click", function() {
             const busqueda = document.getElementById("busqueda").value.trim();
 
@@ -56,7 +47,7 @@
                 return;
             }
 
-            fetch('/buscar_inscripcion?query=${encodeURIComponent(busqueda)}')
+            fetch('/buscar_inscripcion?query=' + encodeURIComponent(busqueda))
             .then(response => response.json())
             .then(data => {
                 if (data.fila_index) {
@@ -70,26 +61,18 @@
                     alert("❌ No se encontró la candidata.");
                 }
             })
-            .catch(error => {
-                console.error("❌ Error en la búsqueda:", error);
-                alert("❌ Hubo un error al buscar la candidata.");
-            });
+            .catch(error => console.error("Error en la búsqueda:", error));
         });
 
-        // 🔹 Función para guardar inscripción
+        // Función para guardar inscripción
         document.getElementById("guardar").addEventListener("click", function() {
-            const filaIndex = document.getElementById("fila_index").value.trim();
+            const filaIndex = document.getElementById("fila_index").value;
             const estado = document.getElementById("estado").value;
-            const monto = document.getElementById("monto").value.trim();
+            const monto = document.getElementById("monto").value;
             const fecha = document.getElementById("fecha").value;
 
             if (!filaIndex) {
-                alert("⚠️ Error: No se encontró el índice de la fila. Realiza la búsqueda antes de guardar.");
-                return;
-            }
-
-            if (!monto || !fecha) {
-                alert("⚠️ Debes ingresar un monto y una fecha.");
+                alert("❌ Error: No se encontró un índice de fila válido.");
                 return;
             }
 
@@ -105,17 +88,17 @@
             })
             .then(response => response.json())
             .then(data => {
-    if (data.success) {
-        alert("✅ Inscripción guardada exitosamente.");
-        location.reload();
-    } else {
-        alert('❌ Error al actualizar: ${data.error}');
-    }
-})
-.catch(error => {
-    console.error("❌ Error en la solicitud:", error);
-    alert("❌ Error al guardar la inscripción. Inténtalo de nuevo.");
-});
+                if (data.success) {
+                    alert("✅ Inscripción guardada exitosamente.");
+                    location.reload();
+                } else {
+                    alert('❌ Error al actualizar: ${data.error}');
+                }
+            })
+            .catch(error => {
+                console.error("❌ Error en la solicitud:", error);
+                alert("❌ Error al guardar la inscripción. Inténtalo de nuevo.");
+            });
         });
     </script>
 
