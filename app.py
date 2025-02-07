@@ -906,32 +906,33 @@ def inscripcion():
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     try:
+        # Obtener los datos enviados desde el frontend
         datos = request.get_json()
-        fila_index = datos.get("fila_index")
+        fila_index = datos.get("fila_index")  # Número de fila
         estado = datos.get("estado")
         monto = datos.get("monto")
         fecha = datos.get("fecha")
 
+        # Validar que la fila_index es válida
         if not fila_index or not fila_index.isdigit():
-            return jsonify({"error": "Índice de fila inválido"}), 400
-        
-        fila_index = int(fila_index)
+            return jsonify({"success": False, "error": "Índice de fila inválido"}), 400
 
-        # Verificar que la fila existe antes de actualizar
-        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
-        filas_existentes = hoja.row_count  # Número de filas en la hoja
+        fila = int(fila_index) + 1  # Convertir a entero y ajustar índice (Google Sheets inicia en 1)
 
-        if fila_index > filas_existentes:
-            return jsonify({"error": "El índice de la fila no existe en la hoja"}), 400
+        # Validar si la fila existe en la hoja de cálculo
+        total_filas = len(sheet.get_all_values())  # Cantidad total de filas en la hoja
+        if fila > total_filas:
+            return jsonify({"success": False, "error": "La fila especificada no existe"}), 400
 
-        # Actualizar los datos en la hoja
-        hoja.update_acell(f'Q{fila_index}', estado)  # Estado en la columna Q
-        hoja.update_acell(f'S{fila_index}', monto)   # Monto en la columna S
-        hoja.update_acell(f'T{fila_index}', fecha)   # Fecha en la columna T
+        # Guardar datos en las columnas correspondientes
+        sheet.update_cell(fila, 18, estado)  # Columna "R" (Estado)
+        sheet.update_cell(fila, 19, monto)   # Columna "S" (Monto)
+        sheet.update_cell(fila, 20, fecha)   # Columna "T" (Fecha)
 
-        return jsonify({"success": "Inscripción actualizada correctamente."})
+        return jsonify({"success": True, "mensaje": "Inscripción guardada correctamente"})
+
     except Exception as e:
-        return jsonify({"error": f"Error al actualizar la inscripción: {str(e)}"}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():
@@ -959,7 +960,7 @@ def guardar_inscripcion():
         return jsonify({'success': 'Inscripción guardada correctamente.'})
     except Exception as e:
         return jsonify({'error': f'Error al guardar la inscripción: {str(e)}'}), 500
-        
+
 @app.route('/buscar_inscripcion', methods=['GET'])
 def buscar_inscripcion():
     busqueda = request.args.get("query", "").strip()
