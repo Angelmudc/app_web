@@ -429,7 +429,6 @@ def buscar_fila_por_codigo_nombre_cedula(busqueda):
                 return fila_index, fila  # Devuelve el índice de la fila y la fila completa
     return None, None  # No se encontró
 
-
 def generar_codigo_unico():
     """
     Genera un código único para las candidatas en formato 'CAN-XXXXXX'.
@@ -903,36 +902,35 @@ def inscripcion():
 
     return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
 
-@app.route('/procesar_inscripcion', methods=['POST'])
+@app.route("/procesar_inscripcion", methods=["POST"])
 def procesar_inscripcion():
     try:
-        # Obtener los datos enviados desde el frontend
-        datos = request.get_json()
-        fila_index = datos.get("fila_index")  # Número de fila
-        estado = datos.get("estado")
-        monto = datos.get("monto")
-        fecha = datos.get("fecha")
+        data = request.json
+        fila_index = int(data.get("fila_index"))  # Asegurar que sea un número válido
+        estado = data.get("estado", "").strip()
+        monto = data.get("monto", "").strip()
+        fecha = data.get("fecha", "").strip()
 
-        # Validar que la fila_index es válida
-        if not fila_index or not fila_index.isdigit():
-            return jsonify({"success": False, "error": "Índice de fila inválido"}), 400
+        # 🔹 Obtener la hoja de cálculo
+        hoja = obtener_hoja_trabajo()  # Función para conectar con Google Sheets
+        fila = hoja.row_values(fila_index)  # Obtener los valores actuales de la fila
 
-        fila = int(fila_index)  # 🔹 Ahora usa el índice exacto (SIN +1)
+        # 🔹 Verificar si la candidata ya tiene un código en la columna P (índice 15)
+        codigo_actual = fila[15] if len(fila) > 15 else ""
 
-        # Validar si la fila existe en la hoja de cálculo
-        total_filas = len(sheet.get_all_values())  # Cantidad total de filas en la hoja
-        if fila > total_filas:
-            return jsonify({"success": False, "error": "La fila especificada no existe"}), 400
+        if not codigo_actual or codigo_actual.strip() == "":
+            nuevo_codigo = generar_codigo_unico()  # Genera un código si no tiene
+            hoja.update_cell(fila_index, 16, nuevo_codigo)  # Guarda en la columna P
+        else:
+            nuevo_codigo = codigo_actual  # Mantiene el código si ya existe
 
-        # Guardar datos en las columnas correspondientes
-        sheet.update_cell(fila, 18, estado)  # Columna "R" (Estado)
-        sheet.update_cell(fila, 19, monto)   # Columna "S" (Monto)
-        sheet.update_cell(fila, 20, fecha)   # Columna "T" (Fecha)
+        # 🔹 Guardar los datos en la hoja de cálculo (Columnas R, S, T y el código en P)
+        hoja.update(f"R{fila_index}:U{fila_index}", [[estado, monto, fecha]])
 
-        return jsonify({"success": True, "mensaje": "Inscripción guardada correctamente"})
+        return jsonify({"success": True, "codigo": nuevo_codigo})
 
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route('/guardar_inscripcion', methods=['POST'])
 def guardar_inscripcion():

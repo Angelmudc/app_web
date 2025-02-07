@@ -66,39 +66,37 @@
 
         // Función para guardar inscripción
         document.getElementById("guardar").addEventListener("click", function() {
-            const filaIndex = document.getElementById("fila_index").value;
-            const estado = document.getElementById("estado").value;
-            const monto = document.getElementById("monto").value;
-            const fecha = document.getElementById("fecha").value;
+        const filaIndex = document.getElementById("fila_index").value;
+        const estado = document.getElementById("estado").value;
+        const monto = document.getElementById("monto").value;
+        const fecha = document.getElementById("fecha").value;
 
-            if (!filaIndex) {
-                alert("❌ Error: No se encontró un índice de fila válido.");
-                return;
+        fetch("/procesar_inscripcion", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                fila_index: filaIndex,
+                estado: estado,
+                monto: monto,
+                fecha: fecha
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // ✅ Mostrar el código único generado
+                document.getElementById("codigo").textContent = data.codigo || "Código no disponible";
+
+                alert("✅ Inscripción guardada correctamente");
+                location.reload();
+            } else {
+                alert('❌ Error al actualizar: ${data.error || "Respuesta inesperada"}');
             }
-
-            fetch("/procesar_inscripcion", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-        fila_index: filaIndex,
-        estado: estado,
-        monto: monto,
-        fecha: fecha
-    })
-})
-.then(response => response.json())
-.then(data => {
-    if (data.success) {
-        alert("✅ Inscripción guardada correctamente");
-        location.reload();
-    } else {
-        alert('❌ Error al actualizar: ${data.error || "Respuesta inesperada"}');
-    }
-})
-.catch(error => {
-    console.error("❌ Error en la solicitud:", error);
-    alert("❌ Error al guardar la inscripción. Inténtalo de nuevo.");
-});
+        })
+        .catch(error => {
+            console.error("❌ Error en la solicitud:", error);
+            alert("❌ Error al guardar la inscripción. Inténtalo de nuevo.");
+        });
         });
     </script>
 
