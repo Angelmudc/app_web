@@ -29,22 +29,33 @@
     <!-- Formulario para inscribir -->
     <h2>📝 Completar Inscripción</h2>
     <form id="inscripcionForm" method="POST" action="{{ url_for('procesar_inscripcion') }}">
-        <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
+        <input type="hidden" id="fila_index" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
         
         <label for="estado">Estado:</label>
         <select name="estado" required>
             <option value="Sí">Sí</option>
             <option value="No">No</option>
         </select>
-
+    
         <label for="monto">Monto (DOP):</label>
         <input type="number" name="monto" required>
-
+    
         <label for="fecha">Fecha:</label>
         <input type="date" name="fecha" value="{{ fecha_hoy }}" required>
-
+    
         <button type="submit">💾 Guardar Inscripción</button>
     </form>
+    
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        let filaIndex = document.getElementById("fila_index").value;
+        
+        if (!filaIndex) {
+            console.error("❌ Error: Fila index no está definido en el HTML.");
+            alert("Error interno: No se encontró el índice de la fila.");
+        }
+    });
+    </script>
     {% endif %}
 
     {% if mensaje %}

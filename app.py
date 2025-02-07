@@ -909,12 +909,13 @@ def inscripcion():
 @app.route('/procesar_inscripcion', methods=['POST'])
 def procesar_inscripcion():
     fila_index = request.form.get('fila_index')
-    estado = request.form.get('estado')
-    monto = request.form.get('monto')
-    fecha = request.form.get('fecha')
 
     if not fila_index:
         return jsonify({'error': "Error: No se encontró el índice de la fila."}), 400
+
+    estado = request.form.get('estado')
+    monto = request.form.get('monto')
+    fecha = request.form.get('fecha')
 
     try:
         hoja = client.open("Nueva hoja").worksheet("Nueva hoja")
