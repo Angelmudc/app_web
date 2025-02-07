@@ -912,7 +912,7 @@ def procesar_inscripcion():
         fecha = data.get("fecha", "").strip()
 
         # 🔹 Obtener la hoja de cálculo
-        hoja = obtener_hoja_trabajo()  # Función para conectar con Google Sheets
+        hoja = obtener_datos_editar()  # Función para conectar con Google Sheets
         fila = hoja.row_values(fila_index)  # Obtener los valores actuales de la fila
 
         # 🔹 Verificar si la candidata ya tiene un código en la columna P (índice 15)
