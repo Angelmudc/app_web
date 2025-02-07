@@ -7,69 +7,45 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
+    <div class="container">
+        <h2>🔍 Inscripción de Candidatas</h2>
 
-    <h2>🔍 Inscripción de Candidatas</h2>
+        <form method="POST" action="{{ url_for('inscripcion') }}">
+            <input type="text" name="buscar" placeholder="Buscar por cédula, nombre o teléfono" required>
+            <button type="submit">🔎 Buscar</button>
+        </form>
 
-    <!-- FORMULARIO DE BÚSQUEDA -->
-    <form action="/inscripcion" method="POST">
-        <input type="text" name="buscar" placeholder="Buscar por cédula o nombre" required>
-        <button type="submit">🔎 Buscar</button>
-    </form>
+        {% if mensaje %}
+            <p class="error">{{ mensaje }}</p>
+        {% endif %}
 
-    <!-- MENSAJE SI NO SE ENCONTRÓ NINGUNA CANDIDATA -->
-    {% if mensaje %}
-        <p style="color: red;">{{ mensaje }}</p>
-    {% endif %}
+        {% if datos_candidata %}
+            <div class="info-candidata">
+                <h3>Detalles de la Candidata</h3>
+                <p><strong>Nombre:</strong> {{ datos_candidata.get('nombre', 'No disponible') }}</p>
+                <p><strong>Edad:</strong> {{ datos_candidata.get('edad', 'No disponible') }}</p>
+                <p><strong>Teléfono:</strong> {{ datos_candidata.get('telefono', 'No disponible') }}</p>
+                <p><strong>Dirección:</strong> {{ datos_candidata.get('direccion', 'No disponible') }}</p>
+                <p><strong>Cédula:</strong> {{ datos_candidata.get('cedula', 'No disponible') }}</p>
+                <p><strong>Estado:</strong> {{ datos_candidata.get('estado', 'No disponible') }}</p>
+                <p><strong>Código:</strong> {{ datos_candidata.get('codigo', 'Se generará automáticamente') }}</p>
+            </div>
 
-    <!-- FORMULARIO DE INSCRIPCIÓN SI SE ENCONTRÓ CANDIDATA -->
-    {% if datos_candidata %}
-    <form id="inscripcion-form" action="/procesar_inscripcion" method="POST">
-        <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+            <form method="POST" action="{{ url_for('procesar_inscripcion') }}">
+                <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
+                
+                <label for="estado">Estado:</label>
+                <input type="text" name="estado" value="Sí" readonly>
 
-        <div class="form-group">
-            <label><strong>Nombre:</strong></label>
-            <span>{{ datos_candidata.nombre if datos_candidata.nombre else "No disponible" }}</span>
-        </div>
+                <label for="monto">Monto:</label>
+                <input type="number" name="monto" required>
 
-        <div class="form-group">
-            <label><strong>Cédula:</strong></label>
-            <span>{{ datos_candidata.cedula if datos_candidata.cedula else "No disponible" }}</span>
-        </div>
+                <label for="fecha">Fecha:</label>
+                <input type="date" name="fecha" required>
 
-        <div class="form-group">
-            <label><strong>Teléfono:</strong></label>
-            <input type="text" name="telefono" value="{{ datos_candidata.telefono }}">
-        </div>
-
-        <div class="form-group">
-            <label><strong>Estado:</strong></label>
-            <input type="text" name="estado" value="Sí" readonly>
-        </div>
-
-        <div class="form-group">
-            <label><strong>Monto:</strong></label>
-            <input type="text" name="monto" value="{{ datos_candidata.monto }}">
-        </div>
-
-        <div class="form-group">
-            <label><strong>Fecha:</strong></label>
-            <input type="date" name="fecha" value="{{ datos_candidata.fecha }}">
-        </div>
-
-        <div class="form-group">
-            <label><strong>Código Asignado:</strong></label>
-            <span>
-                {% if datos_candidata.codigo and datos_candidata.codigo.startswith("CAN-") %}
-                    {{ datos_candidata.codigo }}
-                {% else %}
-                    Código pendiente de generación
-                {% endif %}
-            </span>
-        </div>
-
-        <button type="submit">📌 Guardar Inscripción</button>
-    </form>
-    {% endif %}
-
+                <button type="submit">💾 Guardar Inscripción</button>
+            </form>
+        {% endif %}
+    </div>
 </body>
 </html>
