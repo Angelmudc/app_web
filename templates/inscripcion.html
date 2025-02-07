@@ -161,38 +161,41 @@
         });
 
         // Función para guardar inscripción
-        document.getElementById("guardar").addEventListener("click", function() {
-            const filaIndex = document.getElementById("fila_index").value;
-            const estado = document.getElementById("estado").value;
-            const monto = document.getElementById("monto").value;
-            const fecha = document.getElementById("fecha").value;
+document.getElementById("guardar").addEventListener("click", function() {
+    const filaIndex = document.getElementById("fila_index").value;
+    const estado = document.getElementById("estado").value;
+    const monto = document.getElementById("monto").value;
+    const fecha = document.getElementById("fecha").value;
 
-            fetch("/procesar_inscripcion", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    fila_index: filaIndex,
-                    estado: estado,
-                    monto: monto,
-                    fecha: fecha
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log("📌 Respuesta del servidor:", data);
-                if (data.success) {
-                    mostrarAlerta('✅ Inscripción guardada correctamente. Código: ${data.codigo}', "success");
-                    document.getElementById("codigo").textContent = data.codigo; // Ahora el código aparece
-                } else {
-                    let errorMessage = data.error ? data.error : "Respuesta inesperada";
-                    mostrarAlerta('❌ Error al actualizar: ${errorMessage}', "error");
-                }
-            })
-            .catch(error => {
-                console.error("Error al guardar:", error);
-                mostrarAlerta("❌ Error en la conexión.", "error");
-            });
-        });
+    fetch("/procesar_inscripcion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            fila_index: filaIndex,
+            estado: estado,
+            monto: monto,
+            fecha: fecha
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("📌 Respuesta del servidor:", data);
+
+        if (data.success) {
+            // ✅ Si hay un código, lo muestra correctamente en la alerta y en la página
+            const codigoAsignado = data.codigo ? data.codigo : "Código no disponible";
+            document.getElementById("codigo").textContent = codigoAsignado;
+            mostrarAlerta('✅ Inscripción guardada correctamente.<br><strong>Código: ${codigoAsignado}</strong>', "success");
+        } else {
+            let errorMessage = data.error ? data.error : "Respuesta inesperada";
+            mostrarAlerta('❌ Error al actualizar: ${errorMessage}', "error");
+        }
+    })
+    .catch(error => {
+        console.error("Error al guardar:", error);
+        mostrarAlerta("❌ Error en la conexión.", "error");
+    });
+});
     </script>
 
 </body>
