@@ -133,14 +133,14 @@
         })
         .then(response => response.json())
         .then(data => {
-            console.log("📌 Respuesta del servidor:", data); // Debug para revisar qué devuelve el servidor
-            if (data.success) {
-                mostrarMensaje('✅ Inscripción guardada correctamente. Código: ${data.codigo}', "success");
-            } else {
-                let errorMessage = data.error ? data.error : "Respuesta inesperada";
-                mostrarMensaje('❌ Error al actualizar: ${errorMessage}', "error");
-            }
-        })
+    console.log("📌 Respuesta del servidor:", data); // 🔍 Debug para revisar qué devuelve el servidor
+    if (data.success) {
+        mostrarMensaje('✅ Inscripción guardada correctamente. Código: ${data.codigo}', "success");
+    } else {
+        let errorMessage = data.error ? data.error : "Respuesta inesperada";
+        mostrarMensaje('❌ Error al actualizar: ${errorMessage}', "error");
+    }
+})
         .catch(error => mostrarMensaje("❌ Error en la solicitud. Inténtalo de nuevo.", "error"));
     });
 
