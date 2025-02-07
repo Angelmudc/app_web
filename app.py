@@ -907,40 +907,33 @@ def inscripcion():
 def procesar_inscripcion():
     try:
         data = request.json
-        fila_index = int(data.get("fila_index"))
+        fila_index = int(data.get("fila_index", "0"))  # Asegurar que sea un número válido
         estado = data.get("estado", "").strip()
         monto = data.get("monto", "").strip()
         fecha = data.get("fecha", "").strip()
 
-        # Obtener los datos actuales
-        hoja = obtener_datos_editar()
-        if fila_index >= len(hoja):
+        # Verificar que el índice de fila sea válido
+        if fila_index < 1:
             return jsonify({"success": False, "error": "Índice de fila no válido"})
 
-        fila = hoja[fila_index]
+        # ✅ Conectar a la hoja de Google Sheets
+        sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")  # Asegurar conexión
+        datos_hoja = sheet.get_all_values()  # Obtener todas las filas
+        fila = datos_hoja[fila_index - 1]  # Obtener valores actuales
 
-        # Obtener código desde la columna P (índice 15)
-        # Obtener código desde la columna P (índice 15)
-codigo_asignado = fila[15] if len(fila) > 15 and fila[15] else generar_codigo_unico()
+        # ✅ Verificar si la candidata ya tiene un código en la columna P (índice 15)
+        codigo_actual = fila[15] if len(fila) > 15 else ""
 
-# Si no tiene código, se genera y se guarda en la columna P
-if not fila or len(fila) <= 15 or fila[15].strip() == "":
-    service.spreadsheets().values().update(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"Nueva hoja!P{fila_index + 1}",
-        valueInputOption="RAW",
-        body={"values": [[codigo_asignado]]}
-    ).execute()
+        if not codigo_actual or codigo_actual.strip() == "":
+            nuevo_codigo = generar_codigo_unico()  # Generar solo si no existe
+            sheet.update(f"P{fila_index}", [[nuevo_codigo]])  # Guardar en la columna P
+        else:
+            nuevo_codigo = codigo_actual  # Mantener código existente
 
-# Guardar los datos en las columnas correspondientes (R, S, T)
-service.spreadsheets().values().update(
-    spreadsheetId=SPREADSHEET_ID,
-    range=f"Nueva hoja!R{fila_index + 1}:T{fila_index + 1}",
-    valueInputOption="RAW",
-    body={"values": [[estado, monto, fecha]]}
-).execute()
+        # ✅ Guardar los datos en la hoja de cálculo en las columnas correctas
+        sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])  # Solo estado, monto y fecha
 
-        return jsonify({"success": True, "codigo": codigo_asignado})
+        return jsonify({"success": True, "codigo": nuevo_codigo})
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
