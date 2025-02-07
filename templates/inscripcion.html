@@ -92,7 +92,7 @@
                     alert("✅ Inscripción guardada exitosamente.");
                     location.reload();
                 } else {
-                    alert('❌ Error al actualizar: ${data.error}');
+                    alert("❌ Error al actualizar: " + (data.error || "Error desconocido"));
                 }
             })
             .catch(error => {
