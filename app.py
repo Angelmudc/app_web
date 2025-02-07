@@ -917,7 +917,7 @@ def procesar_inscripcion():
         if not fila_index or not fila_index.isdigit():
             return jsonify({"success": False, "error": "Índice de fila inválido"}), 400
 
-        fila = int(fila_index) + 1  # Convertir a entero y ajustar índice (Google Sheets inicia en 1)
+        fila = int(fila_index)  # 🔹 Ahora usa el índice exacto (SIN +1)
 
         # Validar si la fila existe en la hoja de cálculo
         total_filas = len(sheet.get_all_values())  # Cantidad total de filas en la hoja
