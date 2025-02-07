@@ -5,56 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscripción de Candidatas</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
 </head>
 <body>
-    <div class="container">
-        <h2>🔍 Inscripción de Candidatas</h2>
+    <h1>🔍 Inscripción de Candidatas</h1>
+    
+    <!-- Formulario de búsqueda -->
+    <form id="buscarForm" method="POST" action="{{ url_for('inscripcion') }}">
+        <input type="text" name="buscar" placeholder="Buscar por cédula o nombre" required>
+        <button type="submit">🔍 Buscar</button>
+    </form>
 
-        <form method="POST" action="{{ url_for('inscripcion') }}">
-            <input type="text" name="buscar" placeholder="Buscar por cédula, nombre o teléfono" required>
-            <button type="submit">🔎 Buscar</button>
-        </form>
-
-        {% if mensaje %}
-            <p class="error">{{ mensaje }}</p>
-        {% endif %}
-
-        {% if datos_candidata %}
-            <div class="info-candidata">
-                <h3>Detalles de la Candidata</h3>
-                <p><strong>Nombre:</strong> {{ datos_candidata.get('nombre', 'No disponible') }}</p>
-                <p><strong>Edad:</strong> {{ datos_candidata.get('edad', 'No disponible') }}</p>
-                <p><strong>Teléfono:</strong> {{ datos_candidata.get('telefono', 'No disponible') }}</p>
-                <p><strong>Dirección:</strong> {{ datos_candidata.get('direccion', 'No disponible') }}</p>
-                <p><strong>Cédula:</strong> {{ datos_candidata.get('cedula', 'No disponible') }}</p>
-                <p><strong>Estado:</strong> {{ datos_candidata.get('estado', 'No disponible') }}</p>
-                <p><strong>Código:</strong> {{ datos_candidata.get('codigo', 'Se generará automáticamente') }}</p>
-            </div>
-
-            <form method="POST" action="/procesar_inscripcion">
-                <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-            
-                <label for="nombre">Nombre:</label>
-                <input type="text" id="nombre" name="nombre" value="{{ datos_candidata.nombre }}" readonly>
-            
-                <label for="telefono">Teléfono:</label>
-                <input type="text" id="telefono" name="telefono" value="{{ datos_candidata.telefono if datos_candidata.telefono != 'No disponible' else '' }}" readonly>
-            
-                <label for="estado">Estado:</label>
-                <select id="estado" name="estado">
-                    <option value="Sí">Sí</option>
-                    <option value="No">No</option>
-                </select>
-            
-                <label for="monto">Monto:</label>
-                <input type="text" id="monto" name="monto" required>
-            
-                <label for="fecha">Fecha:</label>
-                <input type="date" id="fecha" name="fecha" required>
-            
-                <button type="submit">Guardar Inscripción</button>
-            </form>
-        {% endif %}
+    {% if datos_candidata %}
+    <div class="candidata-info">
+        <h2>📋 Datos de la Candidata</h2>
+        <p><strong>Código:</strong> {{ datos_candidata.get('codigo', 'No asignado') }}</p>
+        <p><strong>Nombre:</strong> {{ datos_candidata.get('nombre', 'No disponible') }}</p>
+        <p><strong>Cédula:</strong> {{ datos_candidata.get('cedula', 'No disponible') }}</p>
+        <p><strong>Teléfono:</strong> {{ datos_candidata.get('telefono', 'No disponible') }}</p>
+        <p><strong>Ciudad:</strong> {{ datos_candidata.get('ciudad', 'No disponible') }}</p>
     </div>
+
+    <!-- Formulario para inscribir -->
+    <h2>📝 Completar Inscripción</h2>
+    <form id="inscripcionForm" method="POST" action="{{ url_for('procesar_inscripcion') }}">
+        <input type="hidden" name="fila_index" value="{{ datos_candidata.get('fila_index', '') }}">
+        
+        <label for="estado">Estado:</label>
+        <select name="estado" required>
+            <option value="Sí">Sí</option>
+            <option value="No">No</option>
+        </select>
+
+        <label for="monto">Monto (DOP):</label>
+        <input type="number" name="monto" required>
+
+        <label for="fecha">Fecha:</label>
+        <input type="date" name="fecha" value="{{ fecha_hoy }}" required>
+
+        <button type="submit">💾 Guardar Inscripción</button>
+    </form>
+    {% endif %}
+
+    {% if mensaje %}
+    <div class="mensaje">
+        <p>{{ mensaje }}</p>
+    </div>
+    {% endif %}
 </body>
 </html>
