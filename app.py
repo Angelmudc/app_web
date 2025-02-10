@@ -666,47 +666,35 @@ def sugerir():
 
 @app.route('/buscar', methods=['GET'])
 def buscar():
-    try:
-        query = request.args.get('query', '').strip().lower()
-        if not query:
-            return jsonify({"error": "Debe ingresar un dato para buscar"}), 400
+    query = request.args.get("query", "").strip()
 
-        # Obtener datos de la hoja
-        datos = obtener_datos_editar()
+    if not query:
+        return render_template("buscar.html")  # Renderiza el HTML con el formulario de búsqueda
 
-        resultados = []
-        for i, fila in enumerate(datos):
-            if len(fila) > 15:  # Asegurar que la fila tenga datos suficientes
-                codigo = fila[15].strip().lower() if len(fila) > 15 else ""  # Código en P (columna 15)
-                cedula = fila[14].strip().lower() if len(fila) > 14 else ""  # Cédula en O (columna 14)
-                nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Nombre en B (columna 1)
+    hoja = obtener_datos_editar()  # Conexión a Google Sheets
+    datos = hoja.get_all_values()  # Obtener todos los datos
 
-                # Buscar en las columnas de código, nombre y cédula
-                if query in codigo or query in cedula or query in nombre:
-                    resultados.append({
-                        "fila_index": i + 1,  # Índice real en la hoja
-                        "codigo": fila[15] if len(fila) > 15 else "",
-                        "nombre": fila[1] if len(fila) > 1 else "",
-                        "cedula": fila[14] if len(fila) > 14 else "",
-                        "telefono": fila[3] if len(fila) > 3 else "",
-                        "ciudad": fila[4] if len(fila) > 4 else "",
-                        "estado": fila[16] if len(fila) > 16 else "",
-                        "inscripcion": fila[17] if len(fila) > 17 else "",
-                        "monto": fila[18] if len(fila) > 18 else "",
-                        "fecha": fila[19] if len(fila) > 19 else "",
-                        "experiencia": fila[9] if len(fila) > 9 else "",
-                        "referencias": fila[10] if len(fila) > 10 else "",
-                        "modalidad": fila[5] if len(fila) > 5 else "",
-                        "areas_experiencia": fila[11] if len(fila) > 11 else ""
-                    })
+    resultados = []
 
-        if not resultados:
-            return jsonify({"error": "No se encontraron coincidencias"}), 404
+    for fila in datos:
+        if len(fila) > 15:  # Asegurar que la fila tiene datos suficientes
+            codigo = fila[15]  # Columna P (Código)
+            cedula = fila[14]  # Columna O (Cédula)
+            nombre = fila[1]   # Columna B (Nombre)
 
-        return jsonify({"resultados": resultados})
+            if query.lower() in codigo.lower() or query.lower() in cedula.lower() or query.lower() in nombre.lower():
+                resultados.append({
+                    "codigo": codigo,
+                    "nombre": nombre,
+                    "cedula": cedula,
+                    "telefono": fila[3] if len(fila) > 3 else "No disponible",  # Columna D (Teléfono)
+                    "ciudad": fila[4] if len(fila) > 4 else "No disponible",    # Columna E (Ciudad)
+                })
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    if resultados:
+        return jsonify(resultados[0])  # Enviar el primer resultado encontrado
+    else:
+        return jsonify({"error": "No se encontró ninguna coincidencia"}), 404
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
