@@ -819,6 +819,7 @@ def editar():
                     nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                     cedula = fila[14].strip() if len(fila) > 14 else ""
 
+                    # 🔹 Si el código está vacío, se ignora y la candidata sigue apareciendo
                     if busqueda in nombre or busqueda == cedula:
                         resultados.append({
                             'id': fila_index,  # ✅ Usamos el índice de la fila como identificador
