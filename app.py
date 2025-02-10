@@ -825,7 +825,7 @@ def editar():
                         # 🔹 Permitir búsqueda de candidatas sin código
                         if busqueda in nombre or busqueda == cedula:
                             resultados.append({
-                                'id': fila_index,  # 🔹 Identificador basado en la fila
+                                'fila_index': fila_index,  # ✅ Guardamos el índice real
                                 'nombre': fila[1] if len(fila) > 1 else "",
                                 'direccion': fila[4] if len(fila) > 4 else "",
                                 'telefono': fila[3] if len(fila) > 3 else "",
@@ -845,7 +845,7 @@ def editar():
                 valores = hoja.get("values", [])
 
                 if 1 <= fila_index < len(valores):
-                    fila = valores[fila_index - 1]  # 🔹 Ajuste en el índice de la fila
+                    fila = valores[fila_index - 1]  # ✅ Ajuste correcto para el índice
 
                     candidata_detalles = {
                         'fila_index': fila_index,
@@ -866,7 +866,7 @@ def editar():
                 mensaje = f"❌ Error al obtener detalles: {e}"
 
         elif 'guardar' in request.form:
-            fila_index = int(request.form.get('fila_index'))
+            fila_index = int(request.form.get('fila_index'))  # ✅ Ahora el índice está bien
             nuevos_datos = {
                 "nombre": request.form.get('nombre', '').strip(),
                 "edad": request.form.get('edad', '').strip(),
@@ -899,7 +899,7 @@ def editar():
                         }.get(campo, "")
 
                         if columna:
-                            rango = f"Nueva hoja!{columna}{fila_index + 1}"
+                            rango = f"Nueva hoja!{columna}{fila_index}"  # ✅ AJUSTE AQUÍ
                             service.spreadsheets().values().update(
                                 spreadsheetId=SPREADSHEET_ID,
                                 range=rango,
