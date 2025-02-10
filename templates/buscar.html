@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔍 Búsqueda de Candidatas</title>
+    <title>Búsqueda de Candidatas</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 20px;
             background-color: #f4f4f4;
+            margin: 20px;
         }
         h1 {
             text-align: center;
@@ -35,103 +35,71 @@
             cursor: pointer;
             font-weight: bold;
         }
-        button:hover {
-            background-color: #218838;
+        .resultados {
+            margin-top: 20px;
         }
-        .resultado {
-            background: #fff;
-            margin-top: 10px;
+        .resultado-item {
             padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
+            border-bottom: 1px solid #ddd;
         }
-        .error {
-            color: red;
-            font-weight: bold;
-            text-align: center;
+        .resultado-item strong {
+            color: #333;
         }
     </style>
 </head>
 <body>
 
+    <h1>🔍 Búsqueda de Candidatas</h1>
+
     <div class="container">
-        <h1>🔍 Buscar Candidata</h1>
-        
-        <input type="text" id="query" placeholder="Ingrese nombre o cédula">
-        <button id="buscar">Buscar</button>
+        <label for="busqueda">Buscar por nombre o cédula:</label>
+        <input type="text" id="busqueda">
+        <button id="buscar">🔍 Buscar</button>
 
-        <div id="mensaje" class="error">{{ mensaje }}</div>
-
-        <div id="resultados">
-            {% if resultados %}
-                {% for candidata in resultados %}
-                    <div class="resultado">
-                        <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
-                        <p><strong>Edad:</strong> {{ candidata.edad }}</p>
-                        <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
-                        <p><strong>Dirección:</strong> {{ candidata.direccion }}</p>
-                        <p><strong>Modalidad:</strong> {{ candidata.modalidad }}</p>
-                        <p><strong>Experiencia:</strong> {{ candidata.experiencia }}</p>
-                        <p><strong>Referencia Laboral:</strong> {{ candidata.referencia_laboral }}</p>
-                        <p><strong>Referencia Familiar:</strong> {{ candidata.referencia_familiar }}</p>
-                        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
-                        <p><strong>Código:</strong> {{ candidata.codigo }}</p>
-                        <p><strong>Inscripción:</strong> {{ candidata.inscripcion }}</p>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        </div>
+        <div id="resultados" class="resultados"></div>
     </div>
 
     <script>
         document.getElementById("buscar").addEventListener("click", function() {
-            const query = document.getElementById("query").value.trim();
-
-            if (!query) {
-                document.getElementById("mensaje").textContent = "⚠️ Ingresa un nombre o cédula para buscar.";
+            const busqueda = document.getElementById("busqueda").value.trim();
+            if (!busqueda) {
+                alert("⚠️ Ingresa un nombre o cédula para buscar.");
                 return;
             }
 
-            fetch('/buscar?query=' + encodeURIComponent(query))
-            .then(response => response.text())  // Usa .text() para depuración
-            .then(text => {
-                try {
-                    let data = JSON.parse(text);
-                    let resultadosDiv = document.getElementById("resultados");
-                    resultadosDiv.innerHTML = "";
+            fetch('/buscar?query=${encodeURIComponent(busqueda)}')
+            .then(response => response.json())
+            .then(data => {
+                const resultadosDiv = document.getElementById("resultados");
+                resultadosDiv.innerHTML = "";
 
-                    if (data.resultados.length > 0) {
-                        data.resultados.forEach(candidata => {
-                            let div = document.createElement("div");
-                            div.classList.add("resultado");
-                            div.innerHTML = `
-                                <p><strong>Nombre:</strong> ${candidata.nombre}</p>
-                                <p><strong>Edad:</strong> ${candidata.edad}</p>
-                                <p><strong>Teléfono:</strong> ${candidata.telefono}</p>
-                                <p><strong>Dirección:</strong> ${candidata.direccion}</p>
-                                <p><strong>Modalidad:</strong> ${candidata.modalidad}</p>
-                                <p><strong>Experiencia:</strong> ${candidata.experiencia}</p>
-                                <p><strong>Referencia Laboral:</strong> ${candidata.referencia_laboral}</p>
-                                <p><strong>Referencia Familiar:</strong> ${candidata.referencia_familiar}</p>
-                                <p><strong>Cédula:</strong> ${candidata.cedula}</p>
-                                <p><strong>Código:</strong> ${candidata.codigo}</p>
-                                <p><strong>Inscripción:</strong> ${candidata.inscripcion}</p>
-                            `;
-                            resultadosDiv.appendChild(div);
-                        });
-                    } else {
-                        document.getElementById("mensaje").textContent = "❌ No se encontraron resultados.";
-                    }
-                } catch (error) {
-                    console.error("Error al procesar la respuesta JSON:", error);
-                    console.error("Respuesta del servidor:", text);
-                    document.getElementById("mensaje").textContent = "❌ Error en la búsqueda.";
+                if (data.length === 0) {
+                    resultadosDiv.innerHTML = "<p>No se encontraron resultados.</p>";
+                    return;
                 }
+
+                data.forEach(candidata => {
+                    const item = document.createElement("div");
+                    item.classList.add("resultado-item");
+
+                    item.innerHTML = `
+                        <p><strong>📌 Código:</strong> ${candidata.codigo || "No asignado"}</p>
+                        <p><strong>👤 Nombre:</strong> ${candidata.nombre}</p>
+                        <p><strong>📅 Edad:</strong> ${candidata.edad}</p>
+                        <p><strong>📞 Teléfono:</strong> ${candidata.telefono}</p>
+                        <p><strong>🏠 Dirección:</strong> ${candidata.direccion}</p>
+                        <p><strong>💼 Modalidad:</strong> ${candidata.modalidad}</p>
+                        <p><strong>📋 Experiencia:</strong> ${candidata.experiencia}</p>
+                        <p><strong>📑 Referencia Laboral:</strong> ${candidata.referencia_laboral}</p>
+                        <p><strong>👨‍👩‍👦 Referencia Familiar:</strong> ${candidata.referencia_familiar}</p>
+                        <p><strong>🆔 Cédula:</strong> ${candidata.cedula}</p>
+                        <p><strong>✅ Inscripción:</strong> ${candidata.inscripcion}</p>
+                    `;
+
+                    resultadosDiv.appendChild(item);
+                });
             })
-            .catch(error => {
-                console.error("Error en la solicitud:", error);
-                document.getElementById("mensaje").textContent = "❌ Error en la solicitud.";
-            });
+            .catch(error => console.error("Error en la búsqueda:", error));
         });
     </script>
 
