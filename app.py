@@ -810,32 +810,34 @@ def editar():
         try:
             hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
+                range="Nueva hoja!A:P"  # 🔹 Hasta la columna P para incluir el código
             ).execute()
             valores = hoja.get("values", [])
 
             for fila_index, fila in enumerate(valores[1:], start=2):  
-                if len(fila) >= 16:
+                if len(fila) >= 15:  # 🔹 Asegura que tiene al menos hasta la columna O
                     nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                     cedula = fila[14].strip() if len(fila) > 14 else ""
+                    codigo = fila[15] if len(fila) > 15 and fila[15] else "SIN CÓDIGO"  # ✅ Mensaje si está vacío
                     
                     if busqueda in nombre or busqueda == cedula:
                         resultados.append({
-                            'id': fila_index,  # ✅ Se usa solo el índice de la fila
+                            'id': fila_index,  
                             'nombre': fila[1] if len(fila) > 1 else "",
                             'direccion': fila[4] if len(fila) > 4 else "",
                             'telefono': fila[3] if len(fila) > 3 else "",
                             'cedula': fila[14] if len(fila) > 14 else "",
+                            'codigo': codigo,  # ✅ Ahora muestra "SIN CÓDIGO" si está vacío
                         })
 
         except Exception as e:
             print(f"❌ Error en la búsqueda: {e}")
 
-    if candidata_id:  # ✅ Buscar detalles con identificador único (fila_index)
+    if candidata_id:  
         try:
             hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
+                range="Nueva hoja!A:P"  # 🔹 Hasta la columna P
             ).execute()
             valores = hoja.get("values", [])
 
@@ -854,6 +856,7 @@ def editar():
                         'referencia_laboral': fila[11] if len(fila) > 11 else "",
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
                         'cedula': fila[14] if len(fila) > 14 else "",
+                        'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN CÓDIGO"  # ✅ Mensaje si no tiene código
                     }
                     break  
 
