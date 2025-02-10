@@ -799,69 +799,62 @@ def buscar():
 
     return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
 
-@app.route('/buscar', methods=['GET', 'POST'])
-def buscar():
-    resultados = []
-    candidata_detalles = None
-    busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '').strip()
+@app.route('/editar', methods=['POST'])
+def editar():
+    try:
+        # Obtener la cédula desde el formulario (Columna 15 - O)
+        cedula = request.form.get('cedula', '').strip()
 
-    if busqueda:
-        try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:O"  # ✅ Solo hasta la columna O
-            ).execute()
+        if not cedula:
+            return "❌ Error: No se proporcionó una cédula para editar.", 400
 
-            valores = hoja.get("values", [])
+        # Obtener todos los datos de la hoja (hasta la columna O)
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:O"
+        ).execute()
 
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
-                if len(fila) >= 15:  # Asegurar que tenga suficientes columnas
-                    nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                    cedula = fila[14].strip() if len(fila) > 14 else ""
+        valores = hoja.get("values", [])
 
-                    if busqueda in nombre or busqueda == cedula:
-                        resultados.append({
-                            'id': cedula if cedula else f"fila-{fila_index}",  # ✅ Usamos la cédula como identificador
-                            'nombre': fila[1] if len(fila) > 1 else "",
-                            'direccion': fila[4] if len(fila) > 4 else "",
-                            'telefono': fila[3] if len(fila) > 3 else "",
-                            'cedula': fila[14] if len(fila) > 14 else "",
-                        })
+        # Buscar la fila exacta por cédula (Columna 15 - O)
+        fila_index = None
+        for i, fila in enumerate(valores[1:], start=2):  # Saltamos la primera fila (encabezados)
+            if len(fila) > 14 and fila[14] == cedula:  # Compara con la cédula en la columna 15 (O)
+                fila_index = i
+                break
 
-        except Exception as e:
-            print(f"❌ Error en la búsqueda: {e}")
+        if fila_index is None:
+            return "❌ Error: No se encontró a la candidata con esa cédula.", 404
 
-    if candidata_id:  # ✅ Buscar detalles con cédula como identificador
-        try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:O"  # ✅ Solo hasta la columna O
-            ).execute()
+        # Datos a actualizar (por número de columna)
+        nuevos_datos = [
+            request.form.get('nombre', '').strip(),  # Columna 2 (B) - Nombre
+            request.form.get('edad', '').strip(),  # Columna 3 (C) - Edad
+            request.form.get('telefono', '').strip(),  # Columna 4 (D) - Teléfono
+            request.form.get('direccion', '').strip(),  # Columna 5 (E) - Dirección
+            request.form.get('modalidad', '').strip(),  # Columna 6 (F) - Modalidad
+            request.form.get('anos_experiencia', '').strip(),  # Columna 9 (I) - Años de experiencia
+            request.form.get('experiencia', '').strip(),  # Columna 10 (J) - Experiencia
+            request.form.get('referencia_laboral', '').strip(),  # Columna 12 (L) - Referencia laboral
+            request.form.get('referencia_familiar', '').strip(),  # Columna 13 (M) - Referencia familiar
+        ]
 
-            valores = hoja.get("values", [])
+        # Mapeo de columnas en base a los números
+        columnas_actualizar = ["B", "C", "D", "E", "F", "I", "J", "L", "M"]
+        rango = f'Nueva hoja!{columnas_actualizar[0]}{fila_index}:{columnas_actualizar[-1]}{fila_index}'
 
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Ajustamos índice de fila
-                if len(fila) > 14 and fila[14] == candidata_id:  # ✅ Compara cédula correctamente
-                    candidata_detalles = {
-                        'nombre': fila[1] if len(fila) > 1 else "",
-                        'edad': fila[2] if len(fila) > 2 else "",
-                        'telefono': fila[3] if len(fila) > 3 else "",
-                        'direccion': fila[4] if len(fila) > 4 else "",
-                        'modalidad': fila[5] if len(fila) > 5 else "",
-                        'anos_experiencia': fila[8] if len(fila) > 8 else "",
-                        'experiencia': fila[9] if len(fila) > 9 else "",
-                        'sabe_planchar': fila[10] if len(fila) > 10 else "",
-                        'referencia_laboral': fila[11] if len(fila) > 11 else "",
-                        'referencia_familiar': fila[12] if len(fila) > 12 else "",
-                        'cedula': fila[14] if len(fila) > 14 else "SIN-CÉDULA"
-                    }
-                    break  # ✅ Se detiene al encontrar la candidata correcta
+        # Enviar los datos actualizados a la hoja
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": [nuevos_datos]}
+        ).execute()
 
-        except Exception as e:
-            print(f"❌ Error al obtener detalles: {e}")
+        return "✅ Edición completada con éxito.", 200
 
-    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
+    except Exception as e:
+        return f"❌ Error en la edición: {str(e)}", 500
 
 @app.route('/guardar_edicion', methods=['POST'])
 def guardar_edicion():
