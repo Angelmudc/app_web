@@ -49,6 +49,15 @@ service = build('sheets', 'v4', credentials=credentials)
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 sheet = spreadsheet.worksheet("Nueva hoja")
 
+try:
+    resultado = service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range="Nueva hoja!A1:Z100"
+    ).execute()
+    print("✅ Conexión exitosa a Google Sheets. Datos obtenidos:", resultado)
+except Exception as e:
+    print("❌ Error conectando a Google Sheets:", e)
+
 # Configuración básica de Flask
 app = Flask(__name__)
 app.secret_key = "clave_secreta_segura"
@@ -110,6 +119,64 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
     except Exception as e:
         print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
+
+def buscar_candidatas(busqueda):
+    """
+    Busca candidatas en la hoja de cálculo por coincidencia parcial en Nombre (Columna B) o Cédula (Columna O).
+    Retorna una lista con todos los resultados encontrados.
+    """
+
+    try:
+        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")  # Accede a la hoja
+        datos = hoja.get_all_values()  # Obtiene todos los valores
+        resultados = []
+
+        # Verifica que haya datos en la hoja
+        if not datos or len(datos) < 2:
+            print("⚠️ No hay datos en la hoja de cálculo.")
+            return []
+
+        encabezados = datos[0]  # Primera fila son los encabezados
+
+        # 🔹 Buscar en cada fila (desde la segunda fila en adelante)
+        for fila_index, fila in enumerate(datos[1:], start=2):  
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
+            cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O
+
+            if not busqueda:
+                continue
+
+            busqueda = busqueda.strip().lower()
+
+            # 🔹 Coincidencia parcial en nombre o coincidencia exacta en cédula
+            if busqueda in nombre or busqueda == cedula:
+                # Asegurar que la fila tenga suficientes columnas
+                while len(fila) < 16:
+                    fila.append("")
+
+                # 🔹 Agregar resultado
+                resultados.append({
+                    "fila_index": fila_index,  # Índice de la fila en la hoja (1-based)
+                    "nombre": fila[1] if len(fila) > 1 else "No disponible",  # Columna B
+                    "edad": fila[2] if len(fila) > 2 else "No disponible",  # Columna C
+                    "telefono": fila[3] if len(fila) > 3 else "No disponible",  # Columna D
+                    "direccion": fila[4] if len(fila) > 4 else "No disponible",  # Columna E
+                    "modalidad": fila[5] if len(fila) > 5 else "No disponible",  # Columna F
+                    "anos_experiencia": fila[8] if len(fila) > 8 else "No disponible",  # Columna I
+                    "experiencia": fila[9] if len(fila) > 9 else "No disponible",  # Columna J
+                    "sabe_planchar": fila[10] if len(fila) > 10 else "No disponible",  # Columna K
+                    "referencia_laboral": fila[11] if len(fila) > 11 else "No disponible",  # Columna L
+                    "referencia_familiar": fila[12] if len(fila) > 12 else "No disponible",  # Columna M
+                    "cedula": fila[14] if len(fila) > 14 else "No disponible",  # Columna O
+                    "codigo": fila[15] if len(fila) > 15 else "No asignado",  # Columna P
+                })
+
+        # 🔹 Retorna todos los resultados encontrados
+        return resultados
+
+    except Exception as e:
+        print(f"❌ Error al buscar candidatas: {e}")
+        return []
 
 def obtener_datos_editar():
     """
@@ -670,35 +737,17 @@ def buscar():
     resultados = []
 
     if request.method == 'POST':
-        busqueda = request.form.get('busqueda', '').strip().lower()
+        busqueda = request.form.get('busqueda', '').strip()
 
         if busqueda:
-            try:
-                datos = obtener_datos_editar()  # Esta función debería retornar todos los datos de la hoja como listas de listas
-                
-                for fila_index, fila in enumerate(datos, start=2):  # Asumiendo que la fila 1 tiene los encabezados
-                    nombre = fila[1].lower() if len(fila) > 1 else ""  # Asumiendo que el nombre está en la columna B
-                    cedula = fila[14].lower() if len(fila) > 14 else ""  # Asumiendo que la cédula está en la columna O
-                    telefono = fila[3].lower() if len(fila) > 3 else ""  # Asumiendo que el teléfono está en la columna D
-                    
-                    # Verificar si la búsqueda coincide con alguna de las columnas
-                    if busqueda in nombre or busqueda in cedula or busqueda in telefono:
-                        resultados.append({
-                            'fila_index': fila_index,
-                            'nombre': fila[1],
-                            'cedula': fila[14],
-                            'telefono': fila[3]
-                        })
-                
-                if not resultados:
-                    mensaje = "No se encontraron resultados."
-            except Exception as e:
-                mensaje = f"Error al buscar en la hoja de cálculo: {str(e)}"
+            resultados = buscar_candidatas(busqueda)
+            if not resultados:
+                mensaje = "No se encontraron resultados."
+
         else:
-            mensaje = "Por favor, introduce un nombre, cédula o teléfono para buscar."
+            mensaje = "Por favor, introduce un nombre o cédula para buscar."
 
     return render_template('buscar.html', resultados=resultados, mensaje=mensaje)
-
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
