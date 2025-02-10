@@ -666,36 +666,36 @@ def sugerir():
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
-    resultados = []
     mensaje = ""
+    resultados = []
 
     if request.method == 'POST':
         busqueda = request.form.get('busqueda', '').strip().lower()
 
         if busqueda:
             try:
-                hoja = gc.open_by_key(SPREADSHEET_ID).worksheet('Nueva hoja')
-                # Obtener todos los registros de la hoja
-                registros = hoja.get_all_records()
-
-                # Realizar la búsqueda
-                for idx, registro in enumerate(registros, start=2):  # Asumiendo que la fila 1 son los encabezados
-                    nombre = registro.get('Nombre', '').lower()
-                    cedula = registro.get('Cédula', '').lower()
-                    if busqueda in nombre or busqueda == cedula:
+                datos = obtener_datos_editar()  # Esta función debería retornar todos los datos de la hoja como listas de listas
+                
+                for fila_index, fila in enumerate(datos, start=2):  # Asumiendo que la fila 1 tiene los encabezados
+                    nombre = fila[1].lower() if len(fila) > 1 else ""  # Asumiendo que el nombre está en la columna B
+                    cedula = fila[14].lower() if len(fila) > 14 else ""  # Asumiendo que la cédula está en la columna O
+                    telefono = fila[3].lower() if len(fila) > 3 else ""  # Asumiendo que el teléfono está en la columna D
+                    
+                    # Verificar si la búsqueda coincide con alguna de las columnas
+                    if busqueda in nombre or busqueda in cedula or busqueda in telefono:
                         resultados.append({
-                            'fila': idx,  # Guardar el índice de la fila en la hoja
-                            'nombre': registro.get('Nombre', ''),
-                            'cedula': registro.get('Cédula', ''),
-                            'telefono': registro.get('Teléfono', '')
+                            'fila_index': fila_index,
+                            'nombre': fila[1],
+                            'cedula': fila[14],
+                            'telefono': fila[3]
                         })
-
+                
                 if not resultados:
                     mensaje = "No se encontraron resultados."
             except Exception as e:
                 mensaje = f"Error al buscar en la hoja de cálculo: {str(e)}"
         else:
-            mensaje = "Por favor, introduce un nombre o cédula para buscar."
+            mensaje = "Por favor, introduce un nombre, cédula o teléfono para buscar."
 
     return render_template('buscar.html', resultados=resultados, mensaje=mensaje)
 
