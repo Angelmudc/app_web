@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inscripción de Candidatas</title>
+    <title>Buscar Candidatas</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -12,7 +12,7 @@
             padding: 20px;
         }
         table {
-            width: 80%;
+            width: 90%;
             margin: 20px auto;
             border-collapse: collapse;
             background: white;
@@ -36,114 +36,86 @@
         button:hover {
             background-color: #218838;
         }
+        input {
+            padding: 8px;
+            width: 60%;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
 
-    <h1>🔍 Inscripción de Candidatas</h1>
+    <h1>🔍 Buscar Candidatas</h1>
 
-    <label for="busqueda">Buscar por Código, Cédula o Nombre:</label>
+    <label for="busqueda">Buscar por Nombre, Cédula o Teléfono:</label>
     <input type="text" id="busqueda">
     <button id="buscar">🔍 Buscar</button>
 
-    <h2>📄 Datos de la Candidata</h2>
-    <table>
-        <tr><th>Código</th><td id="codigo">Se generará automáticamente</td></tr>
-        <tr><th>Nombre</th><td id="nombre">No disponible</td></tr>
-        <tr><th>Cédula</th><td id="cedula">No disponible</td></tr>
-        <tr><th>Teléfono</th><td id="telefono">No disponible</td></tr>
-        <tr><th>Ciudad</th><td id="ciudad">No disponible</td></tr>
-        <tr><th>Modalidad</th><td id="modalidad">No disponible</td></tr>
-        <tr><th>Experiencia</th><td id="experiencia">No disponible</td></tr>
-        <tr><th>Áreas de Experiencia</th><td id="areas_experiencia">No disponible</td></tr>
-        <tr><th>Referencias Laborales</th><td id="referencias_laborales">No disponible</td></tr>
-        <tr><th>Referencias Familiares</th><td id="referencias_familiares">No disponible</td></tr>
-        <tr><th>Estado</th><td id="estado_texto">No disponible</td></tr>
-        <tr><th>Inscripción</th><td id="inscripcion">No disponible</td></tr>
-        <tr><th>Monto</th><td id="monto">No disponible</td></tr>
-        <tr><th>Fecha de Inscripción</th><td id="fecha_inscripcion">No disponible</td></tr>
+    <h2>📄 Resultados de la Búsqueda</h2>
+    <table id="resultados">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Edad</th>
+                <th>Teléfono</th>
+                <th>Dirección</th>
+                <th>Modalidad</th>
+                <th>Años de Experiencia</th>
+                <th>Experiencia</th>
+                <th>Plancha</th>
+                <th>Referencia Laboral</th>
+                <th>Referencia Familiar</th>
+                <th>Acepta Porcentaje</th>
+                <th>Cédula</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td colspan="12">⚠️ Ingresa un criterio de búsqueda y presiona "Buscar".</td>
+            </tr>
+        </tbody>
     </table>
 
-    <h2>📝 Completar Inscripción</h2>
-    <input type="hidden" id="fila_index">
-
-    <label for="estado">Estado:</label>
-    <select id="estado">
-        <option value="Sí">Sí</option>
-        <option value="No">No</option>
-    </select>
-
-    <label for="monto">Monto:</label>
-    <input type="text" id="monto_input" value="500">
-
-    <label for="fecha">Fecha:</label>
-    <input type="date" id="fecha">
-
-    <button id="guardar">💾 Guardar Inscripción</button>
-
     <script>
-        // Función para buscar candidata
         document.getElementById("buscar").addEventListener("click", function() {
             const busqueda = document.getElementById("busqueda").value.trim();
 
             if (!busqueda) {
-                alert("⚠️ Ingresa un nombre, cédula o código para buscar.");
+                alert("⚠️ Ingresa un nombre, cédula o teléfono para buscar.");
                 return;
             }
 
-            fetch('/buscar_inscripcion?query=' + encodeURIComponent(busqueda))
+            fetch('/buscar_candidatas?query=' + encodeURIComponent(busqueda))
             .then(response => response.json())
             .then(data => {
-                if (data.fila_index) {
-                    document.getElementById("fila_index").value = data.fila_index;
-                    document.getElementById("codigo").textContent = data.codigo || "Se generará automáticamente";
-                    document.getElementById("nombre").textContent = data.nombre || "No disponible";
-                    document.getElementById("cedula").textContent = data.cedula || "No disponible";
-                    document.getElementById("telefono").textContent = data.telefono || "No disponible";
-                    document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
-                    document.getElementById("modalidad").textContent = data.modalidad || "No disponible";
-                    document.getElementById("experiencia").textContent = data.experiencia || "No disponible";
-                    document.getElementById("areas_experiencia").textContent = data.areas_experiencia || "No disponible";
-                    document.getElementById("referencias_laborales").textContent = data.referencias_laborales || "No disponible";
-                    document.getElementById("referencias_familiares").textContent = data.referencias_familiares || "No disponible";
-                    document.getElementById("estado_texto").textContent = data.estado || "No disponible";
-                    document.getElementById("inscripcion").textContent = data.inscripcion || "No disponible";
-                    document.getElementById("monto").textContent = data.monto || "No disponible";
-                    document.getElementById("fecha_inscripcion").textContent = data.fecha_inscripcion || "No disponible";
-                } else {
-                    alert("❌ No se encontró la candidata.");
-                }
-            })
-            .catch(error => console.error("Error en la búsqueda:", error));
-        });
+                const tabla = document.getElementById("resultados").getElementsByTagName('tbody')[0];
+                tabla.innerHTML = "";  // Limpiar resultados anteriores
 
-        // Función para guardar inscripción
-        document.getElementById("guardar").addEventListener("click", function() {
-            const filaIndex = document.getElementById("fila_index").value;
-            const estado = document.getElementById("estado").value;
-            const monto = document.getElementById("monto_input").value;
-            const fecha = document.getElementById("fecha").value;
-
-            fetch("/procesar_inscripcion", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    fila_index: filaIndex,
-                    estado: estado,
-                    monto: monto,
-                    fecha: fecha
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('✅ Inscripción guardada correctamente. Código: ${data.codigo}');
-                    location.reload();
-                } else {
-                    alert('❌ Error al actualizar: ${data.error}');
+                if (data.error) {
+                    const fila = tabla.insertRow();
+                    const celda = fila.insertCell(0);
+                    celda.colSpan = 12;
+                    celda.textContent = "❌ No se encontró ninguna candidata.";
+                    return;
                 }
+
+                data.forEach(candidata => {
+                    const fila = tabla.insertRow();
+                    fila.insertCell(0).textContent = candidata.nombre || "No disponible";
+                    fila.insertCell(1).textContent = candidata.edad || "No disponible";
+                    fila.insertCell(2).textContent = candidata.telefono || "No disponible";
+                    fila.insertCell(3).textContent = candidata.direccion || "No disponible";
+                    fila.insertCell(4).textContent = candidata.modalidad || "No disponible";
+                    fila.insertCell(5).textContent = candidata.experiencia_anios || "No disponible";
+                    fila.insertCell(6).textContent = candidata.experiencia || "No disponible";
+                    fila.insertCell(7).textContent = candidata.plancha || "No disponible";
+                    fila.insertCell(8).textContent = candidata.referencia_laboral || "No disponible";
+                    fila.insertCell(9).textContent = candidata.referencia_familiar || "No disponible";
+                    fila.insertCell(10).textContent = candidata.acepta_porciento || "No disponible";
+                    fila.insertCell(11).textContent = candidata.cedula || "No disponible";
+                });
             })
-            .catch(error => console.error("Error en la inscripción:", error));
+            .catch(error => console.error("❌ Error en la búsqueda:", error));
         });
     </script>
 

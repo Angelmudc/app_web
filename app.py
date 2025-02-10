@@ -126,6 +126,62 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
         print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
 
+def buscar_candidatas_flexible(busqueda):
+    """
+    Busca candidatas en la hoja de cálculo por Nombre (B), Teléfono (D) o Cédula (O).
+    Retorna una lista con los datos relevantes de las candidatas encontradas.
+    """
+    try:
+        # 🔹 Obtener solo las columnas necesarias para la búsqueda
+        datos = obtener_datos_busqueda()
+        busqueda = normalizar_texto(busqueda)  # 🔹 Normalizar la búsqueda
+        resultados = []
+
+        for fila in datos:
+            if len(fila) < 15:  # Asegurar que haya suficientes columnas
+                continue
+
+            # 🔹 Extraer datos y normalizarlos
+            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
+            edad = fila[2] if len(fila) > 2 else ""
+            telefono = fila[3] if len(fila) > 3 else ""
+            direccion = fila[4] if len(fila) > 4 else ""
+            modalidad = fila[5] if len(fila) > 5 else ""
+            experiencia_anios = fila[8] if len(fila) > 8 else ""
+            experiencia = fila[9] if len(fila) > 9 else ""
+            plancha = fila[10] if len(fila) > 10 else ""
+            referencia_laboral = fila[11] if len(fila) > 11 else ""
+            referencia_familiar = fila[12] if len(fila) > 12 else ""
+            acepta_porciento = fila[13] if len(fila) > 13 else ""
+            cedula = fila[14] if len(fila) > 14 else ""
+
+            # 🔹 Verificar si la búsqueda coincide en Nombre, Teléfono o Cédula
+            if (
+                busqueda in nombre
+                or busqueda in telefono
+                or busqueda in cedula
+            ):
+                resultados.append({
+                    'nombre': fila[1],  # Nombre (B)
+                    'edad': edad,  # Edad (C)
+                    'telefono': telefono,  # Teléfono (D)
+                    'direccion': direccion,  # Dirección (E)
+                    'modalidad': modalidad,  # Modalidad (F)
+                    'experiencia_anios': experiencia_anios,  # Años de experiencia (I)
+                    'experiencia': experiencia,  # Experiencia (J)
+                    'plancha': plancha,  # Plancha (K)
+                    'referencia_laboral': referencia_laboral,  # Referencia laboral (L)
+                    'referencia_familiar': referencia_familiar,  # Referencia familiar (M)
+                    'acepta_porciento': acepta_porciento,  # Acepta el porcentaje (N)
+                    'cedula': cedula  # Cédula (O)
+                })
+
+        return resultados
+
+    except Exception as e:
+        print(f"❌ Error en la búsqueda flexible: {e}")
+        return []
+
 def obtener_datos_editar():
     """
     Obtiene los datos de la hoja de cálculo y se asegura de que cada fila tenga suficientes columnas.
@@ -668,60 +724,6 @@ def home():
     return render_template('home.html', usuario=session['usuario'])
 
 
-@app.route('/buscar_inscripcion', methods=['GET'])
-def buscar_inscripcion():
-    try:
-        query = request.args.get("query", "").strip().lower()
-        if not query:
-            return jsonify({"error": "Debe ingresar un valor para buscar"}), 400
-
-        # Obtener datos de la hoja
-        hoja = obtener_datos_editar()
-        resultado = None
-
-        for i, fila in enumerate(hoja):
-            if len(fila) > 20:  # Asegurar que la fila tiene suficientes columnas
-                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                cedula = fila[14].strip() if len(fila) > 14 else ""
-                codigo = fila[15].strip() if len(fila) > 15 else ""
-
-                # Buscar por código (coincidencia exacta)
-                if query == codigo:
-                    resultado = (i, fila)
-                    break
-                
-                # Buscar por cédula o nombre (coincidencia parcial)
-                if query in nombre or query in cedula:
-                    resultado = (i, fila)
-                    break
-
-        if resultado:
-            fila_index, fila = resultado
-            datos_candidata = {
-                "fila_index": fila_index,
-                "codigo": fila[15] if len(fila) > 15 else "",
-                "nombre": fila[1] if len(fila) > 1 else "No disponible",
-                "cedula": fila[14] if len(fila) > 14 else "No disponible",
-                "telefono": fila[3] if len(fila) > 3 else "No disponible",
-                "ciudad": fila[4] if len(fila) > 4 else "No disponible",
-                "modalidad": fila[5] if len(fila) > 5 else "No disponible",
-                "experiencia": fila[8] if len(fila) > 8 else "No disponible",
-                "areas_experiencia": fila[9] if len(fila) > 9 else "No disponible",
-                "referencias_laborales": fila[11] if len(fila) > 11 else "No disponible",
-                "referencias_familiares": fila[12] if len(fila) > 12 else "No disponible",
-                "estado": fila[16] if len(fila) > 16 else "No disponible",
-                "inscripcion": fila[17] if len(fila) > 17 else "No disponible",
-                "monto": fila[18] if len(fila) > 18 else "No disponible",
-                "fecha_inscripcion": fila[19] if len(fila) > 19 else "No disponible",
-                "fecha_pago": fila[20] if len(fila) > 20 else "No disponible"
-            }
-            return jsonify(datos_candidata)
-        else:
-            return jsonify({"error": "No se encontró la candidata"}), 404
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/sugerir')
 def sugerir():
     query = request.args.get('busqueda', '')
@@ -732,6 +734,32 @@ def sugerir():
     datos_filtrados = [dato for dato in lista_candidatas if query.lower() in dato['nombre'].lower()]
     
     return jsonify(datos_filtrados)
+
+@app.route('/buscar', methods=['GET'])
+def buscar():
+    """
+    Ruta para mostrar la página de búsqueda de candidatas.
+    Renderiza el HTML buscar.html.
+    """
+    return render_template('buscar.html')
+
+@app.route('/buscar_candidatas', methods=['GET'])
+def buscar_candidatas():
+    """
+    Endpoint para buscar candidatas de forma flexible.
+    Se busca por Nombre (B), Teléfono (D) o Cédula (O).
+    """
+    query = request.args.get("query", "").strip()
+    
+    if not query:
+        return jsonify({"error": "Debe ingresar un valor para buscar"}), 400
+
+    resultados = buscar_candidatas_flexible(query)
+
+    if resultados:
+        return jsonify(resultados)
+    else:
+        return jsonify({"error": "No se encontró ninguna candidata"}), 404
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
