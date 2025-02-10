@@ -814,37 +814,33 @@ def editar():
             ).execute()
             valores = hoja.get("values", [])
 
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
+            for fila_index, fila in enumerate(valores[1:], start=2):  
                 if len(fila) >= 16:
                     nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                     cedula = fila[14].strip() if len(fila) > 14 else ""
-                    codigo = fila[15] if len(fila) > 15 and fila[15].strip() else ""  # ✅ Se permite código vacío
-
-                    # 🔹 Si el código está vacío, igual se muestra la candidata
+                    
                     if busqueda in nombre or busqueda == cedula:
                         resultados.append({
-                            'id': fila_index,  # ✅ Usamos el índice de la fila como identificador
+                            'id': fila_index,  # ✅ Se usa solo el índice de la fila
                             'nombre': fila[1] if len(fila) > 1 else "",
                             'direccion': fila[4] if len(fila) > 4 else "",
                             'telefono': fila[3] if len(fila) > 3 else "",
                             'cedula': fila[14] if len(fila) > 14 else "",
-                            'codigo': codigo if codigo else "SIN-CÓDIGO"  # ✅ Ahora muestra "SIN-CÓDIGO"
                         })
 
         except Exception as e:
             print(f"❌ Error en la búsqueda: {e}")
 
-    if candidata_id:  # ✅ Buscar detalles con identificador único
+    if candidata_id:  # ✅ Buscar detalles con identificador único (fila_index)
         try:
             hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
                 range="Nueva hoja!A:Y"
             ).execute()
-
             valores = hoja.get("values", [])
 
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Ajustamos índice de fila
-                if fila_index == int(candidata_id):  # ✅ Ahora compara bien los identificadores
+            for fila_index, fila in enumerate(valores[1:], start=2):  
+                if fila_index == int(candidata_id):  
                     candidata_detalles = {
                         'fila_index': fila_index,
                         'nombre': fila[1] if len(fila) > 1 else "",
@@ -858,9 +854,8 @@ def editar():
                         'referencia_laboral': fila[11] if len(fila) > 11 else "",
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
                         'cedula': fila[14] if len(fila) > 14 else "",
-                        'codigo': fila[15] if len(fila) > 15 and fila[15].strip() else "SIN-CÓDIGO"
                     }
-                    break  # ✅ Se detiene al encontrar la candidata correcta
+                    break  
 
         except Exception as e:
             print(f"❌ Error al obtener detalles: {e}")
