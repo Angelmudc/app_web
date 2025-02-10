@@ -804,17 +804,18 @@ def editar():
     resultados = []
     candidata_detalles = None
     busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '').strip()
+    candidata_id = request.form.get('candidata_seleccionada', '').strip()
 
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:P"  # Incluir hasta la columna P para tener más datos
+            range="Nueva hoja!A:P"  # Incluye todas las columnas necesarias
         ).execute()
 
         valores = hoja.get("values", [])
 
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la fila 2 (índice 1 en Python)
+        # Búsqueda de candidatas
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Fila 2 en adelante
             nombre = fila[1].strip().lower() if len(fila) > 1 else ""
             cedula = fila[14].strip() if len(fila) > 14 else ""
 
@@ -822,28 +823,32 @@ def editar():
                 resultados.append({
                     'fila_index': fila_index,
                     'nombre': fila[1] if len(fila) > 1 else "",
-                    'direccion': fila[4] if len(fila) > 4 else "",
                     'telefono': fila[3] if len(fila) > 3 else "",
+                    'direccion': fila[4] if len(fila) > 4 else "",
                     'cedula': fila[14] if len(fila) > 14 else "",
                 })
 
-            if candidata_id and str(fila_index) == candidata_id:  # Buscar la candidata específica
-                candidata_detalles = {
-                    'fila_index': fila_index,
-                    'nombre': fila[1] if len(fila) > 1 else "",
-                    'edad': fila[2] if len(fila) > 2 else "",
-                    'telefono': fila[3] if len(fila) > 3 else "",
-                    'direccion': fila[4] if len(fila) > 4 else "",
-                    'modalidad': fila[5] if len(fila) > 5 else "",
-                    'anos_experiencia': fila[8] if len(fila) > 8 else "",
-                    'experiencia': fila[9] if len(fila) > 9 else "",
-                    'sabe_planchar': fila[10] if len(fila) > 10 else "",
-                    'referencia_laboral': fila[11] if len(fila) > 11 else "",
-                    'referencia_familiar': fila[12] if len(fila) > 12 else "",
-                    'cedula': fila[14] if len(fila) > 14 else "",
-                    'codigo': fila[15] if len(fila) > 15 else "",
-                    'inscripcion': fila[17] if len(fila) > 17 else "",
-                }
+        # Cargar detalles de la candidata si se seleccionó una
+        if candidata_id:
+            for fila_index, fila in enumerate(valores[1:], start=2):
+                if str(fila_index) == candidata_id:
+                    candidata_detalles = {
+                        'fila_index': fila_index,
+                        'nombre': fila[1] if len(fila) > 1 else "",
+                        'edad': fila[2] if len(fila) > 2 else "",
+                        'telefono': fila[3] if len(fila) > 3 else "",
+                        'direccion': fila[4] if len(fila) > 4 else "",
+                        'modalidad': fila[5] if len(fila) > 5 else "",
+                        'anos_experiencia': fila[8] if len(fila) > 8 else "",
+                        'experiencia': fila[9] if len(fila) > 9 else "",
+                        'sabe_planchar': fila[10] if len(fila) > 10 else "",
+                        'referencia_laboral': fila[11] if len(fila) > 11 else "",
+                        'referencia_familiar': fila[12] if len(fila) > 12 else "",
+                        'cedula': fila[14] if len(fila) > 14 else "",
+                        'codigo': fila[15] if len(fila) > 15 else "",
+                        'inscripcion': fila[17] if len(fila) > 17 else "",
+                    }
+                    break  # Detener búsqueda al encontrar la candidata
 
     except Exception as e:
         print(f"❌ Error en la búsqueda o carga de detalles: {e}")

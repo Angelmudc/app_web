@@ -58,17 +58,6 @@
             justify-content: space-between;
             align-items: center;
         }
-        .ver-detalles {
-            background-color: #007bff;
-            color: white;
-            padding: 5px 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .ver-detalles:hover {
-            background-color: #0056b3;
-        }
     </style>
 </head>
 <body>
@@ -76,7 +65,7 @@
     <div class="container">
         <h2>🔎 Buscar Candidata</h2>
         
-        <form method="POST" onsubmit="limpiarResultados()">
+        <form method="POST">
             <label for="busqueda">Buscar por Nombre o Cédula:</label>
             <input type="text" id="busqueda" name="busqueda" required>
             <button type="submit">Buscar</button>
@@ -86,68 +75,39 @@
             <p class="{{ 'error' if 'No' in mensaje else 'success' }}">{{ mensaje }}</p>
         {% endif %}
 
-        <div id="resultados-container">
-            {% if resultados %}
-                <h3>Resultados:</h3>
-                <div class="resultados">
-                    {% for candidata in resultados %}
-                        <div class="resultado-item">
-                            <div>
-                                <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
-                                <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
-                                <p><strong>📌 Dirección:</strong> {{ candidata.direccion }}</p>
-                                <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                            </div>
-                            <form method="POST">
-                                <input type="hidden" name="candidata_seleccionada" value="{{ candidata.fila_index }}">
-                                <button class="ver-detalles" type="submit">Ver Detalles</button>
-                            </form>
+        {% if resultados %}
+            <h3>Resultados:</h3>
+            <div class="resultados">
+                {% for candidata in resultados %}
+                    <div class="resultado-item">
+                        <div>
+                            <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
+                            <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
+                            <p><strong>📌 Dirección:</strong> {{ candidata.direccion }}</p>
+                            <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
                         </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        </div>
+                        <form method="POST">
+                            <input type="hidden" name="candidata_seleccionada" value="{{ candidata.fila_index }}">
+                            <button type="submit">Ver Detalles</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
 
         {% if candidata %}
             <h2>✍ Editar Información</h2>
-            <form method="POST">
+            <form method="POST" action="/guardar_edicion">
                 <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
                 <label for="nombre">👤 Nombre:</label>
                 <input type="text" id="nombre" name="nombre" value="{{ candidata.nombre }}" required>
-
-                <label for="edad">📅 Edad:</label>
-                <input type="text" id="edad" name="edad" value="{{ candidata.edad }}">
 
                 <label for="telefono">📞 Teléfono:</label>
                 <input type="text" id="telefono" name="telefono" value="{{ candidata.telefono }}">
 
                 <label for="direccion">📌 Dirección:</label>
                 <input type="text" id="direccion" name="direccion" value="{{ candidata.direccion }}">
-
-                <label for="modalidad">💼 Modalidad:</label>
-                <select id="modalidad" name="modalidad">
-                    <option value="Interna" {% if candidata.modalidad == 'Interna' %}selected{% endif %}>Interna</option>
-                    <option value="Externa" {% if candidata.modalidad == 'Externa' %}selected{% endif %}>Externa</option>
-                </select>
-
-                <label for="anos_experiencia">📆 Años de Experiencia:</label>
-                <input type="text" id="anos_experiencia" name="anos_experiencia" value="{{ candidata.anos_experiencia }}">
-
-                <label for="experiencia">📋 Experiencia:</label>
-                <input type="text" id="experiencia" name="experiencia" value="{{ candidata.experiencia }}">
-
-                <label for="sabe_planchar">🧺 Sabe Planchar:</label>
-                <select id="sabe_planchar" name="sabe_planchar">
-                    <option value="Sí" {% if candidata.sabe_planchar == 'Sí' %}selected{% endif %}>Sí</option>
-                    <option value="No" {% if candidata.sabe_planchar == 'No' %}selected{% endif %}>No</option>
-                </select>
-
-                <label for="referencia_laboral">🏢 Referencia Laboral:</label>
-                <textarea id="referencia_laboral" name="referencia_laboral">{{ candidata.referencia_laboral }}</textarea>
-
-                <label for="referencia_familiar">👨‍👩‍👦 Referencia Familiar:</label>
-                <textarea id="referencia_familiar" name="referencia_familiar">{{ candidata.referencia_familiar }}</textarea>
 
                 <label for="cedula">🆔 Cédula:</label>
                 <input type="text" id="cedula" name="cedula" value="{{ candidata.cedula }}" required>
@@ -156,12 +116,6 @@
             </form>
         {% endif %}
     </div>
-
-    <script>
-        function limpiarResultados() {
-            document.getElementById("resultados-container").innerHTML = "";  
-        }
-    </script>
 
 </body>
 </html>
