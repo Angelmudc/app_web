@@ -803,50 +803,46 @@ def buscar():
 def editar():
     resultados = []
     candidata_detalles = None
-    mensaje = ""
+    busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '')
 
-    if request.method == 'POST':
-        if 'busqueda' in request.form:
-            busqueda = request.form.get('busqueda', '').strip().lower()
-            candidata_detalles = None  # 🔹 Limpiar antes de buscar
+    if busqueda:
+        try:
+            hoja = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:O"  # Hasta la columna O, excluyendo código
+            ).execute()
 
-            try:
-                hoja = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range="Nueva hoja!A:O"  # 🔹 Solo hasta la columna O
-                ).execute()
-                valores = hoja.get("values", [])
+            valores = hoja.get("values", [])
 
-                for fila_index, fila in enumerate(valores[1:], start=2):  # Evita encabezados
-                    if len(fila) >= 15:  # 🔹 Se asegura de que tenga suficientes columnas
-                        nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                        cedula = fila[14].strip() if len(fila) > 14 else ""
+            for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
+                if len(fila) >= 15:
+                    nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+                    cedula = fila[14].strip() if len(fila) > 14 else ""
 
-                        # 🔹 Permitir búsqueda de candidatas sin código
-                        if busqueda in nombre or busqueda == cedula:
-                            resultados.append({
-                                'fila_index': fila_index,  # ✅ Guardamos el índice real
-                                'nombre': fila[1] if len(fila) > 1 else "",
-                                'direccion': fila[4] if len(fila) > 4 else "",
-                                'telefono': fila[3] if len(fila) > 3 else "",
-                                'cedula': fila[14] if len(fila) > 14 else "",
-                            })
+                    if busqueda in nombre or busqueda in cedula:
+                        resultados.append({
+                            'fila_index': fila_index,  # Guardamos el índice correcto
+                            'nombre': fila[1] if len(fila) > 1 else "",
+                            'direccion': fila[4] if len(fila) > 4 else "",
+                            'telefono': fila[3] if len(fila) > 3 else "",
+                            'cedula': fila[14] if len(fila) > 14 else "",
+                        })
 
-            except Exception as e:
-                mensaje = f"❌ Error en la búsqueda: {e}"
+        except Exception as e:
+            print(f"❌ Error en la búsqueda: {e}")
 
-        elif 'candidata_seleccionada' in request.form:
-            fila_index = int(request.form.get('candidata_seleccionada'))
-            try:
-                hoja = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range="Nueva hoja!A:O"
-                ).execute()
-                valores = hoja.get("values", [])
+    if candidata_id:
+        try:
+            hoja = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:O"  # Hasta la columna O
+            ).execute()
 
-                if 1 <= fila_index < len(valores):
-                    fila = valores[fila_index - 1]  # ✅ Ajuste correcto para el índice
+            valores = hoja.get("values", [])
 
+            for fila_index, fila in enumerate(valores[1:], start=2):
+                if fila_index == int(candidata_id):  # Aseguramos que coincida con la fila exacta
                     candidata_detalles = {
                         'fila_index': fila_index,
                         'nombre': fila[1] if len(fila) > 1 else "",
@@ -861,58 +857,68 @@ def editar():
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
                         'cedula': fila[14] if len(fila) > 14 else "",
                     }
+                    break  # Detenemos la búsqueda al encontrar la candidata
 
-            except Exception as e:
-                mensaje = f"❌ Error al obtener detalles: {e}"
+        except Exception as e:
+            print(f"❌ Error al obtener detalles: {e}")
 
-        elif 'guardar' in request.form:
-            fila_index = int(request.form.get('fila_index'))  # ✅ Ahora el índice está bien
-            nuevos_datos = {
-                "nombre": request.form.get('nombre', '').strip(),
-                "edad": request.form.get('edad', '').strip(),
-                "telefono": request.form.get('telefono', '').strip(),
-                "direccion": request.form.get('direccion', '').strip(),
-                "modalidad": request.form.get('modalidad', '').strip(),
-                "anos_experiencia": request.form.get('anos_experiencia', '').strip(),
-                "experiencia": request.form.get('experiencia', '').strip(),
-                "sabe_planchar": request.form.get('sabe_planchar', '').strip(),
-                "referencia_laboral": request.form.get('referencia_laboral', '').strip(),
-                "referencia_familiar": request.form.get('referencia_familiar', '').strip(),
-                "cedula": request.form.get('cedula', '').strip(),
-            }
+    return render_template('editar.html', resultados=resultados, candidata=candidata_detalles)
 
-            try:
-                for campo, valor in nuevos_datos.items():
-                    if valor:
-                        columna = {
-                            "nombre": "B",
-                            "edad": "C",
-                            "telefono": "D",
-                            "direccion": "E",
-                            "modalidad": "F",
-                            "anos_experiencia": "I",
-                            "experiencia": "J",
-                            "sabe_planchar": "K",
-                            "referencia_laboral": "L",
-                            "referencia_familiar": "M",
-                            "cedula": "O",
-                        }.get(campo, "")
 
-                        if columna:
-                            rango = f"Nueva hoja!{columna}{fila_index}"  # ✅ AJUSTE AQUÍ
-                            service.spreadsheets().values().update(
-                                spreadsheetId=SPREADSHEET_ID,
-                                range=rango,
-                                valueInputOption="RAW",
-                                body={"values": [[valor]]}
-                            ).execute()
+@app.route('/actualizar', methods=['POST'])
+def actualizar():
+    try:
+        fila_index = request.form.get('fila_index', '').strip()
 
-                mensaje = "✅ Datos actualizados correctamente."
+        if not fila_index.isdigit():  # Verificamos que sea un número válido
+            return "❌ Error: Índice de fila no válido.", 400
 
-            except Exception as e:
-                mensaje = f"❌ Error al actualizar los datos: {e}"
+        fila_index = int(fila_index)  # Ahora lo convertimos con seguridad
 
-    return render_template('editar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+        nuevos_datos = {
+            "nombre": request.form.get("nombre", "").strip(),
+            "edad": request.form.get("edad", "").strip(),
+            "telefono": request.form.get("telefono", "").strip(),
+            "direccion": request.form.get("direccion", "").strip(),
+            "modalidad": request.form.get("modalidad", "").strip(),
+            "anos_experiencia": request.form.get("anos_experiencia", "").strip(),
+            "experiencia": request.form.get("experiencia", "").strip(),
+            "sabe_planchar": request.form.get("sabe_planchar", "").strip(),
+            "referencia_laboral": request.form.get("referencia_laboral", "").strip(),
+            "referencia_familiar": request.form.get("referencia_familiar", "").strip(),
+            "cedula": request.form.get("cedula", "").strip(),
+        }
+
+        columnas = {
+            "nombre": "B",
+            "edad": "C",
+            "telefono": "D",
+            "direccion": "E",
+            "modalidad": "F",
+            "anos_experiencia": "I",
+            "experiencia": "J",
+            "sabe_planchar": "K",
+            "referencia_laboral": "L",
+            "referencia_familiar": "M",
+            "cedula": "O",
+        }
+
+        # Actualizamos solo las columnas necesarias
+        for campo, valor in nuevos_datos.items():
+            if campo in columnas and valor:
+                rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=rango,
+                    valueInputOption="RAW",
+                    body={"values": [[valor]]}
+                ).execute()
+
+        return "✅ Datos actualizados correctamente."
+    
+    except Exception as e:
+        print(f"❌ Error al actualizar datos: {e}")
+        return "❌ Error al actualizar los datos.", 500
 
 @app.route('/guardar_edicion', methods=['POST'])
 def guardar_edicion():
