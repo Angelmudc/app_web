@@ -5,152 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Editar Candidata</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-        }
-        h2 {
-            text-align: center;
-            color: #333;
-        }
-        input, select, textarea, button {
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-        button {
-            background-color: #28a745;
-            color: white;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button:hover {
-            background-color: #218838;
-        }
-        .error {
-            color: red;
-            font-weight: bold;
-        }
-        .success {
-            color: green;
-            font-weight: bold;
-        }
-        .resultados {
-            margin-top: 20px;
-        }
-        .resultado-item {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .ver-detalles {
-            background-color: #007bff;
-            color: white;
-            padding: 5px 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .ver-detalles:hover {
-            background-color: #0056b3;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); }
+        h1 { text-align: center; color: #333; }
+        input, select { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; }
+        button { background-color: #28a745; color: white; cursor: pointer; font-weight: bold; padding: 10px; width: 100%; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>🔎 Buscar Candidata</h2>
-        
-        <form method="POST">
-            <label for="busqueda">Buscar por Nombre o Cédula:</label>
-            <input type="text" id="busqueda" name="busqueda" required>
+        <h1>✏️ Editar Candidata</h1>
+
+        <form method="GET" action="/editar">
+            <label for="busqueda">Buscar por cédula o nombre:</label>
+            <input type="text" name="busqueda" id="busqueda" placeholder="Ejemplo: María o 123-456789-0">
             <button type="submit">Buscar</button>
         </form>
 
-        {% if mensaje %}
-            <p class="{{ 'error' if 'No' in mensaje else 'success' }}">{{ mensaje }}</p>
-        {% endif %}
-
         {% if resultados %}
-            <h3>Resultados:</h3>
-            <div class="resultados">
+            <h2>Resultados:</h2>
+            <ul>
                 {% for candidata in resultados %}
-                    <div class="resultado-item">
-                        <div>
-                            <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
-                            <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
-                            <p><strong>📌 Dirección:</strong> {{ candidata.direccion }}</p>
-                            <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                        </div>
-                        <form method="POST">
-                            <input type="hidden" name="candidata_seleccionada" value="{{ candidata.id }}">
-                            <button class="ver-detalles" type="submit">Ver Detalles</button>
-                        </form>
-                    </div>
+                    <li>
+                        <a href="{{ url_for('editar', candidata=candidata.fila_index) }}">
+                            {{ candidata.nombre }} - {{ candidata.cedula }}
+                        </a>
+                    </li>
                 {% endfor %}
-            </div>
+            </ul>
         {% endif %}
 
         {% if candidata %}
-            <h2>✍ Editar Información</h2>
-            <form method="POST">
+            <h2>📄 Datos de la Candidata</h2>
+            <form method="POST" action="/actualizar">
                 <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-
-                <label for="nombre">👤 Nombre:</label>
-                <input type="text" id="nombre" name="nombre" value="{{ candidata.nombre }}" required>
-
-                <label for="edad">📅 Edad:</label>
-                <input type="text" id="edad" name="edad" value="{{ candidata.edad }}">
-
-                <label for="telefono">📞 Teléfono:</label>
-                <input type="text" id="telefono" name="telefono" value="{{ candidata.telefono }}">
-
-                <label for="direccion">📌 Dirección:</label>
-                <input type="text" id="direccion" name="direccion" value="{{ candidata.direccion }}">
-
-                <label for="modalidad">💼 Modalidad:</label>
-                <select id="modalidad" name="modalidad">
-                    <option value="Interna" {% if candidata.modalidad == 'Interna' %}selected{% endif %}>Interna</option>
-                    <option value="Externa" {% if candidata.modalidad == 'Externa' %}selected{% endif %}>Externa</option>
-                </select>
-
-                <label for="anos_experiencia">📆 Años de Experiencia:</label>
-                <input type="text" id="anos_experiencia" name="anos_experiencia" value="{{ candidata.anos_experiencia }}">
-
-                <label for="experiencia">📋 Experiencia:</label>
-                <input type="text" id="experiencia" name="experiencia" value="{{ candidata.experiencia }}">
-
-                <label for="sabe_planchar">🧺 Sabe Planchar:</label>
-                <select id="sabe_planchar" name="sabe_planchar">
-                    <option value="Sí" {% if candidata.sabe_planchar == 'Sí' %}selected{% endif %}>Sí</option>
-                    <option value="No" {% if candidata.sabe_planchar == 'No' %}selected{% endif %}>No</option>
-                </select>
-
-                <label for="referencia_laboral">🏢 Referencia Laboral:</label>
-                <textarea id="referencia_laboral" name="referencia_laboral">{{ candidata.referencia_laboral }}</textarea>
-
-                <label for="referencia_familiar">👨‍👩‍👦 Referencia Familiar:</label>
-                <textarea id="referencia_familiar" name="referencia_familiar">{{ candidata.referencia_familiar }}</textarea>
-
-                <label for="cedula">🆔 Cédula:</label>
-                <input type="text" id="cedula" name="cedula" value="{{ candidata.cedula }}" required>
-
-                <button type="submit" name="guardar">Guardar Cambios</button>
+                <label>Nombre:</label>
+                <input type="text" name="nombre" value="{{ candidata.nombre }}">
+                <label>Edad:</label>
+                <input type="text" name="edad" value="{{ candidata.edad }}">
+                <label>Teléfono:</label>
+                <input type="text" name="telefono" value="{{ candidata.telefono }}">
+                <label>Dirección:</label>
+                <input type="text" name="direccion" value="{{ candidata.direccion }}">
+                <label>Modalidad:</label>
+                <input type="text" name="modalidad" value="{{ candidata.modalidad }}">
+                <label>Experiencia:</label>
+                <input type="text" name="experiencia" value="{{ candidata.experiencia }}">
+                <label>Referencia Laboral:</label>
+                <input type="text" name="referencia_laboral" value="{{ candidata.referencia_laboral }}">
+                <label>Referencia Familiar:</label>
+                <input type="text" name="referencia_familiar" value="{{ candidata.referencia_familiar }}">
+                <label>Cédula:</label>
+                <input type="text" name="cedula" value="{{ candidata.cedula }}" readonly>
+                <button type="submit">Actualizar Datos</button>
             </form>
         {% endif %}
     </div>
