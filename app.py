@@ -765,7 +765,7 @@ def buscar():
         except Exception as e:
             print(f"❌ Error en la búsqueda: {e}")
 
-    elif candidata_id:
+    if candidata_id:  # Aquí corregimos para asegurar que se muestra la candidata correcta
         try:
             hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
@@ -774,17 +774,18 @@ def buscar():
 
             valores = hoja.get("values", [])
 
-            for fila in valores[1:]:
-                if len(fila) >= 16 and (fila[15] == candidata_id or (not fila[15] and candidata_id == 'SIN-CÓDIGO')):
+            for fila in valores[1:]:  # Omitimos encabezados
+                codigo_fila = fila[15] if len(fila) > 15 and fila[15] else 'SIN-CÓDIGO'
+                if codigo_fila == candidata_id:  # Ahora verificamos con el código correcto
                     candidata_detalles = {
                         'nombre': fila[1], 'edad': fila[2], 'telefono': fila[3],
                         'direccion': fila[4], 'modalidad': fila[5],
                         'anos_experiencia': fila[8], 'experiencia': fila[9],
                         'sabe_planchar': fila[10], 'referencia_laboral': fila[11],
                         'referencia_familiar': fila[12], 'cedula': fila[14],
-                        'codigo': fila[15] if len(fila) > 15 and fila[15] else 'SIN-CÓDIGO'
+                        'codigo': codigo_fila
                     }
-                    break
+                    break  # Detenemos el bucle una vez que encontramos la candidata correcta
 
         except Exception as e:
             print(f"❌ Error al obtener detalles: {e}")
