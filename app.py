@@ -732,22 +732,42 @@ def sugerir():
     return jsonify(datos_filtrados)
 
 @app.route('/buscar', methods=['GET', 'POST'])
-def buscar():
-    mensaje = ""
+def buscar_candidata():
     resultados = []
-
     if request.method == 'POST':
-        busqueda = request.form.get('busqueda', '').strip()
-
+        busqueda = request.form.get('busqueda', '').strip().lower()
         if busqueda:
-            resultados = buscar_candidatas(busqueda)
-            if not resultados:
-                mensaje = "No se encontraron resultados."
+            try:
+                datos = sheet.get_all_values()
+                encabezados = datos[0]  # Primera fila contiene los nombres de las columnas
+                
+                for fila in datos[1:]:  # Omitir la primera fila con encabezados
+                    if len(fila) < 16:
+                        continue  # Ignorar filas incompletas
+                    
+                    nombre = normalizar_texto(fila[1])  # Columna B (Nombre)
+                    cedula = fila[14].strip()  # Columna O (Cédula)
 
-        else:
-            mensaje = "Por favor, introduce un nombre o cédula para buscar."
+                    # Verificar coincidencia parcial en nombre o coincidencia exacta en cédula
+                    if busqueda in nombre or busqueda == cedula:
+                        resultados.append({
+                            "nombre": fila[1],   # B
+                            "edad": fila[2],     # C
+                            "telefono": fila[3], # D
+                            "direccion": fila[4],# E
+                            "modalidad": fila[5],# F
+                            "anos_experiencia": fila[8],  # I
+                            "experiencia": fila[9],       # J
+                            "sabe_planchar": fila[10],    # K
+                            "referencia_laboral": fila[11], # L
+                            "referencia_familiar": fila[12], # M
+                            "cedula": fila[14],  # O
+                            "codigo": fila[15]   # P
+                        })
+            except Exception as e:
+                print(f"❌ Error en la búsqueda: {e}")
 
-    return render_template('buscar.html', resultados=resultados, mensaje=mensaje)
+    return render_template('buscar.html', resultados=resultados)
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():

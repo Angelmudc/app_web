@@ -3,17 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscar Candidatas</title>
+    <title>Búsqueda de Candidatas</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f4;
             margin: 20px;
+        }
+        h1 {
             text-align: center;
+            color: #333;
         }
         .container {
-            max-width: 700px;
-            margin: auto;
+            max-width: 600px;
+            margin: 0 auto;
             background: white;
             padding: 20px;
             border-radius: 8px;
@@ -36,13 +39,10 @@
             margin-top: 20px;
         }
         .resultado-item {
-            background: #f9f9f9;
             padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            text-align: left;
+            border-bottom: 1px solid #ddd;
         }
-        strong {
+        .resultado-item strong {
             color: #333;
         }
     </style>
@@ -52,35 +52,32 @@
     <h1>🔍 Búsqueda de Candidatas</h1>
 
     <div class="container">
-        <form action="{{ url_for('buscar') }}" method="post">
+        <form method="POST">
             <label for="busqueda">Buscar por nombre o cédula:</label>
-            <input type="text" id="busqueda" name="busqueda" required>
+            <input type="text" id="busqueda" name="busqueda">
             <button type="submit">🔍 Buscar</button>
         </form>
 
-        {% if mensaje %}
-            <p><strong>{{ mensaje }}</strong></p>
-        {% endif %}
-
         <div class="resultados">
             {% if resultados %}
-                <h2>Resultados:</h2>
                 {% for candidata in resultados %}
                     <div class="resultado-item">
-                        <p><strong>📌 Código:</strong> {{ candidata.codigo }}</p>
                         <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
                         <p><strong>📅 Edad:</strong> {{ candidata.edad }}</p>
                         <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
                         <p><strong>🏠 Dirección:</strong> {{ candidata.direccion }}</p>
                         <p><strong>💼 Modalidad:</strong> {{ candidata.modalidad }}</p>
-                        <p><strong>🛠 Años de experiencia:</strong> {{ candidata.anos_experiencia }}</p>
-                        <p><strong>📋 Experiencia:</strong> {{ candidata.experiencia }}</p>
-                        <p><strong>👔 Sabe planchar:</strong> {{ candidata.sabe_planchar }}</p>
-                        <p><strong>📑 Referencia Laboral:</strong> {{ candidata.referencia_laboral }}</p>
-                        <p><strong>👨‍👩‍👦 Referencia Familiar:</strong> {{ candidata.referencia_familiar }}</p>
+                        <p><strong>📋 Años de Experiencia:</strong> {{ candidata.anos_experiencia }}</p>
+                        <p><strong>🛠️ Experiencia:</strong> {{ candidata.experiencia }}</p>
+                        <p><strong>🧺 Sabe Planchar:</strong> {{ candidata.sabe_planchar }}</p>
+                        <p><strong>🔹 Referencia Laboral:</strong> {{ candidata.referencia_laboral }}</p>
+                        <p><strong>🏡 Referencia Familiar:</strong> {{ candidata.referencia_familiar }}</p>
                         <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
+                        <p><strong>📌 Código:</strong> {{ candidata.codigo }}</p>
                     </div>
                 {% endfor %}
+            {% else %}
+                <p>No se encontraron resultados.</p>
             {% endif %}
         </div>
     </div>
