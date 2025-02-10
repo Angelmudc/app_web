@@ -733,71 +733,66 @@ def sugerir():
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
+    mensaje = ""
     resultados = []
-    candidata_detalles = None
-    busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '')
+    candidata = None
 
-    if busqueda:
-        try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
-            ).execute()
+    if request.method == 'POST':
+        busqueda = request.form.get('busqueda', '').strip().lower()
 
-            valores = hoja.get("values", [])
+        if busqueda:
+            try:
+                hoja = client.open_by_key(SPREADSHEET_ID).worksheet('Nueva hoja')
+                registros = hoja.get_all_records()
 
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
-                if len(fila) >= 16:
-                    nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                    cedula = fila[14].strip() if len(fila) > 14 else ""
-                    codigo = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"  # Identificador único
+                for idx, registro in enumerate(registros, start=2):  # Fila 2 en adelante
+                    nombre = registro.get('Nombre', '').strip().lower()
+                    cedula = registro.get('Cedula', '').strip().lower()
+                    codigo = registro.get('Codigo', '')  # Columna P
 
-                    if busqueda in nombre or busqueda in cedula:
+                    # Si la búsqueda coincide, mostrar el resultado (aunque el código esté vacío)
+                    if busqueda in nombre or busqueda == cedula:
                         resultados.append({
-                            'id': codigo,  # ✅ Usamos este identificador único
-                            'nombre': fila[1] if len(fila) > 1 else "",
-                            'direccion': fila[4] if len(fila) > 4 else "",
-                            'telefono': fila[3] if len(fila) > 3 else "",
-                            'cedula': fila[14] if len(fila) > 14 else "",
+                            'id': idx,  # Guarda el índice de la fila
+                            'nombre': registro.get('Nombre', ''),
+                            'direccion': registro.get('Dirección', ''),
+                            'telefono': registro.get('Telefono', ''),
+                            'cedula': registro.get('cedula', ''),
+                            'codigo': codigo if codigo else "Sin Código"  # Si está vacío, poner "Sin Código"
                         })
 
-        except Exception as e:
-            print(f"❌ Error en la búsqueda: {e}")
+                if not resultados:
+                    mensaje = "No se encontraron resultados."
+            except Exception as e:
+                mensaje = f"Error al buscar en la hoja de cálculo: {str(e)}"
+        else:
+            mensaje = "Por favor, introduce un nombre o cédula para buscar."
 
-    if candidata_id:  # ✅ Buscar detalles con identificador único
+    if 'candidata' in request.args:
         try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
-            ).execute()
+            fila_index = int(request.args.get('candidata'))
+            hoja = client.open_by_key(SPREADSHEET_ID).worksheet('Nueva hoja')
+            datos_fila = hoja.row_values(fila_index)
 
-            valores = hoja.get("values", [])
-
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Ajustamos índice de fila
-                codigo_fila = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"
-
-                if codigo_fila == candidata_id:  # ✅ Ahora compara bien los identificadores
-                    candidata_detalles = {
-                        'nombre': fila[1] if len(fila) > 1 else "",
-                        'edad': fila[2] if len(fila) > 2 else "",
-                        'telefono': fila[3] if len(fila) > 3 else "",
-                        'direccion': fila[4] if len(fila) > 4 else "",
-                        'modalidad': fila[5] if len(fila) > 5 else "",
-                        'anos_experiencia': fila[8] if len(fila) > 8 else "",
-                        'experiencia': fila[9] if len(fila) > 9 else "",
-                        'sabe_planchar': fila[10] if len(fila) > 10 else "",
-                        'referencia_laboral': fila[11] if len(fila) > 11 else "",
-                        'referencia_familiar': fila[12] if len(fila) > 12 else "",
-                        'cedula': fila[14] if len(fila) > 14 else "",
-                        'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
-                    }
-                    break  # ✅ Se detiene al encontrar la candidata correcta
-
+            if datos_fila:
+                candidata = {
+                    'nombre': datos_fila[1],
+                    'edad': datos_fila[2] if len(datos_fila) > 2 else "No especificado",
+                    'telefono': datos_fila[3] if len(datos_fila) > 3 else "No especificado",
+                    'direccion': datos_fila[4] if len(datos_fila) > 4 else "No especificado",
+                    'modalidad': datos_fila[5] if len(datos_fila) > 5 else "No especificado",
+                    'anos_experiencia': datos_fila[8] if len(datos_fila) > 8 else "No especificado",
+                    'experiencia': datos_fila[9] if len(datos_fila) > 9 else "No especificado",
+                    'sabe_planchar': datos_fila[10] if len(datos_fila) > 10 else "No especificado",
+                    'referencia_laboral': datos_fila[11] if len(datos_fila) > 11 else "No especificado",
+                    'referencia_familiar': datos_fila[12] if len(datos_fila) > 12 else "No especificado",
+                    'cedula': datos_fila[14] if len(datos_fila) > 14 else "No especificado",
+                    'codigo': datos_fila[15] if len(datos_fila) > 15 else "Sin Código"
+                }
         except Exception as e:
-            print(f"❌ Error al obtener detalles: {e}")
+            mensaje = f"Error al obtener los datos de la candidata: {str(e)}"
 
-    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
+    return render_template('buscar.html', resultados=resultados, candidata=candidata, mensaje=mensaje)
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
