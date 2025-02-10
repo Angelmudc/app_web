@@ -812,18 +812,16 @@ def editar():
                 spreadsheetId=SPREADSHEET_ID,
                 range="Nueva hoja!A:Y"
             ).execute()
-
             valores = hoja.get("values", [])
 
             for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
                 if len(fila) >= 16:
                     nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                     cedula = fila[14].strip() if len(fila) > 14 else ""
-                    codigo = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"  # Identificador único
 
-                    if busqueda in nombre or busqueda in cedula:
+                    if busqueda in nombre or busqueda == cedula:
                         resultados.append({
-                            'id': codigo,  # ✅ Usamos este identificador único
+                            'id': fila_index,  # ✅ Usamos el índice de la fila como identificador
                             'nombre': fila[1] if len(fila) > 1 else "",
                             'direccion': fila[4] if len(fila) > 4 else "",
                             'telefono': fila[3] if len(fila) > 3 else "",
@@ -843,9 +841,7 @@ def editar():
             valores = hoja.get("values", [])
 
             for fila_index, fila in enumerate(valores[1:], start=2):  # Ajustamos índice de fila
-                codigo_fila = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"
-
-                if codigo_fila == candidata_id:  # ✅ Ahora compara bien los identificadores
+                if fila_index == int(candidata_id):  # ✅ Ahora compara bien los identificadores
                     candidata_detalles = {
                         'fila_index': fila_index,
                         'nombre': fila[1] if len(fila) > 1 else "",
@@ -859,7 +855,6 @@ def editar():
                         'referencia_laboral': fila[11] if len(fila) > 11 else "",
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
                         'cedula': fila[14] if len(fila) > 14 else "",
-                        'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
                     }
                     break  # ✅ Se detiene al encontrar la candidata correcta
 
