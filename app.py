@@ -49,15 +49,6 @@ service = build('sheets', 'v4', credentials=credentials)
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 sheet = spreadsheet.worksheet("Nueva hoja")
 
-try:
-    resultado = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID,
-        range="Nueva hoja!A1:Z100"
-    ).execute()
-    print("✅ Conexión exitosa a Google Sheets. Datos obtenidos:", resultado)
-except Exception as e:
-    print("❌ Error conectando a Google Sheets:", e)
-
 # Configuración básica de Flask
 app = Flask(__name__)
 app.secret_key = "clave_secreta_segura"
@@ -126,6 +117,8 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
         print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
 
+
+
 def buscar_candidatas_flexible(busqueda):
     """
     Busca candidatas en la hoja de cálculo por Nombre (B), Teléfono (D) o Cédula (O).
@@ -137,23 +130,19 @@ def buscar_candidatas_flexible(busqueda):
         busqueda = normalizar_texto(busqueda)  # 🔹 Normalizar la búsqueda
         resultados = []
 
+        print(f"🔍 Buscando: '{busqueda}'")  # DEBUG
+
         for fila in datos:
             if len(fila) < 15:  # Asegurar que haya suficientes columnas
                 continue
 
             # 🔹 Extraer datos y normalizarlos
             nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
-            edad = fila[2] if len(fila) > 2 else ""
             telefono = fila[3] if len(fila) > 3 else ""
-            direccion = fila[4] if len(fila) > 4 else ""
-            modalidad = fila[5] if len(fila) > 5 else ""
-            experiencia_anios = fila[8] if len(fila) > 8 else ""
-            experiencia = fila[9] if len(fila) > 9 else ""
-            plancha = fila[10] if len(fila) > 10 else ""
-            referencia_laboral = fila[11] if len(fila) > 11 else ""
-            referencia_familiar = fila[12] if len(fila) > 12 else ""
-            acepta_porciento = fila[13] if len(fila) > 13 else ""
             cedula = fila[14] if len(fila) > 14 else ""
+
+            # 🔹 Imprimir datos que se están comparando
+            print(f"Comparando con -> Nombre: {nombre}, Teléfono: {telefono}, Cédula: {cedula}")  # DEBUG
 
             # 🔹 Verificar si la búsqueda coincide en Nombre, Teléfono o Cédula
             if (
@@ -161,21 +150,14 @@ def buscar_candidatas_flexible(busqueda):
                 or busqueda in telefono
                 or busqueda in cedula
             ):
+                print(f"✅ Coincidencia encontrada: {fila}")  # DEBUG
                 resultados.append({
-                    'nombre': fila[1],  # Nombre (B)
-                    'edad': edad,  # Edad (C)
-                    'telefono': telefono,  # Teléfono (D)
-                    'direccion': direccion,  # Dirección (E)
-                    'modalidad': modalidad,  # Modalidad (F)
-                    'experiencia_anios': experiencia_anios,  # Años de experiencia (I)
-                    'experiencia': experiencia,  # Experiencia (J)
-                    'plancha': plancha,  # Plancha (K)
-                    'referencia_laboral': referencia_laboral,  # Referencia laboral (L)
-                    'referencia_familiar': referencia_familiar,  # Referencia familiar (M)
-                    'acepta_porciento': acepta_porciento,  # Acepta el porcentaje (N)
-                    'cedula': cedula  # Cédula (O)
+                    'nombre': fila[1],  
+                    'telefono': telefono,
+                    'cedula': cedula  
                 })
 
+        print("🔹 Resultados encontrados:", resultados)  # DEBUG
         return resultados
 
     except Exception as e:
