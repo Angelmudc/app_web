@@ -748,20 +748,19 @@ def buscar():
             valores = hoja.get("values", [])
 
             for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
-                if len(fila) >= 16:
-                    nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                    cedula = fila[14].strip() if len(fila) > 14 else ""
-                    # Aquí se asigna un valor temporal a los códigos vacíos
-                    codigo = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"  # Identificador único
+                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+                cedula = fila[14].strip() if len(fila) > 14 else ""
+                codigo = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"  # Identificador único
 
-                    if busqueda in nombre or busqueda in cedula:
-                        resultados.append({
-                            'id': codigo,  # ✅ Usamos este identificador único
-                            'nombre': fila[1] if len(fila) > 1 else "",
-                            'direccion': fila[4] if len(fila) > 4 else "",
-                            'telefono': fila[3] if len(fila) > 3 else "",
-                            'cedula': fila[14] if len(fila) > 14 else "",
-                        })
+                # 🔹 La búsqueda es más flexible: si el nombre o la cédula contienen el valor, la candidata se muestra
+                if busqueda in nombre or busqueda in cedula:
+                    resultados.append({
+                        'id': codigo,  # ✅ Se usa este identificador único
+                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                        'direccion': fila[4] if len(fila) > 4 else "No especificado",
+                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                        'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                    })
 
         except Exception as e:
             print(f"❌ Error en la búsqueda: {e}")
@@ -780,17 +779,17 @@ def buscar():
 
                 if codigo_fila == candidata_id:  # ✅ Ahora compara bien los identificadores
                     candidata_detalles = {
-                        'nombre': fila[1] if len(fila) > 1 else "",
-                        'edad': fila[2] if len(fila) > 2 else "",
-                        'telefono': fila[3] if len(fila) > 3 else "",
-                        'direccion': fila[4] if len(fila) > 4 else "",
-                        'modalidad': fila[5] if len(fila) > 5 else "",
-                        'anos_experiencia': fila[8] if len(fila) > 8 else "",
-                        'experiencia': fila[9] if len(fila) > 9 else "",
-                        'sabe_planchar': fila[10] if len(fila) > 10 else "",
-                        'referencia_laboral': fila[11] if len(fila) > 11 else "",
-                        'referencia_familiar': fila[12] if len(fila) > 12 else "",
-                        'cedula': fila[14] if len(fila) > 14 else "",
+                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                        'edad': fila[2] if len(fila) > 2 else "No especificado",
+                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                        'direccion': fila[4] if len(fila) > 4 else "No especificado",
+                        'modalidad': fila[5] if len(fila) > 5 else "No especificado",
+                        'anos_experiencia': fila[8] if len(fila) > 8 else "No especificado",
+                        'experiencia': fila[9] if len(fila) > 9 else "No especificado",
+                        'sabe_planchar': fila[10] if len(fila) > 10 else "No especificado",
+                        'referencia_laboral': fila[11] if len(fila) > 11 else "No especificado",
+                        'referencia_familiar': fila[12] if len(fila) > 12 else "No especificado",
+                        'cedula': fila[14] if len(fila) > 14 else "No especificado",
                         'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
                     }
                     break  # ✅ Se detiene al encontrar la candidata correcta
