@@ -666,8 +666,8 @@ def sugerir():
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
-    mensaje = ""
     resultados = []
+    mensaje = ""
 
     if request.method == 'POST':
         busqueda = request.form.get('busqueda', '').strip().lower()
@@ -677,7 +677,7 @@ def buscar():
                 hoja = gc.open_by_key(SPREADSHEET_ID).worksheet('Nueva hoja')
                 # Obtener todos los registros de la hoja
                 registros = hoja.get_all_records()
-                
+
                 # Realizar la búsqueda
                 for idx, registro in enumerate(registros, start=2):  # Asumiendo que la fila 1 son los encabezados
                     nombre = registro.get('Nombre', '').lower()
@@ -689,7 +689,7 @@ def buscar():
                             'cedula': registro.get('Cédula', ''),
                             'telefono': registro.get('Teléfono', '')
                         })
-                
+
                 if not resultados:
                     mensaje = "No se encontraron resultados."
             except Exception as e:
@@ -698,6 +698,7 @@ def buscar():
             mensaje = "Por favor, introduce un nombre o cédula para buscar."
 
     return render_template('buscar.html', resultados=resultados, mensaje=mensaje)
+
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
