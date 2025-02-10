@@ -3,37 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscar Candidatas</title>
+    <title>Buscar Candidata</title>
 </head>
 <body>
 
-    <h1>🔍 Buscar Candidatas</h1>
+    <h1>🔍 Buscar Candidata</h1>
 
-    <form method="GET" action="/buscar">
-        <label for="query">Buscar por cédula o nombre:</label>
-        <input type="text" id="query" name="query">
-        <button type="submit">🔍 Buscar</button>
-    </form>
+    <label for="busqueda">Buscar por cédula o nombre:</label>
+    <input type="text" id="busqueda">
+    <button onclick="realizarBusqueda()">🔍 Buscar</button>
 
-    {% if error %}
-        <p style="color: red;">❌ {{ error }}</p>
-    {% endif %}
+    <div id="resultados">
+        {% if resultados %}
+            <h2>📄 Resultados</h2>
+            <ul>
+                {% for candidata in resultados %}
+                    <li>
+                        <strong>Código:</strong> {{ candidata.codigo }} <br>
+                        <strong>Nombre:</strong> {{ candidata.nombre }} <br>
+                        <strong>Cédula:</strong> {{ candidata.cedula }} <br>
+                        <strong>Teléfono:</strong> {{ candidata.telefono }} <br>
+                        <strong>Ciudad:</strong> {{ candidata.ciudad }} <br>
+                    </li>
+                    <hr>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No se encontraron resultados.</p>
+        {% endif %}
+    </div>
 
-    {% if resultados %}
-        <h2>📄 Resultados</h2>
-        <ul>
-            {% for candidata in resultados %}
-                <li>
-                    <strong>Código:</strong> {{ candidata.codigo }} <br>
-                    <strong>Nombre:</strong> {{ candidata.nombre }} <br>
-                    <strong>Cédula:</strong> {{ candidata.cedula }} <br>
-                    <strong>Teléfono:</strong> {{ candidata.telefono }} <br>
-                    <strong>Ciudad:</strong> {{ candidata.ciudad }} <br>
-                </li>
-                <hr>
-            {% endfor %}
-        </ul>
-    {% endif %}
+    <script>
+        function realizarBusqueda() {
+            let busqueda = document.getElementById("busqueda").value.trim();
+            if (!busqueda) {
+                alert("⚠️ Ingresa un nombre o cédula para buscar.");
+                return;
+            }
+
+            fetch('/buscar?query=${encodeURIComponent(busqueda)}')
+                .then(response => response.text()) 
+                .then(html => {
+                    document.body.innerHTML = html; 
+                })
+                .catch(error => console.error("Error en la búsqueda:", error));
+        }
+    </script>
 
 </body>
 </html>
