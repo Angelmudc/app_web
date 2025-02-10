@@ -3,120 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscar Candidatas</title>
+    <title>Inscripción de Candidatas</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f8f9fa;
-            text-align: center;
-            padding: 20px;
+            margin: 20px;
         }
-        table {
-            width: 90%;
-            margin: 20px auto;
-            border-collapse: collapse;
-            background: white;
+        .container {
+            max-width: 600px;
+            margin: auto;
         }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
+        h1, h2 {
+            color: #333;
         }
-        th {
-            background-color: #007bff;
-            color: white;
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            font-size: 16px;
         }
         button {
-            background-color: #28a745;
+            background-color: green;
             color: white;
-            padding: 10px;
             border: none;
             cursor: pointer;
         }
         button:hover {
-            background-color: #218838;
+            background-color: darkgreen;
         }
-        input {
-            padding: 8px;
-            width: 60%;
-            margin: 10px 0;
+        .alert {
+            display: none;
+            padding: 10px;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .success {
+            background-color: lightgreen;
+            color: green;
+        }
+        .error {
+            background-color: lightcoral;
+            color: red;
         }
     </style>
 </head>
 <body>
 
-    <h1>🔍 Buscar Candidatas</h1>
+    <div class="container">
+        <h1>🔍 Inscripción de Candidatas</h1>
 
-    <label for="busqueda">Buscar por Nombre, Cédula o Teléfono:</label>
-    <input type="text" id="busqueda">
-    <button id="buscar">🔍 Buscar</button>
+        <label for="busqueda">Buscar por código, cédula o nombre:</label>
+        <input type="text" id="busqueda" placeholder="Ingrese el dato">
+        <button id="buscar">🔍 Buscar</button>
 
-    <h2>📄 Resultados de la Búsqueda</h2>
-    <table id="resultados">
-        <thead>
-            <tr>
-                <th>Nombre</th>
-                <th>Edad</th>
-                <th>Teléfono</th>
-                <th>Dirección</th>
-                <th>Modalidad</th>
-                <th>Años de Experiencia</th>
-                <th>Experiencia</th>
-                <th>Plancha</th>
-                <th>Referencia Laboral</th>
-                <th>Referencia Familiar</th>
-                <th>Acepta Porcentaje</th>
-                <th>Cédula</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td colspan="12">⚠️ Ingresa un criterio de búsqueda y presiona "Buscar".</td>
-            </tr>
-        </tbody>
-    </table>
+        <div id="datos-candidata" style="display:none;">
+            <h2>📄 Datos de la Candidata</h2>
+            <p><strong>Código:</strong> <span id="codigo">-</span></p>
+            <p><strong>Nombre:</strong> <span id="nombre">-</span></p>
+            <p><strong>Cédula:</strong> <span id="cedula">-</span></p>
+            <p><strong>Teléfono:</strong> <span id="telefono">-</span></p>
+            <p><strong>Ciudad:</strong> <span id="ciudad">-</span></p>
+            <p><strong>Estado:</strong> <span id="estado">-</span></p>
+            <p><strong>Inscripción:</strong> <span id="inscripcion">-</span></p>
+            <p><strong>Monto:</strong> <span id="monto">-</span></p>
+            <p><strong>Fecha:</strong> <span id="fecha">-</span></p>
+            <p><strong>Experiencia:</strong> <span id="experiencia">-</span></p>
+            <p><strong>Referencias:</strong> <span id="referencias">-</span></p>
+            <p><strong>Modalidad:</strong> <span id="modalidad">-</span></p>
+            <p><strong>Áreas de Experiencia:</strong> <span id="areas_experiencia">-</span></p>
+        </div>
+
+        <div id="mensaje" class="alert"></div>
+
+    </div>
 
     <script>
         document.getElementById("buscar").addEventListener("click", function() {
             const busqueda = document.getElementById("busqueda").value.trim();
 
             if (!busqueda) {
-                alert("⚠️ Ingresa un nombre, cédula o teléfono para buscar.");
+                mostrarMensaje("⚠️ Ingresa un dato para buscar.", "error");
                 return;
             }
 
-            fetch('/buscar_candidatas?query=' + encodeURIComponent(busqueda))
+            fetch('/buscar?query=' + encodeURIComponent(busqueda))
             .then(response => response.json())
             .then(data => {
-                const tabla = document.getElementById("resultados").getElementsByTagName('tbody')[0];
-                tabla.innerHTML = "";  // Limpiar resultados anteriores
+                if (data.resultados && data.resultados.length > 0) {
+                    let candidata = data.resultados[0];
 
-                if (data.error) {
-                    const fila = tabla.insertRow();
-                    const celda = fila.insertCell(0);
-                    celda.colSpan = 12;
-                    celda.textContent = "❌ No se encontró ninguna candidata.";
-                    return;
+                    document.getElementById("codigo").textContent = candidata.codigo || "-";
+                    document.getElementById("nombre").textContent = candidata.nombre || "-";
+                    document.getElementById("cedula").textContent = candidata.cedula || "-";
+                    document.getElementById("telefono").textContent = candidata.telefono || "-";
+                    document.getElementById("ciudad").textContent = candidata.ciudad || "-";
+                    document.getElementById("estado").textContent = candidata.estado || "-";
+                    document.getElementById("inscripcion").textContent = candidata.inscripcion || "-";
+                    document.getElementById("monto").textContent = candidata.monto || "-";
+                    document.getElementById("fecha").textContent = candidata.fecha || "-";
+                    document.getElementById("experiencia").textContent = candidata.experiencia || "-";
+                    document.getElementById("referencias").textContent = candidata.referencias || "-";
+                    document.getElementById("modalidad").textContent = candidata.modalidad || "-";
+                    document.getElementById("areas_experiencia").textContent = candidata.areas_experiencia || "-";
+
+                    document.getElementById("datos-candidata").style.display = "block";
+                } else {
+                    mostrarMensaje("❌ No se encontraron coincidencias.", "error");
+                    document.getElementById("datos-candidata").style.display = "none";
                 }
-
-                data.forEach(candidata => {
-                    const fila = tabla.insertRow();
-                    fila.insertCell(0).textContent = candidata.nombre || "No disponible";
-                    fila.insertCell(1).textContent = candidata.edad || "No disponible";
-                    fila.insertCell(2).textContent = candidata.telefono || "No disponible";
-                    fila.insertCell(3).textContent = candidata.direccion || "No disponible";
-                    fila.insertCell(4).textContent = candidata.modalidad || "No disponible";
-                    fila.insertCell(5).textContent = candidata.experiencia_anios || "No disponible";
-                    fila.insertCell(6).textContent = candidata.experiencia || "No disponible";
-                    fila.insertCell(7).textContent = candidata.plancha || "No disponible";
-                    fila.insertCell(8).textContent = candidata.referencia_laboral || "No disponible";
-                    fila.insertCell(9).textContent = candidata.referencia_familiar || "No disponible";
-                    fila.insertCell(10).textContent = candidata.acepta_porciento || "No disponible";
-                    fila.insertCell(11).textContent = candidata.cedula || "No disponible";
-                });
             })
-            .catch(error => console.error("❌ Error en la búsqueda:", error));
+            .catch(error => {
+                console.error("Error en la búsqueda:", error);
+                mostrarMensaje("❌ Error en la búsqueda. Inténtalo de nuevo.", "error");
+            });
         });
+
+        function mostrarMensaje(mensaje, tipo) {
+            let alerta = document.getElementById("mensaje");
+            alerta.textContent = mensaje;
+            alerta.className = "alert " + tipo;
+            alerta.style.display = "block";
+        }
     </script>
 
 </body>

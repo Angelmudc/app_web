@@ -53,12 +53,6 @@ sheet = spreadsheet.worksheet("Nueva hoja")
 app = Flask(__name__)
 app.secret_key = "clave_secreta_segura"
 
-try:
-    resultado = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
-    print("✅ Conexión exitosa a Google Sheets:", resultado)
-except Exception as e:
-    print("❌ Error conectando a Google Sheets:", e)
-
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
     "angel": generate_password_hash("1234"),  # Usuario: admin, Clave: 12345
@@ -116,53 +110,6 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
     except Exception as e:
         print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
-
-
-
-def buscar_candidatas_flexible(busqueda):
-    """
-    Busca candidatas en la hoja de cálculo por Nombre (B), Teléfono (D) o Cédula (O).
-    Retorna una lista con los datos relevantes de las candidatas encontradas.
-    """
-    try:
-        # 🔹 Obtener solo las columnas necesarias para la búsqueda
-        datos = obtener_datos_busqueda()
-        busqueda = normalizar_texto(busqueda)  # 🔹 Normalizar la búsqueda
-        resultados = []
-
-        print(f"🔍 Buscando: '{busqueda}'")  # DEBUG
-
-        for fila in datos:
-            if len(fila) < 15:  # Asegurar que haya suficientes columnas
-                continue
-
-            # 🔹 Extraer datos y normalizarlos
-            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
-            telefono = fila[3] if len(fila) > 3 else ""
-            cedula = fila[14] if len(fila) > 14 else ""
-
-            # 🔹 Imprimir datos que se están comparando
-            print(f"Comparando con -> Nombre: {nombre}, Teléfono: {telefono}, Cédula: {cedula}")  # DEBUG
-
-            # 🔹 Verificar si la búsqueda coincide en Nombre, Teléfono o Cédula
-            if (
-                busqueda in nombre
-                or busqueda in telefono
-                or busqueda in cedula
-            ):
-                print(f"✅ Coincidencia encontrada: {fila}")  # DEBUG
-                resultados.append({
-                    'nombre': fila[1],  
-                    'telefono': telefono,
-                    'cedula': cedula  
-                })
-
-        print("🔹 Resultados encontrados:", resultados)  # DEBUG
-        return resultados
-
-    except Exception as e:
-        print(f"❌ Error en la búsqueda flexible: {e}")
-        return []
 
 def obtener_datos_editar():
     """
@@ -711,7 +658,7 @@ def sugerir():
     query = request.args.get('busqueda', '')
     if not query:
         return jsonify([])
-        
+
     # Aquí deberías obtener los datos de la cache o de la base de datos
     datos_filtrados = [dato for dato in lista_candidatas if query.lower() in dato['nombre'].lower()]
     
@@ -719,29 +666,47 @@ def sugerir():
 
 @app.route('/buscar', methods=['GET'])
 def buscar():
-    """
-    Ruta para mostrar la página de búsqueda de candidatas.
-    Renderiza el HTML buscar.html.
-    """
-    return render_template('buscar.html')
+    try:
+        query = request.args.get('query', '').strip().lower()
+        if not query:
+            return jsonify({"error": "Debe ingresar un dato para buscar"}), 400
 
-@app.route('/buscar_candidatas', methods=['GET'])
-def buscar_candidatas():
-    """
-    Endpoint para buscar candidatas de forma flexible.
-    Se busca por Nombre (B), Teléfono (D) o Cédula (O).
-    """
-    query = request.args.get("query", "").strip()
-    
-    if not query:
-        return jsonify({"error": "Debe ingresar un valor para buscar"}), 400
+        # Obtener datos de la hoja
+        datos = obtener_datos_editar()
 
-    resultados = buscar_candidatas_flexible(query)
+        resultados = []
+        for i, fila in enumerate(datos):
+            if len(fila) > 15:  # Asegurar que la fila tenga datos suficientes
+                codigo = fila[15].strip().lower() if len(fila) > 15 else ""  # Código en P (columna 15)
+                cedula = fila[14].strip().lower() if len(fila) > 14 else ""  # Cédula en O (columna 14)
+                nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Nombre en B (columna 1)
 
-    if resultados:
-        return jsonify(resultados)
-    else:
-        return jsonify({"error": "No se encontró ninguna candidata"}), 404
+                # Buscar en las columnas de código, nombre y cédula
+                if query in codigo or query in cedula or query in nombre:
+                    resultados.append({
+                        "fila_index": i + 1,  # Índice real en la hoja
+                        "codigo": fila[15] if len(fila) > 15 else "",
+                        "nombre": fila[1] if len(fila) > 1 else "",
+                        "cedula": fila[14] if len(fila) > 14 else "",
+                        "telefono": fila[3] if len(fila) > 3 else "",
+                        "ciudad": fila[4] if len(fila) > 4 else "",
+                        "estado": fila[16] if len(fila) > 16 else "",
+                        "inscripcion": fila[17] if len(fila) > 17 else "",
+                        "monto": fila[18] if len(fila) > 18 else "",
+                        "fecha": fila[19] if len(fila) > 19 else "",
+                        "experiencia": fila[9] if len(fila) > 9 else "",
+                        "referencias": fila[10] if len(fila) > 10 else "",
+                        "modalidad": fila[5] if len(fila) > 5 else "",
+                        "areas_experiencia": fila[11] if len(fila) > 11 else ""
+                    })
+
+        if not resultados:
+            return jsonify({"error": "No se encontraron coincidencias"}), 404
+
+        return jsonify({"resultados": resultados})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
