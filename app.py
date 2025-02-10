@@ -747,14 +747,15 @@ def buscar():
 
             valores = hoja.get("values", [])
 
-            for fila in valores[1:]:  # Omitir encabezados
+            for fila in valores[1:]:  # Omitimos encabezados
                 if len(fila) >= 16:
                     nombre = fila[1].strip().lower()
                     cedula = fila[14].strip()
+                    codigo = fila[15] if len(fila) > 15 and fila[15] else 'SIN-CÓDIGO'  # Asigna 'SIN-CÓDIGO' si está vacío
 
                     if busqueda in nombre or busqueda in cedula:
                         resultados.append({
-                            'codigo': fila[15] if len(fila) > 15 else '',
+                            'codigo': codigo,
                             'nombre': fila[1],
                             'direccion': fila[4],
                             'telefono': fila[3],
@@ -774,14 +775,14 @@ def buscar():
             valores = hoja.get("values", [])
 
             for fila in valores[1:]:
-                if len(fila) >= 16 and fila[15] == candidata_id:
+                if len(fila) >= 16 and (fila[15] == candidata_id or (not fila[15] and candidata_id == 'SIN-CÓDIGO')):
                     candidata_detalles = {
                         'nombre': fila[1], 'edad': fila[2], 'telefono': fila[3],
                         'direccion': fila[4], 'modalidad': fila[5],
                         'anos_experiencia': fila[8], 'experiencia': fila[9],
                         'sabe_planchar': fila[10], 'referencia_laboral': fila[11],
                         'referencia_familiar': fila[12], 'cedula': fila[14],
-                        'codigo': fila[15]
+                        'codigo': fila[15] if len(fila) > 15 and fila[15] else 'SIN-CÓDIGO'
                     }
                     break
 
@@ -789,7 +790,7 @@ def buscar():
             print(f"❌ Error al obtener detalles: {e}")
 
     return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
-    
+
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
     datos_candidata = None
