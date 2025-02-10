@@ -799,30 +799,30 @@ def buscar():
 
     return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
 
-@app.route('/editar', methods=['GET', 'POST'])
-def editar():
+@app.route('/buscar', methods=['GET', 'POST'])
+def buscar():
     resultados = []
     candidata_detalles = None
     busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '')
+    candidata_id = request.args.get('candidata', '').strip()
 
     if busqueda:
         try:
             hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:O"  # Hasta la columna O, excluyendo código
+                range="Nueva hoja!A:O"  # ✅ Solo hasta la columna O
             ).execute()
 
             valores = hoja.get("values", [])
 
             for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
-                if len(fila) >= 15:
+                if len(fila) >= 15:  # Asegurar que tenga suficientes columnas
                     nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                     cedula = fila[14].strip() if len(fila) > 14 else ""
 
-                    if busqueda in nombre or busqueda in cedula:
+                    if busqueda in nombre or busqueda == cedula:
                         resultados.append({
-                            'fila_index': fila_index,  # Guardamos el índice correcto
+                            'id': cedula if cedula else f"fila-{fila_index}",  # ✅ Usamos la cédula como identificador
                             'nombre': fila[1] if len(fila) > 1 else "",
                             'direccion': fila[4] if len(fila) > 4 else "",
                             'telefono': fila[3] if len(fila) > 3 else "",
@@ -832,19 +832,18 @@ def editar():
         except Exception as e:
             print(f"❌ Error en la búsqueda: {e}")
 
-    if candidata_id:
+    if candidata_id:  # ✅ Buscar detalles con cédula como identificador
         try:
             hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:O"  # Hasta la columna O
+                range="Nueva hoja!A:O"  # ✅ Solo hasta la columna O
             ).execute()
 
             valores = hoja.get("values", [])
 
-            for fila_index, fila in enumerate(valores[1:], start=2):
-                if fila_index == int(candidata_id):  # Aseguramos que coincida con la fila exacta
+            for fila_index, fila in enumerate(valores[1:], start=2):  # Ajustamos índice de fila
+                if len(fila) > 14 and fila[14] == candidata_id:  # ✅ Compara cédula correctamente
                     candidata_detalles = {
-                        'fila_index': fila_index,
                         'nombre': fila[1] if len(fila) > 1 else "",
                         'edad': fila[2] if len(fila) > 2 else "",
                         'telefono': fila[3] if len(fila) > 3 else "",
@@ -855,70 +854,14 @@ def editar():
                         'sabe_planchar': fila[10] if len(fila) > 10 else "",
                         'referencia_laboral': fila[11] if len(fila) > 11 else "",
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
-                        'cedula': fila[14] if len(fila) > 14 else "",
+                        'cedula': fila[14] if len(fila) > 14 else "SIN-CÉDULA"
                     }
-                    break  # Detenemos la búsqueda al encontrar la candidata
+                    break  # ✅ Se detiene al encontrar la candidata correcta
 
         except Exception as e:
             print(f"❌ Error al obtener detalles: {e}")
 
-    return render_template('editar.html', resultados=resultados, candidata=candidata_detalles)
-
-
-@app.route('/actualizar', methods=['POST'])
-def actualizar():
-    try:
-        fila_index = request.form.get('fila_index', '').strip()
-
-        if not fila_index.isdigit():  # Verificamos que sea un número válido
-            return "❌ Error: Índice de fila no válido.", 400
-
-        fila_index = int(fila_index)  # Ahora lo convertimos con seguridad
-
-        nuevos_datos = {
-            "nombre": request.form.get("nombre", "").strip(),
-            "edad": request.form.get("edad", "").strip(),
-            "telefono": request.form.get("telefono", "").strip(),
-            "direccion": request.form.get("direccion", "").strip(),
-            "modalidad": request.form.get("modalidad", "").strip(),
-            "anos_experiencia": request.form.get("anos_experiencia", "").strip(),
-            "experiencia": request.form.get("experiencia", "").strip(),
-            "sabe_planchar": request.form.get("sabe_planchar", "").strip(),
-            "referencia_laboral": request.form.get("referencia_laboral", "").strip(),
-            "referencia_familiar": request.form.get("referencia_familiar", "").strip(),
-            "cedula": request.form.get("cedula", "").strip(),
-        }
-
-        columnas = {
-            "nombre": "B",
-            "edad": "C",
-            "telefono": "D",
-            "direccion": "E",
-            "modalidad": "F",
-            "anos_experiencia": "I",
-            "experiencia": "J",
-            "sabe_planchar": "K",
-            "referencia_laboral": "L",
-            "referencia_familiar": "M",
-            "cedula": "O",
-        }
-
-        # Actualizamos solo las columnas necesarias
-        for campo, valor in nuevos_datos.items():
-            if campo in columnas and valor:
-                rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango,
-                    valueInputOption="RAW",
-                    body={"values": [[valor]]}
-                ).execute()
-
-        return "✅ Datos actualizados correctamente."
-    
-    except Exception as e:
-        print(f"❌ Error al actualizar datos: {e}")
-        return "❌ Error al actualizar los datos.", 500
+    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
 
 @app.route('/guardar_edicion', methods=['POST'])
 def guardar_edicion():
