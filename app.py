@@ -751,6 +751,7 @@ def buscar():
                 if len(fila) >= 16:
                     nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                     cedula = fila[14].strip() if len(fila) > 14 else ""
+                    # Aquí se asigna un valor temporal a los códigos vacíos
                     codigo = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"  # Identificador único
 
                     if busqueda in nombre or busqueda in cedula:
