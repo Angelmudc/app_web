@@ -732,43 +732,64 @@ def sugerir():
     return jsonify(datos_filtrados)
 
 @app.route('/buscar', methods=['GET', 'POST'])
-def buscar_candidata():
+def buscar():
     resultados = []
-    if request.method == 'POST':
-        busqueda = request.form.get('busqueda', '').strip().lower()
-        if busqueda:
-            try:
-                datos = sheet.get_all_values()
-                encabezados = datos[0]  # Primera fila contiene los nombres de las columnas
-                
-                for fila in datos[1:]:  # Omitir la primera fila con encabezados
-                    if len(fila) < 16:
-                        continue  # Ignorar filas incompletas
-                    
-                    nombre = normalizar_texto(fila[1])  # Columna B (Nombre)
-                    cedula = fila[14].strip()  # Columna O (Cédula)
+    candidata_detalles = None
+    busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '')
 
-                    # Verificar coincidencia parcial en nombre o coincidencia exacta en cédula
-                    if busqueda in nombre or busqueda == cedula:
+    if busqueda:
+        try:
+            hoja = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:Y"
+            ).execute()
+
+            valores = hoja.get("values", [])
+
+            for fila in valores[1:]:  # Omitir encabezados
+                if len(fila) >= 16:
+                    nombre = fila[1].strip().lower()
+                    cedula = fila[14].strip()
+
+                    if busqueda in nombre or busqueda in cedula:
                         resultados.append({
-                            "nombre": fila[1],   # B
-                            "edad": fila[2],     # C
-                            "telefono": fila[3], # D
-                            "direccion": fila[4],# E
-                            "modalidad": fila[5],# F
-                            "anos_experiencia": fila[8],  # I
-                            "experiencia": fila[9],       # J
-                            "sabe_planchar": fila[10],    # K
-                            "referencia_laboral": fila[11], # L
-                            "referencia_familiar": fila[12], # M
-                            "cedula": fila[14],  # O
-                            "codigo": fila[15]   # P
+                            'codigo': fila[15] if len(fila) > 15 else '',
+                            'nombre': fila[1],
+                            'direccion': fila[4],
+                            'telefono': fila[3],
+                            'cedula': fila[14],
                         })
-            except Exception as e:
-                print(f"❌ Error en la búsqueda: {e}")
 
-    return render_template('buscar.html', resultados=resultados)
+        except Exception as e:
+            print(f"❌ Error en la búsqueda: {e}")
 
+    elif candidata_id:
+        try:
+            hoja = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:Y"
+            ).execute()
+
+            valores = hoja.get("values", [])
+
+            for fila in valores[1:]:
+                if len(fila) >= 16 and fila[15] == candidata_id:
+                    candidata_detalles = {
+                        'nombre': fila[1], 'edad': fila[2], 'telefono': fila[3],
+                        'direccion': fila[4], 'modalidad': fila[5],
+                        'anos_experiencia': fila[8], 'experiencia': fila[9],
+                        'sabe_planchar': fila[10], 'referencia_laboral': fila[11],
+                        'referencia_familiar': fila[12], 'cedula': fila[14],
+                        'codigo': fila[15]
+                    }
+                    break
+
+        except Exception as e:
+            print(f"❌ Error al obtener detalles: {e}")
+
+    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
+    
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
     datos_candidata = None
