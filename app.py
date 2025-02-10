@@ -822,13 +822,15 @@ def editar():
                         nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                         cedula = fila[14].strip() if len(fila) > 14 else ""
 
+                        # 🔹 Permitir búsqueda de candidatas sin código
                         if busqueda in nombre or busqueda == cedula:
                             resultados.append({
-                                'id': fila_index,  # 🔹 Usamos el índice de fila como ID
+                                'id': fila_index,  # 🔹 Identificador basado en la fila
                                 'nombre': fila[1] if len(fila) > 1 else "",
                                 'direccion': fila[4] if len(fila) > 4 else "",
                                 'telefono': fila[3] if len(fila) > 3 else "",
                                 'cedula': fila[14] if len(fila) > 14 else "",
+                                'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
                             })
 
             except Exception as e:
@@ -844,7 +846,7 @@ def editar():
                 valores = hoja.get("values", [])
 
                 if 1 <= fila_index < len(valores):
-                    fila = valores[fila_index]
+                    fila = valores[fila_index - 1]  # 🔹 Ajuste en el índice de la fila
 
                     candidata_detalles = {
                         'fila_index': fila_index,
@@ -859,6 +861,7 @@ def editar():
                         'referencia_laboral': fila[11] if len(fila) > 11 else "",
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
                         'cedula': fila[14] if len(fila) > 14 else "",
+                        'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
                     }
 
             except Exception as e:
