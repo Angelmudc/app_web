@@ -804,21 +804,21 @@ def editar():
     resultados = []
     candidata_detalles = None
     mensaje = ""
-    
+
     if request.method == 'POST':
         if 'busqueda' in request.form:
             busqueda = request.form.get('busqueda', '').strip().lower()
-            candidata_detalles = None  # 🔹 IMPORTANTE: Limpiar antes de buscar
+            candidata_detalles = None  # 🔹 Limpiar antes de buscar
 
             try:
                 hoja = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Nueva hoja!A:P"
+                    range="Nueva hoja!A:O"  # 🔹 Solo hasta la columna O
                 ).execute()
                 valores = hoja.get("values", [])
 
                 for fila_index, fila in enumerate(valores[1:], start=2):  # Evita encabezados
-                    if len(fila) >= 16:
+                    if len(fila) >= 15:  # 🔹 Se asegura de que tenga suficientes columnas
                         nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                         cedula = fila[14].strip() if len(fila) > 14 else ""
 
@@ -830,7 +830,6 @@ def editar():
                                 'direccion': fila[4] if len(fila) > 4 else "",
                                 'telefono': fila[3] if len(fila) > 3 else "",
                                 'cedula': fila[14] if len(fila) > 14 else "",
-                                'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
                             })
 
             except Exception as e:
@@ -841,7 +840,7 @@ def editar():
             try:
                 hoja = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Nueva hoja!A:P"
+                    range="Nueva hoja!A:O"
                 ).execute()
                 valores = hoja.get("values", [])
 
@@ -861,7 +860,6 @@ def editar():
                         'referencia_laboral': fila[11] if len(fila) > 11 else "",
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
                         'cedula': fila[14] if len(fila) > 14 else "",
-                        'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
                     }
 
             except Exception as e:
