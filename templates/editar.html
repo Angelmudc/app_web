@@ -19,7 +19,8 @@
         <ul>
         {% for candidata in resultados %}
             <li>
-                {{ candidata.nombre }} - {{ candidata.telefono }} - {{ candidata.cedula }}
+                {{ candidata.nombre }} - {{ candidata.telefono }} - {{ candidata.cedula }} - 
+                Código: {{ candidata.codigo }}
                 <a href="{{ url_for('editar', candidata=candidata.id) }}">Editar</a>
             </li>
         {% endfor %}

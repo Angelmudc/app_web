@@ -818,8 +818,9 @@ def editar():
                 if len(fila) >= 16:
                     nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                     cedula = fila[14].strip() if len(fila) > 14 else ""
+                    codigo = fila[15] if len(fila) > 15 and fila[15].strip() else ""  # ✅ Se permite código vacío
 
-                    # 🔹 Si el código está vacío, se ignora y la candidata sigue apareciendo
+                    # 🔹 Si el código está vacío, igual se muestra la candidata
                     if busqueda in nombre or busqueda == cedula:
                         resultados.append({
                             'id': fila_index,  # ✅ Usamos el índice de la fila como identificador
@@ -827,6 +828,7 @@ def editar():
                             'direccion': fila[4] if len(fila) > 4 else "",
                             'telefono': fila[3] if len(fila) > 3 else "",
                             'cedula': fila[14] if len(fila) > 14 else "",
+                            'codigo': codigo if codigo else "SIN-CÓDIGO"  # ✅ Ahora muestra "SIN-CÓDIGO"
                         })
 
         except Exception as e:
@@ -856,6 +858,7 @@ def editar():
                         'referencia_laboral': fila[11] if len(fila) > 11 else "",
                         'referencia_familiar': fila[12] if len(fila) > 12 else "",
                         'cedula': fila[14] if len(fila) > 14 else "",
+                        'codigo': fila[15] if len(fila) > 15 and fila[15].strip() else "SIN-CÓDIGO"
                     }
                     break  # ✅ Se detiene al encontrar la candidata correcta
 
