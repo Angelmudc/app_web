@@ -747,25 +747,25 @@ def buscar():
 
             valores = hoja.get("values", [])
 
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Omitimos encabezados y ajustamos el índice de fila
+            for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
                 if len(fila) >= 16:
-                    nombre = fila[1].strip().lower()
-                    cedula = fila[14].strip()
+                    nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+                    cedula = fila[14].strip() if len(fila) > 14 else ""
                     codigo = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"  # Identificador único
 
                     if busqueda in nombre or busqueda in cedula:
                         resultados.append({
-                            'id': codigo,  # Usamos este identificador único
-                            'nombre': fila[1],
-                            'direccion': fila[4],
-                            'telefono': fila[3],
-                            'cedula': fila[14],
+                            'id': codigo,  # ✅ Usamos este identificador único
+                            'nombre': fila[1] if len(fila) > 1 else "",
+                            'direccion': fila[4] if len(fila) > 4 else "",
+                            'telefono': fila[3] if len(fila) > 3 else "",
+                            'cedula': fila[14] if len(fila) > 14 else "",
                         })
 
         except Exception as e:
             print(f"❌ Error en la búsqueda: {e}")
 
-    if candidata_id:  # Buscar detalles con identificador único
+    if candidata_id:  # ✅ Buscar detalles con identificador único
         try:
             hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
@@ -777,21 +777,28 @@ def buscar():
             for fila_index, fila in enumerate(valores[1:], start=2):  # Ajustamos índice de fila
                 codigo_fila = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"
 
-                if codigo_fila == candidata_id:  # Compara correctamente con el identificador único
+                if codigo_fila == candidata_id:  # ✅ Ahora compara bien los identificadores
                     candidata_detalles = {
-                        'nombre': fila[1], 'edad': fila[2], 'telefono': fila[3],
-                        'direccion': fila[4], 'modalidad': fila[5],
-                        'anos_experiencia': fila[8], 'experiencia': fila[9],
-                        'sabe_planchar': fila[10], 'referencia_laboral': fila[11],
-                        'referencia_familiar': fila[12], 'cedula': fila[14],
+                        'nombre': fila[1] if len(fila) > 1 else "",
+                        'edad': fila[2] if len(fila) > 2 else "",
+                        'telefono': fila[3] if len(fila) > 3 else "",
+                        'direccion': fila[4] if len(fila) > 4 else "",
+                        'modalidad': fila[5] if len(fila) > 5 else "",
+                        'anos_experiencia': fila[8] if len(fila) > 8 else "",
+                        'experiencia': fila[9] if len(fila) > 9 else "",
+                        'sabe_planchar': fila[10] if len(fila) > 10 else "",
+                        'referencia_laboral': fila[11] if len(fila) > 11 else "",
+                        'referencia_familiar': fila[12] if len(fila) > 12 else "",
+                        'cedula': fila[14] if len(fila) > 14 else "",
                         'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
                     }
-                    break  # Se detiene al encontrar la candidata correcta
+                    break  # ✅ Se detiene al encontrar la candidata correcta
 
         except Exception as e:
             print(f"❌ Error al obtener detalles: {e}")
 
     return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
+
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
     datos_candidata = None
