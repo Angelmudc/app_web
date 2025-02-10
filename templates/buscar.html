@@ -3,128 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inscripción de Candidatas</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        .container {
-            max-width: 600px;
-            margin: auto;
-        }
-        h1, h2 {
-            color: #333;
-        }
-        input, select, button {
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            font-size: 16px;
-        }
-        button {
-            background-color: green;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: darkgreen;
-        }
-        .alert {
-            display: none;
-            padding: 10px;
-            margin-top: 10px;
-            font-weight: bold;
-        }
-        .success {
-            background-color: lightgreen;
-            color: green;
-        }
-        .error {
-            background-color: lightcoral;
-            color: red;
-        }
-    </style>
+    <title>Buscar Candidatas</title>
 </head>
 <body>
 
-    <div class="container">
-        <h1>🔍 Inscripción de Candidatas</h1>
+    <h1>🔍 Buscar Candidatas</h1>
 
-        <label for="busqueda">Buscar por código, cédula o nombre:</label>
-        <input type="text" id="busqueda" placeholder="Ingrese el dato">
-        <button id="buscar">🔍 Buscar</button>
+    <form method="GET" action="/buscar">
+        <label for="query">Buscar por cédula o nombre:</label>
+        <input type="text" id="query" name="query">
+        <button type="submit">🔍 Buscar</button>
+    </form>
 
-        <div id="datos-candidata" style="display:none;">
-            <h2>📄 Datos de la Candidata</h2>
-            <p><strong>Código:</strong> <span id="codigo">-</span></p>
-            <p><strong>Nombre:</strong> <span id="nombre">-</span></p>
-            <p><strong>Cédula:</strong> <span id="cedula">-</span></p>
-            <p><strong>Teléfono:</strong> <span id="telefono">-</span></p>
-            <p><strong>Ciudad:</strong> <span id="ciudad">-</span></p>
-            <p><strong>Estado:</strong> <span id="estado">-</span></p>
-            <p><strong>Inscripción:</strong> <span id="inscripcion">-</span></p>
-            <p><strong>Monto:</strong> <span id="monto">-</span></p>
-            <p><strong>Fecha:</strong> <span id="fecha">-</span></p>
-            <p><strong>Experiencia:</strong> <span id="experiencia">-</span></p>
-            <p><strong>Referencias:</strong> <span id="referencias">-</span></p>
-            <p><strong>Modalidad:</strong> <span id="modalidad">-</span></p>
-            <p><strong>Áreas de Experiencia:</strong> <span id="areas_experiencia">-</span></p>
-        </div>
+    {% if error %}
+        <p style="color: red;">❌ {{ error }}</p>
+    {% endif %}
 
-        <div id="mensaje" class="alert"></div>
-
-    </div>
-
-    <script>
-        document.getElementById("buscar").addEventListener("click", function() {
-            const busqueda = document.getElementById("busqueda").value.trim();
-
-            if (!busqueda) {
-                mostrarMensaje("⚠️ Ingresa un dato para buscar.", "error");
-                return;
-            }
-
-            fetch('/buscar?query=' + encodeURIComponent(busqueda))
-            .then(response => response.json())
-            .then(data => {
-                if (data.resultados && data.resultados.length > 0) {
-                    let candidata = data.resultados[0];
-
-                    document.getElementById("codigo").textContent = candidata.codigo || "-";
-                    document.getElementById("nombre").textContent = candidata.nombre || "-";
-                    document.getElementById("cedula").textContent = candidata.cedula || "-";
-                    document.getElementById("telefono").textContent = candidata.telefono || "-";
-                    document.getElementById("ciudad").textContent = candidata.ciudad || "-";
-                    document.getElementById("estado").textContent = candidata.estado || "-";
-                    document.getElementById("inscripcion").textContent = candidata.inscripcion || "-";
-                    document.getElementById("monto").textContent = candidata.monto || "-";
-                    document.getElementById("fecha").textContent = candidata.fecha || "-";
-                    document.getElementById("experiencia").textContent = candidata.experiencia || "-";
-                    document.getElementById("referencias").textContent = candidata.referencias || "-";
-                    document.getElementById("modalidad").textContent = candidata.modalidad || "-";
-                    document.getElementById("areas_experiencia").textContent = candidata.areas_experiencia || "-";
-
-                    document.getElementById("datos-candidata").style.display = "block";
-                } else {
-                    mostrarMensaje("❌ No se encontraron coincidencias.", "error");
-                    document.getElementById("datos-candidata").style.display = "none";
-                }
-            })
-            .catch(error => {
-                console.error("Error en la búsqueda:", error);
-                mostrarMensaje("❌ Error en la búsqueda. Inténtalo de nuevo.", "error");
-            });
-        });
-
-        function mostrarMensaje(mensaje, tipo) {
-            let alerta = document.getElementById("mensaje");
-            alerta.textContent = mensaje;
-            alerta.className = "alert " + tipo;
-            alerta.style.display = "block";
-        }
-    </script>
+    {% if resultados %}
+        <h2>📄 Resultados</h2>
+        <ul>
+            {% for candidata in resultados %}
+                <li>
+                    <strong>Código:</strong> {{ candidata.codigo }} <br>
+                    <strong>Nombre:</strong> {{ candidata.nombre }} <br>
+                    <strong>Cédula:</strong> {{ candidata.cedula }} <br>
+                    <strong>Teléfono:</strong> {{ candidata.telefono }} <br>
+                    <strong>Ciudad:</strong> {{ candidata.ciudad }} <br>
+                </li>
+                <hr>
+            {% endfor %}
+        </ul>
+    {% endif %}
 
 </body>
 </html>
