@@ -3,51 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscar Candidata</title>
+    <title>🔍 Búsqueda de Candidatas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .resultado {
+            background: #fff;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
 
-    <h1>🔍 Buscar Candidata</h1>
+    <div class="container">
+        <h1>🔍 Buscar Candidata</h1>
+        
+        <input type="text" id="query" placeholder="Ingrese nombre o cédula">
+        <button id="buscar">Buscar</button>
 
-    <label for="busqueda">Buscar por cédula o nombre:</label>
-    <input type="text" id="busqueda">
-    <button onclick="realizarBusqueda()">🔍 Buscar</button>
+        <div id="mensaje" class="error">{{ mensaje }}</div>
 
-    <div id="resultados">
-        {% if resultados %}
-            <h2>📄 Resultados</h2>
-            <ul>
+        <div id="resultados">
+            {% if resultados %}
                 {% for candidata in resultados %}
-                    <li>
-                        <strong>Código:</strong> {{ candidata.codigo }} <br>
-                        <strong>Nombre:</strong> {{ candidata.nombre }} <br>
-                        <strong>Cédula:</strong> {{ candidata.cedula }} <br>
-                        <strong>Teléfono:</strong> {{ candidata.telefono }} <br>
-                        <strong>Ciudad:</strong> {{ candidata.ciudad }} <br>
-                    </li>
-                    <hr>
+                    <div class="resultado">
+                        <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
+                        <p><strong>Edad:</strong> {{ candidata.edad }}</p>
+                        <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
+                        <p><strong>Dirección:</strong> {{ candidata.direccion }}</p>
+                        <p><strong>Modalidad:</strong> {{ candidata.modalidad }}</p>
+                        <p><strong>Experiencia:</strong> {{ candidata.experiencia }}</p>
+                        <p><strong>Referencia Laboral:</strong> {{ candidata.referencia_laboral }}</p>
+                        <p><strong>Referencia Familiar:</strong> {{ candidata.referencia_familiar }}</p>
+                        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+                        <p><strong>Código:</strong> {{ candidata.codigo }}</p>
+                        <p><strong>Inscripción:</strong> {{ candidata.inscripcion }}</p>
+                    </div>
                 {% endfor %}
-            </ul>
-        {% else %}
-            <p>No se encontraron resultados.</p>
-        {% endif %}
+            {% endif %}
+        </div>
     </div>
 
     <script>
-        function realizarBusqueda() {
-            let busqueda = document.getElementById("busqueda").value.trim();
-            if (!busqueda) {
-                alert("⚠️ Ingresa un nombre o cédula para buscar.");
+        document.getElementById("buscar").addEventListener("click", function() {
+            const query = document.getElementById("query").value.trim();
+
+            if (!query) {
+                document.getElementById("mensaje").textContent = "⚠️ Ingresa un nombre o cédula para buscar.";
                 return;
             }
 
-            fetch('/buscar?query=${encodeURIComponent(busqueda)}')
-                .then(response => response.text()) 
-                .then(html => {
-                    document.body.innerHTML = html; 
-                })
-                .catch(error => console.error("Error en la búsqueda:", error));
-        }
+            fetch('/buscar?query=' + encodeURIComponent(query))
+            .then(response => response.text())  // Usa .text() para depuración
+            .then(text => {
+                try {
+                    let data = JSON.parse(text);
+                    let resultadosDiv = document.getElementById("resultados");
+                    resultadosDiv.innerHTML = "";
+
+                    if (data.resultados.length > 0) {
+                        data.resultados.forEach(candidata => {
+                            let div = document.createElement("div");
+                            div.classList.add("resultado");
+                            div.innerHTML = `
+                                <p><strong>Nombre:</strong> ${candidata.nombre}</p>
+                                <p><strong>Edad:</strong> ${candidata.edad}</p>
+                                <p><strong>Teléfono:</strong> ${candidata.telefono}</p>
+                                <p><strong>Dirección:</strong> ${candidata.direccion}</p>
+                                <p><strong>Modalidad:</strong> ${candidata.modalidad}</p>
+                                <p><strong>Experiencia:</strong> ${candidata.experiencia}</p>
+                                <p><strong>Referencia Laboral:</strong> ${candidata.referencia_laboral}</p>
+                                <p><strong>Referencia Familiar:</strong> ${candidata.referencia_familiar}</p>
+                                <p><strong>Cédula:</strong> ${candidata.cedula}</p>
+                                <p><strong>Código:</strong> ${candidata.codigo}</p>
+                                <p><strong>Inscripción:</strong> ${candidata.inscripcion}</p>
+                            `;
+                            resultadosDiv.appendChild(div);
+                        });
+                    } else {
+                        document.getElementById("mensaje").textContent = "❌ No se encontraron resultados.";
+                    }
+                } catch (error) {
+                    console.error("Error al procesar la respuesta JSON:", error);
+                    console.error("Respuesta del servidor:", text);
+                    document.getElementById("mensaje").textContent = "❌ Error en la búsqueda.";
+                }
+            })
+            .catch(error => {
+                console.error("Error en la solicitud:", error);
+                document.getElementById("mensaje").textContent = "❌ Error en la solicitud.";
+            });
+        });
     </script>
 
 </body>

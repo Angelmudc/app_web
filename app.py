@@ -669,39 +669,42 @@ def buscar():
     query = request.args.get('query', '').strip().lower()
     
     if not query:
-        return jsonify({"error": "Debe ingresar un dato para buscar"}), 400
-    
+        return render_template("buscar.html", resultados=[], mensaje="Debe ingresar un dato para buscar.")  
+
     try:
-        hoja = obtener_datos_editar()  # Asegurar que obtenemos la hoja correctamente
-        datos = hoja.get_all_values()  # Obtener todos los datos de la hoja
-        
-        print(f"🔍 Buscando: {query}")  # Debug para ver qué se está buscando
-        print(f"📋 Datos obtenidos de la hoja: {len(datos)} filas")  # Ver cantidad de filas
+        # Obtener todos los datos de la hoja
+        hoja = sheet.worksheet('Nueva hoja')
+        datos = hoja.get_all_values()
 
+        # Buscar en la columna B (Nombre) y la columna O (Cédula)
         resultados = []
-        for fila in datos:
-            if len(fila) > 15:  # Verificar que la fila tenga suficiente información
-                nombre = fila[14].strip().lower()  # Columna P
-                cedula = fila[13].strip().lower()  # Columna O
-                
-                if query in nombre or query in cedula:
-                    print(f"✅ Coincidencia encontrada: {fila}")  # Debug para ver qué coincidió
-                    resultados.append({
-                        "codigo": fila[15],  
-                        "nombre": fila[14],
-                        "cedula": fila[13],
-                        "telefono": fila[4],
-                        "ciudad": fila[5]
-                    })
-        
-        if not resultados:
-            return jsonify({"error": "No se encontraron resultados"}), 404
+        for i, fila in enumerate(datos):
+            if i == 0:  # Saltar la fila de encabezados
+                continue
 
-        return render_template('buscar.html', resultados=resultados)
-    
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
+
+            if query in nombre or query in cedula:
+                resultados.append({
+                    "fila_index": i,
+                    "nombre": fila[1] if len(fila) > 1 else "No disponible",
+                    "edad": fila[2] if len(fila) > 2 else "No disponible",
+                    "telefono": fila[3] if len(fila) > 3 else "No disponible",
+                    "direccion": fila[4] if len(fila) > 4 else "No disponible",
+                    "modalidad": fila[5] if len(fila) > 5 else "No disponible",
+                    "experiencia": fila[9] if len(fila) > 9 else "No disponible",
+                    "referencia_laboral": fila[11] if len(fila) > 11 else "No disponible",
+                    "referencia_familiar": fila[12] if len(fila) > 12 else "No disponible",
+                    "cedula": fila[14] if len(fila) > 14 else "No disponible",
+                    "codigo": fila[15] if len(fila) > 15 else "No disponible",
+                    "inscripcion": fila[17] if len(fila) > 17 else "No disponible"
+                })
+
+        return render_template("buscar.html", resultados=resultados, mensaje="")
+
     except Exception as e:
-        print(f"⚠️ Error en la búsqueda: {str(e)}")
-        return jsonify({"error": f"Error interno: {str(e)}"}), 500
+        return render_template("buscar.html", resultados=[], mensaje=f"Error en la búsqueda: {str(e)}")
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
