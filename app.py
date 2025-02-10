@@ -664,41 +664,40 @@ def sugerir():
     
     return jsonify(datos_filtrados)
 
-@app.route('/buscar', methods=['GET'])
+@app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
-    query = request.args.get("query", "").strip()
-
-    if not query:
-        return jsonify({"error": "Debe ingresar un dato para buscar"})
-
-    hoja = obtener_datos_editar()  # Asegurar conexión con la hoja
-    datos = hoja.get_all_values()  # Obtener todos los valores
-
+    mensaje = ""
     resultados = []
-    for i, fila in enumerate(datos):
-        if i == 0:
-            continue  # Saltar encabezados
 
-        nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-        cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O
+    if request.method == 'POST':
+        busqueda = request.form.get('busqueda', '').strip().lower()
 
-        if query.lower() in nombre or query in cedula:
-            resultados.append({
-                "fila_index": i,
-                "codigo": fila[15] if len(fila) > 15 else "",  # Columna P
-                "nombre": fila[1] if len(fila) > 1 else "",
-                "edad": fila[2] if len(fila) > 2 else "",
-                "telefono": fila[3] if len(fila) > 3 else "",
-                "direccion": fila[4] if len(fila) > 4 else "",
-                "modalidad": fila[5] if len(fila) > 5 else "",
-                "experiencia": fila[9] if len(fila) > 9 else "",
-                "referencia_laboral": fila[11] if len(fila) > 11 else "",
-                "referencia_familiar": fila[12] if len(fila) > 12 else "",
-                "cedula": fila[14] if len(fila) > 14 else "",
-                "inscripcion": fila[17] if len(fila) > 17 else ""
-            })
+        if busqueda:
+            try:
+                hoja = gc.open_by_key(SPREADSHEET_ID).worksheet('Nueva hoja')
+                # Obtener todos los registros de la hoja
+                registros = hoja.get_all_records()
+                
+                # Realizar la búsqueda
+                for idx, registro in enumerate(registros, start=2):  # Asumiendo que la fila 1 son los encabezados
+                    nombre = registro.get('Nombre', '').lower()
+                    cedula = registro.get('Cédula', '').lower()
+                    if busqueda in nombre or busqueda == cedula:
+                        resultados.append({
+                            'fila': idx,  # Guardar el índice de la fila en la hoja
+                            'nombre': registro.get('Nombre', ''),
+                            'cedula': registro.get('Cédula', ''),
+                            'telefono': registro.get('Teléfono', '')
+                        })
+                
+                if not resultados:
+                    mensaje = "No se encontraron resultados."
+            except Exception as e:
+                mensaje = f"Error al buscar en la hoja de cálculo: {str(e)}"
+        else:
+            mensaje = "Por favor, introduce un nombre o cédula para buscar."
 
-    return render_template("buscar.html", resultados=resultados)
+    return render_template('buscar.html', resultados=resultados, mensaje=mensaje)
 
 @app.route("/editar", methods=["GET", "POST"])
 def editar():
