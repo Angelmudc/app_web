@@ -12,7 +12,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto;
             background: white;
             padding: 20px;
@@ -40,6 +40,14 @@
         button:hover {
             background-color: #218838;
         }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
         .resultados {
             margin-top: 20px;
         }
@@ -66,13 +74,18 @@
 <body>
 
     <div class="container">
-        <h2>🔎 Buscar Candidata</h2>
-        
+        <h2>📊 Calcular Porcentaje</h2>
+
+        <!-- Búsqueda -->
         <form method="POST">
-            <label for="busqueda">Buscar por Nombre o Cédula:</label>
+            <label for="busqueda">Buscar por Nombre, Cédula o Código:</label>
             <input type="text" id="busqueda" name="busqueda" required>
             <button type="submit">Buscar</button>
         </form>
+
+        {% if mensaje %}
+            <p class="{{ 'error' if 'No' in mensaje else 'success' }}">{{ mensaje }}</p>
+        {% endif %}
 
         {% if resultados %}
             <h3>Resultados:</h3>
@@ -82,11 +95,10 @@
                         <div>
                             <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
                             <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
-                            <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                            <p><strong>🔢 Código:</strong> {{ candidata.codigo }}</p>
+                            <p><strong>🆔 Código:</strong> {{ candidata.codigo }}</p>
                         </div>
-                        <form method="GET">
-                            <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
+                        <form method="POST">
+                            <input type="hidden" name="candidata_seleccionada" value="{{ candidata.fila_index }}">
                             <button class="ver-detalles" type="submit">Ver Detalles</button>
                         </form>
                     </div>
@@ -96,25 +108,29 @@
 
         {% if candidata %}
             <h2>✍ Editar Información</h2>
-            <form method="POST" action="/guardar_porciento">
+            <form method="POST">
                 <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
                 <label for="fecha_inicio">📅 Fecha de Inicio:</label>
                 <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ candidata.fecha_inicio }}">
 
+                <label for="monto">💰 Monto Total:</label>
+                <input type="text" id="monto" name="monto" value="{{ candidata.monto }}">
+
                 <label for="fecha_pago">📅 Fecha de Pago:</label>
                 <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
 
-                <label for="monto_total">💰 Monto Total:</label>
-                <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" required>
-
-                <label for="porcentaje">📊 Porcentaje (25% del Monto):</label>
+                <label for="porcentaje">📊 Porcentaje a Pagar (25% del monto):</label>
                 <input type="text" id="porcentaje" name="porcentaje" value="{{ candidata.porcentaje }}" readonly>
 
                 <label for="calificacion">⭐ Calificación:</label>
-                <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
+                <select id="calificacion" name="calificacion">
+                    <option value="Buena" {% if candidata.calificacion == 'Buena' %}selected{% endif %}>Buena</option>
+                    <option value="Regular" {% if candidata.calificacion == 'Regular' %}selected{% endif %}>Regular</option>
+                    <option value="Mala" {% if candidata.calificacion == 'Mala' %}selected{% endif %}>Mala</option>
+                </select>
 
-                <button type="submit">Guardar Cambios</button>
+                <button type="submit" name="guardar">💾 Guardar</button>
             </form>
         {% endif %}
     </div>
