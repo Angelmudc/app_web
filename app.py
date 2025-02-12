@@ -1122,76 +1122,99 @@ def reporte_pagos():
         print(f"Error al generar el reporte: {e}")
         return "Error al generar el reporte", 500
 
-@app.route('/referencias', methods=['GET', 'POST'])
-def referencias():
-    """
-    Busca y edita las referencias laborales y familiares de una candidata.
-    Se busca solo por Nombre o Cédula.
-    """
-    datos_candidata = None
-    mensaje = ""
+@app.route('/porciento', methods=['GET', 'POST'])
+def porciento():
+    resultados = []
+    candidata_detalles = None
+    busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '').strip()
 
-    if request.method == 'POST':
-        busqueda = request.form.get('busqueda', '').strip()
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Y"  # Incluye hasta la columna Y
+        ).execute()
 
-        if not busqueda:
-            mensaje = "Por favor, introduce un Nombre o Cédula para buscar."
-        else:
-            # 🔹 Obtener datos solo de las columnas necesarias
-            datos = obtener_datos_referencias()
+        valores = hoja.get("values", [])
 
-            # 🔹 DEBUG: Imprimir datos obtenidos
-            print("🔹 Datos obtenidos de la hoja:")
-            for fila in datos:
-                print(fila)
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la fila 2
+            codigo = fila[15] if len(fila) > 15 else ""
 
-            busqueda_normalizada = normalizar_texto(busqueda)  # 🔹 Normalizamos la búsqueda
+            if not codigo.strip():  # Filtrar solo las que tienen código
+                continue
 
-            for index, fila in enumerate(datos):
-                if len(fila) >= 15:  # Asegurar que tenga suficientes columnas
-                    nombre_original = fila[1]  # Columna B (Nombre)
-                    cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O (Cédula)
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
 
-                    # 🔹 Normalizar el nombre para comparar correctamente
-                    nombre_normalizado = normalizar_texto(nombre_original)
+            if busqueda and (busqueda in nombre or busqueda in cedula):
+                resultados.append({
+                    'fila_index': fila_index,
+                    'codigo': fila[15] if len(fila) > 15 else "",
+                    'nombre': fila[1] if len(fila) > 1 else "",
+                    'telefono': fila[3] if len(fila) > 3 else "",
+                    'cedula': fila[14] if len(fila) > 14 else "",
+                })
 
-                    # 🔹 DEBUG: Mostrar la comparación exacta
-                    print(f"Comparando búsqueda: '{busqueda_normalizada}' con Nombre: '{nombre_normalizado}', Cédula: '{cedula}'")
+            if candidata_id and str(fila_index) == candidata_id:
+                candidata_detalles = {
+                    'fila_index': fila_index,
+                    'codigo': fila[15] if len(fila) > 15 else "",
+                    'nombre': fila[1] if len(fila) > 1 else "",
+                    'fecha_pago': fila[20] if len(fila) > 20 else "",
+                    'fecha_inicio': fila[21] if len(fila) > 21 else "",
+                    'monto_total': fila[22] if len(fila) > 22 else "",
+                    'porcentaje': fila[23] if len(fila) > 23 else "",
+                    'calificacion': fila[24] if len(fila) > 24 else "",
+                }
 
-                    # 🔹 Permitir coincidencias más flexibles
-                    if busqueda_normalizada in nombre_normalizado or busqueda == cedula:
-                        datos_candidata = {
-                            'fila_index': index + 1,  # 🔹 Índice 1-based
-                            'nombre': nombre_original,       # Columna B (Nombre)
-                            'cedula': fila[14],      # Columna O (Cédula)
-                            'laborales': fila[11],   # Columna L (Referencias Laborales)
-                            'familiares': fila[12]   # Columna M (Referencias Familiares)
-                        }
-                        print(f"✅ Candidata encontrada: {datos_candidata}")  # DEBUG
-                        break
-            
-            if not datos_candidata:
-                mensaje = f"No se encontraron resultados para: {busqueda}"
+    except Exception as e:
+        print(f"❌ Error en la búsqueda: {e}")
 
-        # 🔹 Guardar cambios si se presiona el botón "guardar"
-        if 'guardar_btn' in request.form:
-            try:
-                fila_index = int(request.form.get('fila_index', -1))
-                laborales = request.form.get('laborales', '').strip()
-                familiares = request.form.get('familiares', '').strip()
+    return render_template('porciento.html', resultados=resultados, candidata=candidata_detalles)
 
-                if fila_index == -1:
-                    mensaje = "Error: No se pudo determinar la fila a actualizar."
-                else:
-                    # 🔹 Llamar a la función para actualizar referencias
-                    if actualizar_referencias(fila_index, laborales, familiares):
-                        mensaje = "Referencias actualizadas correctamente."
-                    else:
-                        mensaje = "Error al actualizar referencias."
-            except Exception as e:
-                mensaje = f"Error al guardar las referencias: {str(e)}"
 
-    return render_template('referencias.html', datos_candidata=datos_candidata, mensaje=mensaje)
+@app.route('/guardar_porciento', methods=['POST'])
+def guardar_porciento():
+    try:
+        fila_index = request.form.get('fila_index')
+        if not fila_index or not fila_index.isdigit():
+            return "Error: No se pudo determinar la fila a actualizar."
+
+        fila_index = int(fila_index)
+
+        monto_total = request.form.get('monto_total', '').strip()
+        porcentaje = str(round(float(monto_total) * 0.25, 2)) if monto_total else ""
+
+        nuevos_datos = {
+            'fecha_pago': request.form.get('fecha_pago', '').strip(),
+            'fecha_inicio': request.form.get('fecha_inicio', '').strip(),
+            'monto_total': monto_total,
+            'porcentaje': porcentaje,
+            'calificacion': request.form.get('calificacion', '').strip()
+        }
+
+        columnas = {
+            'fecha_pago': "U",
+            'fecha_inicio': "V",
+            'monto_total': "W",
+            'porcentaje': "X",
+            'calificacion': "Y"
+        }
+
+        for campo, valor in nuevos_datos.items():
+            if valor:
+                rango = f'Nueva hoja!{columnas[campo]}{fila_index}'
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=rango,
+                    valueInputOption="RAW",
+                    body={"values": [[valor]]}
+                ).execute()
+
+        return "✅ Datos actualizados correctamente."
+
+    except Exception as e:
+        return f"❌ Error al actualizar: {str(e)}"
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

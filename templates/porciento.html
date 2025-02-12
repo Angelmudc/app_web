@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calcular Porcentaje</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .resultados {
+            margin-top: 20px;
+        }
+        .resultado-item {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .ver-detalles {
+            background-color: #007bff;
+            color: white;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .ver-detalles:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>🔎 Buscar Candidata</h2>
+        
+        <form method="POST">
+            <label for="busqueda">Buscar por Nombre o Cédula:</label>
+            <input type="text" id="busqueda" name="busqueda" required>
+            <button type="submit">Buscar</button>
+        </form>
+
+        {% if resultados %}
+            <h3>Resultados:</h3>
+            <div class="resultados">
+                {% for candidata in resultados %}
+                    <div class="resultado-item">
+                        <div>
+                            <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
+                            <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
+                            <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
+                            <p><strong>🔢 Código:</strong> {{ candidata.codigo }}</p>
+                        </div>
+                        <form method="GET">
+                            <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
+                            <button class="ver-detalles" type="submit">Ver Detalles</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% if candidata %}
+            <h2>✍ Editar Información</h2>
+            <form method="POST" action="/guardar_porciento">
+                <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
+
+                <label for="fecha_inicio">📅 Fecha de Inicio:</label>
+                <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ candidata.fecha_inicio }}">
+
+                <label for="fecha_pago">📅 Fecha de Pago:</label>
+                <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
+
+                <label for="monto_total">💰 Monto Total:</label>
+                <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" required>
+
+                <label for="porcentaje">📊 Porcentaje (25% del Monto):</label>
+                <input type="text" id="porcentaje" name="porcentaje" value="{{ candidata.porcentaje }}" readonly>
+
+                <label for="calificacion">⭐ Calificación:</label>
+                <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
+
+                <button type="submit">Guardar Cambios</button>
+            </form>
+        {% endif %}
+    </div>
+
+</body>
+</html>
