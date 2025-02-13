@@ -1224,37 +1224,48 @@ def pagos():
     candidata_id = request.args.get('candidata', '')
 
     try:
-        valores = worksheet.get_all_values()
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Y"  # Incluye hasta la columna Y (calificación)
+        ).execute()
 
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Desde la fila 2
-            if len(fila) < 16:
-                continue  # Evitar filas incompletas
+        valores = hoja.get("values", [])
 
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
-            codigo = fila[15].strip() if len(fila) > 15 else ""
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Saltamos la primera fila (encabezado)
+            codigo = fila[15] if len(fila) > 15 and fila[15] else ""  # Columna P
+            monto_total = float(fila[22]) if len(fila) > 22 and fila[22] else 0  # Columna W (Monto Total)
+            saldo_pendiente = float(fila[23]) if len(fila) > 23 and fila[23] else 0  # Columna X (Saldo a pagar)
 
-            # Solo buscar candidatas con código
-            if codigo and (busqueda in nombre or busqueda in cedula or busqueda in codigo):
-                resultados.append({
-                    'fila_index': fila_index,
-                    'nombre': fila[1],
-                    'telefono': fila[3],
-                    'cedula': fila[14],
-                    'codigo': fila[15]
-                })
+            if codigo and saldo_pendiente > 0:  # Solo mostrar candidatas que deben pagar
+                nombre = fila[1] if len(fila) > 1 else "No especificado"
+                cedula = fila[14] if len(fila) > 14 else "No especificado"
 
-            if candidata_id and str(fila_index) == candidata_id:  # Mostrar detalles específicos
+                if not busqueda or (busqueda in nombre.lower() or busqueda in cedula):
+                    resultados.append({
+                        'id': codigo,  
+                        'fila_index': fila_index,  
+                        'nombre': nombre,
+                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                        'cedula': cedula,
+                        'monto_total': monto_total,
+                        'saldo_pendiente': saldo_pendiente,
+                        'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # Columna U
+                    })
+
+            if candidata_id and str(codigo) == candidata_id:
                 candidata_detalles = {
                     'fila_index': fila_index,
-                    'fecha_pago': fila[20] if len(fila) > 20 else "",
-                    'monto_total': fila[22] if len(fila) > 22 else "",
-                    'porcentaje': fila[23] if len(fila) > 23 else "",
-                    'calificacion': fila[24] if len(fila) > 24 else ""
+                    'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                    'monto_total': monto_total,
+                    'saldo_pendiente': saldo_pendiente,
+                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
+                    'calificacion': fila[24] if len(fila) > 24 else "",
                 }
 
     except Exception as e:
-        print(f"❌ Error al buscar candidatas: {e}")
+        print(f"❌ Error en la búsqueda de pagos: {e}")
 
     return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
 
@@ -1263,35 +1274,42 @@ def pagos():
 def guardar_pago():
     try:
         fila_index = request.form.get('fila_index')
-        fecha_pago = request.form.get('fecha_pago', '').strip()
-        monto_pagado = request.form.get('monto_pagado', '').strip()
-        calificacion = request.form.get('calificacion', '').strip()
+        monto_pagado = float(request.form.get('monto_pagado', 0))
+        fecha_pago = request.form.get('fecha_pago')
+        calificacion = request.form.get('calificacion')
 
-        if not fila_index.isdigit():
+        if not fila_index or not fila_index.isdigit():
             return "❌ Error: Fila no válida.", 400
-        
+
         fila_index = int(fila_index)
-        valores = worksheet.get_all_values()
-        fila_actual = valores[fila_index - 1]
 
-        # Obtener monto total actual
-        monto_total_actual = float(fila_actual[22]) if len(fila_actual) > 22 and fila_actual[22] else 0.0
-        monto_pagado = float(monto_pagado) if monto_pagado else 0.0
+        # Obtener datos actuales de la fila
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"Nueva hoja!W{fila_index}:X{fila_index}"  # Monto total (W) y saldo pendiente (X)
+        ).execute()
 
-        # Calcular nuevo monto total
-        nuevo_monto_total = max(0, monto_total_actual - monto_pagado)
+        valores = hoja.get("values", [])
+        if not valores:
+            return "❌ Error: No se encontraron datos en la fila.", 400
 
-        # Actualizar en la hoja
-        worksheet.update(f'U{fila_index}', fecha_pago)  # Fecha de pago
-        worksheet.update(f'X{fila_index}', monto_pagado)  # Monto pagado
-        worksheet.update(f'W{fila_index}', nuevo_monto_total)  # Nuevo monto total
-        worksheet.update(f'Y{fila_index}', calificacion)  # Calificación
+        monto_total_actual = float(valores[0][0]) if len(valores[0]) > 0 else 0
+        saldo_pendiente_actual = float(valores[0][1]) if len(valores[0]) > 1 else 0
+
+        # Calcular nuevo saldo
+        nuevo_saldo = max(saldo_pendiente_actual - monto_pagado, 0)  # No permitir saldo negativo
+
+        # Actualizar los valores en la hoja
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",
+            valueInputOption="RAW",
+            body={"values": [[fecha_pago, monto_total_actual, nuevo_saldo, calificacion]]}
+        ).execute()
 
         return "✅ Pago registrado correctamente."
 
     except Exception as e:
-        print(f"❌ Error al guardar pago: {e}")
-        return "❌ Error al guardar el pago.", 500
-
+        return f"❌ Error al registrar pago: {str(e)}", 500
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

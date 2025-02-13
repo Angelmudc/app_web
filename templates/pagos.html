@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registrar Pago</title>
+    <title>Registrar Pagos</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -69,7 +69,7 @@
         <h2>🔎 Buscar Candidata</h2>
         
         <form method="POST">
-            <label for="busqueda">Buscar por Nombre, Cédula o Código:</label>
+            <label for="busqueda">Buscar por Nombre o Cédula:</label>
             <input type="text" id="busqueda" name="busqueda" required>
             <button type="submit">Buscar</button>
         </form>
@@ -83,10 +83,11 @@
                             <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
                             <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
                             <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                            <p><strong>🔢 Código:</strong> {{ candidata.codigo }}</p>
+                            <p><strong>💰 Monto Total:</strong> {{ candidata.monto_total }}</p>
+                            <p><strong>📉 Saldo Pendiente:</strong> {{ candidata.saldo_pendiente }}</p>
                         </div>
                         <form method="GET">
-                            <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
+                            <input type="hidden" name="candidata" value="{{ candidata.id }}">
                             <button class="ver-detalles" type="submit">Ver Detalles</button>
                         </form>
                     </div>
@@ -102,7 +103,7 @@
                 <label for="fecha_pago">📅 Fecha de Pago:</label>
                 <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
 
-                <label for="monto_pagado">💰 Monto a Pagar:</label>
+                <label for="monto_pagado">💰 Monto Pagado:</label>
                 <input type="text" id="monto_pagado" name="monto_pagado" required>
 
                 <label for="calificacion">⭐ Calificación:</label>
