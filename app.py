@@ -1216,6 +1216,46 @@ def guardar_porciento():
     except Exception as e:
         return f"❌ Error al actualizar: {str(e)}"
 
+@app.route('/buscar_pagos', methods=['GET', 'POST'])
+def buscar_pagos():
+    resultados = []
+    candidata_detalles = None
+    busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '')
+
+    print(f"🔍 Buscando: {busqueda}")  # <-- ¿Se está enviando la búsqueda?
+
+    if busqueda:
+        try:
+            hoja = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:Y"
+            ).execute()
+
+            valores = hoja.get("values", [])
+
+            print(f"📜 Datos de la hoja: {len(valores)} filas cargadas")  # <-- Verifica si está leyendo datos
+
+            for fila_index, fila in enumerate(valores[1:], start=2):  
+                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+                cedula = fila[14].strip() if len(fila) > 14 else ""
+                codigo = fila[15] if len(fila) > 15 else ""
+
+                if busqueda in nombre or busqueda in cedula or busqueda == codigo:
+                    print(f"✅ Candidata encontrada: {nombre}, {cedula}, {codigo}")  # <-- Muestra si encuentra algo
+                    resultados.append({
+                        'fila_index': fila_index,
+                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                        'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                        'codigo': fila[15] if len(fila) > 15 else "No especificado"
+                    })
+
+        except Exception as e:
+            print(f"❌ Error en la búsqueda: {e}")
+
+    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
+
 @app.route('/pagos', methods=['GET', 'POST'])
 def pagos():
     resultados = []
