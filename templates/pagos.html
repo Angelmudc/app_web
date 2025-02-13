@@ -13,7 +13,7 @@
         }
         .container {
             max-width: 600px;
-            margin: 0 auto;
+            margin: auto;
             background: white;
             padding: 20px;
             border-radius: 8px;
@@ -69,7 +69,7 @@
         <h2>🔎 Buscar Candidata</h2>
         
         <form method="POST">
-            <label for="busqueda">Buscar por Nombre o Cédula:</label>
+            <label for="busqueda">Buscar por Nombre, Cédula o Código:</label>
             <input type="text" id="busqueda" name="busqueda" required>
             <button type="submit">Buscar</button>
         </form>
@@ -93,6 +93,8 @@
                     </div>
                 {% endfor %}
             </div>
+        {% else %}
+            <p>No se encontraron resultados.</p>
         {% endif %}
 
         {% if candidata %}
