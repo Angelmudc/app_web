@@ -12,24 +12,21 @@
             padding: 20px;
         }
         .container {
-            max-width: 700px;
+            max-width: 600px;
             margin: 0 auto;
             background: white;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
         }
         h2 {
             text-align: center;
             color: #333;
-            border-bottom: 2px solid #ddd;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
         }
         input, select, button {
             width: 100%;
-            padding: 12px;
-            margin: 10px 0;
+            padding: 10px;
+            margin: 5px 0;
             border: 1px solid #ccc;
             border-radius: 5px;
             font-size: 16px;
@@ -37,9 +34,8 @@
         button {
             background-color: #28a745;
             color: white;
+            cursor: pointer;
             font-weight: bold;
-            border: none;
-            transition: 0.3s;
         }
         button:hover {
             background-color: #218838;
@@ -48,59 +44,50 @@
             margin-top: 20px;
         }
         .resultado-item {
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-            margin-bottom: 10px;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .ver-detalles {
             background-color: #007bff;
             color: white;
-            font-weight: bold;
+            padding: 5px 10px;
             border: none;
-            padding: 8px 12px;
             border-radius: 5px;
             cursor: pointer;
-            width: 100%;
         }
         .ver-detalles:hover {
             background-color: #0056b3;
-        }
-        label {
-            font-weight: bold;
-            color: #555;
-        }
-        .form-group {
-            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>💰 Registrar Pago</h2>
+        <h2>🔎 Buscar Candidata</h2>
         
         <form method="POST">
-            <div class="form-group">
-                <label for="busqueda">Buscar por Nombre, Cédula o Código:</label>
-                <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre, cédula o código" required>
-            </div>
-            <button type="submit">🔍 Buscar</button>
+            <label for="busqueda">Buscar por Nombre, Cédula o Código:</label>
+            <input type="text" id="busqueda" name="busqueda" required>
+            <button type="submit">Buscar</button>
         </form>
 
         {% if resultados %}
-            <h3>Resultados Encontrados:</h3>
+            <h3>Resultados:</h3>
             <div class="resultados">
                 {% for candidata in resultados %}
                     <div class="resultado-item">
-                        <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
-                        <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
-                        <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                        <p><strong>🔢 Código:</strong> {{ candidata.codigo }}</p>
+                        <div>
+                            <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
+                            <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
+                            <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
+                            <p><strong>🔢 Código:</strong> {{ candidata.codigo }}</p>
+                        </div>
                         <form method="GET">
                             <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                            <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
+                            <button class="ver-detalles" type="submit">Ver Detalles</button>
                         </form>
                     </div>
                 {% endfor %}
@@ -112,22 +99,16 @@
             <form method="POST" action="/guardar_pago">
                 <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
-                <div class="form-group">
-                    <label for="fecha_pago">📅 Fecha de Pago:</label>
-                    <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
-                </div>
+                <label for="fecha_pago">📅 Fecha de Pago:</label>
+                <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
 
-                <div class="form-group">
-                    <label for="porcentaje">📊 Porcentaje a Pagar:</label>
-                    <input type="text" id="porcentaje" name="porcentaje" value="{{ candidata.porcentaje }}" readonly>
-                </div>
+                <label for="monto_pagado">💰 Monto a Pagar:</label>
+                <input type="text" id="monto_pagado" name="monto_pagado" required>
 
-                <div class="form-group">
-                    <label for="calificacion">⭐ Calificación:</label>
-                    <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
-                </div>
+                <label for="calificacion">⭐ Calificación:</label>
+                <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
 
-                <button type="submit">💾 Guardar Pago</button>
+                <button type="submit">Registrar Pago</button>
             </form>
         {% endif %}
     </div>

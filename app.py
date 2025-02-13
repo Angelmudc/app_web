@@ -1234,7 +1234,8 @@ def pagos():
             cedula = fila[14].strip() if len(fila) > 14 else ""
             codigo = fila[15].strip() if len(fila) > 15 else ""
 
-            if busqueda and (busqueda in nombre or busqueda in cedula or busqueda in codigo):
+            # Solo buscar candidatas con código
+            if codigo and (busqueda in nombre or busqueda in cedula or busqueda in codigo):
                 resultados.append({
                     'fila_index': fila_index,
                     'nombre': fila[1],
@@ -1247,8 +1248,8 @@ def pagos():
                 candidata_detalles = {
                     'fila_index': fila_index,
                     'fecha_pago': fila[20] if len(fila) > 20 else "",
-                    'porcentaje': fila[23] if len(fila) > 23 else "",
                     'monto_total': fila[22] if len(fila) > 22 else "",
+                    'porcentaje': fila[23] if len(fila) > 23 else "",
                     'calificacion': fila[24] if len(fila) > 24 else ""
                 }
 
@@ -1263,7 +1264,7 @@ def guardar_pago():
     try:
         fila_index = request.form.get('fila_index')
         fecha_pago = request.form.get('fecha_pago', '').strip()
-        monto_pagado = request.form.get('porcentaje', '').strip()
+        monto_pagado = request.form.get('monto_pagado', '').strip()
         calificacion = request.form.get('calificacion', '').strip()
 
         if not fila_index.isdigit():
@@ -1282,7 +1283,7 @@ def guardar_pago():
 
         # Actualizar en la hoja
         worksheet.update(f'U{fila_index}', fecha_pago)  # Fecha de pago
-        worksheet.update(f'X{fila_index}', monto_pagado)  # Monto pagado (Porcentaje)
+        worksheet.update(f'X{fila_index}', monto_pagado)  # Monto pagado
         worksheet.update(f'W{fila_index}', nuevo_monto_total)  # Nuevo monto total
         worksheet.update(f'Y{fila_index}', calificacion)  # Calificación
 
