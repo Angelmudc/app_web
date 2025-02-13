@@ -1216,5 +1216,81 @@ def guardar_porciento():
     except Exception as e:
         return f"❌ Error al actualizar: {str(e)}"
 
+@app.route('/pagos', methods=['GET', 'POST'])
+def pagos():
+    resultados = []
+    candidata_detalles = None
+    busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '')
+
+    try:
+        valores = worksheet.get_all_values()
+
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Desde la fila 2
+            if len(fila) < 16:
+                continue  # Evitar filas incompletas
+
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
+            codigo = fila[15].strip() if len(fila) > 15 else ""
+
+            if busqueda and (busqueda in nombre or busqueda in cedula or busqueda in codigo):
+                resultados.append({
+                    'fila_index': fila_index,
+                    'nombre': fila[1],
+                    'telefono': fila[3],
+                    'cedula': fila[14],
+                    'codigo': fila[15]
+                })
+
+            if candidata_id and str(fila_index) == candidata_id:  # Mostrar detalles específicos
+                candidata_detalles = {
+                    'fila_index': fila_index,
+                    'fecha_pago': fila[20] if len(fila) > 20 else "",
+                    'porcentaje': fila[23] if len(fila) > 23 else "",
+                    'monto_total': fila[22] if len(fila) > 22 else "",
+                    'calificacion': fila[24] if len(fila) > 24 else ""
+                }
+
+    except Exception as e:
+        print(f"❌ Error al buscar candidatas: {e}")
+
+    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
+
+
+@app.route('/guardar_pago', methods=['POST'])
+def guardar_pago():
+    try:
+        fila_index = request.form.get('fila_index')
+        fecha_pago = request.form.get('fecha_pago', '').strip()
+        monto_pagado = request.form.get('porcentaje', '').strip()
+        calificacion = request.form.get('calificacion', '').strip()
+
+        if not fila_index.isdigit():
+            return "❌ Error: Fila no válida.", 400
+        
+        fila_index = int(fila_index)
+        valores = worksheet.get_all_values()
+        fila_actual = valores[fila_index - 1]
+
+        # Obtener monto total actual
+        monto_total_actual = float(fila_actual[22]) if len(fila_actual) > 22 and fila_actual[22] else 0.0
+        monto_pagado = float(monto_pagado) if monto_pagado else 0.0
+
+        # Calcular nuevo monto total
+        nuevo_monto_total = max(0, monto_total_actual - monto_pagado)
+
+        # Actualizar en la hoja
+        worksheet.update(f'U{fila_index}', fecha_pago)  # Fecha de pago
+        worksheet.update(f'X{fila_index}', monto_pagado)  # Monto pagado (Porcentaje)
+        worksheet.update(f'W{fila_index}', nuevo_monto_total)  # Nuevo monto total
+        worksheet.update(f'Y{fila_index}', calificacion)  # Calificación
+
+        return "✅ Pago registrado correctamente."
+
+    except Exception as e:
+        print(f"❌ Error al guardar pago: {e}")
+        return "❌ Error al guardar el pago.", 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
