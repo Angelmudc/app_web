@@ -1355,13 +1355,16 @@ def pagos():
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
-        fila_index = int(request.form.get('fila_index'))  # Número de fila
+        fila_index = int(request.form.get('fila_index'))  # Número de fila correcto
         fecha_pago = request.form.get('fecha_pago', '')
         monto_total = request.form.get('monto_total', '')
         porcentaje = request.form.get('porcentaje', '')
         calificacion = request.form.get('calificacion', '')
 
-        # ✅ Asegurar que los valores se asignen a las columnas correctas
+        # ✅ Verificación de valores antes de actualizar
+        print(f"Fila: {fila_index}, Fecha Pago: {fecha_pago}, Monto Total: {monto_total}, Porcentaje: {porcentaje}, Calificación: {calificacion}")
+
+        # ✅ Definir los valores que se guardarán
         valores_actualizar = [
             [fecha_pago],   # Columna U (Fecha de pago)
             [monto_total],  # Columna W (Monto total)
@@ -1369,16 +1372,18 @@ def guardar_pago():
             [calificacion]  # Columna Y (Calificación)
         ]
 
-        # ✅ Definir los rangos exactos en Google Sheets
+        # ✅ Definir los rangos correctos en Google Sheets
         rangos_actualizar = [
-            f"U{fila_index}",  # Fecha de pago
-            f"W{fila_index}",  # Monto total
-            f"X{fila_index}",  # Porcentaje
-            f"Y{fila_index}"   # Calificación
+            f"U{fila_index}",  # Fecha de pago (Columna U)
+            f"W{fila_index}",  # Monto total (Columna W)
+            f"X{fila_index}",  # Porcentaje (Columna X)
+            f"Y{fila_index}"   # Calificación (Columna Y)
         ]
 
-        # ✅ Realizar actualización en Google Sheets
+        # ✅ Actualizar los valores en la hoja de cálculo
         for rango, valor in zip(rangos_actualizar, valores_actualizar):
+            print(f"Actualizando {rango} con valor {valor}")  # Debugging
+
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
                 range=f"Nueva hoja!{rango}",
@@ -1389,6 +1394,7 @@ def guardar_pago():
         return redirect(url_for('pagos'))
 
     except Exception as e:
+        print(f"Error al guardar los datos: {str(e)}")  # Debugging
         return f"Error al guardar los datos: {str(e)}", 400
 
 if __name__ == '__main__':
