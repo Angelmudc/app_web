@@ -1323,10 +1323,10 @@ def pagos():
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total (Columna W)
-                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porcentaje (Columna X)
-                    'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación (Columna Y)
-                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Fecha de pago (Columna U)
+                    'monto_total': fila[22] if len(fila) > 22 else "0",  # W
+                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
+                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
+                    'calificacion': fila[24] if len(fila) > 24 else "",  # Y
                 })
 
         # 🔹 Cargar detalles si se seleccionó una candidata
@@ -1339,10 +1339,10 @@ def pagos():
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total (Columna W)
-                'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porcentaje (Columna X)
-                'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación (Columna Y)
-                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Fecha de pago (Columna U)
+                'monto_total': fila[22] if len(fila) > 22 else "0",  # W
+                'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
+                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
+                'calificacion': fila[24] if len(fila) > 24 else "",  # Y
             }
 
     except Exception as e:
@@ -1355,31 +1355,29 @@ def pagos():
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
-        fila_index = int(request.form.get('fila_index'))
-        fecha_pago = request.form.get('fecha_pago', '')
-        monto_total = request.form.get('monto_total', '')
-        monto_pagado = request.form.get('monto_pagado', '')
-        saldo_pendiente = request.form.get('saldo_pendiente', '')
-        calificacion = request.form.get('calificacion', '')
+        fila_index = int(request.form.get('fila_index', '').strip())
+        monto_total = request.form.get('monto_total', '').strip()
+        porcentaje = request.form.get('porcentaje', '').strip()
+        fecha_pago = request.form.get('fecha_pago', '').strip()
+        calificacion = request.form.get('calificacion', '').strip()
 
-        valores_actualizar = [[""] * 25]  # Asegurar tamaño de la fila completa
-        valores_actualizar[0][20] = fecha_pago  # Columna U (Fecha de Pago)
-        valores_actualizar[0][22] = monto_total  # Columna W (Monto Total)
-        valores_actualizar[0][23] = monto_pagado  # Columna X (Porcentaje)
-        valores_actualizar[0][24] = calificacion  # Columna Y (Calificación)
+        # 🔹 Asegurar que los datos se guardan en las columnas correctas
+        rango_actualizar = f"Nueva hoja!U{fila_index}:Y{fila_index}"
 
-        # Actualizar en la hoja de cálculo
+        valores_actualizar = [[fecha_pago, "", monto_total, porcentaje, calificacion]]
+
+        # Enviar datos actualizados a Google Sheets
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f'Nueva hoja!U{fila_index}:Y{fila_index}',  # Rango exacto de columnas
-            valueInputOption='RAW',
-            body={'values': valores_actualizar}
+            range=rango_actualizar,
+            valueInputOption="RAW",
+            body={"values": valores_actualizar}
         ).execute()
 
         return redirect(url_for('pagos'))
-    
+
     except Exception as e:
-        return f"Error al guardar los datos: {str(e)}", 500
+        return f"❌ Error al guardar los datos: {str(e)}", 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
