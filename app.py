@@ -1325,7 +1325,7 @@ def pagos():
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
                     'monto_total': fila[22] if len(fila) > 22 else "0",
                     'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
-                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
+                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",
                 })
 
         # 🔹 Cargar detalles si se seleccionó una candidata
@@ -1339,8 +1339,8 @@ def pagos():
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
                 'monto_total': fila[22] if len(fila) > 22 else "0",
-                'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
-                'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
+                'porcentaje': fila[23] if len(fila) > 23 else "0",
+                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",
                 'calificacion': fila[24] if len(fila) > 24 else "",
             }
 
