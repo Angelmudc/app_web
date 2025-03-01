@@ -148,22 +148,33 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
         print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
 
-def buscar_candidatas(busqueda):
+def buscar_candidata(busqueda):
     """
-    Busca candidatas en la hoja de cálculo por coincidencia parcial en Nombre (Columna B) o Cédula (Columna O).
-    Retorna una lista con todos los resultados encontrados.
+    Busca candidatas en la hoja de cálculo SOLO por nombre (columna B).
+    - La búsqueda no es estricta, permite coincidencias parciales.
+    - Retorna toda la fila encontrada sin importar si hay columnas vacías.
     """
-
     try:
-        hoja = client.open("Nueva hoja").worksheet("Nueva hoja")  # Accede a la hoja
-        datos = hoja.get_all_values()  # Obtiene todos los valores
+        datos = sheet.get_all_values()  # Obtiene todas las filas de la hoja
         resultados = []
 
-        # Verifica que haya datos en la hoja
-        if not datos or len(datos) < 2:
-            print("⚠️ No hay datos en la hoja de cálculo.")
-            return []
+        busqueda = busqueda.strip().lower()  # Normalizar búsqueda
 
+        for fila_index, fila in enumerate(datos[1:], start=2):  # Saltamos el encabezado
+            if len(fila) > 1:  # Verifica que la fila tenga al menos la columna B (nombre)
+                nombre = fila[1].strip().lower()  # Columna B (Nombre)
+
+                if busqueda in nombre:  # Coincidencia parcial
+                    resultados.append({
+                        'fila_index': fila_index,
+                        'datos_completos': fila  # Guarda toda la fila encontrada
+                    })
+
+        return resultados  # Retorna TODAS las coincidencias encontradas
+
+    except Exception as e:
+        print(f"❌ Error en la búsqueda: {e}")
+        return []
         encabezados = datos[0]  # Primera fila son los encabezados
 
         # 🔹 Buscar en cada fila (desde la segunda fila en adelante)
@@ -1292,7 +1303,7 @@ def pagos():
     candidata_id = request.args.get('candidata', '')
 
     if busqueda:
-        resultados = buscar_candidata(busqueda)
+        resultados = buscar_candidata(busqueda)  # Busca en la columna B (Nombre)
 
     if candidata_id:
         for candidata in resultados:

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registrar Pago</title>
+    <title>Gestión de Pagos</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -26,7 +26,7 @@
             padding-bottom: 10px;
             margin-bottom: 20px;
         }
-        input, select, button {
+        input, button {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
@@ -40,6 +40,7 @@
             font-weight: bold;
             border: none;
             transition: 0.3s;
+            cursor: pointer;
         }
         button:hover {
             background-color: #218838;
@@ -83,8 +84,8 @@
         
         <form method="POST">
             <div class="form-group">
-                <label for="busqueda">Buscar por Nombre, Cédula o Código:</label>
-                <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre, cédula o código" required>
+                <label for="busqueda">Buscar por Nombre:</label>
+                <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre" required>
             </div>
             <button type="submit">🔍 Buscar</button>
         </form>
@@ -94,10 +95,10 @@
             <div class="resultados">
                 {% for candidata in resultados %}
                     <div class="resultado-item">
-                        <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
-                        <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
-                        <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                        <p><strong>💰 Saldo Pendiente:</strong> {{ candidata.saldo_pendiente }}</p>
+                        <p><strong>👤 Nombre:</strong> {{ candidata.datos_completos[1] }}</p>
+                        <p><strong>📞 Teléfono:</strong> {{ candidata.datos_completos[3] if candidata.datos_completos|length > 3 else "No disponible" }}</p>
+                        <p><strong>🆔 Cédula:</strong> {{ candidata.datos_completos[14] if candidata.datos_completos|length > 14 else "No disponible" }}</p>
+                        <p><strong>💰 Saldo Pendiente:</strong> {{ candidata.datos_completos[23] if candidata.datos_completos|length > 23 else "No disponible" }}</p>
                         <form method="GET">
                             <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
                             <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
@@ -116,12 +117,7 @@
 
                 <div class="form-group">
                     <label for="fecha_pago">📅 Fecha de Pago:</label>
-                    <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
-                </div>
-
-                <div class="form-group">
-                    <label for="monto_total">💰 Saldo Total:</label>
-                    <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" readonly>
+                    <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.datos_completos[21] if candidata.datos_completos|length > 21 else '' }}">
                 </div>
 
                 <div class="form-group">
@@ -131,12 +127,7 @@
 
                 <div class="form-group">
                     <label for="saldo_pendiente">📉 Saldo Pendiente:</label>
-                    <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.saldo_pendiente }}" readonly>
-                </div>
-
-                <div class="form-group">
-                    <label for="calificacion">⭐ Calificación:</label>
-                    <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
+                    <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.datos_completos[23] if candidata.datos_completos|length > 23 else '' }}" readonly>
                 </div>
 
                 <button type="submit">💾 Registrar Pago</button>
