@@ -1323,10 +1323,10 @@ def pagos():
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",  # W
-                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
-                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
-                    'calificacion': fila[24] if len(fila) > 24 else "",  # Y
+                    'monto_total': fila[23] if len(fila) > 23 else "0",  # W (23)
+                    'porcentaje': fila[24] if len(fila) > 24 else "0",  # X (24)
+                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U (21)
+                    'calificacion': fila[25] if len(fila) > 25 else "",  # Y (25)
                 })
 
         # 🔹 Cargar detalles si se seleccionó una candidata
@@ -1339,10 +1339,10 @@ def pagos():
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",  # W
-                'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
-                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
-                'calificacion': fila[24] if len(fila) > 24 else "",  # Y
+                'monto_total': fila[23] if len(fila) > 23 else "0",  # W (23)
+                'porcentaje': fila[24] if len(fila) > 24 else "0",  # X (24)
+                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U (21)
+                'calificacion': fila[25] if len(fila) > 25 else "",  # Y (25)
             }
 
     except Exception as e:
