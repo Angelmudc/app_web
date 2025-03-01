@@ -1306,7 +1306,7 @@ def pagos():
         # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Asegura incluir hasta la columna Y
+            range="Nueva hoja!A:Y"  # Asegurar incluir hasta la columna Y
         ).execute()
         valores = hoja.get("values", [])
 
@@ -1323,9 +1323,10 @@ def pagos():
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",
-                    'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
-                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
+                    'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total en W
+                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porciento en X
+                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # ✅ Fecha de pago en U
+                    'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación en Y
                 })
 
         # 🔹 Cargar detalles si se seleccionó una candidata
@@ -1338,10 +1339,10 @@ def pagos():
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",
-                'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
-                'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
-                'calificacion': fila[24] if len(fila) > 24 else "",
+                'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total en W
+                'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porciento en X
+                'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # ✅ Fecha de pago en U
+                'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación en Y
             }
 
     except Exception as e:
@@ -1367,7 +1368,7 @@ def guardar_pago():
         # Obtener datos actuales de la fila
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!W{fila_index}:X{fila_index}"  # Monto total (W) y saldo pendiente (X)
+            range=f"Nueva hoja!W{fila_index}:X{fila_index}"  # ✅ Monto total (W) y Porciento (X)
         ).execute()
 
         valores = hoja.get("values", [])
@@ -1375,17 +1376,17 @@ def guardar_pago():
             return "❌ Error: No se encontraron datos en la fila.", 400
 
         monto_total_actual = float(valores[0][0]) if len(valores[0]) > 0 else 0
-        saldo_pendiente_actual = float(valores[0][1]) if len(valores[0]) > 1 else 0
+        porcentaje_actual = float(valores[0][1]) if len(valores[0]) > 1 else 0  # ✅ Porciento en X
 
-        # Calcular nuevo saldo
-        nuevo_saldo = max(saldo_pendiente_actual - monto_pagado, 0)  # No permitir saldo negativo
+        # Calcular nuevo saldo de porcentaje a pagar
+        nuevo_porcentaje = max(porcentaje_actual - monto_pagado, 0)  # No permitir saldo negativo
 
         # *Actualizar en la hoja de cálculo en las columnas correctas*
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"Nueva hoja!U{fila_index}:Y{fila_index}",
             valueInputOption="RAW",
-            body={"values": [[fecha_pago, monto_total_actual, nuevo_saldo, calificacion]]}
+            body={"values": [[fecha_pago, monto_total_actual, nuevo_porcentaje, calificacion]]}  # ✅ Se actualizan correctamente
         ).execute()
 
         return "✅ Pago registrado correctamente."
