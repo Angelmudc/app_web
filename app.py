@@ -1361,15 +1361,30 @@ def guardar_pago():
         fecha_pago = request.form.get('fecha_pago', '').strip()
         calificacion = request.form.get('calificacion', '').strip()
 
-        # 🔹 Asegurar que los datos se guardan en las columnas correctas
-        rango_actualizar = f"Nueva hoja!U{fila_index}:Y{fila_index}"
+        # 🔹 Obtener datos actuales de la fila para NO borrar nada
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"Nueva hoja!U{fila_index}:Y{fila_index}"
+        ).execute()
+        valores_actuales = hoja.get("values", [[]])[0]
 
-        valores_actualizar = [[fecha_pago, "", monto_total, porcentaje, calificacion]]
+        # Mantener valores existentes si no se envió nuevo dato
+        fecha_inicio = valores_actuales[1] if len(valores_actuales) > 1 else ""  # V
+        porcentaje_actual = valores_actuales[3] if len(valores_actuales) > 3 else ""  # X
+
+        # 🔹 Asegurar que los datos se guardan en las columnas correctas
+        valores_actualizar = [[
+            fecha_pago,  # U → Fecha de Pago
+            fecha_inicio,  # V → Fecha de Inicio (No se debe borrar)
+            monto_total,  # W → Monto Total
+            porcentaje if porcentaje else porcentaje_actual,  # X → Porcentaje (No se borra si está vacío)
+            calificacion  # Y → Calificación
+        ]]
 
         # Enviar datos actualizados a Google Sheets
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=rango_actualizar,
+            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",
             valueInputOption="RAW",
             body={"values": valores_actualizar}
         ).execute()
