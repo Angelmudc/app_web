@@ -1266,38 +1266,40 @@ def pagos():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Incluye hasta la columna Y (calificación)
+            range="Nueva hoja!A:Y"  # Incluye hasta la columna Y (Calificación)
         ).execute()
 
         valores = hoja.get("values", [])
 
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Saltamos la primera fila (encabezado)
-            codigo = fila[15] if len(fila) > 15 and fila[15] else ""  # Columna P
-            monto_total = float(fila[22]) if len(fila) > 22 and fila[22] else 0  # Columna W (Monto Total)
-            saldo_pendiente = float(fila[23]) if len(fila) > 23 and fila[23] else 0  # Columna X (Saldo a pagar)
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Fila 2 en adelante
+            codigo = fila[15] if len(fila) > 15 else ""
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
+            monto_total = float(fila[22]) if len(fila) > 22 and fila[22] else 0  # Columna W
+            saldo_pendiente = float(fila[23]) if len(fila) > 23 and fila[23] else 0  # Columna X
 
-            if codigo and saldo_pendiente > 0:  # Solo mostrar candidatas que deben pagar
-                nombre = fila[1] if len(fila) > 1 else "No especificado"
-                cedula = fila[14] if len(fila) > 14 else "No especificado"
-
-                if not busqueda or (busqueda in nombre.lower() or busqueda in cedula):
+            # Solo mostrar candidatas con saldo pendiente
+            if saldo_pendiente > 0:
+                if not busqueda or (busqueda in nombre or busqueda in cedula):
                     resultados.append({
-                        'id': codigo,  
-                        'fila_index': fila_index,  
-                        'nombre': nombre,
+                        'fila_index': fila_index,
+                        'codigo': codigo,
+                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
                         'telefono': fila[3] if len(fila) > 3 else "No especificado",
                         'cedula': cedula,
                         'monto_total': monto_total,
                         'saldo_pendiente': saldo_pendiente,
-                        'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # Columna U
+                        'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
                     })
 
-            if candidata_id and str(codigo) == candidata_id:
+            # Si selecciona una candidata específica, mostrar sus detalles
+            if candidata_id and str(fila_index) == candidata_id:
                 candidata_detalles = {
                     'fila_index': fila_index,
+                    'codigo': codigo,
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                    'cedula': cedula,
                     'monto_total': monto_total,
                     'saldo_pendiente': saldo_pendiente,
                     'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
@@ -1351,5 +1353,6 @@ def guardar_pago():
 
     except Exception as e:
         return f"❌ Error al registrar pago: {str(e)}", 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
