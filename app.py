@@ -1306,7 +1306,7 @@ def pagos():
         # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Incluir todas las columnas necesarias
+            range="Nueva hoja!A:Y"  # Asegura incluir hasta la columna Y
         ).execute()
         valores = hoja.get("values", [])
 
@@ -1323,10 +1323,10 @@ def pagos():
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total en W
-                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Saldo Pendiente en X
-                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # ✅ Fecha de pago en U
-                    'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación en Y
+                    'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total (Columna W)
+                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porcentaje (Columna X)
+                    'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación (Columna Y)
+                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Fecha de pago (Columna U)
                 })
 
         # 🔹 Cargar detalles si se seleccionó una candidata
@@ -1339,10 +1339,10 @@ def pagos():
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total en W
-                'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Saldo Pendiente en X
-                'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # ✅ Fecha de pago en U
-                'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación en Y
+                'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total (Columna W)
+                'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porcentaje (Columna X)
+                'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación (Columna Y)
+                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Fecha de pago (Columna U)
             }
 
     except Exception as e:
@@ -1355,36 +1355,41 @@ def pagos():
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
-        fila_index = int(request.form.get("fila_index", 0))  # ✅ Ajuste aquí
+        fila_index = int(request.form.get('fila_index'))  # Número de fila
+        fecha_pago = request.form.get('fecha_pago', '')
+        monto_total = request.form.get('monto_total', '')
+        porcentaje = request.form.get('porcentaje', '')
+        calificacion = request.form.get('calificacion', '')
 
-        fecha_pago = request.form.get("fecha_pago", "").strip()
-        monto_total = request.form.get("monto_total", "").strip()
-        monto_pagado = request.form.get("monto_pagado", "").strip()
-        saldo_pendiente = request.form.get("saldo_pendiente", "").strip()
-        calificacion = request.form.get("calificacion", "").strip()
-
+        # ✅ Asegurar que los valores se asignen a las columnas correctas
         valores_actualizar = [
-            [fecha_pago],  # Columna U (Fecha de pago)
+            [fecha_pago],   # Columna U (Fecha de pago)
             [monto_total],  # Columna W (Monto total)
-            [saldo_pendiente],  # Columna X (Porcentaje)
-            [calificacion],  # Columna Y (Calificación)
+            [porcentaje],   # Columna X (Porcentaje)
+            [calificacion]  # Columna Y (Calificación)
         ]
 
-        columnas_actualizar = ["U", "W", "X", "Y"]
+        # ✅ Definir los rangos exactos en Google Sheets
+        rangos_actualizar = [
+            f"U{fila_index}",  # Fecha de pago
+            f"W{fila_index}",  # Monto total
+            f"X{fila_index}",  # Porcentaje
+            f"Y{fila_index}"   # Calificación
+        ]
 
-        for i, columna in enumerate(columnas_actualizar):
-            range_actualizar = f"Nuevo hoja!{columna}{fila_index}"
+        # ✅ Realizar actualización en Google Sheets
+        for rango, valor in zip(rangos_actualizar, valores_actualizar):
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
-                range=range_actualizar,
+                range=f"Nueva hoja!{rango}",
                 valueInputOption="RAW",
-                body={"values": [valores_actualizar[i]]}
+                body={"values": valor}
             ).execute()
 
-        return redirect(url_for("pagos"))
+        return redirect(url_for('pagos'))
 
     except Exception as e:
-        return f"❌ Error al guardar los datos: {str(e)}"
+        return f"Error al guardar los datos: {str(e)}", 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
