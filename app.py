@@ -1306,7 +1306,7 @@ def pagos():
         # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Asegura incluir hasta la columna Y
+            range="Nueva hoja!A:Z"  # Asegura incluir hasta la columna Z
         ).execute()
         valores = hoja.get("values", [])
 
@@ -1323,9 +1323,10 @@ def pagos():
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",
-                    'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
-                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",
+                    'monto_total': fila[22] if len(fila) > 22 else "0",  # W
+                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
+                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
+                    'calificacion': fila[24] if len(fila) > 24 else "",  # Y
                 })
 
         # 🔹 Cargar detalles si se seleccionó una candidata
@@ -1338,10 +1339,10 @@ def pagos():
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",
-                'porcentaje': fila[23] if len(fila) > 23 else "0",
-                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",
-                'calificacion': fila[24] if len(fila) > 24 else "",
+                'monto_total': fila[22] if len(fila) > 22 else "0",  # W
+                'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
+                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
+                'calificacion': fila[24] if len(fila) > 24 else "",  # Y
             }
 
     except Exception as e:
