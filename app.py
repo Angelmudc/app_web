@@ -1355,44 +1355,36 @@ def pagos():
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
-        fila_index = request.form.get('fila_index')
-        monto_pagado = float(request.form.get('monto_pagado', 0))
-        fecha_pago = request.form.get('fecha_pago')
-        calificacion = request.form.get('calificacion')
+        fila_index = int(request.form.get("fila_index", 0))  # ✅ Ajuste aquí
 
-        if not fila_index or not fila_index.isdigit():
-            return "❌ Error: Fila no válida.", 400
+        fecha_pago = request.form.get("fecha_pago", "").strip()
+        monto_total = request.form.get("monto_total", "").strip()
+        monto_pagado = request.form.get("monto_pagado", "").strip()
+        saldo_pendiente = request.form.get("saldo_pendiente", "").strip()
+        calificacion = request.form.get("calificacion", "").strip()
 
-        fila_index = int(fila_index)
+        valores_actualizar = [
+            [fecha_pago],  # Columna U (Fecha de pago)
+            [monto_total],  # Columna W (Monto total)
+            [saldo_pendiente],  # Columna X (Porcentaje)
+            [calificacion],  # Columna Y (Calificación)
+        ]
 
-        # Obtener datos actuales de la fila
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!W{fila_index}:X{fila_index}"  # ✅ Monto total (W) y Porciento (X)
-        ).execute()
+        columnas_actualizar = ["U", "W", "X", "Y"]
 
-        valores = hoja.get("values", [])
-        if not valores:
-            return "❌ Error: No se encontraron datos en la fila.", 400
+        for i, columna in enumerate(columnas_actualizar):
+            range_actualizar = f"Nuevo hoja!{columna}{fila_index}"
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=range_actualizar,
+                valueInputOption="RAW",
+                body={"values": [valores_actualizar[i]]}
+            ).execute()
 
-        monto_total_actual = float(valores[0][0]) if len(valores[0]) > 0 else 0
-        porcentaje_actual = float(valores[0][1]) if len(valores[0]) > 1 else 0  # ✅ Porciento en X
-
-        # Calcular nuevo saldo de porcentaje a pagar
-        nuevo_porcentaje = max(porcentaje_actual - monto_pagado, 0)  # No permitir saldo negativo
-
-        # *Actualizar en la hoja de cálculo en las columnas correctas*
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",
-            valueInputOption="RAW",
-            body={"values": [[fecha_pago, monto_total_actual, nuevo_porcentaje, calificacion]]}  # ✅ Se actualizan correctamente
-        ).execute()
-
-        return "✅ Pago registrado correctamente."
+        return redirect(url_for("pagos"))
 
     except Exception as e:
-        return f"❌ Error al registrar pago: {str(e)}", 500
+        return f"❌ Error al guardar los datos: {str(e)}"
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
