@@ -1323,10 +1323,9 @@ def pagos():
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Columna W
-                    'porciento': fila[23] if len(fila) > 23 else "0",  # ✅ Columna X
-                    'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Columna Y
-                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Columna U
+                    'monto_total': fila[22] if len(fila) > 22 else "0",
+                    'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
+                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
                 })
 
         # 🔹 Cargar detalles si se seleccionó una candidata
@@ -1339,10 +1338,10 @@ def pagos():
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Columna W
-                'porciento': fila[23] if len(fila) > 23 else "0",  # ✅ Columna X
-                'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Columna Y
-                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Columna U
+                'monto_total': fila[22] if len(fila) > 22 else "0",
+                'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
+                'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
+                'calificacion': fila[24] if len(fila) > 24 else "",
             }
 
     except Exception as e:
@@ -1356,24 +1355,37 @@ def pagos():
 def guardar_pago():
     try:
         fila_index = request.form.get('fila_index')
-        monto_total = request.form.get('monto_total', '').strip()
-        porcentaje = request.form.get('porciento', '').strip()
-        calificacion = request.form.get('calificacion', '').strip()
-        fecha_pago = request.form.get('fecha_pago', '').strip()
+        monto_pagado = float(request.form.get('monto_pagado', 0))
+        fecha_pago = request.form.get('fecha_pago')
+        calificacion = request.form.get('calificacion')
 
         if not fila_index or not fila_index.isdigit():
             return "❌ Error: Fila no válida.", 400
 
         fila_index = int(fila_index)
 
-        # ✅ Asegurar que los datos se guarden en las columnas correctas
-        valores_actualizados = [[fecha_pago, monto_total, porcentaje, calificacion]]
+        # Obtener datos actuales de la fila
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"Nueva hoja!W{fila_index}:X{fila_index}"  # Monto total (W) y saldo pendiente (X)
+        ).execute()
 
+        valores = hoja.get("values", [])
+        if not valores:
+            return "❌ Error: No se encontraron datos en la fila.", 400
+
+        monto_total_actual = float(valores[0][0]) if len(valores[0]) > 0 else 0
+        saldo_pendiente_actual = float(valores[0][1]) if len(valores[0]) > 1 else 0
+
+        # Calcular nuevo saldo
+        nuevo_saldo = max(saldo_pendiente_actual - monto_pagado, 0)  # No permitir saldo negativo
+
+        # *Actualizar en la hoja de cálculo en las columnas correctas*
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",  # ✅ Rango correcto
+            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",
             valueInputOption="RAW",
-            body={"values": valores_actualizados}
+            body={"values": [[fecha_pago, monto_total_actual, nuevo_saldo, calificacion]]}
         ).execute()
 
         return "✅ Pago registrado correctamente."
