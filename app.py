@@ -1300,18 +1300,45 @@ def pagos():
     resultados = []
     candidata_detalles = None
     busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '')
 
-    if busqueda:
-        resultados = buscar_candidata(busqueda)  # Busca en la columna B (Nombre)
+    try:
+        # Obtener los datos de la hoja de cálculo
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Y"  # Obtener hasta la columna Y
+        ).execute()
 
-    if candidata_id:
-        for candidata in resultados:
-            if str(candidata['fila_index']) == candidata_id:
-                candidata_detalles = candidata
-                break
+        valores = hoja.get("values", [])
 
-    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
+        # Si la hoja está vacía o solo tiene encabezados, retorna sin resultados
+        if not valores or len(valores) < 2:
+            return render_template('pagos.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
+
+        # 🔹 Búsqueda flexible solo por nombre
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Desde la segunda fila
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
+
+            # 🔹 Si el nombre coincide parcialmente con la búsqueda
+            if busqueda and busqueda in nombre:
+                resultados.append({
+                    'fila_index': fila_index,
+                    'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                    'monto_total': fila[22] if len(fila) > 22 else "0",
+                    'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
+                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
+                })
+
+        if not resultados and busqueda:
+            mensaje = "⚠️ No se encontraron resultados para la búsqueda."
+        else:
+            mensaje = ""
+
+    except Exception as e:
+        mensaje = f"❌ Error al obtener los datos: {str(e)}"
+
+    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
 
 # 🔹 Ruta para guardar pagos
 @app.route('/guardar_pago', methods=['POST'])

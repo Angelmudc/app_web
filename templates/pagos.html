@@ -40,7 +40,6 @@
             font-weight: bold;
             border: none;
             transition: 0.3s;
-            cursor: pointer;
         }
         button:hover {
             background-color: #218838;
@@ -55,25 +54,9 @@
             border: 1px solid #ddd;
             margin-bottom: 10px;
         }
-        .ver-detalles {
-            background-color: #007bff;
-            color: white;
-            font-weight: bold;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 5px;
-            cursor: pointer;
-            width: 100%;
-        }
-        .ver-detalles:hover {
-            background-color: #0056b3;
-        }
         label {
             font-weight: bold;
             color: #555;
-        }
-        .form-group {
-            margin-bottom: 15px;
         }
     </style>
 </head>
@@ -83,25 +66,27 @@
         <h2>🔎 Buscar Candidata para Pago</h2>
         
         <form method="POST">
-            <div class="form-group">
-                <label for="busqueda">Buscar por Nombre:</label>
-                <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre" required>
-            </div>
+            <label for="busqueda">Buscar por Nombre:</label>
+            <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre" required>
             <button type="submit">🔍 Buscar</button>
         </form>
+
+        {% if mensaje %}
+            <p style="color: red;">{{ mensaje }}</p>
+        {% endif %}
 
         {% if resultados %}
             <h3>Resultados Encontrados:</h3>
             <div class="resultados">
                 {% for candidata in resultados %}
                     <div class="resultado-item">
-                        <p><strong>👤 Nombre:</strong> {{ candidata.datos_completos[1] }}</p>
-                        <p><strong>📞 Teléfono:</strong> {{ candidata.datos_completos[3] if candidata.datos_completos|length > 3 else "No disponible" }}</p>
-                        <p><strong>🆔 Cédula:</strong> {{ candidata.datos_completos[14] if candidata.datos_completos|length > 14 else "No disponible" }}</p>
-                        <p><strong>💰 Saldo Pendiente:</strong> {{ candidata.datos_completos[23] if candidata.datos_completos|length > 23 else "No disponible" }}</p>
+                        <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
+                        <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
+                        <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
+                        <p><strong>💰 Saldo Pendiente:</strong> {{ candidata.saldo_pendiente }}</p>
                         <form method="GET">
                             <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                            <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
+                            <button type="submit">📄 Ver Detalles</button>
                         </form>
                     </div>
                 {% endfor %}
@@ -110,29 +95,6 @@
             <p>No se encontraron resultados.</p>
         {% endif %}
 
-        {% if candidata %}
-            <h2>✍ Registrar Pago</h2>
-            <form method="POST" action="/guardar_pago">
-                <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-
-                <div class="form-group">
-                    <label for="fecha_pago">📅 Fecha de Pago:</label>
-                    <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.datos_completos[21] if candidata.datos_completos|length > 21 else '' }}">
-                </div>
-
-                <div class="form-group">
-                    <label for="monto_pagado">💵 Monto a Pagar:</label>
-                    <input type="text" id="monto_pagado" name="monto_pagado" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="saldo_pendiente">📉 Saldo Pendiente:</label>
-                    <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.datos_completos[23] if candidata.datos_completos|length > 23 else '' }}" readonly>
-                </div>
-
-                <button type="submit">💾 Registrar Pago</button>
-            </form>
-        {% endif %}
     </div>
 
 </body>
