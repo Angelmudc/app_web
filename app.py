@@ -92,6 +92,34 @@ def normalizar_texto(texto):
         c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn'
     )
 
+def buscar_candidata(busqueda):
+    try:
+        datos = sheet.get_all_values()  # Obtener todos los valores de la hoja
+        resultados = []
+
+        for fila_index, fila in enumerate(datos[1:], start=2):  # Saltamos la primera fila (encabezado)
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
+            cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O
+            saldo_pendiente = fila[23] if len(fila) > 23 else "0"  # Columna X (Saldo pendiente)
+
+            if busqueda.lower() in nombre or busqueda == cedula:  # Búsqueda flexible
+                resultados.append({
+                    'fila_index': fila_index,
+                    'nombre': fila[1],
+                    'telefono': fila[3] if len(fila) > 3 else "No disponible",
+                    'cedula': fila[14] if len(fila) > 14 else "No disponible",
+                    'monto_total': fila[22] if len(fila) > 22 else "0",  # Columna W (Monto Total)
+                    'saldo_pendiente': saldo_pendiente,
+                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # Columna U
+                    'calificacion': fila[24] if len(fila) > 24 else "Pendiente"  # Columna Y
+                })
+
+        return resultados
+
+    except Exception as e:
+        print(f"❌ Error en la búsqueda: {e}")
+        return []
+
 def actualizar_datos_editar(fila_index, nuevos_datos):
     try:
         columnas = {
@@ -434,16 +462,16 @@ def buscar_candidata_rapida(busqueda):
             referencias_laborales = fila[11].strip().lower()
             referencias_familiares = fila[12].strip().lower()
 
-            # Lista de campos a evaluar
+            
             campos_a_buscar = [
                 codigo, nombre, cedula, telefono, direccion, estado, 
                 inscripcion, modalidad, experiencia, referencias_laborales, referencias_familiares
             ]
 
-            # Coincidencia aproximada usando RapidFuzz
+            
             resultado = process.extractOne(busqueda.lower(), campos_a_buscar)
 
-            if resultado and resultado[1] > 80:  # Umbral de coincidencia 80%
+            if resultado and resultado[1] > 80:  
                 candidatos.append({
                     'fila_index': fila_index + 1,
                     'codigo': fila[15],
@@ -1263,60 +1291,23 @@ def pagos():
     busqueda = request.form.get('busqueda', '').strip().lower()
     candidata_id = request.args.get('candidata', '')
 
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Incluye hasta la columna Y (Calificación)
-        ).execute()
+    if busqueda:
+        resultados = buscar_candidata(busqueda)
 
-        valores = hoja.get("values", [])
-
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Fila 2 en adelante
-            codigo = fila[15] if len(fila) > 15 else ""
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
-            monto_total = float(fila[22]) if len(fila) > 22 and fila[22] else 0  # Columna W
-            saldo_pendiente = float(fila[23]) if len(fila) > 23 and fila[23] else 0  # Columna X
-
-            # Solo mostrar candidatas con saldo pendiente
-            if saldo_pendiente > 0:
-                if not busqueda or (busqueda in nombre or busqueda in cedula):
-                    resultados.append({
-                        'fila_index': fila_index,
-                        'codigo': codigo,
-                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                        'cedula': cedula,
-                        'monto_total': monto_total,
-                        'saldo_pendiente': saldo_pendiente,
-                        'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
-                    })
-
-            # Si selecciona una candidata específica, mostrar sus detalles
-            if candidata_id and str(fila_index) == candidata_id:
-                candidata_detalles = {
-                    'fila_index': fila_index,
-                    'codigo': codigo,
-                    'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                    'cedula': cedula,
-                    'monto_total': monto_total,
-                    'saldo_pendiente': saldo_pendiente,
-                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
-                    'calificacion': fila[24] if len(fila) > 24 else "",
-                }
-
-    except Exception as e:
-        print(f"❌ Error en la búsqueda de pagos: {e}")
+    if candidata_id:
+        for candidata in resultados:
+            if str(candidata['fila_index']) == candidata_id:
+                candidata_detalles = candidata
+                break
 
     return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
 
-
+# 🔹 Ruta para guardar pagos
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
         fila_index = request.form.get('fila_index')
-        monto_pagado = float(request.form.get('monto_pagado', 0))
+        monto_pagado = request.form.get('monto_pagado')
         fecha_pago = request.form.get('fecha_pago')
         calificacion = request.form.get('calificacion')
 
@@ -1325,29 +1316,19 @@ def guardar_pago():
 
         fila_index = int(fila_index)
 
-        # Obtener datos actuales de la fila
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!W{fila_index}:X{fila_index}"  # Monto total (W) y saldo pendiente (X)
-        ).execute()
+        hoja_datos = sheet.get_all_values()
+        fila = hoja_datos[fila_index - 1] if fila_index <= len(hoja_datos) else None
 
-        valores = hoja.get("values", [])
-        if not valores:
+        if not fila:
             return "❌ Error: No se encontraron datos en la fila.", 400
 
-        monto_total_actual = float(valores[0][0]) if len(valores[0]) > 0 else 0
-        saldo_pendiente_actual = float(valores[0][1]) if len(valores[0]) > 1 else 0
+        monto_total_actual = float(fila[22]) if len(fila) > 22 and fila[22] else 0
+        saldo_pendiente_actual = float(fila[23]) if len(fila) > 23 and fila[23] else 0
 
-        # Calcular nuevo saldo
-        nuevo_saldo = max(saldo_pendiente_actual - monto_pagado, 0)  # No permitir saldo negativo
+        nuevo_saldo = max(saldo_pendiente_actual - float(monto_pagado), 0)
 
-        # Actualizar los valores en la hoja
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",
-            valueInputOption="RAW",
-            body={"values": [[fecha_pago, monto_total_actual, nuevo_saldo, calificacion]]}
-        ).execute()
+        # 🔹 Guardar en Google Sheets
+        sheet.update(f"U{fila_index}:Y{fila_index}", [[fecha_pago, monto_total_actual, nuevo_saldo, calificacion]])
 
         return "✅ Pago registrado correctamente."
 
