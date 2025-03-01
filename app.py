@@ -1303,10 +1303,10 @@ def pagos():
     candidata_id = request.args.get('candidata', '').strip()
 
     try:
-        # Obtener datos de la hoja de cálculo
+        # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Se incluye hasta la columna Y
+            range="Nueva hoja!A:Y"  # Asegura incluir hasta la columna Y
         ).execute()
         valores = hoja.get("values", [])
 
@@ -1314,7 +1314,7 @@ def pagos():
             return render_template('pagos.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
 
         # 🔹 Búsqueda flexible por nombre
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Desde la segunda fila
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezar en la segunda fila
             nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
 
             if busqueda and busqueda in nombre:
@@ -1323,15 +1323,15 @@ def pagos():
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # Columna U
-                    'monto_total': fila[22] if len(fila) > 22 else "0",  # Columna W
-                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # Columna X
-                    'calificacion': fila[24] if len(fila) > 24 else "",  # Columna Y
+                    'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Columna W
+                    'porciento': fila[23] if len(fila) > 23 else "0",  # ✅ Columna X
+                    'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Columna Y
+                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Columna U
                 })
 
-        # 🔹 Si se seleccionó una candidata, cargar los detalles
+        # 🔹 Cargar detalles si se seleccionó una candidata
         if candidata_id:
-            fila_index = int(candidata_id)  # Convertir a número de fila
+            fila_index = int(candidata_id)  # Convertir ID a número de fila
             fila = valores[fila_index - 1]  # Ajustar índice (Sheets empieza en 1)
 
             candidata_detalles = {
@@ -1339,10 +1339,10 @@ def pagos():
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # Columna U
-                'monto_total': fila[22] if len(fila) > 22 else "0",  # Columna W
-                'porcentaje': fila[23] if len(fila) > 23 else "0",  # Columna X
-                'calificacion': fila[24] if len(fila) > 24 else "",  # Columna Y
+                'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Columna W
+                'porciento': fila[23] if len(fila) > 23 else "0",  # ✅ Columna X
+                'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Columna Y
+                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # ✅ Columna U
             }
 
     except Exception as e:
@@ -1356,37 +1356,24 @@ def pagos():
 def guardar_pago():
     try:
         fila_index = request.form.get('fila_index')
-        monto_pagado = request.form.get('monto_pagado', '').strip()
-        fecha_pago = request.form.get('fecha_pago', '').strip()
+        monto_total = request.form.get('monto_total', '').strip()
+        porcentaje = request.form.get('porciento', '').strip()
         calificacion = request.form.get('calificacion', '').strip()
+        fecha_pago = request.form.get('fecha_pago', '').strip()
 
         if not fila_index or not fila_index.isdigit():
             return "❌ Error: Fila no válida.", 400
 
         fila_index = int(fila_index)
 
-        # Obtener datos actuales de la fila
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!W{fila_index}:X{fila_index}"  # Se leen Monto total (W) y Porcentaje (X)
-        ).execute()
+        # ✅ Asegurar que los datos se guarden en las columnas correctas
+        valores_actualizados = [[fecha_pago, monto_total, porcentaje, calificacion]]
 
-        valores = hoja.get("values", [])
-        if not valores:
-            return "❌ Error: No se encontraron datos en la fila.", 400
-
-        monto_total_actual = float(valores[0][0]) if len(valores[0]) > 0 else 0  # Monto total en W
-        porcentaje_actual = float(valores[0][1]) if len(valores[0]) > 1 else 0  # Porcentaje en X
-
-        # Calcular el nuevo porcentaje basado en el pago realizado
-        nuevo_porcentaje = max(porcentaje_actual - float(monto_pagado), 0)  # No permitir saldo negativo
-
-        # Actualizar los valores en la hoja
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",  # Se actualizan Fecha de pago (U), Monto total (W), Porcentaje (X), Calificación (Y)
+            range=f"Nueva hoja!U{fila_index}:Y{fila_index}",  # ✅ Rango correcto
             valueInputOption="RAW",
-            body={"values": [[fecha_pago, monto_total_actual, nuevo_porcentaje, calificacion]]}
+            body={"values": valores_actualizados}
         ).execute()
 
         return "✅ Pago registrado correctamente."
