@@ -1306,7 +1306,7 @@ def pagos():
         # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Asegurar incluir hasta la columna Y
+            range="Nueva hoja!A:Y"  # Incluir todas las columnas necesarias
         ).execute()
         valores = hoja.get("values", [])
 
@@ -1324,7 +1324,7 @@ def pagos():
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
                     'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total en W
-                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porciento en X
+                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Saldo Pendiente en X
                     'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # ✅ Fecha de pago en U
                     'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación en Y
                 })
@@ -1340,7 +1340,7 @@ def pagos():
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
                 'monto_total': fila[22] if len(fila) > 22 else "0",  # ✅ Monto total en W
-                'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Porciento en X
+                'porcentaje': fila[23] if len(fila) > 23 else "0",  # ✅ Saldo Pendiente en X
                 'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # ✅ Fecha de pago en U
                 'calificacion': fila[24] if len(fila) > 24 else "",  # ✅ Calificación en Y
             }

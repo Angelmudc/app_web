@@ -26,7 +26,7 @@
             padding-bottom: 10px;
             margin-bottom: 20px;
         }
-        input, button {
+        input, select, button {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
@@ -54,9 +54,25 @@
             border: 1px solid #ddd;
             margin-bottom: 10px;
         }
+        .ver-detalles {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .ver-detalles:hover {
+            background-color: #0056b3;
+        }
         label {
             font-weight: bold;
             color: #555;
+        }
+        .form-group {
+            margin-bottom: 15px;
         }
     </style>
 </head>
@@ -66,14 +82,12 @@
         <h2>🔎 Buscar Candidata para Pago</h2>
         
         <form method="POST">
-            <label for="busqueda">Buscar por Nombre:</label>
-            <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre" required>
+            <div class="form-group">
+                <label for="busqueda">Buscar por Nombre:</label>
+                <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre" required>
+            </div>
             <button type="submit">🔍 Buscar</button>
         </form>
-
-        {% if mensaje %}
-            <p style="color: red;">{{ mensaje }}</p>
-        {% endif %}
 
         {% if resultados %}
             <h3>Resultados Encontrados:</h3>
@@ -83,10 +97,12 @@
                         <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
                         <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
                         <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                        <p><strong>💰 Saldo Pendiente:</strong> {{ candidata.saldo_pendiente }}</p>
-                        <form method="GET" action="/pagos">
+                        <p><strong>💰 Monto Total:</strong> {{ candidata.monto_total }}</p>
+                        <p><strong>📉 Saldo Pendiente:</strong> {{ candidata.porcentaje }}</p>
+                        <p><strong>📅 Fecha de Pago:</strong> {{ candidata.fecha_pago }}</p>
+                        <form method="GET">
                             <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                            <button type="submit">📄 Ver Detalles</button>
+                            <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
                         </form>
                     </div>
                 {% endfor %}
@@ -100,20 +116,30 @@
             <form method="POST" action="/guardar_pago">
                 <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
-                <label for="fecha_pago">📅 Fecha de Pago:</label>
-                <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
+                <div class="form-group">
+                    <label for="fecha_pago">📅 Fecha de Pago:</label>
+                    <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
+                </div>
 
-                <label for="monto_total">💰 Saldo Total:</label>
-                <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" readonly>
+                <div class="form-group">
+                    <label for="monto_total">💰 Monto Total:</label>
+                    <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" readonly>
+                </div>
 
-                <label for="monto_pagado">💵 Monto a Pagar:</label>
-                <input type="text" id="monto_pagado" name="monto_pagado" required>
+                <div class="form-group">
+                    <label for="monto_pagado">💵 Monto a Pagar:</label>
+                    <input type="text" id="monto_pagado" name="monto_pagado" required>
+                </div>
 
-                <label for="saldo_pendiente">📉 Saldo Pendiente:</label>
-                <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.saldo_pendiente }}" readonly>
+                <div class="form-group">
+                    <label for="saldo_pendiente">📉 Saldo Pendiente:</label>
+                    <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.porcentaje }}" readonly>
+                </div>
 
-                <label for="calificacion">⭐ Calificación:</label>
-                <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
+                <div class="form-group">
+                    <label for="calificacion">⭐ Calificación:</label>
+                    <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
+                </div>
 
                 <button type="submit">💾 Registrar Pago</button>
             </form>
