@@ -1355,49 +1355,31 @@ def pagos():
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
-        fila_index = request.form.get('fila_index', '').strip()
-        fecha_pago = request.form.get('fecha_pago', '').strip()
-        monto_total = request.form.get('monto_total', '').strip()
-        porcentaje = request.form.get('porcentaje', '').strip()
-        calificacion = request.form.get('calificacion', '').strip()
+        fila_index = int(request.form.get('fila_index'))
+        fecha_pago = request.form.get('fecha_pago', '')
+        monto_total = request.form.get('monto_total', '')
+        monto_pagado = request.form.get('monto_pagado', '')
+        saldo_pendiente = request.form.get('saldo_pendiente', '')
+        calificacion = request.form.get('calificacion', '')
 
-        print(f"⚠️ Debug: Recibidos - Fila: {fila_index}, Fecha Pago: {fecha_pago}, Monto Total: {monto_total}, Porcentaje: {porcentaje}, Calificación: {calificacion}")
+        valores_actualizar = [[""] * 25]  # Asegurar tamaño de la fila completa
+        valores_actualizar[0][20] = fecha_pago  # Columna U (Fecha de Pago)
+        valores_actualizar[0][22] = monto_total  # Columna W (Monto Total)
+        valores_actualizar[0][23] = monto_pagado  # Columna X (Porcentaje)
+        valores_actualizar[0][24] = calificacion  # Columna Y (Calificación)
 
-        if not fila_index.isdigit():
-            return jsonify({"error": "fila_index no es un número válido"}), 400
-        
-        fila_index = int(fila_index)  # Convertimos a número
+        # Actualizar en la hoja de cálculo
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f'Nueva hoja!U{fila_index}:Y{fila_index}',  # Rango exacto de columnas
+            valueInputOption='RAW',
+            body={'values': valores_actualizar}
+        ).execute()
 
-        valores_actualizar = [
-            [fecha_pago],   # Columna U (Fecha de pago)
-            [monto_total],  # Columna W (Monto total)
-            [porcentaje],   # Columna X (Porcentaje)
-            [calificacion]  # Columna Y (Calificación)
-        ]
-
-        rangos_actualizar = [
-            f"U{fila_index}",  # Fecha de pago (Columna U)
-            f"W{fila_index}",  # Monto total (Columna W)
-            f"X{fila_index}",  # Porcentaje (Columna X)
-            f"Y{fila_index}"   # Calificación (Columna Y)
-        ]
-
-        for rango, valor in zip(rangos_actualizar, valores_actualizar):
-            print(f"📌 Actualizando {rango} con valor {valor}")
-
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=f"Nueva hoja!{rango}",
-                valueInputOption="RAW",
-                body={"values": valor}
-            ).execute()
-
-        print("✅ Datos guardados correctamente.")
-        return jsonify({"mensaje": "Pago registrado correctamente."}), 200
-
+        return redirect(url_for('pagos'))
+    
     except Exception as e:
-        print(f"❌ Error al guardar los datos: {str(e)}")
-        return jsonify({"error": f"Error al guardar los datos: {str(e)}"}), 500
+        return f"Error al guardar los datos: {str(e)}", 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
