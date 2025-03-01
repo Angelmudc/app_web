@@ -1355,16 +1355,19 @@ def pagos():
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
-        fila_index = int(request.form.get('fila_index'))  # Número de fila correcto
-        fecha_pago = request.form.get('fecha_pago', '')
-        monto_total = request.form.get('monto_total', '')
-        porcentaje = request.form.get('porcentaje', '')
-        calificacion = request.form.get('calificacion', '')
+        fila_index = request.form.get('fila_index', '').strip()
+        fecha_pago = request.form.get('fecha_pago', '').strip()
+        monto_total = request.form.get('monto_total', '').strip()
+        porcentaje = request.form.get('porcentaje', '').strip()
+        calificacion = request.form.get('calificacion', '').strip()
 
-        # ✅ Verificación de valores antes de actualizar
-        print(f"Fila: {fila_index}, Fecha Pago: {fecha_pago}, Monto Total: {monto_total}, Porcentaje: {porcentaje}, Calificación: {calificacion}")
+        print(f"⚠️ Debug: Recibidos - Fila: {fila_index}, Fecha Pago: {fecha_pago}, Monto Total: {monto_total}, Porcentaje: {porcentaje}, Calificación: {calificacion}")
 
-        # ✅ Definir los valores que se guardarán
+        if not fila_index.isdigit():
+            return jsonify({"error": "fila_index no es un número válido"}), 400
+        
+        fila_index = int(fila_index)  # Convertimos a número
+
         valores_actualizar = [
             [fecha_pago],   # Columna U (Fecha de pago)
             [monto_total],  # Columna W (Monto total)
@@ -1372,7 +1375,6 @@ def guardar_pago():
             [calificacion]  # Columna Y (Calificación)
         ]
 
-        # ✅ Definir los rangos correctos en Google Sheets
         rangos_actualizar = [
             f"U{fila_index}",  # Fecha de pago (Columna U)
             f"W{fila_index}",  # Monto total (Columna W)
@@ -1380,9 +1382,8 @@ def guardar_pago():
             f"Y{fila_index}"   # Calificación (Columna Y)
         ]
 
-        # ✅ Actualizar los valores en la hoja de cálculo
         for rango, valor in zip(rangos_actualizar, valores_actualizar):
-            print(f"Actualizando {rango} con valor {valor}")  # Debugging
+            print(f"📌 Actualizando {rango} con valor {valor}")
 
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
@@ -1391,11 +1392,12 @@ def guardar_pago():
                 body={"values": valor}
             ).execute()
 
-        return redirect(url_for('pagos'))
+        print("✅ Datos guardados correctamente.")
+        return jsonify({"mensaje": "Pago registrado correctamente."}), 200
 
     except Exception as e:
-        print(f"Error al guardar los datos: {str(e)}")  # Debugging
-        return f"Error al guardar los datos: {str(e)}", 400
+        print(f"❌ Error al guardar los datos: {str(e)}")
+        return jsonify({"error": f"Error al guardar los datos: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
