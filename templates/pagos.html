@@ -84,7 +84,7 @@
                         <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
                         <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
                         <p><strong>💰 Saldo Pendiente:</strong> {{ candidata.saldo_pendiente }}</p>
-                        <form method="GET">
+                        <form method="GET" action="/pagos">
                             <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
                             <button type="submit">📄 Ver Detalles</button>
                         </form>
@@ -95,6 +95,29 @@
             <p>No se encontraron resultados.</p>
         {% endif %}
 
+        {% if candidata %}
+            <h2>✍ Registrar Pago</h2>
+            <form method="POST" action="/guardar_pago">
+                <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
+
+                <label for="fecha_pago">📅 Fecha de Pago:</label>
+                <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
+
+                <label for="monto_total">💰 Saldo Total:</label>
+                <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" readonly>
+
+                <label for="monto_pagado">💵 Monto a Pagar:</label>
+                <input type="text" id="monto_pagado" name="monto_pagado" required>
+
+                <label for="saldo_pendiente">📉 Saldo Pendiente:</label>
+                <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.saldo_pendiente }}" readonly>
+
+                <label for="calificacion">⭐ Calificación:</label>
+                <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
+
+                <button type="submit">💾 Registrar Pago</button>
+            </form>
+        {% endif %}
     </div>
 
 </body>

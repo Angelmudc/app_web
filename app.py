@@ -1300,25 +1300,23 @@ def pagos():
     resultados = []
     candidata_detalles = None
     busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '').strip()
 
     try:
         # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Obtener hasta la columna Y
+            range="Nueva hoja!A:Y"  # Asegura incluir hasta la columna Y
         ).execute()
-
         valores = hoja.get("values", [])
 
-        # Si la hoja está vacía o solo tiene encabezados, retorna sin resultados
         if not valores or len(valores) < 2:
             return render_template('pagos.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
 
-        # 🔹 Búsqueda flexible solo por nombre
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Desde la segunda fila
+        # 🔹 Búsqueda flexible por nombre
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezar en la segunda fila
             nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
 
-            # 🔹 Si el nombre coincide parcialmente con la búsqueda
             if busqueda and busqueda in nombre:
                 resultados.append({
                     'fila_index': fila_index,
@@ -1330,15 +1328,27 @@ def pagos():
                     'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
                 })
 
-        if not resultados and busqueda:
-            mensaje = "⚠️ No se encontraron resultados para la búsqueda."
-        else:
-            mensaje = ""
+        # 🔹 Cargar detalles si se seleccionó una candidata
+        if candidata_id:
+            fila_index = int(candidata_id)  # Convertir ID a número de fila
+            fila = valores[fila_index - 1]  # Ajustar índice (Sheets empieza en 1)
+
+            candidata_detalles = {
+                'fila_index': fila_index,
+                'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                'monto_total': fila[22] if len(fila) > 22 else "0",
+                'saldo_pendiente': fila[23] if len(fila) > 23 else "0",
+                'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",
+                'calificacion': fila[24] if len(fila) > 24 else "",
+            }
 
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
+        return render_template('pagos.html', resultados=[], candidata=None, mensaje=mensaje)
 
-    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
 
 # 🔹 Ruta para guardar pagos
 @app.route('/guardar_pago', methods=['POST'])
