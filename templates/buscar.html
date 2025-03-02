@@ -8,128 +8,139 @@
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f4;
-            margin: 20px;
-        }
-        h1 {
-            text-align: center;
-            color: #333;
+            margin: 0;
+            padding: 20px;
         }
         .container {
-            max-width: 800px;
-            margin: 0 auto;
+            max-width: 900px;
+            margin: auto;
             background: white;
             padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
         }
         input, button {
             width: 100%;
-            padding: 10px;
-            margin: 5px 0;
+            padding: 12px;
+            margin: 10px 0;
             border: 1px solid #ccc;
             border-radius: 5px;
+            font-size: 16px;
         }
         button {
-            background-color: #007bff;
+            background-color: #28a745;
             color: white;
-            cursor: pointer;
             font-weight: bold;
+            border: none;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
         }
         .table-container {
             margin-top: 20px;
+            overflow-x: auto;
         }
         table {
             width: 100%;
             border-collapse: collapse;
+            background: white;
         }
         th, td {
             padding: 10px;
             border: 1px solid #ddd;
-            text-align: left;
+            text-align: center;
         }
         th {
             background-color: #007bff;
             color: white;
         }
-        .btn-info {
-            display: inline-block;
-            background-color: #17a2b8;
+        .volver {
+            display: block;
+            margin-top: 20px;
+            background-color: #007bff;
+            text-align: center;
+            padding: 10px;
             color: white;
-            padding: 8px 12px;
+            font-weight: bold;
             text-decoration: none;
             border-radius: 5px;
         }
-        .btn-info:hover {
-            background-color: #138496;
+        .volver:hover {
+            background-color: #0056b3;
         }
     </style>
 </head>
 <body>
 
-    <h1>🔍 Buscar Candidata</h1>
-
     <div class="container">
+        <h2>🔎 Buscar Candidata</h2>
+        
         <form method="POST">
-            <label for="busqueda">Nombre o Cédula:</label>
-            <input type="text" id="busqueda" name="busqueda" value="{{ request.form.get('busqueda', '') }}">
+            <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
             <button type="submit">🔍 Buscar</button>
         </form>
 
         {% if mensaje %}
-            <p style="color: red;">{{ mensaje }}</p>
+            <p style="color: red; text-align: center;">{{ mensaje }}</p>
         {% endif %}
 
         {% if resultados %}
-        <div class="table-container">
-            <h3>Resultados encontrados:</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Nombre</th>
-                        <th>Dirección</th>
-                        <th>Teléfono</th>
-                        <th>Cédula</th>
-                        <th>Acción</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for candidata in resultados %}
-                    <tr>
-                        <td>{{ candidata.nombre }}</td>
-                        <td>{{ candidata.direccion }}</td>
-                        <td>{{ candidata.telefono }}</td>
-                        <td>{{ candidata.cedula }}</td>
-                        <td>
-                            <a href="{{ url_for('buscar', candidata=candidata.id) }}" class="btn-info">
-                                Ver detalles
-                            </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Edad</th>
+                            <th>Teléfono</th>
+                            <th>Dirección</th>
+                            <th>Modalidad</th>
+                            <th>Rutas</th>
+                            <th>Empleo Anterior</th>
+                            <th>Años Exp.</th>
+                            <th>Áreas Exp.</th>
+                            <th>Plancha</th>
+                            <th>Ref. Laborales</th>
+                            <th>Ref. Familiares</th>
+                            <th>Acepta %</th>
+                            <th>Cédula</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for candidata in resultados %}
+                            <tr>
+                                <td>{{ candidata.nombre }}</td>
+                                <td>{{ candidata.edad }}</td>
+                                <td>{{ candidata.telefono }}</td>
+                                <td>{{ candidata.direccion }}</td>
+                                <td>{{ candidata.modalidad }}</td>
+                                <td>{{ candidata.rutas }}</td>
+                                <td>{{ candidata.empleo_anterior }}</td>
+                                <td>{{ candidata.anos_experiencia }}</td>
+                                <td>{{ candidata.areas_experiencia }}</td>
+                                <td>{{ candidata.sabe_planchar }}</td>
+                                <td>{{ candidata.referencias_laborales }}</td>
+                                <td>{{ candidata.referencias_familiares }}</td>
+                                <td>{{ candidata.acepta_porcentaje }}</td>
+                                <td>{{ candidata.cedula }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p style="text-align: center;">No se encontraron resultados.</p>
         {% endif %}
 
-        {% if candidata %}
-        <div class="table-container">
-            <h3>Detalles de la Candidata</h3>
-            <table>
-                <tr><th>Nombre</th><td>{{ candidata.nombre }}</td></tr>
-                <tr><th>Edad</th><td>{{ candidata.edad }}</td></tr>
-                <tr><th>Teléfono</th><td>{{ candidata.telefono }}</td></tr>
-                <tr><th>Dirección</th><td>{{ candidata.direccion }}</td></tr>
-                <tr><th>Modalidad</th><td>{{ candidata.modalidad }}</td></tr>
-                <tr><th>Años de Experiencia</th><td>{{ candidata.anos_experiencia }}</td></tr>
-                <tr><th>Experiencia</th><td>{{ candidata.experiencia }}</td></tr>
-                <tr><th>Sabe Planchar</th><td>{{ candidata.sabe_planchar }}</td></tr>
-                <tr><th>Referencia Laboral</th><td>{{ candidata.referencia_laboral }}</td></tr>
-                <tr><th>Referencia Familiar</th><td>{{ candidata.referencia_familiar }}</td></tr>
-                <tr><th>Cédula</th><td>{{ candidata.cedula }}</td></tr>
-                <tr><th>Código</th><td>{{ candidata.codigo }}</td></tr>
-            </table>
-        </div>
-        {% endif %}
+        <a href="/" class="volver">🏠 Volver al Inicio</a>
     </div>
 
 </body>

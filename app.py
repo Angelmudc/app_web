@@ -773,70 +773,47 @@ def sugerir():
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
     resultados = []
-    candidata_detalles = None
     busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '')
 
-    if busqueda:
-        try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
-            ).execute()
+    try:
+        # Obtener los datos de la hoja
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!B:O"  # Desde la columna B hasta la O
+        ).execute()
+        valores = hoja.get("values", [])
 
-            valores = hoja.get("values", [])
+        if not valores or len(valores) < 2:
+            return render_template('buscar.html', resultados=[], mensaje="⚠️ No hay datos disponibles.")
 
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la segunda fila
-                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                cedula = fila[14].strip() if len(fila) > 14 else ""
-                codigo = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"  # Identificador único
+        # 🔹 Búsqueda flexible por nombre
+        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezar en la segunda fila
+            nombre = fila[0].strip().lower() if len(fila) > 0 else ""  # Columna B (Nombre)
 
-                # 🔹 La búsqueda es más flexible: si el nombre o la cédula contienen el valor, la candidata se muestra
-                if busqueda in nombre or busqueda in cedula:
-                    resultados.append({
-                        'id': codigo,  # ✅ Se usa este identificador único
-                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                        'direccion': fila[4] if len(fila) > 4 else "No especificado",
-                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                        'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    })
+            if busqueda and busqueda in nombre:
+                resultados.append({
+                    'fila_index': fila_index,
+                    'nombre': fila[0] if len(fila) > 0 else "No especificado",
+                    'edad': fila[1] if len(fila) > 1 else "No especificado",
+                    'telefono': fila[2] if len(fila) > 2 else "No especificado",
+                    'direccion': fila[3] if len(fila) > 3 else "No especificado",
+                    'modalidad': fila[4] if len(fila) > 4 else "No especificado",
+                    'rutas': fila[5] if len(fila) > 5 else "No especificado",
+                    'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
+                    'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
+                    'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
+                    'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
+                    'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
+                    'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
+                    'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
+                    'cedula': fila[13] if len(fila) > 13 else "No especificado",
+                })
 
-        except Exception as e:
-            print(f"❌ Error en la búsqueda: {e}")
+    except Exception as e:
+        mensaje = f"❌ Error al obtener los datos: {str(e)}"
+        return render_template('buscar.html', resultados=[], mensaje=mensaje)
 
-    if candidata_id:  # ✅ Buscar detalles con identificador único
-        try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
-            ).execute()
-
-            valores = hoja.get("values", [])
-
-            for fila_index, fila in enumerate(valores[1:], start=2):  # Ajustamos índice de fila
-                codigo_fila = fila[15] if len(fila) > 15 and fila[15] else f"fila-{fila_index}"
-
-                if codigo_fila == candidata_id:  # ✅ Ahora compara bien los identificadores
-                    candidata_detalles = {
-                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                        'edad': fila[2] if len(fila) > 2 else "No especificado",
-                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                        'direccion': fila[4] if len(fila) > 4 else "No especificado",
-                        'modalidad': fila[5] if len(fila) > 5 else "No especificado",
-                        'anos_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-                        'experiencia': fila[9] if len(fila) > 9 else "No especificado",
-                        'sabe_planchar': fila[10] if len(fila) > 10 else "No especificado",
-                        'referencia_laboral': fila[11] if len(fila) > 11 else "No especificado",
-                        'referencia_familiar': fila[12] if len(fila) > 12 else "No especificado",
-                        'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                        'codigo': fila[15] if len(fila) > 15 and fila[15] else "SIN-CÓDIGO"
-                    }
-                    break  # ✅ Se detiene al encontrar la candidata correcta
-
-        except Exception as e:
-            print(f"❌ Error al obtener detalles: {e}")
-
-    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
+    return render_template('buscar.html', resultados=resultados)
 
 @app.route('/editar', methods=['GET', 'POST'])
 def editar():
