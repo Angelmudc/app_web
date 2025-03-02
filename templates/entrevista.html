@@ -3,101 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entrevista de Candidata</title>
+    <title>Entrevista - Doméstica del Cibao A&D</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>📋 Entrevista de Candidata</h1>
+        <h2>📄 Entrevista de Candidata</h2>
         
-        <!-- Formulario de Entrevista -->
+        {% if mensaje %}
+            <div class="mensaje">{{ mensaje }}</div>
+        {% endif %}
+
         <form action="{{ url_for('guardar_entrevista') }}" method="post">
-            <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
+            <label for="candidata_id">🔎 Código de Candidata:</label>
+            <input type="text" id="candidata_id" name="candidata_id" required>
 
-            <section>
-                <h2>🛂 Datos Personales</h2>
-                <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
-                <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
-                <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
-                <p><strong>Dirección:</strong> {{ candidata.direccion }}</p>
-            </section>
+            <h3>📝 Preguntas de la Entrevista</h3>
 
-            <section>
-                <h2>🏠 Experiencia y Habilidades</h2>
-                <label>📌 ¿Cuántos años de experiencia tiene en el área doméstica?</label>
-                <input type="text" name="experiencia" required>
+            <label>📍 ¿Cuál es tu dirección actual?</label>
+            <input type="text" name="direccion" required>
 
-                <label>📌 ¿En qué áreas ha trabajado? (Ejemplo: Limpieza, Cocina, Cuidado de niños, etc.)</label>
-                <input type="text" name="areas_experiencia" required>
+            <label>📅 ¿Qué edad tienes?</label>
+            <input type="number" name="edad" required>
 
-                <label>📌 ¿Sabe planchar?</label>
-                <select name="sabe_planchar" required>
-                    <option value="Sí">Sí</option>
-                    <option value="No">No</option>
-                </select>
+            <label>📞 ¿Cuál es tu número de teléfono?</label>
+            <input type="text" name="telefono" required>
 
-                <label>📌 ¿Acepta trabajar con dormida?</label>
-                <select name="dormida" required>
-                    <option value="Sí">Sí</option>
-                    <option value="No">No</option>
-                </select>
-            </section>
+            <label>🔹 ¿Tienes experiencia trabajando en casas de familia?</label>
+            <select name="experiencia">
+                <option value="Sí">Sí</option>
+                <option value="No">No</option>
+            </select>
 
-            <section>
-                <h2>👩‍👧‍👦 Experiencia con Niños y Adultos</h2>
-                <label>📌 ¿Ha trabajado con niños? ¿Qué edades?</label>
-                <input type="text" name="trabajo_ninos">
+            <label>🏡 ¿Qué tipo de labores del hogar dominas?</label>
+            <input type="text" name="labores">
 
-                <label>📌 ¿Ha trabajado con adultos mayores?</label>
-                <select name="adultos_mayores">
-                    <option value="Sí">Sí</option>
-                    <option value="No">No</option>
-                </select>
+            <label>👶 ¿Has trabajado con niños? ¿De qué edades?</label>
+            <input type="text" name="trabajo_niños">
 
-                <label>📌 ¿Sabe administrar medicamentos?</label>
-                <select name="medicamentos">
-                    <option value="Sí">Sí</option>
-                    <option value="No">No</option>
-                </select>
-            </section>
+            <label>🐾 ¿Te sientes cómoda trabajando con mascotas?</label>
+            <select name="mascotas">
+                <option value="Sí">Sí</option>
+                <option value="No">No</option>
+            </select>
 
-            <section>
-                <h2>🚨 Emergencias y Seguridad</h2>
-                <label>📌 ¿Qué haría si hay una emergencia en la casa?</label>
-                <textarea name="emergencias" rows="3" required></textarea>
+            <label>📜 ¿Tienes referencias laborales de trabajos anteriores?</label>
+            <select name="referencias">
+                <option value="Sí">Sí</option>
+                <option value="No">No</option>
+            </select>
 
-                <label>📌 ¿Ha tomado algún curso de primeros auxilios?</label>
-                <select name="primeros_auxilios">
-                    <option value="Sí">Sí</option>
-                    <option value="No">No</option>
-                </select>
-            </section>
+            <label>🛏️ ¿Te interesa trabajar con dormida?</label>
+            <select name="dormida">
+                <option value="Sí">Sí</option>
+                <option value="No">No</option>
+            </select>
 
-            <section>
-                <h2>📅 Disponibilidad y Sueldo</h2>
-                <label>📌 ¿Cuántas horas está dispuesta a trabajar al día?</label>
-                <input type="text" name="horas_trabajo" required>
+            <label>💰 ¿Cuánto aspiras ganar al mes?</label>
+            <input type="text" name="sueldo">
 
-                <label>📌 ¿Cuál es el sueldo mínimo que aceptaría?</label>
-                <input type="text" name="sueldo" required>
-            </section>
+            <label>📆 ¿Cuáles días de la semana puedes trabajar?</label>
+            <input type="text" name="dias_trabajo">
 
-            <section>
-                <h2>📝 Referencias</h2>
-                <label>📌 Referencia Laboral (Nombre y Teléfono)</label>
-                <input type="text" name="referencia_laboral">
+            <label>⏰ ¿En qué horario prefieres trabajar?</label>
+            <input type="text" name="horario">
 
-                <label>📌 Referencia Familiar (Nombre y Teléfono)</label>
-                <input type="text" name="referencia_familiar">
-            </section>
+            <label>⚠️ ¿Tienes alguna condición de salud que debamos conocer?</label>
+            <input type="text" name="salud">
 
-            <button type="submit" class="btn-guardar">✅ Guardar Entrevista</button>
+            <label>🔹 Comentarios adicionales:</label>
+            <textarea name="comentarios"></textarea>
+
+            <button type="submit">💾 Guardar Entrevista</button>
         </form>
 
-        <!-- Botón para Generar PDF -->
-        {% if candidata %}
-            <a href="{{ url_for('generar_entrevista', candidata_id=candidata.fila_index) }}" class="btn-pdf">📄 Descargar Entrevista en PDF</a>
-        {% endif %}
+        <a href="{{ url_for('home') }}" class="btn-volver">🏠 Volver al Inicio</a>
     </div>
 </body>
 </html>

@@ -1493,27 +1493,26 @@ def entrevista():
 @app.route('/guardar_entrevista', methods=['POST'])
 def guardar_entrevista():
     try:
-        candidata_id = request.form.get('candidata_id', '').strip()
+        candidata_id = request.form.get('candidata_id')
         entrevista = request.form.get('entrevista', '').strip()
 
         if not candidata_id or not entrevista:
-            return "⚠️ Error: No se recibió información válida.", 400
+            return render_template('entrevista.html', mensaje="⚠️ Error. No se recibió información válida.")
 
         fila_index = int(candidata_id)
-        valores_actualizar = [[entrevista]]
 
-        # Guardar en la columna Z
+        # Guardar en la columna Z (Índice 25 en Python)
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f'Nueva hoja!Z{fila_index}',
-            valueInputOption='RAW',
-            body={'values': valores_actualizar}
+            range=f"Nueva hoja!Z{fila_index}",
+            valueInputOption="RAW",
+            body={"values": [[entrevista]]}
         ).execute()
 
-        return "✅ Entrevista guardada correctamente."
-    
+        return render_template('entrevista.html', mensaje="✅ Entrevista guardada correctamente.")
+
     except Exception as e:
-        return f"❌ Error al guardar la entrevista: {str(e)}", 500
+        return render_template('entrevista.html', mensaje=f"❌ Error al guardar la entrevista: {str(e)}")
 
 # 📌 Ruta para generar el PDF de la entrevista
 @app.route('/generar_entrevista/<int:fila_index>')
