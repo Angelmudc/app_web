@@ -773,7 +773,9 @@ def sugerir():
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
     resultados = []
+    candidata_detalles = None
     busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '').strip()
 
     try:
         # Obtener los datos de la hoja
@@ -784,7 +786,7 @@ def buscar():
         valores = hoja.get("values", [])
 
         if not valores or len(valores) < 2:
-            return render_template('buscar.html', resultados=[], mensaje="⚠️ No hay datos disponibles.")
+            return render_template('buscar.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
 
         # 🔹 Búsqueda flexible por nombre
         for fila_index, fila in enumerate(valores[1:], start=2):  # Empezar en la segunda fila
@@ -794,26 +796,39 @@ def buscar():
                 resultados.append({
                     'fila_index': fila_index,
                     'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                    'edad': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                    'direccion': fila[3] if len(fila) > 3 else "No especificado",
-                    'modalidad': fila[4] if len(fila) > 4 else "No especificado",
-                    'rutas': fila[5] if len(fila) > 5 else "No especificado",
-                    'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
-                    'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
-                    'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-                    'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
-                    'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
-                    'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
-                    'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
+                    'ciudad': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[13] if len(fila) > 13 else "No especificado",
                 })
 
+        # 🔹 Cargar detalles si se seleccionó una candidata
+        if candidata_id:
+            fila_index = int(candidata_id)  # Convertir ID a número de fila
+            fila = valores[fila_index - 1]  # Ajustar índice (Sheets empieza en 1)
+
+            candidata_detalles = {
+                'fila_index': fila_index,
+                'nombre': fila[0] if len(fila) > 0 else "No especificado",
+                'edad': fila[1] if len(fila) > 1 else "No especificado",
+                'telefono': fila[2] if len(fila) > 2 else "No especificado",
+                'direccion': fila[3] if len(fila) > 3 else "No especificado",
+                'modalidad': fila[4] if len(fila) > 4 else "No especificado",
+                'rutas': fila[5] if len(fila) > 5 else "No especificado",
+                'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
+                'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
+                'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
+                'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
+                'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
+                'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
+                'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
+                'cedula': fila[13] if len(fila) > 13 else "No especificado",
+            }
+
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
-        return render_template('buscar.html', resultados=[], mensaje=mensaje)
+        return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
 
-    return render_template('buscar.html', resultados=resultados)
+    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
 
 @app.route('/editar', methods=['GET', 'POST'])
 def editar():

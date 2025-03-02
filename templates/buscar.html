@@ -12,7 +12,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: auto;
             background: white;
             padding: 20px;
@@ -63,6 +63,18 @@
             background-color: #007bff;
             color: white;
         }
+        .ver-detalles {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .ver-detalles:hover {
+            background-color: #0056b3;
+        }
         .volver {
             display: block;
             margin-top: 20px;
@@ -94,6 +106,40 @@
         {% endif %}
 
         {% if resultados %}
+            <h3>Resultados Encontrados:</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Cédula</th>
+                            <th>Ciudad</th>
+                            <th>Teléfono</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for candidata in resultados %}
+                            <tr>
+                                <td>{{ candidata.nombre }}</td>
+                                <td>{{ candidata.cedula }}</td>
+                                <td>{{ candidata.ciudad }}</td>
+                                <td>{{ candidata.telefono }}</td>
+                                <td>
+                                    <form method="GET">
+                                        <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
+                                        <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+
+        {% if candidata %}
+            <h3>Detalles de la Candidata:</h3>
             <div class="table-container">
                 <table>
                     <thead>
@@ -103,41 +149,37 @@
                             <th>Teléfono</th>
                             <th>Dirección</th>
                             <th>Modalidad</th>
-                            <th>Rutas</th>
+                            <th>Rutas Cercanas</th>
                             <th>Empleo Anterior</th>
-                            <th>Años Exp.</th>
-                            <th>Áreas Exp.</th>
-                            <th>Plancha</th>
-                            <th>Ref. Laborales</th>
-                            <th>Ref. Familiares</th>
-                            <th>Acepta %</th>
+                            <th>Años de Experiencia</th>
+                            <th>Áreas de Experiencia</th>
+                            <th>Sabe Planchar</th>
+                            <th>Referencias Laborales</th>
+                            <th>Referencias Familiares</th>
+                            <th>Acepta Porcentaje</th>
                             <th>Cédula</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for candidata in resultados %}
-                            <tr>
-                                <td>{{ candidata.nombre }}</td>
-                                <td>{{ candidata.edad }}</td>
-                                <td>{{ candidata.telefono }}</td>
-                                <td>{{ candidata.direccion }}</td>
-                                <td>{{ candidata.modalidad }}</td>
-                                <td>{{ candidata.rutas }}</td>
-                                <td>{{ candidata.empleo_anterior }}</td>
-                                <td>{{ candidata.anos_experiencia }}</td>
-                                <td>{{ candidata.areas_experiencia }}</td>
-                                <td>{{ candidata.sabe_planchar }}</td>
-                                <td>{{ candidata.referencias_laborales }}</td>
-                                <td>{{ candidata.referencias_familiares }}</td>
-                                <td>{{ candidata.acepta_porcentaje }}</td>
-                                <td>{{ candidata.cedula }}</td>
-                            </tr>
-                        {% endfor %}
+                        <tr>
+                            <td>{{ candidata.nombre }}</td>
+                            <td>{{ candidata.edad }}</td>
+                            <td>{{ candidata.telefono }}</td>
+                            <td>{{ candidata.direccion }}</td>
+                            <td>{{ candidata.modalidad }}</td>
+                            <td>{{ candidata.rutas }}</td>
+                            <td>{{ candidata.empleo_anterior }}</td>
+                            <td>{{ candidata.anos_experiencia }}</td>
+                            <td>{{ candidata.areas_experiencia }}</td>
+                            <td>{{ candidata.sabe_planchar }}</td>
+                            <td>{{ candidata.referencias_laborales }}</td>
+                            <td>{{ candidata.referencias_familiares }}</td>
+                            <td>{{ candidata.acepta_porcentaje }}</td>
+                            <td>{{ candidata.cedula }}</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
-        {% else %}
-            <p style="text-align: center;">No se encontraron resultados.</p>
         {% endif %}
 
         <a href="/" class="volver">🏠 Volver al Inicio</a>
