@@ -12,7 +12,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1000px;
+            max-width: 900px;
             margin: auto;
             background: white;
             padding: 20px;
@@ -74,6 +74,16 @@
         }
         .ver-detalles:hover {
             background-color: #0056b3;
+        }
+        .detalle {
+            background: #f9f9f9;
+            padding: 12px;
+            border-radius: 5px;
+            margin: 5px 0;
+            border-left: 5px solid #007bff;
+        }
+        .detalle strong {
+            color: #333;
         }
         .volver {
             display: block;
@@ -140,46 +150,20 @@
 
         {% if candidata %}
             <h3>Detalles de la Candidata:</h3>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Nombre</th>
-                            <th>Edad</th>
-                            <th>Teléfono</th>
-                            <th>Dirección</th>
-                            <th>Modalidad</th>
-                            <th>Rutas Cercanas</th>
-                            <th>Empleo Anterior</th>
-                            <th>Años de Experiencia</th>
-                            <th>Áreas de Experiencia</th>
-                            <th>Sabe Planchar</th>
-                            <th>Referencias Laborales</th>
-                            <th>Referencias Familiares</th>
-                            <th>Acepta Porcentaje</th>
-                            <th>Cédula</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>{{ candidata.nombre }}</td>
-                            <td>{{ candidata.edad }}</td>
-                            <td>{{ candidata.telefono }}</td>
-                            <td>{{ candidata.direccion }}</td>
-                            <td>{{ candidata.modalidad }}</td>
-                            <td>{{ candidata.rutas }}</td>
-                            <td>{{ candidata.empleo_anterior }}</td>
-                            <td>{{ candidata.anos_experiencia }}</td>
-                            <td>{{ candidata.areas_experiencia }}</td>
-                            <td>{{ candidata.sabe_planchar }}</td>
-                            <td>{{ candidata.referencias_laborales }}</td>
-                            <td>{{ candidata.referencias_familiares }}</td>
-                            <td>{{ candidata.acepta_porcentaje }}</td>
-                            <td>{{ candidata.cedula }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <div class="detalle"><strong>👤 Nombre:</strong> {{ candidata.nombre }}</div>
+            <div class="detalle"><strong>🎂 Edad:</strong> {{ candidata.edad }}</div>
+            <div class="detalle"><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</div>
+            <div class="detalle"><strong>📍 Dirección:</strong> {{ candidata.direccion }}</div>
+            <div class="detalle"><strong>🛏️ Modalidad:</strong> {{ candidata.modalidad }}</div>
+            <div class="detalle"><strong>🚏 Rutas Cercanas:</strong> {{ candidata.rutas }}</div>
+            <div class="detalle"><strong>🛠️ Empleo Anterior:</strong> {{ candidata.empleo_anterior }}</div>
+            <div class="detalle"><strong>📅 Años de Experiencia:</strong> {{ candidata.anos_experiencia }}</div>
+            <div class="detalle"><strong>📝 Áreas de Experiencia:</strong> {{ candidata.areas_experiencia }}</div>
+            <div class="detalle"><strong>🧺 Sabe Planchar:</strong> {{ candidata.sabe_planchar }}</div>
+            <div class="detalle"><strong>👨‍💼 Referencias Laborales:</strong> {{ candidata.referencias_laborales }}</div>
+            <div class="detalle"><strong>👩‍👩‍👦 Referencias Familiares:</strong> {{ candidata.referencias_familiares }}</div>
+            <div class="detalle"><strong>✅ Acepta Porcentaje:</strong> {{ candidata.acepta_porcentaje }}</div>
+            <div class="detalle"><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</div>
         {% endif %}
 
         <a href="/" class="volver">🏠 Volver al Inicio</a>
