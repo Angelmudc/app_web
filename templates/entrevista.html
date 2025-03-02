@@ -3,61 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entrevista</title>
+    <title>Entrevista de Candidata</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     <div class="container">
-        <h2>📝 Realizar Entrevista</h2>
+        <h1>📋 Entrevista de Candidata</h1>
+        
+        <!-- Formulario de Entrevista -->
+        <form action="{{ url_for('guardar_entrevista') }}" method="post">
+            <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
-        <!-- Formulario de Búsqueda -->
-        <form method="POST">
-            <label for="busqueda">Buscar Candidata:</label>
-            <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
-            <button type="submit">🔍 Buscar</button>
+            <section>
+                <h2>🛂 Datos Personales</h2>
+                <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
+                <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+                <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
+                <p><strong>Dirección:</strong> {{ candidata.direccion }}</p>
+            </section>
+
+            <section>
+                <h2>🏠 Experiencia y Habilidades</h2>
+                <label>📌 ¿Cuántos años de experiencia tiene en el área doméstica?</label>
+                <input type="text" name="experiencia" required>
+
+                <label>📌 ¿En qué áreas ha trabajado? (Ejemplo: Limpieza, Cocina, Cuidado de niños, etc.)</label>
+                <input type="text" name="areas_experiencia" required>
+
+                <label>📌 ¿Sabe planchar?</label>
+                <select name="sabe_planchar" required>
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
+
+                <label>📌 ¿Acepta trabajar con dormida?</label>
+                <select name="dormida" required>
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
+            </section>
+
+            <section>
+                <h2>👩‍👧‍👦 Experiencia con Niños y Adultos</h2>
+                <label>📌 ¿Ha trabajado con niños? ¿Qué edades?</label>
+                <input type="text" name="trabajo_ninos">
+
+                <label>📌 ¿Ha trabajado con adultos mayores?</label>
+                <select name="adultos_mayores">
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
+
+                <label>📌 ¿Sabe administrar medicamentos?</label>
+                <select name="medicamentos">
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
+            </section>
+
+            <section>
+                <h2>🚨 Emergencias y Seguridad</h2>
+                <label>📌 ¿Qué haría si hay una emergencia en la casa?</label>
+                <textarea name="emergencias" rows="3" required></textarea>
+
+                <label>📌 ¿Ha tomado algún curso de primeros auxilios?</label>
+                <select name="primeros_auxilios">
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
+            </section>
+
+            <section>
+                <h2>📅 Disponibilidad y Sueldo</h2>
+                <label>📌 ¿Cuántas horas está dispuesta a trabajar al día?</label>
+                <input type="text" name="horas_trabajo" required>
+
+                <label>📌 ¿Cuál es el sueldo mínimo que aceptaría?</label>
+                <input type="text" name="sueldo" required>
+            </section>
+
+            <section>
+                <h2>📝 Referencias</h2>
+                <label>📌 Referencia Laboral (Nombre y Teléfono)</label>
+                <input type="text" name="referencia_laboral">
+
+                <label>📌 Referencia Familiar (Nombre y Teléfono)</label>
+                <input type="text" name="referencia_familiar">
+            </section>
+
+            <button type="submit" class="btn-guardar">✅ Guardar Entrevista</button>
         </form>
 
-        <!-- Mostrar Resultados de Búsqueda -->
-        {% if resultados %}
-            <h3>Resultados:</h3>
-            <table>
-                <tr>
-                    <th>Nombre</th>
-                    <th>Teléfono</th>
-                    <th>Cédula</th>
-                    <th>Acciones</th>
-                </tr>
-                {% for candidata in resultados %}
-                <tr>
-                    <td>{{ candidata.nombre }}</td>
-                    <td>{{ candidata.telefono }}</td>
-                    <td>{{ candidata.cedula }}</td>
-                    <td>
-                        <a href="{{ url_for('entrevista', candidata=candidata.fila_index) }}">Ver Entrevista</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </table>
-        {% endif %}
-
-        <!-- Mostrar Entrevista de la Candidata Seleccionada -->
+        <!-- Botón para Generar PDF -->
         {% if candidata %}
-            <h3>Entrevista de {{ candidata.nombre }}</h3>
-            <form action="/guardar_entrevista" method="POST">
-                <input type="hidden" name="candidata_id" value="{{ candidata.fila_index }}">
-
-                <label for="entrevista">Entrevista:</label>
-                <textarea name="entrevista" rows="8" required>{{ candidata.entrevista }}</textarea>
-
-                <button type="submit">💾 Guardar Entrevista</button>
-            </form>
+            <a href="{{ url_for('generar_entrevista', candidata_id=candidata.fila_index) }}" class="btn-pdf">📄 Descargar Entrevista en PDF</a>
         {% endif %}
-
-        {% if mensaje %}
-            <p>{{ mensaje }}</p>
-        {% endif %}
-
-        <a href="/" class="btn-volver">🏠 Volver al Inicio</a>
     </div>
 </body>
 </html>
