@@ -34,45 +34,37 @@
             border-radius: 5px;
             font-size: 16px;
         }
+        input:read-only {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+        }
         button {
             background-color: #28a745;
             color: white;
             font-weight: bold;
             border: none;
             transition: 0.3s;
+            cursor: pointer;
         }
         button:hover {
             background-color: #218838;
         }
-        .resultados {
-            margin-top: 20px;
-        }
-        .resultado-item {
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-            margin-bottom: 10px;
-        }
-        .ver-detalles {
-            background-color: #007bff;
-            color: white;
+        .mensaje {
+            text-align: center;
             font-weight: bold;
-            border: none;
-            padding: 8px 12px;
+            padding: 10px;
             border-radius: 5px;
-            cursor: pointer;
-            width: 100%;
-        }
-        .ver-detalles:hover {
-            background-color: #0056b3;
-        }
-        label {
-            font-weight: bold;
-            color: #555;
-        }
-        .form-group {
             margin-bottom: 15px;
+        }
+        .mensaje-exito {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .mensaje-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
     </style>
 </head>
@@ -80,35 +72,34 @@
 
     <div class="container">
         <h2>🔎 Buscar Candidata para Pago</h2>
-        
-        <form method="POST">
-            <div class="form-group">
-                <label for="busqueda">Buscar por Nombre:</label>
-                <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre" required>
+
+        {% if mensaje %}
+            <div class="mensaje {% if 'éxito' in mensaje %}mensaje-exito{% else %}mensaje-error{% endif %}">
+                {{ mensaje }}
             </div>
+        {% endif %}
+
+        <form method="POST">
+            <label for="busqueda">Buscar por Nombre:</label>
+            <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre" required>
             <button type="submit">🔍 Buscar</button>
         </form>
 
         {% if resultados %}
             <h3>Resultados Encontrados:</h3>
-            <div class="resultados">
-                {% for candidata in resultados %}
-                    <div class="resultado-item">
-                        <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
-                        <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
-                        <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-                        <p><strong>💰 Monto Total:</strong> {{ candidata.monto_total }}</p>
-                        <p><strong>📉 Saldo Pendiente:</strong> {{ candidata.porcentaje }}</p>
-                        <p><strong>📅 Fecha de Pago:</strong> {{ candidata.fecha_pago }}</p>
-                        <form method="GET">
-                            <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                            <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
-                        </form>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <p>No se encontraron resultados.</p>
+            {% for candidata in resultados %}
+                <div>
+                    <p><strong>👤 Nombre:</strong> {{ candidata.nombre }}</p>
+                    <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
+                    <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
+                    <p><strong>💰 Porcentaje Pendiente:</strong> {{ candidata.saldo_pendiente }}</p>
+                    <form method="GET">
+                        <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
+                        <button type="submit">📄 Ver Detalles</button>
+                    </form>
+                </div>
+                <hr>
+            {% endfor %}
         {% endif %}
 
         {% if candidata %}
@@ -116,30 +107,20 @@
             <form method="POST" action="/guardar_pago">
                 <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
-                <div class="form-group">
-                    <label for="fecha_pago">📅 Fecha de Pago:</label>
-                    <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}">
-                </div>
+                <label for="fecha_pago">📅 Fecha de Pago:</label>
+                <input type="date" id="fecha_pago" name="fecha_pago" value="{{ candidata.fecha_pago }}" readonly>
 
-                <div class="form-group">
-                    <label for="monto_total">💰 Monto Total:</label>
-                    <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" readonly>
-                </div>
+                <label for="monto_total">💰 Monto Total:</label>
+                <input type="text" id="monto_total" name="monto_total" value="{{ candidata.monto_total }}" readonly>
 
-                <div class="form-group">
-                    <label for="monto_pagado">💵 Monto a Pagar:</label>
-                    <input type="text" id="monto_pagado" name="monto_pagado" required>
-                </div>
+                <label for="monto_pagado">💵 Monto a Pagar:</label>
+                <input type="text" id="monto_pagado" name="monto_pagado" required>
 
-                <div class="form-group">
-                    <label for="saldo_pendiente">📉 Saldo Pendiente:</label>
-                    <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.porcentaje }}" readonly>
-                </div>
+                <label for="saldo_pendiente">📉 Porcentaje Pendiente:</label>
+                <input type="text" id="saldo_pendiente" name="saldo_pendiente" value="{{ candidata.saldo_pendiente }}" readonly>
 
-                <div class="form-group">
-                    <label for="calificacion">⭐ Calificación:</label>
-                    <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}">
-                </div>
+                <label for="calificacion">⭐ Calificación:</label>
+                <input type="text" id="calificacion" name="calificacion" value="{{ candidata.calificacion }}" readonly>
 
                 <button type="submit">💾 Registrar Pago</button>
             </form>
