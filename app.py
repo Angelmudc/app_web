@@ -1355,40 +1355,39 @@ def pagos():
 @app.route('/guardar_pago', methods=['POST'])
 def guardar_pago():
     try:
-        fila_index = int(request.form.get('fila_index', '').strip())
+        fila_index = int(request.form.get('fila_index'))
         monto_pagado = request.form.get('monto_pagado', '').strip()
 
-        if not monto_pagado.isdigit():
-            return "⚠️ Error: El monto ingresado no es válido.", 400
+        if not monto_pagado or not monto_pagado.isdigit():
+            return render_template('pagos.html', mensaje="❌ Error: Ingrese un monto válido.")
 
         monto_pagado = int(monto_pagado)
 
-        # 🔹 Obtener el valor actual de la columna X (Porcentaje)
+        # Obtener datos actuales de la hoja
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=f"Nueva hoja!X{fila_index}"
         ).execute()
-
         valores = hoja.get("values", [])
-        porcentaje_actual = int(valores[0][0]) if valores else 0  # Si está vacío, asumimos 0
 
-        # 🔹 Restar el monto pagado al porcentaje actual
-        nuevo_porcentaje = max(0, porcentaje_actual - monto_pagado)  # Evita valores negativos
+        if not valores:
+            return render_template('pagos.html', mensaje="❌ Error: No se encontró la fila en la hoja.")
 
-        # 🔹 Guardar el nuevo porcentaje en la columna X
-        valores_actualizar = [[nuevo_porcentaje]]
+        saldo_actual = int(valores[0][0]) if valores[0] else 0
+        nuevo_saldo = saldo_actual - monto_pagado
 
+        # Actualizar el porcentaje en la columna X
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"Nueva hoja!X{fila_index}",
             valueInputOption="RAW",
-            body={"values": valores_actualizar}
+            body={"values": [[nuevo_saldo]]}
         ).execute()
 
-        return redirect(url_for('pagos'))
+        # Mensaje de éxito
+        return render_template('pagos.html', mensaje="✅ Pago guardado con éxito.")
 
     except Exception as e:
-        return f"❌ Error al guardar los datos: {str(e)}", 400
-
+        return render_template('pagos.html', mensaje=f"❌ Error al guardar los datos: {str(e)}")
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
