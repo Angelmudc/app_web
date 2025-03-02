@@ -1493,27 +1493,31 @@ def entrevista():
 @app.route('/guardar_entrevista', methods=['POST'])
 def guardar_entrevista():
     try:
+        # Obtener datos del formulario
         candidata_id = request.form.get('candidata_id', '').strip()
-        entrevista_texto = request.form.get('entrevista_texto', '').strip()
+        entrevista = request.form.get('entrevista', '').strip()
 
-        if not candidata_id or not entrevista_texto:
-            return render_template('entrevista.html', mensaje="⚠️ Debes seleccionar una candidata y completar la entrevista.", tipo="warning")
+        if not candidata_id or not entrevista:
+            return "⚠️ Error: No se recibió información válida.", 400
 
-        fila_index = int(candidata_id)  # Convertir ID de candidata a índice de fila en Sheets
-        ENTREVISTA_COLUMNA = "Z"  # Columna Z en Sheets
+        # Convertir el índice de la fila a número entero
+        fila_index = int(candidata_id)
 
-        # Guardar los cambios en la hoja de cálculo
+        # Formatear datos para actualizar la celda en la columna Z
+        valores_actualizar = [[entrevista]]
+
+        # Hacer la actualización en Google Sheets
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!{ENTREVISTA_COLUMNA}{fila_index}",
-            valueInputOption="RAW",
-            body={"values": [[entrevista_texto]]}
+            range=f'Nueva hoja!Z{fila_index}',  # Guardar en la columna Z
+            valueInputOption='RAW',
+            body={'values': valores_actualizar}
         ).execute()
 
-        return render_template('entrevista.html', mensaje="✅ Entrevista guardada correctamente.", tipo="success")
-
+        return "✅ Entrevista guardada correctamente."
+    
     except Exception as e:
-        return render_template('entrevista.html', mensaje=f"❌ Error al guardar la entrevista: {str(e)}", tipo="danger")
+        return f"❌ Error al guardar la entrevista: {str(e)}", 500
 
 # 📌 Ruta para generar el PDF de la entrevista
 @app.route('/generar_entrevista/<int:fila_index>')
