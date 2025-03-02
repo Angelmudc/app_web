@@ -3,44 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entrevista Laboral</title>
+    <title>Entrevista</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     <div class="container">
-        <h2>🔎 Buscar Candidata para Entrevista</h2>
+        <h2>📝 Realizar Entrevista</h2>
+
+        <!-- Formulario de Búsqueda -->
         <form method="POST">
-            <label for="busqueda">Buscar por Nombre o Cédula:</label>
-            <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre o cédula" required>
+            <label for="busqueda">Buscar Candidata:</label>
+            <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
             <button type="submit">🔍 Buscar</button>
         </form>
 
+        <!-- Mostrar Resultados de Búsqueda -->
         {% if resultados %}
-            <h3>Resultados Encontrados:</h3>
-            <ul>
+            <h3>Resultados:</h3>
+            <table>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Teléfono</th>
+                    <th>Cédula</th>
+                    <th>Acciones</th>
+                </tr>
                 {% for candidata in resultados %}
-                    <li>
-                        {{ candidata.nombre }} - {{ candidata.cedula }} - {{ candidata.telefono }}
-                        <a href="?candidata={{ candidata.fila_index }}">✏️ Entrevistar</a>
-                    </li>
+                <tr>
+                    <td>{{ candidata.nombre }}</td>
+                    <td>{{ candidata.telefono }}</td>
+                    <td>{{ candidata.cedula }}</td>
+                    <td>
+                        <a href="{{ url_for('entrevista', candidata=candidata.fila_index) }}">Ver Entrevista</a>
+                    </td>
+                </tr>
                 {% endfor %}
-            </ul>
+            </table>
         {% endif %}
 
+        <!-- Mostrar Entrevista de la Candidata Seleccionada -->
         {% if candidata %}
-            <h2>✍ Entrevista</h2>
-            <form method="POST" action="/guardar_entrevista">
-                <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
+            <h3>Entrevista de {{ candidata.nombre }}</h3>
+            <form action="/guardar_entrevista" method="POST">
+                <input type="hidden" name="candidata_id" value="{{ candidata.fila_index }}">
 
-                <label>📄 Resumen de la Entrevista:</label>
+                <label for="entrevista">Entrevista:</label>
                 <textarea name="entrevista" rows="8" required>{{ candidata.entrevista }}</textarea>
 
                 <button type="submit">💾 Guardar Entrevista</button>
             </form>
-
-            <br>
-            <a href="/generar_entrevista/{{ candidata.fila_index }}" class="pdf-button">📄 Generar PDF</a>
         {% endif %}
+
+        {% if mensaje %}
+            <p>{{ mensaje }}</p>
+        {% endif %}
+
+        <a href="/" class="btn-volver">🏠 Volver al Inicio</a>
     </div>
 </body>
 </html>

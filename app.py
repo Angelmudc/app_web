@@ -1442,12 +1442,12 @@ def generar_pdf():
 # 📌 Función para buscar candidata
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
-    resultados = []
-    candidata_seleccionada = None
+    candidata_detalles = None
     busqueda = request.form.get('busqueda', '').strip().lower()
     candidata_id = request.args.get('candidata', '').strip()
 
     try:
+        # Obtener datos desde Google Sheets
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:Z"
@@ -1457,59 +1457,55 @@ def entrevista():
         if not valores or len(valores) < 2:
             return render_template('entrevista.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
 
-        # 🔹 Búsqueda flexible por nombre o cédula
+        # Búsqueda por nombre
+        resultados = []
         for fila_index, fila in enumerate(valores[1:], start=2):
             nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
-
-            if busqueda and (busqueda in nombre or busqueda in cedula):
+            if busqueda and busqueda in nombre:
                 resultados.append({
                     'fila_index': fila_index,
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                    'entrevista': fila[25] if len(fila) > 25 else "No registrada"
                 })
 
-        # 🔹 Cargar entrevista si se seleccionó una candidata
+        # Cargar detalles si se seleccionó una candidata
         if candidata_id:
             fila_index = int(candidata_id)
             fila = valores[fila_index - 1]
 
-            candidata_seleccionada = {
+            candidata_detalles = {
                 'fila_index': fila_index,
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'entrevista': fila[25] if len(fila) > 25 else "",
+                'entrevista': fila[25] if len(fila) > 25 else "No registrada"
             }
 
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('entrevista.html', resultados=[], candidata=None, mensaje=mensaje)
 
-    return render_template('entrevista.html', resultados=resultados, candidata=candidata_seleccionada)
+    return render_template('entrevista.html', resultados=resultados, candidata=candidata_detalles)
 
-# 📌 Ruta para guardar entrevista
+
 @app.route('/guardar_entrevista', methods=['POST'])
 def guardar_entrevista():
     try:
-        # Obtener datos del formulario
         candidata_id = request.form.get('candidata_id', '').strip()
         entrevista = request.form.get('entrevista', '').strip()
 
         if not candidata_id or not entrevista:
             return "⚠️ Error: No se recibió información válida.", 400
 
-        # Convertir el índice de la fila a número entero
         fila_index = int(candidata_id)
-
-        # Formatear datos para actualizar la celda en la columna Z
         valores_actualizar = [[entrevista]]
 
-        # Hacer la actualización en Google Sheets
+        # Guardar en la columna Z
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f'Nueva hoja!Z{fila_index}',  # Guardar en la columna Z
+            range=f'Nueva hoja!Z{fila_index}',
             valueInputOption='RAW',
             body={'values': valores_actualizar}
         ).execute()
