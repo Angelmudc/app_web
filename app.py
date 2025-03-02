@@ -29,6 +29,7 @@ from flask import send_file
 
 
 
+
 # Configuración de la API de Google Sheets
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -1343,34 +1344,96 @@ def guardar_pago():
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
+    pagos_pendientes = []
+
     try:
         # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"  # Ajustar rango si es necesario
+            range="Nueva hoja!A:Y"  # Asegura incluir hasta la columna X (Porcentaje pendiente)
         ).execute()
         valores = hoja.get("values", [])
 
         if not valores or len(valores) < 2:
-            return render_template('reporte_pagos.html', reporte=[], mensaje="⚠️ No hay datos disponibles.")
+            return render_template('reporte_pagos.html', pagos_pendientes=[], mensaje="⚠️ No hay datos disponibles.")
 
-        reporte = []
-        for fila in valores[1:]:
-            if len(fila) > 23 and fila[23]:  # Verifica que la columna X (índice 23) tenga un valor
-                reporte.append({
-                    'codigo': fila[0] if len(fila) > 0 else "No especificado",
-                    'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",
-                    'porcentaje_pendiente': fila[23] if len(fila) > 23 else "0",
-                    'fecha_inicio': fila[20] if len(fila) > 20 else "No registrada",
-                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada"
-                })
+        for fila in valores[1:]:  # Excluir encabezados
+            try:
+                # Extraer valores y limpiar datos vacíos
+                nombre = fila[1] if len(fila) > 1 else "No especificado"
+                cedula = fila[14] if len(fila) > 14 else "No especificado"
+                codigo = fila[15] if len(fila) > 15 else "No especificado"
+                ciudad = fila[4] if len(fila) > 4 else "No especificado"
+                monto_total = float(fila[22]) if len(fila) > 22 and fila[22].strip() else 0  # Columna W
+                porcentaje_pendiente = float(fila[23]) if len(fila) > 23 and fila[23].strip() else 0  # Columna X
+                fecha_inicio = fila[20] if len(fila) > 20 else "No registrada"  # Columna V
+                fecha_pago = fila[21] if len(fila) > 21 else "No registrada"  # Columna U
 
-        return render_template('reporte_pagos.html', reporte=reporte)
+                # Filtrar solo las candidatas que deben dinero
+                if porcentaje_pendiente > 0:
+                    pagos_pendientes.append({
+                        'nombre': nombre,
+                        'cedula': cedula,
+                        'codigo': codigo,
+                        'ciudad': ciudad,
+                        'monto_total': monto_total,
+                        'porcentaje_pendiente': porcentaje_pendiente,
+                        'fecha_inicio': fecha_inicio,
+                        'fecha_pago': fecha_pago
+                    })
+            except ValueError:
+                continue  # Evitar errores si un dato no es convertible a número
 
     except Exception as e:
-        return render_template('reporte_pagos.html', reporte=[], mensaje=f"❌ Error: {str(e)}")
+        mensaje = f"❌ Error al obtener los datos: {str(e)}"
+        return render_template('reporte_pagos.html', pagos_pendientes=[], mensaje=mensaje)
+
+    return render_template('reporte_pagos.html', pagos_pendientes=pagos_pendientes)
+
+@app.route('/generar_pdf')
+def generar_pdf():
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Y"
+        ).execute()
+        valores = hoja.get("values", [])
+
+        if not valores or len(valores) < 2:
+            return "⚠️ No hay datos disponibles para generar el PDF."
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(200, 10, "Reporte de Pagos Pendientes", ln=True, align="C")
+        pdf.ln(10)
+
+        pdf.set_font("Arial", "", 10)
+        for fila in valores[1:]:
+            try:
+                porcentaje_pendiente = float(fila[23]) if len(fila) > 23 and fila[23].strip() else 0
+                if porcentaje_pendiente > 0:
+                    nombre = fila[1] if len(fila) > 1 else "No especificado"
+                    cedula = fila[14] if len(fila) > 14 else "No especificado"
+                    codigo = fila[15] if len(fila) > 15 else "No especificado"
+                    ciudad = fila[4] if len(fila) > 4 else "No especificado"
+                    monto_total = fila[22] if len(fila) > 22 else "0"
+                    fecha_inicio = fila[20] if len(fila) > 20 else "No registrada"
+                    fecha_pago = fila[21] if len(fila) > 21 else "No registrada"
+
+                    pdf.cell(0, 8, f"Nombre: {nombre} | Cédula: {cedula} | Código: {codigo}", ln=True)
+                    pdf.cell(0, 8, f"Ciudad: {ciudad} | Monto Total: {monto_total} | Pendiente: {porcentaje_pendiente}", ln=True)
+                    pdf.cell(0, 8, f"Inicio: {fecha_inicio} | Pago: {fecha_pago}", ln=True)
+                    pdf.ln(5)
+            except ValueError:
+                continue
+
+        pdf.output("reporte_pagos.pdf")
+        return send_file("reporte_pagos.pdf", as_attachment=True)
+
+    except Exception as e:
+        return f"❌ Error al generar PDF: {str(e)}"
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

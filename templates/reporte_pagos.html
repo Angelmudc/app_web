@@ -24,7 +24,6 @@
             color: #333;
             border-bottom: 2px solid #ddd;
             padding-bottom: 10px;
-            margin-bottom: 20px;
         }
         table {
             width: 100%;
@@ -32,31 +31,26 @@
             margin-top: 20px;
         }
         th, td {
-            border: 1px solid #ddd;
             padding: 10px;
+            border: 1px solid #ddd;
             text-align: left;
         }
         th {
-            background-color: #28a745;
+            background-color: #007bff;
             color: white;
         }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
         .btn {
-            display: block;
-            width: 200px;
-            margin: 20px auto;
-            padding: 10px;
-            text-align: center;
-            background-color: #007bff;
+            display: inline-block;
+            padding: 10px 15px;
+            background-color: #28a745;
             color: white;
             text-decoration: none;
             border-radius: 5px;
-            font-weight: bold;
+            margin-top: 15px;
+            text-align: center;
         }
         .btn:hover {
-            background-color: #0056b3;
+            background-color: #218838;
         }
     </style>
 </head>
@@ -66,41 +60,45 @@
         <h2>📋 Reporte de Pagos Pendientes</h2>
 
         {% if mensaje %}
-            <p style="color: red; text-align: center;">{{ mensaje }}</p>
+            <p style="color: red;">{{ mensaje }}</p>
         {% endif %}
 
-        {% if reporte %}
+        {% if pagos_pendientes %}
             <table>
                 <thead>
                     <tr>
-                        <th>Código</th>
                         <th>Nombre</th>
                         <th>Cédula</th>
-                        <th>💰 Sueldo</th>
-                        <th>📉 Deuda</th>
-                        <th>📅 Inicio</th>
-                        <th>📅 Fecha de Pago</th>
+                        <th>Código</th>
+                        <th>Ciudad</th>
+                        <th>Monto Total</th>
+                        <th>Porcentaje Pendiente</th>
+                        <th>Fecha de Inicio</th>
+                        <th>Fecha de Pago</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for item in reporte %}
+                    {% for pago in pagos_pendientes %}
                         <tr>
-                            <td>{{ item.codigo }}</td>
-                            <td>{{ item.nombre }}</td>
-                            <td>{{ item.cedula }}</td>
-                            <td>{{ item.monto_total }}</td>
-                            <td>{{ item.porcentaje_pendiente }}</td>
-                            <td>{{ item.fecha_inicio }}</td>
-                            <td>{{ item.fecha_pago }}</td>
+                            <td>{{ pago.nombre }}</td>
+                            <td>{{ pago.cedula }}</td>
+                            <td>{{ pago.codigo }}</td>
+                            <td>{{ pago.ciudad }}</td>
+                            <td>{{ pago.monto_total }}</td>
+                            <td>{{ pago.porcentaje_pendiente }}</td>
+                            <td>{{ pago.fecha_inicio }}</td>
+                            <td>{{ pago.fecha_pago }}</td>
                         </tr>
                     {% endfor %}
                 </tbody>
             </table>
 
-            <a href="/descargar_reporte" class="btn">📥 Descargar PDF</a>
+            <a href="/generar_pdf" class="btn">📄 Exportar a PDF</a>
+
         {% else %}
-            <p style="text-align: center; font-weight: bold;">⚠️ No hay pagos pendientes registrados.</p>
+            <p style="text-align: center; color: gray;">⚠️ No hay pagos pendientes registrados.</p>
         {% endif %}
+
     </div>
 
 </body>
