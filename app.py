@@ -1111,50 +1111,6 @@ def buscar_inscripcion():
 
     return jsonify({"error": "No se encontró la candidata"}), 404
 
-@app.route('/reporte_pagos', methods=['GET'])
-def reporte_pagos():
-    """
-    Genera un reporte de todas las candidatas con pagos pendientes.
-    """
-    try:
-        # Obtener todos los datos de la hoja de cálculo
-        datos = obtener_datos()
-        reporte = []
-
-        # Filtrar candidatas con Porciento > 0
-        for fila in datos:
-            try:
-                # Imprimir toda la fila para verificar si contiene la columna Fecha_pago
-                print(f"Fila completa: {fila}")
-
-                if len(fila) >= 27:  # Asegurarse de que la fila tenga suficientes columnas
-                    nombre = fila[1]  # Columna B: Nombre
-                    porciento_pendiente = float(fila[25]) if fila[25] else 0.0  # Columna Z: Porciento
-                    fecha_inicio = fila[23]  # Columna X: Inicio
-                    fecha_pago = fila[22] if len(fila) > 22 and fila[22] else "Fecha no disponible"  # Columna W: Fecha de Pago
-                    calificacion = fila[26] if len(fila) > 26 else "Pendiente"  # Columna AA: Calificación
-
-                    if porciento_pendiente > 0:  # Filtrar pagos pendientes
-                        print(f"Nombre: {nombre}, Fecha_pago: {fecha_pago}")  # Depuración
-                        reporte.append({
-                            'nombre': nombre,
-                            'porciento_pendiente': porciento_pendiente,
-                            'fecha_inicio': fecha_inicio,
-                            'fecha_pago': fecha_pago,
-                            'calificacion': calificacion
-                        })
-            except Exception as e:
-                print(f"Error procesando fila: {fila}. Error: {e}")
-
-        # Renderizar la plantilla con el reporte
-        if not reporte:
-            print("No hay candidatas con pagos pendientes.")
-        return render_template('reporte_pagos.html', reporte=reporte)
-
-    except Exception as e:
-        print(f"Error al generar el reporte: {e}")
-        return "Error al generar el reporte", 500
-
 @app.route('/porciento', methods=['GET', 'POST'])
 def porciento():
     resultados = []
@@ -1385,72 +1341,36 @@ def guardar_pago():
     except Exception as e:
         return render_template('pagos.html', mensaje=f"❌ Error al guardar los datos: {str(e)}")
 
-@app.route('/exportar_reporte_pagos', methods=['GET'])
-def exportar_reporte_pagos():
+@app.route('/reporte_pagos', methods=['GET'])
+def reporte_pagos():
     try:
         # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Z"
+            range="Nueva hoja!B:O"  # Ajustar rango si es necesario
         ).execute()
         valores = hoja.get("values", [])
 
         if not valores or len(valores) < 2:
-            return "No hay datos disponibles para exportar."
+            return render_template('reporte_pagos.html', reporte=[], mensaje="⚠️ No hay datos disponibles.")
 
-        resultados = []
+        reporte = []
+        for fila in valores[1:]:
+            if len(fila) > 23 and fila[23]:  # Verifica que la columna X (índice 23) tenga un valor
+                reporte.append({
+                    'codigo': fila[0] if len(fila) > 0 else "No especificado",
+                    'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                    'monto_total': fila[22] if len(fila) > 22 else "0",
+                    'porcentaje_pendiente': fila[23] if len(fila) > 23 else "0",
+                    'fecha_inicio': fila[20] if len(fila) > 20 else "No registrada",
+                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada"
+                })
 
-        for fila in valores[1:]:  # Omitimos la primera fila de encabezados
-            if len(fila) > 23:
-                porcentaje_pendiente = fila[23].strip() if len(fila) > 23 else "0"
-
-                if porcentaje_pendiente and porcentaje_pendiente != "0":
-                    resultados.append([
-                        fila[15] if len(fila) > 15 else "No especificado",  # Código
-                        fila[1] if len(fila) > 1 else "No especificado",   # Nombre
-                        fila[14] if len(fila) > 14 else "No especificado", # Cédula
-                        fila[4] if len(fila) > 4 else "No especificado",   # Ciudad
-                        porcentaje_pendiente,  # Monto pendiente
-                        fila[22] if len(fila) > 22 else "No especificado", # Sueldo total
-                        fila[21] if len(fila) > 21 else "No especificado", # Fecha de inicio
-                        fila[20] if len(fila) > 20 else "No especificado", # Fecha de pago
-                    ])
-
-        # Crear el PDF
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 12)
-
-        # Título del reporte
-        pdf.cell(200, 10, "Reporte de Pagos Pendientes", ln=True, align='C')
-        pdf.ln(10)
-
-        # Encabezados de la tabla
-        pdf.set_font("Arial", "B", 10)
-        columnas = ["Código", "Nombre", "Cédula", "Ciudad", "Monto Pendiente", "Sueldo", "Inicio", "Pago"]
-        col_widths = [20, 50, 30, 30, 30, 30, 30, 30]  
-
-        for i, col in enumerate(columnas):
-            pdf.cell(col_widths[i], 8, col, 1, 0, 'C')
-        pdf.ln()
-
-        # Agregar los datos
-        pdf.set_font("Arial", "", 10)
-
-        for row in resultados:
-            for i, item in enumerate(row):
-                pdf.cell(col_widths[i], 8, str(item), 1, 0, 'C')
-            pdf.ln()
-
-        # Guardar el PDF temporalmente
-        pdf_path = "/mnt/data/Reporte_Pagos_Pendientes.pdf"
-        pdf.output(pdf_path)
-
-        return send_file(pdf_path, as_attachment=True)
+        return render_template('reporte_pagos.html', reporte=reporte)
 
     except Exception as e:
-        return f"Error al generar el PDF: {str(e)}"
+        return render_template('reporte_pagos.html', reporte=[], mensaje=f"❌ Error: {str(e)}")
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
