@@ -1499,29 +1499,13 @@ def guardar_entrevista():
         if not candidata_id or not entrevista_texto:
             return render_template('entrevista.html', mensaje="⚠️ Debes seleccionar una candidata y completar la entrevista.", tipo="warning")
 
-        # Obtener los datos de la hoja de cálculo
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Z"
-        ).execute()
-        valores = hoja.get("values", [])
-
-        if not valores or len(valores) < int(candidata_id):
-            return render_template('entrevista.html', mensaje="⚠️ No se encontró la candidata seleccionada.", tipo="warning")
-
-        fila_index = int(candidata_id)  # Convertir ID de candidata a índice de fila
-        ENTREVISTA_COLUMNA = 25  # La columna Z es la número 25 en índice de Python
-
-        # Asegurar que la fila tiene suficiente longitud para contener la entrevista
-        while len(valores[fila_index - 1]) <= ENTREVISTA_COLUMNA:
-            valores[fila_index - 1].append("")  # Expandir la fila si es necesario
-
-        valores[fila_index - 1][ENTREVISTA_COLUMNA] = entrevista_texto  # Guardar la entrevista en la columna Z
+        fila_index = int(candidata_id)  # Convertir ID de candidata a índice de fila en Sheets
+        ENTREVISTA_COLUMNA = "Z"  # Columna Z en Sheets
 
         # Guardar los cambios en la hoja de cálculo
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!Z{fila_index}",
+            range=f"Nueva hoja!{ENTREVISTA_COLUMNA}{fila_index}",
             valueInputOption="RAW",
             body={"values": [[entrevista_texto]]}
         ).execute()
