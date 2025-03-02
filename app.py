@@ -1358,30 +1358,31 @@ def guardar_pago():
         fila_index = int(request.form.get('fila_index'))
         monto_pagado = request.form.get('monto_pagado', '').strip()
 
-        if not monto_pagado or not monto_pagado.isdigit():
+        if not monto_pagado:
             return render_template('pagos.html', mensaje="❌ Error: Ingrese un monto válido.")
 
-        monto_pagado = int(monto_pagado)
+        # 🔹 Convertir correctamente el monto pagado
+        monto_pagado = float(monto_pagado)  # Ahora admite valores decimales
 
-        # Obtener datos actuales de la hoja
+        # Obtener datos actuales de la columna X (porcentaje pendiente)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=f"Nueva hoja!X{fila_index}"
         ).execute()
         valores = hoja.get("values", [])
 
-        if not valores:
-            return render_template('pagos.html', mensaje="❌ Error: No se encontró la fila en la hoja.")
-
-        saldo_actual = int(valores[0][0]) if valores[0] else 0
+        saldo_actual = float(valores[0][0]) if valores and valores[0] else 0  # Convertir a float para evitar errores
         nuevo_saldo = saldo_actual - monto_pagado
 
-        # Actualizar el porcentaje en la columna X
+        # Asegurar que el saldo no sea negativo
+        nuevo_saldo = max(nuevo_saldo, 0)
+
+        # 🔹 Actualizar la columna X con el nuevo saldo
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"Nueva hoja!X{fila_index}",
             valueInputOption="RAW",
-            body={"values": [[nuevo_saldo]]}
+            body={"values": [[nuevo_saldo]]}  # Guardar como número decimal sin errores
         ).execute()
 
         # Mensaje de éxito
@@ -1389,5 +1390,6 @@ def guardar_pago():
 
     except Exception as e:
         return render_template('pagos.html', mensaje=f"❌ Error al guardar los datos: {str(e)}")
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
