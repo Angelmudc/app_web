@@ -26,6 +26,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 from googleapiclient.discovery import build
 from fpdf import FPDF
 from flask import send_file
+from flask import Flask, render_template, request, redirect, send_file
+from fpdf import FPDF
+import os
+import io
 
 
 
@@ -1434,6 +1438,134 @@ def generar_pdf():
 
     except Exception as e:
         return f"❌ Error al generar PDF: {str(e)}"
+
+# 📌 Función para buscar candidata
+@app.route('/entrevista', methods=['GET', 'POST'])
+def entrevista():
+    resultados = []
+    candidata_seleccionada = None
+    busqueda = request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '').strip()
+
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Z"
+        ).execute()
+        valores = hoja.get("values", [])
+
+        if not valores or len(valores) < 2:
+            return render_template('entrevista.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
+
+        # 🔹 Búsqueda flexible por nombre o cédula
+        for fila_index, fila in enumerate(valores[1:], start=2):
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
+
+            if busqueda and (busqueda in nombre or busqueda in cedula):
+                resultados.append({
+                    'fila_index': fila_index,
+                    'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                })
+
+        # 🔹 Cargar entrevista si se seleccionó una candidata
+        if candidata_id:
+            fila_index = int(candidata_id)
+            fila = valores[fila_index - 1]
+
+            candidata_seleccionada = {
+                'fila_index': fila_index,
+                'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                'entrevista': fila[25] if len(fila) > 25 else "",
+            }
+
+    except Exception as e:
+        mensaje = f"❌ Error al obtener los datos: {str(e)}"
+        return render_template('entrevista.html', resultados=[], candidata=None, mensaje=mensaje)
+
+    return render_template('entrevista.html', resultados=resultados, candidata=candidata_seleccionada)
+
+# 📌 Ruta para guardar entrevista
+@app.route('/guardar_entrevista', methods=['POST'])
+def guardar_entrevista():
+    try:
+        fila_index = request.form.get("fila_index")
+        entrevista = request.form.get("entrevista")
+
+        if not fila_index or not entrevista:
+            return "⚠️ Datos inválidos.", 400
+
+        rango = f"Nueva hoja!{ENTREVISTA_COLUMNA}{fila_index}"
+
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango,
+            valueInputOption="RAW",
+            body={"values": [[entrevista]]}
+        ).execute()
+
+        return redirect('/entrevista')
+
+    except Exception as e:
+        return f"❌ Error al guardar la entrevista: {str(e)}"
+
+# 📌 Ruta para generar el PDF de la entrevista
+@app.route('/generar_entrevista/<int:fila_index>')
+def generar_entrevista(fila_index):
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"Nueva hoja!A:Z"
+        ).execute()
+        valores = hoja.get("values", [])
+
+        if not valores or fila_index >= len(valores):
+            return "⚠️ No se encontró la entrevista.", 400
+
+        fila = valores[fila_index - 1]
+        nombre = fila[1] if len(fila) > 1 else "No especificado"
+        cedula = fila[14] if len(fila) > 14 else "No especificado"
+        entrevista = fila[25] if len(fila) > 25 else "No hay entrevista guardada."
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 14)
+
+        # Agregar el logo
+        logo_path = os.path.join("static", "logo.png")
+        if os.path.exists(logo_path):
+            pdf.image(logo_path, x=80, y=10, w=50)
+
+        # Título
+        pdf.ln(30)
+        pdf.cell(200, 10, "Entrevista Laboral - Doméstica del Cibao A&D", ln=True, align="C")
+        pdf.ln(10)
+
+        # Información de la candidata
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(50, 10, f"Nombre: {nombre}")
+        pdf.ln(8)
+        pdf.cell(50, 10, f"Cédula: {cedula}")
+        pdf.ln(10)
+
+        # Sección de preguntas y respuestas
+        pdf.set_font("Arial", "", 11)
+        pdf.multi_cell(0, 10, entrevista)
+
+        # Guardar el PDF en memoria y enviarlo
+        pdf_output = io.BytesIO()
+        pdf.output(pdf_output, "F")
+        pdf_output.seek(0)
+
+        return send_file(pdf_output, as_attachment=True, download_name=f"Entrevista_{nombre}.pdf", mimetype="application/pdf")
+
+    except Exception as e:
+        return f"❌ Error al generar el PDF: {str(e)}"
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

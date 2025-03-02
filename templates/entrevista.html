@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entrevista Laboral</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>🔎 Buscar Candidata para Entrevista</h2>
+        <form method="POST">
+            <label for="busqueda">Buscar por Nombre o Cédula:</label>
+            <input type="text" id="busqueda" name="busqueda" placeholder="Ingrese nombre o cédula" required>
+            <button type="submit">🔍 Buscar</button>
+        </form>
+
+        {% if resultados %}
+            <h3>Resultados Encontrados:</h3>
+            <ul>
+                {% for candidata in resultados %}
+                    <li>
+                        {{ candidata.nombre }} - {{ candidata.cedula }} - {{ candidata.telefono }}
+                        <a href="?candidata={{ candidata.fila_index }}">✏️ Entrevistar</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        {% if candidata %}
+            <h2>✍ Entrevista</h2>
+            <form method="POST" action="/guardar_entrevista">
+                <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
+
+                <label>📄 Resumen de la Entrevista:</label>
+                <textarea name="entrevista" rows="8" required>{{ candidata.entrevista }}</textarea>
+
+                <button type="submit">💾 Guardar Entrevista</button>
+            </form>
+
+            <br>
+            <a href="/generar_entrevista/{{ candidata.fila_index }}" class="pdf-button">📄 Generar PDF</a>
+        {% endif %}
+    </div>
+</body>
+</html>
