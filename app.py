@@ -1493,25 +1493,43 @@ def entrevista():
 @app.route('/guardar_entrevista', methods=['POST'])
 def guardar_entrevista():
     try:
-        fila_index = request.form.get("fila_index")
-        entrevista = request.form.get("entrevista")
+        candidata_id = request.form.get('candidata_id', '').strip()
+        entrevista_texto = request.form.get('entrevista_texto', '').strip()
 
-        if not fila_index or not entrevista:
-            return "⚠️ Datos inválidos.", 400
+        if not candidata_id or not entrevista_texto:
+            return render_template('entrevista.html', mensaje="⚠️ Debes seleccionar una candidata y completar la entrevista.", tipo="warning")
 
-        rango = f"Nueva hoja!{ENTREVISTA_COLUMNA}{fila_index}"
+        # Obtener los datos de la hoja de cálculo
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Z"
+        ).execute()
+        valores = hoja.get("values", [])
 
+        if not valores or len(valores) < int(candidata_id):
+            return render_template('entrevista.html', mensaje="⚠️ No se encontró la candidata seleccionada.", tipo="warning")
+
+        fila_index = int(candidata_id)  # Convertir ID de candidata a índice de fila
+        ENTREVISTA_COLUMNA = 25  # La columna Z es la número 25 en índice de Python
+
+        # Asegurar que la fila tiene suficiente longitud para contener la entrevista
+        while len(valores[fila_index - 1]) <= ENTREVISTA_COLUMNA:
+            valores[fila_index - 1].append("")  # Expandir la fila si es necesario
+
+        valores[fila_index - 1][ENTREVISTA_COLUMNA] = entrevista_texto  # Guardar la entrevista en la columna Z
+
+        # Guardar los cambios en la hoja de cálculo
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
-            range=rango,
+            range=f"Nueva hoja!Z{fila_index}",
             valueInputOption="RAW",
-            body={"values": [[entrevista]]}
+            body={"values": [[entrevista_texto]]}
         ).execute()
 
-        return redirect('/entrevista')
+        return render_template('entrevista.html', mensaje="✅ Entrevista guardada correctamente.", tipo="success")
 
     except Exception as e:
-        return f"❌ Error al guardar la entrevista: {str(e)}"
+        return render_template('entrevista.html', mensaje=f"❌ Error al guardar la entrevista: {str(e)}", tipo="danger")
 
 # 📌 Ruta para generar el PDF de la entrevista
 @app.route('/generar_entrevista/<int:fila_index>')
