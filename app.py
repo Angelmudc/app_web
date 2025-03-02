@@ -1494,19 +1494,50 @@ def entrevista():
 def guardar_entrevista():
     try:
         candidata_id = request.form.get('candidata_id')
-        entrevista = request.form.get('entrevista', '').strip()
+        direccion = request.form.get('direccion', '').strip()
+        edad = request.form.get('edad', '').strip()
+        telefono = request.form.get('telefono', '').strip()
+        experiencia = request.form.get('experiencia', '').strip()
+        labores = request.form.get('labores', '').strip()
+        trabajo_niños = request.form.get('trabajo_niños', '').strip()
+        mascotas = request.form.get('mascotas', '').strip()
+        referencias = request.form.get('referencias', '').strip()
+        dormida = request.form.get('dormida', '').strip()
+        sueldo = request.form.get('sueldo', '').strip()
+        dias_trabajo = request.form.get('dias_trabajo', '').strip()
+        horario = request.form.get('horario', '').strip()
+        salud = request.form.get('salud', '').strip()
+        comentarios = request.form.get('comentarios', '').strip()
 
-        if not candidata_id or not entrevista:
+        if not candidata_id or not direccion:
             return render_template('entrevista.html', mensaje="⚠️ Error. No se recibió información válida.")
 
         fila_index = int(candidata_id)
+
+        # Generar texto con la entrevista completa
+        entrevista_completa = f"""
+        📍 Dirección: {direccion}
+        📅 Edad: {edad}
+        📞 Teléfono: {telefono}
+        🔹 Experiencia en casas de familia: {experiencia}
+        🏡 Labores del hogar que domina: {labores}
+        👶 Trabajo con niños: {trabajo_niños}
+        🐾 Cómoda con mascotas: {mascotas}
+        📜 Referencias laborales: {referencias}
+        🛏️ Prefiere con dormida: {dormida}
+        💰 Aspiración salarial: {sueldo}
+        📆 Días disponibles: {dias_trabajo}
+        ⏰ Horario preferido: {horario}
+        ⚠️ Condiciones de salud: {salud}
+        🗒️ Comentarios adicionales: {comentarios}
+        """
 
         # Guardar en la columna Z (Índice 25 en Python)
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"Nueva hoja!Z{fila_index}",
             valueInputOption="RAW",
-            body={"values": [[entrevista]]}
+            body={"values": [[entrevista_completa]]}
         ).execute()
 
         return render_template('entrevista.html', mensaje="✅ Entrevista guardada correctamente.")
