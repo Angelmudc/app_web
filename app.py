@@ -1356,14 +1356,27 @@ def pagos():
 def guardar_pago():
     try:
         fila_index = int(request.form.get('fila_index', '').strip())
-        porcentaje = request.form.get('porcentaje', '').strip()
+        monto_pagado = request.form.get('monto_pagado', '').strip()
 
-        # Validar que el porcentaje no esté vacío
-        if not porcentaje:
-            return "⚠️ Error: No se ingresó un porcentaje válido.", 400
+        if not monto_pagado.isdigit():
+            return "⚠️ Error: El monto ingresado no es válido.", 400
 
-        # 🔹 Actualizar solo la columna X (Porcentaje)
-        valores_actualizar = [[porcentaje]]
+        monto_pagado = int(monto_pagado)
+
+        # 🔹 Obtener el valor actual de la columna X (Porcentaje)
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"Nueva hoja!X{fila_index}"
+        ).execute()
+
+        valores = hoja.get("values", [])
+        porcentaje_actual = int(valores[0][0]) if valores else 0  # Si está vacío, asumimos 0
+
+        # 🔹 Restar el monto pagado al porcentaje actual
+        nuevo_porcentaje = max(0, porcentaje_actual - monto_pagado)  # Evita valores negativos
+
+        # 🔹 Guardar el nuevo porcentaje en la columna X
+        valores_actualizar = [[nuevo_porcentaje]]
 
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,
