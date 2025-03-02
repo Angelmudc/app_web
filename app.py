@@ -24,6 +24,8 @@ from flask import Flask, request, render_template
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from googleapiclient.discovery import build
+from fpdf import FPDF
+from flask import send_file
 
 
 
@@ -1382,6 +1384,73 @@ def guardar_pago():
 
     except Exception as e:
         return render_template('pagos.html', mensaje=f"❌ Error al guardar los datos: {str(e)}")
+
+@app.route('/exportar_reporte_pagos', methods=['GET'])
+def exportar_reporte_pagos():
+    try:
+        # Obtener los datos de la hoja de cálculo
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Z"
+        ).execute()
+        valores = hoja.get("values", [])
+
+        if not valores or len(valores) < 2:
+            return "No hay datos disponibles para exportar."
+
+        resultados = []
+
+        for fila in valores[1:]:  # Omitimos la primera fila de encabezados
+            if len(fila) > 23:
+                porcentaje_pendiente = fila[23].strip() if len(fila) > 23 else "0"
+
+                if porcentaje_pendiente and porcentaje_pendiente != "0":
+                    resultados.append([
+                        fila[15] if len(fila) > 15 else "No especificado",  # Código
+                        fila[1] if len(fila) > 1 else "No especificado",   # Nombre
+                        fila[14] if len(fila) > 14 else "No especificado", # Cédula
+                        fila[4] if len(fila) > 4 else "No especificado",   # Ciudad
+                        porcentaje_pendiente,  # Monto pendiente
+                        fila[22] if len(fila) > 22 else "No especificado", # Sueldo total
+                        fila[21] if len(fila) > 21 else "No especificado", # Fecha de inicio
+                        fila[20] if len(fila) > 20 else "No especificado", # Fecha de pago
+                    ])
+
+        # Crear el PDF
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 12)
+
+        # Título del reporte
+        pdf.cell(200, 10, "Reporte de Pagos Pendientes", ln=True, align='C')
+        pdf.ln(10)
+
+        # Encabezados de la tabla
+        pdf.set_font("Arial", "B", 10)
+        columnas = ["Código", "Nombre", "Cédula", "Ciudad", "Monto Pendiente", "Sueldo", "Inicio", "Pago"]
+        col_widths = [20, 50, 30, 30, 30, 30, 30, 30]  
+
+        for i, col in enumerate(columnas):
+            pdf.cell(col_widths[i], 8, col, 1, 0, 'C')
+        pdf.ln()
+
+        # Agregar los datos
+        pdf.set_font("Arial", "", 10)
+
+        for row in resultados:
+            for i, item in enumerate(row):
+                pdf.cell(col_widths[i], 8, str(item), 1, 0, 'C')
+            pdf.ln()
+
+        # Guardar el PDF temporalmente
+        pdf_path = "/mnt/data/Reporte_Pagos_Pendientes.pdf"
+        pdf.output(pdf_path)
+
+        return send_file(pdf_path, as_attachment=True)
+
+    except Exception as e:
+        return f"Error al generar el PDF: {str(e)}"
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

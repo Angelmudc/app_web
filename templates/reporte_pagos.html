@@ -1,86 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reporte de Pagos</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <title>📄 Reporte de Pagos Pendientes</title>
     <style>
         body {
-            background: linear-gradient(120deg, #f8f9fa, #e9ecef);
-        }
-        .container {
-            background: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
             padding: 20px;
         }
-        h1 {
-            color: #4a69bd;
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
         }
-        .table {
-            border-radius: 8px;
-            overflow: hidden;
+        h2 {
+            text-align: center;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
         }
-        .table th {
-            background-color: #4a69bd;
-            color: #ffffff;
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
         }
-        .btn-primary {
-            background-color: #4a69bd;
-            border: none;
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
         }
-        .btn-primary:hover {
-            background-color: #3b5998;
+        th {
+            background-color: #007bff;
+            color: white;
         }
-        .card {
-            border: none;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        .exportar {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            padding: 12px;
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+        .exportar:hover {
+            background-color: #218838;
+        }
+        .volver {
+            display: block;
+            text-align: center;
+            margin-top: 10px;
+            padding: 12px;
+            background-color: #6c757d;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+        .volver:hover {
+            background-color: #5a6268;
         }
     </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <h1 class="text-center"><i class="fas fa-file-alt"></i> Reporte de Pagos</h1>
-        <hr>
 
-        <!-- Mensaje de retroalimentación -->
-        {% if mensaje %}
-            <div class="alert alert-info text-center">{{ mensaje }}</div>
-        {% endif %}
+    <div class="container">
+        <h2>📄 Reporte de Pagos Pendientes</h2>
 
-        <!-- Tabla con reporte de pagos -->
-        {% if reporte %}
-            <div class="table-responsive mt-4">
-                <table class="table table-bordered text-center">
-                    <thead>
-                        <tr>
-                            <th>Nombre</th>
-                            <th>Porcentaje Pendiente</th>
-                            <th>Fecha de Inicio</th>
-                            <th>Fecha de Pago</th>
-                            <th>Calificación</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for fila in reporte %}
-                            <tr>
-                                <td>{{ fila.nombre }}</td>
-                                <td>{{ fila.porciento_pendiente }}%</td>
-                                <td>{{ fila.fecha_inicio }}</td>
-                                <td>{{ fila.fecha_pago }}</td>
-                                <td>{{ fila.calificacion }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+        {% if resultados %}
+        <table>
+            <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Cédula</th>
+                <th>Ciudad</th>
+                <th>Monto Pendiente</th>
+                <th>Sueldo</th>
+                <th>Inicio</th>
+                <th>Pago</th>
+            </tr>
+            {% for candidata in resultados %}
+            <tr>
+                <td>{{ candidata.codigo }}</td>
+                <td>{{ candidata.nombre }}</td>
+                <td>{{ candidata.cedula }}</td>
+                <td>{{ candidata.ciudad }}</td>
+                <td>{{ candidata.monto_pendiente }}</td>
+                <td>{{ candidata.sueldo }}</td>
+                <td>{{ candidata.fecha_inicio }}</td>
+                <td>{{ candidata.fecha_pago }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        
+        <a href="/exportar_reporte_pagos" class="exportar">📄 Exportar a PDF</a>
         {% else %}
-            <div class="alert alert-warning text-center mt-4">
-                No hay candidatas con pagos pendientes.
-            </div>
+        <p>No hay candidatas con pagos pendientes.</p>
         {% endif %}
+
+        <a href="/" class="volver">🔙 Volver al Inicio</a>
     </div>
+
 </body>
 </html>
