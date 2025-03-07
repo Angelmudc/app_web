@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Entrevista de Candidatas</title>
+  <title>Entrevista de Candidatas - Doméstica del Cibao SRL</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1, h2 { text-align: center; }
@@ -16,15 +16,17 @@
     .form-field { margin-bottom: 15px; }
     label { font-weight: bold; display: block; margin-bottom: 5px; }
     input[type="text"], textarea { width: 100%; padding: 8px; }
+    .inline-group { display: flex; gap: 15px; }
+    .inline-group label { display: inline-block; margin-bottom: 0; }
     input[type="submit"] { padding: 10px 20px; font-size: 1em; }
   </style>
 </head>
 <body>
   <h1>Entrevista de Candidatas</h1>
   
-  <!-- Mostrar mensaje si existe -->
+  <!-- Mensaje -->
   {% if mensaje %}
-  <div class="mensaje">{{ mensaje }}</div>
+    <div class="mensaje">{{ mensaje }}</div>
   {% endif %}
   
   <!-- Formulario de búsqueda -->
@@ -50,26 +52,26 @@
       </thead>
       <tbody>
         {% for candidato in resultados %}
-        <tr>
-          <td>{{ candidato.fila_index }}</td>
-          <td>{{ candidato.nombre }}</td>
-          <td>{{ candidato.telefono }}</td>
-          <td>{{ candidato.cedula }}</td>
-          <td><a href="/entrevista?candidata={{ candidato.fila_index }}">Seleccionar</a></td>
-        </tr>
+          <tr>
+            <td>{{ candidato.fila_index }}</td>
+            <td>{{ candidato.nombre }}</td>
+            <td>{{ candidato.telefono }}</td>
+            <td>{{ candidato.cedula }}</td>
+            <td><a href="/entrevista?candidata={{ candidato.fila_index }}">Seleccionar</a></td>
+          </tr>
         {% endfor %}
       </tbody>
     </table>
   {% endif %}
   
-  <!-- Formulario de entrevista (se muestra cuando se selecciona una candidata) -->
+  <!-- Formulario de entrevista -->
   {% if candidata %}
     <h2>Entrevista para: {{ candidata.nombre }}</h2>
     <div class="interview-form">
       <form method="post" action="/entrevista">
-        <!-- Campo oculto para la fila de la candidata -->
+        <!-- Campo oculto para identificar la fila -->
         <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-        <!-- Indicador para guardar la entrevista -->
+        <!-- Indicador para guardar -->
         <input type="hidden" name="guardar" value="1">
         
         <div class="form-field">
@@ -80,25 +82,29 @@
           <label>Nacionalidad:</label>
           <input type="text" name="nacionalidad" required>
         </div>
-        <div class="form-field">
-          <label>Edad:</label>
-          <input type="text" name="edad" required>
+        <div class="inline-group">
+          <div class="form-field" style="flex:1;">
+            <label>Edad:</label>
+            <input type="text" name="edad" required>
+          </div>
+          <div class="form-field" style="flex:1;">
+            <label>Estado civil:</label>
+            <input type="text" name="estado_civil" required>
+          </div>
         </div>
         <div class="form-field">
           <label>Dirección:</label>
           <textarea name="direccion" rows="2" required></textarea>
         </div>
-        <div class="form-field">
-          <label>¿Estado civil?:</label>
-          <input type="text" name="estado_civil" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tienes hijos?:</label>
-          <input type="text" name="tienes_hijos" required>
-        </div>
-        <div class="form-field">
-          <label>¿Cuántos hijos tiene?:</label>
-          <input type="text" name="numero_hijos" required>
+        <div class="inline-group">
+          <div class="form-field" style="flex:1;">
+            <label>¿Tienes hijos?</label>
+            <input type="text" name="tienes_hijos" required>
+          </div>
+          <div class="form-field" style="flex:1;">
+            <label>Número de hijos:</label>
+            <input type="text" name="numero_hijos" required>
+          </div>
         </div>
         <div class="form-field">
           <label>¿Edades de los hijos?:</label>
@@ -128,80 +134,68 @@
           <label>Labores desempeñadas en trabajos anteriores:</label>
           <textarea name="labores_anteriores" rows="2" required></textarea>
         </div>
-        <div class="form-field">
-          <label>Tiempo desde el último trabajo:</label>
-          <input type="text" name="tiempo_ultimo_trabajo" required>
+        <div class="inline-group">
+          <div class="form-field" style="flex:1;">
+            <label>Tiempo desde el último trabajo:</label>
+            <input type="text" name="tiempo_ultimo_trabajo" required>
+          </div>
+          <div class="form-field" style="flex:1;">
+            <label>¿Por qué saliste de tu último trabajo?:</label>
+            <input type="text" name="razon_salida" required>
+          </div>
         </div>
-        <div class="form-field">
-          <label>¿Por qué saliste de tu último trabajo?:</label>
-          <textarea name="razon_salida" rows="2" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>¿Has enfrentado situaciones difíciles en el trabajo?:</label>
-          <input type="text" name="situacion_dificil" required>
-        </div>
-        <div class="form-field">
-          <label>¿Cómo manejaste esa situación?:</label>
-          <textarea name="manejo_situacion" rows="2" required></textarea>
+        <div class="inline-group">
+          <div class="form-field" style="flex:1;">
+            <label>¿Has enfrentado situaciones difíciles en el trabajo?</label>
+            <input type="text" name="situacion_dificil" required>
+          </div>
+          <div class="form-field" style="flex:1;">
+            <label>¿Cómo manejaste esa situación?</label>
+            <input type="text" name="manejo_situacion" required>
+          </div>
         </div>
         <div class="form-field">
           <label>¿Cómo manejarías reclamos o malos tratos del jefe?:</label>
           <textarea name="manejo_reclamo" rows="2" required></textarea>
         </div>
-        <div class="form-field">
-          <label>¿Trabajas con uniforme?:</label>
-          <input type="text" name="uniforme" required>
+        <!-- Preguntas con respuesta Sí/No -->
+        <div class="inline-group">
+          <div class="form-field" style="flex:1;">
+            <label>¿Sabes cocinar?</label>
+            <label><input type="radio" name="sabes_cocinar" value="Sí" required> Sí</label>
+            <label><input type="radio" name="sabes_cocinar" value="No" required> No</label>
+          </div>
+          <div class="form-field" style="flex:1;">
+            <label>¿Te gusta cocinar?</label>
+            <label><input type="radio" name="gusta_cocinar" value="Sí" required> Sí</label>
+            <label><input type="radio" name="gusta_cocinar" value="No" required> No</label>
+          </div>
+          <div class="form-field" style="flex:1;">
+            <label>¿Sabes planchar?</label>
+            <label><input type="radio" name="planchar" value="Sí" required> Sí</label>
+            <label><input type="radio" name="planchar" value="No" required> No</label>
+          </div>
         </div>
+        <!-- Preguntas largas o que requieren mayor escritura -->
         <div class="form-field">
-          <label>¿Trabajas días feriados?:</label>
-          <input type="text" name="dias_feriados" required>
-        </div>
-        <div class="form-field">
-          <label>¿Puedes ser revisada a la salida?:</label>
-          <input type="text" name="revision_salida" required>
-        </div>
-        <div class="form-field">
-          <label>¿Estás dispuesta a colaborar en lo que el jefe necesite?:</label>
-          <input type="text" name="colaboracion" required>
-        </div>
-        <div class="form-field">
-          <label>¿Con qué tipo de familia has trabajado anteriormente?:</label>
-          <textarea name="tipo_familia" rows="2" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>¿Has cuidado niños y de qué edad?:</label>
-          <textarea name="cuidado_ninos" rows="2" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>¿Sabes cocinar?:</label>
-          <input type="text" name="sabes_cocinar" required>
-        </div>
-        <div class="form-field">
-          <label>¿Te gusta cocinar?:</label>
-          <input type="text" name="gusta_cocinar" required>
-        </div>
-        <div class="form-field">
-          <label>¿Qué sabes cocinar?:</label>
+          <label>¿Qué sabes cocinar? (detalla los platos que preparas):</label>
           <textarea name="que_cocinas" rows="3" required></textarea>
         </div>
         <div class="form-field">
-          <label>¿Haces postres?:</label>
+          <label>¿Haces postres? (detalla cuáles):</label>
           <textarea name="postres" rows="3" required></textarea>
         </div>
         <div class="form-field">
           <label>¿Qué tareas de la casa te gustan y cuáles no?:</label>
           <textarea name="tareas_casa" rows="3" required></textarea>
         </div>
+        <!-- Resto de preguntas, presentadas de forma normal -->
         <div class="form-field">
-          <label>¿Sabes usar electrodomésticos modernos?:</label>
+          <label>¿Sabes usar electrodomésticos modernos?</label>
           <input type="text" name="electrodomesticos" required>
         </div>
         <div class="form-field">
-          <label>¿Sabes planchar?:</label>
-          <input type="text" name="planchar" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tienes alguna actividad principal (trabajo/estudio)?:</label>
+          <label>¿Tienes alguna actividad principal (trabajo/estudio)?</label>
           <input type="text" name="actividad_principal" required>
         </div>
         <div class="form-field">
@@ -209,7 +203,7 @@
           <input type="text" name="afiliacion_religiosa" required>
         </div>
         <div class="form-field">
-          <label>¿Tienes cursos en el área doméstica?:</label>
+          <label>¿Tienes cursos en el área doméstica?</label>
           <input type="text" name="cursos_domesticos" required>
         </div>
         <div class="form-field">
@@ -217,48 +211,49 @@
           <input type="text" name="nivel_academico" required>
         </div>
         <div class="form-field">
-          <label>¿Tienes condiciones de salud?:</label>
+          <label>¿Tienes condiciones de salud?</label>
           <input type="text" name="condiciones_salud" required>
         </div>
         <div class="form-field">
-          <label>¿Eres alérgica a algo?:</label>
+          <label>¿Eres alérgica a algo?</label>
           <input type="text" name="alergico" required>
         </div>
         <div class="form-field">
-          <label>¿Tomas medicamentos?:</label>
+          <label>¿Tomas medicamentos?</label>
           <input type="text" name="medicamentos" required>
         </div>
         <div class="form-field">
-          <label>¿Tienes seguro médico?:</label>
+          <label>¿Tienes seguro médico?</label>
           <input type="text" name="seguro_medico" required>
         </div>
         <div class="form-field">
-          <label>¿Aceptas hacer pruebas médicas si se solicita?:</label>
+          <label>¿Aceptas hacer pruebas médicas si se solicita?</label>
           <input type="text" name="pruebas_medicas" required>
         </div>
         <div class="form-field">
-          <label>¿Cuántas vacunas del COVID tienes?:</label>
+          <label>¿Cuántas vacunas del COVID tienes?</label>
           <input type="text" name="vacunas_covid" required>
         </div>
         <div class="form-field">
-          <label>¿Tomas alcohol?:</label>
+          <label>¿Tomas alcohol?</label>
           <input type="text" name="tomas_alcohol" required>
         </div>
         <div class="form-field">
-          <label>¿Fumas?:</label>
+          <label>¿Fumas?</label>
           <input type="text" name="fumas" required>
         </div>
         <div class="form-field">
-          <label>¿Tienes tatuajes visibles o piercings?:</label>
+          <label>¿Tienes tatuajes visibles o piercings?</label>
           <input type="text" name="tatuajes_piercings" required>
         </div>
+        <!-- Referencias grandes -->
         <div class="form-field">
           <label>Referencias laborales:</label>
-          <textarea name="referencias_laborales" rows="2" required></textarea>
+          <textarea name="referencias_laborales" rows="4" required></textarea>
         </div>
         <div class="form-field">
           <label>Referencias familiares:</label>
-          <textarea name="referencias_familiares" rows="2" required></textarea>
+          <textarea name="referencias_familiares" rows="4" required></textarea>
         </div>
         
         <div class="form-field">
