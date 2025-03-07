@@ -1450,7 +1450,7 @@ def entrevista():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"{Nueva hoja}!A:Z"  # Lee desde la columna A hasta la Z
+            range=f"Nueva hoja!A:Z"  # Lee desde la columna A hasta la Z
         ).execute()
         valores = hoja.get("values", [])
         # Verifica si hay datos
