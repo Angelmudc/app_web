@@ -1446,7 +1446,6 @@ def entrevista():
     candidata_id = request.args.get('candidata', '').strip()
 
     try:
-        # Obtener datos desde Google Sheets
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:Z"
@@ -1456,7 +1455,6 @@ def entrevista():
         if not valores or len(valores) < 2:
             return render_template('entrevista.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
 
-        # Búsqueda por nombre
         resultados = []
         for fila_index, fila in enumerate(valores[1:], start=2):
             nombre = fila[1].strip().lower() if len(fila) > 1 else ""
@@ -1469,7 +1467,6 @@ def entrevista():
                     'entrevista': fila[25] if len(fila) > 25 else "No registrada"
                 })
 
-        # Cargar detalles si se seleccionó una candidata
         if candidata_id:
             fila_index = int(candidata_id)
             fila = valores[fila_index - 1]
@@ -1483,24 +1480,19 @@ def entrevista():
             }
 
     except Exception as e:
-        mensaje = f"❌ Error al obtener los datos: {str(e)}"
-        return render_template('entrevista.html', resultados=[], candidata=None, mensaje=mensaje)
+        return render_template('entrevista.html', resultados=[], candidata=None, mensaje=f"❌ Error al obtener los datos: {str(e)}")
 
     return render_template('entrevista.html', resultados=resultados, candidata=candidata_detalles)
-
 
 @app.route('/guardar_entrevista', methods=['POST'])
 def guardar_entrevista():
     try:
-        # Obtener la fila donde se hizo la búsqueda
-        fila_index = request.form.get('fila_index')  # Se obtiene del formulario
-
+        fila_index = request.form.get('fila_index')
         if not fila_index:
             return render_template('entrevista.html', mensaje="⚠️ Error. No se recibió la fila de la candidata.")
         
-        fila_index = int(fila_index)  # Convertir a número después de validar
-
-        # Capturar respuestas de la entrevista
+        fila_index = int(fila_index)
+        
         direccion = request.form.get('direccion', '').strip()
         edad = request.form.get('edad', '').strip()
         telefono = request.form.get('telefono', '').strip()
@@ -1509,6 +1501,7 @@ def guardar_entrevista():
         trabajo_niños = request.form.get('trabajo_niños', '').strip()
         mascotas = request.form.get('mascotas', '').strip()
         referencias = request.form.get('referencias', '').strip()
+        referencias_familiares = request.form.get('referencias_familiares', '').strip()
         dormida = request.form.get('dormida', '').strip()
         sueldo = request.form.get('sueldo', '').strip()
         dias_trabajo = request.form.get('dias_trabajo', '').strip()
@@ -1516,7 +1509,6 @@ def guardar_entrevista():
         salud = request.form.get('salud', '').strip()
         comentarios = request.form.get('comentarios', '').strip()
 
-        # Generar el texto de la entrevista en un solo bloque
         entrevista_completa = f"""
         📍 Dirección: {direccion}
         🎂 Edad: {edad}
@@ -1526,6 +1518,7 @@ def guardar_entrevista():
         👶 Trabajo con niños: {trabajo_niños}
         🐶 Cómoda con mascotas: {mascotas}
         📜 Referencias laborales: {referencias}
+        📜 Referencias familiares: {referencias_familiares}
         💤 Prefiere con dormida: {dormida}
         💰 Aspiración salarial: {sueldo}
         📆 Días disponibles: {dias_trabajo}
@@ -1534,19 +1527,12 @@ def guardar_entrevista():
         📝 Comentarios adicionales: {comentarios}
         """.strip()
 
-        # Guardar la entrevista en la columna Z de la fila correspondiente
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Z{fila_index}",
-            valueInputOption="RAW",
-            body={"values": [[entrevista_completa]]}
-        ).execute()
-
+        hoja_calculo.update(f"Z{fila_index}", [[entrevista_completa]])
         return render_template('entrevista.html', mensaje="✅ Entrevista guardada correctamente.")
 
     except Exception as e:
         return render_template('entrevista.html', mensaje=f"❌ Error al guardar la entrevista: {str(e)}")
-        
+
 # Ruta para generar el PDF de la entrevista
 @app.route('/generar_entrevista/<int:fila_index>')
 def generar_entrevista(fila_index):
