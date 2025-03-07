@@ -8,91 +8,95 @@
 </head>
 <body>
     <div class="container">
-        <h2>📄 Entrevista de Candidata</h2>
+        <h2>📋 Entrevista de Candidata</h2>
 
         {% if mensaje %}
-            <div class="alert">
-                {{ mensaje }}
-            </div>
+            <p class="alert">{{ mensaje }}</p>
         {% endif %}
 
-        <!-- Sección de búsqueda de candidata -->
-        <form action="/buscar_candidata" method="post">
-            <label>🔍 Buscar candidata por nombre o cédula:</label>
-            <input type="text" name="busqueda" required>
-            <button type="submit">🔍 Buscar</button>
+        <form method="POST" action="{{ url_for('entrevista') }}">
+            <label for="busqueda">🔍 Buscar Candidata:</label>
+            <input type="text" name="busqueda" id="busqueda" placeholder="Ingrese nombre de la candidata" required>
+            <button type="submit">Buscar</button>
         </form>
+
+        {% if resultados %}
+            <h3>Resultados de Búsqueda:</h3>
+            <ul>
+                {% for candidata in resultados %}
+                    <li>
+                        {{ candidata.nombre }} - 📞 {{ candidata.telefono }} - 🆔 {{ candidata.cedula }}
+                        <a href="{{ url_for('entrevista', candidata=candidata.fila_index) }}">📝 Entrevistar</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
 
         {% if candidata %}
-        <h3>👤 Información de la Candidata</h3>
-        <p><strong>Nombre:</strong> {{ candidata['nombre'] }}</p>
-        <p><strong>Cédula:</strong> {{ candidata['cedula'] }}</p>
-        <p><strong>Teléfono:</strong> {{ candidata['telefono'] }}</p>
+            <h3>📌 Entrevista de {{ candidata.nombre }}</h3>
+            <form method="POST" action="{{ url_for('guardar_entrevista') }}">
+                <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
-        <!-- Formulario de Entrevista -->
-        <form action="/guardar_entrevista" method="post">
-            <!-- Se guarda la fila automáticamente -->
-            <input type="hidden" name="fila_index" value="{{ candidata['fila_index'] }}">
+                <label for="direccion">📍 Dirección:</label>
+                <input type="text" name="direccion" required>
 
-            <h3>📑 Preguntas de la Entrevista</h3>
+                <label for="edad">🎂 Edad:</label>
+                <input type="text" name="edad" required>
 
-            <label>📍 ¿Cuál es tu dirección actual?</label>
-            <input type="text" name="direccion" required>
+                <label for="telefono">📞 Teléfono:</label>
+                <input type="text" name="telefono" required>
 
-            <label>🎂 ¿Qué edad tienes?</label>
-            <input type="number" name="edad" required>
+                <label for="experiencia">🏠 Experiencia en casas de familia:</label>
+                <input type="text" name="experiencia" required>
 
-            <label>📞 Teléfono de contacto:</label>
-            <input type="text" name="telefono" required>
+                <label for="labores">🧹 Labores del hogar que domina:</label>
+                <input type="text" name="labores" required>
 
-            <label>🏠 Experiencia en casas de familia:</label>
-            <input type="text" name="experiencia" required>
+                <label for="trabajo_niños">👶 Ha trabajado con niños:</label>
+                <select name="trabajo_niños">
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
 
-            <label>🧹 ¿Qué tipo de labores del hogar dominas?</label>
-            <input type="text" name="labores" required>
+                <label for="mascotas">🐶 Cómoda con mascotas:</label>
+                <select name="mascotas">
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
 
-            <label>👶 ¿Has trabajado con niños?</label>
-            <select name="trabajo_niños" required>
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
+                <label for="referencias">📜 Referencias laborales:</label>
+                <input type="text" name="referencias">
 
-            <label>🐶 ¿Te sientes cómoda trabajando con mascotas?</label>
-            <select name="mascotas" required>
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
+                <label for="dormida">💤 Prefiere con dormida:</label>
+                <select name="dormida">
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
 
-            <label>📜 ¿Tienes referencias laborales de trabajos anteriores?</label>
-            <input type="text" name="referencias" required>
+                <label for="sueldo">💰 Aspiración salarial:</label>
+                <input type="text" name="sueldo">
 
-            <label>💤 ¿Prefieres con dormida?</label>
-            <select name="dormida" required>
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
+                <label for="dias_trabajo">📆 Días disponibles:</label>
+                <input type="text" name="dias_trabajo">
 
-            <label>💰 ¿Cuánto aspiras ganar al mes?</label>
-            <input type="text" name="sueldo" required>
+                <label for="horario">⏰ Horario preferido:</label>
+                <input type="text" name="horario">
 
-            <label>📆 ¿Cuáles días de la semana puedes trabajar?</label>
-            <input type="text" name="dias_trabajo" required>
+                <label for="salud">🏥 Condiciones de salud:</label>
+                <input type="text" name="salud">
 
-            <label>⏰ ¿Cuál es tu horario preferido?</label>
-            <input type="text" name="horario" required>
+                <label for="comentarios">📝 Comentarios adicionales:</label>
+                <textarea name="comentarios"></textarea>
 
-            <label>🏥 ¿Tienes alguna condición de salud que debamos conocer?</label>
-            <input type="text" name="salud">
+                <button type="submit">Guardar Entrevista</button>
+            </form>
 
-            <label>📝 Comentarios adicionales:</label>
-            <textarea name="comentarios"></textarea>
-
-            <button type="submit">✅ Guardar Entrevista</button>
-        </form>
+            <br>
+            <a href="{{ url_for('generar_entrevista', fila_index=candidata.fila_index) }}" class="btn">📄 Generar PDF</a>
         {% endif %}
 
         <br>
-        <a href="/" class="button">🏠 Volver al Inicio</a>
+        <a href="{{ url_for('index') }}">🏠 Volver al Inicio</a>
     </div>
 </body>
 </html>
