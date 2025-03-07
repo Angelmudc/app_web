@@ -1518,7 +1518,7 @@ def entrevista():
                     # Actualizamos la celda de la columna Z (columna 26) de la fila correspondiente
                     service.spreadsheets().values().update(
                         spreadsheetId=SPREADSHEET_ID,
-                        range=f"{NOMBRE_HOJA}!Z{fila_index}",
+                        range=f"Nueva hoja!Z{fila_index}",
                         valueInputOption="RAW",
                         body={"values": [[entrevista_completa]]}
                     ).execute()
