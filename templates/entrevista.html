@@ -4,93 +4,47 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Entrevista de Candidata</title>
-    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
     <h2>📄 Entrevista de Candidata</h2>
-    
-    {% if mensaje %}
-        <p class="alert">{{ mensaje }}</p>
-    {% endif %}
-    
-    <form method="POST" action="/entrevista">
-        <label for="busqueda">🔍 Buscar Candidata por Nombre:</label>
-        <input type="text" name="busqueda" id="busqueda" required>
+
+    <form method="POST">
+        <label>🔍 Buscar Candidata por Nombre:</label>
+        <input type="text" name="busqueda" required>
         <button type="submit">Buscar</button>
     </form>
-    
+
     {% if resultados %}
-        <h3>Resultados de Búsqueda:</h3>
+        <h3>Resultados:</h3>
         <ul>
             {% for candidata in resultados %}
                 <li>
-                    {{ candidata.nombre }} - {{ candidata.cedula }} - {{ candidata.telefono }}
-                    <a href="/entrevista?candidata={{ candidata.fila_index }}">✏️ Entrevistar</a>
+                    <strong>{{ candidata.nombre }}</strong> - {{ candidata.telefono }} - {{ candidata.cedula }}
+                    <a href="/entrevista?candidata={{ candidata.fila_index }}">Entrevistar</a>
                 </li>
             {% endfor %}
         </ul>
     {% endif %}
-    
+
     {% if candidata %}
-        <h3>📌 Entrevista para {{ candidata.nombre }}</h3>
+        <h3>Entrevistando a: {{ candidata.nombre }}</h3>
         <form method="POST" action="/guardar_entrevista">
             <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-            
-            <label>📍 Dirección:</label>
-            <input type="text" name="direccion" required>
-            
-            <label>🎂 Edad:</label>
-            <input type="text" name="edad" required>
-            
-            <label>📞 Teléfono:</label>
-            <input type="text" name="telefono" required>
-            
-            <label>🏠 Experiencia en casas de familia:</label>
-            <input type="text" name="experiencia" required>
-            
-            <label>🧹 Labores del hogar que domina:</label>
-            <input type="text" name="labores" required>
-            
-            <label>👶 Trabajo con niños:</label>
-            <select name="trabajo_niños">
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
-            
-            <label>🐶 Cómoda con mascotas:</label>
-            <select name="mascotas">
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
-            
-            <label>📜 Referencias laborales:</label>
-            <input type="text" name="referencias">
-            
-            <label>💤 Prefiere con dormida:</label>
-            <select name="dormida">
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
-            
-            <label>💰 Aspiración salarial:</label>
-            <input type="text" name="sueldo" required>
-            
-            <label>📆 Días disponibles:</label>
-            <input type="text" name="dias_trabajo" required>
-            
-            <label>⏰ Horario preferido:</label>
-            <input type="text" name="horario" required>
-            
-            <label>🏥 Condiciones de salud:</label>
-            <input type="text" name="salud">
-            
-            <label>📝 Comentarios adicionales:</label>
-            <textarea name="comentarios"></textarea>
-            
-            <button type="submit">💾 Guardar Entrevista</button>
+            <label>📍 Dirección:</label><input type="text" name="direccion" required><br>
+            <label>🎂 Edad:</label><input type="text" name="edad"><br>
+            <label>📞 Teléfono:</label><input type="text" name="telefono"><br>
+            <label>🏠 Experiencia:</label><input type="text" name="experiencia"><br>
+            <label>🧹 Labores del hogar:</label><input type="text" name="labores"><br>
+            <label>👶 Trabajo con niños:</label><input type="text" name="trabajo_niños"><br>
+            <label>🐶 Cómoda con mascotas:</label><input type="text" name="mascotas"><br>
+            <label>📜 Referencias:</label><input type="text" name="referencias"><br>
+            <label>💰 Aspiración salarial:</label><input type="text" name="sueldo"><br>
+            <label>📆 Días disponibles:</label><input type="text" name="dias_trabajo"><br>
+            <label>⏰ Horario preferido:</label><input type="text" name="horario"><br>
+            <label>🏥 Salud:</label><input type="text" name="salud"><br>
+            <label>📝 Comentarios:</label><textarea name="comentarios"></textarea><br>
+            <button type="submit">Guardar Entrevista</button>
         </form>
     {% endif %}
-    
-    <a href="/">🏠 Volver al Inicio</a>
 </body>
 </html>
