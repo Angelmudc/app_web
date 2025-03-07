@@ -1439,7 +1439,6 @@ def generar_pdf():
     except Exception as e:
         return f"❌ Error al generar PDF: {str(e)}"
 
-
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
     mensaje = None
@@ -1455,15 +1454,19 @@ def entrevista():
         valores = hoja.get("values", [])
         # Verifica si hay datos
         if not valores or len(valores) < 2:
-            return render_template('entrevista.html',
-                                   resultados=[],
-                                   candidata=None,
-                                   mensaje="⚠️ No hay datos disponibles en la hoja.")
+            return render_template(
+                'entrevista.html',
+                resultados=[],
+                candidata=None,
+                mensaje="⚠️ No hay datos disponibles en la hoja."
+            )
     except Exception as e:
-        return render_template('entrevista.html',
-                               resultados=[],
-                               candidata=None,
-                               mensaje=f"❌ Error al obtener los datos: {str(e)}")
+        return render_template(
+            'entrevista.html',
+            resultados=[],
+            candidata=None,
+            mensaje=f"❌ Error al obtener los datos: {str(e)}"
+        )
 
     # 2. Procesamiento de peticiones POST
     if request.method == 'POST':
