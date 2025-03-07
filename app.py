@@ -1451,19 +1451,15 @@ def entrevista():
         ).execute()
         valores = hoja.get("values", [])
         if not valores or len(valores) < 2:
-            return render_template(
-                'entrevista.html',
-                resultados=[],
-                candidata=None,
-                mensaje="⚠️ No hay datos disponibles en la hoja."
-            )
+            return render_template('entrevista.html',
+                                   resultados=[],
+                                   candidata=None,
+                                   mensaje="⚠️ No hay datos disponibles en la hoja.")
     except Exception as e:
-        return render_template(
-            'entrevista.html',
-            resultados=[],
-            candidata=None,
-            mensaje=f"❌ Error al obtener los datos: {str(e)}"
-        )
+        return render_template('entrevista.html',
+                               resultados=[],
+                               candidata=None,
+                               mensaje=f"❌ Error al obtener los datos: {str(e)}")
 
     # 2. Procesamiento de peticiones POST
     if request.method == 'POST':
@@ -1586,6 +1582,8 @@ Referencias familiares: {referencias_familiares}
                     mensaje = "✅ Entrevista guardada correctamente."
                 except Exception as e:
                     mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
+
+        # B) Buscar candidatas por nombre
         elif 'busqueda' in request.form:
             busqueda = request.form.get('busqueda', '').strip().lower()
             for fila_index, fila in enumerate(valores[1:], start=2):
@@ -1599,6 +1597,8 @@ Referencias familiares: {referencias_familiares}
                         'entrevista': fila[25] if len(fila) > 25 else ""
                     })
             mensaje = "✅ Se procesó la búsqueda."
+
+    # 3. Procesamiento de peticiones GET para seleccionar una candidata (por ejemplo, ?candidata=3)
     else:
         candidata_id = request.args.get('candidata', '').strip()
         if candidata_id:
@@ -1619,15 +1619,10 @@ Referencias familiares: {referencias_familiares}
             except Exception as e:
                 mensaje = f"❌ Error al procesar la candidata: {str(e)}"
 
-    return render_template(
-        'entrevista.html',
-        resultados=resultados,
-        candidata=candidata_detalles,
-        mensaje=mensaje
-    )
-
-
-
+    return render_template('entrevista.html',
+                           resultados=resultados,
+                           candidata=candidata_detalles,
+                           mensaje=mensaje)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
