@@ -2,107 +2,131 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entrevista de Candidata</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <title>Entrevista de Candidatas</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        table, th, td { border: 1px solid #ccc; }
+        th, td { padding: 8px; text-align: left; }
+        .mensaje { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; background: #f0f0f0; }
+        form { margin-bottom: 20px; }
+        label { font-weight: bold; }
+        textarea { width: 100%; }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h2>📄 Entrevista de Candidata</h2>
-        
-        {% if mensaje %}
-            <div class="alert">{{ mensaje }}</div>
-        {% endif %}
-        
-        <form method="POST" action="{{ url_for('entrevista') }}">
-            <label>🔍 Buscar Candidata por Nombre o Cédula:</label>
-            <input type="text" name="busqueda" placeholder="Ingrese nombre o cédula" required>
-            <button type="submit">🔍 Buscar</button>
-        </form>
-        
-        {% if resultados %}
-            <h3>Resultados de Búsqueda:</h3>
-            <table>
+    {% if mensaje %}
+        <div class="mensaje">{{ mensaje }}</div>
+    {% endif %}
+
+    <!-- Formulario para buscar candidatas -->
+    <form method="post" action="/entrevista">
+        <h2>Buscar Candidatas</h2>
+        <input type="text" name="busqueda" placeholder="Ingrese el nombre de la candidata">
+        <input type="submit" value="Buscar">
+    </form>
+
+    {% if resultados %}
+        <h2>Resultados de la Búsqueda</h2>
+        <table>
+            <thead>
                 <tr>
+                    <th>Fila</th>
                     <th>Nombre</th>
                     <th>Teléfono</th>
                     <th>Cédula</th>
                     <th>Acción</th>
                 </tr>
-                {% for result in resultados %}
+            </thead>
+            <tbody>
+                {% for candidato in resultados %}
                 <tr>
-                    <td>{{ result.nombre }}</td>
-                    <td>{{ result.telefono }}</td>
-                    <td>{{ result.cedula }}</td>
+                    <td>{{ candidato.fila_index }}</td>
+                    <td>{{ candidato.nombre }}</td>
+                    <td>{{ candidato.telefono }}</td>
+                    <td>{{ candidato.cedula }}</td>
                     <td>
-                        <a href="{{ url_for('entrevista', candidata=result.fila_index) }}" class="btn">Entrevistar</a>
+                        <a href="/entrevista?candidata={{ candidato.fila_index }}">Seleccionar</a>
                     </td>
                 </tr>
                 {% endfor %}
-            </table>
-        {% endif %}
-        
-        {% if candidata %}
-        <h3>Formulario de Entrevista para {{ candidata.nombre }}</h3>
-        <form method="POST" action="{{ url_for('guardar_entrevista') }}">
+            </tbody>
+        </table>
+    {% endif %}
+
+    {% if candidata %}
+        <h2>Entrevista para: {{ candidata.nombre }}</h2>
+        <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
+        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+        <form method="post" action="/entrevista">
+            <!-- Se envía la fila de la candidata y una bandera para guardar -->
             <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-            
-            <label>📍 Dirección:</label>
-            <input type="text" name="direccion" required>
-            
-            <label>🎂 Edad:</label>
-            <input type="text" name="edad" required>
-            
-            <label>📞 Teléfono:</label>
-            <input type="text" name="telefono" required>
-            
-            <label>🏠 Experiencia en casas de familia:</label>
-            <input type="text" name="experiencia" required>
-            
-            <label>🧹 Labores del hogar que domina:</label>
-            <input type="text" name="labores" required>
-            
-            <label>👶 Trabajo con niños:</label>
-            <select name="trabajo_niños">
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
-            
-            <label>🐶 Cómoda con mascotas:</label>
-            <select name="mascotas">
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
-            
-            <label>📜 Referencias laborales:</label>
-            <input type="text" name="referencias" required>
-            
-            <label>💤 Prefiere con dormida:</label>
-            <select name="dormida">
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
-            
-            <label>💰 Aspiración salarial:</label>
-            <input type="text" name="sueldo" required>
-            
-            <label>📆 Días disponibles:</label>
-            <input type="text" name="dias_trabajo" required>
-            
-            <label>⏰ Horario preferido:</label>
-            <input type="text" name="horario" required>
-            
-            <label>🏥 Condiciones de salud:</label>
-            <input type="text" name="salud">
-            
-            <label>📝 Comentarios adicionales:</label>
-            <textarea name="comentarios"></textarea>
-            
-            <button type="submit">✅ Guardar Entrevista</button>
+            <input type="hidden" name="guardar" value="1">
+
+            <p>
+                <label>Dirección:</label><br>
+                <textarea name="direccion" rows="2" placeholder="Ingrese la dirección"></textarea>
+            </p>
+            <p>
+                <label>Edad:</label><br>
+                <input type="text" name="edad" placeholder="Ingrese la edad">
+            </p>
+            <p>
+                <label>Teléfono (confirmar):</label><br>
+                <input type="text" name="telefono" value="{{ candidata.telefono }}">
+            </p>
+            <p>
+                <label>Experiencia en casas de familia:</label><br>
+                <textarea name="experiencia" rows="2" placeholder="Describa su experiencia"></textarea>
+            </p>
+            <p>
+                <label>Labores del hogar que domina:</label><br>
+                <textarea name="labores" rows="2" placeholder="Ej: limpieza, cocina, etc."></textarea>
+            </p>
+            <p>
+                <label>Experiencia trabajando con niños:</label><br>
+                <textarea name="trabajo_niños" rows="2" placeholder="Describa su experiencia"></textarea>
+            </p>
+            <p>
+                <label>Comodidad con mascotas:</label><br>
+                <textarea name="mascotas" rows="2" placeholder="Indique si se siente cómoda"></textarea>
+            </p>
+            <p>
+                <label>Referencias laborales:</label><br>
+                <textarea name="referencias" rows="2" placeholder="Ingrese referencias laborales"></textarea>
+            </p>
+            <p>
+                <label>Referencias familiares:</label><br>
+                <textarea name="referencias_familiares" rows="2" placeholder="Ingrese referencias familiares"></textarea>
+            </p>
+            <p>
+                <label>¿Prefiere trabajar con dormida?</label><br>
+                <textarea name="dormida" rows="2" placeholder="Sí o No, y detalles"></textarea>
+            </p>
+            <p>
+                <label>Aspiración salarial:</label><br>
+                <input type="text" name="sueldo" placeholder="Ingrese la aspiración salarial">
+            </p>
+            <p>
+                <label>Días disponibles para trabajar:</label><br>
+                <textarea name="dias_trabajo" rows="2" placeholder="Ej: lunes a viernes"></textarea>
+            </p>
+            <p>
+                <label>Horario preferido:</label><br>
+                <textarea name="horario" rows="2" placeholder="Ej: mañanas, tardes, etc."></textarea>
+            </p>
+            <p>
+                <label>Condiciones de salud:</label><br>
+                <textarea name="salud" rows="2" placeholder="Indique cualquier condición"></textarea>
+            </p>
+            <p>
+                <label>Comentarios adicionales:</label><br>
+                <textarea name="comentarios" rows="2" placeholder="Otros comentarios"></textarea>
+            </p>
+            <p>
+                <input type="submit" value="Guardar Entrevista">
+            </p>
         </form>
-        {% endif %}
-        
-        <a href="/" class="btn">🏠 Volver al Inicio</a>
-    </div>
+    {% endif %}
 </body>
 </html>
