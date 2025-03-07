@@ -16,12 +16,23 @@
             </div>
         {% endif %}
 
-        <form action="/guardar_entrevista" method="post">
-            <!-- Campo oculto para la fila donde se guardará la entrevista -->
-            <input type="hidden" name="fila_index" value="{{ fila_index }}">
+        <!-- Sección de búsqueda de candidata -->
+        <form action="/buscar_candidata" method="post">
+            <label>🔍 Buscar candidata por nombre o cédula:</label>
+            <input type="text" name="busqueda" required>
+            <button type="submit">🔍 Buscar</button>
+        </form>
 
-            <label>🔍 Código de Candidata:</label>
-            <input type="text" name="candidata_id" value="{{ candidata_id }}" readonly>
+        {% if candidata %}
+        <h3>👤 Información de la Candidata</h3>
+        <p><strong>Nombre:</strong> {{ candidata['nombre'] }}</p>
+        <p><strong>Cédula:</strong> {{ candidata['cedula'] }}</p>
+        <p><strong>Teléfono:</strong> {{ candidata['telefono'] }}</p>
+
+        <!-- Formulario de Entrevista -->
+        <form action="/guardar_entrevista" method="post">
+            <!-- Se guarda la fila automáticamente -->
+            <input type="hidden" name="fila_index" value="{{ candidata['fila_index'] }}">
 
             <h3>📑 Preguntas de la Entrevista</h3>
 
@@ -78,6 +89,7 @@
 
             <button type="submit">✅ Guardar Entrevista</button>
         </form>
+        {% endif %}
 
         <br>
         <a href="/" class="button">🏠 Volver al Inicio</a>
