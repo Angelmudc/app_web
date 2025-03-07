@@ -1439,6 +1439,7 @@ def generar_pdf():
     except Exception as e:
         return f"❌ Error al generar PDF: {str(e)}"
 
+
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
     mensaje = None
@@ -1449,7 +1450,7 @@ def entrevista():
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"{NOMBRE_HOJA}!A:Z"  # Lee desde la columna A hasta la Z
+            range=f"{Nueva hoja}!A:Z"  # Lee desde la columna A hasta la Z
         ).execute()
         valores = hoja.get("values", [])
         # Verifica si hay datos
