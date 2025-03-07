@@ -1439,47 +1439,95 @@ def generar_pdf():
     except Exception as e:
         return f"❌ Error al generar PDF: {str(e)}"
 
+
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
     mensaje = None
     resultados = []
     candidata_detalles = None
 
+    # 1. Intenta leer todos los valores de la hoja
     try:
-        # Obtener datos de la hoja (rango A:Z de "Nueva hoja")
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Z"
+            range=f"{NOMBRE_HOJA}!A:Z"  # Lee desde la columna A hasta la Z
         ).execute()
         valores = hoja.get("values", [])
+        # Verifica si hay datos
         if not valores or len(valores) < 2:
-            return render_template('entrevista.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
+            return render_template('entrevista.html',
+                                   resultados=[],
+                                   candidata=None,
+                                   mensaje="⚠️ No hay datos disponibles en la hoja.")
     except Exception as e:
-        return render_template('entrevista.html', resultados=[], candidata=None, mensaje=f"❌ Error al obtener los datos: {str(e)}")
-    
-    # Si es POST, distinguimos la acción en función de los campos enviados
+        return render_template('entrevista.html',
+                               resultados=[],
+                               candidata=None,
+                               mensaje=f"❌ Error al obtener los datos: {str(e)}")
+
+    # 2. Procesamiento de peticiones POST
     if request.method == 'POST':
-        # Si se envía el formulario para guardar la entrevista
+        # A) Guardar la entrevista en la columna Z
         if 'guardar' in request.form:
             fila_index = request.form.get('fila_index', '').strip()
             if not fila_index:
                 mensaje = "⚠️ Error. No se recibió la fila de la candidata."
             else:
-                fila_index = int(fila_index)
-                # Se asume que el formulario tiene un campo 'entrevista' donde se escribe lo que dijo la candidata
-                entrevista_texto = request.form.get('entrevista', '').strip()
-                entrevista_completa = entrevista_texto  # Aquí podrías concatenar otros campos si lo requieres
                 try:
-                    # Actualizamos la celda de la columna Z de la fila indicada
-                    hoja_calculo.update(f"Z{fila_index}", [[entrevista_completa]])
+                    fila_index = int(fila_index)
+                    # Capturamos los campos que vienen del formulario
+                    direccion = request.form.get('direccion', '').strip()
+                    edad = request.form.get('edad', '').strip()
+                    telefono = request.form.get('telefono', '').strip()
+                    experiencia = request.form.get('experiencia', '').strip()
+                    labores = request.form.get('labores', '').strip()
+                    trabajo_niños = request.form.get('trabajo_niños', '').strip()
+                    mascotas = request.form.get('mascotas', '').strip()
+                    referencias = request.form.get('referencias', '').strip()
+                    referencias_familiares = request.form.get('referencias_familiares', '').strip()
+                    dormida = request.form.get('dormida', '').strip()
+                    sueldo = request.form.get('sueldo', '').strip()
+                    dias_trabajo = request.form.get('dias_trabajo', '').strip()
+                    horario = request.form.get('horario', '').strip()
+                    salud = request.form.get('salud', '').strip()
+                    comentarios = request.form.get('comentarios', '').strip()
+
+                    # Construimos el texto final de la entrevista
+                    entrevista_completa = f"""
+                    📍 Dirección: {direccion}
+                    🎂 Edad: {edad}
+                    📞 Teléfono: {telefono}
+                    🏠 Experiencia en casas de familia: {experiencia}
+                    🧹 Labores del hogar que domina: {labores}
+                    👶 Trabajo con niños: {trabajo_niños}
+                    🐶 Cómoda con mascotas: {mascotas}
+                    📜 Referencias laborales: {referencias}
+                    📜 Referencias familiares: {referencias_familiares}
+                    💤 Prefiere con dormida: {dormida}
+                    💰 Aspiración salarial: {sueldo}
+                    📆 Días disponibles: {dias_trabajo}
+                    ⏰ Horario preferido: {horario}
+                    🏥 Condiciones de salud: {salud}
+                    📝 Comentarios adicionales: {comentarios}
+                    """.strip()
+
+                    # Actualizamos la celda de la columna Z (columna 26) de la fila correspondiente
+                    service.spreadsheets().values().update(
+                        spreadsheetId=SPREADSHEET_ID,
+                        range=f"{NOMBRE_HOJA}!Z{fila_index}",
+                        valueInputOption="RAW",
+                        body={"values": [[entrevista_completa]]}
+                    ).execute()
+
                     mensaje = "✅ Entrevista guardada correctamente."
                 except Exception as e:
                     mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
-        # Si se envía el formulario de búsqueda
+
+        # B) Búsqueda de candidatas
         elif 'busqueda' in request.form:
             busqueda = request.form.get('busqueda', '').strip().lower()
             for fila_index, fila in enumerate(valores[1:], start=2):
-                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+                nombre = (fila[1].strip().lower() if len(fila) > 1 else "")
                 if busqueda in nombre:
                     resultados.append({
                         'fila_index': fila_index,
@@ -1489,12 +1537,14 @@ def entrevista():
                         'entrevista': fila[25] if len(fila) > 25 else ""
                     })
             mensaje = "✅ Se procesó la búsqueda."
+
+    # 3. Procesamiento de peticiones GET (por ejemplo, seleccionar candidata con ?candidata=3)
     else:
-        # Método GET: se puede enviar ?candidata=numero para ver los detalles de esa candidata
         candidata_id = request.args.get('candidata', '').strip()
         if candidata_id:
             try:
                 fila_index = int(candidata_id)
+                # Validamos que esté dentro del rango de filas
                 if fila_index < 1 or fila_index > len(valores):
                     mensaje = "⚠️ Candidata no encontrada."
                 else:
@@ -1510,8 +1560,13 @@ def entrevista():
             except Exception as e:
                 mensaje = f"❌ Error al procesar la candidata: {str(e)}"
 
-    return render_template('entrevista.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
-
+    # Renderizamos la plantilla con los datos obtenidos
+    return render_template(
+        'entrevista.html',
+        resultados=resultados,
+        candidata=candidata_detalles,
+        mensaje=mensaje
+    )
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
