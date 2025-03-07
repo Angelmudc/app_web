@@ -1493,7 +1493,15 @@ def entrevista():
 @app.route('/guardar_entrevista', methods=['POST'])
 def guardar_entrevista():
     try:
-        candidata_id = request.form.get('candidata_id')
+        # Obtener la fila donde se hizo la búsqueda
+        fila_index = request.form.get('fila_index')  # Se obtiene del formulario
+
+        if not fila_index:
+            return render_template('entrevista.html', mensaje="⚠️ Error. No se recibió la fila de la candidata.")
+        
+        fila_index = int(fila_index)  # Convertir a número después de validar
+
+        # Capturar respuestas de la entrevista
         direccion = request.form.get('direccion', '').strip()
         edad = request.form.get('edad', '').strip()
         telefono = request.form.get('telefono', '').strip()
@@ -1509,36 +1517,26 @@ def guardar_entrevista():
         salud = request.form.get('salud', '').strip()
         comentarios = request.form.get('comentarios', '').strip()
 
-        if not candidata_id or not direccion:
-            return render_template('entrevista.html', mensaje="⚠️ Error. No se recibió información válida.")
-
-        fila_index = int(candidata_id)
-
-        # Generar texto con la entrevista completa
+        # Generar el texto de la entrevista en un solo bloque
         entrevista_completa = f"""
         📍 Dirección: {direccion}
-        📅 Edad: {edad}
+        🎂 Edad: {edad}
         📞 Teléfono: {telefono}
-        🔹 Experiencia en casas de familia: {experiencia}
-        🏡 Labores del hogar que domina: {labores}
+        🏠 Experiencia en casas de familia: {experiencia}
+        🧹 Labores del hogar que domina: {labores}
         👶 Trabajo con niños: {trabajo_niños}
-        🐾 Cómoda con mascotas: {mascotas}
+        🐶 Cómoda con mascotas: {mascotas}
         📜 Referencias laborales: {referencias}
-        🛏️ Prefiere con dormida: {dormida}
+        💤 Prefiere con dormida: {dormida}
         💰 Aspiración salarial: {sueldo}
         📆 Días disponibles: {dias_trabajo}
         ⏰ Horario preferido: {horario}
-        ⚠️ Condiciones de salud: {salud}
-        🗒️ Comentarios adicionales: {comentarios}
-        """
+        🏥 Condiciones de salud: {salud}
+        📝 Comentarios adicionales: {comentarios}
+        """.strip()
 
-        # Guardar en la columna Z (Índice 25 en Python)
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!Z{fila_index}",
-            valueInputOption="RAW",
-            body={"values": [[entrevista_completa]]}
-        ).execute()
+        # Guardar la entrevista en la columna Z de la fila correspondiente
+        hoja_calculo.update(f"Z{fila_index}", [[entrevista_completa]])
 
         return render_template('entrevista.html', mensaje="✅ Entrevista guardada correctamente.")
 

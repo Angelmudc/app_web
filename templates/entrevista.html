@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entrevista - Doméstica del Cibao A&D</title>
+    <title>Entrevista de Candidata</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
@@ -11,73 +11,76 @@
         <h2>📄 Entrevista de Candidata</h2>
 
         {% if mensaje %}
-            <div class="mensaje">{{ mensaje }}</div>
+            <div class="alert">
+                {{ mensaje }}
+            </div>
         {% endif %}
 
-        <form action="{{ url_for('guardar_entrevista') }}" method="post">
-            <label for="candidata_id">🔎 Código de Candidata:</label>
-            <input type="text" id="candidata_id" name="candidata_id" required>
+        <form action="/guardar_entrevista" method="post">
+            <!-- Campo oculto para la fila donde se guardará la entrevista -->
+            <input type="hidden" name="fila_index" value="{{ fila_index }}">
 
-            <h3>📝 Preguntas de la Entrevista</h3>
+            <label>🔍 Código de Candidata:</label>
+            <input type="text" name="candidata_id" value="{{ candidata_id }}" readonly>
+
+            <h3>📑 Preguntas de la Entrevista</h3>
 
             <label>📍 ¿Cuál es tu dirección actual?</label>
             <input type="text" name="direccion" required>
 
-            <label>📅 ¿Qué edad tienes?</label>
+            <label>🎂 ¿Qué edad tienes?</label>
             <input type="number" name="edad" required>
 
-            <label>📞 ¿Cuál es tu número de teléfono?</label>
+            <label>📞 Teléfono de contacto:</label>
             <input type="text" name="telefono" required>
 
-            <label>🔹 ¿Tienes experiencia trabajando en casas de familia?</label>
-            <select name="experiencia">
+            <label>🏠 Experiencia en casas de familia:</label>
+            <input type="text" name="experiencia" required>
+
+            <label>🧹 ¿Qué tipo de labores del hogar dominas?</label>
+            <input type="text" name="labores" required>
+
+            <label>👶 ¿Has trabajado con niños?</label>
+            <select name="trabajo_niños" required>
                 <option value="Sí">Sí</option>
                 <option value="No">No</option>
             </select>
 
-            <label>🏡 ¿Qué tipo de labores del hogar dominas?</label>
-            <input type="text" name="labores">
-
-            <label>👶 ¿Has trabajado con niños? ¿De qué edades?</label>
-            <input type="text" name="trabajo_niños">
-
-            <label>🐾 ¿Te sientes cómoda trabajando con mascotas?</label>
-            <select name="mascotas">
+            <label>🐶 ¿Te sientes cómoda trabajando con mascotas?</label>
+            <select name="mascotas" required>
                 <option value="Sí">Sí</option>
                 <option value="No">No</option>
             </select>
 
             <label>📜 ¿Tienes referencias laborales de trabajos anteriores?</label>
-            <select name="referencias">
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-            </select>
+            <input type="text" name="referencias" required>
 
-            <label>🛏️ ¿Te interesa trabajar con dormida?</label>
-            <select name="dormida">
+            <label>💤 ¿Prefieres con dormida?</label>
+            <select name="dormida" required>
                 <option value="Sí">Sí</option>
                 <option value="No">No</option>
             </select>
 
             <label>💰 ¿Cuánto aspiras ganar al mes?</label>
-            <input type="text" name="sueldo">
+            <input type="text" name="sueldo" required>
 
             <label>📆 ¿Cuáles días de la semana puedes trabajar?</label>
-            <input type="text" name="dias_trabajo">
+            <input type="text" name="dias_trabajo" required>
 
-            <label>⏰ ¿En qué horario prefieres trabajar?</label>
-            <input type="text" name="horario">
+            <label>⏰ ¿Cuál es tu horario preferido?</label>
+            <input type="text" name="horario" required>
 
-            <label>⚠️ ¿Tienes alguna condición de salud que debamos conocer?</label>
+            <label>🏥 ¿Tienes alguna condición de salud que debamos conocer?</label>
             <input type="text" name="salud">
 
-            <label>🔹 Comentarios adicionales:</label>
+            <label>📝 Comentarios adicionales:</label>
             <textarea name="comentarios"></textarea>
 
-            <button type="submit">💾 Guardar Entrevista</button>
+            <button type="submit">✅ Guardar Entrevista</button>
         </form>
 
-        <a href="{{ url_for('home') }}" class="btn-volver">🏠 Volver al Inicio</a>
+        <br>
+        <a href="/" class="button">🏠 Volver al Inicio</a>
     </div>
 </body>
 </html>
