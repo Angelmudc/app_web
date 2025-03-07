@@ -1,132 +1,215 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Entrevista de Candidatas</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-        table, th, td { border: 1px solid #ccc; }
-        th, td { padding: 8px; text-align: left; }
-        .mensaje { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; background: #f0f0f0; }
-        form { margin-bottom: 20px; }
-        label { font-weight: bold; }
-        textarea { width: 100%; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Entrevista - Doméstica del Cibao SRL</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { text-align: center; }
+    .question { margin-bottom: 15px; }
+    label { font-weight: bold; }
+    textarea, input[type="text"] { width: 100%; padding: 5px; }
+    input[type="submit"] { padding: 10px 20px; font-size: 1em; }
+  </style>
 </head>
 <body>
-    {% if mensaje %}
-        <div class="mensaje">{{ mensaje }}</div>
-    {% endif %}
-
-    <!-- Formulario para buscar candidatas -->
-    <form method="post" action="/entrevista">
-        <h2>Buscar Candidatas</h2>
-        <input type="text" name="busqueda" placeholder="Ingrese el nombre de la candidata">
-        <input type="submit" value="Buscar">
-    </form>
-
-    {% if resultados %}
-        <h2>Resultados de la Búsqueda</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Fila</th>
-                    <th>Nombre</th>
-                    <th>Teléfono</th>
-                    <th>Cédula</th>
-                    <th>Acción</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for candidato in resultados %}
-                <tr>
-                    <td>{{ candidato.fila_index }}</td>
-                    <td>{{ candidato.nombre }}</td>
-                    <td>{{ candidato.telefono }}</td>
-                    <td>{{ candidato.cedula }}</td>
-                    <td>
-                        <a href="/entrevista?candidata={{ candidato.fila_index }}">Seleccionar</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-
-    {% if candidata %}
-        <h2>Entrevista para: {{ candidata.nombre }}</h2>
-        <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
-        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
-        <form method="post" action="/entrevista">
-            <!-- Se envía la fila de la candidata y una bandera para guardar -->
-            <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-            <input type="hidden" name="guardar" value="1">
-
-            <p>
-                <label>Dirección:</label><br>
-                <textarea name="direccion" rows="2" placeholder="Ingrese la dirección"></textarea>
-            </p>
-            <p>
-                <label>Edad:</label><br>
-                <input type="text" name="edad" placeholder="Ingrese la edad">
-            </p>
-            <p>
-                <label>Teléfono (confirmar):</label><br>
-                <input type="text" name="telefono" value="{{ candidata.telefono }}">
-            </p>
-            <p>
-                <label>Experiencia en casas de familia:</label><br>
-                <textarea name="experiencia" rows="2" placeholder="Describa su experiencia"></textarea>
-            </p>
-            <p>
-                <label>Labores del hogar que domina:</label><br>
-                <textarea name="labores" rows="2" placeholder="Ej: limpieza, cocina, etc."></textarea>
-            </p>
-            <p>
-                <label>Experiencia trabajando con niños:</label><br>
-                <textarea name="trabajo_niños" rows="2" placeholder="Describa su experiencia"></textarea>
-            </p>
-            <p>
-                <label>Comodidad con mascotas:</label><br>
-                <textarea name="mascotas" rows="2" placeholder="Indique si se siente cómoda"></textarea>
-            </p>
-            <p>
-                <label>Referencias laborales:</label><br>
-                <textarea name="referencias" rows="2" placeholder="Ingrese referencias laborales"></textarea>
-            </p>
-            <p>
-                <label>Referencias familiares:</label><br>
-                <textarea name="referencias_familiares" rows="2" placeholder="Ingrese referencias familiares"></textarea>
-            </p>
-            <p>
-                <label>¿Prefiere trabajar con dormida?</label><br>
-                <textarea name="dormida" rows="2" placeholder="Sí o No, y detalles"></textarea>
-            </p>
-            <p>
-                <label>Aspiración salarial:</label><br>
-                <input type="text" name="sueldo" placeholder="Ingrese la aspiración salarial">
-            </p>
-            <p>
-                <label>Días disponibles para trabajar:</label><br>
-                <textarea name="dias_trabajo" rows="2" placeholder="Ej: lunes a viernes"></textarea>
-            </p>
-            <p>
-                <label>Horario preferido:</label><br>
-                <textarea name="horario" rows="2" placeholder="Ej: mañanas, tardes, etc."></textarea>
-            </p>
-            <p>
-                <label>Condiciones de salud:</label><br>
-                <textarea name="salud" rows="2" placeholder="Indique cualquier condición"></textarea>
-            </p>
-            <p>
-                <label>Comentarios adicionales:</label><br>
-                <textarea name="comentarios" rows="2" placeholder="Otros comentarios"></textarea>
-            </p>
-            <p>
-                <input type="submit" value="Guardar Entrevista">
-            </p>
-        </form>
-    {% endif %}
+  <h1>Formulario de Empleo - Doméstica del Cibao SRL</h1>
+  <form method="post" action="/entrevista">
+    <div class="question">
+      <label>Nombre de la empleada:</label>
+      <input type="text" name="nombre" required>
+    </div>
+    <div class="question">
+      <label>Nacionalidad:</label>
+      <input type="text" name="nacionalidad" required>
+    </div>
+    <div class="question">
+      <label>Edad:</label>
+      <input type="text" name="edad" required>
+    </div>
+    <div class="question">
+      <label>Dirección:</label>
+      <textarea name="direccion" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Estado civil?:</label>
+      <input type="text" name="estado_civil" required>
+    </div>
+    <div class="question">
+      <label>¿Tienes hijos?:</label>
+      <input type="text" name="tienes_hijos" required>
+    </div>
+    <div class="question">
+      <label>¿Cuántos hijos tiene?:</label>
+      <input type="text" name="numero_hijos" required>
+    </div>
+    <div class="question">
+      <label>¿Edades de los hijos?:</label>
+      <input type="text" name="edades_hijos" required>
+    </div>
+    <div class="question">
+      <label>¿Quién cuida a sus hijos?:</label>
+      <input type="text" name="quien_cuida" required>
+    </div>
+    <div class="question">
+      <label>¿Cómo te describes como persona?:</label>
+      <textarea name="descripcion_personal" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Cuál es su fuerte?:</label>
+      <textarea name="fuerte" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Trabajo en la modalidad?:</label>
+      <textarea name="modalidad" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Por qué eliges trabajar en una casa de familia en vez de otro tipo de trabajo?:</label>
+      <textarea name="razon_trabajo" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Cuáles labores desempeñaba en sus antiguos trabajos?:</label>
+      <textarea name="labores_anteriores" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Hace que tiempo salió de su último trabajo?:</label>
+      <input type="text" name="tiempo_ultimo_trabajo" required>
+    </div>
+    <div class="question">
+      <label>¿Por qué salió de su último trabajo?:</label>
+      <textarea name="razon_salida" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Ha enfrentado alguna vez una situación difícil en el trabajo?:</label>
+      <input type="text" name="situacion_dificil" required>
+    </div>
+    <div class="question">
+      <label>¿Y cómo lo manejó?:</label>
+      <textarea name="manejo_situacion" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Cómo manejarías si tu jefe te reclama de manera no correcta o te habla mal?:</label>
+      <textarea name="manejo_reclamo" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Trabajas con uniforme?:</label>
+      <input type="text" name="uniforme" required>
+    </div>
+    <div class="question">
+      <label>¿Trabajas los días feriados?:</label>
+      <input type="text" name="dias_feriados" required>
+    </div>
+    <div class="question">
+      <label>¿Puedes ser revisada a la salida?:</label>
+      <input type="text" name="revision_salida" required>
+    </div>
+    <div class="question">
+      <label>¿Estás dispuesta a colaborar en lo que el jefe necesita?:</label>
+      <input type="text" name="colaboracion" required>
+    </div>
+    <div class="question">
+      <label>¿Con qué tipo de familia has trabajado con anterioridad?:</label>
+      <textarea name="tipo_familia" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Has cuidado niños? ¿Y de qué edad?:</label>
+      <textarea name="cuidado_ninos" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Sabes cocinar?:</label>
+      <input type="text" name="sabes_cocinar" required>
+    </div>
+    <div class="question">
+      <label>¿Te gusta cocinar?:</label>
+      <input type="text" name="gusta_cocinar" required>
+    </div>
+    <div class="question">
+      <label>¿Qué sabes cocinar?:</label>
+      <textarea name="que_cocinas" rows="3" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Haces postres?:</label>
+      <textarea name="postres" rows="3" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Qué tareas de la casa te gustan y cuáles te gustan menos?:</label>
+      <textarea name="tareas_casa" rows="3" required></textarea>
+    </div>
+    <div class="question">
+      <label>¿Sabes utilizar los electrodomésticos modernos de una casa?:</label>
+      <input type="text" name="electrodomesticos" required>
+    </div>
+    <div class="question">
+      <label>¿Sabes planchar?:</label>
+      <input type="text" name="planchar" required>
+    </div>
+    <div class="question">
+      <label>¿Tienes alguna actividad principal? (trabajo/estudio):</label>
+      <input type="text" name="actividad_principal" required>
+    </div>
+    <div class="question">
+      <label>¿Afiliación religiosa?:</label>
+      <input type="text" name="afiliacion_religiosa" required>
+    </div>
+    <div class="question">
+      <label>¿Tienes cursos hechos en el área doméstica?:</label>
+      <input type="text" name="cursos_domesticos" required>
+    </div>
+    <div class="question">
+      <label>Nivel académico:</label>
+      <input type="text" name="nivel_academico" required>
+    </div>
+    <div class="question">
+      <label>¿Tienes condiciones de salud?:</label>
+      <input type="text" name="condiciones_salud" required>
+    </div>
+    <div class="question">
+      <label>¿Eres alérgica a algo?:</label>
+      <input type="text" name="alergico" required>
+    </div>
+    <div class="question">
+      <label>¿Tomas medicamentos por alguna situación particular?:</label>
+      <input type="text" name="medicamentos" required>
+    </div>
+    <div class="question">
+      <label>¿Tienes seguro médico?:</label>
+      <input type="text" name="seguro_medico" required>
+    </div>
+    <div class="question">
+      <label>¿Estás de acuerdo con hacer pruebas médicas en caso de que el cliente lo pida?:</label>
+      <input type="text" name="pruebas_medicas" required>
+    </div>
+    <div class="question">
+      <label>¿Cuántas vacunas del COVID tienes?:</label>
+      <input type="text" name="vacunas_covid" required>
+    </div>
+    <div class="question">
+      <label>¿Tomas alcohol?:</label>
+      <input type="text" name="tomas_alcohol" required>
+    </div>
+    <div class="question">
+      <label>¿Fumas?:</label>
+      <input type="text" name="fumas" required>
+    </div>
+    <div class="question">
+      <label>¿Tienes tatuajes visibles o piercings?:</label>
+      <input type="text" name="tatuajes_piercings" required>
+    </div>
+    <div class="question">
+      <label>Referencias laborales:</label>
+      <textarea name="referencias_laborales" rows="2" required></textarea>
+    </div>
+    <div class="question">
+      <label>Referencias familiares:</label>
+      <textarea name="referencias_familiares" rows="2" required></textarea>
+    </div>
+    <!-- Si ya se seleccionó una candidata, se puede incluir su fila_index oculto -->
+    <input type="hidden" name="fila_index" value="{{ candidata.fila_index if candidata }}">
+    <!-- Campo oculto para identificar la acción de guardar entrevista -->
+    <input type="hidden" name="guardar" value="1">
+    <div class="question">
+      <input type="submit" value="Guardar Entrevista">
+    </div>
+  </form>
 </body>
 </html>

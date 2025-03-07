@@ -31,9 +31,6 @@ from fpdf import FPDF
 import os
 import io
 
-
-
-
 # Configuración de la API de Google Sheets
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -1446,88 +1443,148 @@ def entrevista():
     resultados = []
     candidata_detalles = None
 
-    # 1. Intenta leer todos los valores de la hoja
+    # 1. Leer los datos de la hoja (A:Z) de la pestaña "Nueva hoja"
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!A:Z"  # Lee desde la columna A hasta la Z
+            range="Nueva hoja!A:Z"
         ).execute()
         valores = hoja.get("values", [])
-        # Verifica si hay datos
         if not valores or len(valores) < 2:
-            return render_template(
-                'entrevista.html',
-                resultados=[],
-                candidata=None,
-                mensaje="⚠️ No hay datos disponibles en la hoja."
-            )
+            return render_template('entrevista.html',
+                                   resultados=[],
+                                   candidata=None,
+                                   mensaje="⚠️ No hay datos disponibles en la hoja.")
     except Exception as e:
-        return render_template(
-            'entrevista.html',
-            resultados=[],
-            candidata=None,
-            mensaje=f"❌ Error al obtener los datos: {str(e)}"
-        )
+        return render_template('entrevista.html',
+                               resultados=[],
+                               candidata=None,
+                               mensaje=f"❌ Error al obtener los datos: {str(e)}")
 
     # 2. Procesamiento de peticiones POST
     if request.method == 'POST':
         # A) Guardar la entrevista en la columna Z
         if 'guardar' in request.form:
-            fila_index = request.form.get('fila_index', '').strip()
-            if not fila_index:
-                mensaje = "⚠️ Error. No se recibió la fila de la candidata."
-            else:
-                try:
-                    fila_index = int(fila_index)
-                    # Capturamos los campos que vienen del formulario
-                    direccion = request.form.get('direccion', '').strip()
-                    edad = request.form.get('edad', '').strip()
-                    telefono = request.form.get('telefono', '').strip()
-                    experiencia = request.form.get('experiencia', '').strip()
-                    labores = request.form.get('labores', '').strip()
-                    trabajo_niños = request.form.get('trabajo_niños', '').strip()
-                    mascotas = request.form.get('mascotas', '').strip()
-                    referencias = request.form.get('referencias', '').strip()
-                    referencias_familiares = request.form.get('referencias_familiares', '').strip()
-                    dormida = request.form.get('dormida', '').strip()
-                    sueldo = request.form.get('sueldo', '').strip()
-                    dias_trabajo = request.form.get('dias_trabajo', '').strip()
-                    horario = request.form.get('horario', '').strip()
-                    salud = request.form.get('salud', '').strip()
-                    comentarios = request.form.get('comentarios', '').strip()
+    fila_index = request.form.get('fila_index', '').strip()
+    if not fila_index:
+        mensaje = "⚠️ Error. No se recibió la fila de la candidata."
+    else:
+        try:
+            fila_index = int(fila_index)
+            # Extraer todos los campos del formulario
+            nombre = request.form.get('nombre', '').strip()
+            nacionalidad = request.form.get('nacionalidad', '').strip()
+            edad = request.form.get('edad', '').strip()
+            direccion = request.form.get('direccion', '').strip()
+            estado_civil = request.form.get('estado_civil', '').strip()
+            tienes_hijos = request.form.get('tienes_hijos', '').strip()
+            numero_hijos = request.form.get('numero_hijos', '').strip()
+            edades_hijos = request.form.get('edades_hijos', '').strip()
+            quien_cuida = request.form.get('quien_cuida', '').strip()
+            descripcion_personal = request.form.get('descripcion_personal', '').strip()
+            fuerte = request.form.get('fuerte', '').strip()
+            modalidad = request.form.get('modalidad', '').strip()
+            razon_trabajo = request.form.get('razon_trabajo', '').strip()
+            labores_anteriores = request.form.get('labores_anteriores', '').strip()
+            tiempo_ultimo_trabajo = request.form.get('tiempo_ultimo_trabajo', '').strip()
+            razon_salida = request.form.get('razon_salida', '').strip()
+            situacion_dificil = request.form.get('situacion_dificil', '').strip()
+            manejo_situacion = request.form.get('manejo_situacion', '').strip()
+            manejo_reclamo = request.form.get('manejo_reclamo', '').strip()
+            uniforme = request.form.get('uniforme', '').strip()
+            dias_feriados = request.form.get('dias_feriados', '').strip()
+            revision_salida = request.form.get('revision_salida', '').strip()
+            colaboracion = request.form.get('colaboracion', '').strip()
+            tipo_familia = request.form.get('tipo_familia', '').strip()
+            cuidado_ninos = request.form.get('cuidado_ninos', '').strip()
+            sabes_cocinar = request.form.get('sabes_cocinar', '').strip()
+            gusta_cocinar = request.form.get('gusta_cocinar', '').strip()
+            que_cocinas = request.form.get('que_cocinas', '').strip()
+            postres = request.form.get('postres', '').strip()
+            tareas_casa = request.form.get('tareas_casa', '').strip()
+            electrodomesticos = request.form.get('electrodomesticos', '').strip()
+            planchar = request.form.get('planchar', '').strip()
+            actividad_principal = request.form.get('actividad_principal', '').strip()
+            afiliacion_religiosa = request.form.get('afiliacion_religiosa', '').strip()
+            cursos_domesticos = request.form.get('cursos_domesticos', '').strip()
+            nivel_academico = request.form.get('nivel_academico', '').strip()
+            condiciones_salud = request.form.get('condiciones_salud', '').strip()
+            alergico = request.form.get('alergico', '').strip()
+            medicamentos = request.form.get('medicamentos', '').strip()
+            seguro_medico = request.form.get('seguro_medico', '').strip()
+            pruebas_medicas = request.form.get('pruebas_medicas', '').strip()
+            vacunas_covid = request.form.get('vacunas_covid', '').strip()
+            tomas_alcohol = request.form.get('tomas_alcohol', '').strip()
+            fumas = request.form.get('fumas', '').strip()
+            tatuajes_piercings = request.form.get('tatuajes_piercings', '').strip()
+            referencias_laborales = request.form.get('referencias_laborales', '').strip()
+            referencias_familiares = request.form.get('referencias_familiares', '').strip()
 
-                    # Construimos el texto final de la entrevista
-                    entrevista_completa = f"""
-                    📍 Dirección: {direccion}
-                    🎂 Edad: {edad}
-                    📞 Teléfono: {telefono}
-                    🏠 Experiencia en casas de familia: {experiencia}
-                    🧹 Labores del hogar que domina: {labores}
-                    👶 Trabajo con niños: {trabajo_niños}
-                    🐶 Cómoda con mascotas: {mascotas}
-                    📜 Referencias laborales: {referencias}
-                    📜 Referencias familiares: {referencias_familiares}
-                    💤 Prefiere con dormida: {dormida}
-                    💰 Aspiración salarial: {sueldo}
-                    📆 Días disponibles: {dias_trabajo}
-                    ⏰ Horario preferido: {horario}
-                    🏥 Condiciones de salud: {salud}
-                    📝 Comentarios adicionales: {comentarios}
-                    """.strip()
+            # Construir el contenido completo de la entrevista, conservando todas las preguntas
+            entrevista_completa = f"""
+            Nombre: {nombre}
+            Nacionalidad: {nacionalidad}
+            Edad: {edad}
+            Dirección: {direccion}
+            Estado Civil: {estado_civil}
+            ¿Tienes hijos?: {tienes_hijos}
+            Número de hijos: {numero_hijos}
+            Edades de los hijos: {edades_hijos}
+            ¿Quién cuida a sus hijos?: {quien_cuida}
+            ¿Cómo te describes como persona?: {descripcion_personal}
+            ¿Cuál es tu fuerte?: {fuerte}
+            Modalidad de trabajo: {modalidad}
+            ¿Por qué eliges trabajar en una casa de familia?: {razon_trabajo}
+            Labores desempeñadas en trabajos anteriores: {labores_anteriores}
+            Tiempo desde el último trabajo: {tiempo_ultimo_trabajo}
+            ¿Por qué saliste de tu último trabajo?: {razon_salida}
+            ¿Has enfrentado situaciones difíciles en el trabajo?: {situacion_dificil}
+            ¿Cómo manejaste esa situación?: {manejo_situacion}
+            ¿Cómo manejarías reclamos o malos tratos del jefe?: {manejo_reclamo}
+            ¿Trabajas con uniforme?: {uniforme}
+            ¿Trabajas días feriados?: {dias_feriados}
+            ¿Puedes ser revisada a la salida?: {revision_salida}
+            ¿Estás dispuesta a colaborar en lo que el jefe necesite?: {colaboracion}
+            ¿Con qué tipo de familia has trabajado anteriormente?: {tipo_familia}
+            ¿Has cuidado niños y de qué edad?: {cuidado_ninos}
+            ¿Sabes cocinar?: {sabes_cocinar}
+            ¿Te gusta cocinar?: {gusta_cocinar}
+            ¿Qué sabes cocinar?: {que_cocinas}
+            ¿Haces postres?: {postres}
+            ¿Qué tareas de la casa te gustan y cuáles no?: {tareas_casa}
+            ¿Sabes usar electrodomésticos modernos?: {electrodomesticos}
+            ¿Sabes planchar?: {planchar}
+            ¿Tienes alguna actividad principal (trabajo/estudio)?: {actividad_principal}
+            Afiliación religiosa: {afiliacion_religiosa}
+            ¿Tienes cursos en el área doméstica?: {cursos_domesticos}
+            Nivel académico: {nivel_academico}
+            ¿Tienes condiciones de salud?: {condiciones_salud}
+            ¿Eres alérgica a algo?: {alergico}
+            ¿Tomas medicamentos?: {medicamentos}
+            ¿Tienes seguro médico?: {seguro_medico}
+            ¿Aceptas hacer pruebas médicas si se solicita?: {pruebas_medicas}
+            ¿Cuántas vacunas del COVID tienes?: {vacunas_covid}
+            ¿Tomas alcohol?: {tomas_alcohol}
+            ¿Fumas?: {fumas}
+            ¿Tienes tatuajes visibles o piercings?: {tatuajes_piercings}
+            Referencias laborales: {referencias_laborales}
+            Referencias familiares: {referencias_familiares}
+            """.strip()
 
-                    # Actualizamos la celda de la columna Z (columna 26) de la fila correspondiente
-                    service.spreadsheets().values().update(
-                        spreadsheetId=SPREADSHEET_ID,
-                        range=f"Nueva hoja!Z{fila_index}",
-                        valueInputOption="RAW",
-                        body={"values": [[entrevista_completa]]}
-                    ).execute()
+            # Actualizar la columna Z (columna 26) de la fila indicada
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"Nueva hoja!Z{fila_index}",
+                valueInputOption="RAW",
+                body={"values": [[entrevista_completa]]}
+            ).execute()
 
-                    mensaje = "✅ Entrevista guardada correctamente."
-                except Exception as e:
-                    mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
+            mensaje = "✅ Entrevista guardada correctamente."
+        except Exception as e:
+            mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
+"
 
-        # B) Búsqueda de candidatas
+        # B) Buscar candidatas por nombre
         elif 'busqueda' in request.form:
             busqueda = request.form.get('busqueda', '').strip().lower()
             for fila_index, fila in enumerate(valores[1:], start=2):
@@ -1542,13 +1599,12 @@ def entrevista():
                     })
             mensaje = "✅ Se procesó la búsqueda."
 
-    # 3. Procesamiento de peticiones GET (por ejemplo, seleccionar candidata con ?candidata=3)
+    # 3. Procesamiento de peticiones GET para seleccionar una candidata (por ejemplo, ?candidata=3)
     else:
         candidata_id = request.args.get('candidata', '').strip()
         if candidata_id:
             try:
                 fila_index = int(candidata_id)
-                # Validamos que esté dentro del rango de filas
                 if fila_index < 1 or fila_index > len(valores):
                     mensaje = "⚠️ Candidata no encontrada."
                 else:
@@ -1564,13 +1620,11 @@ def entrevista():
             except Exception as e:
                 mensaje = f"❌ Error al procesar la candidata: {str(e)}"
 
-    # Renderizamos la plantilla con los datos obtenidos
-    return render_template(
-        'entrevista.html',
-        resultados=resultados,
-        candidata=candidata_detalles,
-        mensaje=mensaje
-    )
+    return render_template('entrevista.html',
+                           resultados=resultados,
+                           candidata=candidata_detalles,
+                           mensaje=mensaje)
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
