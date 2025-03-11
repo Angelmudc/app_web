@@ -125,6 +125,24 @@ def normalizar_texto(texto):
         c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn'
     )
 
+def obtener_siguiente_fila():
+    """
+    Esta función obtiene la siguiente fila vacía en la hoja de cálculo.
+    Se asume que la columna A se usa para indicar filas ocupadas.
+    """
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:A"  # Asegúrate de usar la columna adecuada.
+        ).execute()
+        values = result.get("values", [])
+        # La cantidad de filas ocupadas + 1 es la siguiente fila disponible.
+        return len(values) + 1
+    except Exception as e:
+        print(f"Error al obtener la siguiente fila: {str(e)}")
+        return None
+
+
 def buscar_candidata(busqueda):
     try:
         datos = sheet.get_all_values()  # Obtener todos los valores de la hoja
@@ -805,59 +823,51 @@ def sugerir():
 
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
-    # 1. Obtener parametros
+    # Obtener el tipo de entrevista de la URL, p.ej., /entrevista?tipo=domestica
     tipo_entrevista = request.args.get("tipo", "").strip().lower()
-    fila_index_str = request.args.get("fila", "").strip()
-
-    # 2. Validar si el tipo existe en la config
     if tipo_entrevista not in ENTREVISTAS_CONFIG:
         return "⚠️ Tipo de entrevista no válido.", 400
 
-    # 3. Convertir fila a int (o manejar si no hay fila)
-    if not fila_index_str.isdigit():
-        return "⚠️ No se recibió la fila de la candidata.", 400
-
-    fila_index = int(fila_index_str)
-
-    # 4. Extraer datos de la config
+    # Extraer los datos de la configuración para ese tipo
     entrevista_config = ENTREVISTAS_CONFIG[tipo_entrevista]
     titulo = entrevista_config.get("titulo", "Entrevista sin título")
     preguntas = entrevista_config.get("preguntas", [])
 
     mensaje = None
 
-    # 5. Manejo de POST (guardar)
     if request.method == 'POST':
-        # a) Recopilar respuestas
+        # Recoger todas las respuestas del formulario
         respuestas = []
         for pregunta in preguntas:
             campo_id = pregunta['id']
             valor = request.form.get(campo_id, '').strip()
             enunciado = pregunta['enunciado']
+            # Formato: "¿Tienes hijos?: Sí"
             linea = f"{enunciado}: {valor}"
             respuestas.append(linea)
 
         entrevista_completa = "\n".join(respuestas)
 
-        # b) Guardar en la columna Z de esa fila
-        try:
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=f"Nueva hoja!Z{fila_index}",  # Ajusta tu hoja
-                valueInputOption="RAW",
-                body={"values": [[entrevista_completa]]}
-            ).execute()
-            mensaje = f"✅ Entrevista guardada en la fila {fila_index} correctamente."
-        except Exception as e:
-            mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
+        # Obtener la siguiente fila vacía de forma dinámica
+        fila_index = obtener_siguiente_fila()
 
-    # 6. Renderizar plantilla
-    return render_template(
-        "entrevista_dinamica.html",
-        titulo=titulo,
-        preguntas=preguntas,
-        mensaje=mensaje
-    )
+        if fila_index is None:
+            mensaje = "❌ Error: No se pudo determinar la fila libre."
+        else:
+            try:
+                # Guardar la entrevista en la columna Z de la fila determinada
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=f"Nueva hoja!Z{fila_index}",
+                    valueInputOption="RAW",
+                    body={"values": [[entrevista_completa]]}
+                ).execute()
+                mensaje = f"✅ Entrevista guardada correctamente en la fila {fila_index}."
+            except Exception as e:
+                mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
+
+    return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas, mensaje=mensaje)
+
 
 
 @app.route('/buscar_candidata', methods=['GET', 'POST'])
