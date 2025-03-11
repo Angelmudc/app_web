@@ -56,13 +56,18 @@
       "titulo": "Entrevista para Enfermera",
       "descripcion": "Preguntas específicas para enfermeras.",
       "preguntas": [
-        {
-          "id": "nombre",
-          "enunciado": "Nombre de la enfermera",
-          "tipo": "texto"
-        }
-      ]
-    },
+        { "id": "nombre", "enunciado": "Nombre de la enfermera", "tipo": "texto" },
+    { "id": "edad", "enunciado": "Edad", "tipo": "texto" },
+    { "id": "experiencia", "enunciado": "Años de experiencia en enfermería", "tipo": "texto" },
+    { "id": "licencia", "enunciado": "¿Posee licencia de enfermería?", "tipo": "radio", "opciones": ["Sí", "No"] },
+    { "id": "especialidad", "enunciado": "Especialidad o área de mayor experiencia", "tipo": "texto" },
+    { "id": "turno", "enunciado": "Disponibilidad de turno", "tipo": "radio", "opciones": ["Día", "Noche", "Ambos"] },
+    { "id": "manejo_emergencias", "enunciado": "¿Tiene experiencia en manejo de emergencias?", "tipo": "radio", "opciones": ["Sí", "No"] },
+    { "id": "protocolos", "enunciado": "Conocimiento en protocolos hospitalarios", "tipo": "texto_largo" },
+    { "id": "certificaciones", "enunciado": "Certificaciones o cursos relevantes", "tipo": "texto_largo" },
+    { "id": "referencias", "enunciado": "Referencias laborales", "tipo": "textarea_grande" }
+  ]
+},
     "empleo_general": {
       "titulo": "Entrevista de Empleo General",
       "descripcion": "Preguntas generales para cualquier tipo de empleo.",
