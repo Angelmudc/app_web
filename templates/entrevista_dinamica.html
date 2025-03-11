@@ -1,27 +1,86 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>{{ titulo }}</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 20px; }
-      h1 { text-align: center; }
-      .question { margin-bottom: 15px; }
-      label { font-weight: bold; }
-    </style>
+  <meta charset="UTF-8">
+  <title>{{ titulo }}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    .mensaje {
+      margin-bottom: 20px;
+      padding: 10px;
+      background-color: #f0f0f0;
+    }
+    form {
+      margin-top: 20px;
+    }
+    .question {
+      margin-bottom: 15px;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 8px;
+    }
+    .radio-options {
+      margin: 5px 0;
+    }
+    .radio-options label {
+      font-weight: normal;
+      margin-right: 15px;
+    }
+    button[type="submit"] {
+      padding: 10px 20px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-    <h1>{{ titulo }}</h1>
+  <h1>{{ titulo }}</h1>
 
-    <!-- Agregamos un formulario que envía datos por POST a la misma ruta -->
-    <form method="post" action="">
-      {% for pregunta in preguntas %}
-        <div class="question">
-          <label>{{ pregunta.enunciado }}</label>
+  <!-- Mostrar mensaje de éxito/error si existe -->
+  {% if mensaje %}
+    <div class="mensaje">
+      {{ mensaje }}
+    </div>
+  {% endif %}
+
+  <form method="post" action="">
+    {% for pregunta in preguntas %}
+      <div class="question">
+        <label>{{ pregunta.enunciado }}</label>
+
+        {% if pregunta.tipo == "radio" %}
+          <div class="radio-options">
+            {% for opcion in pregunta.opciones %}
+              <label>
+                <input type="radio" name="{{ pregunta.id }}" value="{{ opcion }}">
+                {{ opcion }}
+              </label>
+            {% endfor %}
+          </div>
+
+        {% elif pregunta.tipo == "texto_largo" or pregunta.tipo == "textarea_grande" %}
+          <textarea name="{{ pregunta.id }}" rows="3"></textarea>
+
+        {% else %}
+          <!-- Por defecto, mostramos un input de texto -->
           <input type="text" name="{{ pregunta.id }}">
-        </div>
-      {% endfor %}
-      <button type="submit">Guardar Entrevista</button>
-    </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <button type="submit">Guardar Entrevista</button>
+  </form>
 </body>
 </html>

@@ -805,20 +805,56 @@ def sugerir():
 
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
-    # Obtener el parámetro "tipo" de la URL, por ejemplo: /entrevista?tipo=domestica
+    # 1. Obtener el tipo de entrevista por la URL, p. ej. /entrevista?tipo=domestica
     tipo_entrevista = request.args.get("tipo", "").strip().lower()
 
-    # Validar si el tipo existe en la configuración
+    # 2. Verificar que el tipo exista en la configuración
     if tipo_entrevista not in ENTREVISTAS_CONFIG:
         return "⚠️ Tipo de entrevista no válido.", 400
 
-    # Extraer la configuración específica para ese tipo de entrevista
+    # 3. Extraer la sección correspondiente (título, preguntas) del JSON
     entrevista_config = ENTREVISTAS_CONFIG[tipo_entrevista]
     titulo = entrevista_config.get("titulo", "Entrevista sin título")
     preguntas = entrevista_config.get("preguntas", [])
 
-    # Por ahora, simplemente se renderiza una plantilla con el título y la lista de preguntas
-    return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas)
+    mensaje = None
+
+    # 4. Procesar el envío del formulario (POST)
+    if request.method == 'POST':
+        # a) Recopilar todas las respuestas
+        respuestas = []
+        for pregunta in preguntas:
+            campo_id = pregunta['id']  # "nombre", "edad", etc.
+            valor = request.form.get(campo_id, '').strip()
+            enunciado = pregunta['enunciado']
+            # Formato: "¿Tienes hijos?: Sí"
+            linea = f"{enunciado}: {valor}"
+            respuestas.append(linea)
+
+        # b) Unir todo en un bloque de texto
+        entrevista_completa = "\n".join(respuestas)
+
+        # c) Guardar en Google Sheets (columna Z de la fila 2 como ejemplo)
+        try:
+            fila_index = 2  # Ajusta la fila según tu lógica o busca la siguiente libre
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"Nueva hoja!Z{fila_index}",  # Ajusta la hoja y columna
+                valueInputOption="RAW",
+                body={"values": [[entrevista_completa]]}
+            ).execute()
+            mensaje = "✅ Entrevista guardada correctamente."
+        except Exception as e:
+            mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
+
+    # 5. Renderizar la plantilla con el título, las preguntas y el mensaje
+    return render_template(
+        "entrevista_dinamica.html",
+        titulo=titulo,
+        preguntas=preguntas,
+        mensaje=mensaje
+    )
+
 
 
 @app.route('/buscar', methods=['GET', 'POST'])
