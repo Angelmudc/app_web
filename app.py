@@ -80,6 +80,17 @@ cache_config = {
 app.config.from_mapping(cache_config)
 cache = Cache(app)
 
+ENTREVISTAS_CONFIG = {}
+
+try:
+    ruta_config = os.path.join(os.path.dirname(__file__), "Config", "config_entrevistas.json")
+    with open(ruta_config, "r", encoding="utf-8") as f:
+        ENTREVISTAS_CONFIG = json.load(f)
+    print("✅ Configuración de entrevistas cargada con éxito.")
+except Exception as e:
+    print(f"❌ Error al cargar la configuración de entrevistas: {str(e)}")
+    ENTREVISTAS_CONFIG = {}
+
 # Ruta para servir archivos estáticos correctamente
 @app.route('/static/<path:filename>')
 def static_files(filename):
@@ -773,6 +784,24 @@ def sugerir():
     datos_filtrados = [dato for dato in lista_candidatas if query.lower() in dato['nombre'].lower()]
     
     return jsonify(datos_filtrados)
+
+@app.route('/entrevista', methods=['GET', 'POST'])
+def entrevista():
+    # Obtener el parámetro "tipo" de la URL, por ejemplo: /entrevista?tipo=domestica
+    tipo_entrevista = request.args.get("tipo", "").strip().lower()
+
+    # Validar si el tipo existe en la configuración
+    if tipo_entrevista not in ENTREVISTAS_CONFIG:
+        return "⚠️ Tipo de entrevista no válido.", 400
+
+    # Extraer la configuración específica para ese tipo de entrevista
+    entrevista_config = ENTREVISTAS_CONFIG[tipo_entrevista]
+    titulo = entrevista_config.get("titulo", "Entrevista sin título")
+    preguntas = entrevista_config.get("preguntas", [])
+
+    # Por ahora, simplemente se renderiza una plantilla con el título y la lista de preguntas
+    return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas)
+
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
