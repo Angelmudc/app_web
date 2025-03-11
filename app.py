@@ -99,6 +99,12 @@ try:
 
     with open(ruta_config, "r", encoding="utf-8") as f:
         ENTREVISTAS_CONFIG = json.load(f)
+        print("Ruta final de config:", ruta_config)
+print("Contenido de la carpeta principal:", os.listdir(os.path.dirname(__file__)))
+
+carpeta_config = os.path.join(os.path.dirname(__file__), "Config")
+print("Contenido de la carpeta Config:", os.listdir(carpeta_config))
+
     print("✅ Configuración de entrevistas cargada con éxito.")
 except Exception as e:
     print(f"❌ Error al cargar la configuración de entrevistas: {str(e)}")
