@@ -805,55 +805,99 @@ def sugerir():
 
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
-    # 1. Obtener el tipo de entrevista por la URL, p. ej. /entrevista?tipo=domestica
+    # 1. Obtener parametros
     tipo_entrevista = request.args.get("tipo", "").strip().lower()
+    fila_index_str = request.args.get("fila", "").strip()
 
-    # 2. Verificar que el tipo exista en la configuración
+    # 2. Validar si el tipo existe en la config
     if tipo_entrevista not in ENTREVISTAS_CONFIG:
         return "⚠️ Tipo de entrevista no válido.", 400
 
-    # 3. Extraer la sección correspondiente (título, preguntas) del JSON
+    # 3. Convertir fila a int (o manejar si no hay fila)
+    if not fila_index_str.isdigit():
+        return "⚠️ No se recibió la fila de la candidata.", 400
+
+    fila_index = int(fila_index_str)
+
+    # 4. Extraer datos de la config
     entrevista_config = ENTREVISTAS_CONFIG[tipo_entrevista]
     titulo = entrevista_config.get("titulo", "Entrevista sin título")
     preguntas = entrevista_config.get("preguntas", [])
 
     mensaje = None
 
-    # 4. Procesar el envío del formulario (POST)
+    # 5. Manejo de POST (guardar)
     if request.method == 'POST':
-        # a) Recopilar todas las respuestas
+        # a) Recopilar respuestas
         respuestas = []
         for pregunta in preguntas:
-            campo_id = pregunta['id']  # "nombre", "edad", etc.
+            campo_id = pregunta['id']
             valor = request.form.get(campo_id, '').strip()
             enunciado = pregunta['enunciado']
-            # Formato: "¿Tienes hijos?: Sí"
             linea = f"{enunciado}: {valor}"
             respuestas.append(linea)
 
-        # b) Unir todo en un bloque de texto
         entrevista_completa = "\n".join(respuestas)
 
-        # c) Guardar en Google Sheets (columna Z de la fila 2 como ejemplo)
+        # b) Guardar en la columna Z de esa fila
         try:
-            fila_index = 2  # Ajusta la fila según tu lógica o busca la siguiente libre
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
-                range=f"Nueva hoja!Z{fila_index}",  # Ajusta la hoja y columna
+                range=f"Nueva hoja!Z{fila_index}",  # Ajusta tu hoja
                 valueInputOption="RAW",
                 body={"values": [[entrevista_completa]]}
             ).execute()
-            mensaje = "✅ Entrevista guardada correctamente."
+            mensaje = f"✅ Entrevista guardada en la fila {fila_index} correctamente."
         except Exception as e:
             mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
 
-    # 5. Renderizar la plantilla con el título, las preguntas y el mensaje
+    # 6. Renderizar plantilla
     return render_template(
         "entrevista_dinamica.html",
         titulo=titulo,
         preguntas=preguntas,
         mensaje=mensaje
     )
+
+
+@app.route('/buscar_candidata', methods=['GET', 'POST'])
+def buscar_candidata():
+    resultados = []
+    mensaje = None
+
+    if request.method == 'POST':
+        busqueda = request.form.get('busqueda', '').strip().lower()
+
+        try:
+            # Lee la hoja de cálculo (ajusta el rango a tus columnas)
+            hoja = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:Z"
+            ).execute()
+            valores = hoja.get("values", [])
+
+            # Itera sobre cada fila (desde la 2 en adelante)
+            for fila_index, fila in enumerate(valores[1:], start=2):
+                # Supongamos que el nombre está en la columna B (fila[1])
+                if len(fila) > 1:
+                    nombre = fila[1].strip().lower()
+                else:
+                    nombre = ""
+
+                # Coincidencia parcial
+                if busqueda in nombre:
+                    resultados.append({
+                        'fila_index': fila_index,
+                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                        # Agrega más campos si deseas
+                    })
+
+        except Exception as e:
+            mensaje = f"❌ Error al buscar: {str(e)}"
+
+    return render_template('buscar_candidata.html', resultados=resultados, mensaje=mensaje)
+
 
 
 

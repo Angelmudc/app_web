@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Buscar Candidata</title>
+</head>
+<body>
+  <h1>Buscar Candidata</h1>
+
+  {% if mensaje %}
+    <div style="background-color: #f0f0f0; padding: 10px;">
+      {{ mensaje }}
+    </div>
+  {% endif %}
+
+  <form method="post" action="/buscar_candidata">
+    <input type="text" name="busqueda" placeholder="Nombre de la candidata">
+    <button type="submit">Buscar</button>
+  </form>
+
+  {% if resultados %}
+    <h2>Resultados</h2>
+    <ul>
+      {% for r in resultados %}
+        <li>
+          {{ r.nombre }} - {{ r.telefono }}
+          <!-- Enlace que lleva a la entrevista, fila = r.fila_index -->
+          <a href="/entrevista?tipo=domestica&fila={{ r.fila_index }}">Entrevistar</a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</body>
+</html>
