@@ -84,12 +84,26 @@ ENTREVISTAS_CONFIG = {}
 
 try:
     ruta_config = os.path.join(os.path.dirname(__file__), "Config", "config_entrevistas.json")
+
+    # 1) Imprimir la ruta completa que se va a usar
+    print("Ruta final de config:", ruta_config)
+
+    # 2) Ver el contenido de la carpeta donde está app.py
+    print("Contenido de la carpeta principal:",
+          os.listdir(os.path.dirname(__file__)))
+
+    # 3) Ver el contenido de la carpeta Config
+    carpeta_config = os.path.join(os.path.dirname(__file__), "Config")
+    print("Contenido de la carpeta Config:",
+          os.listdir(carpeta_config))
+
     with open(ruta_config, "r", encoding="utf-8") as f:
         ENTREVISTAS_CONFIG = json.load(f)
     print("✅ Configuración de entrevistas cargada con éxito.")
 except Exception as e:
     print(f"❌ Error al cargar la configuración de entrevistas: {str(e)}")
     ENTREVISTAS_CONFIG = {}
+
 
 # Ruta para servir archivos estáticos correctamente
 @app.route('/static/<path:filename>')
