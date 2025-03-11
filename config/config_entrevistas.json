@@ -1,0 +1,78 @@
+{
+    "domestica": {
+      "titulo": "Entrevista para Doméstica",
+      "descripcion": "Preguntas específicas para empleadas domésticas.",
+      "preguntas": [
+        { "id": "nombre", "enunciado": "Nombre de la empleada", "tipo": "texto" },
+        { "id": "nacionalidad", "enunciado": "Nacionalidad", "tipo": "texto" },
+        { "id": "edad", "enunciado": "Edad", "tipo": "texto" },
+        { "id": "direccion", "enunciado": "Dirección", "tipo": "texto_largo" },
+        { "id": "estado_civil", "enunciado": "Estado civil", "tipo": "texto" },
+        { "id": "tienes_hijos", "enunciado": "¿Tienes hijos?", "tipo": "radio", "opciones": ["Sí", "No"] },
+        { "id": "numero_hijos", "enunciado": "Número de hijos", "tipo": "texto" },
+        { "id": "edades_hijos", "enunciado": "Edades de los hijos", "tipo": "texto" },
+        { "id": "quien_cuida", "enunciado": "¿Quién cuida a sus hijos?", "tipo": "texto" },
+        { "id": "descripcion_personal", "enunciado": "¿Cómo te describes como persona?", "tipo": "texto_largo" },
+        { "id": "fuerte", "enunciado": "¿Cuál es tu fuerte?", "tipo": "texto" },
+        { "id": "modalidad", "enunciado": "Modalidad de trabajo", "tipo": "texto" },
+        { "id": "razon_trabajo", "enunciado": "¿Por qué eliges trabajar en una casa de familia?", "tipo": "texto_largo" },
+        { "id": "labores_anteriores", "enunciado": "Labores desempeñadas en trabajos anteriores", "tipo": "texto_largo" },
+        { "id": "tiempo_ultimo_trabajo", "enunciado": "Tiempo desde el último trabajo", "tipo": "texto" },
+        { "id": "razon_salida", "enunciado": "¿Por qué saliste de tu último trabajo?", "tipo": "texto_largo" },
+        { "id": "situacion_dificil", "enunciado": "¿Has enfrentado situaciones difíciles en el trabajo?", "tipo": "texto" },
+        { "id": "manejo_situacion", "enunciado": "¿Cómo manejaste esa situación?", "tipo": "texto" },
+        { "id": "manejo_reclamo", "enunciado": "¿Cómo manejarías reclamos o malos tratos del jefe?", "tipo": "texto_largo" },
+        { "id": "uniforme", "enunciado": "¿Trabajas con uniforme?", "tipo": "texto" },
+        { "id": "dias_feriados", "enunciado": "¿Trabajas días feriados?", "tipo": "texto" },
+        { "id": "revision_salida", "enunciado": "¿Puedes ser revisada a la salida?", "tipo": "texto" },
+        { "id": "colaboracion", "enunciado": "¿Estás dispuesta a colaborar en lo que el jefe necesite?", "tipo": "texto" },
+        { "id": "tipo_familia", "enunciado": "¿Con qué tipo de familia has trabajado anteriormente?", "tipo": "texto_largo" },
+        { "id": "cuidado_ninos", "enunciado": "¿Has cuidado niños y de qué edad?", "tipo": "texto_largo" },
+        { "id": "sabes_cocinar", "enunciado": "¿Sabes cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+        { "id": "gusta_cocinar", "enunciado": "¿Te gusta cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+        { "id": "que_cocinas", "enunciado": "¿Qué sabes cocinar? (detalla los platos)", "tipo": "texto_largo" },
+        { "id": "postres", "enunciado": "¿Haces postres? (detalla cuáles)", "tipo": "texto_largo" },
+        { "id": "tareas_casa", "enunciado": "¿Qué tareas de la casa te gustan y cuáles no?", "tipo": "texto_largo" },
+        { "id": "electrodomesticos", "enunciado": "¿Sabes usar electrodomésticos modernos?", "tipo": "texto" },
+        { "id": "planchar", "enunciado": "¿Sabes planchar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+        { "id": "actividad_principal", "enunciado": "¿Tienes alguna actividad principal (trabajo/estudio)?", "tipo": "texto" },
+        { "id": "afiliacion_religiosa", "enunciado": "Afiliación religiosa", "tipo": "texto" },
+        { "id": "cursos_domesticos", "enunciado": "¿Tienes cursos en el área doméstica?", "tipo": "texto" },
+        { "id": "nivel_academico", "enunciado": "Nivel académico", "tipo": "texto" },
+        { "id": "condiciones_salud", "enunciado": "¿Tienes condiciones de salud?", "tipo": "texto" },
+        { "id": "alergico", "enunciado": "¿Eres alérgica a algo?", "tipo": "texto" },
+        { "id": "medicamentos", "enunciado": "¿Tomas medicamentos?", "tipo": "texto" },
+        { "id": "seguro_medico", "enunciado": "¿Tienes seguro médico?", "tipo": "texto" },
+        { "id": "pruebas_medicas", "enunciado": "¿Aceptas hacer pruebas médicas si se solicita?", "tipo": "texto" },
+        { "id": "vacunas_covid", "enunciado": "¿Cuántas vacunas del COVID tienes?", "tipo": "texto" },
+        { "id": "tomas_alcohol", "enunciado": "¿Tomas alcohol?", "tipo": "texto" },
+        { "id": "fumas", "enunciado": "¿Fumas?", "tipo": "texto" },
+        { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "texto" },
+        { "id": "referencias_laborales", "enunciado": "Referencias laborales", "tipo": "textarea_grande" },
+        { "id": "referencias_familiares", "enunciado": "Referencias familiares", "tipo": "textarea_grande" }
+      ]
+    },
+    "enfermera": {
+      "titulo": "Entrevista para Enfermera",
+      "descripcion": "Preguntas específicas para enfermeras.",
+      "preguntas": [
+        {
+          "id": "nombre",
+          "enunciado": "Nombre de la enfermera",
+          "tipo": "texto"
+        }
+      ]
+    },
+    "empleo_general": {
+      "titulo": "Entrevista de Empleo General",
+      "descripcion": "Preguntas generales para cualquier tipo de empleo.",
+      "preguntas": [
+        {
+          "id": "nombre",
+          "enunciado": "Nombre del candidato",
+          "tipo": "texto"
+        }
+      ]
+    }
+  }
+  
