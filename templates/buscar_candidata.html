@@ -2,33 +2,74 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Buscar Candidata</title>
+  <title>Buscar Candidata - Doméstica del Cibao A&D</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      background-color: #f8f9fa;
+      font-family: Arial, sans-serif;
+    }
+    .search-container {
+      margin-top: 50px;
+      margin-bottom: 50px;
+    }
+    .card-result {
+      margin-bottom: 20px;
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
+      transition: transform 0.2s;
+    }
+    .card-result:hover {
+      transform: translateY(-5px);
+    }
+  </style>
 </head>
 <body>
-  <h1>Buscar Candidata</h1>
-
-  {% if mensaje %}
-    <div style="background-color: #f0f0f0; padding: 10px;">
-      {{ mensaje }}
-    </div>
-  {% endif %}
-
-  <form method="post" action="/buscar_candidata">
-    <input type="text" name="busqueda" placeholder="Nombre de la candidata">
-    <button type="submit">Buscar</button>
-  </form>
-
-  {% if resultados %}
-    <h2>Resultados</h2>
-    <ul>
-      {% for r in resultados %}
-        <li>
-          {{ r.nombre }} - {{ r.telefono }}
-          <!-- Enlace que lleva a la entrevista, fila = r.fila_index -->
-          <a href="/entrevista?tipo=domestica&fila={{ r.fila_index }}">Entrevistar</a>
-        </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
+  <div class="container search-container">
+    <h1 class="text-center mb-4">Buscar Candidata</h1>
+    
+    <!-- Formulario de búsqueda -->
+    <form method="post" action="/buscar_candidata">
+      <div class="input-group mb-4">
+        <input type="text" class="form-control" name="busqueda" placeholder="Ingrese Nombre, Código, Cédula o Teléfono" required>
+        <button class="btn btn-primary" type="submit">Buscar</button>
+      </div>
+    </form>
+    
+    <!-- Mensaje de alerta, si existe -->
+    {% if mensaje %}
+      <div class="alert alert-warning text-center">
+        {{ mensaje }}
+      </div>
+    {% endif %}
+    
+    <!-- Resultados de la búsqueda -->
+    {% if resultados %}
+      <h2 class="mb-3">Resultados</h2>
+      <div class="row">
+        {% for candidato in resultados %}
+          <div class="col-md-4">
+            <div class="card card-result">
+              <div class="card-body">
+                <h5 class="card-title">{{ candidato.nombre }}</h5>
+                <p class="card-text">
+                  <strong>Teléfono:</strong> {{ candidato.telefono }}<br>
+                  <strong>Cédula:</strong> {{ candidato.cedula }}
+                </p>
+                <!-- Enlace para entrevistar a la candidata. Se pasa la fila obtenida -->
+                <a href="/entrevista?tipo=domestica&fila={{ candidato.fila_index }}" class="btn btn-success">Entrevistar</a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-center">No se encontraron resultados.</p>
+    {% endif %}
+  </div>
+  
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
