@@ -40,15 +40,22 @@
             <div class="radio-group">
               {% for opcion in pregunta.opciones %}
                 <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="{{ pregunta.id }}" id="{{ pregunta.id }}_{{ loop.index }}" value="{{ opcion }}">
+                  <input class="form-check-input" type="radio" name="{{ pregunta.id }}"
+                         id="{{ pregunta.id }}_{{ loop.index }}" value="{{ opcion }}"
+                         {% if datos and datos.get(pregunta.id) == opcion %} checked {% endif %}
+                         {% if loop.first and focus_field == pregunta.id %} autofocus {% endif %}
+                         required>
                   <label class="form-check-label" for="{{ pregunta.id }}_{{ loop.index }}">{{ opcion }}</label>
                 </div>
               {% endfor %}
             </div>
           {% elif pregunta.tipo == "texto_largo" or pregunta.tipo == "textarea_grande" %}
-            <textarea class="form-control" name="{{ pregunta.id }}" rows="3"></textarea>
+            <textarea class="form-control" name="{{ pregunta.id }}" rows="3" required
+              {% if focus_field == pregunta.id %} autofocus {% endif %}>{{ datos.get(pregunta.id, '') if datos else '' }}</textarea>
           {% else %}
-            <input type="text" class="form-control" name="{{ pregunta.id }}">
+            <input type="text" class="form-control" name="{{ pregunta.id }}" required
+                   value="{{ datos.get(pregunta.id, '') if datos else '' }}"
+                   {% if focus_field == pregunta.id %} autofocus {% endif %}>
           {% endif %}
         </div>
       {% endfor %}
@@ -57,15 +64,14 @@
       </div>
     </form>
   </div>
+  
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
       const form = document.querySelector("form");
       form.addEventListener("submit", function() {
         const submitButton = form.querySelector("button[type='submit']");
-        // Deshabilitar el botón para evitar clics duplicados
         submitButton.disabled = true;
-        // Cambiar el texto del botón para indicar que se está procesando
         submitButton.innerText = "Guardando...";
       });
     });

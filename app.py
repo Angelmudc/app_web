@@ -827,36 +827,43 @@ def entrevista():
     tipo_entrevista = request.args.get("tipo", "").strip().lower()
     fila_param = request.args.get("fila", "").strip()
 
-    # Verificar que el tipo exista en la configuración
     if tipo_entrevista not in ENTREVISTAS_CONFIG:
         return "⚠️ Tipo de entrevista no válido.", 400
 
-    # Extraer datos de la configuración para ese tipo de entrevista
     entrevista_config = ENTREVISTAS_CONFIG[tipo_entrevista]
     titulo = entrevista_config.get("titulo", "Entrevista sin título")
     preguntas = entrevista_config.get("preguntas", [])
 
     mensaje = None
+    datos = {}         # Aquí se almacenarán los datos ingresados
+    focus_field = None # El id del primer campo faltante
 
     if request.method == 'POST':
-        # Validación backend: revisar que cada campo obligatorio tenga valor
-        missing_fields = []
         respuestas = []
+        missing_fields = []
+        # Recorrer todas las preguntas
         for pregunta in preguntas:
-            valor = request.form.get(pregunta['id'], '').strip()
+            campo_id = pregunta['id']
+            valor = request.form.get(campo_id, '').strip()
+            datos[campo_id] = valor  # Guardamos el valor ingresado
             if not valor:
-                missing_fields.append(pregunta['enunciado'])
-            # Preparamos la respuesta en formato "Enunciado: Valor"
+                missing_fields.append(campo_id)
             linea = f"{pregunta['enunciado']}: {valor}"
             respuestas.append(linea)
         
         if missing_fields:
-            mensaje = "Por favor, complete los siguientes campos: " + ", ".join(missing_fields)
-            return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas, mensaje=mensaje)
+            mensaje = "Por favor, complete todos los campos."
+            focus_field = missing_fields[0]  # Primer campo faltante
+            # Re-renderizamos el formulario conservando los datos ingresados
+            return render_template("entrevista_dinamica.html",
+                                   titulo=titulo,
+                                   preguntas=preguntas,
+                                   mensaje=mensaje,
+                                   datos=datos,
+                                   focus_field=focus_field)
         
         entrevista_completa = "\n".join(respuestas)
         
-        # Determinar la fila a usar:
         if fila_param.isdigit():
             fila_index = int(fila_param)
         else:
@@ -866,7 +873,6 @@ def entrevista():
             mensaje = "❌ Error: No se pudo determinar la fila libre."
         else:
             try:
-                # Guardar la entrevista en la columna Z de la fila determinada
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
                     range=f"Nueva hoja!Z{fila_index}",
@@ -876,9 +882,13 @@ def entrevista():
                 mensaje = f"✅ Entrevista guardada correctamente en la fila {fila_index}."
             except Exception as e:
                 mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
-
-    return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas, mensaje=mensaje)
-
+    
+    return render_template("entrevista_dinamica.html",
+                           titulo=titulo,
+                           preguntas=preguntas,
+                           mensaje=mensaje,
+                           datos=datos,
+                           focus_field=focus_field)
 
 
 
