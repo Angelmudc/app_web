@@ -83,7 +83,7 @@ cache = Cache(app)
 ENTREVISTAS_CONFIG = {}
 
 try:
-    ruta_config = os.path.join(os.path.dirname(__file__), "Config", "config_entrevistas.json")
+    ruta_config = os.path.join(os.path.dirname(__file__), "config", "config_entrevistas.json")
 
     # Imprime la ruta final que se usará
     print("Ruta final de config:", ruta_config)
@@ -93,8 +93,8 @@ try:
           os.listdir(os.path.dirname(__file__)))
 
     # Muestra el contenido de la carpeta "Config"
-    carpeta_config = os.path.join(os.path.dirname(__file__), "Config")
-    print("Contenido de la carpeta Config:",
+    carpeta_config = os.path.join(os.path.dirname(__file__), "config")
+    print("Contenido de la carpeta config:",
           os.listdir(carpeta_config))
 
     # Ahora sí abrimos el archivo JSON
