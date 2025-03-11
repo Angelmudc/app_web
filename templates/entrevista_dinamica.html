@@ -13,16 +13,15 @@
 <body>
     <h1>{{ titulo }}</h1>
 
-    <!-- Iteramos sobre la lista de preguntas -->
-    {% for pregunta in preguntas %}
-      <div class="question">
-        <label>{{ pregunta.enunciado }}</label>
-        <!-- Por ahora, solo mostramos un input de texto como ejemplo -->
-        <input type="text" name="{{ pregunta.id }}">
-      </div>
-    {% endfor %}
-
-    <!-- Botón para enviar (por ahora, sin procesar) -->
-    <button type="submit">Guardar Entrevista</button>
+    <!-- Agregamos un formulario que envía datos por POST a la misma ruta -->
+    <form method="post" action="">
+      {% for pregunta in preguntas %}
+        <div class="question">
+          <label>{{ pregunta.enunciado }}</label>
+          <input type="text" name="{{ pregunta.id }}">
+        </div>
+      {% endfor %}
+      <button type="submit">Guardar Entrevista</button>
+    </form>
 </body>
 </html>
