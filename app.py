@@ -839,24 +839,29 @@ def entrevista():
     mensaje = None
 
     if request.method == 'POST':
-        # Recoger todas las respuestas del formulario
+        # Validación backend: revisar que cada campo obligatorio tenga valor
+        missing_fields = []
         respuestas = []
         for pregunta in preguntas:
-            campo_id = pregunta['id']
-            valor = request.form.get(campo_id, '').strip()
-            enunciado = pregunta['enunciado']
-            linea = f"{enunciado}: {valor}"
+            valor = request.form.get(pregunta['id'], '').strip()
+            if not valor:
+                missing_fields.append(pregunta['enunciado'])
+            # Preparamos la respuesta en formato "Enunciado: Valor"
+            linea = f"{pregunta['enunciado']}: {valor}"
             respuestas.append(linea)
+        
+        if missing_fields:
+            mensaje = "Por favor, complete los siguientes campos: " + ", ".join(missing_fields)
+            return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas, mensaje=mensaje)
+        
         entrevista_completa = "\n".join(respuestas)
-
-        # Determinar la fila en la que guardar:
-        # Si se pasó el parámetro "fila" y es numérico, úsalo;
-        # de lo contrario, obtiene la siguiente fila vacía.
+        
+        # Determinar la fila a usar:
         if fila_param.isdigit():
             fila_index = int(fila_param)
         else:
             fila_index = obtener_siguiente_fila()
-
+        
         if fila_index is None:
             mensaje = "❌ Error: No se pudo determinar la fila libre."
         else:
@@ -873,6 +878,7 @@ def entrevista():
                 mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
 
     return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas, mensaje=mensaje)
+
 
 
 
