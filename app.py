@@ -823,12 +823,15 @@ def sugerir():
 
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
-    # Obtener el tipo de entrevista de la URL, p.ej., /entrevista?tipo=domestica
+    # Obtener parámetros de la URL: tipo de entrevista y fila (opcional)
     tipo_entrevista = request.args.get("tipo", "").strip().lower()
+    fila_param = request.args.get("fila", "").strip()
+
+    # Verificar que el tipo exista en la configuración
     if tipo_entrevista not in ENTREVISTAS_CONFIG:
         return "⚠️ Tipo de entrevista no válido.", 400
 
-    # Extraer los datos de la configuración para ese tipo
+    # Extraer datos de la configuración para ese tipo de entrevista
     entrevista_config = ENTREVISTAS_CONFIG[tipo_entrevista]
     titulo = entrevista_config.get("titulo", "Entrevista sin título")
     preguntas = entrevista_config.get("preguntas", [])
@@ -842,14 +845,17 @@ def entrevista():
             campo_id = pregunta['id']
             valor = request.form.get(campo_id, '').strip()
             enunciado = pregunta['enunciado']
-            # Formato: "¿Tienes hijos?: Sí"
             linea = f"{enunciado}: {valor}"
             respuestas.append(linea)
-
         entrevista_completa = "\n".join(respuestas)
 
-        # Obtener la siguiente fila vacía de forma dinámica
-        fila_index = obtener_siguiente_fila()
+        # Determinar la fila en la que guardar:
+        # Si se pasó el parámetro "fila" y es numérico, úsalo;
+        # de lo contrario, obtiene la siguiente fila vacía.
+        if fila_param.isdigit():
+            fila_index = int(fila_param)
+        else:
+            fila_index = obtener_siguiente_fila()
 
         if fila_index is None:
             mensaje = "❌ Error: No se pudo determinar la fila libre."
@@ -867,6 +873,7 @@ def entrevista():
                 mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
 
     return render_template("entrevista_dinamica.html", titulo=titulo, preguntas=preguntas, mensaje=mensaje)
+
 
 
 
