@@ -52,11 +52,8 @@
         { "id": "referencias_familiares", "enunciado": "Referencias familiares", "tipo": "textarea_grande" }
       ]
     },
-    "enfermera": {
-      "titulo": "Entrevista para Enfermera",
-      "descripcion": "Preguntas específicas para enfermeras.",
-      "preguntas": [
-
+    
+    
     "enfermera": {
   "titulo": "Entrevista para Enfermera Domiciliaria",
   "descripcion": "Preguntas específicas para profesionales de enfermería que brindan cuidado a domicilio en casas de familia.",
@@ -130,6 +127,23 @@
       "opciones": ["Sí", "No"]
     },
     {
+      "id": "manejo_emergencias",
+      "enunciado": "¿Tienes experiencia en manejo de emergencias en el hogar?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "signos_vitales",
+      "enunciado": "¿Sabes medir la presión arterial y tomar signos vitales?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "adaptacion_entorno",
+      "enunciado": "¿Cómo te adaptas a trabajar en entornos familiares?",
+      "tipo": "texto_largo"
+    },
+    {
       "id": "tiempo_ultimo_trabajo",
       "enunciado": "¿Cuánto tiempo ha pasado desde tu último trabajo?",
       "tipo": "texto"
@@ -197,29 +211,6 @@
       "opciones": ["Sí", "No"]
     },
     {
-      "id": "manejo_emergencias",
-      "enunciado": "¿Tienes experiencia en manejo de emergencias en el hogar?",
-      "tipo": "radio",
-      "opciones": ["Sí", "No"]
-    },
-    {
-      "id": "signos_vitales",
-      "enunciado": "¿Sabes medir la presión arterial y tomar signos vitales?",
-      "tipo": "radio",
-      "opciones": ["Sí", "No"]
-    },
-    {
-      "id": "adaptacion_entorno",
-      "enunciado": "¿Cómo te adaptas a trabajar en entornos familiares?",
-      "tipo": "texto_largo"
-    },
-    {
-      "id": "tecnologia",
-      "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?",
-      "tipo": "radio",
-      "opciones": ["Sí", "No"]
-    },
-    {
       "id": "vacunas_covid",
       "enunciado": "¿Cuántas vacunas del COVID tienes?",
       "tipo": "radio",
@@ -246,6 +237,12 @@
       "tipo": "texto_largo"
     },
     {
+      "id": "tecnologia",
+      "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
       "id": "referencias_laborales",
       "enunciado": "Referencias laborales",
       "tipo": "textarea_grande"
@@ -257,6 +254,7 @@
     }
   ]
 }
+
 ,
     "empleo_general": {
       "titulo": "Entrevista de Empleo General",
