@@ -57,44 +57,207 @@
       "descripcion": "Preguntas específicas para enfermeras.",
       "preguntas": [
 
-    { "id": "nombre", "enunciado": "Nombre de la enfermera", "tipo": "texto" },
-    { "id": "nacionalidad", "enunciado": "Nacionalidad", "tipo": "texto" },
-    { "id": "edad", "enunciado": "Edad", "tipo": "texto" },
-    { "id": "direccion", "enunciado": "Dirección", "tipo": "texto_largo" },
-    { "id": "estado_civil", "enunciado": "Estado civil", "tipo": "texto" },
-    { "id": "tienes_hijos", "enunciado": "¿Tienes hijos?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "numero_hijos", "enunciado": "Número de hijos", "tipo": "texto" },
-    { "id": "edades_hijos", "enunciado": "Edades de los hijos", "tipo": "texto" },
-    { "id": "experiencia", "enunciado": "Años de experiencia en enfermería", "tipo": "texto" },
-    { "id": "licencia", "enunciado": "¿Posees licencia de enfermería?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "especialidad", "enunciado": "Especialidad o área de mayor experiencia", "tipo": "texto" },
-    { "id": "tipo_cuidado", "enunciado": "¿Tienes experiencia en cuidados a domicilio?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "disponibilidad", "enunciado": "Disponibilidad de turno y horarios", "tipo": "radio", "opciones": ["Diurno", "Nocturno", "Ambos"] },
-    { "id": "modalidad_trabajo", "enunciado": "¿Trabajarías con salida diaria o dormida?", "tipo": "radio", "opciones": ["Salida diaria", "Dormida", "Ambos"] },
-    { "id": "manejo_emergencias", "enunciado": "¿Tienes experiencia en manejo de emergencias en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "signos_vitales", "enunciado": "¿Sabes medir la presión arterial y tomar signos vitales?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "adaptacion_entorno", "enunciado": "¿Cómo te adaptas a trabajar en entornos familiares?", "tipo": "texto_largo" },
-    { "id": "tiempo_ultimo_trabajo", "enunciado": "¿Cuánto tiempo ha pasado desde tu último trabajo?", "tipo": "texto" },
-    { "id": "razon_salida", "enunciado": "¿Por qué saliste de tu último trabajo?", "tipo": "texto_largo" },
-    { "id": "manejo_reclamo", "enunciado": "¿Cómo manejarías reclamos o malos tratos del jefe?", "tipo": "texto_largo" },
-    { "id": "dias_feriados", "enunciado": "¿Trabajas días feriados?", "tipo": "radio", "opciones": ["Sí", "No", "Sí, se lo pagan"] },
-    { "id": "revision_salida", "enunciado": "¿Puedes ser revisada a la salida?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "colaboracion", "enunciado": "¿Estás dispuesta a colaborar en lo que el jefe necesite?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "actividad_principal", "enunciado": "¿Tienes alguna actividad principal (trabajo/estudio)?", "tipo": "texto" },
-    { "id": "afiliacion_religiosa", "enunciado": "Afiliación religiosa", "tipo": "texto" },
-    { "id": "pruebas_medicas", "enunciado": "¿Aceptas hacer pruebas médicas si se solicita?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "vacunas_covid", "enunciado": "¿Cuántas vacunas del COVID tienes?", "tipo": "radio", "opciones": ["Dosis 1", "Dosis 2", "Dosis 3"] },
-    { "id": "idiomas", "enunciado": "Idiomas que hablas", "tipo": "texto" },
-    { "id": "motivacion", "enunciado": "¿Por qué eliges trabajar en cuidados domiciliarios?", "tipo": "texto_largo" },
-    { "id": "fortalezas", "enunciado": "¿Cuáles consideras que son tus fortalezas profesionales?", "tipo": "texto_largo" },
-    { "id": "situacion_dificil", "enunciado": "Describe una situación difícil en el cuidado domiciliario y cómo la resolviste", "tipo": "texto_largo" },
-    { "id": "tecnologia", "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "referencias_laborales", "enunciado": "Referencias laborales", "tipo": "textarea_grande" },
-    { "id": "referencias_familiares", "enunciado": "Referencias familiares", "tipo": "textarea_grande" },
-    { "id": "descripcion_personal", "enunciado": "¿Cómo te describes como persona?", "tipo": "texto_largo" }
+    "enfermera": {
+  "titulo": "Entrevista para Enfermera Domiciliaria",
+  "descripcion": "Preguntas específicas para profesionales de enfermería que brindan cuidado a domicilio en casas de familia.",
+  "preguntas": [
+    {
+      "id": "nombre",
+      "enunciado": "Nombre de la enfermera",
+      "tipo": "texto"
+    },
+    {
+      "id": "nacionalidad",
+      "enunciado": "Nacionalidad",
+      "tipo": "texto"
+    },
+    {
+      "id": "edad",
+      "enunciado": "Edad",
+      "tipo": "texto"
+    },
+    {
+      "id": "direccion",
+      "enunciado": "Dirección",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "estado_civil",
+      "enunciado": "Estado civil",
+      "tipo": "texto"
+    },
+    {
+      "id": "descripcion_personal",
+      "enunciado": "¿Cómo te describes como persona?",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "tienes_hijos",
+      "enunciado": "¿Tienes hijos?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "numero_hijos",
+      "enunciado": "Número de hijos",
+      "tipo": "texto"
+    },
+    {
+      "id": "edades_hijos",
+      "enunciado": "Edades de los hijos",
+      "tipo": "texto"
+    },
+    {
+      "id": "experiencia",
+      "enunciado": "Años de experiencia en enfermería",
+      "tipo": "texto"
+    },
+    {
+      "id": "licencia",
+      "enunciado": "¿Posees licencia de enfermería?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "especialidad",
+      "enunciado": "Especialidad o área de mayor experiencia",
+      "tipo": "texto"
+    },
+    {
+      "id": "tipo_cuidado",
+      "enunciado": "¿Tienes experiencia en cuidados a domicilio?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "tiempo_ultimo_trabajo",
+      "enunciado": "¿Cuánto tiempo ha pasado desde tu último trabajo?",
+      "tipo": "texto"
+    },
+    {
+      "id": "razon_salida",
+      "enunciado": "¿Por qué saliste de tu último trabajo?",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "manejo_reclamo",
+      "enunciado": "¿Cómo manejarías reclamos o malos tratos del jefe?",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "disponibilidad",
+      "enunciado": "Disponibilidad de turno y horarios",
+      "tipo": "radio",
+      "opciones": ["Diurno", "Nocturno", "Ambos"]
+    },
+    {
+      "id": "modalidad_trabajo",
+      "enunciado": "¿Trabajarías con salida diaria o dormida?",
+      "tipo": "radio",
+      "opciones": ["Salida diaria", "Dormida", "Ambos"]
+    },
+    {
+      "id": "dias_feriados",
+      "enunciado": "¿Trabajas días feriados?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No", "Sí, se lo pagan"]
+    },
+    {
+      "id": "revision_salida",
+      "enunciado": "¿Puedes ser revisada a la salida?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "colaboracion",
+      "enunciado": "¿Estás dispuesta a colaborar en lo que el jefe necesite?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "actividad_principal",
+      "enunciado": "¿Tienes alguna actividad principal (trabajo/estudio)?",
+      "tipo": "texto"
+    },
+    {
+      "id": "afiliacion_religiosa",
+      "enunciado": "Afiliación religiosa",
+      "tipo": "texto"
+    },
+    {
+      "id": "pruebas_medicas",
+      "enunciado": "¿Aceptas hacer pruebas médicas si se solicita?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "tatuajes_piercings",
+      "enunciado": "¿Tienes tatuajes visibles o piercings?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "manejo_emergencias",
+      "enunciado": "¿Tienes experiencia en manejo de emergencias en el hogar?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "signos_vitales",
+      "enunciado": "¿Sabes medir la presión arterial y tomar signos vitales?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "adaptacion_entorno",
+      "enunciado": "¿Cómo te adaptas a trabajar en entornos familiares?",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "tecnologia",
+      "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?",
+      "tipo": "radio",
+      "opciones": ["Sí", "No"]
+    },
+    {
+      "id": "vacunas_covid",
+      "enunciado": "¿Cuántas vacunas del COVID tienes?",
+      "tipo": "radio",
+      "opciones": ["Dosis 1", "Dosis 2", "Dosis 3"]
+    },
+    {
+      "id": "idiomas",
+      "enunciado": "Idiomas que hablas",
+      "tipo": "texto"
+    },
+    {
+      "id": "motivacion",
+      "enunciado": "¿Por qué eliges trabajar en cuidados domiciliarios?",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "fortalezas",
+      "enunciado": "¿Cuáles consideras que son tus fortalezas profesionales?",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "situacion_dificil",
+      "enunciado": "Describe una situación difícil en el cuidado domiciliario y cómo la resolviste",
+      "tipo": "texto_largo"
+    },
+    {
+      "id": "referencias_laborales",
+      "enunciado": "Referencias laborales",
+      "tipo": "textarea_grande"
+    },
+    {
+      "id": "referencias_familiares",
+      "enunciado": "Referencias familiares",
+      "tipo": "textarea_grande"
+    }
   ]
-},
+}
+,
     "empleo_general": {
       "titulo": "Entrevista de Empleo General",
       "descripcion": "Preguntas generales para cualquier tipo de empleo.",
