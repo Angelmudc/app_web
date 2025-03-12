@@ -1960,8 +1960,13 @@ def descargar_uno(fila_index, doc):
         return f"Error al descargar {doc}: {str(e)}", 500
 
 def generar_pdf_entrevista(fila_index):
+    """
+    Lee la columna Z de la fila dada (fila_index) en Google Sheets,
+    genera un PDF con el texto de la entrevista y un logo en la parte superior,
+    y lo envía como descarga.
+    """
     try:
-        # 1. Leer la columna Z para el texto de la entrevista (ya lo tienes)
+        # 1. Leer la columna Z para el texto de la entrevista
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1985,15 +1990,18 @@ def generar_pdf_entrevista(fila_index):
         pdf = FPDF()
         pdf.add_page()
 
-        # 3. Insertar el logo (asegúrate de que "logo.png" exista en /static)
+        # 3. Insertar el logo (ajusta el nombre si tu archivo no es "logo.png")
         logo_path = os.path.join(app.root_path, "static", "logo.png")
+        print("Buscando logo en:", logo_path)  # Depuración en logs
         if os.path.exists(logo_path):
             pdf.image(logo_path, x=10, y=8, w=33)
-        
-        # Opcional: dejar espacio después de la imagen
+        else:
+            print("Logo no encontrado en:", logo_path)
+
+        # Dejar un espacio debajo del logo
         pdf.ln(30)
 
-        # 4. Título del PDF
+        # 4. Añadir un título centrado
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(10)
@@ -2002,12 +2010,12 @@ def generar_pdf_entrevista(fila_index):
         pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, texto_entrevista)
 
-        # 6. Convertir a BytesIO
+        # 6. Convertir el PDF a cadena y luego a BytesIO
         pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
-        # 7. Enviar el PDF como descarga
+        # 7. Retornar el PDF como archivo descargable
         return send_file(
             memory_file,
             mimetype="application/pdf",
@@ -2016,9 +2024,6 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
-
-
 
 
 if __name__ == '__main__':
