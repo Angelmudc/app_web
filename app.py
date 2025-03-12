@@ -1960,12 +1960,8 @@ def descargar_uno(fila_index, doc):
         return f"Error al descargar {doc}: {str(e)}", 500
 
 def generar_pdf_entrevista(fila_index):
-    """
-    Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con el texto de la entrevista y lo envía como descarga.
-    """
     try:
-        # 1. Leer la columna Z para obtener el texto de la entrevista
+        # 1. Leer la columna Z para el texto de la entrevista (ya lo tienes)
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1979,23 +1975,39 @@ def generar_pdf_entrevista(fila_index):
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
 
-    # 2. Generar PDF en memoria con FPDF
     try:
         from fpdf import FPDF
         import io
         from flask import send_file
+        import os
 
+        # 2. Crear el PDF
         pdf = FPDF()
         pdf.add_page()
+
+        # 3. Insertar el logo (asegúrate de que "logo.png" exista en /static)
+        logo_path = os.path.join(app.root_path, "static", "logo.png")
+        if os.path.exists(logo_path):
+            pdf.image(logo_path, x=10, y=8, w=33)
+        
+        # Opcional: dejar espacio después de la imagen
+        pdf.ln(30)
+
+        # 4. Título del PDF
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
+        pdf.ln(10)
+
+        # 5. Escribir la entrevista
         pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, texto_entrevista)
 
-        # 3. Convertir el PDF a cadena y luego a BytesIO
-        pdf_output = pdf.output(dest="S")  # Devuelve el PDF como cadena
+        # 6. Convertir a BytesIO
+        pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
-        # 4. Retornar el PDF como archivo descargable
+        # 7. Enviar el PDF como descarga
         return send_file(
             memory_file,
             mimetype="application/pdf",
@@ -2004,6 +2016,7 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 
 
