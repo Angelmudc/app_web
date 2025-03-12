@@ -1597,5 +1597,74 @@ def generar_pdf():
         return f"❌ Error al generar PDF: {str(e)}"
 
 
+import os
+from werkzeug.utils import secure_filename
+
+@app.route('/subir_fotos', methods=['GET', 'POST'])
+def subir_fotos():
+    mensaje = ""
+    if request.method == 'POST':
+        # 1. Verificar la fila de la candidata
+        fila_param = request.form.get("fila", "").strip()
+        if not fila_param.isdigit():
+            mensaje = "El número de fila es inválido."
+            return render_template('subir_fotos.html', mensaje=mensaje)
+        fila_index = int(fila_param)
+
+        # 2. Obtener los archivos
+        depuracion_file = request.files.get('depuracion')
+        perfil_file = request.files.get('perfil')
+        cedula1_file = request.files.get('cedula1')
+        cedula2_file = request.files.get('cedula2')
+
+        # 3. Directorio donde se guardarán las imágenes
+        #    Asegúrate de que exista static/fotos o crea la carpeta
+        directorio = os.path.join(app.root_path, 'static', 'fotos')
+        if not os.path.exists(directorio):
+            os.makedirs(directorio)
+
+        # 4. Asegurar nombres válidos
+        depuracion_filename = secure_filename(depuracion_file.filename) if depuracion_file else ""
+        perfil_filename = secure_filename(perfil_file.filename) if perfil_file else ""
+        cedula1_filename = secure_filename(cedula1_file.filename) if cedula1_file else ""
+        cedula2_filename = secure_filename(cedula2_file.filename) if cedula2_file else ""
+
+        # 5. Guardar los archivos en el directorio
+        try:
+            if depuracion_filename:
+                depuracion_path = os.path.join(directorio, depuracion_filename)
+                depuracion_file.save(depuracion_path)
+            if perfil_filename:
+                perfil_path = os.path.join(directorio, perfil_filename)
+                perfil_file.save(perfil_path)
+            if cedula1_filename:
+                cedula1_path = os.path.join(directorio, cedula1_filename)
+                cedula1_file.save(cedula1_path)
+            if cedula2_filename:
+                cedula2_path = os.path.join(directorio, cedula2_filename)
+                cedula2_file.save(cedula2_path)
+        except Exception as e:
+            mensaje = f"Error al guardar los archivos: {str(e)}"
+            return render_template('subir_fotos.html', mensaje=mensaje)
+
+        # 6. Actualizar Google Sheets en las columnas:
+        #    - AA -> Depuración
+        #    - AB -> Perfil
+        #    - AC -> Cédula1
+        #    - AD -> Cédula2
+        try:
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"Nueva hoja!AA{fila_index}:AD{fila_index}",
+                valueInputOption="RAW",
+                body={"values": [[depuracion_filename, perfil_filename, cedula1_filename, cedula2_filename]]}
+            ).execute()
+            mensaje = "Imágenes subidas y guardadas correctamente."
+        except Exception as e:
+            mensaje = f"Error al actualizar Google Sheets: {str(e)}"
+    return render_template('subir_fotos.html', mensaje=mensaje)
+
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
