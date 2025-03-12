@@ -1972,8 +1972,8 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con un encabezado colorido, un logo grande,
-    y una tabla de dos columnas (Pregunta / Respuesta).
+    genera un PDF con el texto de la entrevista y un logo en la parte superior,
+    y lo envía como descarga.
     """
     try:
         # 1. Leer la columna Z para el texto de la entrevista
@@ -1986,79 +1986,48 @@ def generar_pdf_entrevista(fila_index):
         if not entrevista_val or not entrevista_val[0]:
             return "No hay entrevista guardada en la columna Z", 404
 
-        texto_entrevista = entrevista_val[0][0]  # Texto completo
+        texto_entrevista = entrevista_val[0][0]
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
 
     try:
         from fpdf import FPDF
         import io
-        import os
         from flask import send_file
+        import os
 
-        pdf = FPDF(orientation="P", unit="mm", format="LETTER")
+        pdf = FPDF()
         pdf.add_page()
 
-        # Ajusta el nombre de tu logo real:
+        # Establece la fuente por defecto para todo el documento
+        pdf.set_font("Arial", "", 12)
+
+        # Ruta del logo (ajusta el nombre del archivo si es necesario)
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
+        print("Logo path:", logo_path)  # Depuración
+
         if os.path.exists(logo_path):
-            pdf.image(logo_path, x=10, y=10, w=50)  # Logo grande
+            print("Logo encontrado. Insertando imagen...")
+            # Aumentamos el ancho del logo para que se vea más grande y centrado
+            pdf.image(logo_path, x=pdf.w/2 - 40, y=10, w=80)  # Ajusta w (ancho) según prefieras
         else:
-            print("No se encontró el logo en:", logo_path)
+            print("Archivo logo_nuevo.png no existe en esa ruta")
 
-        # Encabezado de color
-        pdf.set_y(10)
-        pdf.set_x(0)
-        pdf.set_fill_color(70, 130, 180)  # "SteelBlue"
-        pdf.cell(w=216, h=20, txt="", ln=1, fill=True)  # Ancho ~ 216 mm en carta
+        # Dejar espacio debajo del logo (ajusta el valor de ln() si es necesario)
+        pdf.ln(50)
 
-        # Título en blanco sobre la franja
-        pdf.set_y(15)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", "B", 18)
-        pdf.cell(0, 10, "Entrevista de Candidata", align="C")
+        # Título centrado
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
+        pdf.ln(10)
 
-        # Bajamos para empezar contenido
-        pdf.ln(25)
+        # Contenido de la entrevista (volvemos a establecer la fuente normal si es necesario)
+        pdf.set_font("Arial", "", 12)
+        pdf.multi_cell(0, 10, texto_entrevista)
 
-        # Dividir el texto en líneas
-        lineas = texto_entrevista.splitlines()
-
-        # Márgenes y salto automático
-        pdf.set_left_margin(15)
-        pdf.set_right_margin(15)
-        pdf.set_auto_page_break(auto=True, margin=15)
-
-        # Ajustes de fuente
-        pdf.set_font("Arial", size=12)
-        pdf.set_text_color(0, 0, 0)  # negro
-
-        # Para cada línea "Pregunta: Respuesta"
-        for linea in lineas:
-            linea = linea.strip()
-            if not linea:
-                continue
-
-            if ":" in linea:
-                parts = linea.split(":", 1)
-                pregunta = parts[0].strip()
-                respuesta = parts[1].strip()
-            else:
-                pregunta = linea
-                respuesta = ""
-
-            # Celda de pregunta (gris) + celda de respuesta (blanco)
-            pdf.set_fill_color(220, 220, 220)  # gris claro
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(60, 8, pregunta, border=1, ln=0, fill=True)
-
-            pdf.set_fill_color(255, 255, 255)  # blanco
-            pdf.set_font("Arial", "", 12)
-            pdf.cell(0, 8, respuesta, border=1, ln=1, fill=True)
-
-        # Generar PDF en memoria SIN cerrar el archivo
-        pdf_buffer = pdf.output(dest="S").encode("latin1")  
-        memory_file = io.BytesIO(pdf_buffer)
+        # Generar PDF en memoria
+        pdf_output = pdf.output(dest="S")
+        memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
         return send_file(
