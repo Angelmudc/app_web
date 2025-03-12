@@ -1967,8 +1967,9 @@ def descargar_uno(fila_index, doc):
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con un encabezado colorido, el logo centrado, título en blanco
-    y el contenido de la entrevista en forma de tabla (Pregunta/Respuesta).
+    genera un PDF con un encabezado colorido, el logo más grande centrado,
+    el título en blanco y una tabla PREGUNTA/RESPUESTA que se adapta a
+    varias líneas de texto (wrapping).
     """
     try:
         # 1. Leer la columna Z para el texto de la entrevista
@@ -1989,87 +1990,128 @@ def generar_pdf_entrevista(fila_index):
         from fpdf import FPDF
         import io
         import os
+        from math import ceil
         from flask import send_file
 
-        # Instanciamos el PDF
+        # ==================================
+        # CONFIGURACIÓN INICIAL DEL PDF
+        # ==================================
         pdf = FPDF()
         pdf.add_page()
 
         # ==================================
-        # ENCABEZADO CON COLOR Y LOGO
+        # ENCABEZADO CON COLOR + LOGO
         # ==================================
-        # -- Dibuja un rectángulo relleno en la parte superior (ancho 210 mm, alto 40 mm)
-        pdf.set_fill_color(66, 100, 157)  # un azul medio (ajusta al gusto)
-        pdf.rect(0, 0, 210, 40, 'F')      # x=0, y=0, w=210, h=40 (en mm), 'F' = Fill
+        pdf.set_fill_color(66, 100, 157)  # azul medio
+        pdf.rect(0, 0, 210, 40, 'F')      # Encabezado relleno, ancho 210mm, alto 40mm
 
         # -- Insertar LOGO (asegúrate de que sea PNG y esté en /static)
+        #    Ajusta el nombre de tu archivo y su tamaño (w=60).
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        logo_width = 30  # Ajusta el ancho
+        logo_width = 60
         if os.path.exists(logo_path):
-            # Para centrar, calculamos la posición X
-            x_logo = (210 - logo_width) / 2
-            pdf.image(logo_path, x=x_logo, y=5, w=logo_width)
+            x_logo = (210 - logo_width) / 2  # centrar
+            pdf.image(logo_path, x=x_logo, y=3, w=logo_width)
 
-        # -- Título sobre la franja de color
+        # -- Título
+        pdf.set_xy(0, 25)  # Colocar el cursor un poco más abajo en el encabezado
         pdf.set_font("Arial", "B", 18)
         pdf.set_text_color(255, 255, 255)  # texto en blanco
-        # Ubicamos el cursor un poco más abajo, manualmente
-        pdf.set_xy(0, 25)  
         pdf.cell(210, 10, "Entrevista de Candidata", border=0, ln=1, align="C")
 
-        # -- Ajustar el cursor debajo del encabezado
-        pdf.set_y(50)  # Bajamos hasta 50 mm
+        # -- Ajustamos la posición para el contenido
+        pdf.set_y(50)  # Baja a 50mm
 
         # ==================================
-        # FORMATO DE TABLA (Pregunta / Respuesta)
+        # FUNCIÓN AUXILIAR PARA RENDERIZAR UNA FILA (PREGUNTA/RESPUESTA)
         # ==================================
-        # Dividimos el texto en líneas
+        def render_row(question, answer):
+            """
+            Dibuja una fila con la 'question' en la primera columna
+            y 'answer' en la segunda, usando MultiCell para el texto largo.
+            """
+            # Medidas de columnas
+            col_w_question = 60
+            col_w_answer   = 130
+            line_height    = 7  # altura de cada línea
+            # Guardar la posición inicial (x, y) de la fila
+            x_init = pdf.get_x()
+            y_init = pdf.get_y()
+
+            # ================================
+            # 1) PREGUNTA (columna 1)
+            # ================================
+            pdf.set_font("Arial", "B", 11)         # negrita para pregunta
+            pdf.set_fill_color(230, 230, 230)      # gris claro
+            pdf.set_draw_color(0, 0, 0)            # color de línea (negro)
+            pdf.set_line_width(0.1)
+
+            # Hacemos un MultiCell para la pregunta
+            pdf.multi_cell(
+                col_w_question,
+                line_height,
+                question,
+                border=1,
+                align='L',
+                fill=True
+            )
+            # Alto real consumido por la pregunta
+            height_question = pdf.get_y() - y_init
+
+            # Regresamos a la posición inicial + ancho de la primera col
+            pdf.set_xy(x_init + col_w_question, y_init)
+
+            # ================================
+            # 2) RESPUESTA (columna 2)
+            # ================================
+            pdf.set_font("Arial", "", 11)          # normal para respuesta
+            pdf.set_fill_color(255, 255, 255)      # blanco
+            # Hacemos un MultiCell para la respuesta
+            y_before_answer = pdf.get_y()
+            pdf.multi_cell(
+                col_w_answer,
+                line_height,
+                answer,
+                border=1,
+                align='L',
+                fill=True
+            )
+            height_answer = pdf.get_y() - y_before_answer
+
+            # ================================
+            # 3) Ajustamos la altura final
+            # ================================
+            # La fila total debe medir lo más alto de las 2 celdas
+            row_height = max(height_question, height_answer)
+
+            # Movemos el cursor al final de la fila
+            pdf.set_xy(x_init, y_init + row_height)
+
+        # ==================================
+        # PROCESAMOS EL TEXTO DE ENTREVISTA
+        # ==================================
         lines = texto_entrevista.split('\n')
-
-        # Anchos de las columnas
-        col_width_question = 60
-        col_width_answer  = 130
-        row_height = 8
-
-        # Fuente por defecto para la tabla
-        pdf.set_font("Arial", "", 11)
-        pdf.set_text_color(0, 0, 0)
-
-        # Recorremos cada línea
         for line in lines:
             line = line.strip()
             if not line:
-                # Si la línea está vacía, dejamos un espacio
-                pdf.ln(row_height // 2)
+                # Si la línea está vacía, dejamos un salto
+                pdf.ln(5)
                 continue
 
             if ':' in line:
-                # Separamos en "Pregunta" y "Respuesta"
                 parts = line.split(':', 1)
-                pregunta = parts[0].strip()
-                respuesta = parts[1].strip() if len(parts) > 1 else ''
+                question = parts[0].strip()
+                answer = parts[1].strip() if len(parts) > 1 else ''
             else:
-                # Si no hay ":", tratamos la línea completa como respuesta sin pregunta
-                pregunta = "Nota"
-                respuesta = line
+                question = "Nota"
+                answer = line
 
-            # Pregunta en negrita
-            pdf.set_font("Arial", "B", 11)
-            pdf.set_fill_color(230, 230, 230)  # gris claro de fondo para la pregunta
-            pdf.cell(col_width_question, row_height, pregunta + ":", border=1, align="L", fill=True)
-
-            # Respuesta normal
-            pdf.set_font("Arial", "", 11)
-            pdf.set_fill_color(255, 255, 255)
-            # En caso de que la respuesta sea muy larga, se podría usar multi_cell
-            # Pero aquí, para simplificar, iremos con cell. 
-            # Si deseas multi_cell, debes reorganizar la lógica para romper la línea.
-            pdf.cell(col_width_answer, row_height, respuesta, border=1, ln=1, align="L", fill=True)
+            render_row(question + ":", answer)
 
         # ==================================
         # GENERAR PDF EN MEMORIA
         # ==================================
-        pdf_output = pdf.output(dest="S")  # Devuelve contenido como string
+        pdf_output = pdf.output(dest="S")  # PDF como string
         memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
@@ -2082,6 +2124,7 @@ def generar_pdf_entrevista(fila_index):
 
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 
 
