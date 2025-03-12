@@ -66,6 +66,7 @@
     { "id": "tienes_hijos", "enunciado": "¿Tienes hijos?", "tipo": "radio", "opciones": ["Sí", "No"] },
     { "id": "numero_hijos", "enunciado": "Número de hijos", "tipo": "texto" },
     { "id": "edades_hijos", "enunciado": "Edades de los hijos", "tipo": "texto" },
+    { "id": "descripcion_personal", "enunciado": "¿Cómo te describes como persona?", "tipo": "texto_largo" },
     { "id": "experiencia", "enunciado": "Años de experiencia en enfermería", "tipo": "texto" },
     { "id": "licencia", "enunciado": "¿Posees licencia de enfermería?", "tipo": "radio", "opciones": ["Sí", "No"] },
     { "id": "especialidad", "enunciado": "Especialidad o área de mayor experiencia", "tipo": "texto" },
@@ -95,6 +96,7 @@
     { "id": "referencias_familiares", "enunciado": "Referencias familiares", "tipo": "textarea_grande" }
   ]
 }
+
 ,
     "empleo_general": {
       "titulo": "Entrevista de Empleo General",
