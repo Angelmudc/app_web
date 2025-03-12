@@ -44,6 +44,15 @@ import requests
 from flask import Flask, request, send_file
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+import os
+import io
+import zipfile
+import requests
+from flask import Flask, request, render_template, redirect, url_for, send_file
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+import cloudinary
+import cloudinary.uploader
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -1754,6 +1763,236 @@ def descargar_documentos():
         as_attachment=True,
         download_name=f"documentos_candidata_{fila_index}.zip"
     )
+
+@app.route("/gestionar_archivos", methods=["GET", "POST"])
+def gestionar_archivos():
+    accion = request.args.get("accion", "buscar").strip()
+    mensaje = None
+    resultados = []
+    docs = {}
+    fila = request.args.get("fila", "").strip()
+
+    # -----------------------------------------
+    # ACCIÓN: BUSCAR CANDIDATA
+    # -----------------------------------------
+    if accion == "buscar":
+        if request.method == "POST":
+            busqueda = request.form.get("busqueda", "").strip().lower()
+            try:
+                hoja = service.spreadsheets().values().get(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range="Nueva hoja!A:Z"  # Ajusta el rango si lo deseas
+                ).execute()
+                valores = hoja.get("values", [])
+                for fila_index, fila_vals in enumerate(valores[1:], start=2):
+                    # Ajusta índices de columna (ej: nombre en B->fila_vals[1], cédula en O->fila_vals[14], etc.)
+                    nombre = (fila_vals[1].strip().lower() if len(fila_vals) > 1 else "")
+                    cedula = (fila_vals[14].strip().lower() if len(fila_vals) > 14 else "")
+                    telefono = (fila_vals[3].strip().lower() if len(fila_vals) > 3 else "")
+                    # Coincidencia flexible
+                    if busqueda in nombre or busqueda in cedula or busqueda in telefono:
+                        resultados.append({
+                            "fila_index": fila_index,
+                            "nombre": fila_vals[1] if len(fila_vals) > 1 else "No especificado",
+                            "telefono": fila_vals[3] if len(fila_vals) > 3 else "No especificado",
+                            "cedula": fila_vals[14] if len(fila_vals) > 14 else "No especificado"
+                        })
+            except Exception as e:
+                mensaje = f"Error al buscar: {str(e)}"
+        return render_template("gestionar_archivos.html", accion=accion, mensaje=mensaje, resultados=resultados)
+
+    # -----------------------------------------
+    # ACCIÓN: VER DOCUMENTOS
+    # -----------------------------------------
+    elif accion == "ver":
+        if not fila.isdigit():
+            mensaje = "Error: La fila debe ser un número válido."
+            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
+
+        fila_index = int(fila)
+        try:
+            # Leer las columnas AA->AD para imágenes y Z para la entrevista (texto).
+            # Ajusta si tu entrevista está en otra columna.
+            rango_imagenes = f"Nueva hoja!AA{fila_index}:AD{fila_index}"
+            hoja_imagenes = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango_imagenes
+            ).execute()
+            row_vals = hoja_imagenes.get("values", [])
+
+            depuracion_url = ""
+            perfil_url = ""
+            cedula1_url = ""
+            cedula2_url = ""
+            if row_vals and len(row_vals[0]) >= 4:
+                depuracion_url, perfil_url, cedula1_url, cedula2_url = row_vals[0][:4]
+
+            # Leer la columna Z para la entrevista (suponiendo que la entrevista se guardó en Z)
+            rango_entrevista = f"Nueva hoja!Z{fila_index}"
+            hoja_entrevista = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango_entrevista
+            ).execute()
+            entrevista_val = hoja_entrevista.get("values", [])
+
+            entrevista_texto = ""
+            if entrevista_val and entrevista_val[0]:
+                entrevista_texto = entrevista_val[0][0]
+
+            docs = {
+                "depuracion_url": depuracion_url,
+                "perfil_url": perfil_url,
+                "cedula1_url": cedula1_url,
+                "cedula2_url": cedula2_url,
+                "entrevista": entrevista_texto
+            }
+        except Exception as e:
+            mensaje = f"Error al leer datos: {str(e)}"
+            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
+
+        return render_template("gestionar_archivos.html", accion=accion, fila=fila, docs=docs, mensaje=mensaje)
+
+    # -----------------------------------------
+    # ACCIÓN: DESCARGAR (doc=todo, depuracion, perfil, cedula1, cedula2, pdf)
+    # -----------------------------------------
+    elif accion == "descargar":
+        doc = request.args.get("doc", "").strip()
+        if not fila.isdigit():
+            return "Error: Fila inválida", 400
+        fila_index = int(fila)
+
+        if doc == "todo":
+            # Descargar todos en ZIP
+            return descargar_todo_en_zip(fila_index)
+
+        elif doc in ["depuracion", "perfil", "cedula1", "cedula2"]:
+            # Descargar un solo archivo
+            return descargar_uno(fila_index, doc)
+
+        elif doc == "pdf":
+            # Generar PDF de la entrevista y descargar
+            return generar_pdf_entrevista(fila_index)
+
+        else:
+            return "Documento no reconocido", 400
+
+    # Si no coincide, redirigimos a buscar
+    return redirect("/gestionar_archivos?accion=buscar")
+
+# -------------------------------------------------------
+# FUNCIONES AUXILIARES PARA /gestionar_archivos
+# -------------------------------------------------------
+
+def descargar_todo_en_zip(fila_index):
+    """ Crea un ZIP con depuracion, perfil, cedula1, cedula2 si existen. """
+    try:
+        rango_imagenes = f"Nueva hoja!AA{fila_index}:AD{fila_index}"
+        hoja_imagenes = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango_imagenes
+        ).execute()
+        row_vals = hoja_imagenes.get("values", [])
+        depuracion_url, perfil_url, cedula1_url, cedula2_url = [""] * 4
+        if row_vals and len(row_vals[0]) >= 4:
+            depuracion_url, perfil_url, cedula1_url, cedula2_url = row_vals[0][:4]
+    except Exception as e:
+        return f"Error al leer imágenes: {str(e)}", 500
+
+    archivos = {
+        "depuracion.png": depuracion_url,
+        "perfil.png": perfil_url,
+        "cedula1.png": cedula1_url,
+        "cedula2.png": cedula2_url
+    }
+
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, "w") as zf:
+        for nombre_archivo, url in archivos.items():
+            if url:
+                try:
+                    r = requests.get(url)
+                    r.raise_for_status()
+                    zf.writestr(nombre_archivo, r.content)
+                except Exception as ex:
+                    print(f"Error al descargar {nombre_archivo}: {ex}")
+                    continue
+    memory_file.seek(0)
+    return send_file(
+        memory_file,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"documentos_candidata_{fila_index}.zip"
+    )
+
+def descargar_uno(fila_index, doc):
+    """ Descarga un archivo individual (depuracion, perfil, cedula1, cedula2). """
+    col_map = {
+        "depuracion": 0,
+        "perfil": 1,
+        "cedula1": 2,
+        "cedula2": 3
+    }
+    try:
+        rango_imagenes = f"Nueva hoja!AA{fila_index}:AD{fila_index}"
+        hoja_imagenes = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango_imagenes
+        ).execute()
+        row_vals = hoja_imagenes.get("values", [])
+        if not row_vals or len(row_vals[0]) < 4:
+            return "No se encontraron datos en AA-AD", 404
+
+        url = row_vals[0][col_map[doc]]
+        if not url:
+            return f"No hay URL para {doc}", 404
+
+        r = requests.get(url)
+        r.raise_for_status()
+        # Retornamos el archivo con un mimetype genérico
+        # Ajusta si sabes que siempre es PNG
+        return send_file(
+            io.BytesIO(r.content),
+            mimetype="image/png",
+            as_attachment=True,
+            download_name=f"{doc}.png"
+        )
+    except Exception as e:
+        return f"Error al descargar {doc}: {str(e)}", 500
+
+def generar_pdf_entrevista(fila_index):
+    """ Genera un PDF de la entrevista (columna Z) y lo envía como descarga. """
+    # 1. Leer la columna Z
+    try:
+        rango_entrevista = f"Nueva hoja!Z{fila_index}"
+        hoja_entrevista = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango_entrevista
+        ).execute()
+        entrevista_val = hoja_entrevista.get("values", [])
+        if not entrevista_val or not entrevista_val[0]:
+            return "No hay entrevista guardada en la columna Z", 404
+        texto_entrevista = entrevista_val[0][0]
+    except Exception as e:
+        return f"Error al leer entrevista: {str(e)}", 500
+
+    # 2. Generar PDF en memoria
+    from fpdf import FPDF
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, texto_entrevista)
+
+    memory_file = io.BytesIO()
+    pdf.output(memory_file, "F")
+    memory_file.seek(0)
+
+    return send_file(
+        memory_file,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"entrevista_candidata_{fila_index}.pdf"
+    )
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
