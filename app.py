@@ -1960,9 +1960,12 @@ def descargar_uno(fila_index, doc):
         return f"Error al descargar {doc}: {str(e)}", 500
 
 def generar_pdf_entrevista(fila_index):
-    """ Genera un PDF de la entrevista (columna Z) y lo envía como descarga. """
-    # 1. Leer la columna Z
+    """
+    Lee la columna Z de la fila dada (fila_index) en Google Sheets,
+    genera un PDF con el texto de la entrevista y lo envía como descarga.
+    """
     try:
+        # 1. Leer la columna Z para obtener el texto de la entrevista
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1971,27 +1974,38 @@ def generar_pdf_entrevista(fila_index):
         entrevista_val = hoja_entrevista.get("values", [])
         if not entrevista_val or not entrevista_val[0]:
             return "No hay entrevista guardada en la columna Z", 404
+
         texto_entrevista = entrevista_val[0][0]
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
 
-    # 2. Generar PDF en memoria
-    from fpdf import FPDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, texto_entrevista)
+    # 2. Generar PDF en memoria con FPDF
+    try:
+        from fpdf import FPDF
+        import io
+        from flask import send_file
 
-    memory_file = io.BytesIO()
-    pdf.output(memory_file, "F")
-    memory_file.seek(0)
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        pdf.multi_cell(0, 10, texto_entrevista)
 
-    return send_file(
-        memory_file,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=f"entrevista_candidata_{fila_index}.pdf"
-    )
+        # 3. Convertir el PDF a cadena y luego a BytesIO
+        pdf_output = pdf.output(dest="S")  # Devuelve el PDF como cadena
+        memory_file = io.BytesIO(pdf_output.encode("latin1"))
+        memory_file.seek(0)
+
+        # 4. Retornar el PDF como archivo descargable
+        return send_file(
+            memory_file,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"entrevista_candidata_{fila_index}.pdf"
+        )
+    except Exception as e:
+        return f"Error interno generando PDF: {str(e)}", 500
+
+
 
 
 if __name__ == '__main__':
