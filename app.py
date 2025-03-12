@@ -1991,38 +1991,40 @@ def generar_pdf_entrevista(fila_index):
         return f"Error al leer entrevista: {str(e)}", 500
 
     try:
-        # Crear el PDF
+        from fpdf import FPDF
+        import io
+        import os
+        from flask import send_file
+
         pdf = FPDF(orientation="P", unit="mm", format="LETTER")
         pdf.add_page()
 
-        # LOGO: ajusta el nombre real de tu archivo
+        # Ajusta el nombre de tu logo real:
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
         if os.path.exists(logo_path):
-            # Logo grande, ajusta 'w' según necesites
-            pdf.image(logo_path, x=10, y=10, w=50)
+            pdf.image(logo_path, x=10, y=10, w=50)  # Logo grande
         else:
             print("No se encontró el logo en:", logo_path)
 
-        # Encabezado de color en toda la anchura
-        # Movemos el cursor un poco para no tapar el logo
-        pdf.set_y(10)               # Subir a 10 mm desde el borde superior
-        pdf.set_x(0)                # Ir al borde izquierdo
-        pdf.set_fill_color(70, 130, 180)  # Un color "SteelBlue" de ejemplo
+        # Encabezado de color
+        pdf.set_y(10)
+        pdf.set_x(0)
+        pdf.set_fill_color(70, 130, 180)  # "SteelBlue"
         pdf.cell(w=216, h=20, txt="", ln=1, fill=True)  # Ancho ~ 216 mm en carta
 
-        # Título en blanco sobre el rectángulo de color
-        pdf.set_y(15)               # ~ la mitad de la franja de 20 mm
+        # Título en blanco sobre la franja
+        pdf.set_y(15)
         pdf.set_text_color(255, 255, 255)
         pdf.set_font("Arial", "B", 18)
         pdf.cell(0, 10, "Entrevista de Candidata", align="C")
 
         # Bajamos para empezar contenido
-        pdf.ln(25)  # Dejar espacio tras el encabezado
+        pdf.ln(25)
 
-        # Dividir el texto de la entrevista en líneas
+        # Dividir el texto en líneas
         lineas = texto_entrevista.splitlines()
 
-        # Opcional: si tienes mucho texto, un margen lateral:
+        # Márgenes y salto automático
         pdf.set_left_margin(15)
         pdf.set_right_margin(15)
         pdf.set_auto_page_break(auto=True, margin=15)
@@ -2033,8 +2035,8 @@ def generar_pdf_entrevista(fila_index):
 
         # Para cada línea "Pregunta: Respuesta"
         for linea in lineas:
-            # Ignorar líneas vacías
-            if not linea.strip():
+            linea = linea.strip()
+            if not linea:
                 continue
 
             if ":" in linea:
@@ -2042,23 +2044,21 @@ def generar_pdf_entrevista(fila_index):
                 pregunta = parts[0].strip()
                 respuesta = parts[1].strip()
             else:
-                # Si no hay ":", lo tomamos como "Pregunta sin respuesta"
-                pregunta = linea.strip()
+                pregunta = linea
                 respuesta = ""
 
-            # Dibujamos fila: PREGUNTA en gris, RESPUESTA en blanco
-            # -- Ajusta alto de la celda (h=8) según necesites.
-            pdf.set_fill_color(220, 220, 220)  # Gris claro
+            # Celda de pregunta (gris) + celda de respuesta (blanco)
+            pdf.set_fill_color(220, 220, 220)  # gris claro
             pdf.set_font("Arial", "B", 12)
             pdf.cell(60, 8, pregunta, border=1, ln=0, fill=True)
 
-            pdf.set_fill_color(255, 255, 255)  # Blanco
+            pdf.set_fill_color(255, 255, 255)  # blanco
             pdf.set_font("Arial", "", 12)
             pdf.cell(0, 8, respuesta, border=1, ln=1, fill=True)
 
-        # Generar PDF en memoria
-        pdf_output = pdf.output(dest="S").encode("latin1")
-        memory_file = io.BytesIO(pdf_output)
+        # Generar PDF en memoria SIN cerrar el archivo
+        pdf_buffer = pdf.output(dest="S").encode("latin1")  
+        memory_file = io.BytesIO(pdf_buffer)
         memory_file.seek(0)
 
         return send_file(
@@ -2069,7 +2069,6 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
 
 
 if __name__ == '__main__':
