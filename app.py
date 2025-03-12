@@ -35,7 +35,6 @@ import os
 from flask import Flask, render_template, request, redirect
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
@@ -1614,59 +1613,90 @@ def generar_pdf():
 
 @app.route("/subir_fotos", methods=["GET", "POST"])
 def subir_fotos():
-    if request.method == "GET":
-        # Leer la fila desde la URL ?fila=XX
-        fila_param = request.args.get("fila", "")
-        return render_template("subir_fotos.html", fila=fila_param)
+    accion = request.args.get("accion", "buscar").strip()  # Por defecto "buscar"
+    mensaje = None
+    resultados = []
+    fila = request.args.get("fila", "").strip()
 
-    # Si es POST, procesamos la subida
-    fila_param = request.form.get("fila", "").strip()
-    if not fila_param.isdigit():
-        mensaje = "Error: La fila debe ser un número válido."
-        return render_template("subir_fotos.html", mensaje=mensaje, fila=fila_param)
+    # 1. Acción BUSCAR: mostrar formulario y procesar búsqueda
+    if accion == "buscar":
+        if request.method == "POST":
+            busqueda = request.form.get("busqueda", "").strip().lower()
+            try:
+                hoja = service.spreadsheets().values().get(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range="Nueva hoja!A:Z"
+                ).execute()
+                valores = hoja.get("values", [])
+                # Ajusta índices de columna según tu hoja
+                for fila_index, fila_vals in enumerate(valores[1:], start=2):
+                    nombre = (fila_vals[1].strip().lower() if len(fila_vals) > 1 else "")
+                    cedula = (fila_vals[14].strip().lower() if len(fila_vals) > 14 else "")
+                    telefono = (fila_vals[3].strip().lower() if len(fila_vals) > 3 else "")
+                    # Coincidencia flexible
+                    if busqueda in nombre or busqueda in cedula or busqueda in telefono:
+                        resultados.append({
+                            "fila_index": fila_index,
+                            "nombre": fila_vals[1] if len(fila_vals) > 1 else "No especificado",
+                            "telefono": fila_vals[3] if len(fila_vals) > 3 else "No especificado",
+                            "cedula": fila_vals[14] if len(fila_vals) > 14 else "No especificado"
+                        })
+            except Exception as e:
+                mensaje = f"Error al buscar: {str(e)}"
+        return render_template("subir_fotos.html", accion=accion, mensaje=mensaje, resultados=resultados)
 
-    fila_index = int(fila_param)
+    # 2. Acción SUBIR: mostrar o procesar formulario de subida
+    if accion == "subir":
+        if request.method == "GET":
+            # Muestra el formulario de subida
+            return render_template("subir_fotos.html", accion=accion, fila=fila)
 
-    # Archivos que esperas subir
-    depuracion_file = request.files.get("depuracion")
-    perfil_file = request.files.get("perfil")
-    cedula1_file = request.files.get("cedula1")
-    cedula2_file = request.files.get("cedula2")
+        if request.method == "POST":
+            # Subir a Cloudinary
+            if not fila.isdigit():
+                mensaje = "Error: La fila debe ser un número válido."
+                return render_template("subir_fotos.html", accion=accion, fila=fila, mensaje=mensaje)
 
-    # Para organizar las imágenes en una carpeta distinta por candidata en Cloudinary
-    subcarpeta = f"candidata_{fila_index}"
+            fila_index = int(fila)
 
-    # Subimos a Cloudinary y obtenemos las URLs seguras
-    def subir_a_cloudinary(archivo, folder):
-        if archivo:
-            # Sube el archivo y regresa la URL
-            resp = cloudinary.uploader.upload(archivo, folder=folder)
-            return resp.get("secure_url", "")
-        return ""
+            depuracion_file = request.files.get("depuracion")
+            perfil_file = request.files.get("perfil")
+            cedula1_file = request.files.get("cedula1")
+            cedula2_file = request.files.get("cedula2")
 
-    try:
-        depuracion_url = subir_a_cloudinary(depuracion_file, subcarpeta)
-        perfil_url = subir_a_cloudinary(perfil_file, subcarpeta)
-        cedula1_url = subir_a_cloudinary(cedula1_file, subcarpeta)
-        cedula2_url = subir_a_cloudinary(cedula2_file, subcarpeta)
-    except Exception as e:
-        mensaje = f"Error subiendo a Cloudinary: {str(e)}"
-        return render_template("subir_fotos.html", mensaje=mensaje, fila=fila_param)
+            # Helper para subir
+            def subir_a_cloudinary(archivo, folder):
+                if archivo:
+                    resp = cloudinary.uploader.upload(archivo, folder=folder)
+                    return resp.get("secure_url", "")
+                return ""
 
-    # Actualizar la hoja en las columnas AA, AB, AC, AD (ajusta si tus columnas son otras)
-    # Ej: AA -> depuración, AB -> perfil, AC -> cédula1, AD -> cédula2
-    try:
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!AA{fila_index}:AD{fila_index}",
-            valueInputOption="RAW",
-            body={"values": [[depuracion_url, perfil_url, cedula1_url, cedula2_url]]}
-        ).execute()
-        mensaje = "Imágenes subidas y guardadas correctamente."
-    except Exception as e:
-        mensaje = f"Error al actualizar Google Sheets: {str(e)}"
+            subcarpeta = f"candidata_{fila_index}"
+            try:
+                depuracion_url = subir_a_cloudinary(depuracion_file, subcarpeta)
+                perfil_url = subir_a_cloudinary(perfil_file, subcarpeta)
+                cedula1_url = subir_a_cloudinary(cedula1_file, subcarpeta)
+                cedula2_url = subir_a_cloudinary(cedula2_file, subcarpeta)
+            except Exception as e:
+                mensaje = f"Error subiendo a Cloudinary: {str(e)}"
+                return render_template("subir_fotos.html", accion=accion, fila=fila, mensaje=mensaje)
 
-    return render_template("subir_fotos.html", mensaje=mensaje, fila=fila_param)
+            # Guardar en Google Sheets en AA, AB, AC, AD
+            try:
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=f"Nueva hoja!AA{fila_index}:AD{fila_index}",
+                    valueInputOption="RAW",
+                    body={"values": [[depuracion_url, perfil_url, cedula1_url, cedula2_url]]}
+                ).execute()
+                mensaje = "Imágenes subidas y guardadas correctamente."
+            except Exception as e:
+                mensaje = f"Error al actualizar Google Sheets: {str(e)}"
+
+            return render_template("subir_fotos.html", accion=accion, fila=fila, mensaje=mensaje)
+
+    # Si no coincide, redirigimos a buscar
+    return redirect("/subir_fotos?accion=buscar")
 
 
 
