@@ -1713,29 +1713,29 @@ def descargar_documentos():
     fila_index = int(fila)
     
     try:
-        # Leer las URL desde las columnas AA a AE (depuración, perfil, cédula1, cédula2, entrevista PDF)
-        rango = f"Nueva hoja!AA{fila_index}:AE{fila_index}"
+        # Lee SOLO AA a AD (4 columnas)
+        rango = f"Nueva hoja!AA{fila_index}:AD{fila_index}"
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=rango
         ).execute()
         row_values = hoja.get("values", [])
-        if not row_values or len(row_values[0]) < 5:
+        if not row_values or len(row_values[0]) < 4:
             return "No se encontraron suficientes datos en la fila especificada.", 404
-        depuracion_url, perfil_url, cedula1_url, cedula2_url, entrevista_pdf_url = row_values[0][:5]
+
+        # Obtenemos 4 valores
+        depuracion_url, perfil_url, cedula1_url, cedula2_url = row_values[0][:4]
     except Exception as e:
         return f"Error al leer Google Sheets: {str(e)}", 500
 
     # Crear el ZIP en memoria
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, "w") as zf:
-        # Definir los archivos a agregar: nombre del archivo -> URL
         archivos = {
             "depuracion.png": depuracion_url,
             "perfil.png": perfil_url,
             "cedula1.png": cedula1_url,
-            "cedula2.png": cedula2_url,
-            "entrevista.pdf": entrevista_pdf_url
+            "cedula2.png": cedula2_url
         }
         for nombre_archivo, url in archivos.items():
             if url:
