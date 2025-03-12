@@ -1994,20 +1994,26 @@ def generar_pdf_entrevista(fila_index):
         pdf = FPDF()
         pdf.add_page()
 
-        # Ajusta aquí el nombre de tu archivo PNG real (logo_nuevo.png)
+        # Ruta del logo: asegúrate que el archivo se llame "logo_nuevo.png" y esté en static
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
         print("Logo path:", logo_path)  # Depuración
 
         if os.path.exists(logo_path):
             print("Logo encontrado. Insertando imagen...")
-            pdf.image(logo_path, x=10, y=8, w=25)
+
+            # Definir el ancho deseado para el logo (por ejemplo, 50)
+            desired_width = 50
+            # Calcular la posición X para centrar el logo en la página
+            x = (pdf.w - desired_width) / 2
+            # Insertar la imagen del logo
+            pdf.image(logo_path, x=x, y=8, w=desired_width)
         else:
             print("Archivo logo_nuevo.png no existe en esa ruta")
 
         # Dejar espacio debajo del logo
         pdf.ln(30)
 
-        # Título
+        # Título centrado
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(10)
@@ -2029,6 +2035,7 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 
 
