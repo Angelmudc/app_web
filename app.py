@@ -1986,36 +1986,36 @@ def generar_pdf_entrevista(fila_index):
         from flask import send_file
         import os
 
-        # 2. Crear el PDF
         pdf = FPDF()
         pdf.add_page()
 
-        # 3. Insertar el logo (ajusta el nombre si tu archivo no es "logo.png")
+        # Ruta del logo
         logo_path = os.path.join(app.root_path, "static", "logo.png")
-        print("Buscando logo en:", logo_path)  # Depuración en logs
+        print("Logo path:", logo_path)  # Depuración en logs
+        
         if os.path.exists(logo_path):
+            print("Logo encontrado. Insertando imagen...")
             pdf.image(logo_path, x=10, y=8, w=33)
         else:
-            print("Logo no encontrado en:", logo_path)
+            print("Archivo logo.png no existe en esa ruta")
 
-        # Dejar un espacio debajo del logo
+        # Dejar espacio debajo del logo
         pdf.ln(30)
 
-        # 4. Añadir un título centrado
+        # Título
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(10)
 
-        # 5. Escribir la entrevista
+        # Contenido de la entrevista
         pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, texto_entrevista)
 
-        # 6. Convertir el PDF a cadena y luego a BytesIO
+        # Generar PDF en memoria
         pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
-        # 7. Retornar el PDF como archivo descargable
         return send_file(
             memory_file,
             mimetype="application/pdf",
@@ -2024,6 +2024,7 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 
 if __name__ == '__main__':
