@@ -1712,8 +1712,8 @@ def descargar_documentos():
         return "Error: La fila debe ser un número válido.", 400
     fila_index = int(fila)
     
-    # Leer de la hoja las columnas AA a AE (depuración, perfil, cédula1, cédula2, entrevista PDF)
     try:
+        # Leer las URL desde las columnas AA a AE (depuración, perfil, cédula1, cédula2, entrevista PDF)
         rango = f"Nueva hoja!AA{fila_index}:AE{fila_index}"
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1726,7 +1726,7 @@ def descargar_documentos():
     except Exception as e:
         return f"Error al leer Google Sheets: {str(e)}", 500
 
-    # Crear un archivo ZIP en memoria con los documentos
+    # Crear el ZIP en memoria
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, "w") as zf:
         # Definir los archivos a agregar: nombre del archivo -> URL
@@ -1744,16 +1744,16 @@ def descargar_documentos():
                     r.raise_for_status()
                     zf.writestr(nombre_archivo, r.content)
                 except Exception as ex:
-                    # En caso de error, se puede omitir el archivo o registrar el error
                     print(f"Error al descargar {nombre_archivo}: {ex}")
                     continue
-
     memory_file.seek(0)
+    
     return send_file(
         memory_file,
         mimetype="application/zip",
         as_attachment=True,
         download_name=f"documentos_candidata_{fila_index}.zip"
+    )
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
