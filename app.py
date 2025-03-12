@@ -38,6 +38,12 @@ from googleapiclient.discovery import build
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import io
+import zipfile
+import requests
+from flask import Flask, request, send_file
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -1699,7 +1705,55 @@ def subir_fotos():
     return redirect("/subir_fotos?accion=buscar")
 
 
+@app.route('/descargar_documentos', methods=["GET"])
+def descargar_documentos():
+    fila = request.args.get("fila", "").strip()
+    if not fila.isdigit():
+        return "Error: La fila debe ser un número válido.", 400
+    fila_index = int(fila)
+    
+    # Leer de la hoja las columnas AA a AE (depuración, perfil, cédula1, cédula2, entrevista PDF)
+    try:
+        rango = f"Nueva hoja!AA{fila_index}:AE{fila_index}"
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango
+        ).execute()
+        row_values = hoja.get("values", [])
+        if not row_values or len(row_values[0]) < 5:
+            return "No se encontraron suficientes datos en la fila especificada.", 404
+        depuracion_url, perfil_url, cedula1_url, cedula2_url, entrevista_pdf_url = row_values[0][:5]
+    except Exception as e:
+        return f"Error al leer Google Sheets: {str(e)}", 500
 
+    # Crear un archivo ZIP en memoria con los documentos
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, "w") as zf:
+        # Definir los archivos a agregar: nombre del archivo -> URL
+        archivos = {
+            "depuracion.png": depuracion_url,
+            "perfil.png": perfil_url,
+            "cedula1.png": cedula1_url,
+            "cedula2.png": cedula2_url,
+            "entrevista.pdf": entrevista_pdf_url
+        }
+        for nombre_archivo, url in archivos.items():
+            if url:
+                try:
+                    r = requests.get(url)
+                    r.raise_for_status()
+                    zf.writestr(nombre_archivo, r.content)
+                except Exception as ex:
+                    # En caso de error, se puede omitir el archivo o registrar el error
+                    print(f"Error al descargar {nombre_archivo}: {ex}")
+                    continue
+
+    memory_file.seek(0)
+    return send_file(
+        memory_file,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"documentos_candidata_{fila_index}.zip"
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
