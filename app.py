@@ -1994,15 +1994,15 @@ def generar_pdf_entrevista(fila_index):
         pdf = FPDF()
         pdf.add_page()
 
-        # Ruta del logo
-        logo_path = os.path.join(app.root_path, "static", "logo.png")
-        print("Logo path:", logo_path)  # Depuración en logs
-        
+        # Ajusta aquí el nombre de tu archivo PNG real (logo_nuevo.png)
+        logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
+        print("Logo path:", logo_path)  # Depuración
+
         if os.path.exists(logo_path):
             print("Logo encontrado. Insertando imagen...")
-            pdf.image(logo_path, x=10, y=8, w=33)
+            pdf.image(logo_path, x=10, y=8, w=25)
         else:
-            print("Archivo logo.png no existe en esa ruta")
+            print("Archivo logo_nuevo.png no existe en esa ruta")
 
         # Dejar espacio debajo del logo
         pdf.ln(30)
@@ -2029,84 +2029,6 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
-@app.route("/descargar_entrevista/<int:fila_index>", methods=["GET"])
-def descargar_entrevista(fila_index):
-    """
-    Genera un PDF con la entrevista (columna Z) y lo retorna como descarga.
-    """
-    return generar_pdf_entrevista(fila_index)
-
-def generar_pdf_entrevista(fila_index):
-    """
-    Lee la entrevista de la columna Z (ej: Z3, Z4...) en la fila dada (fila_index)
-    y genera un PDF con diseño básico y el logo. Retorna el PDF como descarga.
-    """
-
-    # 1) Leer el texto de la entrevista desde la columna Z
-    rango_entrevista = f"Nueva hoja!Z{fila_index}"
-    try:
-        hoja_entrevista = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_entrevista
-        ).execute()
-        entrevista_val = hoja_entrevista.get("values", [])
-        if not entrevista_val or not entrevista_val[0]:
-            # No hay nada en esa celda
-            return "No se encontró entrevista en la columna Z de esa fila.", 404
-        texto_entrevista = entrevista_val[0][0]
-    except Exception as e:
-        current_app.logger.info(f"Error al leer la entrevista en Z{fila_index}: {str(e)}")
-        return f"Error al leer la entrevista: {str(e)}", 500
-
-    # 2) Crear el PDF con FPDF
-    pdf = FPDF()
-    pdf.add_page()
-
-    # 2.1) Insertar logo
-    #     Ajusta la ruta a tu archivo. Si tu logo está en static/logo.png:
-    logo_path = os.path.join(app.root_path, "static", "logo.png")
-    if os.path.exists(logo_path):
-        # Inserta el logo en la esquina superior izquierda (x=10, y=8, ancho=25 mm)
-        pdf.image(logo_path, x=10, y=8, w=25)
-    else:
-        current_app.logger.info(f"No se encontró el logo en la ruta: {logo_path}")
-
-    # 2.2) Encabezado principal
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Doméstica del Cibao A&D", ln=1, align="C")
-
-    # Subtítulo con la fecha
-    fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y")
-    pdf.set_font("Arial", "", 11)
-    pdf.cell(0, 8, f"Fecha de generación: {fecha_hoy}", ln=1, align="C")
-
-    # Salto de línea para dejar espacio debajo del logo
-    pdf.ln(20)
-
-    # 2.3) Título de la sección de entrevista
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "Contenido de la Entrevista:", ln=1)
-
-    # 2.4) Cuerpo de la entrevista
-    pdf.set_font("Arial", "", 11)
-    # Usamos multi_cell para que el texto se ajuste a varias líneas
-    pdf.multi_cell(0, 8, texto_entrevista)
-
-    # 3) Guardar en un BytesIO para devolverlo como archivo
-    #    fpdf 1.7.2 no permite output directo a BytesIO usando "F",
-    #    así que hacemos output(dest="S") para obtenerlo como string.
-    pdf_bytes = pdf.output(dest="S").encode("latin-1")  # Codificamos en latin-1
-    memory_file = BytesIO(pdf_bytes)
-    memory_file.seek(0)
-
-    # 4) Retornar el archivo PDF como descarga
-    return send_file(
-        memory_file,
-        mimetype="application/pdf",
-        download_name=f"Entrevista_Fila_{fila_index}.pdf",
-        as_attachment=True
-    )
 
 
 
