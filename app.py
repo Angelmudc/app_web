@@ -1967,8 +1967,8 @@ def descargar_uno(fila_index, doc):
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con el texto de la entrevista y un logo en la parte superior,
-    y lo envía como descarga.
+    genera un PDF con un encabezado colorido, el logo centrado, título en blanco
+    y el contenido de la entrevista en forma de tabla (Pregunta/Respuesta).
     """
     try:
         # 1. Leer la columna Z para el texto de la entrevista
@@ -1991,61 +1991,84 @@ def generar_pdf_entrevista(fila_index):
         import os
         from flask import send_file
 
+        # Instanciamos el PDF
         pdf = FPDF()
         pdf.add_page()
 
-        # ----------- Insertar LOGO -----------
-        # Ajusta el nombre del archivo según lo que tengas en /static
+        # ==================================
+        # ENCABEZADO CON COLOR Y LOGO
+        # ==================================
+        # -- Dibuja un rectángulo relleno en la parte superior (ancho 210 mm, alto 40 mm)
+        pdf.set_fill_color(66, 100, 157)  # un azul medio (ajusta al gusto)
+        pdf.rect(0, 0, 210, 40, 'F')      # x=0, y=0, w=210, h=40 (en mm), 'F' = Fill
+
+        # -- Insertar LOGO (asegúrate de que sea PNG y esté en /static)
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        
+        logo_width = 30  # Ajusta el ancho
         if os.path.exists(logo_path):
-            # Para centrar el logo, calculamos la posición x.
-            # Por defecto la página es de 210mm de ancho (A4) en horizontal.
-            logo_width = 60  # Ajusta el ancho del logo a tu gusto
-            x_pos = (210 - logo_width) / 2  # Centrado
-            pdf.image(logo_path, x=x_pos, y=10, w=logo_width)
-        # Dejar un espacio vertical debajo del logo
-        pdf.ln(50)
+            # Para centrar, calculamos la posición X
+            x_logo = (210 - logo_width) / 2
+            pdf.image(logo_path, x=x_logo, y=5, w=logo_width)
 
-        # ----------- TÍTULO -----------
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
-        pdf.ln(5)
+        # -- Título sobre la franja de color
+        pdf.set_font("Arial", "B", 18)
+        pdf.set_text_color(255, 255, 255)  # texto en blanco
+        # Ubicamos el cursor un poco más abajo, manualmente
+        pdf.set_xy(0, 25)  
+        pdf.cell(210, 10, "Entrevista de Candidata", border=0, ln=1, align="C")
 
-        # ----------- Formatear la ENTREVISTA -----------
-        # Suponemos que cada línea puede ser "Pregunta: Respuesta"
+        # -- Ajustar el cursor debajo del encabezado
+        pdf.set_y(50)  # Bajamos hasta 50 mm
+
+        # ==================================
+        # FORMATO DE TABLA (Pregunta / Respuesta)
+        # ==================================
+        # Dividimos el texto en líneas
         lines = texto_entrevista.split('\n')
 
+        # Anchos de las columnas
+        col_width_question = 60
+        col_width_answer  = 130
+        row_height = 8
+
+        # Fuente por defecto para la tabla
+        pdf.set_font("Arial", "", 11)
+        pdf.set_text_color(0, 0, 0)
+
+        # Recorremos cada línea
         for line in lines:
             line = line.strip()
+            if not line:
+                # Si la línea está vacía, dejamos un espacio
+                pdf.ln(row_height // 2)
+                continue
+
             if ':' in line:
                 # Separamos en "Pregunta" y "Respuesta"
                 parts = line.split(':', 1)
                 pregunta = parts[0].strip()
                 respuesta = parts[1].strip() if len(parts) > 1 else ''
-
-                # -- Pregunta en NEGRITA, fondo gris, texto azul --
-                pdf.set_fill_color(220, 220, 220)   # Gris claro
-                pdf.set_text_color(0, 0, 150)       # Azul
-                pdf.set_font("Arial", "B", 12)      # Negrita
-                pdf.multi_cell(0, 8, pregunta + ":", 0, 'L', True)
-
-                # -- Respuesta normal, fondo blanco, texto negro --
-                pdf.set_fill_color(255, 255, 255)   # Blanco
-                pdf.set_text_color(0, 0, 0)         # Negro
-                pdf.set_font("Arial", "", 12)       # Normal
-                pdf.multi_cell(0, 8, respuesta, 0, 'J', True)
-
-                pdf.ln(3)  # Espacio extra entre bloque
             else:
-                # Si no hay ":", lo mostramos como línea suelta
-                pdf.set_fill_color(255, 255, 255)
-                pdf.set_text_color(0, 0, 0)
-                pdf.set_font("Arial", "", 12)
-                pdf.multi_cell(0, 8, line)
-                pdf.ln(3)
+                # Si no hay ":", tratamos la línea completa como respuesta sin pregunta
+                pregunta = "Nota"
+                respuesta = line
 
-        # ----------- Generar PDF en memoria -----------
+            # Pregunta en negrita
+            pdf.set_font("Arial", "B", 11)
+            pdf.set_fill_color(230, 230, 230)  # gris claro de fondo para la pregunta
+            pdf.cell(col_width_question, row_height, pregunta + ":", border=1, align="L", fill=True)
+
+            # Respuesta normal
+            pdf.set_font("Arial", "", 11)
+            pdf.set_fill_color(255, 255, 255)
+            # En caso de que la respuesta sea muy larga, se podría usar multi_cell
+            # Pero aquí, para simplificar, iremos con cell. 
+            # Si deseas multi_cell, debes reorganizar la lógica para romper la línea.
+            pdf.cell(col_width_answer, row_height, respuesta, border=1, ln=1, align="L", fill=True)
+
+        # ==================================
+        # GENERAR PDF EN MEMORIA
+        # ==================================
         pdf_output = pdf.output(dest="S")  # Devuelve contenido como string
         memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
@@ -2056,8 +2079,10 @@ def generar_pdf_entrevista(fila_index):
             as_attachment=True,
             download_name=f"entrevista_candidata_{fila_index}.pdf"
         )
+
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 
 if __name__ == '__main__':
