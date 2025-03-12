@@ -1988,42 +1988,65 @@ def generar_pdf_entrevista(fila_index):
     try:
         from fpdf import FPDF
         import io
-        from flask import send_file
         import os
+        from flask import send_file
 
         pdf = FPDF()
         pdf.add_page()
 
-        # Ruta del logo: asegúrate que el archivo se llame "logo_nuevo.png" y esté en static
+        # ----------- Insertar LOGO -----------
+        # Ajusta el nombre del archivo según lo que tengas en /static
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        print("Logo path:", logo_path)  # Depuración
-
+        
         if os.path.exists(logo_path):
-            print("Logo encontrado. Insertando imagen...")
+            # Para centrar el logo, calculamos la posición x.
+            # Por defecto la página es de 210mm de ancho (A4) en horizontal.
+            logo_width = 60  # Ajusta el ancho del logo a tu gusto
+            x_pos = (210 - logo_width) / 2  # Centrado
+            pdf.image(logo_path, x=x_pos, y=10, w=logo_width)
+        # Dejar un espacio vertical debajo del logo
+        pdf.ln(50)
 
-            # Definir el ancho deseado para el logo (por ejemplo, 50)
-            desired_width = 50
-            # Calcular la posición X para centrar el logo en la página
-            x = (pdf.w - desired_width) / 2
-            # Insertar la imagen del logo
-            pdf.image(logo_path, x=x, y=8, w=desired_width)
-        else:
-            print("Archivo logo_nuevo.png no existe en esa ruta")
-
-        # Dejar espacio debajo del logo
-        pdf.ln(30)
-
-        # Título centrado
+        # ----------- TÍTULO -----------
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
-        pdf.ln(10)
+        pdf.ln(5)
 
-        # Contenido de la entrevista
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, texto_entrevista)
+        # ----------- Formatear la ENTREVISTA -----------
+        # Suponemos que cada línea puede ser "Pregunta: Respuesta"
+        lines = texto_entrevista.split('\n')
 
-        # Generar PDF en memoria
-        pdf_output = pdf.output(dest="S")
+        for line in lines:
+            line = line.strip()
+            if ':' in line:
+                # Separamos en "Pregunta" y "Respuesta"
+                parts = line.split(':', 1)
+                pregunta = parts[0].strip()
+                respuesta = parts[1].strip() if len(parts) > 1 else ''
+
+                # -- Pregunta en NEGRITA, fondo gris, texto azul --
+                pdf.set_fill_color(220, 220, 220)   # Gris claro
+                pdf.set_text_color(0, 0, 150)       # Azul
+                pdf.set_font("Arial", "B", 12)      # Negrita
+                pdf.multi_cell(0, 8, pregunta + ":", 0, 'L', True)
+
+                # -- Respuesta normal, fondo blanco, texto negro --
+                pdf.set_fill_color(255, 255, 255)   # Blanco
+                pdf.set_text_color(0, 0, 0)         # Negro
+                pdf.set_font("Arial", "", 12)       # Normal
+                pdf.multi_cell(0, 8, respuesta, 0, 'J', True)
+
+                pdf.ln(3)  # Espacio extra entre bloque
+            else:
+                # Si no hay ":", lo mostramos como línea suelta
+                pdf.set_fill_color(255, 255, 255)
+                pdf.set_text_color(0, 0, 0)
+                pdf.set_font("Arial", "", 12)
+                pdf.multi_cell(0, 8, line)
+                pdf.ln(3)
+
+        # ----------- Generar PDF en memoria -----------
+        pdf_output = pdf.output(dest="S")  # Devuelve contenido como string
         memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
@@ -2035,8 +2058,6 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
-
 
 
 if __name__ == '__main__':
