@@ -1973,7 +1973,7 @@ def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
     genera un PDF profesional con un encabezado (logo y título) solo en la primera página,
-    organiza el contenido de la entrevista en preguntas y respuestas,
+    organiza el contenido de la entrevista en preguntas y respuestas (agregando un bullet al inicio de cada respuesta)
     y lo envía como descarga.
     """
     try:
@@ -2004,9 +2004,9 @@ def generar_pdf_entrevista(fila_index):
                 if self.page_no() == 1:
                     logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
                     if os.path.exists(logo_path):
-                        # Aumentamos el tamaño del logo (por ejemplo, 70 unidades de ancho)
+                        # Logo más grande (70 de ancho) y centrado horizontalmente
                         logo_w = 70
-                        x_pos = (self.w - logo_w) / 2  # Centrado horizontalmente
+                        x_pos = (self.w - logo_w) / 2
                         self.image(logo_path, x=x_pos, y=8, w=logo_w)
                     else:
                         self.set_font("Arial", "B", 12)
@@ -2014,7 +2014,7 @@ def generar_pdf_entrevista(fila_index):
                     self.ln(40)
                     # Título con fondo de color
                     self.set_font("Arial", "B", 16)
-                    self.set_fill_color(74, 105, 189)  # Azul (personalizable)
+                    self.set_fill_color(74, 105, 189)  # Azul personalizable
                     self.set_text_color(255, 255, 255)
                     self.cell(0, 12, "Entrevista de Candidata", border=0, ln=True, align="C", fill=True)
                     self.ln(8)
@@ -2028,35 +2028,51 @@ def generar_pdf_entrevista(fila_index):
                 self.set_text_color(128, 128, 128)
                 self.cell(0, 10, f"Página {self.page_no()}", 0, 0, "C")
 
-        # Crear instancia del PDF personalizado
         pdf = PDF()
         pdf.add_page()
-
-        # Establecer fuente base para el contenido
         pdf.set_font("Arial", size=12)
 
-        # Procesar el contenido de la entrevista:
-        # Separamos por líneas y, si se detecta ":" se asume pregunta:respuesta
+        # Procesar el contenido de la entrevista, línea por línea.
+        # Se asume que cada línea con ":" es "Pregunta: Respuesta"
         lines = texto_entrevista.split("\n")
         for line in lines:
             line = line.strip()
             if not line:
                 pdf.ln(5)
                 continue
+
             if ":" in line:
-                # Separamos la pregunta y la respuesta
                 question, answer = line.split(":", 1)
+                # Imprimir la pregunta en negrita
                 pdf.set_font("Arial", "B", 12)
                 pdf.multi_cell(0, 8, question.strip() + ":", align="L")
                 pdf.ln(1)
+                # Imprimir la respuesta con un bullet al inicio
                 pdf.set_font("Arial", "", 12)
-                pdf.multi_cell(0, 8, answer.strip(), align="L")
+                # Cambiar a color azul para la respuesta (puedes ajustar el RGB)
+                pdf.set_text_color(100, 149, 237)
+                # Imprimir el bullet con fuente un poco más grande
+                pdf.set_font("Arial", "", 14)
+                bullet = "•"
+                # Fijamos una celda para el bullet y luego imprimimos la respuesta en la misma línea
+                # Ajustamos el ancho del bullet (por ejemplo, 10)
+                pdf.cell(10, 8, bullet, ln=0)
+                # Restaurar el tamaño de la fuente para la respuesta
+                pdf.set_font("Arial", "", 12)
+                # Asegurarse de que la respuesta comience con un espacio
+                formatted_answer = " " + answer.strip()
+                # Si la respuesta no termina con signo de puntuación, se agrega un punto.
+                if formatted_answer and formatted_answer[-1] not in ".!?":
+                    formatted_answer += "."
+                pdf.multi_cell(0, 8, formatted_answer, align="L")
                 pdf.ln(3)
+                # Restaurar el color a negro
+                pdf.set_text_color(0, 0, 0)
             else:
                 pdf.multi_cell(0, 8, line, align="L")
                 pdf.ln(3)
 
-        # Generar PDF en memoria (sin necesidad de codificar)
+        # Generar PDF en memoria sin usar .encode() ya que output(dest="S") devuelve un bytearray
         pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
@@ -2069,6 +2085,7 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 
 if __name__ == '__main__':
