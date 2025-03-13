@@ -1972,11 +1972,12 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con texto + logo, usando la fuente DejaVuSans
-    (regular y bold) en fpdf2.
+    genera un PDF con encabezado + preguntas y respuestas
+    usando DejaVuSans (regular y bold) en fpdf2.
     """
+
+    # 1) Obtener texto de la columna Z
     try:
-        # 1. Leer la columna Z
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1986,53 +1987,88 @@ def generar_pdf_entrevista(fila_index):
         if not entrevista_val or not entrevista_val[0]:
             return "No hay entrevista guardada en la columna Z", 404
 
-        texto_entrevista = entrevista_val[0][0]
+        texto_entrevista = entrevista_val[0][0]  # El contenido completo
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
 
+    # 2) Generar PDF
     try:
-        from fpdf import FPDF
-        import io
-        from flask import send_file
         import os
+        import io
+        from fpdf import FPDF
+        from flask import send_file
 
         pdf = FPDF()
         pdf.add_page()
 
-        # -- Registrar fuentes (asegúrate de tener ambos archivos TTF) --
-        regular_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans.ttf")
-        bold_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans-Bold.ttf")
+        # -- Registrar las fuentes DejaVuSans (regular y bold) --
+        font_dir = os.path.join(app.root_path, "static", "fonts")
+        regular_path = os.path.join(font_dir, "DejaVuSans.ttf")
+        bold_path = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
 
         pdf.add_font("DejaVuSans", "", regular_path, uni=True)
         pdf.add_font("DejaVuSans", "B", bold_path, uni=True)
 
-        # -- LOGO (opcional) --
+        # -- Agregar logo (opcional) centrado arriba --
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
         if os.path.exists(logo_path):
-            # Ajustar posición y tamaño
-            desired_width = 50
-            x_pos = (pdf.w - desired_width) / 2
-            pdf.image(logo_path, x=x_pos, y=10, w=desired_width)
+            # Ajustar ancho del logo según tu preferencia
+            logo_width = 50
+            x_pos = (pdf.w - logo_width) / 2  # centrar horizontalmente
+            pdf.image(logo_path, x=x_pos, y=10, w=logo_width)
+            pdf.ln(35)  # bajar un poco después del logo
+        else:
+            pdf.ln(10)
 
-        pdf.ln(35)  # Espacio debajo del logo
-
-        # -- TÍTULO EN NEGRITA --
+        # -- Título en negrita, color negro --
         pdf.set_font("DejaVuSans", "B", 16)
+        pdf.set_text_color(0, 0, 0)  # Negro
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(5)
 
-        # -- Texto en color azul (ejemplo) --
-        pdf.set_text_color(0, 0, 139)  # Azul
-        pdf.set_font("DejaVuSans", size=12)  # Volver a regular
-
-        # Separar el texto de la entrevista por saltos de línea
+        # Separar todo el texto por líneas
         lines = texto_entrevista.split("\n")
 
+        # Recorremos cada línea
         for line in lines:
-            pdf.multi_cell(0, 8, line.strip(), border=0, ln=1)
+            line = line.strip()
+            if not line:
+                pdf.ln(3)  # si la línea está vacía, dejamos un espacio y continuamos
+                continue
 
-        # -- Generar PDF en memoria --
-        pdf_output = pdf.output(dest="S")  # Retorna bytes
+            # Verificamos si hay dos puntos para separar pregunta:respuesta
+            if ":" in line:
+                # Separamos solo en el primer ":", por si la respuesta contiene más
+                parts = line.split(":", 1)
+                pregunta = parts[0].strip()
+                respuesta = parts[1].strip()
+
+                # 1) Pregunta en negrita, color negro
+                pdf.set_font("DejaVuSans", "B", 12)
+                pdf.set_text_color(0, 0, 0)  # Negro
+                pdf.multi_cell(0, 8, f"{pregunta}:", border=0)
+                
+                # 2) Respuesta con bullet (•) en color azul
+                pdf.set_font("DejaVuSans", "", 12)
+                # Un azul intermedio (RGB). Puedes ajustarlo a tu gusto
+                pdf.set_text_color(0, 0, 139)  # "DarkBlue" approx
+                # Agregamos el bullet y la respuesta
+                pdf.multi_cell(0, 8, f"• {respuesta}", border=0)
+                pdf.ln(3)  # un pequeño espacio extra
+
+            else:
+                # Línea sin dos puntos: la imprimimos normal (quizá es un comentario o algo)
+                pdf.set_font("DejaVuSans", "", 12)
+                pdf.set_text_color(0, 0, 0)  # Negro
+                pdf.multi_cell(0, 8, line, border=0)
+                pdf.ln(3)
+
+        # Exportar el PDF a bytes en memoria
+        pdf_output = pdf.output(dest="S").encode("latin1")  
+        # fpdf2 normalmente retorna bytes directamente,
+        # pero si te diera error, podrías usar memory_file = io.BytesIO(pdf.output(dest="S"))
+        # y omitir .encode("latin1").
+
         memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
 
@@ -2042,6 +2078,7 @@ def generar_pdf_entrevista(fila_index):
             as_attachment=True,
             download_name=f"entrevista_candidata_{fila_index}.pdf"
         )
+
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
 
