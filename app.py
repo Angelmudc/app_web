@@ -1972,12 +1972,13 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con el texto de la entrevista, un encabezado (solo en la primera página)
-    con un logo centrado y grande, y con pie de página.
-    Las respuestas (líneas que inician con "R:") se muestran en azul y se les antepone un bullet.
+    genera un PDF con un encabezado (con logo centrado y grande, solo en la primera página)
+    y un pie de página. Se asume que el contenido de la entrevista es texto con líneas alternadas:
+    preguntas y respuestas. Las preguntas se muestran en negro (con signo de interrogación al final)
+    y las respuestas en azul, precedidas de un bullet negro grande.
     """
     try:
-        # Leer la entrevista desde Google Sheets (columna Z)
+        # 1. Leer la columna Z para el texto de la entrevista
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1986,6 +1987,7 @@ def generar_pdf_entrevista(fila_index):
         entrevista_val = hoja_entrevista.get("values", [])
         if not entrevista_val or not entrevista_val[0]:
             return "No hay entrevista guardada en la columna Z", 404
+
         texto_entrevista = entrevista_val[0][0]
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
@@ -1996,76 +1998,76 @@ def generar_pdf_entrevista(fila_index):
         from fpdf import FPDF
         from flask import send_file
 
-        # Definimos una subclase personalizada de FPDF para header y footer
+        # Definir subclase para header y footer
         class MyPDF(FPDF):
             def header(self):
                 if self.page_no() == 1:
-                    # Insertar logo centrado
                     logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
                     if os.path.exists(logo_path):
-                        logo_w = 70  # Ajusta el ancho del logo (más grande)
+                        # Logo más grande y centrado (ajusta el ancho según lo necesites)
+                        logo_w = 70
                         x = (self.w - logo_w) / 2
                         self.image(logo_path, x=x, y=8, w=logo_w)
-                    self.ln(35)  # Espacio debajo del logo
-                    # Encabezado: título
+                    self.ln(35)
                     self.set_font("DejaVuSans", "B", 16)
                     self.set_text_color(0, 0, 0)
                     self.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
                     self.ln(5)
-
             def footer(self):
-                # Pie de página: posición a 15mm del final, con número de página
                 self.set_y(-15)
                 self.set_font("DejaVuSans", "I", 8)
                 self.set_text_color(128, 128, 128)
                 self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
 
-        # Crear objeto PDF y configurar márgenes
         pdf = MyPDF()
         pdf.set_margins(15, 15, 15)
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
 
-        # Registrar y usar fuentes Unicode para soportar caracteres especiales
+        # Registrar las fuentes Unicode
         font_dir = os.path.join(app.root_path, "static", "fonts")
         regular_path = os.path.join(font_dir, "DejaVuSans.ttf")
         bold_path = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
         pdf.add_font("DejaVuSans", "", regular_path, uni=True)
         pdf.add_font("DejaVuSans", "B", bold_path, uni=True)
+        pdf.add_font("DejaVuSans", "I", regular_path, uni=True)
         pdf.set_font("DejaVuSans", "", 12)
 
-        # Ancho disponible para el texto (restando márgenes)
         available_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-        # Procesar el texto de la entrevista línea a línea
-        # Se espera que las respuestas comiencen con "R:" y las preguntas sin ese prefijo.
-        lines = texto_entrevista.split("\n")
-        for line in lines:
-            line = line.strip()
-            if not line:
-                pdf.ln(4)
-                continue
-
-            if line.startswith("R:"):
-                # Respuesta: se mostrará en azul con bullet grande
-                pdf.set_text_color(0, 0, 200)  # Azul
-                # Cambiar a un tamaño mayor para el bullet
-                pdf.set_font("DejaVuSans", "", 14)
-                pdf.cell(10, 8, "•", border=0)
-                # Volver al tamaño normal para el texto
-                pdf.set_font("DejaVuSans", "", 12)
-                text = " " + line[2:].strip() + "."
-            else:
-                # Pregunta: en negro
+        # Procesar el texto: separamos las líneas no vacías y asumimos que se alternan preguntas y respuestas
+        lines = [l.strip() for l in texto_entrevista.split("\n") if l.strip() != ""]
+        for i, line in enumerate(lines):
+            if i % 2 == 0:
+                # Pregunta: se muestra en negro y se le agrega un signo de interrogación
                 pdf.set_text_color(0, 0, 0)
-                text = line + "."
-            pdf.multi_cell(available_width, 8, text, border=0)
-            pdf.ln(2)
+                pdf.set_font("DejaVuSans", "", 12)
+                # Agrega "?" al final (si no lo tiene ya)
+                if not line.endswith("?"):
+                    line += "?"
+                pdf.multi_cell(available_width, 8, line, border=0)
+                pdf.ln(2)
+            else:
+                # Respuesta: se muestra en azul. Se dibuja un bullet negro grande al principio.
+                # Dibujar bullet en negro:
+                pdf.set_text_color(0, 0, 0)
+                pdf.set_font("DejaVuSans", "", 16)
+                bullet = "• "
+                bullet_width = pdf.get_string_width(bullet)
+                pdf.cell(bullet_width, 8, bullet, border=0)
+                # Ahora la respuesta en azul
+                pdf.set_text_color(0, 0, 200)
+                pdf.set_font("DejaVuSans", "", 12)
+                # Agregar punto final a la respuesta (si lo deseas)
+                if not line.endswith("."):
+                    line += "."
+                pdf.multi_cell(available_width - bullet_width, 8, line, border=0)
+                pdf.ln(2)
 
-        # Generar el PDF en memoria
         pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
+
         return send_file(
             memory_file,
             mimetype="application/pdf",
