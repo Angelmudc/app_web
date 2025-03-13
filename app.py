@@ -1971,15 +1971,20 @@ import os
 
 def generar_pdf_entrevista(fila_index):
     """
-    Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con el texto de la entrevista, mostrando:
-      - Encabezado con logo (centrado y grande) y título (solo en la primera página)
-      - Las preguntas en negro y, debajo de cada ":", la respuesta en azul precedida de un bullet grande.
-      - Pie de página en la primera página.
-    Devuelve el PDF como descarga.
+    Genera un PDF de la entrevista de la candidata con:
+     - Encabezado (logo centrado y título, solo en la primera página)
+     - Preguntas en negro y, debajo de cada ":", la respuesta en azul precedida
+       de un bullet grande ("•").
+     - Pie de página en la primera página.
+     
+    Requiere que existan las fuentes Unicode en:
+      app_web/static/fonts/DejaVuSans.ttf
+      app_web/static/fonts/DejaVuSans-Bold.ttf
+    y que el logo se encuentre en:
+      app_web/static/logo_nuevo.png
     """
     try:
-        # Leer el texto de la entrevista (columna Z)
+        # Leer la entrevista (columna Z) de Google Sheets
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -2001,35 +2006,33 @@ def generar_pdf_entrevista(fila_index):
         pdf = FPDF()
         pdf.add_page()
 
-        # Agregar fuentes Unicode
+        # Agregar fuentes Unicode (asegúrate de que los archivos existan)
         font_dir = os.path.join(app.root_path, "static", "fonts")
-        regular_font = os.path.join(font_dir, "DejaVuSans.ttf")
-        bold_font = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
-        if not os.path.exists(regular_font) or not os.path.exists(bold_font):
-            return "No se encontraron los archivos de fuente en static/fonts/", 500
-        pdf.add_font("DejaVuSans", "", regular_font, uni=True)
-        pdf.add_font("DejaVuSans", "B", bold_font, uni=True)
+        regular_font_path = os.path.join(font_dir, "DejaVuSans.ttf")
+        bold_font_path = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+        if not os.path.exists(regular_font_path) or not os.path.exists(bold_font_path):
+            return "No se encontraron las fuentes en static/fonts/", 500
+        pdf.add_font("DejaVuSans", "", regular_font_path, uni=True)
+        pdf.add_font("DejaVuSans", "B", bold_font_path, uni=True)
 
-        # Encabezado: Logo y título (solo en la primera página)
-        # Logo centrado y agrandado
+        # Encabezado: Logo y Título (solo en la primera página)
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
         if os.path.exists(logo_path):
-            image_width = 50  # Ajusta el ancho deseado (en mm)
+            image_width = 50  # Ancho del logo en mm (ajústalo a tu gusto)
             x_pos = (pdf.w - image_width) / 2
             pdf.image(logo_path, x=x_pos, y=10, w=image_width)
         else:
             print("Logo no encontrado:", logo_path)
         pdf.ln(40)  # Espacio debajo del logo
 
-        # Título en negrita (centrado)
+        # Título centrado (en negrita)
         pdf.set_font("DejaVuSans", "B", 18)
         pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(10)
 
-        # Preparar para las preguntas y respuestas
+        # Procesar las líneas de la entrevista
         pdf.set_font("DejaVuSans", "", 12)
-        pdf.set_text_color(0, 0, 0)
         lines = texto_entrevista.split("\n")
         for line in lines:
             pdf.set_x(pdf.l_margin)
@@ -2040,34 +2043,39 @@ def generar_pdf_entrevista(fila_index):
                 # Imprimir la pregunta en negro
                 pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(0, 8, pregunta)
-                pdf.ln(2)
+                pdf.ln(1)
                 # Imprimir el bullet grande y la respuesta en azul
-                pdf.set_x(pdf.l_margin)
                 pdf.set_font("DejaVuSans", "", 16)
-                pdf.cell(10, 8, "•", ln=0)
+                bullet = "•"
+                bullet_width = pdf.get_string_width(bullet)
+                pdf.set_x(pdf.l_margin)
+                pdf.cell(bullet_width, 8, bullet, ln=0)
                 pdf.set_font("DejaVuSans", "", 12)
                 pdf.set_text_color(0, 102, 204)
-                # Para que la respuesta inicie debajo del bullet, se puede hacer un salto de línea
+                # La respuesta en nueva línea, con un pequeño margen a la derecha
                 pdf.ln(0)
-                pdf.set_x(pdf.l_margin + 12)  # Desplazar un poco para la respuesta
+                pdf.set_x(pdf.l_margin + bullet_width + 2)
                 pdf.multi_cell(0, 8, respuesta)
                 pdf.ln(4)
             else:
-                pdf.set_x(pdf.l_margin)
                 pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(0, 8, line)
                 pdf.ln(4)
 
-        # Pie de página (solo en la primera página)
+        # Pie de página en la primera página
         pdf.set_y(-20)
         pdf.set_font("DejaVuSans", "", 10)
         pdf.set_text_color(100, 100, 100)
         pdf.cell(0, 10, "© 2024 Doméstica del Cibao A&D", 0, 0, "C")
 
-        # Generar PDF en memoria
+        # Generar el PDF en memoria
         pdf_output = pdf.output(dest="S")
-        # Nota: pdf_output es una cadena; no se usa encode() porque ya es "str" en formato latin1
-        memory_file = io.BytesIO(pdf_output.encode("latin1"))
+        # Si pdf_output ya es bytes o bytearray, no se debe usar encode()
+        if isinstance(pdf_output, str):
+            pdf_bytes = pdf_output.encode("latin1")
+        else:
+            pdf_bytes = pdf_output
+        memory_file = io.BytesIO(pdf_bytes)
         memory_file.seek(0)
 
         return send_file(
