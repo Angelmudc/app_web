@@ -1972,11 +1972,11 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con un encabezado (logo centrado solo en primera página),
+    genera un PDF con un encabezado (logo centrado solo en la primera página),
     pie de página y muestra cada línea de la entrevista en dos líneas:
-      Pregunta (negro, negrita) en la primera línea
-      Respuesta (azul, normal) en la segunda línea
-    Si no hay ':' en la línea, se imprime tal cual en negro.
+       1) Pregunta + ":" (en negrita, negro)
+       2) Respuesta (en color azul)
+    Si no hay “:” en la línea, se imprime como una línea normal en negro.
     """
     try:
         # 1. Leer la columna Z para el texto de la entrevista
@@ -2001,15 +2001,15 @@ def generar_pdf_entrevista(fila_index):
 
         class MyPDF(FPDF):
             def header(self):
-                # Encabezado solo en la primera página
+                # Solo en la primera página
                 if self.page_no() == 1:
                     logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
                     if os.path.exists(logo_path):
-                        # Centrar el logo
-                        logo_w = 70
+                        # Ajusta el ancho del logo según prefieras
+                        logo_w = 60
                         x = (self.w - logo_w) / 2
                         self.image(logo_path, x=x, y=8, w=logo_w)
-                    self.ln(35)
+                    self.ln(40)
                     # Título
                     self.set_font("DejaVuSans", "B", 16)
                     self.set_text_color(0, 0, 0)
@@ -2017,18 +2017,17 @@ def generar_pdf_entrevista(fila_index):
                     self.ln(5)
 
             def footer(self):
-                # Pie de página
                 self.set_y(-15)
                 self.set_font("DejaVuSans", "I", 8)
                 self.set_text_color(128, 128, 128)
                 self.cell(0, 10, f"Página {self.page_no()}", 0, 0, "C")
 
-        # Crear PDF e incluir fuentes
+        # Crear el PDF
         pdf = MyPDF()
         pdf.set_margins(15, 15, 15)
         pdf.set_auto_page_break(auto=True, margin=15)
 
-        # Asegúrate de que estos archivos existen en static/fonts/
+        # Asegúrate de que los archivos .ttf estén en static/fonts/
         font_dir = os.path.join(app.root_path, "static", "fonts")
         pdf.add_font("DejaVuSans", "", os.path.join(font_dir, "DejaVuSans.ttf"), uni=True)
         pdf.add_font("DejaVuSans", "B", os.path.join(font_dir, "DejaVuSans-Bold.ttf"), uni=True)
@@ -2036,36 +2035,34 @@ def generar_pdf_entrevista(fila_index):
 
         pdf.add_page()
 
-        # Ancho disponible para el texto
         available_width = pdf.w - pdf.l_margin - pdf.r_margin
-
-        # Separar texto por líneas (ignorando vacías)
+        # Dividir texto en líneas ignorando las vacías
         lines = [l.strip() for l in texto_entrevista.split("\n") if l.strip()]
 
         for line in lines:
             if ":" in line:
-                # Dividir en pregunta y respuesta
+                # Separa en pregunta y respuesta
                 pregunta, respuesta = line.split(":", 1)
-                pregunta = pregunta.strip()
+                pregunta = pregunta.strip() + ":"
                 respuesta = respuesta.strip()
 
-                # Pregunta: negrita, negro
+                # Pregunta en negrita, negro
                 pdf.set_font("DejaVuSans", "B", 12)
                 pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(available_width, 8, pregunta)
 
-                # Respuesta: normal, azul
+                # Respuesta en azul
                 pdf.set_font("DejaVuSans", "", 12)
                 pdf.set_text_color(0, 0, 200)
                 pdf.multi_cell(available_width, 8, respuesta)
 
-                pdf.ln(5)  # Espacio adicional tras cada par Pregunta-Respuesta
+                pdf.ln(6)  # espacio adicional
             else:
-                # Línea sin ":", se imprime en negro normal
+                # Línea sin ":", se imprime normal en negro
                 pdf.set_font("DejaVuSans", "", 12)
                 pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(available_width, 8, line)
-                pdf.ln(5)
+                pdf.ln(6)
 
         pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output)
