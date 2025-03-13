@@ -1972,8 +1972,10 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con el texto de la entrevista y un logo en la parte superior,
-    y lo envía como descarga.
+    genera un PDF con el texto de la entrevista, mostrando el logo (más grande y centrado),
+    el título y pie de página (en la primera página) y organiza las preguntas y respuestas:
+    Las preguntas (en negro) y, en cada línea que tenga ":", la respuesta se imprime debajo con
+    un gran bullet "•" al principio y en color azul.
     """
     try:
         # 1. Leer la columna Z para el texto de la entrevista
@@ -1999,37 +2001,66 @@ def generar_pdf_entrevista(fila_index):
         pdf = FPDF()
         pdf.add_page()
 
-        # Configurar la fuente (puedes usar una fuente incorporada, por ejemplo Arial)
-        pdf.set_font("Arial", size=12)
+        # Registrar las fuentes TTF (asegúrate de tener en static/fonts/ los archivos correspondientes)
+        font_regular = os.path.join(app.root_path, "static", "fonts", "DejaVuSerif.ttf")
+        font_bold = os.path.join(app.root_path, "static", "fonts", "DejaVuSerif-Bold.ttf")
+        pdf.add_font("DejaVuSerif", "", font_regular, uni=True)
+        pdf.add_font("DejaVuSerif", "B", font_bold, uni=True)
 
-        # Ruta del logo (ajusta el nombre y asegúrate de que exista en la ruta)
+        # Insertar logo centrado y más grande
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        print("Logo path:", logo_path)  # Depuración
-        
         if os.path.exists(logo_path):
-            print("Logo encontrado. Insertando imagen...")
-            # Ajusta las coordenadas y tamaño según lo requieras
-            pdf.image(logo_path, x=10, y=8, w=40)
+            # Definir ancho de imagen y centrarla
+            image_width = 50  # ancho en milímetros
+            x_pos = (pdf.w - image_width) / 2
+            pdf.image(logo_path, x=x_pos, y=10, w=image_width)
         else:
             print("Archivo logo_nuevo.png no existe en esa ruta")
 
-        # Dejar espacio debajo del logo
+        # Espacio debajo del logo
         pdf.ln(40)
 
-        # Título (en negrita)
-        pdf.set_font("Arial", "B", 16)
+        # Título (únicamente en la primera página)
+        pdf.set_font("DejaVuSerif", "B", 18)
+        pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(10)
 
-        # Contenido de la entrevista
-        # Aquí se asume que el contenido ya contiene los ":" y que se mostrará la respuesta debajo de la pregunta.
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, texto_entrevista)
+        # Procesar el texto de la entrevista
+        # Se asume que cada pregunta-respuesta está en una línea, separadas por ":"
+        lines = texto_entrevista.split("\n")
+        pdf.set_font("DejaVuSerif", "", 12)
+        for line in lines:
+            if ":" in line:
+                # Separa en pregunta y respuesta (solo la primera ocurrencia de :)
+                parts = line.split(":", 1)
+                pregunta = parts[0].strip() + ":"
+                respuesta = parts[1].strip()
 
-        # Generar PDF en memoria
+                # Imprime la pregunta en negro
+                pdf.set_text_color(0, 0, 0)
+                pdf.multi_cell(0, 8, pregunta)
+
+                # Imprime en la siguiente línea el bullet y la respuesta en azul
+                pdf.set_text_color(0, 102, 204)
+                bullet = "• "  # Bullet grande, puedes ajustar si deseas mayor tamaño (p.ej. usando set_font con un tamaño mayor)
+                pdf.multi_cell(0, 8, bullet + respuesta)
+                pdf.ln(4)
+            else:
+                # Imprime líneas sin ":" en negro
+                pdf.set_text_color(0, 0, 0)
+                pdf.multi_cell(0, 8, line)
+                pdf.ln(4)
+
+        # Pie de página en la primera página (solo una vez)
+        pdf.set_y(-20)
+        pdf.set_font("DejaVuSerif", "", 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 10, "© 2024 Doméstica del Cibao A&D", 0, 0, "C")
+
+        # Generar PDF en memoria y enviarlo
         pdf_output = pdf.output(dest="S")
-        # Como pdf_output ya es un bytearray, lo pasamos directamente a BytesIO sin llamar a encode()
-        memory_file = io.BytesIO(pdf_output)
+        memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
         return send_file(
