@@ -1972,11 +1972,13 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con el texto de la entrevista, mostrando el logo, 
-    y organiza las preguntas y respuestas.
+    genera un PDF con el texto de la entrevista, mostrando un logo centrado
+    y con un título en la primera página. Las preguntas se muestran en negro,
+    y las respuestas se muestran en azul con un gran bullet "•" debajo de los dos puntos.
+    Además, se añade un pie de página.
     """
     try:
-        # 1. Leer la columna Z para el texto de la entrevista
+        # Leer el texto de la entrevista (columna Z)
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1985,7 +1987,6 @@ def generar_pdf_entrevista(fila_index):
         entrevista_val = hoja_entrevista.get("values", [])
         if not entrevista_val or not entrevista_val[0]:
             return "No hay entrevista guardada en la columna Z", 404
-
         texto_entrevista = entrevista_val[0][0]
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
@@ -1999,61 +2000,60 @@ def generar_pdf_entrevista(fila_index):
         pdf = FPDF()
         pdf.add_page()
 
-        # Si deseas usar una fuente incorporada para evitar problemas de TTF, comenta
-        # las siguientes líneas y usa "Helvetica":
-        #
-        # font_regular = os.path.join(app.root_path, "static", "fonts", "DejaVuSerif.ttf")
-        # font_bold = os.path.join(app.root_path, "static", "fonts", "DejaVuSerif-Bold.ttf")
-        # pdf.add_font("DejaVuSerif", "", font_regular, uni=True)
-        # pdf.add_font("DejaVuSerif", "B", font_bold, uni=True)
-        #
-        # Y en lugar de set_font("DejaVuSerif", ...), usa "Helvetica".
+        # Agregar la fuente Unicode DejaVuSans
+        font_dir = os.path.join(app.root_path, "static", "fonts")
+        regular_font = os.path.join(font_dir, "DejaVuSans.ttf")
+        bold_font = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+        if not os.path.exists(regular_font) or not os.path.exists(bold_font):
+            return "No se encontraron los archivos de fuente en static/fonts/", 500
+        pdf.add_font("DejaVuSans", "", regular_font, uni=True)
+        pdf.add_font("DejaVuSans", "B", bold_font, uni=True)
 
-        # Si prefieres usar "Helvetica" (que es built-in), puedes hacer:
-        pdf.set_font("Helvetica", "B", 18)
+        # Encabezado: Título en negrita
+        pdf.set_font("DejaVuSans", "B", 18)
 
-        # Insertar logo centrado y más grande
+        # Insertar logo centrado y con mayor tamaño
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
         if os.path.exists(logo_path):
-            image_width = 50  # Ajusta el ancho (en mm) del logo
+            image_width = 50  # Ajusta el ancho deseado (en mm)
             x_pos = (pdf.w - image_width) / 2
             pdf.image(logo_path, x=x_pos, y=10, w=image_width)
         else:
-            print("Archivo logo_nuevo.png no existe en esa ruta")
+            print("Logo no encontrado:", logo_path)
 
-        # Espacio debajo del logo
-        pdf.ln(40)
+        pdf.ln(40)  # Espacio debajo del logo
 
-        # Título (únicamente en la primera página)
+        # Título (solo en la primera página)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(10)
 
-        # Procesar el texto de la entrevista, separando pregunta y respuesta
+        # Procesar las preguntas y respuestas
+        # Se espera que cada línea tenga la forma: "Pregunta: Respuesta"
+        # Se colocará la pregunta en negro y, debajo, la respuesta en azul precedida de un bullet "•"
+        pdf.set_font("DejaVuSans", "", 12)
         lines = texto_entrevista.split("\n")
         for line in lines:
             if ":" in line:
                 parts = line.split(":", 1)
                 pregunta = parts[0].strip() + ":"
                 respuesta = parts[1].strip()
-
                 # Pregunta en negro
                 pdf.set_text_color(0, 0, 0)
-                pdf.set_font("Helvetica", "", 12)
                 pdf.multi_cell(0, 8, pregunta)
-
-                # Línea con bullet y respuesta en azul (• se pone después de los dos puntos)
+                # Respuesta en azul con bullet al principio (en una nueva línea)
                 pdf.set_text_color(0, 102, 204)
-                bullet = "• "  # Bullet al inicio de la respuesta
+                bullet = "• "
                 pdf.multi_cell(0, 8, bullet + respuesta)
                 pdf.ln(4)
             else:
+                # Si la línea no contiene ":", se imprime tal cual en negro
                 pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(0, 8, line)
                 pdf.ln(4)
 
-        # Pie de página (únicamente en la primera página)
+        # Pie de página (solo en la primera página)
         pdf.set_y(-20)
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font("DejaVuSans", "", 10)
         pdf.set_text_color(100, 100, 100)
         pdf.cell(0, 10, "© 2024 Doméstica del Cibao A&D", 0, 0, "C")
 
