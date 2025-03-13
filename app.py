@@ -1971,13 +1971,12 @@ import os
 
 def generar_pdf_entrevista(fila_index):
     """
-    Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con encabezado + preguntas y respuestas
-    usando DejaVuSans (regular y bold) en fpdf2.
+    Lee la columna Z de la fila dada en Google Sheets,
+    genera un PDF con el texto de la entrevista y un logo en la parte superior,
+    y lo envía como descarga.
     """
-
-    # 1) Obtener texto de la columna Z
     try:
+        # Leer la columna Z para el texto de la entrevista
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1987,11 +1986,10 @@ def generar_pdf_entrevista(fila_index):
         if not entrevista_val or not entrevista_val[0]:
             return "No hay entrevista guardada en la columna Z", 404
 
-        texto_entrevista = entrevista_val[0][0]  # El contenido completo
+        texto_entrevista = entrevista_val[0][0]
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
 
-    # 2) Generar PDF
     try:
         import os
         import io
@@ -1999,89 +1997,66 @@ def generar_pdf_entrevista(fila_index):
         from flask import send_file
 
         pdf = FPDF()
+        pdf.set_margins(15, 15, 15)
+        pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
 
-        # -- Registrar las fuentes DejaVuSans (regular y bold) --
+        # Registrar fuentes Unicode
         font_dir = os.path.join(app.root_path, "static", "fonts")
         regular_path = os.path.join(font_dir, "DejaVuSans.ttf")
         bold_path = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
-
         pdf.add_font("DejaVuSans", "", regular_path, uni=True)
         pdf.add_font("DejaVuSans", "B", bold_path, uni=True)
+        pdf.set_font("DejaVuSans", "", 12)
 
-        # -- Agregar logo (opcional) centrado arriba --
+        # Insertar logo grande y centrado (logo_nuevo.png)
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
         if os.path.exists(logo_path):
-            # Ajustar ancho del logo según tu preferencia
-            logo_width = 50
-            x_pos = (pdf.w - logo_width) / 2  # centrar horizontalmente
-            pdf.image(logo_path, x=x_pos, y=10, w=logo_width)
-            pdf.ln(35)  # bajar un poco después del logo
+            logo_w = 50  # Ajusta este valor según el tamaño deseado
+            x = (pdf.w - logo_w) / 2
+            pdf.image(logo_path, x=x, y=8, w=logo_w)
         else:
-            pdf.ln(10)
+            print("Archivo logo_nuevo.png no existe en la ruta:", logo_path)
+        pdf.ln(30)
 
-        # -- Título en negrita, color negro --
+        # Encabezado (solo en la primera página)
+        pdf.set_text_color(0, 0, 0)
         pdf.set_font("DejaVuSans", "B", 16)
-        pdf.set_text_color(0, 0, 0)  # Negro
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(5)
+        pdf.set_font("DejaVuSans", "", 12)
 
-        # Separar todo el texto por líneas
+        # Ancho disponible para el texto (páginas sin márgenes)
+        available_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+        # Procesar líneas: se espera que las preguntas vengan en negro y las respuestas (que empiezan con "R:") en azul con un bullet
         lines = texto_entrevista.split("\n")
-
-        # Recorremos cada línea
         for line in lines:
             line = line.strip()
             if not line:
-                pdf.ln(3)  # si la línea está vacía, dejamos un espacio y continuamos
+                pdf.ln(4)
                 continue
-
-            # Verificamos si hay dos puntos para separar pregunta:respuesta
-            if ":" in line:
-                # Separamos solo en el primer ":", por si la respuesta contiene más
-                parts = line.split(":", 1)
-                pregunta = parts[0].strip()
-                respuesta = parts[1].strip()
-
-                # 1) Pregunta en negrita, color negro
-                pdf.set_font("DejaVuSans", "B", 12)
-                pdf.set_text_color(0, 0, 0)  # Negro
-                pdf.multi_cell(0, 8, f"{pregunta}:", border=0)
-                
-                # 2) Respuesta con bullet (•) en color azul
-                pdf.set_font("DejaVuSans", "", 12)
-                # Un azul intermedio (RGB). Puedes ajustarlo a tu gusto
-                pdf.set_text_color(0, 0, 139)  # "DarkBlue" approx
-                # Agregamos el bullet y la respuesta
-                pdf.multi_cell(0, 8, f"• {respuesta}", border=0)
-                pdf.ln(3)  # un pequeño espacio extra
-
+            if line.startswith("R:"):
+                pdf.set_text_color(0, 0, 200)  # azul
+                # Se añade un bullet grande (•) al inicio
+                text = "• " + line[2:].strip() + "."
             else:
-                # Línea sin dos puntos: la imprimimos normal (quizá es un comentario o algo)
-                pdf.set_font("DejaVuSans", "", 12)
-                pdf.set_text_color(0, 0, 0)  # Negro
-                pdf.multi_cell(0, 8, line, border=0)
-                pdf.ln(3)
+                pdf.set_text_color(0, 0, 0)
+                text = line + "."
+            pdf.multi_cell(available_width, 8, text, border=0)
+            pdf.ln(2)
 
-        # Exportar el PDF a bytes en memoria
-        pdf_output = pdf.output(dest="S").encode("latin1")  
-        # fpdf2 normalmente retorna bytes directamente,
-        # pero si te diera error, podrías usar memory_file = io.BytesIO(pdf.output(dest="S"))
-        # y omitir .encode("latin1").
-
+        pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
-
         return send_file(
             memory_file,
             mimetype="application/pdf",
             as_attachment=True,
             download_name=f"entrevista_candidata_{fila_index}.pdf"
         )
-
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
