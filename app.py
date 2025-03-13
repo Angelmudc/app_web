@@ -1973,11 +1973,16 @@ def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
     genera un PDF con el texto de la entrevista, un logo centrado en la
-    primera página, y organiza cada pregunta (en negrita, negro) y respuesta 
-    (en color azul, con bullet) con un pequeño interlineado.
+    primera página y cada pregunta (en negrita, negro) con su respuesta
+    (en azul, con bullet) en la línea siguiente.
+    Se utilizan las fuentes DejaVuSans (normal y bold) y DejaVuSerif-Italic,
+    que deben estar en tu carpeta static/fonts con los nombres:
+       - DejaVuSans.ttf
+       - DejaVuSans-Bold.ttf
+       - DejaVuSerif-Italic.ttf
     """
     try:
-        # Leer la entrevista de Google Sheets
+        # 1. Leer la columna Z
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1998,67 +2003,76 @@ def generar_pdf_entrevista(fila_index):
 
         class MyPDF(FPDF):
             def header(self):
-                # Solo se muestra en la primera página
+                # Solo en la primera página
                 if self.page_no() == 1:
                     logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
                     if os.path.exists(logo_path):
-                        logo_w = 60  # Aumenta el tamaño del logo
+                        # Ajusta aquí el tamaño del logo
+                        logo_w = 60
                         x = (self.w - logo_w) / 2
                         self.image(logo_path, x=x, y=8, w=logo_w)
                     self.ln(40)
-                    self.set_font("DejaVuSerif", "B", 16)
+                    # Título
+                    self.set_font("DejaVuSans", "B", 16)
                     self.set_text_color(0, 0, 0)
                     self.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
                     self.ln(5)
 
             def footer(self):
-                self.set_y(-15)
-                self.set_font("DejaVuSerif", "I", 8)
-                self.set_text_color(128, 128, 128)
-                self.cell(0, 10, f"Página {self.page_no()}", 0, 0, "C")
+                # Pie de página en todas menos la primera
+                if self.page_no() > 1:
+                    self.set_y(-15)
+                    self.set_font("DejaVuSans", "", 8)
+                    self.set_text_color(120, 120, 120)
+                    self.cell(0, 10, f"Página {self.page_no()}", 0, 0, "C")
 
         pdf = MyPDF()
         pdf.set_margins(15, 15, 15)
         pdf.set_auto_page_break(auto=True, margin=15)
 
-        # Cargar fuentes personalizadas desde static/fonts
+        # Registrar las fuentes que realmente tienes en /static/fonts
         font_dir = os.path.join(app.root_path, "static", "fonts")
-        pdf.add_font("DejaVuSerif", "", os.path.join(font_dir, "DejaVuSerif.ttf"), uni=True)
-        pdf.add_font("DejaVuSerif", "B", os.path.join(font_dir, "DejaVuSerif-Bold.ttf"), uni=True)
+        pdf.add_font("DejaVuSans", "", os.path.join(font_dir, "DejaVuSans.ttf"), uni=True)
+        pdf.add_font("DejaVuSans", "B", os.path.join(font_dir, "DejaVuSans-Bold.ttf"), uni=True)
         pdf.add_font("DejaVuSerif", "I", os.path.join(font_dir, "DejaVuSerif-Italic.ttf"), uni=True)
 
         pdf.add_page()
 
+        # Ancho disponible para el texto
         available_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-        # Procesar las líneas de la entrevista
-        # Se espera que cada línea tenga formato "Pregunta: Respuesta"
+        # Dividir la entrevista en líneas
         lines = [line.strip() for line in texto_entrevista.split("\n") if line.strip()]
+
         for line in lines:
+            # Se asume que la pregunta va antes de ":", y la respuesta después
             if ":" in line:
                 parts = line.split(":", 1)
                 question = parts[0].strip() + ":"
                 answer = parts[1].strip()
+
                 # Pregunta en negrita, color negro
-                pdf.set_font("DejaVuSerif", "B", 12)
+                pdf.set_font("DejaVuSans", "B", 12)
                 pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(available_width, 8, question)
-                pdf.ln(2)
-                # Respuesta en color azul con bullet (alineado debajo de la pregunta)
-                pdf.set_font("DejaVuSerif", "", 12)
-                pdf.set_text_color(0, 0, 150)  # Azul (ajusta el valor si es necesario)
+                pdf.ln(1)
+
+                # Respuesta en azul, con bullet
+                pdf.set_font("DejaVuSans", "", 12)
+                pdf.set_text_color(0, 0, 180)
                 bullet = "•"
                 pdf.multi_cell(available_width, 8, f"    {bullet} {answer}")
                 pdf.ln(4)
             else:
-                # Si la línea no contiene ":", se imprime normal en negro
-                pdf.set_font("DejaVuSerif", "", 12)
+                # Si no hay ":", se imprime normal en negro
+                pdf.set_font("DejaVuSans", "", 12)
                 pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(available_width, 8, line)
                 pdf.ln(2)
 
-        pdf_output = pdf.output(dest="S")
-        memory_file = io.BytesIO(pdf_output.encode("latin-1"))
+        # Generar el PDF en memoria
+        pdf_output = pdf.output(dest="S").encode("latin-1")
+        memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
 
         return send_file(
@@ -2067,9 +2081,9 @@ def generar_pdf_entrevista(fila_index):
             as_attachment=True,
             download_name=f"entrevista_candidata_{fila_index}.pdf"
         )
+
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
