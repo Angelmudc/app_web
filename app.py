@@ -1972,8 +1972,7 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF profesional con un encabezado (logo y título) solo en la primera página,
-    organiza el contenido de la entrevista en preguntas y respuestas (agregando un bullet al inicio de cada respuesta)
+    genera un PDF con el texto de la entrevista y un logo en la parte superior,
     y lo envía como descarga.
     """
     try:
@@ -1992,84 +1991,60 @@ def generar_pdf_entrevista(fila_index):
         return f"Error al leer entrevista: {str(e)}", 500
 
     try:
-        import os
-        import io
         from fpdf import FPDF
+        import io
         from flask import send_file
+        import os
 
-        # Clase personalizada usando una fuente Unicode
-        class PDF(FPDF):
-            def header(self):
-                if self.page_no() == 1:
-                    # Ruta del logo
-                    logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-                    if os.path.exists(logo_path):
-                        # Logo más grande y centrado
-                        logo_w = 70
-                        x_pos = (self.w - logo_w) / 2
-                        self.image(logo_path, x=x_pos, y=8, w=logo_w)
-                    else:
-                        self.set_font("DejaVu", "", 12)
-                        self.cell(0, 10, "Logo no encontrado", ln=True, align="C")
-                    self.ln(40)
-                    # Encabezado con título
-                    self.set_font("DejaVu", "B", 16)
-                    self.set_fill_color(74, 105, 189)  # Azul personalizado
-                    self.set_text_color(255, 255, 255)
-                    self.cell(0, 12, "Entrevista de Candidata", border=0, ln=True, align="C", fill=True)
-                    self.ln(8)
-                    self.set_text_color(0, 0, 0)
-
-            def footer(self):
-                self.set_y(-15)
-                self.set_font("DejaVu", "I", 8)
-                self.set_text_color(128, 128, 128)
-                self.cell(0, 10, f"Página {self.page_no()}", 0, 0, "C")
-
-        pdf = PDF()
-        # Agregar la fuente Unicode (asegúrate de tener el archivo DejaVuSans.ttf en static/fonts)
-        font_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans.ttf")
-        pdf.add_font("DejaVu", "", font_path, uni=True)
-        pdf.set_font("DejaVu", "", 12)
+        # Crear el objeto PDF
+        pdf = FPDF()
         pdf.add_page()
 
-        # Procesar el contenido de la entrevista, línea por línea.
-        # Se asume que cada línea con ":" es "Pregunta: Respuesta"
+        # Registrar la fuente Unicode (asegúrate de tener el archivo DejaVuSans.ttf en static/fonts/)
+        font_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans.ttf")
+        pdf.add_font("DejaVuSans", "", font_path, uni=True)
+        pdf.set_font("DejaVuSans", size=12)
+
+        # Ruta del logo (asegúrate de que el nombre y la ubicación sean correctos)
+        logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
+        print("Logo path:", logo_path)  # Para depuración
+
+        if os.path.exists(logo_path):
+            print("Logo encontrado. Insertando imagen...")
+            # Calcular posición para centrar el logo
+            desired_width = 50  # Ajusta el ancho deseado
+            x_pos = (pdf.w - desired_width) / 2
+            pdf.image(logo_path, x=x_pos, y=8, w=desired_width)
+        else:
+            print("Archivo logo_nuevo.png no existe en esa ruta")
+
+        # Dejar espacio debajo del logo
+        pdf.ln(30)
+
+        # Encabezado: Solo en la primera página
+        pdf.set_font("DejaVuSans", "B", 16)
+        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
+        pdf.ln(10)
+
+        # Establecer el color de texto a un azul (Cornflower Blue)
+        pdf.set_text_color(100, 149, 237)
+        pdf.set_font("DejaVuSans", size=12)
+
+        # Procesar el texto de la entrevista línea por línea
+        # Se añade un bullet "•" al inicio de cada línea con un espacio para separar
         lines = texto_entrevista.split("\n")
         for line in lines:
-            line = line.strip()
-            if not line:
-                pdf.ln(5)
-                continue
-
-            if ":" in line:
-                question, answer = line.split(":", 1)
-                # Imprimir la pregunta en negrita
-                pdf.set_font("DejaVu", "B", 12)
-                pdf.multi_cell(0, 8, question.strip() + ":", align="L")
-                pdf.ln(1)
-                # Imprimir la respuesta con un bullet al inicio
-                pdf.set_font("DejaVu", "", 12)
-                pdf.set_text_color(100, 149, 237)  # Azul (ajusta según prefieras)
-                # Imprimir un bullet grande: cambiamos temporalmente la fuente para el bullet
-                pdf.set_font("DejaVu", "", 14)
-                bullet = "•"
-                pdf.cell(10, 8, bullet, ln=0)
-                # Restaurar fuente normal para la respuesta
-                pdf.set_font("DejaVu", "", 12)
-                formatted_answer = " " + answer.strip()
-                # Agregar un punto al final si no lo tiene
-                if formatted_answer and formatted_answer[-1] not in ".!?":
-                    formatted_answer += "."
-                pdf.multi_cell(0, 8, formatted_answer, align="L")
-                pdf.ln(3)
-                pdf.set_text_color(0, 0, 0)
+            if line.strip():
+                pdf.cell(10, 10, "•", ln=0)
+                pdf.multi_cell(0, 10, line.strip(), border=0)
             else:
-                pdf.multi_cell(0, 8, line, align="L")
-                pdf.ln(3)
+                pdf.ln(10)
+        # Resetear el color de texto a negro
+        pdf.set_text_color(0, 0, 0)
 
-        # Generar PDF en memoria sin llamar a .encode() (ya que output(dest="S") devuelve un bytearray)
+        # Generar el PDF en memoria
         pdf_output = pdf.output(dest="S")
+        # Nota: La salida ya es un byte string, por lo que no es necesario encode
         memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
 
@@ -2081,7 +2056,6 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
 
 
 if __name__ == '__main__':
