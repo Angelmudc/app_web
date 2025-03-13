@@ -1972,8 +1972,9 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF profesional con un encabezado llamativo (logo y título),
-    y el contenido de la entrevista, y lo envía como descarga.
+    genera un PDF profesional con un encabezado (logo y título) solo en la primera página,
+    organiza el contenido de la entrevista en preguntas y respuestas,
+    y lo envía como descarga.
     """
     try:
         # 1. Leer la columna Z para el texto de la entrevista
@@ -1996,50 +1997,68 @@ def generar_pdf_entrevista(fila_index):
         from fpdf import FPDF
         from flask import send_file
 
-        # Creamos una clase personalizada para el PDF
+        # Clase personalizada para el PDF
         class PDF(FPDF):
             def header(self):
-                # Agregar logo centrado
-                logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-                if os.path.exists(logo_path):
-                    # Calcula posición para centrar el logo (ancho de la imagen = 50)
-                    logo_w = 50
-                    x_pos = (self.w - logo_w) / 2
-                    self.image(logo_path, x=x_pos, y=8, w=logo_w)
-                else:
-                    self.set_font("Arial", "B", 12)
-                    self.cell(0, 10, "Logo no encontrado", ln=True, align="C")
-                self.ln(40)
-
-                # Título en un recuadro con fondo
-                self.set_font("Arial", "B", 16)
-                self.set_fill_color(74, 105, 189)  # color azul (personalizable)
-                self.set_text_color(255, 255, 255)
-                self.cell(0, 12, "Entrevista de Candidata", border=0, ln=True, align="C", fill=True)
-                self.ln(8)
-                # Restaurar color de texto para el contenido
-                self.set_text_color(0, 0, 0)
+                # Mostrar encabezado solo en la primera página
+                if self.page_no() == 1:
+                    logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
+                    if os.path.exists(logo_path):
+                        # Aumentamos el tamaño del logo (por ejemplo, 70 unidades de ancho)
+                        logo_w = 70
+                        x_pos = (self.w - logo_w) / 2  # Centrado horizontalmente
+                        self.image(logo_path, x=x_pos, y=8, w=logo_w)
+                    else:
+                        self.set_font("Arial", "B", 12)
+                        self.cell(0, 10, "Logo no encontrado", ln=True, align="C")
+                    self.ln(40)
+                    # Título con fondo de color
+                    self.set_font("Arial", "B", 16)
+                    self.set_fill_color(74, 105, 189)  # Azul (personalizable)
+                    self.set_text_color(255, 255, 255)
+                    self.cell(0, 12, "Entrevista de Candidata", border=0, ln=True, align="C", fill=True)
+                    self.ln(8)
+                    # Restaurar el color del texto para el contenido
+                    self.set_text_color(0, 0, 0)
 
             def footer(self):
+                # Pie de página en todas las páginas
                 self.set_y(-15)
                 self.set_font("Arial", "I", 8)
                 self.set_text_color(128, 128, 128)
                 self.cell(0, 10, f"Página {self.page_no()}", 0, 0, "C")
 
-        # Instancia de nuestro PDF personalizado
+        # Crear instancia del PDF personalizado
         pdf = PDF()
         pdf.add_page()
 
-        # Establecer fuente para el contenido
+        # Establecer fuente base para el contenido
         pdf.set_font("Arial", size=12)
 
-        # Agregar el contenido de la entrevista con márgenes y saltos de línea adecuados.
-        # Aquí puedes realizar más formateo, por ejemplo, separar preguntas y respuestas.
-        pdf.multi_cell(0, 10, texto_entrevista, align="L")
+        # Procesar el contenido de la entrevista
+        # Separamos por líneas y, si se detecta ":" se asume pregunta:respuesta
+        lines = texto_entrevista.split("\n")
+        for line in lines:
+            line = line.strip()
+            if not line:
+                pdf.ln(5)
+                continue
+            if ":" in line:
+                # Separamos la pregunta y la respuesta
+                question, answer = line.split(":", 1)
+                pdf.set_font("Arial", "B", 12)
+                pdf.multi_cell(0, 8, question.strip() + ":", align="L")
+                pdf.ln(1)
+                pdf.set_font("Arial", "", 12)
+                pdf.multi_cell(0, 8, answer.strip(), align="L")
+                pdf.ln(3)
+            else:
+                pdf.multi_cell(0, 8, line, align="L")
+                pdf.ln(3)
 
-        # Generar PDF en memoria
+        # Generar PDF en memoria (no lo guardamos en disco)
         pdf_output = pdf.output(dest="S")
-        memory_file = io.BytesIO(pdf_output)
+        memory_file = io.BytesIO(pdf_output.encode("latin1"))
         memory_file.seek(0)
 
         return send_file(
@@ -2050,6 +2069,7 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 
 if __name__ == '__main__':
