@@ -1997,40 +1997,41 @@ def generar_pdf_entrevista(fila_index):
         from fpdf import FPDF
         from flask import send_file
 
-        # Clase personalizada para el PDF
+        # Clase personalizada usando una fuente Unicode
         class PDF(FPDF):
             def header(self):
-                # Mostrar encabezado solo en la primera página
                 if self.page_no() == 1:
+                    # Ruta del logo
                     logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
                     if os.path.exists(logo_path):
-                        # Logo más grande (70 de ancho) y centrado horizontalmente
+                        # Logo más grande y centrado
                         logo_w = 70
                         x_pos = (self.w - logo_w) / 2
                         self.image(logo_path, x=x_pos, y=8, w=logo_w)
                     else:
-                        self.set_font("Arial", "B", 12)
+                        self.set_font("DejaVu", "", 12)
                         self.cell(0, 10, "Logo no encontrado", ln=True, align="C")
                     self.ln(40)
-                    # Título con fondo de color
-                    self.set_font("Arial", "B", 16)
-                    self.set_fill_color(74, 105, 189)  # Azul personalizable
+                    # Encabezado con título
+                    self.set_font("DejaVu", "B", 16)
+                    self.set_fill_color(74, 105, 189)  # Azul personalizado
                     self.set_text_color(255, 255, 255)
                     self.cell(0, 12, "Entrevista de Candidata", border=0, ln=True, align="C", fill=True)
                     self.ln(8)
-                    # Restaurar el color del texto para el contenido
                     self.set_text_color(0, 0, 0)
 
             def footer(self):
-                # Pie de página en todas las páginas
                 self.set_y(-15)
-                self.set_font("Arial", "I", 8)
+                self.set_font("DejaVu", "I", 8)
                 self.set_text_color(128, 128, 128)
                 self.cell(0, 10, f"Página {self.page_no()}", 0, 0, "C")
 
         pdf = PDF()
+        # Agregar la fuente Unicode (asegúrate de tener el archivo DejaVuSans.ttf en static/fonts)
+        font_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans.ttf")
+        pdf.add_font("DejaVu", "", font_path, uni=True)
+        pdf.set_font("DejaVu", "", 12)
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
 
         # Procesar el contenido de la entrevista, línea por línea.
         # Se asume que cada línea con ":" es "Pregunta: Respuesta"
@@ -2044,35 +2045,30 @@ def generar_pdf_entrevista(fila_index):
             if ":" in line:
                 question, answer = line.split(":", 1)
                 # Imprimir la pregunta en negrita
-                pdf.set_font("Arial", "B", 12)
+                pdf.set_font("DejaVu", "B", 12)
                 pdf.multi_cell(0, 8, question.strip() + ":", align="L")
                 pdf.ln(1)
                 # Imprimir la respuesta con un bullet al inicio
-                pdf.set_font("Arial", "", 12)
-                # Cambiar a color azul para la respuesta (puedes ajustar el RGB)
-                pdf.set_text_color(100, 149, 237)
-                # Imprimir el bullet con fuente un poco más grande
-                pdf.set_font("Arial", "", 14)
+                pdf.set_font("DejaVu", "", 12)
+                pdf.set_text_color(100, 149, 237)  # Azul (ajusta según prefieras)
+                # Imprimir un bullet grande: cambiamos temporalmente la fuente para el bullet
+                pdf.set_font("DejaVu", "", 14)
                 bullet = "•"
-                # Fijamos una celda para el bullet y luego imprimimos la respuesta en la misma línea
-                # Ajustamos el ancho del bullet (por ejemplo, 10)
                 pdf.cell(10, 8, bullet, ln=0)
-                # Restaurar el tamaño de la fuente para la respuesta
-                pdf.set_font("Arial", "", 12)
-                # Asegurarse de que la respuesta comience con un espacio
+                # Restaurar fuente normal para la respuesta
+                pdf.set_font("DejaVu", "", 12)
                 formatted_answer = " " + answer.strip()
-                # Si la respuesta no termina con signo de puntuación, se agrega un punto.
+                # Agregar un punto al final si no lo tiene
                 if formatted_answer and formatted_answer[-1] not in ".!?":
                     formatted_answer += "."
                 pdf.multi_cell(0, 8, formatted_answer, align="L")
                 pdf.ln(3)
-                # Restaurar el color a negro
                 pdf.set_text_color(0, 0, 0)
             else:
                 pdf.multi_cell(0, 8, line, align="L")
                 pdf.ln(3)
 
-        # Generar PDF en memoria sin usar .encode() ya que output(dest="S") devuelve un bytearray
+        # Generar PDF en memoria sin llamar a .encode() (ya que output(dest="S") devuelve un bytearray)
         pdf_output = pdf.output(dest="S")
         memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
