@@ -2001,11 +2001,12 @@ def generar_pdf_entrevista(fila_index):
         # Definir subclase para header y footer
         class MyPDF(FPDF):
             def header(self):
+                # Se muestra solo en la primera página
                 if self.page_no() == 1:
                     logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
                     if os.path.exists(logo_path):
-                        # Logo más grande y centrado (ajusta el ancho según lo necesites)
-                        logo_w = 70
+                        # Logo más grande y centrado
+                        logo_w = 70  # Ajusta este valor según lo necesites
                         x = (self.w - logo_w) / 2
                         self.image(logo_path, x=x, y=8, w=logo_w)
                     self.ln(35)
@@ -2019,11 +2020,10 @@ def generar_pdf_entrevista(fila_index):
                 self.set_text_color(128, 128, 128)
                 self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
 
+        # Crear instancia del PDF y registrar fuentes antes de agregar la primera página
         pdf = MyPDF()
         pdf.set_margins(15, 15, 15)
         pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-
         # Registrar las fuentes Unicode
         font_dir = os.path.join(app.root_path, "static", "fonts")
         regular_path = os.path.join(font_dir, "DejaVuSans.ttf")
@@ -2033,39 +2033,39 @@ def generar_pdf_entrevista(fila_index):
         pdf.add_font("DejaVuSans", "I", regular_path, uni=True)
         pdf.set_font("DejaVuSans", "", 12)
 
+        pdf.add_page()  # Agrega la primera página (ahora se invoca header correctamente)
+
         available_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-        # Procesar el texto: separamos las líneas no vacías y asumimos que se alternan preguntas y respuestas
+        # Procesar el texto: se separan las líneas no vacías.
+        # Se asume que las líneas se alternan: pregunta, respuesta, pregunta, respuesta, etc.
         lines = [l.strip() for l in texto_entrevista.split("\n") if l.strip() != ""]
         for i, line in enumerate(lines):
             if i % 2 == 0:
-                # Pregunta: se muestra en negro y se le agrega un signo de interrogación
+                # Pregunta: en negro, y se asegura que termine con "?"
                 pdf.set_text_color(0, 0, 0)
                 pdf.set_font("DejaVuSans", "", 12)
-                # Agrega "?" al final (si no lo tiene ya)
                 if not line.endswith("?"):
                     line += "?"
                 pdf.multi_cell(available_width, 8, line, border=0)
                 pdf.ln(2)
             else:
-                # Respuesta: se muestra en azul. Se dibuja un bullet negro grande al principio.
-                # Dibujar bullet en negro:
+                # Respuesta: precedida por un bullet negro grande y en azul
                 pdf.set_text_color(0, 0, 0)
                 pdf.set_font("DejaVuSans", "", 16)
                 bullet = "• "
                 bullet_width = pdf.get_string_width(bullet)
                 pdf.cell(bullet_width, 8, bullet, border=0)
-                # Ahora la respuesta en azul
-                pdf.set_text_color(0, 0, 200)
+                pdf.set_text_color(0, 0, 200)  # Azul (ajusta los valores RGB a tu gusto)
                 pdf.set_font("DejaVuSans", "", 12)
-                # Agregar punto final a la respuesta (si lo deseas)
                 if not line.endswith("."):
                     line += "."
                 pdf.multi_cell(available_width - bullet_width, 8, line, border=0)
                 pdf.ln(2)
 
         pdf_output = pdf.output(dest="S")
-        memory_file = io.BytesIO(pdf_output.encode("latin1"))
+        # NOTA: pdf.output(dest="S") devuelve un string; convertimos a bytearray sin .encode()
+        memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
 
         return send_file(
