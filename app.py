@@ -1974,7 +1974,7 @@ def generar_pdf_entrevista(fila_index):
     Genera un PDF de la entrevista de la candidata con:
       - Encabezado SIN fondo general. Solo el logo y, debajo, el título con fondo azul.
       - Preguntas en negro, respuestas en azul con un bullet grande ("•") en la misma línea.
-      - Pie de página centrado en la primera página.
+      - (Se eliminó el texto de pie de página)
 
     Requiere:
       - DejaVuSans.ttf y DejaVuSans-Bold.ttf en: app_web/static/fonts/
@@ -2031,7 +2031,7 @@ def generar_pdf_entrevista(fila_index):
         pdf.set_text_color(255, 255, 255)  # Texto en blanco
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C", fill=True)
 
-        # Línea "piso" (opcional) justo debajo del título
+        # Línea de separación debajo del título
         pdf.set_line_width(0.5)
         pdf.set_draw_color(0, 0, 0)
         current_y = pdf.get_y()
@@ -2041,7 +2041,7 @@ def generar_pdf_entrevista(fila_index):
 
         # Procesar la entrevista
         pdf.set_font("DejaVuSans", "", 12)
-        pdf.set_text_color(0, 0, 0)  # Regresamos a texto negro
+        pdf.set_text_color(0, 0, 0)  # Texto negro por defecto
         lines = texto_entrevista.split("\n")
 
         for line in lines:
@@ -2073,11 +2073,7 @@ def generar_pdf_entrevista(fila_index):
                 pdf.multi_cell(0, 8, line)
                 pdf.ln(4)
 
-        # Pie de página (solo en la primera página)
-        pdf.set_y(-20)
-        pdf.set_font("DejaVuSans", "", 10)
-        pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 10, "© 2024 Doméstica del Cibao A&D", 0, 0, "C")
+        # Se ha removido el pie de página que mostraba el texto © 2024 Doméstica del Cibao A&D
 
         # Generar el PDF en memoria
         pdf_output = pdf.output(dest="S")
