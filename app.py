@@ -1972,12 +1972,10 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Genera un PDF de la entrevista de la candidata con:
-      - Encabezado con fondo (lavanda claro), logo centrado (más grande) y título solo en la primera página,
-        con una línea de separación ("piso") al final del encabezado.
-      - Cada pregunta (en negro, con ":" al final) y, en la siguiente línea, la respuesta en azul precedida
-        de un bullet grande ("•"), *pero en la misma línea* que el bullet.
+      - Encabezado SIN fondo general. Solo el logo y, debajo, el título con fondo azul.
+      - Preguntas en negro, respuestas en azul con un bullet grande ("•") en la misma línea.
       - Pie de página centrado en la primera página.
-    
+
     Requiere:
       - DejaVuSans.ttf y DejaVuSans-Bold.ttf en: app_web/static/fonts/
       - logo_nuevo.png en: app_web/static/
@@ -2015,36 +2013,37 @@ def generar_pdf_entrevista(fila_index):
         pdf.add_font("DejaVuSans", "", regular_font_path, uni=True)
         pdf.add_font("DejaVuSans", "B", bold_font_path, uni=True)
 
-        # Encabezado con fondo
-        header_height = 60  # Aumentamos la altura para el logo más grande
-        pdf.set_fill_color(230, 230, 250)  # Lavanda claro
-        pdf.rect(0, 0, pdf.w, header_height, "F")
-
-        # Logo más grande y centrado
+        # LOGO (sin fondo)
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
         if os.path.exists(logo_path):
-            image_width = 70  # Ajusta según tu preferencia
+            image_width = 70  # Ajusta el tamaño del logo
             x_pos = (pdf.w - image_width) / 2
             pdf.image(logo_path, x=x_pos, y=10, w=image_width)
         else:
             print("Logo no encontrado:", logo_path)
 
-        # Título
-        pdf.set_font("DejaVuSans", "B", 18)
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_y(header_height - 15)
-        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
+        # Movemos el cursor un poco más abajo del logo
+        pdf.set_y(40)
 
-        # Línea "piso" del encabezado
+        # Título con fondo azul
+        pdf.set_font("DejaVuSans", "B", 18)
+        pdf.set_fill_color(0, 102, 204)  # Azul
+        pdf.set_text_color(255, 255, 255)  # Texto en blanco
+        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C", fill=True)
+
+        # Línea "piso" (opcional) justo debajo del título
         pdf.set_line_width(0.5)
         pdf.set_draw_color(0, 0, 0)
-        pdf.line(pdf.l_margin, header_height, pdf.w - pdf.r_margin, header_height)
+        current_y = pdf.get_y()
+        pdf.line(pdf.l_margin, current_y, pdf.w - pdf.r_margin, current_y)
 
-        pdf.ln(15)  # Espacio después del encabezado
+        pdf.ln(10)  # Espacio debajo del título
 
         # Procesar la entrevista
         pdf.set_font("DejaVuSans", "", 12)
+        pdf.set_text_color(0, 0, 0)  # Regresamos a texto negro
         lines = texto_entrevista.split("\n")
+
         for line in lines:
             pdf.set_x(pdf.l_margin)
             if ":" in line:
@@ -2053,7 +2052,6 @@ def generar_pdf_entrevista(fila_index):
                 respuesta = parts[1].strip()
 
                 # Pregunta en negro
-                pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(0, 8, pregunta)
                 pdf.ln(1)
 
@@ -2064,18 +2062,18 @@ def generar_pdf_entrevista(fila_index):
 
                 pdf.set_x(pdf.l_margin)
                 pdf.set_text_color(0, 102, 204)  # Azul para la respuesta
-                pdf.cell(bullet_width, 8, bullet + " ", ln=0)  # El bullet y un espacio
-                # Ahora la respuesta
+                pdf.cell(bullet_width, 8, bullet + " ", ln=0)
                 pdf.set_font("DejaVuSans", "", 12)
                 pdf.cell(0, 8, respuesta, ln=1)
                 pdf.ln(4)
+                # Volvemos a negro para la siguiente pregunta
+                pdf.set_text_color(0, 0, 0)
             else:
                 # Si no hay ":", se imprime tal cual
-                pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(0, 8, line)
                 pdf.ln(4)
 
-        # Pie de página (solo primera página)
+        # Pie de página (solo en la primera página)
         pdf.set_y(-20)
         pdf.set_font("DejaVuSans", "", 10)
         pdf.set_text_color(100, 100, 100)
@@ -2083,7 +2081,6 @@ def generar_pdf_entrevista(fila_index):
 
         # Generar el PDF en memoria
         pdf_output = pdf.output(dest="S")
-        # Manejo de encoding
         if isinstance(pdf_output, str):
             pdf_bytes = pdf_output.encode("latin1")
         else:
