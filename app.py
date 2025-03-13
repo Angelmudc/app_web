@@ -2035,7 +2035,7 @@ def generar_pdf_entrevista(fila_index):
         # Establecer fuente base para el contenido
         pdf.set_font("Arial", size=12)
 
-        # Procesar el contenido de la entrevista
+        # Procesar el contenido de la entrevista:
         # Separamos por líneas y, si se detecta ":" se asume pregunta:respuesta
         lines = texto_entrevista.split("\n")
         for line in lines:
@@ -2056,9 +2056,9 @@ def generar_pdf_entrevista(fila_index):
                 pdf.multi_cell(0, 8, line, align="L")
                 pdf.ln(3)
 
-        # Generar PDF en memoria (no lo guardamos en disco)
+        # Generar PDF en memoria (sin necesidad de codificar)
         pdf_output = pdf.output(dest="S")
-        memory_file = io.BytesIO(pdf_output.encode("latin1"))
+        memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
 
         return send_file(
@@ -2069,7 +2069,6 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
 
 
 if __name__ == '__main__':
