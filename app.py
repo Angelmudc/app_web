@@ -1972,11 +1972,11 @@ import os
 def generar_pdf_entrevista(fila_index):
     """
     Lee la columna Z de la fila dada (fila_index) en Google Sheets,
-    genera un PDF con el texto de la entrevista y un logo en la parte superior,
-    y lo envía como descarga.
+    genera un PDF con texto + logo, usando la fuente DejaVuSans
+    (regular y bold) en fpdf2.
     """
     try:
-        # 1. Leer la columna Z para el texto de la entrevista
+        # 1. Leer la columna Z
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1996,55 +1996,43 @@ def generar_pdf_entrevista(fila_index):
         from flask import send_file
         import os
 
-        # Crear el objeto PDF
         pdf = FPDF()
         pdf.add_page()
 
-        # Registrar la fuente Unicode (asegúrate de tener el archivo DejaVuSans.ttf en static/fonts/)
-        font_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans.ttf")
-        pdf.add_font("DejaVuSans", "", font_path, uni=True)
-        pdf.set_font("DejaVuSans", size=12)
+        # -- Registrar fuentes (asegúrate de tener ambos archivos TTF) --
+        regular_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans.ttf")
+        bold_path = os.path.join(app.root_path, "static", "fonts", "DejaVuSans-Bold.ttf")
 
-        # Ruta del logo (asegúrate de que el nombre y la ubicación sean correctos)
+        pdf.add_font("DejaVuSans", "", regular_path, uni=True)
+        pdf.add_font("DejaVuSans", "B", bold_path, uni=True)
+
+        # -- LOGO (opcional) --
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        print("Logo path:", logo_path)  # Para depuración
-
         if os.path.exists(logo_path):
-            print("Logo encontrado. Insertando imagen...")
-            # Calcular posición para centrar el logo
-            desired_width = 50  # Ajusta el ancho deseado
+            # Ajustar posición y tamaño
+            desired_width = 50
             x_pos = (pdf.w - desired_width) / 2
-            pdf.image(logo_path, x=x_pos, y=8, w=desired_width)
-        else:
-            print("Archivo logo_nuevo.png no existe en esa ruta")
+            pdf.image(logo_path, x=x_pos, y=10, w=desired_width)
 
-        # Dejar espacio debajo del logo
-        pdf.ln(30)
+        pdf.ln(35)  # Espacio debajo del logo
 
-        # Encabezado: Solo en la primera página
+        # -- TÍTULO EN NEGRITA --
         pdf.set_font("DejaVuSans", "B", 16)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
-        pdf.ln(10)
+        pdf.ln(5)
 
-        # Establecer el color de texto a un azul (Cornflower Blue)
-        pdf.set_text_color(100, 149, 237)
-        pdf.set_font("DejaVuSans", size=12)
+        # -- Texto en color azul (ejemplo) --
+        pdf.set_text_color(0, 0, 139)  # Azul
+        pdf.set_font("DejaVuSans", size=12)  # Volver a regular
 
-        # Procesar el texto de la entrevista línea por línea
-        # Se añade un bullet "•" al inicio de cada línea con un espacio para separar
+        # Separar el texto de la entrevista por saltos de línea
         lines = texto_entrevista.split("\n")
-        for line in lines:
-            if line.strip():
-                pdf.cell(10, 10, "•", ln=0)
-                pdf.multi_cell(0, 10, line.strip(), border=0)
-            else:
-                pdf.ln(10)
-        # Resetear el color de texto a negro
-        pdf.set_text_color(0, 0, 0)
 
-        # Generar el PDF en memoria
-        pdf_output = pdf.output(dest="S")
-        # Nota: La salida ya es un byte string, por lo que no es necesario encode
+        for line in lines:
+            pdf.multi_cell(0, 8, line.strip(), border=0, ln=1)
+
+        # -- Generar PDF en memoria --
+        pdf_output = pdf.output(dest="S")  # Retorna bytes
         memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
 
