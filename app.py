@@ -1999,35 +1999,32 @@ def generar_pdf_entrevista(fila_index):
         pdf = FPDF()
         pdf.add_page()
 
-        # Establece la fuente por defecto para todo el documento
-        pdf.set_font("Arial", "", 12)
-
         # Ruta del logo (ajusta el nombre del archivo si es necesario)
         logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        print("Logo path:", logo_path)  # Depuración
+        print("Logo path:", logo_path)  # Depuración en logs
 
         if os.path.exists(logo_path):
             print("Logo encontrado. Insertando imagen...")
-            # Aumentamos el ancho del logo para que se vea más grande y centrado
-            pdf.image(logo_path, x=pdf.w/2 - 40, y=10, w=80)  # Ajusta w (ancho) según prefieras
+            # Ajusta los parámetros (x, y, w) según tus necesidades.
+            pdf.image(logo_path, x=10, y=8, w=50)  # Aumenté w a 50 para hacerlo más grande.
         else:
             print("Archivo logo_nuevo.png no existe en esa ruta")
 
-        # Dejar espacio debajo del logo (ajusta el valor de ln() si es necesario)
-        pdf.ln(50)
+        # Dejar espacio debajo del logo
+        pdf.ln(40)
 
-        # Título centrado
+        # Título
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
         pdf.ln(10)
 
-        # Contenido de la entrevista (volvemos a establecer la fuente normal si es necesario)
-        pdf.set_font("Arial", "", 12)
+        # Contenido de la entrevista
+        pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, texto_entrevista)
 
         # Generar PDF en memoria
         pdf_output = pdf.output(dest="S")
-        memory_file = io.BytesIO(pdf_output.encode("latin1"))
+        memory_file = io.BytesIO(pdf_output)
         memory_file.seek(0)
 
         return send_file(
