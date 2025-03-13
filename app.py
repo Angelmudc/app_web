@@ -1970,8 +1970,14 @@ import io
 import os
 
 def generar_pdf_entrevista(fila_index):
+    """
+    Lee la columna Z de la fila dada (fila_index) en Google Sheets,
+    genera un PDF con el texto de la entrevista, un logo centrado en la
+    primera página, y organiza cada pregunta (en negrita, negro) y respuesta 
+    (en color azul, con bullet) con un pequeño interlineado.
+    """
     try:
-        # Leer columna Z
+        # Leer la entrevista de Google Sheets
         rango_entrevista = f"Nueva hoja!Z{fila_index}"
         hoja_entrevista = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1980,7 +1986,6 @@ def generar_pdf_entrevista(fila_index):
         entrevista_val = hoja_entrevista.get("values", [])
         if not entrevista_val or not entrevista_val[0]:
             return "No hay entrevista guardada en la columna Z", 404
-
         texto_entrevista = entrevista_val[0][0]
     except Exception as e:
         return f"Error al leer entrevista: {str(e)}", 500
@@ -1993,15 +1998,14 @@ def generar_pdf_entrevista(fila_index):
 
         class MyPDF(FPDF):
             def header(self):
+                # Solo se muestra en la primera página
                 if self.page_no() == 1:
-                    # Logo
                     logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
                     if os.path.exists(logo_path):
-                        logo_w = 60
+                        logo_w = 60  # Aumenta el tamaño del logo
                         x = (self.w - logo_w) / 2
                         self.image(logo_path, x=x, y=8, w=logo_w)
                     self.ln(40)
-                    # Título
                     self.set_font("DejaVuSerif", "B", 16)
                     self.set_text_color(0, 0, 0)
                     self.cell(0, 10, "Entrevista de Candidata", ln=True, align="C")
@@ -2017,7 +2021,7 @@ def generar_pdf_entrevista(fila_index):
         pdf.set_margins(15, 15, 15)
         pdf.set_auto_page_break(auto=True, margin=15)
 
-        # Fuentes en static/fonts (usar DejaVuSerif para que soporte el bullet)
+        # Cargar fuentes personalizadas desde static/fonts
         font_dir = os.path.join(app.root_path, "static", "fonts")
         pdf.add_font("DejaVuSerif", "", os.path.join(font_dir, "DejaVuSerif.ttf"), uni=True)
         pdf.add_font("DejaVuSerif", "B", os.path.join(font_dir, "DejaVuSerif-Bold.ttf"), uni=True)
@@ -2026,34 +2030,35 @@ def generar_pdf_entrevista(fila_index):
         pdf.add_page()
 
         available_width = pdf.w - pdf.l_margin - pdf.r_margin
-        lines = [l.strip() for l in texto_entrevista.split("\n") if l.strip()]
 
+        # Procesar las líneas de la entrevista
+        # Se espera que cada línea tenga formato "Pregunta: Respuesta"
+        lines = [line.strip() for line in texto_entrevista.split("\n") if line.strip()]
         for line in lines:
             if ":" in line:
-                pregunta, respuesta = line.split(":", 1)
-                pregunta = pregunta.strip() + ":"
-                respuesta = respuesta.strip()
-
-                # Pregunta (negro)
+                parts = line.split(":", 1)
+                question = parts[0].strip() + ":"
+                answer = parts[1].strip()
+                # Pregunta en negrita, color negro
                 pdf.set_font("DejaVuSerif", "B", 12)
                 pdf.set_text_color(0, 0, 0)
-                pdf.multi_cell(available_width, 8, pregunta, ln=1)
-
-                # Respuesta (azul) con punto negro
-                pdf.set_font("DejaVuSerif", "", 12)
-                pdf.set_text_color(0, 0, 200)
-                pdf.multi_cell(available_width, 8, "• " + respuesta, ln=1)
-
+                pdf.multi_cell(available_width, 8, question)
                 pdf.ln(2)
+                # Respuesta en color azul con bullet (alineado debajo de la pregunta)
+                pdf.set_font("DejaVuSerif", "", 12)
+                pdf.set_text_color(0, 0, 150)  # Azul (ajusta el valor si es necesario)
+                bullet = "•"
+                pdf.multi_cell(available_width, 8, f"    {bullet} {answer}")
+                pdf.ln(4)
             else:
-                # Si no hay ":", se pone normal en negro
+                # Si la línea no contiene ":", se imprime normal en negro
                 pdf.set_font("DejaVuSerif", "", 12)
                 pdf.set_text_color(0, 0, 0)
-                pdf.multi_cell(available_width, 8, line, ln=1)
+                pdf.multi_cell(available_width, 8, line)
                 pdf.ln(2)
 
-        pdf_output = pdf.output(dest="S").encode("latin-1")
-        memory_file = io.BytesIO(pdf_output)
+        pdf_output = pdf.output(dest="S")
+        memory_file = io.BytesIO(pdf_output.encode("latin-1"))
         memory_file.seek(0)
 
         return send_file(
