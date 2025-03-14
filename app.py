@@ -1056,7 +1056,7 @@ def editar():
     candidata_detalles = None
     mensaje = None
 
-    # 1. Cargar la hoja de Google Sheets (rango "Nueva hoja!B:O")
+    # Primero: Cargar la hoja de Google Sheets (rango "Nueva hoja!B:O")
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1070,13 +1070,12 @@ def editar():
         mensaje = f"Error al obtener datos: {str(e)}"
         return render_template('editar.html', resultados=resultados, candidata=None, mensaje=mensaje)
 
-    # 2. Procesar según el método y parámetros:
-    # Caso A: Solicitud GET con "candidata_seleccionada" (Ver Detalles)
+    # Caso A: GET con "candidata_seleccionada" para ver detalles
     if request.method == 'GET' and request.args.get('candidata_seleccionada'):
         candidata_id = request.args.get('candidata_seleccionada').strip()
         try:
             fila_index = int(candidata_id)
-            # El arreglo 'valores' incluye el encabezado en posición 0, por eso usamos fila_index - 1
+            # El arreglo "valores" incluye la cabecera en posición 0, por lo que fila_index coincide con el número de fila real
             fila = valores[fila_index - 1]
             candidata_detalles = {
                 'fila_index': fila_index,
@@ -1097,8 +1096,8 @@ def editar():
             }
         except Exception as e:
             mensaje = f"Error al cargar detalles: {str(e)}"
-    
-    # Caso B: Solicitud POST para guardar cambios (botón "guardar_edicion")
+
+    # Caso B: POST para guardar cambios (se detecta con el campo "guardar_edicion")
     elif request.method == 'POST' and request.form.get('guardar_edicion'):
         try:
             fila_index = request.form.get('fila_index', '').strip()
@@ -1122,7 +1121,6 @@ def editar():
                     'acepta_porcentaje': request.form.get('acepta_porcentaje', '').strip(),
                     'cedula': request.form.get('cedula', '').strip()
                 }
-                # Mapeo de cada campo a la columna correspondiente
                 columnas = {
                     'nombre': "B",
                     'edad': "C",
@@ -1140,7 +1138,7 @@ def editar():
                     'cedula': "O"
                 }
                 for campo, valor in nuevos_datos.items():
-                    if valor:  # Actualiza solo si se proporciona un nuevo valor
+                    if valor:  # Actualiza solo si se proporcionó un valor
                         rango = f'Nueva hoja!{columnas[campo]}{fila_index}'
                         service.spreadsheets().values().update(
                             spreadsheetId=SPREADSHEET_ID,
@@ -1149,7 +1147,7 @@ def editar():
                             body={"values": [[valor]]}
                         ).execute()
                 mensaje = "Los datos fueron actualizados correctamente."
-                # Luego, cargar nuevamente los detalles para mostrar la información actualizada
+                # Recargar detalles actualizados
                 fila = valores[fila_index - 1]
                 candidata_detalles = {
                     'fila_index': fila_index,
@@ -1171,11 +1169,11 @@ def editar():
         except Exception as e:
             mensaje = f"Error al actualizar datos: {str(e)}"
 
-    # Caso C: Búsqueda simple (ya sea POST o GET sin 'candidata_seleccionada' ni guardar)
+    # Caso C: Búsqueda simple (sin parámetros de selección ni guardado)
     else:
         busqueda = request.values.get('busqueda', '').strip().lower()
 
-    # Si no se cargaron detalles (caso C o si se desea mostrar la lista), se generan los resultados
+    # Si aún no se cargaron detalles (caso C o si no se seleccionó candidata), se generan los resultados de búsqueda
     if not candidata_detalles:
         for fila_index, fila in enumerate(valores[1:], start=2):
             nombre = fila[0].strip().lower() if len(fila) > 0 else ""
@@ -1191,7 +1189,6 @@ def editar():
             })
 
     return render_template('editar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
-
 
 
 
