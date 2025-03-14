@@ -2183,15 +2183,11 @@ from datetime import datetime
 import pandas as pd
 import io
 from flask import render_template, request, send_file
-import logging
-
-# Configura logging si es necesario
-logging.basicConfig(level=logging.DEBUG)
 
 @app.route('/reporte_inscripciones', methods=['GET'])
 def reporte_inscripciones():
     try:
-        # Parámetros: mes y anio (por defecto, mes y año actuales)
+        # Leer parámetros: mes y anio (por defecto, mes y año actuales)
         mes = int(request.args.get('mes', datetime.today().month))
         anio = int(request.args.get('anio', datetime.today().year))
         descargar = request.args.get('descargar', '0')  # "1" para descargar, "0" para visualizar
@@ -2215,21 +2211,17 @@ def reporte_inscripciones():
             "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
             "Medio", "Estado", "Monto", "Fecha", "Observaciones"
         ]
-        # Crear DataFrame; la primera fila de datos se asume que no es encabezado
+        # Crear DataFrame; se ignora la primera fila de encabezados de la hoja si es necesario
         df = pd.DataFrame(datos[1:], columns=columnas)
         
-        # Limpiar la columna 'Fecha' y convertirla a datetime
-        # Se espera que las fechas estén en formato "YYYY-MM-DD"
-        df['Fecha'] = pd.to_datetime(df['Fecha'].str.strip(), format='%Y-%m-%d', errors='coerce')
+        # Convertir la columna 'Fecha' a datetime usando el formato "YYYY-MM-DD"
+        df['Fecha'] = pd.to_datetime(df['Fecha'].astype(str).str.strip(), format='%Y-%m-%d', errors='coerce')
         
-        # Depuración: mostrar los primeros valores de la columna Fecha en el log
-        logging.debug("Fechas convertidas:\n%s", df['Fecha'].head())
-
         # Verificar que existan fechas válidas
         if df['Fecha'].isnull().all():
             return "No se pudieron convertir las fechas. Revisa el formato en la hoja.", 400
-
-        # Filtrar registros para el mes y año solicitados
+        
+        # Filtrar registros que coincidan con el mes y año solicitados
         df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
         
         if df_reporte.empty:
@@ -2251,7 +2243,7 @@ def reporte_inscripciones():
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
         else:
-            # Convertir a HTML y renderizar la plantilla
+            # Convertir el DataFrame a HTML y renderizar la plantilla
             reporte_html = df_reporte.to_html(classes="table table-striped", index=False)
             return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio, mensaje="")
     except Exception as e:
