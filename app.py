@@ -1263,13 +1263,13 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = {}  # Diccionario que contendrá los datos de la candidata
+    datos_candidata = {}
 
-    # --- 1. Cargar la hoja completa en el rango "Nueva hoja!B:P" ---
+    # 1. Leer TODA la fila desde "A" hasta "T" para que row_values() coincida
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:P"  # Rango que incluye columnas B a P
+            range="Nueva hoja!A:T"  # Leer columnas A a T
         ).execute()
         valores = hoja.get("values", [])
         if not valores or len(valores) < 2:
@@ -1279,75 +1279,76 @@ def inscripcion():
         mensaje = f"Error al obtener datos: {str(e)}"
         return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
 
-    # --- Función interna para buscar candidatas según un criterio ---
+    # Función interna para buscar candidatas
     def buscar_candidata(query):
+        """
+        Supongamos:
+          - Columna B (índice 1) = Nombre
+          - Columna O (índice 14) = Cédula
+          - Columna P (índice 15) = Código
+        """
         resultados = []
-        for idx, fila in enumerate(valores[1:], start=2):
-            if (len(fila) > 0 and query.lower() in fila[0].lower()) or \
-               (len(fila) > 13 and query.lower() in fila[13].lower()):
+        for idx, fila in enumerate(valores[1:], start=2):  # Empezar en fila 2
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+            cedula = fila[14].strip().lower() if len(fila) > 14 else ""
+            if query.lower() in nombre or query.lower() in cedula:
                 resultados.append({
                     "fila_index": idx,
-                    "codigo": fila[14] if len(fila) > 14 else "",
-                    "nombre": fila[0] if len(fila) > 0 else "",
-                    "edad": fila[1] if len(fila) > 1 else "",
-                    "telefono": fila[2] if len(fila) > 2 else "",
-                    "direccion": fila[3] if len(fila) > 3 else "",
-                    "cedula": fila[13] if len(fila) > 13 else ""
+                    "codigo": fila[15] if len(fila) > 15 else "",
+                    "nombre": fila[1] if len(fila) > 1 else "",
+                    "telefono": fila[3] if len(fila) > 3 else "",
+                    "direccion": fila[4] if len(fila) > 4 else "",
+                    "cedula": fila[14] if len(fila) > 14 else "",
+                    # Agrega más campos si los necesitas
                 })
         return resultados
 
-    # --- 2. Procesar la solicitud según método y parámetros ---
     if request.method == "POST":
-        # Caso A: Guardar inscripción (campo "guardar_inscripcion" presente)
+        # 2A. Guardar inscripción
         if request.form.get("guardar_inscripcion"):
             try:
                 fila_index_str = request.form.get("fila_index", "").strip()
-                if not fila_index_str or not fila_index_str.isdigit():
-                    mensaje = "Error: No se encontró el índice de la candidata."
+                if not fila_index_str.isdigit():
+                    mensaje = "Error: Índice de fila inválido."
                 else:
                     fila_index = int(fila_index_str)
-                    if fila_index < 1 or fila_index > len(valores):
-                        mensaje = "Índice de fila no válido."
+                    if fila_index < 2 or fila_index > len(valores):
+                        mensaje = "Índice de fila fuera de rango."
                     else:
-                        # Acceder a la hoja mediante 'client' (o unificar con 'service' si lo deseas)
                         sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
-                        datos_hoja = sheet.get_all_values()
-                        if fila_index > len(datos_hoja):
-                            mensaje = "El índice excede el número de filas en la hoja."
+                        # row_values() devuelve TODAS las columnas (A..T) => índices 0..19
+                        fila_actual = sheet.row_values(fila_index)  # Leer la fila completa
+                        # Revisar código en columna P → índice 15
+                        codigo_actual = fila_actual[15] if len(fila_actual) > 15 else ""
+                        if not codigo_actual.strip():
+                            nuevo_codigo = generar_codigo_unico()
+                            sheet.update(f"P{fila_index}", [[nuevo_codigo]])
+                            # Releer la fila para refrescar
+                            fila_actual = sheet.row_values(fila_index)
                         else:
-                            fila_actual = datos_hoja[fila_index - 1]
-                            # Verificar si ya existe código en la columna P (índice 14)
-                            codigo_actual = fila_actual[14] if len(fila_actual) > 14 else ""
-                            if not codigo_actual.strip():
-                                nuevo_codigo = generar_codigo_unico()
-                                sheet.update(f"P{fila_index}", [[nuevo_codigo]])
-                                # Releer la fila para asegurar el cambio (opcional)
-                                fila_actual = sheet.row_values(fila_index)
-                            else:
-                                nuevo_codigo = codigo_actual
-                            
-                            # Recoger datos de inscripción: actualizar columnas R, S y T
-                            estado = request.form.get("estado", "").strip()
-                            monto = request.form.get("monto", "").strip()
-                            fecha = request.form.get("fecha", "").strip()
-                            sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])
-                            
-                            mensaje = "Inscripción guardada correctamente."
-                            # Construir el diccionario de datos usando el nuevo código
-                            datos_candidata = {
-                                "fila_index": fila_index,
-                                "codigo": nuevo_codigo,
-                                "nombre": fila_actual[0] if len(fila_actual) > 0 else "No disponible",
-                                "edad": fila_actual[1] if len(fila_actual) > 1 else "No disponible",
-                                "telefono": fila_actual[2] if len(fila_actual) > 2 else "No disponible",
-                                "direccion": fila_actual[3] if len(fila_actual) > 3 else "No disponible",
-                                "cedula": fila_actual[13] if len(fila_actual) > 13 else "No disponible"
-                            }
+                            nuevo_codigo = codigo_actual
+
+                        # Actualizar Estado (R=17), Monto (S=18), Fecha (T=19)
+                        estado = request.form.get("estado", "").strip()
+                        monto = request.form.get("monto", "").strip()
+                        fecha = request.form.get("fecha", "").strip()
+                        sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])
+
+                        mensaje = "Inscripción guardada correctamente."
+                        # Reconstruir diccionario usando fila_actual
+                        datos_candidata = {
+                            "fila_index": fila_index,
+                            "codigo": fila_actual[15] if len(fila_actual) > 15 else "",
+                            "nombre": fila_actual[1] if len(fila_actual) > 1 else "No disponible",
+                            "telefono": fila_actual[3] if len(fila_actual) > 3 else "",
+                            "direccion": fila_actual[4] if len(fila_actual) > 4 else "",
+                            "cedula": fila_actual[14] if len(fila_actual) > 14 else "",
+                        }
             except Exception as e:
-                mensaje = f"Error al guardar la inscripción: {str(e)}"
+                mensaje = f"Error al guardar: {str(e)}"
             return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
         else:
-            # Caso B: Búsqueda mediante formulario POST
+            # 2B. Búsqueda (POST)
             query = request.form.get("buscar", "").strip()
             if query:
                 resultados = buscar_candidata(query)
@@ -1357,23 +1358,22 @@ def inscripcion():
                     mensaje = "⚠️ No se encontró ninguna candidata con ese criterio."
             return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
     else:
-        # GET: Procesar búsqueda o ver detalles
+        # 3. GET: ver detalles o búsqueda
         candidata_param = request.args.get("candidata_seleccionada", "").strip()
         if candidata_param:
             try:
                 fila_index = int(candidata_param)
-                if fila_index < 1 or fila_index > len(valores):
-                    mensaje = "Índice de fila no válido."
+                if fila_index < 2 or fila_index > len(valores):
+                    mensaje = "Índice de fila fuera de rango."
                 else:
                     fila = valores[fila_index - 1]
                     datos_candidata = {
                         "fila_index": fila_index,
-                        "codigo": fila[14] if len(fila) > 14 and fila[14].strip() else "Se generará automáticamente",
-                        "nombre": fila[0] if len(fila) > 0 else "No disponible",
-                        "edad": fila[1] if len(fila) > 1 else "No disponible",
-                        "telefono": fila[2] if len(fila) > 2 else "No disponible",
-                        "direccion": fila[3] if len(fila) > 3 else "No disponible",
-                        "cedula": fila[13] if len(fila) > 13 else "No disponible"
+                        "codigo": fila[15] if len(fila) > 15 and fila[15].strip() else "Se generará automáticamente",
+                        "nombre": fila[1] if len(fila) > 1 else "",
+                        "telefono": fila[3] if len(fila) > 3 else "",
+                        "direccion": fila[4] if len(fila) > 4 else "",
+                        "cedula": fila[14] if len(fila) > 14 else "",
                     }
             except Exception as e:
                 mensaje = f"Error al cargar detalles: {str(e)}"
@@ -1386,6 +1386,7 @@ def inscripcion():
                 else:
                     mensaje = "⚠️ No se encontró ninguna candidata con ese criterio."
         return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
+
 
 @app.route('/porciento', methods=['GET', 'POST'])
 def porciento():
