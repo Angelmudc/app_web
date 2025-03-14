@@ -11,14 +11,15 @@
       --secondary-color: #ffffff;
       --background-color: #e8f6fa;
       --text-color: #343a40;
-      --font-size: 1.1rem;
       --transition-duration: 0.3s;
+      --font-size: 1.2rem;
     }
     body {
       font-family: Arial, sans-serif;
       background-color: var(--background-color);
       color: var(--text-color);
       padding: 20px;
+      font-size: var(--font-size);
     }
     .container {
       max-width: 900px;
@@ -27,27 +28,43 @@
       padding: 40px;
       border-radius: 10px;
       box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+      text-align: center;
     }
     h1, h2 {
-      text-align: center;
       color: var(--primary-color);
       margin-bottom: 20px;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
+    form {
+      margin-bottom: 30px;
     }
-    table, th, td {
-      border: 1px solid #ccc;
-    }
-    th, td {
-      padding: 12px;
+    label {
+      display: block;
+      margin: 15px 0 5px;
+      font-weight: bold;
       text-align: left;
     }
-    th {
-      background-color: var(--accent-color);
+    input[type="number"],
+    input[type="text"],
+    select {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      background-color: var(--primary-color);
       color: var(--secondary-color);
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color var(--transition-duration) ease;
+    }
+    button:hover {
+      background-color: var(--accent-color);
     }
     .btn-download {
       display: inline-block;
@@ -58,6 +75,7 @@
       font-weight: bold;
       border-radius: 5px;
       transition: background-color var(--transition-duration) ease;
+      margin-bottom: 20px;
     }
     .btn-download:hover {
       background-color: var(--accent-color);
@@ -65,7 +83,7 @@
     .volver {
       display: inline-block;
       margin-top: 20px;
-      padding: 12px 20px;
+      padding: 14px 24px;
       background-color: var(--primary-color);
       color: var(--secondary-color);
       text-decoration: none;
@@ -76,26 +94,62 @@
     .volver:hover {
       background-color: var(--accent-color);
     }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 14px;
+      text-align: left;
+    }
+    th {
+      background-color: var(--accent-color);
+      color: var(--secondary-color);
+    }
+    .mensaje {
+      margin-top: 20px;
+      font-weight: bold;
+      color: #d9534f;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Reporte de Inscripciones</h1>
-    <h2>{{ mes }}/{{ anio }}</h2>
     
-    <!-- Mostrar la tabla del reporte -->
-    <div class="table-responsive">
-      {{ reporte_html | safe }}
-    </div>
+    <!-- Formulario de búsqueda de reporte -->
+    <form method="GET" action="/reporte_inscripciones">
+      <label for="mes">Mes (1-12):</label>
+      <input type="number" id="mes" name="mes" min="1" max="12" value="{{ mes }}" required />
+      
+      <label for="anio">Año:</label>
+      <input type="number" id="anio" name="anio" value="{{ anio }}" required />
+      
+      <button type="submit">Buscar Reporte</button>
+    </form>
     
-    <!-- Botón para descargar el reporte en Excel -->
-    <a class="btn-download" href="/reporte_inscripciones?mes={{ mes }}&anio={{ anio }}&descargar=1">
-      Descargar Reporte en Excel
-    </a>
+    {% if reporte_html %}
+      <h2>Inscripciones para {{ mes }}/{{ anio }}</h2>
+      <div class="table-responsive">
+        {{ reporte_html | safe }}
+      </div>
+      
+      <a class="btn-download" href="/reporte_inscripciones?mes={{ mes }}&anio={{ anio }}&descargar=1">
+        Descargar Reporte en Excel
+      </a>
+    {% else %}
+      {% if mensaje %}
+        <p class="mensaje">{{ mensaje }}</p>
+      {% else %}
+        <p>No se encontraron inscripciones para este período.</p>
+      {% endif %}
+    {% endif %}
     
-    <br><br>
-    <!-- Botón para volver a la pantalla principal -->
-    <a class="volver" href="/">🏠 Volver a Home</a>
+    <a href="/" class="volver">🏠 Volver a Home</a>
   </div>
 </body>
 </html>
