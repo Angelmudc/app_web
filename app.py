@@ -973,61 +973,100 @@ def buscar_candidata():
 def buscar():
     resultados = []
     candidata_detalles = None
-    busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '').strip()
+    mensaje = None
+
+    # Obtener parámetros: término de búsqueda y posible id de candidata
+    busqueda_input = request.form.get('busqueda', '').strip().lower()
+    candidata_param = request.args.get('candidata', '').strip()
 
     try:
-        # Obtener los datos de la hoja
+        # Obtener datos desde Google Sheets (rango B:O)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!B:O"  # Desde la columna B hasta la O
         ).execute()
         valores = hoja.get("values", [])
 
+        # Verificar que existan datos (al menos encabezado y una fila de datos)
         if not valores or len(valores) < 2:
-            return render_template('buscar.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
+            mensaje = "⚠️ No hay datos disponibles."
+            return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
 
-        # 🔹 Búsqueda flexible por nombre
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezar en la segunda fila
-            nombre = fila[0].strip().lower() if len(fila) > 0 else ""  # Columna B (Nombre)
-
-            if busqueda and busqueda in nombre:
-                resultados.append({
-                    'fila_index': fila_index,
-                    'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                    'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                    'ciudad': fila[3] if len(fila) > 3 else "No especificado",
-                    'cedula': fila[13] if len(fila) > 13 else "No especificado",
-                })
-
-        # 🔹 Cargar detalles si se seleccionó una candidata
-        if candidata_id:
-            fila_index = int(candidata_id)  # Convertir ID a número de fila
-            fila = valores[fila_index - 1]  # Ajustar índice (Sheets empieza en 1)
-
-            candidata_detalles = {
+        # Función auxiliar para parsear una fila de la hoja.
+        # Si for_search es True, se devuelven solo los campos necesarios para el listado.
+        def parse_fila(fila, fila_index, for_search=True):
+            data = {
                 'fila_index': fila_index,
-                'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                'edad': fila[1] if len(fila) > 1 else "No especificado",
-                'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                'direccion': fila[3] if len(fila) > 3 else "No especificado",
-                'modalidad': fila[4] if len(fila) > 4 else "No especificado",
-                'rutas': fila[5] if len(fila) > 5 else "No especificado",
-                'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
-                'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
-                'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-                'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
-                'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
-                'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
-                'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
-                'cedula': fila[13] if len(fila) > 13 else "No especificado",
+                'nombre': fila[0].strip() if len(fila) > 0 and fila[0].strip() else "No especificado",
+                'edad': fila[1].strip() if len(fila) > 1 and fila[1].strip() else "No especificado",
+                'telefono': fila[2].strip() if len(fila) > 2 and fila[2].strip() else "No especificado",
+                'direccion': fila[3].strip() if len(fila) > 3 and fila[3].strip() else "No especificado",
+                'modalidad': fila[4].strip() if len(fila) > 4 and fila[4].strip() else "No especificado",
+                'rutas': fila[5].strip() if len(fila) > 5 and fila[5].strip() else "No especificado",
+                'empleo_anterior': fila[6].strip() if len(fila) > 6 and fila[6].strip() else "No especificado",
+                'anos_experiencia': fila[7].strip() if len(fila) > 7 and fila[7].strip() else "No especificado",
+                'areas_experiencia': fila[8].strip() if len(fila) > 8 and fila[8].strip() else "No especificado",
+                'sabe_planchar': fila[9].strip() if len(fila) > 9 and fila[9].strip() else "No especificado",
+                'referencias_laborales': fila[10].strip() if len(fila) > 10 and fila[10].strip() else "No especificado",
+                'referencias_familiares': fila[11].strip() if len(fila) > 11 and fila[11].strip() else "No especificado",
+                'acepta_porcentaje': fila[12].strip() if len(fila) > 12 and fila[12].strip() else "No especificado",
+                'cedula': fila[13].strip() if len(fila) > 13 and fila[13].strip() else "No especificado",
             }
+            if for_search:
+                # Para el listado de búsqueda, se muestran solo algunos campos:
+                return {
+                    'fila_index': data['fila_index'],
+                    'nombre': data['nombre'],
+                    'telefono': data['telefono'],
+                    'ciudad': data['direccion'],  # Se usa el valor de "direccion" como "ciudad" en el listado
+                    'cedula': data['cedula']
+                }
+            return data
+
+        # Preparar tokens de búsqueda si se ingresó término
+        tokens = busqueda_input.split() if busqueda_input else []
+
+        # Conjunto para evitar duplicados basados en la cédula
+        seen_cedulas = set()
+
+        # Recorrer filas (omitiendo la cabecera)
+        for fila_index, fila in enumerate(valores[1:], start=2):
+            nombre = fila[0].strip().lower() if len(fila) > 0 else ""
+            # Si se ingresó búsqueda, verificar que todos los tokens estén presentes en el nombre
+            if tokens and not all(token in nombre for token in tokens):
+                continue
+
+            candidato = parse_fila(fila, fila_index, for_search=True)
+            cedula = candidato.get('cedula')
+
+            # Evitar duplicados: si la cédula ya se agregó, saltar el registro
+            if cedula != "No especificado":
+                if cedula in seen_cedulas:
+                    continue
+                seen_cedulas.add(cedula)
+            resultados.append(candidato)
+
+        # Ordenar resultados alfabéticamente por nombre para una mejor presentación
+        resultados.sort(key=lambda x: x['nombre'].lower())
+
+        # Cargar detalles completos si se seleccionó una candidata
+        if candidata_param:
+            try:
+                fila_index = int(candidata_param)
+                if 1 <= fila_index <= len(valores):
+                    fila = valores[fila_index - 1]  # Ajustar índice (Sheets empieza en 1)
+                    candidata_detalles = parse_fila(fila, fila_index, for_search=False)
+                else:
+                    mensaje = "❌ Índice de candidata fuera de rango."
+            except ValueError:
+                mensaje = "❌ ID de candidata inválido."
 
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
 
-    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles)
+    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+
 
 @app.route('/editar', methods=['GET', 'POST'])
 def editar():
