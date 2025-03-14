@@ -20,6 +20,7 @@
       color: var(--text-color);
       padding: 20px;
       font-size: var(--font-size);
+      margin: 0;
     }
     .container {
       max-width: 900px;
@@ -94,10 +95,16 @@
     .volver:hover {
       background-color: var(--accent-color);
     }
+    /* Contenedor para hacer scroll horizontal si la tabla es muy ancha */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 20px;
+      min-width: 700px; /* Opcional, para forzar algo de ancho mínimo */
     }
     table, th, td {
       border: 1px solid #ccc;
@@ -105,10 +112,12 @@
     th, td {
       padding: 14px;
       text-align: left;
+      font-size: 1rem;
     }
     th {
       background-color: var(--accent-color);
       color: var(--secondary-color);
+      white-space: nowrap;
     }
     .mensaje {
       margin-top: 20px;
@@ -121,7 +130,7 @@
   <div class="container">
     <h1>Reporte de Inscripciones</h1>
     
-    <!-- Formulario de búsqueda -->
+    <!-- Formulario de búsqueda de reporte -->
     <form method="GET" action="/reporte_inscripciones">
       <label for="mes">Mes (1-12):</label>
       <input type="number" id="mes" name="mes" min="1" max="12" value="{{ mes }}" required />
@@ -134,6 +143,7 @@
     
     {% if reporte_html %}
       <h2>Inscripciones para {{ mes }}/{{ anio }}</h2>
+      <!-- Contenedor con scroll horizontal -->
       <div class="table-responsive">
         {{ reporte_html | safe }}
       </div>
