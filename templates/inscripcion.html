@@ -30,7 +30,7 @@
     }
     
     .container {
-      max-width: 600px;
+      max-width: 500px;
       background: var(--secondary-color);
       padding: 30px;
       margin: 30px auto;
@@ -49,6 +49,7 @@
       margin-bottom: 20px;
       position: relative;
     }
+    
     h1::after, h2::after {
       content: "";
       display: block;
@@ -63,6 +64,7 @@
       font-weight: bold;
       margin-top: 10px;
       display: block;
+      text-align: left;
     }
     
     input[type="text"],
@@ -111,10 +113,10 @@
     }
     
     .volver {
-      display: block;
+      display: inline-block;
       margin-top: 20px;
       background-color: var(--primary-color);
-      padding: 12px;
+      padding: 12px 20px;
       color: var(--secondary-color);
       text-decoration: none;
       font-weight: bold;
@@ -132,14 +134,14 @@
   <div class="container">
     <h1>🔍 Inscripción de Candidatas</h1>
     
-    <!-- Búsqueda -->
+    <!-- Sección de Búsqueda -->
     <label for="busqueda">Buscar por cédula o nombre:</label>
     <input type="text" id="busqueda" placeholder="Ingrese cédula o nombre">
     <button id="buscar">🔎 Buscar</button>
     
     <hr>
     
-    <!-- Datos de la candidata -->
+    <!-- Sección para mostrar datos de la candidata -->
     <h2>📄 Datos de la Candidata</h2>
     <p><strong>Código:</strong> <span id="codigo">Se generará automáticamente</span></p>
     <p><strong>Nombre:</strong> <span id="nombre">No disponible</span></p>
@@ -149,7 +151,7 @@
     
     <hr>
     
-    <!-- Inscripción -->
+    <!-- Sección de Inscripción -->
     <h2>📝 Completar Inscripción</h2>
     <input type="hidden" id="fila_index">
     
@@ -174,7 +176,7 @@
   </div>
   
   <script>
-    // Solo se mantiene el JS para desactivar botones al enviar
+    // Bloqueo simple de botones al enviar para evitar envíos duplicados.
     document.getElementById('buscar').addEventListener('click', function() {
       const btn = this;
       btn.disabled = true;
@@ -183,30 +185,31 @@
       if (!busqueda) {
         btn.disabled = false;
         btn.innerText = "🔎 Buscar";
+        alert("⚠️ Ingresa un nombre o cédula para buscar.");
         return;
       }
       fetch('/buscar_inscripcion?query=' + encodeURIComponent(busqueda))
-      .then(response => response.json())
-      .then(data => {
-        if (data.fila_index) {
-          document.getElementById("fila_index").value = data.fila_index;
-          document.getElementById("codigo").textContent = data.codigo || "Se generará automáticamente";
-          document.getElementById("nombre").textContent = data.nombre || "No disponible";
-          document.getElementById("cedula").textContent = data.cedula || "No disponible";
-          document.getElementById("telefono").textContent = data.telefono || "No disponible";
-          document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
-        } else {
-          alert("❌ No se encontró la candidata.");
-        }
-      })
-      .catch(error => {
-        console.error("Error en la búsqueda:", error);
-        alert("❌ Error en la búsqueda.");
-      })
-      .finally(() => {
-        btn.disabled = false;
-        btn.innerText = "🔎 Buscar";
-      });
+        .then(response => response.json())
+        .then(data => {
+          if (data.fila_index) {
+            document.getElementById("fila_index").value = data.fila_index;
+            document.getElementById("codigo").textContent = data.codigo || "Se generará automáticamente";
+            document.getElementById("nombre").textContent = data.nombre || "No disponible";
+            document.getElementById("cedula").textContent = data.cedula || "No disponible";
+            document.getElementById("telefono").textContent = data.telefono || "No disponible";
+            document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
+          } else {
+            alert("❌ No se encontró la candidata.");
+          }
+        })
+        .catch(error => {
+          console.error("Error en la búsqueda:", error);
+          alert("❌ Error en la búsqueda.");
+        })
+        .finally(() => {
+          btn.disabled = false;
+          btn.innerText = "🔎 Buscar";
+        });
     });
     
     document.getElementById('guardar').addEventListener('click', function() {

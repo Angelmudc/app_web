@@ -1263,99 +1263,78 @@ import traceback  # Importa para depuración
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = {}  # Diccionario para almacenar datos de la candidata encontrada
+    datos_candidata = {}  # Diccionario con los datos de la candidata
 
-    # --- 1. Cargar la hoja completa ---
+    # Cargar los datos de la hoja en el rango "Nueva hoja!B:O"
     try:
-        # Se usa el rango "Nueva hoja!B:O" (columna B = índice 0 en este rango, etc.)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"
+            range="Nueva hoja!B:O"  # Se asume: índice 0 = Nombre, 1 = Edad, 2 = Teléfono, 3 = Dirección, 4 = Modalidad, 5 = Rutas,
+                                    # 6 = Empleo Anterior, 7 = Años de Experiencia, 8 = Áreas de Experiencia, 9 = Sabe Planchar,
+                                    # 10 = Referencias Laborales, 11 = Referencias Familiares, 12 = Acepta Porcentaje, 13 = Cédula.
         ).execute()
         valores = hoja.get("values", [])
         if not valores or len(valores) < 2:
             mensaje = "⚠️ No hay datos disponibles en la hoja."
-            # En este caso se retorna la plantilla con el mensaje y sin resultados.
             return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
     except Exception as e:
         mensaje = f"Error al obtener datos de la hoja: {str(e)}"
         return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
 
-    # --- 2. Determinar la acción según el método y los datos recibidos ---
-    # Si se envía por POST y se indica la acción "guardar" (ya sea en JSON o en formulario), procesamos la actualización
-    if request.method == "POST":
-        # Verificar si se está enviando JSON o datos de formulario
-        if request.is_json:
-            data = request.get_json()
-        else:
-            data = request.form
-
-        accion = data.get("accion", "").strip().lower()
-        if accion == "guardar":
-            # Actualizar inscripción: se espera que vengan los campos: fila_index, estado, monto, fecha
-            try:
-                fila_index = int(data.get("fila_index", "0"))
-                estado = data.get("estado", "").strip()
-                monto = data.get("monto", "").strip()
-                fecha = data.get("fecha", "").strip()
-
+    # --- Caso A: Guardar inscripción (POST con campo 'guardar_inscripcion') ---
+    if request.method == "POST" and request.form.get("guardar_inscripcion"):
+        try:
+            fila_index_str = request.form.get("fila_index", "").strip()
+            if not fila_index_str or not fila_index_str.isdigit():
+                mensaje = "Error: No se encontró el índice de la fila."
+            else:
+                fila_index = int(fila_index_str)
                 if fila_index < 1 or fila_index > len(valores):
                     mensaje = "Índice de fila no válido."
-                    # Se retorna error en JSON
-                    return jsonify({"success": False, "error": mensaje}), 400
-
-                # --- Verificar y generar código único en columna P (índice 15) ---
-                # Se obtiene la fila completa de la hoja (usando client para actualizar directamente)
-                sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
-                datos_hoja = sheet.get_all_values()  # Obtener todas las filas
-                if fila_index > len(datos_hoja):
-                    mensaje = "El índice de fila excede el número de filas en la hoja."
-                    return jsonify({"success": False, "error": mensaje}), 400
-                fila = datos_hoja[fila_index - 1]
-                codigo_actual = fila[15] if len(fila) > 15 else ""
-                if not codigo_actual.strip():
-                    nuevo_codigo = generar_codigo_unico()
-                    sheet.update(f"P{fila_index}", [[nuevo_codigo]])
                 else:
-                    nuevo_codigo = codigo_actual
+                    # Usar 'client' para actualizar (o unificar con 'service' si lo prefieres)
+                    sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
+                    datos_hoja = sheet.get_all_values()
+                    if fila_index > len(datos_hoja):
+                        mensaje = "El índice de fila excede el número de filas en la hoja."
+                    else:
+                        # Verificar si ya existe un código en la columna P (índice 15)
+                        fila_actual = datos_hoja[fila_index - 1]
+                        codigo_actual = fila_actual[15] if len(fila_actual) > 15 else ""
+                        if not codigo_actual.strip():
+                            nuevo_codigo = generar_codigo_unico()
+                            sheet.update(f"P{fila_index}", [[nuevo_codigo]])
+                        else:
+                            nuevo_codigo = codigo_actual
 
-                # --- Actualizar los datos de inscripción (estado, monto, fecha) en columnas R, S y T ---
-                # Se asume que la actualización es en columnas R, S, T (3 columnas)
-                sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])
+                        # Obtener datos de inscripción enviados (estado, monto, fecha)
+                        estado = request.form.get("estado", "").strip()
+                        monto = request.form.get("monto", "").strip()
+                        fecha = request.form.get("fecha", "").strip()
 
-                mensaje = "Datos guardados correctamente"
-                # Se retorna respuesta exitosa en JSON (esto lo puede procesar el frontend)
-                return jsonify({"success": True, "codigo": nuevo_codigo, "mensaje": mensaje})
-            except Exception as e:
-                mensaje = f"Error al guardar la inscripción: {str(e)}"
-                return jsonify({"success": False, "error": mensaje}), 500
-        else:
-            # Si no se indica "guardar", se asume que se envía una búsqueda desde el formulario (método POST)
-            busqueda = data.get("buscar", "").strip()
-            if busqueda:
-                datos = buscar_candidata(busqueda)
-                if datos and isinstance(datos, list) and len(datos) > 0:
-                    primera_coincidencia = datos[0]
-                    datos_candidata = {
-                        'fila_index': primera_coincidencia.get('fila_index', ''),
-                        'codigo': primera_coincidencia.get('codigo', 'Se generará automáticamente'),
-                        'nombre': primera_coincidencia.get('nombre', 'No disponible'),
-                        'edad': primera_coincidencia.get('edad', 'No disponible'),
-                        'telefono': primera_coincidencia.get('telefono', 'No disponible'),
-                        'direccion': primera_coincidencia.get('direccion', 'No disponible'),
-                        'cedula': primera_coincidencia.get('cedula', 'No disponible'),
-                        'estado': primera_coincidencia.get('estado', 'No disponible')
-                    }
-                else:
-                    mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
-            # Renderizar la plantilla con los resultados de búsqueda
-            return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
+                        # Actualizar los datos en las columnas R, S y T (suponiendo que esa es la ubicación)
+                        sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])
 
-    # --- 3. Procesar solicitud GET (búsqueda o ver detalles) ---
+                        mensaje = "Datos guardados correctamente."
+                        # Actualizar los datos de la candidata para mostrarlos
+                        fila = valores[fila_index - 1]
+                        datos_candidata = {
+                            'fila_index': fila_index,
+                            'codigo': nuevo_codigo,
+                            'nombre': fila[0] if len(fila) > 0 else "No disponible",
+                            'edad': fila[1] if len(fila) > 1 else "No disponible",
+                            'telefono': fila[2] if len(fila) > 2 else "No disponible",
+                            'direccion': fila[3] if len(fila) > 3 else "No disponible",
+                            'cedula': fila[13] if len(fila) > 13 else "No disponible",
+                            # Puedes agregar más campos si fuera necesario
+                        }
+        except Exception as e:
+            mensaje = f"Error al guardar la inscripción: {str(e)}"
+        return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
+
+    # --- Caso B: Solicitud GET para búsqueda o ver detalles ---
     else:
-        # Si en GET se envía un parámetro "buscar" o "query", se realiza la búsqueda
-        busqueda = request.args.get("buscar", "").strip() or request.args.get("query", "").strip()
-        # También, si se envía "candidata_seleccionada" por GET, se cargan sus datos para mostrar inscripcion
+        # Si se envía "candidata_seleccionada" en GET, se carga esa candidata
         candidata_param = request.args.get("candidata_seleccionada", "").strip()
         if candidata_param:
             try:
@@ -1366,33 +1345,25 @@ def inscripcion():
                     fila = valores[fila_index - 1]
                     datos_candidata = {
                         'fila_index': fila_index,
-                        'codigo': fila[15] if len(fila) > 15 else "Se generará automáticamente",
+                        'codigo': fila[15] if len(fila) > 15 and fila[15].strip() else "Se generará automáticamente",
                         'nombre': fila[0] if len(fila) > 0 else "No disponible",
                         'edad': fila[1] if len(fila) > 1 else "No disponible",
                         'telefono': fila[2] if len(fila) > 2 else "No disponible",
                         'direccion': fila[3] if len(fila) > 3 else "No disponible",
-                        'cedula': fila[13] if len(fila) > 13 else "No disponible"
+                        'cedula': fila[13] if len(fila) > 13 else "No disponible",
                     }
-                    # Nota: Asegúrate de que el campo "estado" esté en la posición correcta (según el rango usado)
             except Exception as e:
                 mensaje = f"Error al cargar detalles: {str(e)}"
-        elif busqueda:
-            # Realizar búsqueda usando la función externa
-            datos = buscar_candidata(busqueda)
-            if datos and isinstance(datos, list) and len(datos) > 0:
-                primera_coincidencia = datos[0]
-                datos_candidata = {
-                    'fila_index': primera_coincidencia.get('fila_index', ''),
-                    'codigo': primera_coincidencia.get('codigo', 'Se generará automáticamente'),
-                    'nombre': primera_coincidencia.get('nombre', 'No disponible'),
-                    'edad': primera_coincidencia.get('edad', 'No disponible'),
-                    'telefono': primera_coincidencia.get('telefono', 'No disponible'),
-                    'direccion': primera_coincidencia.get('direccion', 'No disponible'),
-                    'cedula': primera_coincidencia.get('cedula', 'No disponible'),
-                    'estado': primera_coincidencia.get('estado', 'No disponible')
-                }
-            else:
-                mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
+        else:
+            # Si se envía un término de búsqueda (parámetro "query" o "buscar")
+            busqueda = request.args.get("query", "").strip() or request.args.get("buscar", "").strip()
+            if busqueda:
+                datos = buscar_candidata(busqueda)
+                if datos and isinstance(datos, list) and len(datos) > 0:
+                    # Tomar la primera coincidencia
+                    datos_candidata = datos[0]
+                else:
+                    mensaje = "⚠️ No se encontró ninguna candidata con ese criterio de búsqueda."
 
         return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
 
