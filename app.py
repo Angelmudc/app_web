@@ -1371,8 +1371,7 @@ def inscripcion():
                         'edad': fila[1] if len(fila) > 1 else "No disponible",
                         'telefono': fila[2] if len(fila) > 2 else "No disponible",
                         'direccion': fila[3] if len(fila) > 3 else "No disponible",
-                        'cedula': fila[13] if len(fila) > 13 else "No disponible",
-                        'estado': fila[?] if len(fila) > ? else "No disponible"  # Si hay campo estado, ajusta índice
+                        'cedula': fila[13] if len(fila) > 13 else "No disponible"
                     }
                     # Nota: Asegúrate de que el campo "estado" esté en la posición correcta (según el rango usado)
             except Exception as e:
