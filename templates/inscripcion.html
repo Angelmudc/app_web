@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Inscripción de Candidatas</title>
-  <link rel="stylesheet" href="styles.css">
   <style>
     :root {
       --primary-color: #1A5789;      /* Azul intenso */
@@ -14,12 +13,14 @@
       --text-color: #343a40;         /* Gris oscuro */
       --transition-duration: 0.3s;
     }
-    /* Reset y estilos globales */
+    
+    /* Reset básico */
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+    
     body {
       font-family: Arial, sans-serif;
       background-color: var(--background-color);
@@ -27,8 +28,9 @@
       padding: 20px;
       text-align: center;
     }
+    
     .container {
-      max-width: 500px;
+      max-width: 600px;
       background: var(--secondary-color);
       padding: 30px;
       margin: 30px auto;
@@ -36,6 +38,12 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       animation: fadeIn 0.8s ease-out;
     }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
     h1, h2 {
       color: var(--primary-color);
       margin-bottom: 20px;
@@ -50,11 +58,13 @@
       margin: 10px auto 0;
       border-radius: 2px;
     }
+    
     label {
       font-weight: bold;
       margin-top: 10px;
       display: block;
     }
+    
     input[type="text"],
     input[type="date"],
     select {
@@ -65,6 +75,7 @@
       border-radius: 5px;
       font-size: 1rem;
     }
+    
     button {
       width: 100%;
       padding: 12px;
@@ -77,132 +88,101 @@
       cursor: pointer;
       transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
     }
+    
     button:hover {
       background-color: var(--accent-color);
       transform: translateY(-2px);
     }
+    
     button:disabled {
       opacity: 0.7;
       cursor: not-allowed;
     }
+    
     hr {
       margin: 20px 0;
       border: 0;
       border-top: 1px solid #ccc;
     }
+    
     p {
       margin: 8px 0;
       font-size: 1rem;
     }
-    /* Modal de alerta */
-    .alert-box {
-      display: none;
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: var(--secondary-color);
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      text-align: center;
-      z-index: 1000;
-      width: 300px;
-    }
-    .alert-box p {
-      font-size: 16px;
-      margin-bottom: 15px;
-    }
-    .alert-success {
-      border-left: 5px solid #28a745;
-    }
-    .alert-error {
-      border-left: 5px solid #dc3545;
-    }
-    .alert-box button {
-      background: var(--primary-color);
+    
+    .volver {
+      display: block;
+      margin-top: 20px;
+      background-color: var(--primary-color);
+      padding: 12px;
       color: var(--secondary-color);
-      padding: 8px;
-      border: none;
+      text-decoration: none;
+      font-weight: bold;
       border-radius: 5px;
-      cursor: pointer;
-      width: 100%;
+      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
     }
-    .alert-box button:hover {
-      background: var(--accent-color);
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
+    
+    .volver:hover {
+      background-color: var(--accent-color);
+      transform: translateY(-2px);
     }
   </style>
 </head>
 <body>
-
   <div class="container">
     <h1>🔍 Inscripción de Candidatas</h1>
-
+    
+    <!-- Búsqueda -->
     <label for="busqueda">Buscar por cédula o nombre:</label>
     <input type="text" id="busqueda" placeholder="Ingrese cédula o nombre">
     <button id="buscar">🔎 Buscar</button>
-
+    
     <hr>
-
+    
+    <!-- Datos de la candidata -->
     <h2>📄 Datos de la Candidata</h2>
     <p><strong>Código:</strong> <span id="codigo">Se generará automáticamente</span></p>
     <p><strong>Nombre:</strong> <span id="nombre">No disponible</span></p>
     <p><strong>Cédula:</strong> <span id="cedula">No disponible</span></p>
     <p><strong>Teléfono:</strong> <span id="telefono">No disponible</span></p>
     <p><strong>Ciudad:</strong> <span id="ciudad">No disponible</span></p>
-
+    
     <hr>
-
+    
+    <!-- Inscripción -->
     <h2>📝 Completar Inscripción</h2>
     <input type="hidden" id="fila_index">
-
+    
     <label for="estado">Estado:</label>
     <select id="estado">
       <option value="Sí">Sí</option>
       <option value="No">No</option>
     </select>
-
+    
     <label for="monto">Monto:</label>
     <input type="text" id="monto" value="500">
-
+    
     <label for="fecha">Fecha:</label>
     <input type="date" id="fecha">
-
+    
     <button id="guardar">💾 Guardar Inscripción</button>
-
+    
     <hr>
+    
     <!-- Botón para volver a Home -->
     <a href="/" class="volver">🏠 Volver a Home</a>
   </div>
-
-  <!-- Modal de Alerta -->
-  <div id="alerta" class="alert-box">
-    <p id="alerta-mensaje"></p>
-    <button onclick="cerrarAlerta()">Aceptar</button>
-  </div>
-
+  
   <script>
-    function mostrarAlerta(mensaje, tipo) {
-      const alerta = document.getElementById("alerta");
-      const alertaMensaje = document.getElementById("alerta-mensaje");
-      alertaMensaje.textContent = mensaje;
-      alerta.className = "alert-box " + (tipo === "success" ? "alert-success" : "alert-error");
-      alerta.style.display = "block";
-    }
-
-    function cerrarAlerta() {
-      document.getElementById("alerta").style.display = "none";
-    }
-
-    // Función para buscar candidata
-    document.getElementById("buscar").addEventListener("click", function() {
+    // Solo se mantiene el JS para desactivar botones al enviar
+    document.getElementById('buscar').addEventListener('click', function() {
+      const btn = this;
+      btn.disabled = true;
+      btn.innerText = "Buscando...";
       const busqueda = document.getElementById("busqueda").value.trim();
       if (!busqueda) {
-        mostrarAlerta("⚠️ Ingresa un nombre o cédula para buscar.", "error");
+        btn.disabled = false;
+        btn.innerText = "🔎 Buscar";
         return;
       }
       fetch('/buscar_inscripcion?query=' + encodeURIComponent(busqueda))
@@ -216,31 +196,36 @@
           document.getElementById("telefono").textContent = data.telefono || "No disponible";
           document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
         } else {
-          mostrarAlerta("❌ No se encontró la candidata.", "error");
+          alert("❌ No se encontró la candidata.");
         }
       })
       .catch(error => {
         console.error("Error en la búsqueda:", error);
-        mostrarAlerta("❌ Error en la búsqueda.", "error");
+        alert("❌ Error en la búsqueda.");
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerText = "🔎 Buscar";
       });
     });
-
-    // Función para guardar inscripción
-    document.getElementById("guardar").addEventListener("click", function() {
+    
+    document.getElementById('guardar').addEventListener('click', function() {
+      const btn = this;
+      btn.disabled = true;
+      btn.innerText = "Guardando...";
+      
       const filaIndex = document.getElementById("fila_index").value;
       const estado = document.getElementById("estado").value;
       const monto = document.getElementById("monto").value;
       const fecha = document.getElementById("fecha").value;
       
       if (!filaIndex) {
-        mostrarAlerta("⚠️ Primero debes buscar y seleccionar una candidata.", "error");
+        alert("⚠️ Primero debes buscar y seleccionar una candidata.");
+        btn.disabled = false;
+        btn.innerText = "💾 Guardar Inscripción";
         return;
       }
-
-      // Desactivar el botón y cambiar el texto
-      this.disabled = true;
-      this.innerText = "Guardando...";
-
+      
       fetch("/procesar_inscripcion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -254,26 +239,21 @@
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          mostrarAlerta(`✅ Inscripción guardada correctamente. Código: ${data.codigo}`, "success");
+          alert(`✅ Inscripción guardada correctamente. Código: ${data.codigo}`);
           document.getElementById("codigo").textContent = data.codigo;
-          // Reactivar el botón en caso de querer guardar nuevamente (opcional)
-          document.getElementById("guardar").disabled = false;
-          document.getElementById("guardar").innerText = "💾 Guardar Inscripción";
         } else {
-          const errorMessage = data.error ? data.error : "Error inesperado";
-          mostrarAlerta(`❌ Error al actualizar: ${errorMessage}`, "error");
-          document.getElementById("guardar").disabled = false;
-          document.getElementById("guardar").innerText = "💾 Guardar Inscripción";
+          alert(`❌ Error al actualizar: ${data.error || "Error inesperado"}`);
         }
       })
       .catch(error => {
         console.error("Error al guardar:", error);
-        mostrarAlerta("❌ Error en la conexión.", "error");
-        document.getElementById("guardar").disabled = false;
-        document.getElementById("guardar").innerText = "💾 Guardar Inscripción";
+        alert("❌ Error en la conexión.");
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerText = "💾 Guardar Inscripción";
       });
     });
   </script>
-
 </body>
 </html>
