@@ -2177,10 +2177,7 @@ def generar_pdf_entrevista(fila_index):
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
 
-from datetime import datetime
-import pandas as pd
-import io
-from flask import render_template, request, send_file
+
 
 from datetime import datetime
 import pandas as pd
@@ -2198,7 +2195,7 @@ def reporte_inscripciones():
         return f"Parámetros inválidos: {str(e)}", 400
 
     try:
-        # Leer la hoja completa en el rango A:T (20 columnas)
+        # Leer la hoja completa desde A hasta T (20 columnas)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:T"
@@ -2214,13 +2211,13 @@ def reporte_inscripciones():
             "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
             "Medio", "Estado", "Monto", "Fecha", "Observaciones"
         ]
-        # Crear DataFrame; si la hoja no tiene encabezado, asignamos manualmente
+        # Crear DataFrame; se ignora la primera fila de encabezados de la hoja si es necesario
         df = pd.DataFrame(datos[1:], columns=columnas)
         
-        # Convertir la columna 'Fecha' usando el formato 'YYYY-MM-DD'
-        df['Fecha'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d', errors='coerce')
+        # Limpiar y convertir la columna 'Fecha' a datetime (formato "YYYY-MM-DD")
+        df['Fecha'] = pd.to_datetime(df['Fecha'].str.strip(), format='%Y-%m-%d', errors='coerce')
         
-        # Filtrar por mes y año
+        # Filtrar registros que coincidan con el mes y año solicitados
         df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
         
         if df_reporte.empty:
@@ -2235,14 +2232,19 @@ def reporte_inscripciones():
             writer.save()
             output.seek(0)
             filename = f"Reporte_Inscripciones_{anio}_{str(mes).zfill(2)}.xlsx"
-            return send_file(output, attachment_filename=filename, as_attachment=True,
-                             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            return send_file(
+                output, 
+                attachment_filename=filename, 
+                as_attachment=True, 
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
         else:
-            # Convertir el DataFrame a HTML y renderizarlo
+            # Convertir el DataFrame a HTML y renderizar la plantilla
             reporte_html = df_reporte.to_html(classes="table table-striped", index=False)
             return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio, mensaje="")
     except Exception as e:
         return f"Error al generar reporte: {str(e)}", 500
+
 
 
 if __name__ == '__main__':
