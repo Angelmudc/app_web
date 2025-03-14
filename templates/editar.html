@@ -114,13 +114,17 @@
     
     .mensaje {
       text-align: center;
-      color: #d9534f;
+      color: #28a745;
       font-weight: bold;
       margin-top: 10px;
       animation: fadeIn 1s ease-out;
     }
     
-    .resultados-section {
+    .error {
+      color: #d9534f;
+    }
+    
+    .resultados-section, .editar-section {
       margin-top: 30px;
       animation: fadeIn 1s ease-out;
     }
@@ -141,11 +145,6 @@
     
     .candidato-item:hover {
       transform: scale(1.02);
-    }
-    
-    .editar-section {
-      margin-top: 30px;
-      animation: fadeIn 1s ease-out;
     }
     
     .volver {
@@ -279,11 +278,11 @@
     <a href="/" class="volver">🏠 Volver al Inicio</a>
 
     {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
+      <p id="mensaje" class="mensaje">{{ mensaje }}</p>
     {% endif %}
   </div>
 
-  <!-- JavaScript para desactivar botones en envío de formularios -->
+  <!-- JavaScript para desactivar botones y redirigir después de guardar -->
   <script>
     document.getElementById('searchForm').addEventListener('submit', function() {
       var submitButton = this.querySelector('button[type="submit"]');
@@ -297,6 +296,16 @@
         submitButton.innerText = 'Guardando...';
       });
     }
+    
+    // Si el mensaje indica que se guardó correctamente, redirige a /editar en 2 segundos
+    window.addEventListener('load', function() {
+      var mensajeEl = document.getElementById('mensaje');
+      if(mensajeEl && mensajeEl.textContent.indexOf("actualizados correctamente") !== -1) {
+        setTimeout(function() {
+          window.location.href = "/editar";
+        }, 2000);
+      }
+    });
   </script>
 </body>
 </html>
