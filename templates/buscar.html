@@ -246,7 +246,7 @@
   <div class="container">
     <h2>🔎 Buscar Candidata</h2>
     <!-- Formulario de búsqueda con id para identificarlo en JS -->
-    <form id="searchForm" method="POST">
+    <form id="searchForm" method="POST" action="/buscar">
       <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
       <button type="submit">🔍 Buscar</button>
     </form>
@@ -277,7 +277,8 @@
                   <td>{{ candidata.ciudad }}</td>
                   <td>{{ candidata.telefono }}</td>
                   <td>
-                    <form method="GET">
+                    <!-- Importante: se añade el atributo action para que la petición GET se dirija a /buscar -->
+                    <form action="/buscar" method="GET">
                       <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
                       <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
                     </form>
