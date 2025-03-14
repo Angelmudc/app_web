@@ -1,0 +1,152 @@
+/* styles.css */
+
+/* Variables de color y configuración */
+:root {
+    --primary-color: #1A5789;        /* Azul intenso */
+    --accent-color: #00AECF;         /* Turquesa */
+    --secondary-color: #ffffff;      /* Blanco */
+    --background-color: #e8f6fa;      /* Fondo suave */
+    --text-color: #343a40;           /* Gris oscuro */
+    --transition-duration: 0.3s;
+    --font-size: 1.2rem;
+  }
+  
+  /* Reset básico */
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  /* Estilos globales */
+  body {
+    font-family: Arial, sans-serif;
+    background: var(--background-color);
+    color: var(--text-color);
+    font-size: var(--font-size);
+    line-height: 1.5;
+    padding: 20px;
+  }
+  
+  /* Navbar personalizado */
+  .navbar {
+    background-color: var(--primary-color) !important;
+  }
+  
+  .navbar-brand {
+    color: #ffffff !important;
+    font-weight: bold;
+    font-size: 1.5rem;
+    transition: color var(--transition-duration);
+  }
+  
+  .navbar-brand:hover {
+    color: #dfe4ea !important;
+  }
+  
+  /* Sección Hero (Jumbotron moderno) */
+  .hero-section {
+    background-color: var(--primary-color);
+    color: #fff;
+    padding: 60px 20px;
+    text-align: center;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 40px;
+    animation: fadeIn 1.5s ease-in-out;
+  }
+  
+  .hero-section img {
+    max-width: 160px;
+    transition: transform 0.3s;
+    border-radius: 10px;
+  }
+  
+  .hero-section img:hover {
+    transform: scale(1.05);
+  }
+  
+  .hero-section h1 {
+    font-size: 2.2rem;
+    margin-top: 20px;
+  }
+  
+  .hero-section p {
+    margin-top: 15px;
+    font-size: 1.1rem;
+  }
+  
+  /* Tarjetas (Cards) */
+  .card {
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    transition: transform 0.3s, box-shadow 0.3s;
+    margin-bottom: 20px;
+  }
+  
+  .card:hover {
+    transform: scale(1.03);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+  }
+  
+  .card .card-body i {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    color: var(--primary-color);
+    transition: transform 0.3s;
+  }
+  
+  .card:hover .card-body i {
+    transform: rotate(5deg);
+  }
+  
+  .card-title {
+    font-weight: bold;
+    margin-bottom: 10px;
+  }
+  
+  .card-text {
+    font-size: 0.95rem;
+    color: #666;
+  }
+  
+  /* Botones */
+  .btn {
+    transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
+  }
+  
+  .btn:hover {
+    transform: translateY(-3px);
+  }
+  
+  /* Contenedor principal */
+  .container {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 40px;
+  }
+  
+  /* Contenedor para tabla con scroll horizontal */
+  .table-responsive {
+    overflow-x: auto;
+  }
+  
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 30px;
+    background: #fff;
+    border-top: 1px solid #ddd;
+  }
+  
+  /* Animación Fade In */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
