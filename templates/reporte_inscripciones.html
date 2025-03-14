@@ -57,8 +57,7 @@
       padding: 15px;
       background-color: var(--primary-color);
       color: var(--secondary-color);
-      text-decoration: none;
-      font-weight: bold;
+      font-size: 1.1rem;
       border: none;
       border-radius: 5px;
       cursor: pointer;
@@ -138,6 +137,7 @@
       <div class="table-responsive">
         {{ reporte_html | safe }}
       </div>
+      
       <a class="btn-download" href="/reporte_inscripciones?mes={{ mes }}&anio={{ anio }}&descargar=1">
         Descargar Reporte en Excel
       </a>
