@@ -114,15 +114,13 @@
     
     .mensaje {
       text-align: center;
-      color: #28a745;
       font-weight: bold;
       margin-top: 10px;
       animation: fadeIn 1s ease-out;
     }
     
-    .error {
-      color: #d9534f;
-    }
+    .mensaje.success { color: #28a745; }
+    .mensaje.error { color: #d9534f; }
     
     .resultados-section, .editar-section {
       margin-top: 30px;
@@ -278,7 +276,7 @@
     <a href="/" class="volver">🏠 Volver al Inicio</a>
 
     {% if mensaje %}
-      <p id="mensaje" class="mensaje">{{ mensaje }}</p>
+      <p id="mensaje" class="mensaje success">{{ mensaje }}</p>
     {% endif %}
   </div>
 
@@ -297,10 +295,10 @@
       });
     }
     
-    // Si el mensaje indica que se guardó correctamente, redirige a /editar en 2 segundos
+    // Si el mensaje indica "Datos guardados correctamente", redirige a /editar tras 2 segundos
     window.addEventListener('load', function() {
       var mensajeEl = document.getElementById('mensaje');
-      if(mensajeEl && mensajeEl.textContent.indexOf("actualizados correctamente") !== -1) {
+      if(mensajeEl && mensajeEl.textContent.indexOf("Datos guardados correctamente") !== -1) {
         setTimeout(function() {
           window.location.href = "/editar";
         }, 2000);
