@@ -1265,7 +1265,7 @@ def inscripcion():
     mensaje = ""
     datos_candidata = {}  # Diccionario que contendrá los datos de la candidata
 
-    # --- 1. Cargar la hoja completa en el rango "Nueva hoja!B:P" (incluye el código en la columna P) ---
+    # --- Cargar la hoja completa en el rango "Nueva hoja!B:P" ---
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -1282,7 +1282,6 @@ def inscripcion():
     # --- Función interna para buscar candidatas según un criterio ---
     def buscar_candidata(query):
         resultados = []
-        # Iterar sobre las filas (omitiendo el encabezado)
         for idx, fila in enumerate(valores[1:], start=2):
             # Buscar en el nombre (índice 0) o en la cédula (índice 13)
             if (len(fila) > 0 and query.lower() in fila[0].lower()) or \
@@ -1298,9 +1297,9 @@ def inscripcion():
                 })
         return resultados
 
-    # --- 2. Procesar la solicitud según el método y parámetros ---
+    # --- Procesar la solicitud según método y parámetros ---
     if request.method == "POST":
-        # Caso A: Guardar inscripción (si se envía el campo "guardar_inscripcion")
+        # Caso A: Guardar inscripción (si se envía "guardar_inscripcion")
         if request.form.get("guardar_inscripcion"):
             try:
                 fila_index_str = request.form.get("fila_index", "").strip()
@@ -1311,7 +1310,7 @@ def inscripcion():
                     if fila_index < 1 or fila_index > len(valores):
                         mensaje = "Índice de fila no válido."
                     else:
-                        # Acceder a la hoja mediante 'client' (o unificar con 'service')
+                        # Acceder a la hoja usando 'client' (o 'service' unificado)
                         sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
                         datos_hoja = sheet.get_all_values()
                         if fila_index > len(datos_hoja):
@@ -1325,16 +1324,14 @@ def inscripcion():
                                 sheet.update(f"P{fila_index}", [[nuevo_codigo]])
                             else:
                                 nuevo_codigo = codigo_actual
-                            
-                            # Recoger datos de inscripción
+
+                            # Recoger datos de inscripción (actualizar columnas R, S y T)
                             estado = request.form.get("estado", "").strip()
                             monto = request.form.get("monto", "").strip()
                             fecha = request.form.get("fecha", "").strip()
-                            # Actualizar en las columnas R, S y T (estado, monto, fecha)
                             sheet.update(f"R{fila_index}:T{fila_index}", [[estado, monto, fecha]])
-                            
+
                             mensaje = "Inscripción guardada correctamente."
-                            # Actualizar datos para mostrar la candidata
                             fila = valores[fila_index - 1]
                             datos_candidata = {
                                 "fila_index": fila_index,
@@ -1349,7 +1346,7 @@ def inscripcion():
                 mensaje = f"Error al guardar la inscripción: {str(e)}"
             return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
         else:
-            # Caso B: Búsqueda desde formulario POST (campo "buscar")
+            # Caso B: Búsqueda mediante formulario POST
             query = request.form.get("buscar", "").strip()
             if query:
                 resultados = buscar_candidata(query)
@@ -1359,7 +1356,7 @@ def inscripcion():
                     mensaje = "⚠️ No se encontró ninguna candidata con ese criterio."
             return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
     else:
-        # GET: Procesar búsqueda o ver detalles
+        # GET: Buscar o ver detalles
         candidata_param = request.args.get("candidata_seleccionada", "").strip()
         if candidata_param:
             try:
@@ -1388,6 +1385,7 @@ def inscripcion():
                 else:
                     mensaje = "⚠️ No se encontró ninguna candidata con ese criterio."
         return render_template("inscripcion.html", datos_candidata=datos_candidata, mensaje=mensaje)
+
 
 
 

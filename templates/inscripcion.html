@@ -6,19 +6,14 @@
   <title>Inscripción de Candidatas</title>
   <style>
     :root {
-      --primary-color: #1A5789;      /* Azul intenso */
-      --accent-color: #00AECF;       /* Turquesa */
-      --secondary-color: #ffffff;    /* Blanco */
-      --background-color: #e8f6fa;    /* Fondo suave */
-      --text-color: #343a40;         /* Gris oscuro */
+      --primary-color: #1A5789;
+      --accent-color: #00AECF;
+      --secondary-color: #ffffff;
+      --background-color: #e8f6fa;
+      --text-color: #343a40;
       --transition-duration: 0.3s;
     }
-    /* Reset básico */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: Arial, sans-serif;
       background-color: var(--background-color);
@@ -108,7 +103,7 @@
   <div class="container">
     <h1>🔍 Inscripción de Candidatas</h1>
     
-    <!-- Formulario de búsqueda -->
+    <!-- Formulario de búsqueda (GET) -->
     <form method="GET" action="/inscripcion">
       <label for="buscar">Buscar por cédula o nombre:</label>
       <input type="text" id="buscar" name="buscar" placeholder="Ingrese cédula o nombre" required>
@@ -117,7 +112,6 @@
     
     <hr>
     
-    <!-- Si se encuentra la candidata, se muestran sus datos -->
     {% if datos_candidata %}
       <h2>📄 Datos de la Candidata</h2>
       <p><strong>Código:</strong> <span id="codigo">{{ datos_candidata.codigo }}</span></p>
@@ -128,7 +122,7 @@
       
       <hr>
       
-      <!-- Formulario de inscripción -->
+      <!-- Formulario de inscripción (POST) -->
       <h2>📝 Completar Inscripción</h2>
       <form method="POST" action="/inscripcion">
         <input type="hidden" name="guardar_inscripcion" value="1">
