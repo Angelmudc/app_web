@@ -204,7 +204,7 @@
               <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
               <p><strong>📌 Dirección:</strong> {{ candidata.direccion }}</p>
               <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-              <!-- Usar GET para enviar el parámetro y evitar problemas -->
+              <!-- Usar GET para enviar el parámetro y ver detalles -->
               <form method="GET" action="/editar">
                 <input type="hidden" name="candidata_seleccionada" value="{{ candidata.fila_index }}">
                 <button type="submit">📄 Ver Detalles</button>
@@ -218,7 +218,7 @@
     {% if candidata %}
       <section class="editar-section">
         <h2>✍ Editar Información</h2>
-        <!-- Importante: usar la ruta /editar para guardar, e incluir un campo oculto que indique que es un guardado -->
+        <!-- Se utiliza /editar con método POST y campo oculto para indicar guardado -->
         <form id="editForm" method="POST" action="/editar">
           <input type="hidden" name="guardar_edicion" value="1">
           <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
@@ -241,11 +241,17 @@
             <option value="Dormida" {% if candidata.modalidad == 'Dormida' %}selected{% endif %}>Dormida</option>
           </select>
 
+          <label for="rutas">🚏 Rutas:</label>
+          <input type="text" id="rutas" name="rutas" value="{{ candidata.rutas }}">
+
+          <label for="empleo_anterior">🛠️ Empleo Anterior:</label>
+          <input type="text" id="empleo_anterior" name="empleo_anterior" value="{{ candidata.empleo_anterior }}">
+
           <label for="anos_experiencia">📆 Años de Experiencia:</label>
           <input type="text" id="anos_experiencia" name="anos_experiencia" value="{{ candidata.anos_experiencia }}">
 
-          <label for="experiencia">📋 Experiencia:</label>
-          <input type="text" id="experiencia" name="experiencia" value="{{ candidata.experiencia }}">
+          <label for="areas_experiencia">📝 Áreas de Experiencia:</label>
+          <input type="text" id="areas_experiencia" name="areas_experiencia" value="{{ candidata.areas_experiencia }}">
 
           <label for="sabe_planchar">🧺 Sabe Planchar:</label>
           <select id="sabe_planchar" name="sabe_planchar">
@@ -253,11 +259,14 @@
             <option value="No" {% if candidata.sabe_planchar == 'No' %}selected{% endif %}>No</option>
           </select>
 
-          <label for="referencia_laboral">🏢 Referencia Laboral:</label>
-          <textarea id="referencia_laboral" name="referencia_laboral">{{ candidata.referencia_laboral }}</textarea>
+          <label for="referencias_laborales">🏢 Referencias Laborales:</label>
+          <textarea id="referencias_laborales" name="referencias_laborales">{{ candidata.referencias_laborales }}</textarea>
 
-          <label for="referencia_familiar">👨‍👩‍👦 Referencia Familiar:</label>
-          <textarea id="referencia_familiar" name="referencia_familiar">{{ candidata.referencia_familiar }}</textarea>
+          <label for="referencias_familiares">👨‍👩‍👦 Referencias Familiares:</label>
+          <textarea id="referencias_familiares" name="referencias_familiares">{{ candidata.referencias_familiares }}</textarea>
+
+          <label for="acepta_porcentaje">✅ Acepta Porcentaje:</label>
+          <input type="text" id="acepta_porcentaje" name="acepta_porcentaje" value="{{ candidata.acepta_porcentaje }}">
 
           <label for="cedula">🆔 Cédula:</label>
           <input type="text" id="cedula" name="cedula" value="{{ candidata.cedula }}" required>
@@ -274,7 +283,7 @@
     {% endif %}
   </div>
 
-  <!-- JavaScript para desactivar los botones de envío -->
+  <!-- JavaScript para desactivar botones en envío de formularios -->
   <script>
     document.getElementById('searchForm').addEventListener('submit', function() {
       var submitButton = this.querySelector('button[type="submit"]');
