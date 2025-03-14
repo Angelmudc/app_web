@@ -12,22 +12,28 @@
       --background-color: #e8f6fa;
       --text-color: #343a40;
       --transition-duration: 0.3s;
+      --font-size: 1.1rem;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box;
+    }
     body {
       font-family: Arial, sans-serif;
       background-color: var(--background-color);
       color: var(--text-color);
       padding: 20px;
       text-align: center;
+      font-size: var(--font-size);
     }
     .container {
-      max-width: 500px;
+      max-width: 800px;
       background: var(--secondary-color);
-      padding: 30px;
+      padding: 40px;
       margin: 30px auto;
       border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
     }
     h1, h2 {
       color: var(--primary-color);
@@ -37,7 +43,7 @@
     h1::after, h2::after {
       content: "";
       display: block;
-      width: 50px;
+      width: 60px;
       height: 4px;
       background: var(--accent-color);
       margin: 10px auto 0;
@@ -53,15 +59,15 @@
     input[type="date"],
     select {
       width: 100%;
-      padding: 10px;
-      margin: 8px 0;
+      padding: 12px;
+      margin: 10px 0;
       border: 1px solid #ccc;
       border-radius: 5px;
-      font-size: 1rem;
+      font-size: var(--font-size);
     }
     button {
       width: 100%;
-      padding: 12px;
+      padding: 15px;
       margin: 10px 0;
       background-color: var(--primary-color);
       color: var(--secondary-color);
@@ -75,12 +81,12 @@
       background-color: var(--accent-color);
     }
     hr {
-      margin: 20px 0;
+      margin: 30px 0;
       border: 0;
       border-top: 1px solid #ccc;
     }
     p {
-      margin: 8px 0;
+      margin: 10px 0;
       font-size: 1rem;
     }
     .volver {
@@ -97,58 +103,108 @@
     .volver:hover {
       background-color: var(--accent-color);
     }
+    /* Sección de resultados */
+    .resultados-section {
+      text-align: left;
+      margin-top: 30px;
+    }
+    .resultado-item {
+      background: #f9f9f9;
+      margin: 15px 0;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .resultado-item h3 {
+      margin-bottom: 8px;
+      color: var(--primary-color);
+    }
+    .resultado-item p {
+      margin: 5px 0;
+      font-size: 1rem;
+    }
+    .ver-detalles-btn {
+      display: inline-block;
+      background-color: var(--accent-color);
+      color: #fff;
+      padding: 10px 15px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background-color var(--transition-duration) ease;
+    }
+    .ver-detalles-btn:hover {
+      background-color: #00a0cf;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>🔍 Inscripción de Candidatas</h1>
-    
+
     <!-- Formulario de búsqueda (GET) -->
     <form method="GET" action="/inscripcion">
       <label for="buscar">Buscar por cédula o nombre:</label>
       <input type="text" id="buscar" name="buscar" placeholder="Ingrese cédula o nombre" required>
       <button type="submit">🔎 Buscar</button>
     </form>
-    
+
     <hr>
-    
+
+    <!-- Mostrar múltiples resultados si existen -->
+    {% if resultados %}
+      <div class="resultados-section">
+        <h2>Resultados de la Búsqueda</h2>
+        {% for candidata in resultados %}
+          <div class="resultado-item">
+            <h3>{{ candidata.nombre }}</h3>
+            <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+            <p><strong>Código:</strong> {{ candidata.codigo if candidata.codigo else "Sin código" }}</p>
+            <a href="/inscripcion?candidata_seleccionada={{ candidata.fila_index }}" class="ver-detalles-btn">
+              📄 Ver Detalles
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+      <hr>
+    {% endif %}
+
+    <!-- Mostrar detalles de una candidata seleccionada -->
     {% if datos_candidata %}
       <h2>📄 Datos de la Candidata</h2>
-      <p><strong>Código:</strong> <span id="codigo">{{ datos_candidata.codigo }}</span></p>
-      <p><strong>Nombre:</strong> <span id="nombre">{{ datos_candidata.nombre }}</span></p>
-      <p><strong>Cédula:</strong> <span id="cedula">{{ datos_candidata.cedula }}</span></p>
-      <p><strong>Teléfono:</strong> <span id="telefono">{{ datos_candidata.telefono }}</span></p>
-      <p><strong>Ciudad:</strong> <span id="ciudad">{{ datos_candidata.ciudad }}</span></p>
-      
+      <p><strong>Código:</strong> {{ datos_candidata.codigo }}</p>
+      <p><strong>Nombre:</strong> {{ datos_candidata.nombre }}</p>
+      <p><strong>Cédula:</strong> {{ datos_candidata.cedula }}</p>
+      <p><strong>Teléfono:</strong> {{ datos_candidata.telefono }}</p>
+      <p><strong>Dirección:</strong> {{ datos_candidata.direccion }}</p>
+
       <hr>
-      
+
       <!-- Formulario de inscripción (POST) -->
       <h2>📝 Completar Inscripción</h2>
       <form method="POST" action="/inscripcion">
         <input type="hidden" name="guardar_inscripcion" value="1">
         <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
-        
+
         <label for="estado">Estado:</label>
         <select id="estado" name="estado">
           <option value="Sí">Sí</option>
           <option value="No">No</option>
         </select>
-        
+
         <label for="monto">Monto:</label>
         <input type="text" id="monto" name="monto" value="500">
-        
+
         <label for="fecha">Fecha:</label>
         <input type="date" id="fecha" name="fecha">
-        
+
         <button type="submit">💾 Guardar Inscripción</button>
       </form>
     {% endif %}
-    
+
     <hr>
-    
-    <!-- Botón para volver a Home -->
     <a href="/" class="volver">🏠 Volver a Home</a>
-    
+
     {% if mensaje %}
       <p>{{ mensaje }}</p>
     {% endif %}
