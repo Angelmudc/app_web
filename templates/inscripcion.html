@@ -2,30 +2,19 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inscripción de Candidatas</title>
   <style>
     :root {
-      /* Colores inspirados en el logo */
-      --primary-color: #1A5789;    /* Azul intenso */
-      --accent-color: #00AECF;     /* Turquesa */
-      --secondary-color: #ffffff;  /* Blanco */
-      --background-color: #e8f6fa; /* Fondo suave */
-      --text-color: #343a40;       /* Gris oscuro */
-      
-      /* Fuentes y transiciones */
-      --font-size: 1.1rem;
+      --primary-color: #1A5789;
+      --accent-color: #00AECF;
+      --secondary-color: #ffffff;
+      --background-color: #e8f6fa;
+      --text-color: #343a40;
       --transition-duration: 0.3s;
-      --box-shadow-light: 0 4px 12px rgba(0, 0, 0, 0.1);
+      --font-size: 1.2rem;
     }
-
-    /* Reset básico */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: Arial, sans-serif;
       background-color: var(--background-color);
@@ -35,22 +24,14 @@
       padding: 20px;
       text-align: center;
     }
-
     .container {
       max-width: 900px;
       background: var(--secondary-color);
       margin: 40px auto;
       padding: 40px;
       border-radius: 10px;
-      box-shadow: var(--box-shadow-light);
-      animation: fadeIn 0.8s ease-out;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
     }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
     h1, h2 {
       color: var(--primary-color);
       margin-bottom: 20px;
@@ -65,36 +46,29 @@
       margin: 10px auto 0;
       border-radius: 2px;
     }
-
-    /* Formularios */
-    form {
-      margin-bottom: 20px;
-    }
     label {
-      display: block;
-      text-align: left;
       font-weight: bold;
       margin: 15px 0 5px;
+      text-align: left;
+      display: block;
     }
     input[type="text"],
     input[type="date"],
     select {
       width: 100%;
       padding: 14px;
+      margin-bottom: 15px;
       border: 1px solid #ccc;
       border-radius: 5px;
-      margin-bottom: 15px;
       font-size: var(--font-size);
     }
-    
     button {
       width: 100%;
       padding: 15px;
       margin-top: 10px;
       background-color: var(--primary-color);
       color: var(--secondary-color);
-      font-size: var(--font-size);
-      font-weight: bold;
+      font-size: 1.1rem;
       border: none;
       border-radius: 5px;
       cursor: pointer;
@@ -108,38 +82,31 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
-
     hr {
       margin: 30px 0;
       border: 0;
       border-top: 1px solid #ccc;
     }
-
     p {
-      margin: 8px 0;
-      font-size: 1rem;
+      margin: 10px 0;
       text-align: left;
+      font-size: 1rem;
     }
-
-    /* Sección de resultados */
     .resultados-section {
       text-align: left;
       margin-top: 30px;
-    }
-    .resultados-section h2 {
-      margin-top: 0;
     }
     .resultado-item {
       background: #f9f9f9;
       margin: 15px 0;
       padding: 20px;
       border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     }
     .resultado-item h3 {
       margin-bottom: 8px;
       color: var(--primary-color);
-      font-size: 1.2rem;
+      font-size: 1.3rem;
     }
     .resultado-item p {
       margin: 6px 0;
@@ -159,8 +126,6 @@
     .ver-detalles-btn:hover {
       background-color: #00a0cf;
     }
-
-    /* Botón volver */
     .volver {
       display: inline-block;
       margin-top: 20px;
@@ -176,8 +141,6 @@
       background-color: var(--accent-color);
       transform: translateY(-2px);
     }
-
-    /* Mensaje */
     .mensaje {
       margin-top: 20px;
       color: #d9534f;
@@ -190,7 +153,7 @@
     <h1>🔍 Inscripción de Candidatas</h1>
 
     <!-- Formulario de búsqueda (GET) -->
-    <form id="searchForm" method="GET" action="/inscripcion">
+    <form method="GET" action="/inscripcion" id="searchForm">
       <label for="buscar">Buscar por cédula o nombre:</label>
       <input type="text" id="buscar" name="buscar" placeholder="Ingrese cédula o nombre" required />
       <button type="submit" id="buscarBtn">🔎 Buscar</button>
@@ -198,7 +161,7 @@
 
     <hr />
 
-    <!-- Mostrar múltiples resultados si existen -->
+    <!-- Sección de resultados de búsqueda -->
     {% if resultados %}
       <div class="resultados-section">
         <h2>Resultados de la Búsqueda</h2>
@@ -216,7 +179,7 @@
       <hr />
     {% endif %}
 
-    <!-- Mostrar detalles de una candidata seleccionada -->
+    <!-- Sección de detalles de la candidata -->
     {% if datos_candidata %}
       <h2>📄 Datos de la Candidata</h2>
       <p><strong>Código:</strong> {{ datos_candidata.codigo }}</p>
@@ -224,14 +187,21 @@
       <p><strong>Cédula:</strong> {{ datos_candidata.cedula }}</p>
       <p><strong>Teléfono:</strong> {{ datos_candidata.telefono }}</p>
       <p><strong>Dirección:</strong> {{ datos_candidata.direccion }}</p>
-
+      <p><strong>Medio de Inscripción:</strong> {{ datos_candidata.medio }}</p>
+      
       <hr />
-
+      
       <!-- Formulario de inscripción (POST) -->
       <h2>📝 Completar Inscripción</h2>
-      <form id="inscribirForm" method="POST" action="/inscripcion">
+      <form method="POST" action="/inscripcion" id="inscribirForm">
         <input type="hidden" name="guardar_inscripcion" value="1" />
         <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}" />
+
+        <label for="medio">Medio de Inscripción:</label>
+        <select id="medio" name="medio">
+          <option value="Vía Oficina">Vía Oficina</option>
+          <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+        </select>
 
         <label for="estado">Estado:</label>
         <select id="estado" name="estado">
@@ -257,7 +227,7 @@
     {% endif %}
   </div>
 
-  <!-- Script para desactivar botones al enviar formularios y evitar duplicados -->
+  <!-- Script para desactivar botones al enviar formularios -->
   <script>
     // Desactivar botón de búsqueda
     const searchForm = document.getElementById('searchForm');
@@ -268,7 +238,6 @@
         btn.innerText = 'Buscando...';
       });
     }
-
     // Desactivar botón de inscripción
     const inscribirForm = document.getElementById('inscribirForm');
     if (inscribirForm) {
