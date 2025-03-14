@@ -58,6 +58,10 @@ from fpdf import FPDF
 from io import BytesIO
 import os
 import datetime
+from datetime import datetime
+import pandas as pd
+import io
+from flask import send_file, render_template, request
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -2172,6 +2176,70 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
+from datetime import datetime
+import pandas as pd
+import io
+from flask import send_file, render_template, request
+
+@app.route('/reporte_inscripciones', methods=['GET'])
+def reporte_inscripciones():
+    # Obtener parámetros: mes, anio y si se desea descargar (descargar=1)
+    try:
+        mes = int(request.args.get('mes', datetime.today().month))
+        anio = int(request.args.get('anio', datetime.today().year))
+        descargar = request.args.get('descargar', '0')  # "1" para descargar, "0" para ver en HTML
+    except Exception as e:
+        return f"Parámetros inválidos: {str(e)}", 400
+
+    try:
+        # Leer la hoja completa desde A hasta T
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:T"
+        ).execute()
+        datos = hoja.get("values", [])
+        if not datos or len(datos) < 2:
+            return "No hay inscripciones registradas.", 404
+
+        # Definir nombres de columnas según el rango (ajusta según corresponda)
+        columnas = [
+            "A", "Nombre", "Edad", "Teléfono", "Dirección", "Modalidad", "Rutas",
+            "Empleo_Anterior", "Años_Experiencia", "Áreas_Experiencia", "Sabe_Planchar",
+            "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
+            "Col_Q", "Estado", "Monto", "Fecha"
+        ]
+        df = pd.DataFrame(datos[1:], columns=columnas)
+        
+        # Convertir la columna 'Fecha' a datetime (ajusta el formato si es necesario)
+        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', dayfirst=True)
+        # Filtrar registros del mes y año deseados
+        df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
+        
+        if df_reporte.empty:
+            return f"No se encontraron inscripciones para {mes}/{anio}.", 404
+
+        if descargar == "1":
+            # Exportar a Excel
+            output = io.BytesIO()
+            writer = pd.ExcelWriter(output, engine='xlsxwriter')
+            df_reporte.to_excel(writer, index=False, sheet_name='Reporte')
+            writer.save()
+            output.seek(0)
+            filename = f"Reporte_Inscripciones_{anio}_{str(mes).zfill(2)}.xlsx"
+            return send_file(
+                output, 
+                attachment_filename=filename, 
+                as_attachment=True, 
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:
+            # Renderizar plantilla HTML con el reporte (convertido a HTML)
+            reporte_html = df_reporte.to_html(classes="table table-striped", index=False)
+            return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio)
+    except Exception as e:
+        return f"Error al generar reporte: {str(e)}", 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
