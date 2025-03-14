@@ -13,14 +13,12 @@
       --text-color: #343a40;         /* Gris oscuro */
       --transition-duration: 0.3s;
     }
-    
     /* Reset básico */
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
     body {
       font-family: Arial, sans-serif;
       background-color: var(--background-color);
@@ -28,7 +26,6 @@
       padding: 20px;
       text-align: center;
     }
-    
     .container {
       max-width: 500px;
       background: var(--secondary-color);
@@ -36,20 +33,12 @@
       margin: 30px auto;
       border-radius: 10px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      animation: fadeIn 0.8s ease-out;
     }
-    
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    
     h1, h2 {
       color: var(--primary-color);
       margin-bottom: 20px;
       position: relative;
     }
-    
     h1::after, h2::after {
       content: "";
       display: block;
@@ -59,14 +48,12 @@
       margin: 10px auto 0;
       border-radius: 2px;
     }
-    
     label {
       font-weight: bold;
       margin-top: 10px;
       display: block;
       text-align: left;
     }
-    
     input[type="text"],
     input[type="date"],
     select {
@@ -77,7 +64,6 @@
       border-radius: 5px;
       font-size: 1rem;
     }
-    
     button {
       width: 100%;
       padding: 12px;
@@ -88,30 +74,20 @@
       border: none;
       border-radius: 5px;
       cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
+      transition: background-color var(--transition-duration) ease;
     }
-    
     button:hover {
       background-color: var(--accent-color);
-      transform: translateY(-2px);
     }
-    
-    button:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
-    }
-    
     hr {
       margin: 20px 0;
       border: 0;
       border-top: 1px solid #ccc;
     }
-    
     p {
       margin: 8px 0;
       font-size: 1rem;
     }
-    
     .volver {
       display: inline-block;
       margin-top: 20px;
@@ -121,12 +97,10 @@
       text-decoration: none;
       font-weight: bold;
       border-radius: 5px;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
+      transition: background-color var(--transition-duration) ease;
     }
-    
     .volver:hover {
       background-color: var(--accent-color);
-      transform: translateY(-2px);
     }
   </style>
 </head>
@@ -134,129 +108,56 @@
   <div class="container">
     <h1>🔍 Inscripción de Candidatas</h1>
     
-    <!-- Sección de Búsqueda -->
-    <label for="busqueda">Buscar por cédula o nombre:</label>
-    <input type="text" id="busqueda" placeholder="Ingrese cédula o nombre">
-    <button id="buscar">🔎 Buscar</button>
+    <!-- Formulario de búsqueda -->
+    <form method="GET" action="/inscripcion">
+      <label for="buscar">Buscar por cédula o nombre:</label>
+      <input type="text" id="buscar" name="buscar" placeholder="Ingrese cédula o nombre" required>
+      <button type="submit">🔎 Buscar</button>
+    </form>
     
     <hr>
     
-    <!-- Sección para mostrar datos de la candidata -->
-    <h2>📄 Datos de la Candidata</h2>
-    <p><strong>Código:</strong> <span id="codigo">Se generará automáticamente</span></p>
-    <p><strong>Nombre:</strong> <span id="nombre">No disponible</span></p>
-    <p><strong>Cédula:</strong> <span id="cedula">No disponible</span></p>
-    <p><strong>Teléfono:</strong> <span id="telefono">No disponible</span></p>
-    <p><strong>Ciudad:</strong> <span id="ciudad">No disponible</span></p>
-    
-    <hr>
-    
-    <!-- Sección de Inscripción -->
-    <h2>📝 Completar Inscripción</h2>
-    <input type="hidden" id="fila_index">
-    
-    <label for="estado">Estado:</label>
-    <select id="estado">
-      <option value="Sí">Sí</option>
-      <option value="No">No</option>
-    </select>
-    
-    <label for="monto">Monto:</label>
-    <input type="text" id="monto" value="500">
-    
-    <label for="fecha">Fecha:</label>
-    <input type="date" id="fecha">
-    
-    <button id="guardar">💾 Guardar Inscripción</button>
+    <!-- Si se encuentra la candidata, se muestran sus datos -->
+    {% if datos_candidata %}
+      <h2>📄 Datos de la Candidata</h2>
+      <p><strong>Código:</strong> <span id="codigo">{{ datos_candidata.codigo }}</span></p>
+      <p><strong>Nombre:</strong> <span id="nombre">{{ datos_candidata.nombre }}</span></p>
+      <p><strong>Cédula:</strong> <span id="cedula">{{ datos_candidata.cedula }}</span></p>
+      <p><strong>Teléfono:</strong> <span id="telefono">{{ datos_candidata.telefono }}</span></p>
+      <p><strong>Ciudad:</strong> <span id="ciudad">{{ datos_candidata.ciudad }}</span></p>
+      
+      <hr>
+      
+      <!-- Formulario de inscripción -->
+      <h2>📝 Completar Inscripción</h2>
+      <form method="POST" action="/inscripcion">
+        <input type="hidden" name="guardar_inscripcion" value="1">
+        <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}">
+        
+        <label for="estado">Estado:</label>
+        <select id="estado" name="estado">
+          <option value="Sí">Sí</option>
+          <option value="No">No</option>
+        </select>
+        
+        <label for="monto">Monto:</label>
+        <input type="text" id="monto" name="monto" value="500">
+        
+        <label for="fecha">Fecha:</label>
+        <input type="date" id="fecha" name="fecha">
+        
+        <button type="submit">💾 Guardar Inscripción</button>
+      </form>
+    {% endif %}
     
     <hr>
     
     <!-- Botón para volver a Home -->
     <a href="/" class="volver">🏠 Volver a Home</a>
-  </div>
-  
-  <script>
-    // Bloqueo simple de botones al enviar para evitar envíos duplicados.
-    document.getElementById('buscar').addEventListener('click', function() {
-      const btn = this;
-      btn.disabled = true;
-      btn.innerText = "Buscando...";
-      const busqueda = document.getElementById("busqueda").value.trim();
-      if (!busqueda) {
-        btn.disabled = false;
-        btn.innerText = "🔎 Buscar";
-        alert("⚠️ Ingresa un nombre o cédula para buscar.");
-        return;
-      }
-      fetch('/buscar_inscripcion?query=' + encodeURIComponent(busqueda))
-        .then(response => response.json())
-        .then(data => {
-          if (data.fila_index) {
-            document.getElementById("fila_index").value = data.fila_index;
-            document.getElementById("codigo").textContent = data.codigo || "Se generará automáticamente";
-            document.getElementById("nombre").textContent = data.nombre || "No disponible";
-            document.getElementById("cedula").textContent = data.cedula || "No disponible";
-            document.getElementById("telefono").textContent = data.telefono || "No disponible";
-            document.getElementById("ciudad").textContent = data.ciudad || "No disponible";
-          } else {
-            alert("❌ No se encontró la candidata.");
-          }
-        })
-        .catch(error => {
-          console.error("Error en la búsqueda:", error);
-          alert("❌ Error en la búsqueda.");
-        })
-        .finally(() => {
-          btn.disabled = false;
-          btn.innerText = "🔎 Buscar";
-        });
-    });
     
-    document.getElementById('guardar').addEventListener('click', function() {
-      const btn = this;
-      btn.disabled = true;
-      btn.innerText = "Guardando...";
-      
-      const filaIndex = document.getElementById("fila_index").value;
-      const estado = document.getElementById("estado").value;
-      const monto = document.getElementById("monto").value;
-      const fecha = document.getElementById("fecha").value;
-      
-      if (!filaIndex) {
-        alert("⚠️ Primero debes buscar y seleccionar una candidata.");
-        btn.disabled = false;
-        btn.innerText = "💾 Guardar Inscripción";
-        return;
-      }
-      
-      fetch("/procesar_inscripcion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fila_index: filaIndex,
-          estado: estado,
-          monto: monto,
-          fecha: fecha
-        })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          alert(`✅ Inscripción guardada correctamente. Código: ${data.codigo}`);
-          document.getElementById("codigo").textContent = data.codigo;
-        } else {
-          alert(`❌ Error al actualizar: ${data.error || "Error inesperado"}`);
-        }
-      })
-      .catch(error => {
-        console.error("Error al guardar:", error);
-        alert("❌ Error en la conexión.");
-      })
-      .finally(() => {
-        btn.disabled = false;
-        btn.innerText = "💾 Guardar Inscripción";
-      });
-    });
-  </script>
+    {% if mensaje %}
+      <p>{{ mensaje }}</p>
+    {% endif %}
+  </div>
 </body>
 </html>
