@@ -2184,7 +2184,7 @@ from flask import send_file, render_template, request
 
 @app.route('/reporte_inscripciones', methods=['GET'])
 def reporte_inscripciones():
-    # Obtener parámetros: mes, anio y si se desea descargar (descargar=1)
+    # Parámetros: mes y año (opcional)
     try:
         mes = int(request.args.get('mes', datetime.today().month))
         anio = int(request.args.get('anio', datetime.today().year))
@@ -2193,7 +2193,7 @@ def reporte_inscripciones():
         return f"Parámetros inválidos: {str(e)}", 400
 
     try:
-        # Leer la hoja completa desde A hasta T
+        # Leer la hoja completa desde A hasta T (20 columnas)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:T"
@@ -2202,18 +2202,19 @@ def reporte_inscripciones():
         if not datos or len(datos) < 2:
             return "No hay inscripciones registradas.", 404
 
-        # Definir nombres de columnas según el rango (ajusta según corresponda)
+        # Definir nombres de columnas (20 elementos)
         columnas = [
-            "A", "Nombre", "Edad", "Teléfono", "Dirección", "Modalidad", "Rutas",
+            "ID", "Nombre", "Edad", "Teléfono", "Dirección", "Modalidad", "Rutas",
             "Empleo_Anterior", "Años_Experiencia", "Áreas_Experiencia", "Sabe_Planchar",
             "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
-            "Col_Q", "Estado", "Monto", "Fecha"
+            "Medio", "Estado", "Monto", "Fecha", "Observaciones"
         ]
+        # Crear DataFrame; la primera fila es el encabezado en la hoja, pero si no lo es, se asignan manualmente
         df = pd.DataFrame(datos[1:], columns=columnas)
         
         # Convertir la columna 'Fecha' a datetime (ajusta el formato si es necesario)
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', dayfirst=True)
-        # Filtrar registros del mes y año deseados
+        # Filtrar registros del mes y año deseado
         df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
         
         if df_reporte.empty:
@@ -2234,7 +2235,7 @@ def reporte_inscripciones():
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
         else:
-            # Renderizar plantilla HTML con el reporte (convertido a HTML)
+            # Renderizar plantilla HTML con el reporte en forma de tabla
             reporte_html = df_reporte.to_html(classes="table table-striped", index=False)
             return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio)
     except Exception as e:
