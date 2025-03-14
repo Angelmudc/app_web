@@ -1056,7 +1056,7 @@ def editar():
     candidata_detalles = None
     mensaje = None
 
-    # Si se envía el formulario para guardar la edición
+    # Primero: Si se envía el formulario para guardar la edición (vía POST y con un campo "guardar_edicion")
     if request.method == 'POST' and request.form.get("guardar_edicion"):
         try:
             fila_index = request.form.get('fila_index', '').strip()
@@ -1064,7 +1064,6 @@ def editar():
                 mensaje = "Error: No se pudo determinar la fila a actualizar."
             else:
                 fila_index = int(fila_index)
-                # Se toman los nuevos datos (se actualizan sólo si se proporciona valor)
                 nuevos_datos = {
                     'nombre': request.form.get('nombre', '').strip(),
                     'edad': request.form.get('edad', '').strip(),
@@ -1081,7 +1080,6 @@ def editar():
                     'acepta_porcentaje': request.form.get('acepta_porcentaje', '').strip(),
                     'cedula': request.form.get('cedula', '').strip()
                 }
-                # Mapeo de campos a columnas (B: nombre, C: edad, D: teléfono, E: dirección, etc.)
                 columnas = {
                     'nombre': "B",
                     'edad': "C",
@@ -1099,7 +1097,7 @@ def editar():
                     'cedula': "O"
                 }
                 for campo, valor in nuevos_datos.items():
-                    if valor:  # Actualizar sólo si se proporcionó valor
+                    if valor:  # Actualizar solo si se proporcionó un nuevo valor
                         rango = f'Nueva hoja!{columnas[campo]}{fila_index}'
                         service.spreadsheets().values().update(
                             spreadsheetId=SPREADSHEET_ID,
@@ -1111,23 +1109,27 @@ def editar():
         except Exception as e:
             mensaje = f"Error al actualizar los datos: {str(e)}"
 
-    # Cargar los datos desde la hoja para mostrar la interfaz
+    # Segundo: Cargar la información desde Google Sheets para búsqueda y/o ver detalles
     try:
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"  # Mismo rango usado en la ruta de buscar
+            range="Nueva hoja!B:O"  # Se usan las mismas columnas que en la ruta de buscar
         ).execute()
         valores = hoja.get("values", [])
         if not valores or len(valores) < 2:
             mensaje = mensaje or "⚠️ No hay datos disponibles."
         else:
-            # Obtener término de búsqueda (ya sea vía GET o POST)
+            # Obtener el término de búsqueda (puede venir vía GET o POST)
             busqueda = request.values.get('busqueda', '').strip().lower()
-            # Recorrer las filas (omitiendo la cabecera)
+
+            # Iterar sobre los datos (omitiendo la cabecera)
             for fila_index, fila in enumerate(valores[1:], start=2):
-                # Asumimos que la columna 0 es "nombre" y la columna 13 es "cedula"
+                # Se asume que:
+                # - Columna B (índice 0 en este rango) es "nombre"
+                # - Columna O (índice 13) es "cedula"
                 nombre = fila[0].strip().lower() if len(fila) > 0 else ""
                 cedula = fila[13].strip() if len(fila) > 13 else ""
+                # Si se ingresó búsqueda, filtrar por nombre o cédula
                 if busqueda and not (busqueda in nombre or busqueda in cedula):
                     continue
                 resultados.append({
@@ -1138,15 +1140,19 @@ def editar():
                     'cedula': fila[13] if len(fila) > 13 else "No especificado",
                 })
 
-            # Cargar los detalles completos de la candidata si se ha seleccionado
-            # Se admite el parámetro en GET o en POST (por ejemplo, desde un formulario oculto)
-            candidata_id = request.values.get('candidata_seleccionada', '').strip() or request.values.get('candidata', '').strip()
+            # Ahora, cargar detalles de la candidata si se ha seleccionado.
+            # Para el formulario "Ver Detalles" usamos método GET, así que leemos desde request.args
+            candidata_id = request.args.get('candidata_seleccionada', '').strip()
+            if not candidata_id:
+                # Si no viene vía GET, también se revisa en POST (por ejemplo, al hacer clic en "Ver Detalles" desde resultados)
+                candidata_id = request.form.get('candidata_seleccionada', '').strip()
             if candidata_id:
                 try:
-                    fila_index = int(candidata_id)
-                    fila = valores[fila_index - 1]  # Ajuste de índice: fila 1 es encabezado
+                    fila_idx = int(candidata_id)
+                    # Dado que la primera fila de "valores" es el encabezado, usamos fila_idx-1
+                    fila = valores[fila_idx - 1]
                     candidata_detalles = {
-                        'fila_index': fila_index,
+                        'fila_index': fila_idx,
                         'nombre': fila[0] if len(fila) > 0 else "No especificado",
                         'edad': fila[1] if len(fila) > 1 else "No especificado",
                         'telefono': fila[2] if len(fila) > 2 else "No especificado",
@@ -1168,6 +1174,7 @@ def editar():
         mensaje = mensaje or f"Error al obtener datos: {str(e)}"
 
     return render_template('editar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+
 
 
 @app.route('/filtrar', methods=['GET', 'POST'])
