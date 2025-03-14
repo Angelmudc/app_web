@@ -2178,19 +2178,10 @@ def generar_pdf_entrevista(fila_index):
         return f"Error interno generando PDF: {str(e)}", 500
 
 
-
 from datetime import datetime
 import pandas as pd
 import io
 from flask import render_template, request, send_file
-
-from datetime import datetime
-import pandas as pd
-import io
-from flask import render_template, request, send_file
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
 
 @app.route('/reporte_inscripciones', methods=['GET'])
 def reporte_inscripciones():
@@ -2217,23 +2208,21 @@ def reporte_inscripciones():
             "Medio", "Estado", "Monto", "Fecha", "Observaciones"
         ]
         df = pd.DataFrame(datos[1:], columns=columnas)
-
-        # Depuración: convertir a cadena y limpiar espacios
-        df['Fecha'] = df['Fecha'].astype(str).str.strip()
-        logging.debug("Valores únicos en 'Fecha': %s", df['Fecha'].unique())
-
-        # Convertir la columna 'Fecha' a datetime usando el formato ISO
-        df['Fecha'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d', errors='coerce')
-        logging.debug("Fechas convertidas (head): %s", df['Fecha'].head())
-
+        
+        # Forzar la columna 'Fecha' a texto y limpiar comillas y espacios
+        df['Fecha'] = df['Fecha'].astype(str).str.strip().str.replace('"', '').str.replace("'", "")
+        # Intentar convertir sin forzar el formato para que Pandas infiera el correcto
+        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+        
         if df['Fecha'].isnull().all():
             return "No se pudieron convertir las fechas. Revisa el formato en la hoja.", 400
 
         df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
+        
         if df_reporte.empty:
             mensaje = f"No se encontraron inscripciones para {mes}/{anio}."
             return render_template("reporte_inscripciones.html", reporte_html="", mes=mes, anio=anio, mensaje=mensaje)
-
+        
         if descargar == "1":
             output = io.BytesIO()
             writer = pd.ExcelWriter(output, engine='xlsxwriter')
