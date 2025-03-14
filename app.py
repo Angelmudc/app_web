@@ -2188,11 +2188,12 @@ def reporte_inscripciones():
     try:
         mes = int(request.args.get('mes', datetime.today().month))
         anio = int(request.args.get('anio', datetime.today().year))
-        descargar = request.args.get('descargar', '0')
+        descargar = request.args.get('descargar', '0')  # "1" para descargar, "0" para visualizar
     except Exception as e:
         return f"Parámetros inválidos: {str(e)}", 400
 
     try:
+        # Leer la hoja completa desde A hasta T (20 columnas)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:T"
@@ -2201,22 +2202,26 @@ def reporte_inscripciones():
         if not datos or len(datos) < 2:
             return "No hay inscripciones registradas.", 404
 
+        # Definir nombres de columnas (20 elementos)
         columnas = [
             "ID", "Nombre", "Edad", "Teléfono", "Dirección", "Modalidad", "Rutas",
             "Empleo_Anterior", "Años_Experiencia", "Áreas_Experiencia", "Sabe_Planchar",
             "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
             "Medio", "Estado", "Monto", "Fecha", "Observaciones"
         ]
+        # Crear DataFrame usando todas las filas menos el encabezado
         df = pd.DataFrame(datos[1:], columns=columnas)
         
-        # Forzar la columna 'Fecha' a texto y limpiar comillas y espacios
+        # Forzar a cadena, limpiar espacios y eliminar comillas de la columna 'Fecha'
         df['Fecha'] = df['Fecha'].astype(str).str.strip().str.replace('"', '').str.replace("'", "")
-        # Intentar convertir sin forzar el formato para que Pandas infiera el correcto
-        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+        # Convertir usando el formato ISO: "YYYY-MM-DD"
+        df['Fecha'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d', errors='coerce')
         
+        # Si todas las fechas se convierten a NaT, se alerta del problema
         if df['Fecha'].isnull().all():
-            return "No se pudieron convertir las fechas. Revisa el formato en la hoja.", 400
+            return "No se pudieron convertir las fechas. Revisa el contenido de la columna Fecha en la hoja.", 400
 
+        # Filtrar inscripciones por mes y año
         df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
         
         if df_reporte.empty:
@@ -2224,6 +2229,7 @@ def reporte_inscripciones():
             return render_template("reporte_inscripciones.html", reporte_html="", mes=mes, anio=anio, mensaje=mensaje)
         
         if descargar == "1":
+            # Exportar a Excel
             output = io.BytesIO()
             writer = pd.ExcelWriter(output, engine='xlsxwriter')
             df_reporte.to_excel(writer, index=False, sheet_name='Reporte')
@@ -2237,6 +2243,7 @@ def reporte_inscripciones():
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
         else:
+            # Convertir el DataFrame filtrado a HTML y renderizar la plantilla
             reporte_html = df_reporte.to_html(classes="table table-striped", index=False)
             return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio, mensaje="")
     except Exception as e:
