@@ -218,7 +218,9 @@
     {% if candidata %}
       <section class="editar-section">
         <h2>✍ Editar Información</h2>
-        <form id="editForm" method="POST" action="/guardar_edicion">
+        <!-- Importante: usar la ruta /editar para guardar, e incluir un campo oculto que indique que es un guardado -->
+        <form id="editForm" method="POST" action="/editar">
+          <input type="hidden" name="guardar_edicion" value="1">
           <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
 
           <label for="nombre">👤 Nombre:</label>
