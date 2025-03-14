@@ -2186,7 +2186,6 @@ from flask import render_template, request, send_file
 @app.route('/reporte_inscripciones', methods=['GET'])
 def reporte_inscripciones():
     try:
-        # Leer parámetros: mes y anio (por defecto, mes y año actuales)
         mes = int(request.args.get('mes', datetime.today().month))
         anio = int(request.args.get('anio', datetime.today().year))
         descargar = request.args.get('descargar', '0')  # "1" para descargar, "0" para visualizar
@@ -2208,33 +2207,34 @@ def reporte_inscripciones():
             "ID", "Nombre", "Edad", "Teléfono", "Dirección", "Modalidad", "Rutas",
             "Empleo_Anterior", "Años_Experiencia", "Áreas_Experiencia", "Sabe_Planchar",
             "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
-            "Col15", "Medio", "Estado", "Monto", "Fecha"
+            "Medio", "Estado", "Monto", "Fecha", "Observaciones"
         ]
-        # Crear DataFrame usando los datos (ignoramos la primera fila de encabezados de la hoja)
         df = pd.DataFrame(datos[1:], columns=columnas)
         
         # Forzar la columna 'Fecha' a texto, limpiar espacios y convertir a datetime
         df['Fecha'] = df['Fecha'].astype(str).str.strip().str.replace('"', '').str.replace("'", "")
-        # Convertir usando el formato ISO "YYYY-MM-DD"
         df['Fecha'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d', errors='coerce')
-        
-        # Si todas las fechas son NaT, se intenta sin especificar formato
         if df['Fecha'].isnull().all():
+            # Si no se convirtieron con el formato fijo, se intenta sin especificar formato
             df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-        
-        # Si siguen siendo todas NaT, retorna error
         if df['Fecha'].isnull().all():
             return "No se pudieron convertir las fechas. Revisa el contenido de la columna Fecha en la hoja.", 400
 
-        # Filtrar inscripciones por el mes y año solicitados
+        # Filtrar registros por mes y año
         df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
         
         if df_reporte.empty:
             mensaje = f"No se encontraron inscripciones para {mes}/{anio}."
             return render_template("reporte_inscripciones.html", reporte_html="", mes=mes, anio=anio, mensaje=mensaje)
-        
+
+        # Seleccionar solo las columnas que se desean mostrar
+        # Suponemos que "Dirección" es la ciudad; si lo deseas, la renombramos a "Ciudad"
+        columnas_mostrar = ["Nombre", "Dirección", "Teléfono", "Modalidad", "Cédula", "Código", "Medio", "Monto", "Fecha"]
+        df_reporte = df_reporte[columnas_mostrar]
+        # Renombrar "Dirección" a "Ciudad"
+        df_reporte.rename(columns={"Dirección": "Ciudad"}, inplace=True)
+
         if descargar == "1":
-            # Exportar a Excel
             output = io.BytesIO()
             writer = pd.ExcelWriter(output, engine='xlsxwriter')
             df_reporte.to_excel(writer, index=False, sheet_name='Reporte')
@@ -2248,11 +2248,11 @@ def reporte_inscripciones():
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
         else:
-            # Convertir el DataFrame filtrado a HTML y renderizar la plantilla
             reporte_html = df_reporte.to_html(classes="table table-striped", index=False)
             return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio, mensaje="")
     except Exception as e:
         return f"Error al generar reporte: {str(e)}", 500
+
 
 
 
