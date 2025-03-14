@@ -1,191 +1,270 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Doméstica del Cibao A&D - Inicio</title>
   
-  <!-- Bootstrap CSS -->
-  <link 
-    rel="stylesheet" 
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
-  >
+  <!-- Bootstrap 5 CSS (CDN) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+  <!-- Font Awesome (CDN) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css">
   
-  <!-- Font Awesome (íconos) -->
-  <link 
-    rel="stylesheet" 
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"
-  >
-  
-  <!-- Tu CSS personalizado -->
-  <link 
-    rel="stylesheet" 
-    href="{{ url_for('static', filename='css/styles.css') }}"
-  >
+  <style>
+    /* Variables */
+    :root {
+      --primary-color: #1A5789;   /* Azul intenso */
+      --accent-color: #00AECF;    /* Turquesa */
+      --secondary-color: #ffffff; /* Blanco */
+      --background-color: #f4f4f4;  /* Fondo neutro */
+      --overlay-color: rgba(0, 0, 0, 0.5);
+      --font-size-base: 1rem;
+      --transition-duration: 0.3s;
+    }
+
+    /* Reset básico */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      font-size: var(--font-size-base);
+      background: var(--background-color);
+      color: var(--primary-color);
+      line-height: 1.6;
+    }
+
+    /* Navbar */
+    .navbar {
+      background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .navbar-brand {
+      font-weight: bold;
+      font-size: 1.8rem;
+      color: var(--secondary-color) !important;
+    }
+    .navbar-brand:hover {
+      color: var(--secondary-color) !important;
+    }
+
+    /* Hero Section */
+    .hero {
+      position: relative;
+      height: 70vh;
+      background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--secondary-color);
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--overlay-color);
+      z-index: 1;
+    }
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      animation: fadeIn 1.5s ease-in-out;
+    }
+    .hero-content img {
+      max-width: 150px;
+      transition: transform var(--transition-duration) ease;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .hero-content img:hover {
+      transform: scale(1.1);
+    }
+    .hero-content h1 {
+      font-size: 2.5rem;
+      margin-top: 20px;
+    }
+    .hero-content p {
+      font-size: 1.2rem;
+      margin-top: 10px;
+    }
+
+    /* Tarjetas de Sección */
+    .card {
+      border: none;
+      border-radius: 10px;
+      transition: transform var(--transition-duration) ease, box-shadow var(--transition-duration) ease;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+    }
+    .card i {
+      font-size: 3rem;
+      color: var(--primary-color);
+      transition: transform var(--transition-duration) ease;
+    }
+    .card:hover i {
+      transform: scale(1.1);
+    }
+    .card-title {
+      margin-top: 15px;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+    .card-text {
+      font-size: 0.95rem;
+      color: #555;
+    }
+    .card .btn {
+      margin-top: 15px;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 20px;
+      background: var(--secondary-color);
+      border-top: 1px solid #ddd;
+      margin-top: 40px;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    /* Animación FadeIn */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
 </head>
 <body>
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg">
     <div class="container">
-      <a class="navbar-brand" href="#">Doméstica del Cibao A&D</a>
+      <a class="navbar-brand" href="/">Doméstica del Cibao A&D</a>
     </div>
   </nav>
 
-  <!-- Hero (Jumbotron) -->
-  <section class="hero-section text-center">
-    <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&D">
-    <h1 class="mt-3">Gestión profesional y confiable de empleadas domésticas</h1>
-    <p>Ofrecemos soluciones integrales para tu hogar</p>
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Logo">
+      <h1>Gestión Profesional de Empleadas Domésticas</h1>
+      <p>Soluciones integrales para tu hogar, con confianza y calidad</p>
+    </div>
   </section>
 
-  <!-- Contenido principal: tarjetas -->
-  <div class="container mt-4">
+  <!-- Sección de Tarjetas -->
+  <div class="container my-5">
     <div class="row g-4">
-      <!-- Tarjeta 1: Buscar Candidatas -->
-      <div class="col-md-4">
+      <!-- Tarjeta Buscar Candidatas -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
         <div class="card text-center p-3">
           <div class="card-body">
             <i class="fas fa-search"></i>
-            <h5 class="card-title mt-3">Buscar Candidatas</h5>
+            <h5 class="card-title">Buscar Candidatas</h5>
             <p class="card-text">Encuentra candidatas por Código, Nombre, Cédula o Teléfono.</p>
             <a href="/buscar" class="btn btn-primary">Ir a Buscar</a>
           </div>
         </div>
       </div>
-      <!-- Tarjeta 2: Entrevistar Candidatas -->
-      <div class="col-md-4">
+      <!-- Tarjeta Entrevistar Candidatas -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
         <div class="card text-center p-3">
           <div class="card-body">
             <i class="fas fa-user-check"></i>
-            <h5 class="card-title mt-3">Entrevistar Candidatas</h5>
-            <p class="card-text">Busca la candidata y luego procede a su entrevista.</p>
+            <h5 class="card-title">Entrevistar Candidatas</h5>
+            <p class="card-text">Busca y entrevista a las candidatas para seleccionar la ideal.</p>
             <a href="/buscar_candidata" class="btn btn-primary">Ir a Entrevistar</a>
           </div>
         </div>
       </div>
-      <!-- Tarjeta 3: Inscripción -->
-      <div class="col-md-4">
+      <!-- Tarjeta Inscripción -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
         <div class="card text-center p-3">
           <div class="card-body">
             <i class="fas fa-user-plus"></i>
-            <h5 class="card-title mt-3">Inscripción</h5>
-            <p class="card-text">Registra nuevas candidatas y gestiona sus datos.</p>
+            <h5 class="card-title">Inscripción</h5>
+            <p class="card-text">Registra nuevas candidatas y gestiona sus datos de inscripción.</p>
             <a href="/inscripcion" class="btn btn-primary">Ir a Inscripción</a>
+          </div>
+        </div>
+      </div>
+      <!-- Tarjeta Reporte de Inscripciones -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
+        <div class="card text-center p-3">
+          <div class="card-body">
+            <i class="fas fa-list-alt"></i>
+            <h5 class="card-title">Reporte de Inscripciones</h5>
+            <p class="card-text">Consulta y descarga reportes mensuales de inscripciones.</p>
+            <a href="/reporte_inscripciones" class="btn btn-primary">Ir a Reporte</a>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="row g-4 mt-2">
-      <!-- Tarjeta 4: Cálculo de Porcentaje -->
-      <div class="col-md-4">
-        <div class="card text-center p-3">
-          <div class="card-body">
-            <i class="fas fa-percentage"></i>
-            <h5 class="card-title mt-3">Cálculo de Porcentaje</h5>
-            <p class="card-text">Calcula los porcentajes pendientes de las candidatas.</p>
-            <a href="/porciento" class="btn btn-primary">Ir a Porcentaje</a>
-          </div>
-        </div>
-      </div>
-      <!-- Tarjeta 5: Gestión de Pagos -->
-      <div class="col-md-4">
+    <div class="row g-4 mt-4">
+      <!-- Tarjeta Gestión de Pagos -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
         <div class="card text-center p-3">
           <div class="card-body">
             <i class="fas fa-file-invoice-dollar"></i>
-            <h5 class="card-title mt-3">Gestión de Pagos</h5>
+            <h5 class="card-title">Gestión de Pagos</h5>
             <p class="card-text">Registra y gestiona los pagos de las candidatas.</p>
             <a href="/pagos" class="btn btn-primary">Ir a Pagos</a>
           </div>
         </div>
       </div>
-      <!-- Tarjeta 6: Editar Datos -->
-      <div class="col-md-4">
+      <!-- Tarjeta Cálculo de Porcentaje -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
         <div class="card text-center p-3">
           <div class="card-body">
-            <i class="fas fa-edit"></i>
-            <h5 class="card-title mt-3">Editar Datos</h5>
-            <p class="card-text">Actualiza los datos de las candidatas de manera sencilla.</p>
-            <a href="/editar" class="btn btn-primary">Ir a Editar</a>
+            <i class="fas fa-percentage"></i>
+            <h5 class="card-title">Cálculo de Porcentaje</h5>
+            <p class="card-text">Calcula y revisa los porcentajes de las candidatas.</p>
+            <a href="/porciento" class="btn btn-primary">Ir a Porcentaje</a>
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="row g-4 mt-2">
-      <!-- Tarjeta 7: Filtrar Candidatas -->
-      <div class="col-md-4">
-        <div class="card text-center p-3">
-          <div class="card-body">
-            <i class="fas fa-filter"></i>
-            <h5 class="card-title mt-3">Filtrar Candidatas</h5>
-            <p class="card-text">Encuentra candidatas basándote en diferentes criterios.</p>
-            <a href="/filtrar" class="btn btn-primary">Ir a Filtrar</a>
-          </div>
-        </div>
-      </div>
-      <!-- Tarjeta 8: Reporte de Pagos -->
-      <div class="col-md-4">
-        <div class="card text-center p-3">
-          <div class="card-body">
-            <i class="fas fa-chart-bar"></i>
-            <h5 class="card-title mt-3">Reporte de Pagos</h5>
-            <p class="card-text">Consulta el estado de los pagos pendientes.</p>
-            <a href="/reporte_pagos" class="btn btn-primary">Ir a Reportes</a>
-          </div>
-        </div>
-      </div>
-      <!-- Tarjeta 9: Reporte de Inscripciones -->
-      <div class="col-md-4">
-        <div class="card text-center p-3">
-          <div class="card-body">
-            <i class="fas fa-list-alt"></i>
-            <h5 class="card-title mt-3">Reporte de Inscripciones</h5>
-            <p class="card-text">Genera y visualiza las inscripciones mensuales.</p>
-            <a href="/reporte_inscripciones" class="btn btn-primary">Ir a Reporte Inscripciones</a>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="row g-4 mt-2">
-      <!-- Tarjeta 10: Gestión de Archivos -->
-      <div class="col-md-4">
+      <!-- Tarjeta Gestión de Archivos -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
         <div class="card text-center p-3">
           <div class="card-body">
             <i class="fas fa-folder-open"></i>
-            <h5 class="card-title mt-3">Gestión de Archivos</h5>
-            <p class="card-text">Consulta y gestiona los documentos de las candidatas.</p>
-            <a href="/gestionar_archivos" class="btn btn-primary">Ir a Gestión de Archivos</a>
+            <h5 class="card-title">Gestión de Archivos</h5>
+            <p class="card-text">Consulta y administra documentos y entrevistas.</p>
+            <a href="/gestionar_archivos" class="btn btn-primary">Ir a Archivos</a>
           </div>
         </div>
       </div>
-      <!-- Tarjeta 11: Subir Documentos -->
-      <div class="col-md-4">
+      <!-- Tarjeta Subir Documentos -->
+      <div class="col-xl-3 col-lg-4 col-md-6">
         <div class="card text-center p-3">
           <div class="card-body">
             <i class="fas fa-upload"></i>
-            <h5 class="card-title mt-3">Subir Documentos</h5>
-            <p class="card-text">Sube las imágenes de los documentos de las candidatas.</p>
-            <a href="/subir_fotos" class="btn btn-primary">Ir a Subir Documentos</a>
+            <h5 class="card-title">Subir Documentos</h5>
+            <p class="card-text">Sube imágenes y documentos de las candidatas.</p>
+            <a href="/subir_fotos" class="btn btn-primary">Ir a Subir</a>
           </div>
         </div>
-      </div>
-      <!-- Espacio vacío o sección futura -->
-      <div class="col-md-4 d-flex align-items-center justify-content-center">
-        <p class="text-muted">[Espacio para futura sección]</p>
       </div>
     </div>
   </div>
 
   <!-- Footer -->
   <footer class="mt-4">
-    <p class="text-center text-muted">&copy; 2024 Doméstica del Cibao A&D. Todos los derechos reservados.</p>
+    <p>&copy; 2024 Doméstica del Cibao A&D. Todos los derechos reservados.</p>
   </footer>
 
-  <!-- Bootstrap JS (opcional) -->
-  <script 
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js">
-  </script>
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
