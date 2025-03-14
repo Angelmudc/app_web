@@ -1056,8 +1056,50 @@ def editar():
     candidata_detalles = None
     mensaje = None
 
-    # Primero: Si se envía el formulario para guardar la edición (vía POST y con un campo "guardar_edicion")
-    if request.method == 'POST' and request.form.get("guardar_edicion"):
+    # 1. Cargar la hoja de Google Sheets (rango "Nueva hoja!B:O")
+    try:
+        hoja = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!B:O"
+        ).execute()
+        valores = hoja.get("values", [])
+        if not valores or len(valores) < 2:
+            mensaje = "⚠️ No hay datos disponibles."
+            return render_template('editar.html', resultados=resultados, candidata=None, mensaje=mensaje)
+    except Exception as e:
+        mensaje = f"Error al obtener datos: {str(e)}"
+        return render_template('editar.html', resultados=resultados, candidata=None, mensaje=mensaje)
+
+    # 2. Procesar según el método y parámetros:
+    # Caso A: Solicitud GET con "candidata_seleccionada" (Ver Detalles)
+    if request.method == 'GET' and request.args.get('candidata_seleccionada'):
+        candidata_id = request.args.get('candidata_seleccionada').strip()
+        try:
+            fila_index = int(candidata_id)
+            # El arreglo 'valores' incluye el encabezado en posición 0, por eso usamos fila_index - 1
+            fila = valores[fila_index - 1]
+            candidata_detalles = {
+                'fila_index': fila_index,
+                'nombre': fila[0] if len(fila) > 0 else "No especificado",
+                'edad': fila[1] if len(fila) > 1 else "No especificado",
+                'telefono': fila[2] if len(fila) > 2 else "No especificado",
+                'direccion': fila[3] if len(fila) > 3 else "No especificado",
+                'modalidad': fila[4] if len(fila) > 4 else "No especificado",
+                'rutas': fila[5] if len(fila) > 5 else "No especificado",
+                'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
+                'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
+                'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
+                'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
+                'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
+                'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
+                'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
+                'cedula': fila[13] if len(fila) > 13 else "No especificado",
+            }
+        except Exception as e:
+            mensaje = f"Error al cargar detalles: {str(e)}"
+    
+    # Caso B: Solicitud POST para guardar cambios (botón "guardar_edicion")
+    elif request.method == 'POST' and request.form.get('guardar_edicion'):
         try:
             fila_index = request.form.get('fila_index', '').strip()
             if not fila_index or not fila_index.isdigit():
@@ -1080,6 +1122,7 @@ def editar():
                     'acepta_porcentaje': request.form.get('acepta_porcentaje', '').strip(),
                     'cedula': request.form.get('cedula', '').strip()
                 }
+                # Mapeo de cada campo a la columna correspondiente
                 columnas = {
                     'nombre': "B",
                     'edad': "C",
@@ -1097,7 +1140,7 @@ def editar():
                     'cedula': "O"
                 }
                 for campo, valor in nuevos_datos.items():
-                    if valor:  # Actualizar solo si se proporcionó un nuevo valor
+                    if valor:  # Actualiza solo si se proporciona un nuevo valor
                         rango = f'Nueva hoja!{columnas[campo]}{fila_index}'
                         service.spreadsheets().values().update(
                             spreadsheetId=SPREADSHEET_ID,
@@ -1106,74 +1149,49 @@ def editar():
                             body={"values": [[valor]]}
                         ).execute()
                 mensaje = "Los datos fueron actualizados correctamente."
-        except Exception as e:
-            mensaje = f"Error al actualizar los datos: {str(e)}"
-
-    # Segundo: Cargar la información desde Google Sheets para búsqueda y/o ver detalles
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"  # Se usan las mismas columnas que en la ruta de buscar
-        ).execute()
-        valores = hoja.get("values", [])
-        if not valores or len(valores) < 2:
-            mensaje = mensaje or "⚠️ No hay datos disponibles."
-        else:
-            # Obtener el término de búsqueda (puede venir vía GET o POST)
-            busqueda = request.values.get('busqueda', '').strip().lower()
-
-            # Iterar sobre los datos (omitiendo la cabecera)
-            for fila_index, fila in enumerate(valores[1:], start=2):
-                # Se asume que:
-                # - Columna B (índice 0 en este rango) es "nombre"
-                # - Columna O (índice 13) es "cedula"
-                nombre = fila[0].strip().lower() if len(fila) > 0 else ""
-                cedula = fila[13].strip() if len(fila) > 13 else ""
-                # Si se ingresó búsqueda, filtrar por nombre o cédula
-                if busqueda and not (busqueda in nombre or busqueda in cedula):
-                    continue
-                resultados.append({
+                # Luego, cargar nuevamente los detalles para mostrar la información actualizada
+                fila = valores[fila_index - 1]
+                candidata_detalles = {
                     'fila_index': fila_index,
                     'nombre': fila[0] if len(fila) > 0 else "No especificado",
+                    'edad': fila[1] if len(fila) > 1 else "No especificado",
                     'telefono': fila[2] if len(fila) > 2 else "No especificado",
                     'direccion': fila[3] if len(fila) > 3 else "No especificado",
+                    'modalidad': fila[4] if len(fila) > 4 else "No especificado",
+                    'rutas': fila[5] if len(fila) > 5 else "No especificado",
+                    'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
+                    'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
+                    'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
+                    'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
+                    'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
+                    'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
+                    'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
                     'cedula': fila[13] if len(fila) > 13 else "No especificado",
-                })
+                }
+        except Exception as e:
+            mensaje = f"Error al actualizar datos: {str(e)}"
 
-            # Ahora, cargar detalles de la candidata si se ha seleccionado.
-            # Para el formulario "Ver Detalles" usamos método GET, así que leemos desde request.args
-            candidata_id = request.args.get('candidata_seleccionada', '').strip()
-            if not candidata_id:
-                # Si no viene vía GET, también se revisa en POST (por ejemplo, al hacer clic en "Ver Detalles" desde resultados)
-                candidata_id = request.form.get('candidata_seleccionada', '').strip()
-            if candidata_id:
-                try:
-                    fila_idx = int(candidata_id)
-                    # Dado que la primera fila de "valores" es el encabezado, usamos fila_idx-1
-                    fila = valores[fila_idx - 1]
-                    candidata_detalles = {
-                        'fila_index': fila_idx,
-                        'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                        'edad': fila[1] if len(fila) > 1 else "No especificado",
-                        'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                        'direccion': fila[3] if len(fila) > 3 else "No especificado",
-                        'modalidad': fila[4] if len(fila) > 4 else "No especificado",
-                        'rutas': fila[5] if len(fila) > 5 else "No especificado",
-                        'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
-                        'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
-                        'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-                        'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
-                        'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
-                        'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
-                        'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
-                        'cedula': fila[13] if len(fila) > 13 else "No especificado",
-                    }
-                except Exception as e:
-                    mensaje = mensaje or f"Error al cargar detalles: {str(e)}"
-    except Exception as e:
-        mensaje = mensaje or f"Error al obtener datos: {str(e)}"
+    # Caso C: Búsqueda simple (ya sea POST o GET sin 'candidata_seleccionada' ni guardar)
+    else:
+        busqueda = request.values.get('busqueda', '').strip().lower()
+
+    # Si no se cargaron detalles (caso C o si se desea mostrar la lista), se generan los resultados
+    if not candidata_detalles:
+        for fila_index, fila in enumerate(valores[1:], start=2):
+            nombre = fila[0].strip().lower() if len(fila) > 0 else ""
+            cedula = fila[13].strip() if len(fila) > 13 else ""
+            if busqueda and not (busqueda in nombre or busqueda in cedula):
+                continue
+            resultados.append({
+                'fila_index': fila_index,
+                'nombre': fila[0] if len(fila) > 0 else "No especificado",
+                'telefono': fila[2] if len(fila) > 2 else "No especificado",
+                'direccion': fila[3] if len(fila) > 3 else "No especificado",
+                'cedula': fila[13] if len(fila) > 13 else "No especificado",
+            })
 
     return render_template('editar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+
 
 
 
