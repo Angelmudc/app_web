@@ -2211,13 +2211,16 @@ def reporte_inscripciones():
             "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
             "Medio", "Estado", "Monto", "Fecha", "Observaciones"
         ]
-        # Crear DataFrame; se ignora la primera fila de encabezados de la hoja si es necesario
+        # Crear DataFrame; se ignora la primera fila de encabezados de la hoja
         df = pd.DataFrame(datos[1:], columns=columnas)
         
-        # Convertir la columna 'Fecha' a datetime usando el formato "YYYY-MM-DD"
+        # Intentar convertir la columna 'Fecha' usando el formato esperado "YYYY-MM-DD"
         df['Fecha'] = pd.to_datetime(df['Fecha'].astype(str).str.strip(), format='%Y-%m-%d', errors='coerce')
+        # Si todos los valores son NaT, se intenta sin formato fijo
+        if df['Fecha'].isnull().all():
+            df['Fecha'] = pd.to_datetime(df['Fecha'].astype(str).str.strip(), errors='coerce')
         
-        # Verificar que existan fechas válidas
+        # Verificar que al menos alguna fecha se convirtió correctamente
         if df['Fecha'].isnull().all():
             return "No se pudieron convertir las fechas. Revisa el formato en la hoja.", 400
         
@@ -2237,9 +2240,9 @@ def reporte_inscripciones():
             output.seek(0)
             filename = f"Reporte_Inscripciones_{anio}_{str(mes).zfill(2)}.xlsx"
             return send_file(
-                output, 
-                attachment_filename=filename, 
-                as_attachment=True, 
+                output,
+                attachment_filename=filename,
+                as_attachment=True,
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
         else:
@@ -2248,7 +2251,6 @@ def reporte_inscripciones():
             return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio, mensaje="")
     except Exception as e:
         return f"Error al generar reporte: {str(e)}", 500
-
 
 
 
