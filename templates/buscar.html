@@ -5,47 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buscar Candidata</title>
   <style>
-    /* ========================================
-       Variables de colores y transiciones
-    ======================================== */
+    /* Variables de colores basados en el logo */
     :root {
-      --primary-color: #343a40;      /* Color principal: oscuro */
-      --secondary-color: #ffffff;    /* Color secundario: blanco */
-      --accent-color: #ff6f61;       /* Color de acento */
-      --background-color: #f8f9fa;    /* Fondo general */
+      --primary-color: #1A5789;      /* Azul intenso para títulos y botones */
+      --accent-color: #00AECF;       /* Turquesa para acentos y efectos */
+      --secondary-color: #ffffff;    /* Blanco para fondos y textos secundarios */
+      --background-color: #e8f6fa;   /* Fondo suave que evoca agua y frescura */
+      --text-color: #343a40;         /* Gris oscuro para textos */
       --transition-duration: 0.3s;
     }
-    
-    /* ========================================
-       Reset y estilos globales
-    ======================================== */
+
+    /* Reset básico */
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+
     body {
       font-family: 'Arial', sans-serif;
       background: var(--background-color);
+      color: var(--text-color);
       line-height: 1.6;
       overflow-x: hidden;
+      padding: 20px;
     }
-    
-    /* ========================================
-       Animaciones
-    ======================================== */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes slideDown {
-      from { transform: translateY(-20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    
-    /* ========================================
-       Container principal
-    ======================================== */
+
+    /* Contenedor principal */
     .container {
       max-width: 900px;
       margin: 40px auto;
@@ -55,17 +41,25 @@
       box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
       animation: fadeIn 0.8s ease-out;
     }
-    
-    /* ========================================
-       Encabezados y Títulos
-    ======================================== */
+
+    /* Animaciones */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes slideDown {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Títulos y encabezados */
     h2 {
       text-align: center;
       color: var(--primary-color);
       font-size: 2rem;
       margin-bottom: 20px;
-      position: relative;
       animation: slideDown 0.5s ease-out;
+      position: relative;
     }
     h2::after {
       content: "";
@@ -79,13 +73,11 @@
     h3 {
       text-align: center;
       color: var(--primary-color);
-      margin-bottom: 15px;
+      margin: 20px 0 15px;
       animation: slideDown 0.5s ease-out;
     }
-    
-    /* ========================================
-       Formularios y Botones
-    ======================================== */
+
+    /* Formularios y botones */
     form {
       animation: fadeIn 1s ease-out;
     }
@@ -116,13 +108,15 @@
       transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
     }
     button:hover {
-      background-color: #e65a54;
+      background-color: #009bbd;
       transform: translateY(-3px);
     }
-    
-    /* ========================================
-       Mensajes de alerta
-    ======================================== */
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    /* Mensajes de alerta */
     .mensaje {
       text-align: center;
       color: #d9534f;
@@ -130,10 +124,8 @@
       margin-top: 10px;
       animation: fadeIn 1s ease-out;
     }
-    
-    /* ========================================
-       Sección de Resultados
-    ======================================== */
+
+    /* Sección de resultados */
     .resultados-section {
       margin-top: 30px;
       animation: fadeIn 1s ease-out;
@@ -172,13 +164,11 @@
       transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
     }
     .ver-detalles:hover {
-      background-color: #232d3b;
+      background-color: #153d5e;
       transform: scale(1.05);
     }
-    
-    /* ========================================
-       Sección de Detalles de Candidata
-    ======================================== */
+
+    /* Sección de detalles de candidata */
     .detalles-section {
       margin-top: 30px;
       animation: fadeIn 1s ease-out;
@@ -197,10 +187,8 @@
     .detalle strong {
       color: var(--primary-color);
     }
-    
-    /* ========================================
-       Botón Volver
-    ======================================== */
+
+    /* Botón de volver */
     .volver {
       display: block;
       margin: 30px auto;
@@ -215,13 +203,11 @@
       transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
     }
     .volver:hover {
-      background-color: #232d3b;
+      background-color: #153d5e;
       transform: translateY(-3px);
     }
-    
-    /* ========================================
-       Diseño Responsivo
-    ======================================== */
+
+    /* Diseño responsivo */
     @media (max-width: 768px) {
       .container {
         margin: 20px;
@@ -245,7 +231,7 @@
 <body>
   <div class="container">
     <h2>🔎 Buscar Candidata</h2>
-    <!-- Formulario de búsqueda con id para identificarlo en JS -->
+    <!-- Formulario de búsqueda -->
     <form id="searchForm" method="POST" action="/buscar">
       <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
       <button type="submit">🔍 Buscar</button>
@@ -277,7 +263,7 @@
                   <td>{{ candidata.ciudad }}</td>
                   <td>{{ candidata.telefono }}</td>
                   <td>
-                    <!-- Importante: se añade el atributo action para que la petición GET se dirija a /buscar -->
+                    <!-- Formulario para ver detalles, con acción correcta -->
                     <form action="/buscar" method="GET">
                       <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
                       <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
