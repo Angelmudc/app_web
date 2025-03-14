@@ -204,7 +204,8 @@
               <p><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</p>
               <p><strong>📌 Dirección:</strong> {{ candidata.direccion }}</p>
               <p><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</p>
-              <form method="POST" action="/editar">
+              <!-- Usar GET para enviar el parámetro y evitar problemas -->
+              <form method="GET" action="/editar">
                 <input type="hidden" name="candidata_seleccionada" value="{{ candidata.fila_index }}">
                 <button type="submit">📄 Ver Detalles</button>
               </form>
