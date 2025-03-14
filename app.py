@@ -2183,6 +2183,11 @@ import pandas as pd
 import io
 from flask import render_template, request, send_file
 
+from datetime import datetime
+import pandas as pd
+import io
+from flask import render_template, request, send_file
+
 @app.route('/reporte_inscripciones', methods=['GET'])
 def reporte_inscripciones():
     try:
@@ -2202,38 +2207,55 @@ def reporte_inscripciones():
         if not datos or len(datos) < 2:
             return "No hay inscripciones registradas.", 404
 
-        # Definir nombres de columnas (20 elementos)
+        # Definir nombres de columnas para el rango A:T (20 columnas)
+        # Solo usaremos algunas, pero es necesario asignar nombres para todas.
         columnas = [
-            "ID", "Nombre", "Edad", "Teléfono", "Dirección", "Modalidad", "Rutas",
-            "Empleo_Anterior", "Años_Experiencia", "Áreas_Experiencia", "Sabe_Planchar",
-            "Referencias_Laborales", "Referencias_Familiares", "Cédula", "Código",
-            "Medio", "Estado", "Monto", "Fecha", "Observaciones"
+            "Col_A",      # Columna A (no utilizada)
+            "Nombre",     # Columna B
+            "Col_C",      # Columna C
+            "Teléfono",   # Columna D
+            "Dirección",  # Columna E (la usaremos como Ciudad)
+            "Col_F",      # Columna F
+            "Col_G",      # Columna G
+            "Col_H",      # Columna H
+            "Col_I",      # Columna I
+            "Col_J",      # Columna J
+            "Col_K",      # Columna K
+            "Col_L",      # Columna L
+            "Col_M",      # Columna M
+            "Col_N",      # Columna N
+            "Cédula",     # Columna O
+            "Código",     # Columna P
+            "Medio",      # Columna Q
+            "Inscripción",# Columna R
+            "Monto",      # Columna S
+            "Fecha"       # Columna T
         ]
         df = pd.DataFrame(datos[1:], columns=columnas)
         
-        # Forzar la columna 'Fecha' a texto, limpiar espacios y convertir a datetime
+        # Convertir la columna 'Fecha' a texto y limpiarla
         df['Fecha'] = df['Fecha'].astype(str).str.strip().str.replace('"', '').str.replace("'", "")
+        # Convertir la columna 'Fecha' a datetime usando el formato ISO "YYYY-MM-DD"
         df['Fecha'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d', errors='coerce')
+        # Si siguen siendo todas NaT, intentar sin formato
         if df['Fecha'].isnull().all():
-            # Si no se convirtieron con el formato fijo, se intenta sin especificar formato
             df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
         if df['Fecha'].isnull().all():
             return "No se pudieron convertir las fechas. Revisa el contenido de la columna Fecha en la hoja.", 400
 
-        # Filtrar registros por mes y año
+        # Filtrar registros por mes y año solicitados
         df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
         
         if df_reporte.empty:
             mensaje = f"No se encontraron inscripciones para {mes}/{anio}."
             return render_template("reporte_inscripciones.html", reporte_html="", mes=mes, anio=anio, mensaje=mensaje)
-
-        # Seleccionar solo las columnas que se desean mostrar
-        # Suponemos que "Dirección" es la ciudad; si lo deseas, la renombramos a "Ciudad"
-        columnas_mostrar = ["Nombre", "Dirección", "Teléfono", "Modalidad", "Cédula", "Código", "Medio", "Monto", "Fecha"]
+        
+        # Seleccionar únicamente las columnas que se quieren mostrar
+        columnas_mostrar = ["Nombre", "Dirección", "Teléfono", "Cédula", "Código", "Medio", "Inscripción", "Monto", "Fecha"]
         df_reporte = df_reporte[columnas_mostrar]
         # Renombrar "Dirección" a "Ciudad"
         df_reporte.rename(columns={"Dirección": "Ciudad"}, inplace=True)
-
+        
         if descargar == "1":
             output = io.BytesIO()
             writer = pd.ExcelWriter(output, engine='xlsxwriter')
@@ -2252,9 +2274,6 @@ def reporte_inscripciones():
             return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio, mensaje="")
     except Exception as e:
         return f"Error al generar reporte: {str(e)}", 500
-
-
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
