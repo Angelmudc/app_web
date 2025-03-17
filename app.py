@@ -229,6 +229,18 @@ def extraer_candidata(fila, idx):
         'cedula': fila[14] if len(fila) > 14 else ""
     }
 
+def obtener_datos_filtrar():
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Nueva hoja!A:Z"
+        ).execute()
+        return result.get('values', [])
+    except Exception as e:
+        logging.error(f"Error al obtener datos para filtrar: {e}", exc_info=True)
+        return []
+
+
 def actualizar_datos_editar(fila_index, nuevos_datos):
     try:
         columnas = {
