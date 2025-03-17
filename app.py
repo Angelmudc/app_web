@@ -1043,143 +1043,104 @@ def porciento():
 
         return render_template('porciento.html', resultados=resultados, candidata=candidata_detalles)
 
-
-
-@app.route('/buscar_pagos', methods=['GET', 'POST'])
-def buscar_pagos():
-    resultados = []
-    candidata_detalles = None
-    busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '')
-
-    print(f"🔍 Buscando: {busqueda}")  # <-- ¿Se está enviando la búsqueda?
-
-    if busqueda:
-        try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
-            ).execute()
-
-            valores = hoja.get("values", [])
-
-            print(f"📜 Datos de la hoja: {len(valores)} filas cargadas")  # <-- Verifica si está leyendo datos
-
-            for fila_index, fila in enumerate(valores[1:], start=2):  
-                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                cedula = fila[14].strip() if len(fila) > 14 else ""
-                codigo = fila[15] if len(fila) > 15 else ""
-
-                if busqueda in nombre or busqueda in cedula or busqueda == codigo:
-                    print(f"✅ Candidata encontrada: {nombre}, {cedula}, {codigo}")  # <-- Muestra si encuentra algo
-                    resultados.append({
-                        'fila_index': fila_index,
-                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                        'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                        'codigo': fila[15] if len(fila) > 15 else "No especificado"
-                    })
-
-        except Exception as e:
-            print(f"❌ Error en la búsqueda: {e}")
-
-    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
-
 @app.route('/pagos', methods=['GET', 'POST'])
 def pagos():
+    mensaje = ""
     resultados = []
     candidata_detalles = None
-    busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '').strip()
 
+    # Cargar la hoja completa (rango A:Y)
     try:
-        # Obtener los datos de la hoja de cálculo
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Asegura incluir hasta la columna Y
+            range="Nueva hoja!A:Y"
         ).execute()
-        valores = hoja.get("values", [])
+        datos = hoja.get("values", [])
+        # Aseguramos que cada fila tenga al menos 25 columnas para acceder a todos los índices necesarios
+        for fila in datos:
+            if len(fila) < 25:
+                fila.extend([""] * (25 - len(fila)))
+    except Exception as e:
+        logging.error(f"Error al cargar datos de la hoja: {e}", exc_info=True)
+        return render_template('pagos.html', resultados=[], candidata=None, mensaje="Error al cargar datos.")
 
-        if not valores or len(valores) < 2:
-            return render_template('pagos.html', resultados=[], candidata=None, mensaje="⚠️ No hay datos disponibles.")
+    # Si se envía un POST, se procesa la actualización del pago
+    if request.method == "POST":
+        try:
+            fila_index_str = request.form.get('fila_index', '').strip()
+            if not fila_index_str or not fila_index_str.isdigit():
+                mensaje = "Error: Índice de fila inválido."
+                return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+            fila_index = int(fila_index_str)
 
-        # 🔹 Búsqueda flexible por nombre
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezar en la segunda fila
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
+            monto_pagado_str = request.form.get('monto_pagado', '').strip()
+            if not monto_pagado_str:
+                mensaje = "Error: Ingrese un monto válido."
+                return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+            monto_pagado = float(monto_pagado_str)
 
-            if busqueda and busqueda in nombre:
+            # Obtener el saldo actual desde la columna X (índice 23)
+            hoja_x = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"Nueva hoja!X{fila_index}"
+            ).execute()
+            valores_x = hoja_x.get("values", [])
+            saldo_actual = float(valores_x[0][0]) if valores_x and valores_x[0] and valores_x[0][0] else 0.0
+
+            nuevo_saldo = max(saldo_actual - monto_pagado, 0)
+            # Actualizar la celda de saldo pendiente (columna X)
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"Nueva hoja!X{fila_index}",
+                valueInputOption="RAW",
+                body={"values": [[nuevo_saldo]]}
+            ).execute()
+            mensaje = "✅ Pago guardado con éxito."
+        except Exception as e:
+            logging.error(f"Error al guardar pago: {e}", exc_info=True)
+            mensaje = f"❌ Error al guardar el pago: {e}"
+
+    # Procesamiento del método GET: búsqueda y visualización de detalles
+    # Se puede recibir el parámetro 'busqueda' y/o 'candidata' para mostrar detalles
+    busqueda = request.args.get('busqueda', '').strip().lower() or request.form.get('busqueda', '').strip().lower()
+    candidata_id = request.args.get('candidata', '').strip()
+
+    if busqueda:
+        for idx, fila in enumerate(datos[1:], start=2):
+            # Extraemos los datos importantes
+            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+            cedula = fila[14].strip() if len(fila) > 14 else ""
+            codigo = fila[15].strip() if len(fila) > 15 else ""
+            telefono = fila[3].strip() if len(fila) > 3 else ""
+            # Se busca en nombre, cédula o se compara exactamente con el código
+            if busqueda in nombre or busqueda in cedula or busqueda == codigo:
                 resultados.append({
-                    'fila_index': fila_index,
+                    'fila_index': idx,
                     'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",  # W
-                    'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
-                    'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
-                    'calificacion': fila[24] if len(fila) > 24 else "",  # Y
+                    'telefono': telefono if telefono else "No especificado",
+                    'cedula': cedula if cedula else "No especificado",
+                    'codigo': codigo if codigo else "No especificado"
                 })
-
-        # 🔹 Cargar detalles si se seleccionó una candidata
-        if candidata_id:
-            fila_index = int(candidata_id)  # Convertir ID a número de fila
-            fila = valores[fila_index - 1]  # Ajustar índice (Sheets empieza en 1)
-
+    if candidata_id:
+        try:
+            fila_index = int(candidata_id)
+            fila = datos[fila_index - 1]  # Ajuste: filas en Sheets son 1-indexadas
             candidata_detalles = {
                 'fila_index': fila_index,
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",  # W
-                'porcentaje': fila[23] if len(fila) > 23 else "0",  # X
-                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # U
-                'calificacion': fila[24] if len(fila) > 24 else "",  # Y
+                'monto_total': fila[22] if len(fila) > 22 else "0",     # Columna W
+                'porcentaje': fila[23] if len(fila) > 23 else "0",       # Columna X
+                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # Columna U
+                'calificacion': fila[24] if len(fila) > 24 else ""       # Columna Y
             }
+        except Exception as e:
+            logging.error(f"Error al cargar detalles de candidata: {e}", exc_info=True)
+            mensaje = f"Error al cargar detalles: {e}"
 
-    except Exception as e:
-        mensaje = f"❌ Error al obtener los datos: {str(e)}"
-        return render_template('pagos.html', resultados=[], candidata=None, mensaje=mensaje)
+    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
 
-    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles)
-
-
-@app.route('/guardar_pago', methods=['POST'])
-def guardar_pago():
-    try:
-        fila_index = int(request.form.get('fila_index'))
-        monto_pagado = request.form.get('monto_pagado', '').strip()
-
-        if not monto_pagado:
-            return render_template('pagos.html', mensaje="❌ Error: Ingrese un monto válido.")
-
-        # 🔹 Convertir correctamente el monto pagado
-        monto_pagado = float(monto_pagado)  # Ahora admite valores decimales
-
-        # Obtener datos actuales de la columna X (porcentaje pendiente)
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!X{fila_index}"
-        ).execute()
-        valores = hoja.get("values", [])
-
-        saldo_actual = float(valores[0][0]) if valores and valores[0] else 0  # Convertir a float para evitar errores
-        nuevo_saldo = saldo_actual - monto_pagado
-
-        # Asegurar que el saldo no sea negativo
-        nuevo_saldo = max(nuevo_saldo, 0)
-
-        # 🔹 Actualizar la columna X con el nuevo saldo
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"Nueva hoja!X{fila_index}",
-            valueInputOption="RAW",
-            body={"values": [[nuevo_saldo]]}  # Guardar como número decimal sin errores
-        ).execute()
-
-        # Mensaje de éxito
-        return render_template('pagos.html', mensaje="✅ Pago guardado con éxito.")
-
-    except Exception as e:
-        return render_template('pagos.html', mensaje=f"❌ Error al guardar los datos: {str(e)}")
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
