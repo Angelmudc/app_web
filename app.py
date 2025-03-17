@@ -34,6 +34,9 @@ import unicodedata
 import logging
 from flask import render_template
 
+from werkzeug.security import generate_password_hash
+from flask import Flask, render_template, request, redirect, url_for, session
+
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -75,12 +78,14 @@ except Exception as e:
 
 # Configuración básica de Flask
 app = Flask(__name__)
-app.secret_key = "clave_secreta_segura"
+app.secret_key = "clave_secreta_segura"  # Asegúrate de que esta clave sea robusta y esté en una variable de entorno
 
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
-    "angel": generate_password_hash("1234"),  # Usuario: admin, Clave: 12345
-    "usuario1": generate_password_hash("clave123")
+    "angel": generate_password_hash("1234"),
+    "juan": generate_password_hash("5678"),
+    "maria": generate_password_hash("abcd"),
+    "pedro": generate_password_hash("efgh")
 }
 
 # Configuración de caché
@@ -186,6 +191,37 @@ def buscar_candidata(busqueda):
     except Exception as e:
         logging.error(f"Error en buscar_candidata: {str(e)}", exc_info=True)
         return []
+
+def actualizar_registro(fila_index, usuario_actual):
+    try:
+        # Definir la celda de la columna EA (donde se registra la edición)
+        celda_registro = f"Nueva hoja!EA{fila_index}"
+        
+        # Obtener el valor actual en la celda EA
+        respuesta = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=celda_registro
+        ).execute()
+        valores = respuesta.get("values", [])
+        registro_actual = valores[0][0] if valores and valores[0] else ""
+        
+        # Evitar duplicados: si el usuario ya se encuentra, no se agrega de nuevo
+        if usuario_actual in registro_actual.split(", "):
+            nuevo_registro = registro_actual
+        else:
+            # Si ya existe un registro, concatenamos el nuevo usuario
+            nuevo_registro = f"{registro_actual}, {usuario_actual}" if registro_actual else usuario_actual
+        
+        # Actualizar la celda EA con el nuevo registro
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=celda_registro,
+            valueInputOption="RAW",
+            body={"values": [[nuevo_registro]]}
+        ).execute()
+    except Exception as e:
+        logging.error(f"Error actualizando el registro en la fila {fila_index}: {str(e)}", exc_info=True)
+
 
 def normalizar_texto(texto):
     """
@@ -534,21 +570,17 @@ def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
         print(f"Error al filtrar candidatas: {e}")
         return []
 
-# Ruta de Login
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
     if request.method == 'POST':
         usuario = request.form['usuario']
         clave = request.form['clave']
-        
-        # Validación del usuario
         if usuario in usuarios and check_password_hash(usuarios[usuario], clave):
             session['usuario'] = usuario
-            return redirect(url_for('home'))  # Redirige al home después de iniciar sesión
+            return redirect(url_for('home'))
         else:
             mensaje = "Usuario o clave incorrectos."
-
     return render_template('login.html', mensaje=mensaje)
 
 @app.route('/robots.txt')
