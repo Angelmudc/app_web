@@ -194,6 +194,40 @@ def buscar_candidata(busqueda):
         logging.error(f"Error en buscar_candidata: {str(e)}", exc_info=True)
         return []
 
+def extend_row(row, min_length=18):
+    # Asegura que la fila tenga al menos 'min_length' elementos.
+    if len(row) < min_length:
+        row.extend([""] * (min_length - len(row)))
+    return row
+
+def filtrar_candidata(candidata, filtros):
+    # Retorna True si la candidata cumple con todos los filtros.
+    ciudad = filtros.get("ciudad")
+    modalidad = filtros.get("modalidad")
+    experiencia = filtros.get("experiencia_anos")
+    areas = filtros.get("areas_experiencia")
+    return ((not ciudad or ciudad in candidata.get("direccion", "").lower()) and
+            (not modalidad or modalidad in candidata.get("modalidad", "").lower()) and
+            (not experiencia or experiencia in candidata.get("experiencia_anos", "").lower()) and
+            (not areas or areas in candidata.get("areas_experiencia", "").lower()))
+
+def extraer_candidata(fila, idx):
+    # Extiende la fila y extrae la información de interés
+    fila = extend_row(fila, 18)
+    return {
+        'fila_index': idx,
+        'codigo': fila[15] if len(fila) > 15 else "",
+        'estado': fila[16] if len(fila) > 16 else "",
+        'inscripcion': fila[17],
+        'nombre': fila[1],
+        'edad': fila[2] if len(fila) > 2 else "",
+        'telefono': fila[3] if len(fila) > 3 else "",
+        'direccion': fila[4],
+        'modalidad': fila[5],
+        'experiencia_anos': fila[8],
+        'areas_experiencia': fila[9],
+        'cedula': fila[14] if len(fila) > 14 else ""
+    }
 
 def actualizar_datos_editar(fila_index, nuevos_datos):
     try:
@@ -797,70 +831,40 @@ def editar():
 
     return render_template('editar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
 
-
-
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
     resultados = []  
     mensaje = None  
-
     try:
-        # Obtener los datos de la hoja de cálculo
         datos = obtener_datos_filtrar()
-        print(f"🔍 Datos obtenidos ({len(datos)} filas)")
-
+        logging.info(f"🔍 Datos obtenidos ({len(datos)} filas)")
         if not datos:
             mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
             return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
-        # 🔹 Mostrar TODAS las candidatas inscritas al cargar la página (sin filtros)
-        for fila in datos:
-            if len(fila) < 18:  
-                continue  
+        # Construir la lista inicial de candidatas inscritas
+        for idx, fila in enumerate(datos[1:], start=2):
+            fila = extend_row(fila, 18)
+            if fila[17].strip().lower() == "sí":
+                resultados.append(extraer_candidata(fila, idx))
 
-            inscripcion_fila = fila[17].strip().lower()  # Índice 17: Inscripción
-
-            if inscripcion_fila == "sí":  # Solo mostrar inscritas
-                resultados.append({
-                    'codigo': fila[15] if len(fila) > 15 else "",  # Código en P (15)
-                    'estado': fila[16] if len(fila) > 16 else "",  # Estado en Q (16)
-                    'inscripcion': fila[17],  # Inscripción en R (17)
-                    'nombre': fila[1],  # Nombre en B (1)
-                    'edad': fila[2] if len(fila) > 2 else "",  
-                    'telefono': fila[3] if len(fila) > 3 else "",  
-                    'direccion': fila[4],  # Dirección en E (4)
-                    'modalidad': fila[5],  # Modalidad en F (5)
-                    'experiencia_anos': fila[8],  # Años de experiencia en I (8)
-                    'areas_experiencia': fila[9],  # Áreas de experiencia en J (9)
-                    'cedula': fila[14] if len(fila) > 14 else "",  # Cédula en O (14)
-                })
-
-        # 🔹 Aplicar filtros si se hace una búsqueda
+        # Si se envía un POST, aplicar filtros
         if request.method == 'POST':
-            ciudad = request.form.get('ciudad', '').strip().lower()
-            modalidad = request.form.get('modalidad', '').strip().lower()
-            experiencia_anos = request.form.get('experiencia_anos', '').strip().lower()
-            areas_experiencia = request.form.get('areas_experiencia', '').strip().lower()
-
-            resultados_filtrados = []
-            for candidata in resultados:
-                # 🔹 Coincidencias parciales y filtros flexibles
-                cumple_ciudad = ciudad in candidata['direccion'].lower() if ciudad else True
-                cumple_modalidad = modalidad in candidata['modalidad'].lower() if modalidad else True
-                cumple_experiencia = experiencia_anos in candidata['experiencia_anos'].lower() if experiencia_anos else True
-                cumple_areas_experiencia = areas_experiencia in candidata['areas_experiencia'].lower() if areas_experiencia else True
-
-                if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas_experiencia:
-                    resultados_filtrados.append(candidata)
-
-            # Si no se encuentra nada, mostrar todas las candidatas inscritas
+            filtros = {
+                "ciudad": request.form.get('ciudad', '').strip().lower(),
+                "modalidad": request.form.get('modalidad', '').strip().lower(),
+                "experiencia_anos": request.form.get('experiencia_anos', '').strip().lower(),
+                "areas_experiencia": request.form.get('areas_experiencia', '').strip().lower()
+            }
+            resultados_filtrados = [c for c in resultados if filtrar_candidata(c, filtros)]
             if resultados_filtrados:
                 resultados = resultados_filtrados
             else:
-                mensaje = "⚠️ No se encontraron resultados para los filtros aplicados. Mostrando todas las candidatas inscritas."
-
+                mensaje = ("⚠️ No se encontraron resultados para los filtros aplicados. "
+                           "Mostrando todas las candidatas inscritas.")
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
+        logging.error(mensaje, exc_info=True)
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
 
