@@ -196,7 +196,7 @@ def normalizar_texto(texto):
     texto = texto.strip().lower()
     return ''.join(c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn')
 
-def extend_row(row, min_length=18):
+def extend_row(row, min_length=31):
     """Asegura que la fila tenga al menos 'min_length' elementos."""
     if len(row) < min_length:
         row.extend([""] * (min_length - len(row)))
@@ -214,24 +214,21 @@ def extraer_candidata(fila, idx):
       - Áreas de experiencia: Columna J (índice 9)
       - Cédula: Columna O (índice 14)
       - Código: Columna P (índice 15)
+      - Trabajando: Columna AE (índice 30)
     """
-    fila = extend_row(fila, 18)
-    codigo = fila[15].strip() if len(fila) > 15 else ""
-    # Si no hay código, asignamos un valor por defecto.
-    if not codigo:
-        codigo = "Sin código asignado"
-        
+    fila = extend_row(fila, 31)
     return {
         'fila_index': idx,
-        'codigo': codigo,
+        'codigo': fila[15].strip() if len(fila) > 15 else "",
         'nombre': fila[1].strip() if len(fila) > 1 else "",
         'telefono': fila[3].strip() if len(fila) > 3 else "",
         'direccion': fila[4].strip() if len(fila) > 4 else "",
         'modalidad': fila[5].strip() if len(fila) > 5 else "",
         'experiencia_anos': fila[8].strip() if len(fila) > 8 else "",
         'areas_experiencia': fila[9].strip() if len(fila) > 9 else "",
-        'cedula': fila[14].strip() if len(fila) > 14 else ""
-    }
+        'cedula': fila[14].strip() if len(fila) > 14 else "",
+        'trabajando': fila[30].strip() if len(fila) > 30 else ""
+}
 
 
 def filtrar_candidata(candidata, filtros):
@@ -881,48 +878,53 @@ def filtrar():
     resultados = []  
     mensaje = None  
     try:
-        # Se asume que la función obtener_datos_filtrar() está definida y retorna datos del rango "Nueva hoja!A:Z"
+        # Suponemos que obtener_datos_filtrar() retorna los datos del rango "Nueva hoja!A:Z"
         datos = obtener_datos_filtrar()
         logging.info(f"🔍 Datos obtenidos ({len(datos)} filas)")
         if not datos or len(datos) < 2:
             mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
             return render_template('filtrar.html', resultados=[], mensaje=mensaje)
-
-        # Construir la lista de candidatas sin filtrar por inscripción (se muestran todas)
+        
+        # Construir la lista de candidatas a partir de todas las filas (sin filtrar por inscripción)
         for idx, fila in enumerate(datos[1:], start=2):
-            fila = extend_row(fila, 18)
+            fila = extend_row(fila, 31)
             candidata = extraer_candidata(fila, idx)
             resultados.append(candidata)
-
-        # Recoger los filtros (se usan los mismos nombres de campos que en el formulario)
+        
+        # Filtrar para incluir solo aquellas candidatas que tienen código y en "trabajando" sea "no"
+        resultados = [
+            c for c in resultados 
+            if c['codigo'] and normalizar_texto(c['trabajando']) == "no"
+        ]
+        
+        # Recoger los filtros adicionales (Ciudad, Modalidad, Experiencia y Áreas)
         filtro_direccion = normalizar_texto(request.values.get('ciudad', ''))
         filtro_modalidad = normalizar_texto(request.values.get('modalidad', ''))
         filtro_experiencia = normalizar_texto(request.values.get('experiencia_anos', ''))
         filtro_areas = normalizar_texto(request.values.get('areas_experiencia', ''))
-
-        # Si se especifica al menos un filtro, se filtran las candidatas
+        
+        # Si se especifica al menos un filtro, aplicar búsqueda en las columnas correspondientes
         if filtro_direccion or filtro_modalidad or filtro_experiencia or filtro_areas:
             resultados_filtrados = []
             for candidata in resultados:
-                # Normalizamos los valores de la candidata
                 direccion_norm = normalizar_texto(candidata.get('direccion', ''))
                 modalidad_norm = normalizar_texto(candidata.get('modalidad', ''))
                 experiencia_norm = normalizar_texto(candidata.get('experiencia_anos', ''))
                 areas_norm = normalizar_texto(candidata.get('areas_experiencia', ''))
-
+                
                 if (filtro_direccion in direccion_norm and
                     filtro_modalidad in modalidad_norm and
                     filtro_experiencia in experiencia_norm and
                     filtro_areas in areas_norm):
                     resultados_filtrados.append(candidata)
-            resultados = resultados_filtrados
-            if not resultados:
-                mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
-
+            if resultados_filtrados:
+                resultados = resultados_filtrados
+            else:
+                mensaje = ("⚠️ No se encontraron resultados para los filtros aplicados. "
+                           "Mostrando candidatas que cumplen con la condición 'trabajando: no' y tienen código.")
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
-
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
 
 import traceback  # Importa para depuración
