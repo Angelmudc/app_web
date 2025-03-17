@@ -105,7 +105,6 @@
     input[type="radio"] {
       margin-right: 8px;
     }
-
     button {
       width: 100%;
       padding: 15px;
@@ -213,7 +212,7 @@
     <form method="POST" action="/filtrar">
       <!-- Ciudad / Dirección -->
       <input type="text" name="ciudad" placeholder="Ciudad o parte de la dirección">
-
+      
       <!-- Modalidad de trabajo preferida -->
       <div class="opciones">
         <p><strong>Modalidad de trabajo preferida</strong></p>
@@ -230,7 +229,7 @@
           (Sin filtro de modalidad)
         </label>
       </div>
-
+      
       <!-- Años de experiencia -->
       <div class="opciones">
         <p><strong>Años de experiencia</strong></p>
@@ -255,7 +254,7 @@
           (Sin filtro de experiencia)
         </label>
       </div>
-
+      
       <!-- Áreas de experiencia -->
       <div class="opciones">
         <p><strong>Áreas de experiencia</strong></p>
@@ -288,7 +287,7 @@
           (Sin filtro de áreas)
         </label>
       </div>
-
+      
       <button type="submit">Filtrar</button>
     </form>
     
@@ -301,6 +300,7 @@
             <thead>
               <tr>
                 <th>Nombre</th>
+                <th>Código</th>
                 <th>Teléfono</th>
                 <th>Dirección</th>
                 <th>Cédula</th>
@@ -312,6 +312,7 @@
               {% for candidata in resultados %}
                 <tr>
                   <td>{{ candidata.nombre }}</td>
+                  <td>{{ candidata.codigo }}</td>
                   <td>{{ candidata.telefono }}</td>
                   <td>{{ candidata.direccion }}</td>
                   <td>{{ candidata.cedula }}</td>
