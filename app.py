@@ -1,67 +1,35 @@
 import logging
-logging.basicConfig(level=logging.DEBUG)
-from flask import Flask, render_template, request
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
-from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, session
 import os
 import json
-import gspread
-from flask import request
-from flask import Flask, render_template, request, redirect, url_for, session
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask import send_from_directory
-from flask_caching import Cache
-from rapidfuzz import process
-from google.oauth2.service_account import Credentials
-from flask import Flask, request, render_template, jsonify
-import unicodedata
-from flask import Flask, render_template, request, send_from_directory
-import os
+import io
+import zipfile
+import requests
 import traceback
-from flask import Flask, request, render_template
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from googleapiclient.discovery import build
-from fpdf import FPDF
-from flask import send_file
-from flask import Flask, render_template, request, redirect, send_file
-from fpdf import FPDF
-import os
-import os
+from datetime import datetime, timedelta
+import pandas as pd
+import unicodedata
+
+from flask import (
+    Flask, render_template, request, redirect, url_for, session,
+    send_from_directory, jsonify, send_file, current_app
+)
+from flask_caching import Cache
+
+from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import os
-from flask import Flask, render_template, request, redirect
-from google.oauth2.service_account import Credentials
+
 from googleapiclient.discovery import build
+from google.oauth2.service_account import Credentials
+import gspread
+
+from rapidfuzz import process
+
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
-import io
-import zipfile
-import requests
-from flask import Flask, request, send_file
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-import os
-import io
-import zipfile
-import requests
-from flask import Flask, request, render_template, redirect, url_for, send_file
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-import cloudinary
-import cloudinary.uploader
-from flask import Flask, request, send_file, current_app
+
 from fpdf import FPDF
-from io import BytesIO
-import os
-import datetime
-from datetime import datetime
-import pandas as pd
-import io
-from flask import send_file, render_template, request
+
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -181,34 +149,51 @@ def obtener_siguiente_fila():
         print(f"Error al obtener la siguiente fila: {str(e)}")
         return None
 
-
 def buscar_candidata(busqueda):
+    """
+    Función mejorada para buscar candidatas:
+    - Si 'busqueda' empieza con "can-", se interpreta como código y se realiza una coincidencia exacta en la columna de código.
+    - De lo contrario, se busca de forma flexible por nombre (coincidencia parcial).
+    
+    Retorna una lista de diccionarios con los campos: fila_index, codigo, nombre, cedula y telefono.
+    """
     try:
-        datos = sheet.get_all_values()  # Obtener todos los valores de la hoja
+        # Obtiene todos los datos de la hoja
+        datos = sheet.get_all_values()
+        if not datos or len(datos) < 2:
+            return []
+
         resultados = []
+        termino = busqueda.strip().lower()
 
-        for fila_index, fila in enumerate(datos[1:], start=2):  # Saltamos la primera fila (encabezado)
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
-            cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O
-            saldo_pendiente = fila[23] if len(fila) > 23 else "0"  # Columna X (Saldo pendiente)
-
-            if busqueda.lower() in nombre or busqueda == cedula:  # Búsqueda flexible
-                resultados.append({
-                    'fila_index': fila_index,
-                    'nombre': fila[1],
-                    'telefono': fila[3] if len(fila) > 3 else "No disponible",
-                    'cedula': fila[14] if len(fila) > 14 else "No disponible",
-                    'monto_total': fila[22] if len(fila) > 22 else "0",  # Columna W (Monto Total)
-                    'saldo_pendiente': saldo_pendiente,
-                    'fecha_pago': fila[21] if len(fila) > 21 else "No registrada",  # Columna U
-                    'calificacion': fila[24] if len(fila) > 24 else "Pendiente"  # Columna Y
-                })
-
+        # Si se busca por código (ej.: "CAN-000123"), la búsqueda es exacta en la columna P (índice 15)
+        if termino.startswith("can-"):
+            for index, fila in enumerate(datos[1:], start=2):
+                if len(fila) > 15 and fila[15].strip().lower() == termino:
+                    resultados.append({
+                        "fila_index": index,
+                        "codigo": fila[15],
+                        "nombre": fila[1] if len(fila) > 1 else "",
+                        "cedula": fila[14] if len(fila) > 14 else "",
+                        "telefono": fila[3] if len(fila) > 3 else ""
+                    })
+        else:
+            # Búsqueda flexible por nombre (columna B, índice 1)
+            for index, fila in enumerate(datos[1:], start=2):
+                if len(fila) > 1 and termino in fila[1].strip().lower():
+                    resultados.append({
+                        "fila_index": index,
+                        "codigo": fila[15] if len(fila) > 15 else "",
+                        "nombre": fila[1],
+                        "cedula": fila[14] if len(fila) > 14 else "",
+                        "telefono": fila[3] if len(fila) > 3 else ""
+                    })
         return resultados
 
     except Exception as e:
-        print(f"❌ Error en la búsqueda: {e}")
+        logging.error(f"Error en buscar_candidata: {str(e)}", exc_info=True)
         return []
+
 
 def actualizar_datos_editar(fila_index, nuevos_datos):
     try:
@@ -237,99 +222,6 @@ def actualizar_datos_editar(fila_index, nuevos_datos):
     except Exception as e:
         print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
         return False
-
-def buscar_candidata(busqueda):
-    """
-    Busca candidatas en la hoja de cálculo SOLO por nombre (columna B).
-    - La búsqueda no es estricta, permite coincidencias parciales.
-    - Retorna toda la fila encontrada sin importar si hay columnas vacías.
-    """
-    try:
-        datos = sheet.get_all_values()  # Obtiene todas las filas de la hoja
-        resultados = []
-
-        busqueda = busqueda.strip().lower()  # Normalizar búsqueda
-
-        for fila_index, fila in enumerate(datos[1:], start=2):  # Saltamos el encabezado
-            if len(fila) > 1:  # Verifica que la fila tenga al menos la columna B (nombre)
-                nombre = fila[1].strip().lower()  # Columna B (Nombre)
-
-                if busqueda in nombre:  # Coincidencia parcial
-                    resultados.append({
-                        'fila_index': fila_index,
-                        'datos_completos': fila  # Guarda toda la fila encontrada
-                    })
-
-        return resultados  # Retorna TODAS las coincidencias encontradas
-
-    except Exception as e:
-        print(f"❌ Error en la búsqueda: {e}")
-        return []
-        encabezados = datos[0]  # Primera fila son los encabezados
-
-        # 🔹 Buscar en cada fila (desde la segunda fila en adelante)
-        for fila_index, fila in enumerate(datos[1:], start=2):  
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""  # Columna B
-            cedula = fila[14].strip() if len(fila) > 14 else ""  # Columna O
-
-            if not busqueda:
-                continue
-
-            busqueda = busqueda.strip().lower()
-
-            # 🔹 Coincidencia parcial en nombre o coincidencia exacta en cédula
-            if busqueda in nombre or busqueda == cedula:
-                # Asegurar que la fila tenga suficientes columnas
-                while len(fila) < 16:
-                    fila.append("")
-
-                # 🔹 Agregar resultado
-                resultados.append({
-                    "fila_index": fila_index,  # Índice de la fila en la hoja (1-based)
-                    "nombre": fila[1] if len(fila) > 1 else "No disponible",  # Columna B
-                    "edad": fila[2] if len(fila) > 2 else "No disponible",  # Columna C
-                    "telefono": fila[3] if len(fila) > 3 else "No disponible",  # Columna D
-                    "direccion": fila[4] if len(fila) > 4 else "No disponible",  # Columna E
-                    "modalidad": fila[5] if len(fila) > 5 else "No disponible",  # Columna F
-                    "anos_experiencia": fila[8] if len(fila) > 8 else "No disponible",  # Columna I
-                    "experiencia": fila[9] if len(fila) > 9 else "No disponible",  # Columna J
-                    "sabe_planchar": fila[10] if len(fila) > 10 else "No disponible",  # Columna K
-                    "referencia_laboral": fila[11] if len(fila) > 11 else "No disponible",  # Columna L
-                    "referencia_familiar": fila[12] if len(fila) > 12 else "No disponible",  # Columna M
-                    "cedula": fila[14] if len(fila) > 14 else "No disponible",  # Columna O
-                    "codigo": fila[15] if len(fila) > 15 else "No asignado",  # Columna P
-                })
-
-        # 🔹 Retorna todos los resultados encontrados
-        return resultados
-
-    except Exception as e:
-        print(f"❌ Error al buscar candidatas: {e}")
-        return []
-
-def obtener_datos_editar():
-    """
-    Obtiene los datos de la hoja de cálculo y se asegura de que cada fila tenga suficientes columnas.
-    """
-    try:
-        print("📌 Intentando obtener datos de Google Sheets...")  # DEBUG
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range='Nueva hoja!A:Y'
-        ).execute()
-        valores = result.get('values', [])
-
-        print(f"🔹 Datos obtenidos ({len(valores)} filas):")  # DEBUG
-        for fila in valores[:5]:  # Solo muestra las primeras 5 filas
-            print(fila)
-
-        # Asegurar que cada fila tenga al menos 25 columnas
-        datos_completos = [fila + [''] * (25 - len(fila)) for fila in valores]
-
-        return datos_completos
-    except Exception as e:
-        print(f"❌ Error al obtener datos de edición: {e}")
-        return []
 
 def obtener_datos_editar():
     """
@@ -445,31 +337,6 @@ def cargar_detalles_candidata(valores, candidata_param):
         'cedula': fila[13] if len(fila) > 13 else "No especificado",
     }
 
-
-def buscar_candidata(busqueda):
-    try:
-        sheet = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range="Nueva hoja!A:Y").execute()
-        valores = sheet.get("values", [])
-
-        if not valores:
-            return None  
-
-        encabezados = valores[1]  
-        datos_candidatas = [dict(zip(encabezados, fila)) for fila in valores[2:] if len(fila) > 1]  
-
-        # Buscar por nombre o cédula
-        for fila_index, candidata in enumerate(datos_candidatas, start=3):  
-            if (busqueda.lower() in candidata.get("Nombre", "").lower() or busqueda == candidata.get("Telefono", "")):
-                candidata["fila_index"] = fila_index  
-                print(f"✅ Fila encontrada: {fila_index}")  # 🔍 DEPURACIÓN
-                return candidata  
-
-        print("❌ No se encontró la candidata.")
-        return None  
-
-    except Exception as e:
-        print(f"❌ Error en la búsqueda: {e}")
-        return None
 def inscribir_candidata(fila_index, estado, monto, fecha):
     """
     Actualiza los datos de la candidata en la hoja de cálculo para registrar su inscripción.
@@ -545,113 +412,6 @@ def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
         print(f"Error al filtrar candidatas: {e}")
         return []
 
-def buscar_candidata(busqueda):
-    try:
-        sheet = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range="Nueva hoja!A:Y").execute()
-        valores = sheet.get("values", [])
-
-        if not valores:
-            return None  # Si la hoja está vacía
-
-        encabezados = valores[1]  # Segunda fila como nombres de columna
-        datos_candidatas = [dict(zip(encabezados, fila)) for fila in valores[2:] if len(fila) > 1]  # Solo filas con datos
-
-        # Filtrar por nombre o cédula
-        resultado = [
-            candidata for candidata in datos_candidatas
-            if busqueda.lower() in candidata.get("Nombre", "").lower()
-            or busqueda in candidata.get("Telefono", "")
-        ]
-
-        return resultado if resultado else None
-
-    except Exception as e:
-        print(f"❌ Error en la búsqueda: {e}")
-        return None
-
-@cache.memoize(timeout=120)
-def obtener_datos_cache():
-    result = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME
-    ).execute()
-    valores = result.get('values', [])
-    return [fila + [''] * (27 - len(fila)) for fila in valores]  # Asegurar columnas mínimas
-
-# Función para buscar datos por nombre o cédula
-def buscar_datos_por_nombre_o_cedula(busqueda):
-    datos = obtener_datos()
-    for fila_index, fila in enumerate(datos):
-        if len(fila) > 16:  # Asegura que al menos hay 17 columnas
-            if fila[1].strip().lower() == busqueda.lower() or fila[16].strip() == busqueda:
-                return fila_index, fila
-    return None, None
-
-def buscar_candidata_rapida(busqueda):
-    datos = obtener_datos_cache()
-    candidatos = []
-
-    for fila_index, fila in enumerate(datos):
-        if len(fila) >= 27:
-            codigo = fila[15].strip().lower()
-            nombre = fila[1].strip().lower()
-            cedula = fila[14].strip()
-            telefono = fila[3].strip()
-            direccion = fila[4].strip().lower()
-            estado = fila[16].strip().lower()
-            inscripcion = fila[18].strip().lower()
-            modalidad = fila[5].strip().lower()
-            experiencia = fila[9].strip()
-            referencias_laborales = fila[11].strip().lower()
-            referencias_familiares = fila[12].strip().lower()
-
-            
-            campos_a_buscar = [
-                codigo, nombre, cedula, telefono, direccion, estado, 
-                inscripcion, modalidad, experiencia, referencias_laborales, referencias_familiares
-            ]
-
-            
-            resultado = process.extractOne(busqueda.lower(), campos_a_buscar)
-
-            if resultado and resultado[1] > 80:  
-                candidatos.append({
-                    'fila_index': fila_index + 1,
-                    'codigo': fila[15],
-                    'nombre': fila[1],
-                    'ciudad': fila[4],
-                    'cedula': fila[14],
-                    'telefono': fila[3],
-                    'direccion': fila[4],
-                    'estado': fila[16],
-                    'inscripcion': fila[18],
-                    'modalidad': fila[5],
-                    'experiencia': fila[9],
-                    'referencias_laborales': fila[11],
-                    'referencias_familiares': fila[12]
-                })
-    
-    return candidatos
-
-
-def buscar_fila_por_codigo_nombre_cedula(busqueda):
-    """
-    Busca la fila en la hoja de cálculo por código, nombre o cédula.
-    Retorna el índice de la fila y la fila completa si se encuentra.
-    """
-    datos = obtener_datos()
-    for fila_index, fila in enumerate(datos):
-        if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
-            codigo = fila[15].strip().lower()
-            nombre = fila[1].strip().lower()
-            cedula = fila[14].strip()
-            if (
-                busqueda.lower() == codigo or
-                busqueda.lower() == nombre or
-                busqueda == cedula
-            ):
-                return fila_index, fila  # Devuelve el índice de la fila y la fila completa
-    return None, None  # No se encontró
-
 def generar_codigo_unico():
     """
     Genera un código único para las candidatas en formato 'CAN-XXXXXX'.
@@ -678,183 +438,6 @@ def generar_codigo_unico():
     except Exception as e:
         print(f"Error al generar código único: {e}")
         return None
-
-
-
-# Función para guardar los datos en la hoja de cálculo
-def guardar_datos_en_hoja():
-    try:
-        # Construimos la estructura de los datos a enviar
-        rango = f"Nueva hoja!A1:Y"
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",
-            body={"values": datos_candidatas}
-        ).execute()
-        print("Datos actualizados en la hoja correctamente.")
-    except Exception as e:
-        print(f"Error al guardar datos en la hoja: {e}")
-
-
-def buscar_datos_inscripcion(buscar):
-    """
-    Busca candidatas por Nombre (Columna B) o Cédula (Columna O).
-    Permite trabajar con filas incompletas (sin inscripción, monto o fecha).
-    """
-    try:
-        # 🔹 Obtener todas las filas de la hoja
-        datos = obtener_datos_editar()
-        resultados = []
-        busqueda = normalizar_texto(buscar)  # 🔹 Normaliza la búsqueda
-
-        for fila_index, fila in enumerate(datos):
-            if len(fila) < 15:  # 🔹 Si la fila tiene menos columnas, la ignora
-                continue 
-
-            nombre = normalizar_texto(fila[1]) if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
-
-            # 🔹 Comparación flexible (como en editar)
-            if busqueda in nombre or busqueda == cedula:
-                # 🔹 Asegurar que la fila tenga suficientes columnas
-                while len(fila) < 25:
-                    fila.append("")
-
-                resultados.append({
-                    'fila_index': fila_index + 1,  # 🔹 Índice de fila (1-based index)
-                    'codigo': fila[15] if len(fila) > 15 else "",  # Código (P)
-                    'nombre': fila[1] if len(fila) > 1 else "",  # Nombre (B)
-                    'cedula': fila[14] if len(fila) > 14 else "",  # Cédula (O)
-                    'estado': fila[16] if len(fila) > 16 else "",  # Estado (Q)
-                    'inscripcion': fila[17] if len(fila) > 17 else "",  # Inscripción (R)
-                    'monto': fila[18] if len(fila) > 18 else "",  # Monto (S)
-                    'fecha': fila[19] if len(fila) > 19 else ""  # Fecha de Pago (T)
-                })
-
-        return resultados  # 🔹 Devuelve todas las coincidencias encontradas
-    except Exception as e:
-        print(f"❌ Error al buscar datos en inscripción: {e}")
-        return []
-# Ajuste en el manejo de datos
-def procesar_fila(fila, fila_index):
-    # Asegúrate de que la fila tenga el tamaño suficiente
-    while len(fila) < 27:  # Asegúrate de tener al menos hasta la columna AA
-        fila.append("")
-
-    # Procesa los datos
-    codigo = fila[15]
-    nombre = fila[1]
-    cedula = fila[14]
-    estado = fila[18]
-    monto = fila[19]
-    fecha_inscripcion = fila[20]
-    fecha_pago = fila[22]
-    inicio = fila[23]
-    monto_total = fila[24]
-    porciento = fila[25]
-    calificacion = fila[26]
-
-    # Actualiza o devuelve los valores necesarios
-    return {
-        "codigo": codigo,
-        "nombre": nombre,
-        "cedula": cedula,
-        "estado": estado,
-        "monto": monto,
-        "fecha_inscripcion": fecha_inscripcion,
-        "fecha_pago": fecha_pago,
-        "inicio": inicio,
-        "monto_total": monto_total,
-        "porciento": porciento,
-        "calificacion": calificacion,
-    }
-
-def insertar_datos_en_hoja(fila_datos):
-    """
-    Inserta una fila de datos en la hoja de cálculo.
-    
-    :param fila_datos: Lista con los datos a insertar (en el orden de las columnas de la hoja).
-    """
-    try:
-        # Especifica el rango donde se insertará (al final de la hoja)
-        rango = "Nueva hoja!A:Y"  # Ajusta según el rango de tu hoja
-        body = {"values": [fila_datos]}  # Convierte la fila en el formato esperado por la API
-
-        # Llamada a la API para añadir datos al final
-        service.spreadsheets().values().append(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango,
-            valueInputOption="RAW",  # Usamos RAW para mantener el formato exacto de los datos
-            insertDataOption="INSERT_ROWS",  # Inserta como nuevas filas
-            body=body
-        ).execute()
-
-        print("Datos insertados correctamente en la hoja.")
-        return True
-
-    except Exception as e:
-        print(f"Error al insertar datos en la hoja: {e}")
-        return False
-
-
-def buscar_candidatas_por_texto(busqueda):
-    """
-    Realiza una búsqueda más flexible en los datos de la hoja de cálculo.
-    Retorna una lista de candidatas que coincidan con la búsqueda (parcial, sin acentos, etc.).
-    """
-    datos = obtener_datos()
-    resultados = []
-
-    # Normaliza el texto de búsqueda
-    busqueda = normalizar_texto(busqueda)
-
-    for fila in datos:
-        if len(fila) >= 27:  # Asegúrate de que la fila tenga suficientes columnas
-            codigo = normalizar_texto(fila[15])  # Columna O
-            nombre = normalizar_texto(fila[1])  # Columna B
-            cedula = fila[14]  # Columna R (sin normalizar)
-
-            # Verifica si la búsqueda coincide de forma parcial
-            if (
-                busqueda in codigo or
-                busqueda in nombre or
-                busqueda in cedula
-            ):
-                resultados.append({
-                    'codigo': fila[15],  # Columna P
-                    'nombre': fila[1],  # Columna B
-                    'edad': fila[2],    # Columna C
-                    'telefono': fila[3],  # Columna D
-                    'direccion': fila[4],  # Columna E
-                    'modalidad': fila[5],  # Columna F
-                    'experiencia': fila[9],  # Columna J
-                    'cedula': fila[14],  # Columna O
-                })
-
-    return resultados
-
-def buscar_en_columna(valor, columna_index):
-    """
-    Busca un valor dentro de una columna específica sin ser estricto.
-    - No distingue mayúsculas y minúsculas.
-    - Ignora espacios en blanco antes y después.
-    - Permite coincidencias parciales.
-    - Devuelve todas las coincidencias.
-    """
-    valor_normalizado = normalizar_texto(valor)  # 🔹 Convierte todo a minúsculas y elimina espacios extras
-    datos = obtener_datos_editar()
-
-    resultados = []
-    for fila in datos:
-        if len(fila) > columna_index:  # Evita errores si la fila tiene menos columnas
-            texto_fila = normalizar_texto(fila[columna_index])
-            if valor_normalizado in texto_fila:  # 🔹 Ahora permite coincidencias parciales
-                resultados.append(fila)
-
-    return resultados  # Devuelve todas las coincidencias encontradas
-
-
 
 # Ruta de Login
 @app.route('/login', methods=['GET', 'POST'])
