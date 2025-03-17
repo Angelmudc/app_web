@@ -1056,7 +1056,7 @@ def pagos():
             range="Nueva hoja!A:Y"
         ).execute()
         datos = hoja.get("values", [])
-        # Aseguramos que cada fila tenga al menos 25 columnas para acceder a todos los índices necesarios
+        # Aseguramos que cada fila tenga al menos 25 columnas (índice 0 a 24)
         for fila in datos:
             if len(fila) < 25:
                 fila.extend([""] * (25 - len(fila)))
@@ -1064,7 +1064,7 @@ def pagos():
         logging.error(f"Error al cargar datos de la hoja: {e}", exc_info=True)
         return render_template('pagos.html', resultados=[], candidata=None, mensaje="Error al cargar datos.")
 
-    # Si se envía un POST, se procesa la actualización del pago
+    # Si se envía un POST: procesamos la actualización del pago
     if request.method == "POST":
         try:
             fila_index_str = request.form.get('fila_index', '').strip()
@@ -1079,6 +1079,12 @@ def pagos():
                 return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
             monto_pagado = float(monto_pagado_str)
 
+            # Obtener la calificación desde el select
+            calificacion = request.form.get('calificacion', '').strip()
+            if not calificacion:
+                mensaje = "Error: Seleccione una calificación."
+                return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+
             # Obtener el saldo actual desde la columna X (índice 23)
             hoja_x = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
@@ -1088,31 +1094,32 @@ def pagos():
             saldo_actual = float(valores_x[0][0]) if valores_x and valores_x[0] and valores_x[0][0] else 0.0
 
             nuevo_saldo = max(saldo_actual - monto_pagado, 0)
-            # Actualizar la celda de saldo pendiente (columna X)
+            # Actualizar en bloque las columnas X y Y: 
+            # Columna X: nuevo saldo, Columna Y: calificación
+            update_range = f"Nueva hoja!X{fila_index}:Y{fila_index}"
+            body = {"values": [[nuevo_saldo, calificacion]]}
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
-                range=f"Nueva hoja!X{fila_index}",
+                range=update_range,
                 valueInputOption="RAW",
-                body={"values": [[nuevo_saldo]]}
+                body=body
             ).execute()
             mensaje = "✅ Pago guardado con éxito."
         except Exception as e:
             logging.error(f"Error al guardar pago: {e}", exc_info=True)
             mensaje = f"❌ Error al guardar el pago: {e}"
+        return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
 
-    # Procesamiento del método GET: búsqueda y visualización de detalles
-    # Se puede recibir el parámetro 'busqueda' y/o 'candidata' para mostrar detalles
+    # Procesamiento para el método GET: búsqueda y visualización de detalles
     busqueda = request.args.get('busqueda', '').strip().lower() or request.form.get('busqueda', '').strip().lower()
     candidata_id = request.args.get('candidata', '').strip()
 
     if busqueda:
         for idx, fila in enumerate(datos[1:], start=2):
-            # Extraemos los datos importantes
             nombre = fila[1].strip().lower() if len(fila) > 1 else ""
             cedula = fila[14].strip() if len(fila) > 14 else ""
             codigo = fila[15].strip() if len(fila) > 15 else ""
             telefono = fila[3].strip() if len(fila) > 3 else ""
-            # Se busca en nombre, cédula o se compara exactamente con el código
             if busqueda in nombre or busqueda in cedula or busqueda == codigo:
                 resultados.append({
                     'fila_index': idx,
@@ -1124,22 +1131,23 @@ def pagos():
     if candidata_id:
         try:
             fila_index = int(candidata_id)
-            fila = datos[fila_index - 1]  # Ajuste: filas en Sheets son 1-indexadas
+            fila = datos[fila_index - 1]  # Ajuste: Sheets es 1-indexado
             candidata_detalles = {
                 'fila_index': fila_index,
                 'nombre': fila[1] if len(fila) > 1 else "No especificado",
                 'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",     # Columna W
-                'porcentaje': fila[23] if len(fila) > 23 else "0",       # Columna X
+                'monto_total': fila[22] if len(fila) > 22 else "0",    # Columna W
+                'porcentaje': fila[23] if len(fila) > 23 else "0",      # Columna X
                 'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # Columna U
-                'calificacion': fila[24] if len(fila) > 24 else ""       # Columna Y
+                'calificacion': fila[24] if len(fila) > 24 else ""      # Columna Y
             }
         except Exception as e:
             logging.error(f"Error al cargar detalles de candidata: {e}", exc_info=True)
             mensaje = f"Error al cargar detalles: {e}"
 
     return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+
 
 
 @app.route('/reporte_pagos', methods=['GET'])

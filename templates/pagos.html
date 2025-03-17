@@ -7,19 +7,14 @@
   <style>
     /* Variables de colores basados en el logo */
     :root {
-      --primary-color: #1A5789;      /* Azul intenso para títulos y botones */
-      --accent-color: #00AECF;       /* Turquesa para acentos y efectos */
-      --secondary-color: #ffffff;    /* Blanco para fondos y textos secundarios */
-      --background-color: #e8f6fa;   /* Fondo suave que evoca agua y frescura */
-      --text-color: #343a40;         /* Gris oscuro para textos */
+      --primary-color: #1A5789;
+      --accent-color: #00AECF;
+      --secondary-color: #ffffff;
+      --background-color: #e8f6fa;
+      --text-color: #343a40;
       --transition-duration: 0.3s;
     }
-    /* Reset básico */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Arial', sans-serif;
       background: var(--background-color);
@@ -28,56 +23,22 @@
       overflow-x: hidden;
       padding: 20px;
     }
-    /* Contenedor principal */
     .container {
       max-width: 900px;
       margin: 40px auto;
       background: var(--secondary-color);
       padding: 30px;
       border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
       animation: fadeIn 0.8s ease-out;
     }
-    /* Animaciones */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes slideDown {
-      from { transform: translateY(-20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    /* Títulos y encabezados */
-    h2 {
-      text-align: center;
-      color: var(--primary-color);
-      font-size: 2rem;
-      margin-bottom: 20px;
-      animation: slideDown 0.5s ease-out;
-      position: relative;
-    }
-    h2::after {
-      content: "";
-      display: block;
-      width: 50px;
-      height: 4px;
-      background: var(--accent-color);
-      margin: 10px auto 0;
-      border-radius: 2px;
-    }
-    h3 {
-      text-align: center;
-      color: var(--primary-color);
-      margin: 20px 0 15px;
-      animation: slideDown 0.5s ease-out;
-    }
-    /* Formularios y botones */
-    form {
-      animation: fadeIn 1s ease-out;
-    }
-    input[type="text"],
-    input[type="number"],
-    input[type="date"] {
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    h2 { text-align: center; color: var(--primary-color); font-size: 2rem; margin-bottom: 20px; animation: slideDown 0.5s ease-out; position: relative; }
+    h2::after { content: ""; display: block; width: 50px; height: 4px; background: var(--accent-color); margin: 10px auto 0; border-radius: 2px; }
+    h3 { text-align: center; color: var(--primary-color); margin: 20px 0 15px; animation: slideDown 0.5s ease-out; }
+    form { animation: fadeIn 1s ease-out; }
+    input[type="text"], input[type="number"], input[type="date"], select {
       width: 100%;
       padding: 15px;
       margin: 15px 0;
@@ -86,9 +47,7 @@
       font-size: 1rem;
       transition: border-color var(--transition-duration) ease;
     }
-    input[type="text"]:focus,
-    input[type="number"]:focus,
-    input[type="date"]:focus {
+    input[type="text"]:focus, input[type="number"]:focus, input[type="date"]:focus, select:focus {
       border-color: var(--accent-color);
       outline: none;
     }
@@ -105,119 +64,29 @@
       cursor: pointer;
       transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
     }
-    button:hover {
-      background-color: #009bbd;
-      transform: translateY(-3px);
-    }
-    button:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
-    }
-    /* Mensajes de alerta */
-    .mensaje {
-      text-align: center;
-      color: #d9534f;
-      font-weight: bold;
-      margin-top: 10px;
-      animation: fadeIn 1s ease-out;
-    }
-    /* Sección de resultados */
-    .resultados-section {
-      margin-top: 30px;
-      animation: fadeIn 1s ease-out;
-    }
-    .table-container {
-      overflow-x: auto;
-      animation: fadeIn 1s ease-out;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--secondary-color);
-    }
-    th, td {
-      padding: 15px;
-      border: 1px solid #ddd;
-      text-align: center;
-      transition: background-color var(--transition-duration) ease;
-    }
-    th {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-weight: bold;
-    }
-    tr:hover {
-      background-color: #f1f1f1;
-    }
-    .ver-detalles {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-weight: bold;
-      border: none;
-      padding: 10px 15px;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    .ver-detalles:hover {
-      background-color: #153d5e;
-      transform: scale(1.05);
-    }
-    /* Sección de detalles y actualización de pago */
-    .detalles-section {
-      margin-top: 30px;
-      animation: fadeIn 1s ease-out;
-    }
-    .detalle {
-      background: #f9f9f9;
-      padding: 15px;
-      border-radius: 8px;
-      margin: 10px 0;
-      border-left: 6px solid var(--primary-color);
-      transition: transform var(--transition-duration) ease;
-    }
-    .detalle:hover {
-      transform: scale(1.02);
-    }
-    .detalle strong {
-      color: var(--primary-color);
-    }
-    /* Botón de volver */
-    .volver {
-      display: block;
-      margin: 30px auto;
-      background-color: var(--primary-color);
-      text-align: center;
-      padding: 15px;
-      width: 200px;
-      color: var(--secondary-color);
-      font-weight: bold;
-      text-decoration: none;
-      border-radius: 8px;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    .volver:hover {
-      background-color: #153d5e;
-      transform: translateY(-3px);
-    }
-    /* Diseño responsivo */
+    button:hover { background-color: #009bbd; transform: translateY(-3px); }
+    button:disabled { opacity: 0.7; cursor: not-allowed; }
+    .mensaje { text-align: center; color: #d9534f; font-weight: bold; margin-top: 10px; animation: fadeIn 1s ease-out; }
+    .resultados-section { margin-top: 30px; animation: fadeIn 1s ease-out; }
+    .table-container { overflow-x: auto; animation: fadeIn 1s ease-out; }
+    table { width: 100%; border-collapse: collapse; background: var(--secondary-color); }
+    th, td { padding: 15px; border: 1px solid #ddd; text-align: center; transition: background-color var(--transition-duration) ease; }
+    th { background-color: var(--primary-color); color: var(--secondary-color); font-weight: bold; }
+    tr:hover { background-color: #f1f1f1; }
+    .ver-detalles { background-color: var(--primary-color); color: var(--secondary-color); font-weight: bold; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease; }
+    .ver-detalles:hover { background-color: #153d5e; transform: scale(1.05); }
+    .detalles-section { margin-top: 30px; animation: fadeIn 1s ease-out; }
+    .detalle { background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 6px solid var(--primary-color); transition: transform var(--transition-duration) ease; }
+    .detalle:hover { transform: scale(1.02); }
+    .detalle strong { color: var(--primary-color); }
+    .volver { display: block; margin: 30px auto; background-color: var(--primary-color); text-align: center; padding: 15px; width: 200px; color: var(--secondary-color); font-weight: bold; text-decoration: none; border-radius: 8px; transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease; }
+    .volver:hover { background-color: #153d5e; transform: translateY(-3px); }
     @media (max-width: 768px) {
-      .container {
-        margin: 20px;
-        padding: 20px;
-      }
-      h2 {
-        font-size: 1.8rem;
-      }
-      input[type="text"], input[type="number"], input[type="date"], button {
-        font-size: 0.9rem;
-      }
-      th, td {
-        padding: 10px;
-      }
-      .volver {
-        width: 150px;
-      }
+      .container { margin: 20px; padding: 20px; }
+      h2 { font-size: 1.8rem; }
+      input[type="text"], input[type="number"], input[type="date"], select, button { font-size: 0.9rem; }
+      th, td { padding: 10px; }
+      .volver { width: 150px; }
     }
   </style>
 </head>
@@ -278,10 +147,16 @@
         <div class="detalle"><strong>Porcentaje:</strong> {{ candidata.porcentaje }}</div>
         <div class="detalle"><strong>Fecha de Pago:</strong> {{ candidata.fecha_pago }}</div>
         <div class="detalle"><strong>Calificación:</strong> {{ candidata.calificacion }}</div>
-        <!-- Formulario para actualizar pago -->
+        <!-- Formulario para actualizar pago con calificación -->
         <form method="POST" action="/pagos">
           <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
           <input type="number" step="any" name="monto_pagado" placeholder="Ingrese monto pagado" required>
+          <select name="calificacion" required>
+            <option value="">Seleccione Calificación</option>
+            <option value="Dio problemas para pagar el porciento">Dio problemas para pagar el porciento</option>
+            <option value="Pago incompleto">Pago incompleto</option>
+            <option value="Pago completo">Pago completo</option>
+          </select>
           <button type="submit">Guardar Pago</button>
         </form>
       </section>
