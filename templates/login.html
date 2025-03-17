@@ -121,15 +121,15 @@
 <body>
   <div class="container">
     <!-- Logo (ajusta la ruta al logo según corresponda) -->
-    <img src="/static/logo_nuevo.png" alt="Logo" class="logo">
+    <img src="/static/logo.png" alt="Logo" class="logo">
     <h2>Iniciar Sesión</h2>
     <p class="welcome">¡Bienvenido! Por favor, ingresa tus credenciales para continuar.</p>
     {% if mensaje %}
       <p class="mensaje">{{ mensaje }}</p>
     {% endif %}
-    <form method="POST" action="/login">
-      <input type="text" name="usuario" placeholder="Usuario" required>
-      <input type="password" name="clave" placeholder="Contraseña" required>
+    <form method="POST" action="/login" autocomplete="off">
+      <input type="text" name="usuario" placeholder="Usuario" required autocomplete="off">
+      <input type="password" name="clave" placeholder="Contraseña" required autocomplete="off">
       <button type="submit">Entrar</button>
     </form>
   </div>
