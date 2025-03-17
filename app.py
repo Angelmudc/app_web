@@ -30,6 +30,10 @@ import cloudinary.api
 
 from fpdf import FPDF
 
+import unicodedata
+import logging
+from flask import render_template
+
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -123,14 +127,12 @@ def static_files(filename):
 
 def normalizar_texto(texto):
     """
-    Convierte un texto a minúsculas, elimina acentos y espacios extras.
+    Normaliza el texto a minúsculas y elimina acentos.
     """
     if not texto:
         return ""
-    texto = texto.strip().lower()
-    return ''.join(
-        c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn'
-    )
+    texto = texto.lower().strip()
+    return ''.join((c for c in unicodedata.normalize('NFKD', texto) if not unicodedata.combining(c)))
 
 def obtener_siguiente_fila():
     """
@@ -195,7 +197,7 @@ def buscar_candidata(busqueda):
         return []
 
 def extend_row(row, min_length=18):
-    """Asegura que la fila tenga al menos min_length elementos."""
+    """Asegura que la fila tenga al menos 'min_length' elementos."""
     if len(row) < min_length:
         row.extend([""] * (min_length - len(row)))
     return row
@@ -214,7 +216,7 @@ def filtrar_candidata(candidata, filtros):
 def extraer_candidata(fila, idx):
     """
     Extrae la información relevante de la fila y la devuelve como diccionario.
-    Se asume que:
+    Se asume:
       - Columna B: Nombre (índice 1)
       - Columna D: Teléfono (índice 3)
       - Columna E: Dirección (índice 4)
@@ -239,19 +241,18 @@ def extraer_candidata(fila, idx):
 
 def cumple_filtros(candidata, filtros):
     """
-    Verifica si la candidata cumple con los filtros de búsqueda de forma parcial.
-    Cada filtro se aplica como búsqueda de subcadena (convertida a minúsculas).
-    Se utilizan únicamente las siguientes claves:
-      - 'direccion' (para la ciudad/dirección)
-      - 'modalidad'
-      - 'experiencia_anos'
-      - 'areas_experiencia'
+    Verifica si la candidata cumple con los filtros aplicados en forma parcial.
+    Se normalizan tanto el valor de la candidata como el término de filtro para que:
+      - No importe mayúsculas/minúsculas.
+      - Se eliminen acentos.
+    Se usan las claves: 'direccion', 'modalidad', 'experiencia_anos' y 'areas_experiencia'.
     """
-    # Para cada filtro, si se ha proporcionado un término, se verifica que éste esté en el valor de la candidata.
     for clave in ['direccion', 'modalidad', 'experiencia_anos', 'areas_experiencia']:
         termino = filtros.get(clave, "")
         if termino:
-            if termino not in candidata.get(clave, "").lower():
+            termino_norm = normalizar_texto(termino)
+            valor_norm = normalizar_texto(candidata.get(clave, ""))
+            if termino_norm not in valor_norm:
                 return False
     return True
 
@@ -873,38 +874,33 @@ def editar():
 def filtrar():
     resultados = []  
     mensaje = None  
-
     try:
-        datos = obtener_datos_filtrar()  # Asegúrate de tener definida esta función, por ejemplo:
-        # def obtener_datos_filtrar():
-        #     result = service.spreadsheets().values().get(
-        #         spreadsheetId=SPREADSHEET_ID,
-        #         range="Nueva hoja!A:Z"
-        #     ).execute()
-        #     return result.get('values', [])
-        
+        # Obtener datos desde la función definida (asegúrate de que esté implementada)
+        datos = obtener_datos_filtrar()  # Ejemplo: obtiene datos del rango "Nueva hoja!A:Z"
         logging.info(f"🔍 Datos obtenidos ({len(datos)} filas)")
         if not datos:
             mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
             return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
-        # Construir la lista inicial de candidatas inscritas (por ejemplo, aquellas cuyo campo de inscripción es "sí")
+        # Construir la lista inicial de candidatas inscritas
         # Se asume que la inscripción se encuentra en la columna R (índice 17)
         for idx, fila in enumerate(datos[1:], start=2):
             fila = extend_row(fila, 18)
+            # Se verifica que la candidata esté inscrita ("sí")
             if fila[17].strip().lower() == "sí":
                 candidata = extraer_candidata(fila, idx)
                 resultados.append(candidata)
 
-        # Obtener filtros desde POST (o GET)
+        # Recoger filtros enviados (GET o POST)
         filtros = {
-            'direccion': request.values.get('ciudad', '').strip().lower(),      # Usamos el campo "ciudad" para buscar en la dirección
-            'modalidad': request.values.get('modalidad', '').strip().lower(),
-            'experiencia_anos': request.values.get('experiencia_anos', '').strip().lower(),
-            'areas_experiencia': request.values.get('areas_experiencia', '').strip().lower()
+            'direccion': request.values.get('ciudad', '').strip(),  # Usamos el campo "ciudad" para buscar en la dirección
+            'modalidad': request.values.get('modalidad', '').strip(),
+            'experiencia_anos': request.values.get('experiencia_anos', '').strip(),
+            'areas_experiencia': request.values.get('areas_experiencia', '').strip()
         }
+        # Normalizamos los filtros para que no sean "demasiado estrictos"
+        filtros = {k: normalizar_texto(v) for k, v in filtros.items() if v}
 
-        # Si se aplican filtros (al menos uno no vacío), filtrar las candidatas
         if any(filtros.values()):
             resultados_filtrados = [c for c in resultados if cumple_filtros(c, filtros)]
             if resultados_filtrados:
@@ -912,7 +908,6 @@ def filtrar():
             else:
                 mensaje = ("⚠️ No se encontraron resultados para los filtros aplicados. "
                            "Mostrando todas las candidatas inscritas.")
-
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
