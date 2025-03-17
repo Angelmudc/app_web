@@ -125,15 +125,6 @@ except Exception as e:
 def static_files(filename):
     return send_from_directory(os.path.join(app.root_path, 'static'), filename)
 
-def normalizar_texto(texto):
-    """
-    Normaliza el texto a minúsculas y elimina acentos.
-    """
-    if not texto:
-        return ""
-    texto = texto.lower().strip()
-    return ''.join((c for c in unicodedata.normalize('NFKD', texto) if not unicodedata.combining(c)))
-
 def obtener_siguiente_fila():
     """
     Esta función obtiene la siguiente fila vacía en la hoja de cálculo.
@@ -196,22 +187,20 @@ def buscar_candidata(busqueda):
         logging.error(f"Error en buscar_candidata: {str(e)}", exc_info=True)
         return []
 
+def normalizar_texto(texto):
+    """
+    Convierte un texto a minúsculas, elimina acentos y espacios extras.
+    """
+    if not texto:
+        return ""
+    texto = texto.strip().lower()
+    return ''.join(c for c in unicodedata.normalize('NFKD', texto) if unicodedata.category(c) != 'Mn')
+
 def extend_row(row, min_length=18):
     """Asegura que la fila tenga al menos 'min_length' elementos."""
     if len(row) < min_length:
         row.extend([""] * (min_length - len(row)))
     return row
-
-def filtrar_candidata(candidata, filtros):
-    # Retorna True si la candidata cumple con todos los filtros.
-    ciudad = filtros.get("ciudad")
-    modalidad = filtros.get("modalidad")
-    experiencia = filtros.get("experiencia_anos")
-    areas = filtros.get("areas_experiencia")
-    return ((not ciudad or ciudad in candidata.get("direccion", "").lower()) and
-            (not modalidad or modalidad in candidata.get("modalidad", "").lower()) and
-            (not experiencia or experiencia in candidata.get("experiencia_anos", "").lower()) and
-            (not areas or areas in candidata.get("areas_experiencia", "").lower()))
 
 def extraer_candidata(fila, idx):
     """
@@ -238,6 +227,17 @@ def extraer_candidata(fila, idx):
         'areas_experiencia': fila[9].strip() if len(fila) > 9 else "",
         'cedula': fila[14].strip() if len(fila) > 14 else ""
     }
+
+def filtrar_candidata(candidata, filtros):
+    # Retorna True si la candidata cumple con todos los filtros.
+    ciudad = filtros.get("ciudad")
+    modalidad = filtros.get("modalidad")
+    experiencia = filtros.get("experiencia_anos")
+    areas = filtros.get("areas_experiencia")
+    return ((not ciudad or ciudad in candidata.get("direccion", "").lower()) and
+            (not modalidad or modalidad in candidata.get("modalidad", "").lower()) and
+            (not experiencia or experiencia in candidata.get("experiencia_anos", "").lower()) and
+            (not areas or areas in candidata.get("areas_experiencia", "").lower()))
 
 def cumple_filtros(candidata, filtros):
     """
@@ -875,55 +875,50 @@ def filtrar():
     resultados = []  
     mensaje = None  
     try:
-        # Obtener datos desde la función definida (asegúrate de tener definida obtener_datos_filtrar)
-        datos = obtener_datos_filtrar()  # Ejemplo: obtiene datos del rango "Nueva hoja!A:Z"
+        # Se asume que la función obtener_datos_filtrar() está definida y retorna datos del rango "Nueva hoja!A:Z"
+        datos = obtener_datos_filtrar()
         logging.info(f"🔍 Datos obtenidos ({len(datos)} filas)")
         if not datos or len(datos) < 2:
             mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
             return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
-        # Construir la lista de candidatas inscritas (suponiendo que la inscripción se encuentra en la columna R, índice 17)
+        # Construir la lista de candidatas sin filtrar por inscripción (se muestran todas)
         for idx, fila in enumerate(datos[1:], start=2):
             fila = extend_row(fila, 18)
-            if fila[17].strip().lower() == "sí":
-                candidata = extraer_candidata(fila, idx)
-                resultados.append(candidata)
+            candidata = extraer_candidata(fila, idx)
+            resultados.append(candidata)
 
-        # Recoger los filtros (específicos para ciertas columnas)
-        # Aquí se asume que:
-        # - 'ciudad' se aplica a la dirección completa (columna E)
-        # - 'modalidad', 'experiencia_anos' y 'areas_experiencia' se buscan en las columnas respectivas.
+        # Recoger los filtros (se usan los mismos nombres de campos que en el formulario)
         filtro_direccion = normalizar_texto(request.values.get('ciudad', ''))
         filtro_modalidad = normalizar_texto(request.values.get('modalidad', ''))
         filtro_experiencia = normalizar_texto(request.values.get('experiencia_anos', ''))
         filtro_areas = normalizar_texto(request.values.get('areas_experiencia', ''))
 
-        # Si al menos uno de los filtros tiene valor, se filtran las candidatas.
+        # Si se especifica al menos un filtro, se filtran las candidatas
         if filtro_direccion or filtro_modalidad or filtro_experiencia or filtro_areas:
             resultados_filtrados = []
             for candidata in resultados:
+                # Normalizamos los valores de la candidata
                 direccion_norm = normalizar_texto(candidata.get('direccion', ''))
                 modalidad_norm = normalizar_texto(candidata.get('modalidad', ''))
                 experiencia_norm = normalizar_texto(candidata.get('experiencia_anos', ''))
                 areas_norm = normalizar_texto(candidata.get('areas_experiencia', ''))
-                
+
                 if (filtro_direccion in direccion_norm and
                     filtro_modalidad in modalidad_norm and
                     filtro_experiencia in experiencia_norm and
                     filtro_areas in areas_norm):
                     resultados_filtrados.append(candidata)
-            if resultados_filtrados:
-                resultados = resultados_filtrados
-            else:
-                mensaje = ("⚠️ No se encontraron resultados para los filtros aplicados. "
-                           "Mostrando todas las candidatas inscritas.")
+            resultados = resultados_filtrados
+            if not resultados:
+                mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
 
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
-
+    
 import traceback  # Importa para depuración
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
