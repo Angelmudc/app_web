@@ -1177,26 +1177,23 @@ def reporte_pagos():
         for fila in valores[1:]:
             fila = extend_row(fila, 25)
             try:
-                nombre = fila[1] if fila[1] else "No especificado"
-                cedula = fila[14] if fila[14] else "No especificado"
-                codigo = fila[15] if fila[15] else "No especificado"
-                ciudad = fila[4] if fila[4] else "No especificado"
-                monto_total = float(fila[22]) if fila[22].strip() else 0.0  # Columna W
-                porcentaje_pendiente = float(fila[23]) if fila[23].strip() else 0.0  # Columna X
-                fecha_inicio = fila[20] if fila[20] else "No registrada"  # Columna U
-                fecha_pago = fila[21] if fila[21] else "No registrada"  # Columna V
-
-                # Incluir solo las candidatas con deuda pendiente
+                # Intentar convertir a float; si falla, se asume que es una fila de encabezado u otro tipo y se salta
+                monto_total = float(fila[22].strip()) if fila[22].strip().replace('.', '', 1).isdigit() else None
+                porcentaje_pendiente = float(fila[23].strip()) if fila[23].strip().replace('.', '', 1).isdigit() else None
+                if monto_total is None or porcentaje_pendiente is None:
+                    # Salta filas que no tienen datos numéricos en las columnas correspondientes
+                    continue
+                
                 if porcentaje_pendiente > 0:
                     pagos_pendientes.append({
-                        'nombre': nombre,
-                        'cedula': cedula,
-                        'codigo': codigo,
-                        'ciudad': ciudad,
+                        'nombre': fila[1] if fila[1] else "No especificado",
+                        'cedula': fila[14] if fila[14] else "No especificado",
+                        'codigo': fila[15] if fila[15] else "No especificado",
+                        'ciudad': fila[4] if fila[4] else "No especificado",
                         'monto_total': monto_total,
                         'porcentaje_pendiente': porcentaje_pendiente,
-                        'fecha_inicio': fecha_inicio,
-                        'fecha_pago': fecha_pago
+                        'fecha_inicio': fila[20] if fila[20] else "No registrada",
+                        'fecha_pago': fila[21] if fila[21] else "No registrada"
                     })
             except Exception as e:
                 logging.error(f"Error procesando fila: {fila} - {e}", exc_info=True)
@@ -1223,7 +1220,6 @@ def generar_pdf():
         if not valores or len(valores) < 2:
             return "⚠️ No hay datos disponibles para generar el PDF."
 
-        # Crear PDF
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
@@ -1232,10 +1228,14 @@ def generar_pdf():
         pdf.ln(10)
         pdf.set_font("Arial", "", 10)
 
+        # Procesar filas (saltamos el encabezado)
         for fila in valores[1:]:
             fila = extend_row(fila, 25)
             try:
-                porcentaje_pendiente = float(fila[23]) if fila[23].strip() else 0.0
+                # Validamos que los datos sean numéricos antes de la conversión
+                if not fila[23].strip().replace('.', '', 1).isdigit():
+                    continue
+                porcentaje_pendiente = float(fila[23].strip())
                 if porcentaje_pendiente > 0:
                     nombre = fila[1] if fila[1] else "No especificado"
                     cedula = fila[14] if fila[14] else "No especificado"
@@ -1253,9 +1253,13 @@ def generar_pdf():
                 logging.error(f"Error procesando fila para PDF: {fila} - {e}", exc_info=True)
                 continue
 
-        # Generar PDF en memoria (BytesIO) en lugar de guardar en disco
-        pdf_output = pdf.output(dest='S').encode('latin1')
-        pdf_buffer = io.BytesIO(pdf_output)
+        # Generar PDF en memoria (BytesIO) sin intentar codificar si ya es bytearray
+        pdf_output = pdf.output(dest='S')
+        if isinstance(pdf_output, str):
+            pdf_bytes = pdf_output.encode('latin1')
+        else:
+            pdf_bytes = pdf_output
+        pdf_buffer = io.BytesIO(pdf_bytes)
         pdf_buffer.seek(0)
         return send_file(pdf_buffer, as_attachment=True, download_name="reporte_pagos.pdf", mimetype="application/pdf")
 
