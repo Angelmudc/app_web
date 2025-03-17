@@ -82,10 +82,10 @@ app.secret_key = "clave_secreta_segura"  # Asegúrate de que esta clave sea robu
 
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
-    "angel": generate_password_hash("1234"),
-    "juan": generate_password_hash("5678"),
+    "angel": generate_password_hash("0000"),
+    "cris": generate_password_hash("0722"),
     "maria": generate_password_hash("abcd"),
-    "pedro": generate_password_hash("efgh")
+    "divina": generate_password_hash("0607")
 }
 
 # Configuración de caché
