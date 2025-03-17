@@ -951,20 +951,8 @@ def inscripcion():
 
 @app.route('/porciento', methods=['GET', 'POST'])
 def porciento():
-    """
-    Ruta única para:
-      - En GET: Buscar candidatas según criterios (por nombre o cédula) y, opcionalmente, cargar los detalles de una candidata específica.
-      - En POST: Calcular el 25% del monto total y actualizar, en bloque, las columnas correspondientes (U a X) de la fila seleccionada.
-    
-    Se espera que:
-      - La hoja de cálculo tenga la siguiente distribución:
-          Columna B (índice 1): Nombre
-          Columna O (índice 14): Cédula
-          Columna P (índice 15): Código
-          Columnas U a X (índices 20 a 23): [fecha_pago, fecha_inicio, monto_total, porcentaje]
-    """
     if request.method == "POST":
-        # Actualización: se reciben los datos a actualizar y se calcula el 25% del monto_total
+        # Actualización: Se reciben los datos y se calcula el 25%
         try:
             fila_index = request.form.get('fila_index', '').strip()
             if not fila_index or not fila_index.isdigit():
@@ -981,11 +969,10 @@ def porciento():
                 return "Error: monto_total debe ser numérico.", 400
 
             porcentaje = round(monto_total * 0.25, 2)
-
             fecha_pago = request.form.get('fecha_pago', '').strip()
             fecha_inicio = request.form.get('fecha_inicio', '').strip()
 
-            # Actualización en bloque del rango: columnas U (fecha_pago) a X (porcentaje)
+            # Actualiza el rango de columnas U a X (índices 20 a 23)
             rango = f"Nueva hoja!U{fila_index}:X{fila_index}"
             valores = [[fecha_pago, fecha_inicio, monto_total_str, str(porcentaje)]]
             body = {"values": valores}
@@ -999,16 +986,13 @@ def porciento():
 
             mensaje = "✅ Datos actualizados correctamente."
         except Exception as e:
-            logging.error(f"Error al actualizar porcentaje: {str(e)}", exc_info=True)
-            return f"❌ Error al actualizar: {str(e)}", 500
+            logging.error(f"Error al actualizar porcentaje: {e}", exc_info=True)
+            return f"❌ Error al actualizar: {e}", 500
 
         return render_template('porciento.html', mensaje=mensaje)
-
     else:
-        # GET: Buscamos candidatas y, si se especifica, cargamos los detalles de la candidata seleccionada
         resultados = []
         candidata_detalles = None
-
         busqueda = request.args.get('busqueda', '').strip().lower()
         candidata_id = request.args.get('candidata', '').strip()
 
@@ -1020,38 +1004,45 @@ def porciento():
             valores = hoja.get("values", [])
 
             for fila_index, fila in enumerate(valores[1:], start=2):
-                # Procesamos solo las filas que tienen un código (columna P)
-                codigo = fila[15] if len(fila) > 15 else ""
-                if not codigo.strip():
+                # Aseguramos que la fila tenga al menos 24 columnas (esto cubre hasta índice 23)
+                if len(fila) < 24:
+                    fila.extend([""] * (24 - len(fila)))
+
+                # Solo procesamos filas que tengan código en la columna P (índice 15)
+                codigo = fila[15].strip() if len(fila) > 15 else ""
+                if not codigo:
                     continue
 
                 nombre = fila[1].strip().lower() if len(fila) > 1 else ""
                 cedula = fila[14].strip() if len(fila) > 14 else ""
+                telefono = fila[3].strip() if len(fila) > 3 else ""
 
                 if busqueda and (busqueda in nombre or busqueda in cedula):
                     resultados.append({
                         'fila_index': fila_index,
-                        'codigo': fila[15] if len(fila) > 15 else "",
-                        'nombre': fila[1] if len(fila) > 1 else "",
-                        'telefono': fila[3] if len(fila) > 3 else "",
-                        'cedula': fila[14] if len(fila) > 14 else "",
+                        'codigo': fila[15],
+                        'nombre': fila[1],
+                        'telefono': telefono,
+                        'cedula': cedula
                     })
 
                 if candidata_id and str(fila_index) == candidata_id:
                     candidata_detalles = {
                         'fila_index': fila_index,
-                        'codigo': fila[15] if len(fila) > 15 else "",
-                        'nombre': fila[1] if len(fila) > 1 else "",
-                        'fecha_pago': fila[20] if len(fila) > 20 else "",
-                        'fecha_inicio': fila[21] if len(fila) > 21 else "",
-                        'monto_total': fila[22] if len(fila) > 22 else "",
-                        'porcentaje': fila[23] if len(fila) > 23 else ""
+                        'codigo': fila[15],
+                        'nombre': fila[1],
+                        'fecha_pago': fila[20],
+                        'fecha_inicio': fila[21],
+                        'monto_total': fila[22],
+                        'porcentaje': fila[23],
+                        'telefono': telefono,
+                        'cedula': cedula
                     }
-
         except Exception as e:
-            logging.error(f"Error en búsqueda de candidatas: {str(e)}", exc_info=True)
+            logging.error(f"Error en búsqueda de candidatas: {e}", exc_info=True)
 
         return render_template('porciento.html', resultados=resultados, candidata=candidata_detalles)
+
 
 
 @app.route('/buscar_pagos', methods=['GET', 'POST'])
