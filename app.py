@@ -84,7 +84,7 @@ app.secret_key = "clave_secreta_segura"  # Asegúrate de que esta clave sea robu
 usuarios = {
     "angel": generate_password_hash("0000"),
     "cris": generate_password_hash("0722"),
-    "maria": generate_password_hash("abcd"),
+    "Athy": generate_password_hash("2004"),
     "divina": generate_password_hash("0607")
 }
 
