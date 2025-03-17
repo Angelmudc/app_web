@@ -972,101 +972,110 @@ def inscripcion():
                     mensaje = "⚠️ No se encontraron coincidencias."
         return render_template("inscripcion.html", resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
 
-
-
 @app.route('/porciento', methods=['GET', 'POST'])
 def porciento():
-    resultados = []
-    candidata_detalles = None
-    busqueda = request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '').strip()
+    """
+    Ruta única para:
+      - En GET: Buscar candidatas según criterios (por nombre o cédula) y, opcionalmente, cargar los detalles de una candidata específica.
+      - En POST: Calcular el 25% del monto total y actualizar, en bloque, las columnas correspondientes (U a X) de la fila seleccionada.
+    
+    Se espera que:
+      - La hoja de cálculo tenga la siguiente distribución:
+          Columna B (índice 1): Nombre
+          Columna O (índice 14): Cédula
+          Columna P (índice 15): Código
+          Columnas U a X (índices 20 a 23): [fecha_pago, fecha_inicio, monto_total, porcentaje]
+    """
+    if request.method == "POST":
+        # Actualización: se reciben los datos a actualizar y se calcula el 25% del monto_total
+        try:
+            fila_index = request.form.get('fila_index', '').strip()
+            if not fila_index or not fila_index.isdigit():
+                return "Error: Fila inválida.", 400
+            fila_index = int(fila_index)
 
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"  # Incluye hasta la columna Y
-        ).execute()
+            monto_total_str = request.form.get('monto_total', '').strip()
+            if not monto_total_str:
+                return "Error: monto_total es requerido.", 400
 
-        valores = hoja.get("values", [])
+            try:
+                monto_total = float(monto_total_str)
+            except ValueError:
+                return "Error: monto_total debe ser numérico.", 400
 
-        for fila_index, fila in enumerate(valores[1:], start=2):  # Empezamos en la fila 2
-            codigo = fila[15] if len(fila) > 15 else ""
+            porcentaje = round(monto_total * 0.25, 2)
 
-            if not codigo.strip():  # Filtrar solo las que tienen código
-                continue
+            fecha_pago = request.form.get('fecha_pago', '').strip()
+            fecha_inicio = request.form.get('fecha_inicio', '').strip()
 
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
+            # Actualización en bloque del rango: columnas U (fecha_pago) a X (porcentaje)
+            rango = f"Nueva hoja!U{fila_index}:X{fila_index}"
+            valores = [[fecha_pago, fecha_inicio, monto_total_str, str(porcentaje)]]
+            body = {"values": valores}
 
-            if busqueda and (busqueda in nombre or busqueda in cedula):
-                resultados.append({
-                    'fila_index': fila_index,
-                    'codigo': fila[15] if len(fila) > 15 else "",
-                    'nombre': fila[1] if len(fila) > 1 else "",
-                    'telefono': fila[3] if len(fila) > 3 else "",
-                    'cedula': fila[14] if len(fila) > 14 else "",
-                })
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango,
+                valueInputOption="RAW",
+                body=body
+            ).execute()
 
-            if candidata_id and str(fila_index) == candidata_id:
-                candidata_detalles = {
-                    'fila_index': fila_index,
-                    'codigo': fila[15] if len(fila) > 15 else "",
-                    'nombre': fila[1] if len(fila) > 1 else "",
-                    'fecha_pago': fila[20] if len(fila) > 20 else "",
-                    'fecha_inicio': fila[21] if len(fila) > 21 else "",
-                    'monto_total': fila[22] if len(fila) > 22 else "",
-                    'porcentaje': fila[23] if len(fila) > 23 else "",
-                    'calificacion': fila[24] if len(fila) > 24 else "",
-                }
+            mensaje = "✅ Datos actualizados correctamente."
+        except Exception as e:
+            logging.error(f"Error al actualizar porcentaje: {str(e)}", exc_info=True)
+            return f"❌ Error al actualizar: {str(e)}", 500
 
-    except Exception as e:
-        print(f"❌ Error en la búsqueda: {e}")
+        return render_template('porciento.html', mensaje=mensaje)
 
-    return render_template('porciento.html', resultados=resultados, candidata=candidata_detalles)
+    else:
+        # GET: Buscamos candidatas y, si se especifica, cargamos los detalles de la candidata seleccionada
+        resultados = []
+        candidata_detalles = None
 
+        busqueda = request.args.get('busqueda', '').strip().lower()
+        candidata_id = request.args.get('candidata', '').strip()
 
-@app.route('/guardar_porciento', methods=['POST'])
-def guardar_porciento():
-    try:
-        fila_index = request.form.get('fila_index')
-        if not fila_index or not fila_index.isdigit():
-            return "Error: No se pudo determinar la fila a actualizar."
+        try:
+            hoja = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:Y"
+            ).execute()
+            valores = hoja.get("values", [])
 
-        fila_index = int(fila_index)
+            for fila_index, fila in enumerate(valores[1:], start=2):
+                # Procesamos solo las filas que tienen un código (columna P)
+                codigo = fila[15] if len(fila) > 15 else ""
+                if not codigo.strip():
+                    continue
 
-        monto_total = request.form.get('monto_total', '').strip()
-        porcentaje = str(round(float(monto_total) * 0.25, 2)) if monto_total else ""
+                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+                cedula = fila[14].strip() if len(fila) > 14 else ""
 
-        nuevos_datos = {
-            'fecha_pago': request.form.get('fecha_pago', '').strip(),
-            'fecha_inicio': request.form.get('fecha_inicio', '').strip(),
-            'monto_total': monto_total,
-            'porcentaje': porcentaje,
-            'calificacion': request.form.get('calificacion', '').strip()
-        }
+                if busqueda and (busqueda in nombre or busqueda in cedula):
+                    resultados.append({
+                        'fila_index': fila_index,
+                        'codigo': fila[15] if len(fila) > 15 else "",
+                        'nombre': fila[1] if len(fila) > 1 else "",
+                        'telefono': fila[3] if len(fila) > 3 else "",
+                        'cedula': fila[14] if len(fila) > 14 else "",
+                    })
 
-        columnas = {
-            'fecha_pago': "U",
-            'fecha_inicio': "V",
-            'monto_total': "W",
-            'porcentaje': "X",
-            'calificacion': "Y"
-        }
+                if candidata_id and str(fila_index) == candidata_id:
+                    candidata_detalles = {
+                        'fila_index': fila_index,
+                        'codigo': fila[15] if len(fila) > 15 else "",
+                        'nombre': fila[1] if len(fila) > 1 else "",
+                        'fecha_pago': fila[20] if len(fila) > 20 else "",
+                        'fecha_inicio': fila[21] if len(fila) > 21 else "",
+                        'monto_total': fila[22] if len(fila) > 22 else "",
+                        'porcentaje': fila[23] if len(fila) > 23 else ""
+                    }
 
-        for campo, valor in nuevos_datos.items():
-            if valor:
-                rango = f'Nueva hoja!{columnas[campo]}{fila_index}'
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango,
-                    valueInputOption="RAW",
-                    body={"values": [[valor]]}
-                ).execute()
+        except Exception as e:
+            logging.error(f"Error en búsqueda de candidatas: {str(e)}", exc_info=True)
 
-        return "✅ Datos actualizados correctamente."
+        return render_template('porciento.html', resultados=resultados, candidata=candidata_detalles)
 
-    except Exception as e:
-        return f"❌ Error al actualizar: {str(e)}"
 
 @app.route('/buscar_pagos', methods=['GET', 'POST'])
 def buscar_pagos():
