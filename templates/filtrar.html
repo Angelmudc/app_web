@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Filtrar Candidatas Inscritas</title>
+  <title>Filtrar Candidatas</title>
   <style>
     /* Variables de colores basados en el logo */
     :root {
@@ -14,8 +14,14 @@
       --text-color: #343a40;
       --transition-duration: 0.3s;
     }
+
     /* Reset básico */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       font-family: 'Arial', sans-serif;
       background: var(--background-color);
@@ -23,6 +29,7 @@
       line-height: 1.6;
       padding: 20px;
     }
+
     /* Contenedor principal */
     .container {
       max-width: 900px;
@@ -33,6 +40,8 @@
       box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
       animation: fadeIn 0.8s ease-out;
     }
+
+    /* Animaciones */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
@@ -41,6 +50,7 @@
       from { transform: translateY(-20px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
+
     /* Títulos y encabezados */
     h2 {
       text-align: center;
@@ -62,15 +72,16 @@
     h3 {
       text-align: center;
       color: var(--primary-color);
-      margin: 20px 0;
+      margin: 20px 0 15px;
       animation: slideDown 0.5s ease-out;
     }
+
     /* Formularios y campos */
     form {
       animation: fadeIn 1s ease-out;
       margin-bottom: 20px;
     }
-    input[type="text"], select {
+    input[type="text"] {
       width: 100%;
       padding: 15px;
       margin: 15px 0;
@@ -79,10 +90,22 @@
       font-size: 1rem;
       transition: border-color var(--transition-duration) ease;
     }
-    input[type="text"]:focus, select:focus {
+    input[type="text"]:focus {
       border-color: var(--accent-color);
       outline: none;
     }
+    .opciones {
+      margin: 15px 0;
+    }
+    .opciones label {
+      display: block;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+    input[type="radio"] {
+      margin-right: 8px;
+    }
+
     button {
       width: 100%;
       padding: 15px;
@@ -100,6 +123,7 @@
       background-color: #009bbd;
       transform: translateY(-3px);
     }
+
     /* Mensajes de alerta */
     .mensaje {
       text-align: center;
@@ -108,7 +132,12 @@
       margin-top: 10px;
       animation: fadeIn 1s ease-out;
     }
+
     /* Sección de resultados */
+    .resultados-section {
+      margin-top: 30px;
+      animation: fadeIn 1s ease-out;
+    }
     .table-container {
       overflow-x: auto;
       animation: fadeIn 1s ease-out;
@@ -132,6 +161,7 @@
     tr:hover {
       background-color: #f1f1f1;
     }
+
     /* Botón de volver */
     .volver {
       display: block;
@@ -150,18 +180,30 @@
       background-color: #153d5e;
       transform: translateY(-3px);
     }
+
     @media (max-width: 768px) {
-      .container { margin: 20px; padding: 20px; }
-      h2 { font-size: 1.8rem; }
-      input[type="text"], select, button { font-size: 0.9rem; }
-      th, td { padding: 10px; }
-      .volver { width: 150px; }
+      .container {
+        margin: 20px;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 1.8rem;
+      }
+      input[type="text"], button {
+        font-size: 0.9rem;
+      }
+      th, td {
+        padding: 10px;
+      }
+      .volver {
+        width: 150px;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>Filtrar Candidatas Inscritas</h2>
+    <h2>Filtrar Candidatas</h2>
     
     {% if mensaje %}
       <p class="mensaje">{{ mensaje }}</p>
@@ -169,13 +211,88 @@
     
     <!-- Formulario para aplicar filtros -->
     <form method="POST" action="/filtrar">
-      <input type="text" name="ciudad" placeholder="Ciudad">
-      <input type="text" name="modalidad" placeholder="Modalidad">
-      <input type="text" name="experiencia_anos" placeholder="Años de experiencia">
-      <input type="text" name="areas_experiencia" placeholder="Áreas de experiencia">
+      <!-- Ciudad / Dirección -->
+      <input type="text" name="ciudad" placeholder="Ciudad o parte de la dirección">
+
+      <!-- Modalidad de trabajo preferida -->
+      <div class="opciones">
+        <p><strong>Modalidad de trabajo preferida</strong></p>
+        <label>
+          <input type="radio" name="modalidad" value="salida diaria">
+          Salida diaria
+        </label>
+        <label>
+          <input type="radio" name="modalidad" value="dormida">
+          Dormida
+        </label>
+        <label>
+          <input type="radio" name="modalidad" value="">
+          (Sin filtro de modalidad)
+        </label>
+      </div>
+
+      <!-- Años de experiencia -->
+      <div class="opciones">
+        <p><strong>Años de experiencia</strong></p>
+        <label>
+          <input type="radio" name="experiencia_anos" value="1 año">
+          1 año
+        </label>
+        <label>
+          <input type="radio" name="experiencia_anos" value="2 años">
+          2 años
+        </label>
+        <label>
+          <input type="radio" name="experiencia_anos" value="3 años o más">
+          3 años o más
+        </label>
+        <label>
+          <input type="radio" name="experiencia_anos" value="sin experiencia">
+          Sin experiencia
+        </label>
+        <label>
+          <input type="radio" name="experiencia_anos" value="">
+          (Sin filtro de experiencia)
+        </label>
+      </div>
+
+      <!-- Áreas de experiencia -->
+      <div class="opciones">
+        <p><strong>Áreas de experiencia</strong></p>
+        <label>
+          <input type="radio" name="areas_experiencia" value="limpieza">
+          Limpieza
+        </label>
+        <label>
+          <input type="radio" name="areas_experiencia" value="cocinera">
+          Cocinera
+        </label>
+        <label>
+          <input type="radio" name="areas_experiencia" value="niñera">
+          Niñera
+        </label>
+        <label>
+          <input type="radio" name="areas_experiencia" value="cuidar envejeciente">
+          Cuidar envejeciente
+        </label>
+        <label>
+          <input type="radio" name="areas_experiencia" value="todas las anteriores">
+          Todas las anteriores
+        </label>
+        <label>
+          <input type="radio" name="areas_experiencia" value="enfermeria">
+          Enfermería
+        </label>
+        <label>
+          <input type="radio" name="areas_experiencia" value="">
+          (Sin filtro de áreas)
+        </label>
+      </div>
+
       <button type="submit">Filtrar</button>
     </form>
     
+    <!-- Sección de resultados -->
     {% if resultados %}
       <section class="resultados-section">
         <h3>Resultados:</h3>
@@ -214,3 +331,4 @@
   </div>
 </body>
 </html>
+

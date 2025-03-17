@@ -216,9 +216,14 @@ def extraer_candidata(fila, idx):
       - Código: Columna P (índice 15)
     """
     fila = extend_row(fila, 18)
+    codigo = fila[15].strip() if len(fila) > 15 else ""
+    # Si no hay código, asignamos un valor por defecto.
+    if not codigo:
+        codigo = "Sin código asignado"
+        
     return {
         'fila_index': idx,
-        'codigo': fila[15].strip() if len(fila) > 15 else "",
+        'codigo': codigo,
         'nombre': fila[1].strip() if len(fila) > 1 else "",
         'telefono': fila[3].strip() if len(fila) > 3 else "",
         'direccion': fila[4].strip() if len(fila) > 4 else "",
@@ -227,6 +232,7 @@ def extraer_candidata(fila, idx):
         'areas_experiencia': fila[9].strip() if len(fila) > 9 else "",
         'cedula': fila[14].strip() if len(fila) > 14 else ""
     }
+
 
 def filtrar_candidata(candidata, filtros):
     # Retorna True si la candidata cumple con todos los filtros.
@@ -918,7 +924,7 @@ def filtrar():
         logging.error(mensaje, exc_info=True)
 
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
-    
+
 import traceback  # Importa para depuración
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
