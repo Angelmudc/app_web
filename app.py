@@ -195,7 +195,7 @@ def buscar_candidata(busqueda):
         return []
 
 def extend_row(row, min_length=18):
-    # Asegura que la fila tenga al menos 'min_length' elementos.
+    """Asegura que la fila tenga al menos min_length elementos."""
     if len(row) < min_length:
         row.extend([""] * (min_length - len(row)))
     return row
@@ -212,22 +212,48 @@ def filtrar_candidata(candidata, filtros):
             (not areas or areas in candidata.get("areas_experiencia", "").lower()))
 
 def extraer_candidata(fila, idx):
-    # Extiende la fila y extrae la información de interés
+    """
+    Extrae la información relevante de la fila y la devuelve como diccionario.
+    Se asume que:
+      - Columna B: Nombre (índice 1)
+      - Columna D: Teléfono (índice 3)
+      - Columna E: Dirección (índice 4)
+      - Columna F: Modalidad (índice 5)
+      - Columna I: Años de experiencia (índice 8)
+      - Columna J: Áreas de experiencia (índice 9)
+      - Columna O: Cédula (índice 14)
+      - Columna P: Código (índice 15)
+    """
     fila = extend_row(fila, 18)
     return {
         'fila_index': idx,
-        'codigo': fila[15] if len(fila) > 15 else "",
-        'estado': fila[16] if len(fila) > 16 else "",
-        'inscripcion': fila[17],
-        'nombre': fila[1],
-        'edad': fila[2] if len(fila) > 2 else "",
-        'telefono': fila[3] if len(fila) > 3 else "",
-        'direccion': fila[4],
-        'modalidad': fila[5],
-        'experiencia_anos': fila[8],
-        'areas_experiencia': fila[9],
-        'cedula': fila[14] if len(fila) > 14 else ""
+        'codigo': fila[15].strip() if len(fila) > 15 else "",
+        'nombre': fila[1].strip() if len(fila) > 1 else "",
+        'telefono': fila[3].strip() if len(fila) > 3 else "",
+        'direccion': fila[4].strip() if len(fila) > 4 else "",
+        'modalidad': fila[5].strip() if len(fila) > 5 else "",
+        'experiencia_anos': fila[8].strip() if len(fila) > 8 else "",
+        'areas_experiencia': fila[9].strip() if len(fila) > 9 else "",
+        'cedula': fila[14].strip() if len(fila) > 14 else ""
     }
+
+def cumple_filtros(candidata, filtros):
+    """
+    Verifica si la candidata cumple con los filtros de búsqueda de forma parcial.
+    Cada filtro se aplica como búsqueda de subcadena (convertida a minúsculas).
+    Se utilizan únicamente las siguientes claves:
+      - 'direccion' (para la ciudad/dirección)
+      - 'modalidad'
+      - 'experiencia_anos'
+      - 'areas_experiencia'
+    """
+    # Para cada filtro, si se ha proporcionado un término, se verifica que éste esté en el valor de la candidata.
+    for clave in ['direccion', 'modalidad', 'experiencia_anos', 'areas_experiencia']:
+        termino = filtros.get(clave, "")
+        if termino:
+            if termino not in candidata.get(clave, "").lower():
+                return False
+    return True
 
 def obtener_datos_filtrar():
     try:
@@ -847,33 +873,46 @@ def editar():
 def filtrar():
     resultados = []  
     mensaje = None  
+
     try:
-        datos = obtener_datos_filtrar()
+        datos = obtener_datos_filtrar()  # Asegúrate de tener definida esta función, por ejemplo:
+        # def obtener_datos_filtrar():
+        #     result = service.spreadsheets().values().get(
+        #         spreadsheetId=SPREADSHEET_ID,
+        #         range="Nueva hoja!A:Z"
+        #     ).execute()
+        #     return result.get('values', [])
+        
         logging.info(f"🔍 Datos obtenidos ({len(datos)} filas)")
         if not datos:
             mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
             return render_template('filtrar.html', resultados=[], mensaje=mensaje)
 
-        # Construir la lista inicial de candidatas inscritas
+        # Construir la lista inicial de candidatas inscritas (por ejemplo, aquellas cuyo campo de inscripción es "sí")
+        # Se asume que la inscripción se encuentra en la columna R (índice 17)
         for idx, fila in enumerate(datos[1:], start=2):
             fila = extend_row(fila, 18)
             if fila[17].strip().lower() == "sí":
-                resultados.append(extraer_candidata(fila, idx))
+                candidata = extraer_candidata(fila, idx)
+                resultados.append(candidata)
 
-        # Si se envía un POST, aplicar filtros
-        if request.method == 'POST':
-            filtros = {
-                "ciudad": request.form.get('ciudad', '').strip().lower(),
-                "modalidad": request.form.get('modalidad', '').strip().lower(),
-                "experiencia_anos": request.form.get('experiencia_anos', '').strip().lower(),
-                "areas_experiencia": request.form.get('areas_experiencia', '').strip().lower()
-            }
-            resultados_filtrados = [c for c in resultados if filtrar_candidata(c, filtros)]
+        # Obtener filtros desde POST (o GET)
+        filtros = {
+            'direccion': request.values.get('ciudad', '').strip().lower(),      # Usamos el campo "ciudad" para buscar en la dirección
+            'modalidad': request.values.get('modalidad', '').strip().lower(),
+            'experiencia_anos': request.values.get('experiencia_anos', '').strip().lower(),
+            'areas_experiencia': request.values.get('areas_experiencia', '').strip().lower()
+        }
+
+        # Si se aplican filtros (al menos uno no vacío), filtrar las candidatas
+        if any(filtros.values()):
+            resultados_filtrados = [c for c in resultados if cumple_filtros(c, filtros)]
             if resultados_filtrados:
                 resultados = resultados_filtrados
             else:
                 mensaje = ("⚠️ No se encontraron resultados para los filtros aplicados. "
                            "Mostrando todas las candidatas inscritas.")
+
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
