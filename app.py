@@ -1948,12 +1948,12 @@ def referencias():
     candidata = None
     mensaje = None
 
-    # Capturamos el término de búsqueda (POST) y el parámetro 'candidata' (GET)
+    # Capturamos el término de búsqueda (por POST) y el parámetro 'candidata' (por GET)
     busqueda_input = request.form.get('busqueda', '').strip().lower()
     candidata_param = request.args.get('candidata', '').strip()
 
     try:
-        # Cargamos los datos de la hoja hasta la columna AF
+        # Cargamos los datos de la hoja hasta la columna AF (A:AF)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:AF"
@@ -1963,56 +1963,53 @@ def referencias():
             return render_template('referencias.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
         
-        # Si se envía un término de búsqueda y aún no se ha seleccionado candidata, filtramos
+        # Si se envía un término de búsqueda y aún no se ha seleccionado candidata,
+        # se filtran los resultados
         if busqueda_input and not candidata_param:
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
             if not resultados:
                 mensaje = "No se encontraron candidatas con ese criterio."
         
-        # Si se selecciona una candidata (parámetro 'candidata' en GET), cargamos sus detalles
+        # Si se ha seleccionado una candidata (parámetro 'candidata' en GET), cargamos sus detalles
         if candidata_param:
             candidata = cargar_detalles_candidata(valores, candidata_param)
             fila_idx = int(candidata_param)
             fila = valores[fila_idx - 1]
+            # Aseguramos que la fila tenga al menos 32 columnas (para incluir hasta la columna AF)
             if len(fila) < 32:
                 fila.extend([""] * (32 - len(fila)))
-            # Asumimos que:
-            # - Las referencias laborales se encuentran en la columna AE (índice 30)
-            # - Las referencias familiares se encuentran en la columna AF (índice 31)
+            # Se asume que:
+            # - Referencias laborales están en la columna AE (índice 30)
+            # - Referencias familiares en la columna AF (índice 31)
             candidata['referencias_laborales'] = fila[30]
             candidata['referencias_familiares'] = fila[31]
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('referencias.html', resultados=[], candidata=None, mensaje=mensaje)
     
-    # Si se envía el formulario para actualizar las referencias y ya se seleccionó candidata
+    # Si se envía el formulario para actualizar las referencias y ya se ha seleccionado una candidata
     if request.method == 'POST' and candidata_param:
         referencias_laborales = request.form.get('referencias_laborales', '').strip()
         referencias_familiares = request.form.get('referencias_familiares', '').strip()
         try:
             fila_index = int(candidata_param)
-            # Actualizar columna AE (referencias laborales)
-            rango_laborales = f"Nueva hoja!AE{fila_index}"
+            # Actualizamos ambas columnas (AE y AF) en una sola llamada
+            rango_referencias = f"Nueva hoja!AE{fila_index}:AF{fila_index}"
+            body = {
+                "values": [[referencias_laborales, referencias_familiares]]
+            }
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
-                range=rango_laborales,
+                range=rango_referencias,
                 valueInputOption="RAW",
-                body={"values": [[referencias_laborales]]}
-            ).execute()
-            # Actualizar columna AF (referencias familiares)
-            rango_familiares = f"Nueva hoja!AF{fila_index}"
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=rango_familiares,
-                valueInputOption="RAW",
-                body={"values": [[referencias_familiares]]}
+                body=body
             ).execute()
             mensaje = "Referencias actualizadas correctamente."
             candidata['referencias_laborales'] = referencias_laborales
             candidata['referencias_familiares'] = referencias_familiares
         except Exception as e:
             mensaje = f"Error al actualizar referencias: {str(e)}"
-
+    
     return render_template('referencias.html', resultados=resultados, candidata=candidata, mensaje=mensaje)
 
 if __name__ == '__main__':
