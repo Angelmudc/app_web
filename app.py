@@ -1933,5 +1933,69 @@ def reporte_inscripciones():
     except Exception as e:
         return f"Error al generar reporte: {str(e)}", 500
 
+@app.route('/referencias', methods=['GET', 'POST'])
+def referencias():
+    mensaje = ""
+    # Se espera que se reciba la fila (por ejemplo, el número de fila de la candidata) por query string
+    fila_param = request.args.get('fila', '').strip()
+    referencias_laborales = ""
+    referencias_familiares = ""
+    
+    if not fila_param or not fila_param.isdigit():
+        mensaje = "Falta o es inválido el parámetro 'fila'."
+        return render_template('referencias.html', mensaje=mensaje)
+    
+    fila_index = int(fila_param)
+    
+    if request.method == 'POST':
+        # Se recogen los datos del formulario
+        referencias_laborales = request.form.get('referencias_laborales', '').strip()
+        referencias_familiares = request.form.get('referencias_familiares', '').strip()
+        try:
+            # Actualizar la columna AE para las referencias laborales
+            rango_laborales = f"Nueva hoja!AE{fila_index}"
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango_laborales,
+                valueInputOption="RAW",
+                body={"values": [[referencias_laborales]]}
+            ).execute()
+            # Actualizar la columna AF para las referencias familiares
+            rango_familiares = f"Nueva hoja!AF{fila_index}"
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango_familiares,
+                valueInputOption="RAW",
+                body={"values": [[referencias_familiares]]}
+            ).execute()
+            mensaje = "Referencias actualizadas correctamente."
+        except Exception as e:
+            mensaje = f"Error al actualizar referencias: {str(e)}"
+    
+    else:
+        # Método GET: se recuperan los datos existentes para mostrarlos en el formulario
+        try:
+            rango_referencias = f"Nueva hoja!AE{fila_index}:AF{fila_index}"
+            respuesta = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=rango_referencias
+            ).execute()
+            valores = respuesta.get("values", [])
+            if valores:
+                # Se asume que la primera celda es referencias laborales y la segunda referencias familiares
+                if len(valores[0]) >= 1:
+                    referencias_laborales = valores[0][0]
+                if len(valores[0]) >= 2:
+                    referencias_familiares = valores[0][1]
+        except Exception as e:
+            mensaje = f"Error al obtener referencias: {str(e)}"
+    
+    return render_template('referencias.html',
+                           mensaje=mensaje,
+                           fila=fila_index,
+                           referencias_laborales=referencias_laborales,
+                           referencias_familiares=referencias_familiares)
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

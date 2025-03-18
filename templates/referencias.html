@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Referencias de la Doméstica</title>
+</head>
+<body>
+    <h1>Referencias de la Candidata (Fila {{ fila }})</h1>
+    {% if mensaje %}
+        <p><strong>{{ mensaje }}</strong></p>
+    {% endif %}
+    <form method="post">
+        <label for="referencias_laborales">Referencias Laborales:</label><br>
+        <textarea name="referencias_laborales" id="referencias_laborales" rows="4" cols="50">{{ referencias_laborales }}</textarea><br><br>
+        
+        <label for="referencias_familiares">Referencias Familiares:</label><br>
+        <textarea name="referencias_familiares" id="referencias_familiares" rows="4" cols="50">{{ referencias_familiares }}</textarea><br><br>
+        
+        <button type="submit">Guardar Referencias</button>
+    </form>
+</body>
+</html>
