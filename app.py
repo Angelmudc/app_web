@@ -517,30 +517,21 @@ def filtrar_por_busqueda(filas, termino):
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 })
     return resultados
+
+
 def cargar_detalles_candidata(valores, candidata_param):
     try:
         fila_index = int(candidata_param)
-        # Ajustar índice de lista (la primera fila en 'valores' suele ser encabezado)
-        fila = valores[fila_index - 1]  # Asumiendo que la fila_index viene desde enumeración + 1
+        fila = valores[fila_index - 1]  # Recordando que Google Sheets es 1-indexado
     except (ValueError, IndexError):
         return None
 
     return {
-        'nombre': fila[0] if len(fila) > 0 else "No especificado",
-        'edad': fila[1] if len(fila) > 1 else "No especificado",
-        'telefono': fila[2] if len(fila) > 2 else "No especificado",
-        'direccion': fila[3] if len(fila) > 3 else "No especificado",
-        'modalidad': fila[4] if len(fila) > 4 else "No especificado",
-        'rutas': fila[5] if len(fila) > 5 else "No especificado",
-        'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
-        'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
-        'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-        'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
-        'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
-        'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
-        'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
-        'cedula': fila[13] if len(fila) > 13 else "No especificado",
+        'nombre': fila[1] if len(fila) > 1 else "No especificado",    # Columna B
+        'telefono': fila[3] if len(fila) > 3 else "No especificado",    # Columna D
+        'cedula': fila[14] if len(fila) > 14 else "No especificado",    # Columna O
     }
+
 
 
 def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
@@ -1957,7 +1948,7 @@ def referencias():
     candidata = None
     mensaje = None
 
-    # Capturamos el término de búsqueda (para POST) y el parámetro de candidata (GET)
+    # Capturamos el término de búsqueda (POST) y el parámetro 'candidata' (GET)
     busqueda_input = request.form.get('busqueda', '').strip().lower()
     candidata_param = request.args.get('candidata', '').strip()
 
@@ -1972,30 +1963,29 @@ def referencias():
             return render_template('referencias.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
         
-        # Si se envía un término de búsqueda y aún no se ha seleccionado una candidata,
-        # se filtran los resultados
+        # Si se envía un término de búsqueda y aún no se ha seleccionado candidata, filtramos
         if busqueda_input and not candidata_param:
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
             if not resultados:
                 mensaje = "No se encontraron candidatas con ese criterio."
         
-        # Si se ha seleccionado una candidata (parámetro 'candidata' en GET), cargamos sus detalles
+        # Si se selecciona una candidata (parámetro 'candidata' en GET), cargamos sus detalles
         if candidata_param:
             candidata = cargar_detalles_candidata(valores, candidata_param)
             fila_idx = int(candidata_param)
-            fila = valores[fila_idx - 1]  # Recordando que la hoja es 1-indexada
+            fila = valores[fila_idx - 1]
             if len(fila) < 32:
                 fila.extend([""] * (32 - len(fila)))
-            # Se asume que:
-            # - Las referencias laborales están en la columna AE (índice 30)
-            # - Las referencias familiares están en la columna AF (índice 31)
+            # Asumimos que:
+            # - Las referencias laborales se encuentran en la columna AE (índice 30)
+            # - Las referencias familiares se encuentran en la columna AF (índice 31)
             candidata['referencias_laborales'] = fila[30]
             candidata['referencias_familiares'] = fila[31]
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('referencias.html', resultados=[], candidata=None, mensaje=mensaje)
     
-    # Si se envía el formulario para actualizar las referencias y ya se seleccionó una candidata
+    # Si se envía el formulario para actualizar las referencias y ya se seleccionó candidata
     if request.method == 'POST' and candidata_param:
         referencias_laborales = request.form.get('referencias_laborales', '').strip()
         referencias_familiares = request.form.get('referencias_familiares', '').strip()
@@ -2024,5 +2014,6 @@ def referencias():
             mensaje = f"Error al actualizar referencias: {str(e)}"
 
     return render_template('referencias.html', resultados=resultados, candidata=candidata, mensaje=mensaje)
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Referencias de la Candidata</title>
   <style>
-    /* Puedes reutilizar los estilos que ya tienes en buscar.html o ajustarlos */
     body {
       font-family: 'Arial', sans-serif;
       background: #e8f6fa;
@@ -43,6 +42,11 @@
       color: #fff;
       font-size: 1rem;
       cursor: pointer;
+      transition: background-color 0.3s, transform 0.3s;
+    }
+    button:hover {
+      background-color: #009bbd;
+      transform: translateY(-3px);
     }
     .mensaje {
       text-align: center;
@@ -88,7 +92,7 @@
     <h2>Buscar Candidata para Referencias</h2>
     <!-- Formulario de búsqueda -->
     <form id="searchForm" method="POST" action="/referencias">
-      <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
+      <input type="text" name="busqueda" placeholder="Ingrese el nombre o cédula" required>
       <button type="submit">🔍 Buscar</button>
     </form>
     
@@ -104,7 +108,6 @@
             <tr>
               <th>Nombre</th>
               <th>Cédula</th>
-              <th>Ciudad</th>
               <th>Teléfono</th>
               <th>Acción</th>
             </tr>
@@ -114,7 +117,6 @@
               <tr>
                 <td>{{ candidata.nombre }}</td>
                 <td>{{ candidata.cedula }}</td>
-                <td>{{ candidata.ciudad }}</td>
                 <td>{{ candidata.telefono }}</td>
                 <td>
                   <form action="/referencias" method="GET">
@@ -134,12 +136,13 @@
         <h3>Detalles de la Candidata:</h3>
         <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
         <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
-        <!-- Aquí puedes incluir más detalles si lo consideras necesario -->
+        <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
         
         <h3>Editar Referencias</h3>
         <form method="POST" action="/referencias?candidata={{ candidata.fila_index }}">
           <label for="referencias_laborales"><strong>Referencias Laborales:</strong></label>
-          <textarea name="referencias_laborales" id="referencias_laborales" rows="4" placeholder="Ingrese las referencias laborales">{{ candidata.referencias_laborales }}</textarea>
+          <!-- Se aumenta el número de filas para dar más espacio -->
+          <textarea name="referencias_laborales" id="referencias_laborales" rows="6" placeholder="Ingrese las referencias laborales">{{ candidata.referencias_laborales }}</textarea>
           
           <label for="referencias_familiares"><strong>Referencias Familiares:</strong></label>
           <textarea name="referencias_familiares" id="referencias_familiares" rows="4" placeholder="Ingrese las referencias familiares">{{ candidata.referencias_familiares }}</textarea>
