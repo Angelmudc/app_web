@@ -192,6 +192,23 @@ def buscar_candidata(busqueda):
         logging.error(f"Error en buscar_candidata: {str(e)}", exc_info=True)
         return []
 
+
+def filtrar_por_busqueda(filas, termino):
+    resultados = []
+    termino = termino.lower()
+    for index, fila in enumerate(filas, start=2):  # Considerando que la primera fila es encabezado
+        if len(fila) > 1:
+            nombre = fila[1].strip().lower()  # Se asume que el nombre está en la columna B (índice 1)
+            if termino in nombre:
+                resultados.append({
+                    'fila_index': index,
+                    'nombre': fila[1],
+                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
+                    'ciudad': fila[4] if len(fila) > 4 else "No especificado",
+                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                })
+    return resultados
+
 def actualizar_registro(fila_index, usuario_actual):
     try:
         # Definir la celda de la columna EA (donde se registra la edición)
@@ -1944,7 +1961,7 @@ def referencias():
     candidata_param = request.args.get('candidata', '').strip()
 
     try:
-        # Cargamos los datos de la hoja; usamos un rango amplio que incluya hasta la columna AF.
+        # Cargamos los datos de la hoja hasta la columna AF
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:AF"
@@ -1954,33 +1971,32 @@ def referencias():
             return render_template('referencias.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
         
-        # Si se envía término de búsqueda (POST) filtramos los resultados
-        if busqueda_input:
-            # Usamos la función auxiliar 'filtrar_por_busqueda' (la misma que utilizas en /buscar)
+        # Si se envía un término de búsqueda (y no se ha seleccionado aún una candidata), filtramos los resultados
+        if busqueda_input and not candidata_param:
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
         
-        # Si se selecciona una candidata (parámetro 'candidata' en GET), cargamos sus detalles
+        # Si se ha seleccionado una candidata (parámetro 'candidata' en GET), cargamos sus detalles
         if candidata_param:
             candidata = cargar_detalles_candidata(valores, candidata_param)
-            # Aseguramos que la fila tenga suficientes columnas (hasta la AF, índice 31)
             fila_idx = int(candidata_param)
-            fila = valores[fila_idx - 1]  # recordando que los índices de la hoja son 1-indexados
+            fila = valores[fila_idx - 1]  # Recordando que la hoja es 1-indexada
             if len(fila) < 32:
                 fila.extend([""] * (32 - len(fila)))
-            # Columnas: AE (índice 30) y AF (índice 31)
+            # Se asume que las referencias laborales están en la columna AE (índice 30)
+            # y las referencias familiares en la columna AF (índice 31)
             candidata['referencias_laborales'] = fila[30]
             candidata['referencias_familiares'] = fila[31]
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('referencias.html', resultados=[], candidata=None, mensaje=mensaje)
     
-    # Si se envía el formulario de actualización de referencias (POST) y ya se ha seleccionado una candidata
+    # Si se envía el formulario de actualización de referencias (POST) y ya se seleccionó una candidata
     if request.method == 'POST' and candidata_param:
         referencias_laborales = request.form.get('referencias_laborales', '').strip()
         referencias_familiares = request.form.get('referencias_familiares', '').strip()
         try:
             fila_index = int(candidata_param)
-            # Actualizar columna AE (referencias laborales)
+            # Actualizamos la columna AE (referencias laborales)
             rango_laborales = f"Nueva hoja!AE{fila_index}"
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
@@ -1988,7 +2004,7 @@ def referencias():
                 valueInputOption="RAW",
                 body={"values": [[referencias_laborales]]}
             ).execute()
-            # Actualizar columna AF (referencias familiares)
+            # Actualizamos la columna AF (referencias familiares)
             rango_familiares = f"Nueva hoja!AF{fila_index}"
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
@@ -1997,7 +2013,6 @@ def referencias():
                 body={"values": [[referencias_familiares]]}
             ).execute()
             mensaje = "Referencias actualizadas correctamente."
-            # Actualizamos los datos de la candidata para mostrarlos con los cambios
             candidata['referencias_laborales'] = referencias_laborales
             candidata['referencias_familiares'] = referencias_familiares
         except Exception as e:
