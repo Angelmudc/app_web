@@ -1,22 +1,163 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Referencias de la Doméstica</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Referencias de la Candidata</title>
+  <style>
+    /* Puedes reutilizar los estilos que ya tienes en buscar.html o ajustarlos */
+    body {
+      font-family: 'Arial', sans-serif;
+      background: #e8f6fa;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+    h2, h3 {
+      text-align: center;
+      color: #1A5789;
+    }
+    form {
+      margin: 20px 0;
+    }
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 2px solid #1A5789;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #00AECF;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    .mensaje {
+      text-align: center;
+      color: #d9534f;
+      font-weight: bold;
+    }
+    .resultados-section, .detalles-section {
+      margin-top: 30px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+    .ver-detalles {
+      background-color: #1A5789;
+      color: #fff;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .volver {
+      display: block;
+      margin: 20px auto;
+      text-align: center;
+      padding: 10px;
+      background-color: #1A5789;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      width: 150px;
+    }
+  </style>
 </head>
 <body>
-    <h1>Referencias de la Candidata (Fila {{ fila }})</h1>
-    {% if mensaje %}
-        <p><strong>{{ mensaje }}</strong></p>
-    {% endif %}
-    <form method="post">
-        <label for="referencias_laborales">Referencias Laborales:</label><br>
-        <textarea name="referencias_laborales" id="referencias_laborales" rows="4" cols="50">{{ referencias_laborales }}</textarea><br><br>
-        
-        <label for="referencias_familiares">Referencias Familiares:</label><br>
-        <textarea name="referencias_familiares" id="referencias_familiares" rows="4" cols="50">{{ referencias_familiares }}</textarea><br><br>
-        
-        <button type="submit">Guardar Referencias</button>
+  <div class="container">
+    <h2>Buscar Candidata para Referencias</h2>
+    <!-- Formulario de búsqueda -->
+    <form id="searchForm" method="POST" action="/referencias">
+      <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
+      <button type="submit">🔍 Buscar</button>
     </form>
+    
+    {% if mensaje %}
+      <p class="mensaje">{{ mensaje }}</p>
+    {% endif %}
+    
+    {% if resultados %}
+      <section class="resultados-section">
+        <h3>Resultados Encontrados:</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Cédula</th>
+              <th>Ciudad</th>
+              <th>Teléfono</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for candidata in resultados %}
+              <tr>
+                <td>{{ candidata.nombre }}</td>
+                <td>{{ candidata.cedula }}</td>
+                <td>{{ candidata.ciudad }}</td>
+                <td>{{ candidata.telefono }}</td>
+                <td>
+                  <form action="/referencias" method="GET">
+                    <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
+                    <button class="ver-detalles" type="submit">Ver Detalles</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+    
+    {% if candidata %}
+      <section class="detalles-section">
+        <h3>Detalles de la Candidata:</h3>
+        <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
+        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+        <!-- Aquí puedes incluir más detalles si lo consideras necesario -->
+        
+        <h3>Editar Referencias</h3>
+        <form method="POST" action="/referencias?candidata={{ candidata.fila_index }}">
+          <label for="referencias_laborales"><strong>Referencias Laborales:</strong></label>
+          <textarea name="referencias_laborales" id="referencias_laborales" rows="4" placeholder="Ingrese las referencias laborales">{{ candidata.referencias_laborales }}</textarea>
+          
+          <label for="referencias_familiares"><strong>Referencias Familiares:</strong></label>
+          <textarea name="referencias_familiares" id="referencias_familiares" rows="4" placeholder="Ingrese las referencias familiares">{{ candidata.referencias_familiares }}</textarea>
+          
+          <button type="submit">Guardar Referencias</button>
+        </form>
+      </section>
+    {% endif %}
+    
+    <a href="/" class="volver">🏠 Volver</a>
+  </div>
+  
+  <script>
+    document.getElementById('searchForm').addEventListener('submit', function() {
+      var submitButton = this.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+      submitButton.innerText = 'Buscando...';
+    });
+  </script>
 </body>
 </html>
