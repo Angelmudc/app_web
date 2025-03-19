@@ -1901,13 +1901,6 @@ def generar_pdf_entrevista(fila_index):
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
 
-
-
-from datetime import datetime
-import pandas as pd
-import io
-from flask import render_template, request, send_file
-
 from datetime import datetime
 import pandas as pd
 import io

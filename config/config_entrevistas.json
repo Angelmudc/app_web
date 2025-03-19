@@ -90,9 +90,7 @@
     { "id": "motivacion", "enunciado": "¿Por qué eliges trabajar en cuidados domiciliarios?", "tipo": "texto_largo" },
     { "id": "fortalezas", "enunciado": "¿Cuáles consideras que son tus fortalezas profesionales?", "tipo": "texto_largo" },
     { "id": "situacion_dificil", "enunciado": "Describe una situación difícil en el cuidado domiciliario y cómo la resolviste", "tipo": "texto_largo" },
-    { "id": "tecnologia", "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] },
-    { "id": "referencias_laborales", "enunciado": "Referencias laborales", "tipo": "textarea_grande" },
-    { "id": "referencias_familiares", "enunciado": "Referencias familiares", "tipo": "textarea_grande" }
+    { "id": "tecnologia", "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] }
   ]
 }
 
