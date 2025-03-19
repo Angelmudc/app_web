@@ -756,7 +756,10 @@ def buscar_candidata():
 
 
 
+from flask_wtf.csrf import csrf_exempt
+
 @app.route('/buscar', methods=['GET', 'POST'])
+@csrf_exempt
 def buscar():
     resultados = []
     candidata_detalles = None
