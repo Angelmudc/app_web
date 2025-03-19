@@ -752,7 +752,7 @@ def buscar_candidata():
     return render_template('buscar_candidata.html', resultados=resultados, mensaje=mensaje)
 
 @app.route('/buscar', methods=['GET', 'POST'])
-@csrf_exempt
+@csrf.exempt
 def buscar():
     resultados = []
     candidata_detalles = None
