@@ -754,12 +754,12 @@ def buscar():
     candidata_detalles = None
     mensaje = None
 
-    # Capturar parámetros: para POST (búsqueda) y para GET (ver detalles)
-    busqueda_input = request.form.get('busqueda', '').strip().lower()
-    candidata_param = request.args.get('candidata', '').strip()
+    # Capturar parámetros
+    busqueda_input = request.form.get('busqueda', '').strip().lower()  # Para POST (búsqueda)
+    candidata_param = request.args.get('candidata', '').strip()        # Para GET (ver detalles)
 
     try:
-        # Cargar los datos de la hoja (columnas B a O)
+        # 1) Cargar siempre los datos de la hoja
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!B:O"
@@ -770,12 +770,14 @@ def buscar():
             return render_template('buscar.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
 
-        # Si se envía un término de búsqueda (POST), filtrar resultados
+        # 2) Si hay término de búsqueda (POST), filtrar resultados
         if busqueda_input:
+            # Ejemplo de filtrado flexible
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
-
-        # Si se pasa un parámetro 'candidata' (GET), cargar sus detalles
+        
+        # 3) Si se pasa un parámetro 'candidata' por GET, cargar sus detalles
         if candidata_param:
+            # Cargar detalles sin requerir busqueda_input
             candidata_detalles = cargar_detalles_candidata(valores, candidata_param)
 
     except Exception as e:
