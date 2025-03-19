@@ -502,34 +502,42 @@ def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
         return False, None
 
 def filtrar_por_busqueda(filas, termino):
+    """
+    Filtra las candidatas según el término ingresado, buscando en la columna de nombre (B)
+    y en la columna de cédula (O).
+    """
     resultados = []
     termino = termino.lower()
-    for index, fila in enumerate(filas, start=2):  # Se omite el encabezado (fila 1)
+    for index, fila in enumerate(filas, start=2):  # Se omite la primera fila (encabezado)
         if len(fila) > 1:
-            nombre = fila[1].strip().lower()  # Se asume que el nombre está en la columna B (índice 1)
+            nombre = fila[1].strip().lower()  # Columna B
             cedula = fila[14].strip().lower() if len(fila) > 14 else ""
             if termino in nombre or termino in cedula:
                 resultados.append({
                     'fila_index': index,
                     'nombre': fila[1],
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'ciudad': fila[4] if len(fila) > 4 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 })
     return resultados
 
-
 def cargar_detalles_candidata(valores, candidata_param):
+    """
+    Carga los detalles básicos de la candidata (nombre, teléfono y cédula).
+    Se asume que:
+      - Nombre está en la columna B (índice 1)
+      - Teléfono en la columna D (índice 3)
+      - Cédula en la columna O (índice 14)
+    """
     try:
         fila_index = int(candidata_param)
-        fila = valores[fila_index - 1]  # Recordando que Google Sheets es 1-indexado
+        fila = valores[fila_index - 1]  # Google Sheets es 1-indexado
     except (ValueError, IndexError):
         return None
-
     return {
-        'nombre': fila[1] if len(fila) > 1 else "No especificado",    # Columna B
-        'telefono': fila[3] if len(fila) > 3 else "No especificado",    # Columna D
-        'cedula': fila[14] if len(fila) > 14 else "No especificado",    # Columna O
+        'nombre': fila[1] if len(fila) > 1 else "No especificado",
+        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+        'cedula': fila[14] if len(fila) > 14 else "No especificado",
     }
 
 
@@ -1975,7 +1983,6 @@ def referencias():
             candidata = cargar_detalles_candidata(valores, candidata_param)
             fila_idx = int(candidata_param)
             fila = valores[fila_idx - 1]
-            # Aseguramos que la fila tenga al menos 32 columnas (para incluir hasta la columna AF)
             if len(fila) < 32:
                 fila.extend([""] * (32 - len(fila)))
             # Se asume que:
@@ -2005,8 +2012,21 @@ def referencias():
                 body=body
             ).execute()
             mensaje = "Referencias actualizadas correctamente."
-            candidata['referencias_laborales'] = referencias_laborales
-            candidata['referencias_familiares'] = referencias_familiares
+            # Releemos la fila actualizada para recargar los datos
+            respuesta = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A:AF"
+            ).execute()
+            nuevos_valores = respuesta.get("values", [])
+            if len(nuevos_valores) >= fila_index:
+                fila = nuevos_valores[fila_index - 1]
+                if len(fila) < 32:
+                    fila.extend([""] * (32 - len(fila)))
+                candidata = cargar_detalles_candidata(nuevos_valores, candidata_param)
+                candidata['referencias_laborales'] = fila[30]
+                candidata['referencias_familiares'] = fila[31]
+            else:
+                mensaje += " (No se pudo recargar la información actualizada.)"
         except Exception as e:
             mensaje = f"Error al actualizar referencias: {str(e)}"
     
