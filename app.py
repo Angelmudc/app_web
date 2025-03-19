@@ -49,8 +49,6 @@ from flask import Flask
 from dotenv import load_dotenv
 load_dotenv()  # Carga las variables definidas en el archivo .env
 
-from flask_wtf import CSRFProtect
-
 # Configuración de la API de Google Sheets
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
