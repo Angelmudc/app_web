@@ -47,9 +47,7 @@
         { "id": "vacunas_covid", "enunciado": "¿Cuántas vacunas del COVID tienes?", "tipo": "radio", "opciones": ["Dosis 1", "Dosis 2", "Dosis 3", "No tengo ninguna vacuna"] },
         { "id": "tomas_alcohol", "enunciado": "¿Tomas alcohol?", "tipo": "radio", "opciones": ["Sí", "No", "A veces"] },
         { "id": "fumas", "enunciado": "¿Fumas?", "tipo": "radio", "opciones": ["Sí", "No"] },
-        { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "texto" },
-        { "id": "referencias_laborales", "enunciado": "Referencias laborales", "tipo": "textarea_grande" },
-        { "id": "referencias_familiares", "enunciado": "Referencias familiares", "tipo": "textarea_grande" }
+        { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "texto" }
       ]
     },
     
