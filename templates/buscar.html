@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buscar Candidata</title>
   <style>
-    /* Tus estilos actuales (sin cambios en el diseño) */
+    /* Variables de colores basados en el logo */
     :root {
       --primary-color: #1A5789;
       --accent-color: #00AECF;
@@ -14,57 +14,145 @@
       --text-color: #343a40;
       --transition-duration: 0.3s;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Arial', sans-serif; background: var(--background-color); color: var(--text-color); line-height: 1.6; overflow-x: hidden; padding: 20px; }
-    .container { max-width: 900px; margin: 40px auto; background: var(--secondary-color); padding: 30px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1); animation: fadeIn 0.8s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    h2 { text-align: center; color: var(--primary-color); font-size: 2rem; margin-bottom: 20px; animation: slideDown 0.5s ease-out; position: relative; }
-    h2::after { content: ""; display: block; width: 50px; height: 4px; background: var(--accent-color); margin: 10px auto 0; border-radius: 2px; }
-    h3 { text-align: center; color: var(--primary-color); margin: 20px 0 15px; animation: slideDown 0.5s ease-out; }
-    form { animation: fadeIn 1s ease-out; }
-    input[type="text"] { width: 100%; padding: 15px; margin: 15px 0; border: 2px solid var(--primary-color); border-radius: 8px; font-size: 1rem; transition: border-color var(--transition-duration) ease; }
-    input[type="text"]:focus { border-color: var(--accent-color); outline: none; }
-    button { width: 100%; padding: 15px; margin: 15px 0; border: none; border-radius: 8px; background-color: var(--accent-color); color: var(--secondary-color); font-size: 1rem; font-weight: bold; cursor: pointer; transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease; }
-    button:hover { background-color: #009bbd; transform: translateY(-3px); }
-    button:disabled { opacity: 0.7; cursor: not-allowed; }
-    .mensaje { text-align: center; color: #d9534f; font-weight: bold; margin-top: 10px; animation: fadeIn 1s ease-out; }
-    .resultados-section { margin-top: 30px; animation: fadeIn 1s ease-out; }
-    .table-container { overflow-x: auto; animation: fadeIn 1s ease-out; }
-    table { width: 100%; border-collapse: collapse; background: var(--secondary-color); }
-    th, td { padding: 15px; border: 1px solid #ddd; text-align: center; transition: background-color var(--transition-duration) ease; }
-    th { background-color: var(--primary-color); color: var(--secondary-color); font-weight: bold; }
-    tr:hover { background-color: #f1f1f1; }
-    .ver-detalles { background-color: var(--primary-color); color: var(--secondary-color); font-weight: bold; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease; }
-    .ver-detalles:hover { background-color: #153d5e; transform: scale(1.05); }
-    .detalles-section { margin-top: 30px; animation: fadeIn 1s ease-out; }
-    .detalle { background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 6px solid var(--primary-color); transition: transform var(--transition-duration) ease; }
-    .detalle:hover { transform: scale(1.02); }
-    .detalle strong { color: var(--primary-color); }
-    .volver { display: block; margin: 30px auto; background-color: var(--primary-color); text-align: center; padding: 15px; width: 200px; color: var(--secondary-color); font-weight: bold; text-decoration: none; border-radius: 8px; transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease; }
-    .volver:hover { background-color: #153d5e; transform: translateY(-3px); }
-    @media (max-width: 768px) {
-      .container { margin: 20px; padding: 20px; }
-      h2 { font-size: 1.8rem; }
-      input[type="text"], button { font-size: 0.9rem; }
-      th, td { padding: 10px; }
-      .volver { width: 150px; }
+    /* Reset básico */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Arial', sans-serif;
+      background: var(--background-color);
+      color: var(--text-color);
+      line-height: 1.6;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      background: var(--secondary-color);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      animation: fadeIn 0.8s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    h2 {
+      text-align: center;
+      color: var(--primary-color);
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+    form {
+      animation: fadeIn 1s ease-out;
+      text-align: center;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 15px;
+      margin: 15px 0;
+      border: 2px solid var(--primary-color);
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color var(--transition-duration) ease;
+    }
+    input[type="text"]:focus {
+      border-color: var(--accent-color);
+      outline: none;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      margin: 15px 0;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--accent-color);
+      color: var(--secondary-color);
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
+    }
+    button:hover {
+      background-color: #009bbd;
+      transform: translateY(-3px);
+    }
+    .mensaje {
+      text-align: center;
+      color: #d9534f;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    .resultados-section {
+      margin-top: 30px;
+    }
+    .table-container {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--secondary-color);
+    }
+    th, td {
+      padding: 15px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+    th {
+      background-color: var(--primary-color);
+      color: var(--secondary-color);
+      font-weight: bold;
+    }
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+    .ver-detalles {
+      background-color: var(--primary-color);
+      color: var(--secondary-color);
+      font-weight: bold;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .detalles-section {
+      margin-top: 30px;
+    }
+    .detalle {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+      border-left: 6px solid var(--primary-color);
+    }
+    .volver {
+      display: block;
+      margin: 30px auto;
+      background-color: var(--primary-color);
+      text-align: center;
+      padding: 15px;
+      width: 200px;
+      color: var(--secondary-color);
+      font-weight: bold;
+      text-decoration: none;
+      border-radius: 8px;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>🔎 Buscar Candidata</h2>
-    <!-- Formulario de búsqueda -->
     <form id="searchForm" method="POST" action="/buscar">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
       <button type="submit">🔍 Buscar</button>
     </form>
-
     {% if mensaje %}
       <p class="mensaje">{{ mensaje }}</p>
     {% endif %}
-
     {% if resultados %}
       <section class="resultados-section">
         <h3>Resultados Encontrados:</h3>
@@ -87,10 +175,9 @@
                   <td>{{ candidata.ciudad }}</td>
                   <td>{{ candidata.telefono }}</td>
                   <td>
-                    <!-- Formulario para ver detalles, enviando el parámetro 'candidata' -->
-                    <form method="GET" action="/buscar">
+                    <form action="/buscar" method="GET">
                       <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                      <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
+                      <button type="submit">📄 Ver Detalles</button>
                     </form>
                   </td>
                 </tr>
@@ -100,27 +187,14 @@
         </div>
       </section>
     {% endif %}
-
     {% if candidata %}
       <section class="detalles-section">
         <h3>Detalles de la Candidata:</h3>
-        <div class="detalle"><strong>👤 Nombre:</strong> {{ candidata.nombre }}</div>
-        <div class="detalle"><strong>🎂 Edad:</strong> {{ candidata.edad }}</div>
-        <div class="detalle"><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</div>
-        <div class="detalle"><strong>📍 Dirección:</strong> {{ candidata.direccion }}</div>
-        <div class="detalle"><strong>🛏️ Modalidad:</strong> {{ candidata.modalidad }}</div>
-        <div class="detalle"><strong>🚏 Rutas Cercanas:</strong> {{ candidata.rutas }}</div>
-        <div class="detalle"><strong>🛠️ Empleo Anterior:</strong> {{ candidata.empleo_anterior }}</div>
-        <div class="detalle"><strong>📅 Años de Experiencia:</strong> {{ candidata.anos_experiencia }}</div>
-        <div class="detalle"><strong>📝 Áreas de Experiencia:</strong> {{ candidata.areas_experiencia }}</div>
-        <div class="detalle"><strong>🧺 Sabe Planchar:</strong> {{ candidata.sabe_planchar }}</div>
-        <div class="detalle"><strong>👨‍💼 Referencias Laborales:</strong> {{ candidata.referencias_laborales }}</div>
-        <div class="detalle"><strong>👩‍👩‍👦 Referencias Familiares:</strong> {{ candidata.referencias_familiares }}</div>
-        <div class="detalle"><strong>✅ Acepta Porcentaje:</strong> {{ candidata.acepta_porcentaje }}</div>
-        <div class="detalle"><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</div>
+        <div class="detalle"><strong>Nombre:</strong> {{ candidata.nombre }}</div>
+        <div class="detalle"><strong>Teléfono:</strong> {{ candidata.telefono }}</div>
+        <div class="detalle"><strong>Cédula:</strong> {{ candidata.cedula }}</div>
       </section>
     {% endif %}
-
     <a href="/" class="volver">🏠 Volver al Inicio</a>
   </div>
   <script>
