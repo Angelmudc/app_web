@@ -1814,35 +1814,163 @@ def generar_pdf_entrevista(fila_index):
         pdf.cell(0, 8, "Entrevista:", ln=True)
         pdf.ln(2)
         lines = texto_entrevista.split("\n")
-        for line in lines:
-            pdf.multi_cell(0, 8, line)
-            pdf.ln(2)
-        pdf.ln(5)
+        for line from flask import send_file
+from fpdf import FPDF
+import io
+import os
 
+def generar_pdf_entrevista(fila_index):
+    """
+    Genera un PDF de la entrevista de la candidata que imprime:
+      - El contenido de la entrevista (columna Z) con el diseño original:
+           * Preguntas en negro
+           * Respuestas en azul precedidas de un bullet grande ("•")
+           * Línea de separación y encabezado con logo.
+      - Una sección adicional "Referencias" que imprime:
+           * Referencias Laborales (columna AE)
+           * Referencias Familiares (columna AF)
+    
+    Requiere:
+      - Las fuentes DejaVuSans.ttf y DejaVuSans-Bold.ttf en: app_web/static/fonts/
+      - logo_nuevo.png en: app_web/static/
+    """
+    try:
+        # 1. Leer la entrevista (columna Z)
+        rango_entrevista = f"Nueva hoja!Z{fila_index}"
+        hoja_entrevista = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango_entrevista
+        ).execute()
+        entrevista_val = hoja_entrevista.get("values", [])
+        if not entrevista_val or not entrevista_val[0]:
+            return "No hay entrevista guardada en la columna Z", 404
+        texto_entrevista = entrevista_val[0][0]
+    except Exception as e:
+        return f"Error al leer entrevista: {str(e)}", 500
+
+    try:
+        # 2. Leer las referencias (columnas AE y AF)
+        rango_referencias = f"Nueva hoja!AE{fila_index}:AF{fila_index}"
+        hoja_referencias = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=rango_referencias
+        ).execute()
+        ref_values = hoja_referencias.get("values", [])
+        if ref_values and len(ref_values[0]) >= 2:
+            ref_laborales = ref_values[0][0]
+            ref_familiares = ref_values[0][1]
+        else:
+            ref_laborales = ""
+            ref_familiares = ""
+    except Exception as e:
+        return f"Error al leer referencias: {str(e)}", 500
+
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Agregar fuentes Unicode
+        font_dir = os.path.join(app.root_path, "static", "fonts")
+        regular_font_path = os.path.join(font_dir, "DejaVuSans.ttf")
+        bold_font_path = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+        if not os.path.exists(regular_font_path) or not os.path.exists(bold_font_path):
+            return "No se encontraron las fuentes en static/fonts/", 500
+
+        pdf.add_font("DejaVuSans", "", regular_font_path, uni=True)
+        pdf.add_font("DejaVuSans", "B", bold_font_path, uni=True)
+
+        # LOGO (sin fondo)
+        logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
+        if os.path.exists(logo_path):
+            image_width = 70  # Ajusta el tamaño del logo
+            x_pos = (pdf.w - image_width) / 2
+            pdf.image(logo_path, x=x_pos, y=10, w=image_width)
+        else:
+            print("Logo no encontrado:", logo_path)
+
+        # Línea superior debajo del logo (opcional, para enfatizar el encabezado)
+        pdf.set_line_width(0.5)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.line(pdf.l_margin, 30, pdf.w - pdf.r_margin, 30)
+
+        # Mover el cursor un poco más abajo del logo
+        pdf.set_y(40)
+
+        # Título con fondo azul
+        pdf.set_font("DejaVuSans", "B", 18)
+        pdf.set_fill_color(0, 102, 204)  # Azul
+        pdf.set_text_color(255, 255, 255)  # Texto en blanco
+        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C", fill=True)
+
+        # Línea inferior debajo del título
+        current_y = pdf.get_y()
+        pdf.set_line_width(0.5)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.line(pdf.l_margin, current_y, pdf.w - pdf.r_margin, current_y)
+        pdf.ln(10)
+
+        # Sección: Entrevista (Contenido de la columna Z)
+        pdf.set_font("DejaVuSans", "", 12)
+        pdf.set_text_color(0, 0, 0)  # Preguntas en negro
+        lines = texto_entrevista.split("\n")
+        for line in lines:
+            pdf.set_x(pdf.l_margin)
+            if ":" in line:
+                parts = line.split(":", 1)
+                pregunta = parts[0].strip() + ":"
+                respuesta = parts[1].strip()
+
+                # Imprimir pregunta en negro
+                pdf.multi_cell(0, 8, pregunta)
+                pdf.ln(1)
+
+                # Imprimir respuesta con bullet:
+                bullet = "•"
+                pdf.set_font("DejaVuSans", "", 16)  # Fuente grande para bullet
+                bullet_width = pdf.get_string_width(bullet + " ")
+                pdf.set_x(pdf.l_margin)
+                pdf.set_text_color(0, 102, 204)  # Respuestas en azul
+                pdf.cell(bullet_width, 8, bullet + " ", ln=0)
+                pdf.set_font("DejaVuSans", "", 12)
+                pdf.cell(0, 8, respuesta, ln=1)
+                pdf.ln(4)
+                # Volver a establecer el color para la siguiente pregunta
+                pdf.set_text_color(0, 0, 0)
+            else:
+                # Si la línea no contiene ":", se imprime tal cual
+                pdf.multi_cell(0, 8, line)
+                pdf.ln(4)
+        
+        pdf.ln(5)
+        
         # Sección: Referencias
         pdf.set_font("DejaVuSans", "B", 14)
         pdf.set_text_color(0, 102, 204)
         pdf.cell(0, 10, "Referencias", ln=True)
         pdf.ln(3)
-
-        # Referencias laborales (columna AE)
+        
+        # Referencias Laborales (columna AE)
         pdf.set_font("DejaVuSans", "B", 12)
         pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 8, "Referencias Laborales:", ln=True)
         pdf.set_font("DejaVuSans", "", 12)
         if ref_laborales:
+            pdf.set_text_color(0, 102, 204)
             pdf.multi_cell(0, 8, ref_laborales)
         else:
+            pdf.set_text_color(0, 0, 0)
             pdf.cell(0, 8, "No hay referencias laborales.", ln=True)
         pdf.ln(5)
-
-        # Referencias familiares (columna AF)
+        
+        # Referencias Familiares (columna AF)
         pdf.set_font("DejaVuSans", "B", 12)
         pdf.cell(0, 8, "Referencias Familiares:", ln=True)
         pdf.set_font("DejaVuSans", "", 12)
         if ref_familiares:
+            pdf.set_text_color(0, 102, 204)
             pdf.multi_cell(0, 8, ref_familiares)
         else:
+            pdf.set_text_color(0, 0, 0)
             pdf.cell(0, 8, "No hay referencias familiares.", ln=True)
         pdf.ln(5)
 
@@ -1854,6 +1982,7 @@ def generar_pdf_entrevista(fila_index):
             pdf_bytes = pdf_output
         memory_file = io.BytesIO(pdf_bytes)
         memory_file.seek(0)
+        
         return send_file(
             memory_file,
             mimetype="application/pdf",
@@ -1862,7 +1991,6 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
-
 
 
 from datetime import datetime
