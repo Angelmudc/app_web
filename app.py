@@ -49,6 +49,8 @@ from flask import Flask
 from dotenv import load_dotenv
 load_dotenv()  # Carga las variables definidas en el archivo .env
 
+from flask_wtf import CSRFProtect
+
 # Configuración de la API de Google Sheets
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -81,6 +83,8 @@ cloudinary.config(
 # Configuración básica de Flask
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+
+csrf = CSRFProtect(app)  # Esto protege todas las rutas POST automáticamente
 
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
@@ -753,12 +757,12 @@ def buscar():
     candidata_detalles = None
     mensaje = None
 
-    # Capturar parámetros
-    busqueda_input = request.form.get('busqueda', '').strip().lower()  # Para POST (búsqueda)
-    candidata_param = request.args.get('candidata', '').strip()        # Para GET (ver detalles)
+    # Capturar parámetros: para POST (búsqueda) y para GET (ver detalles)
+    busqueda_input = request.form.get('busqueda', '').strip().lower()
+    candidata_param = request.args.get('candidata', '').strip()
 
     try:
-        # 1) Cargar siempre los datos de la hoja
+        # Cargar los datos de la hoja (columnas B a O)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!B:O"
@@ -769,14 +773,12 @@ def buscar():
             return render_template('buscar.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
 
-        # 2) Si hay término de búsqueda (POST), filtrar resultados
+        # Si se envía un término de búsqueda (POST), filtrar resultados
         if busqueda_input:
-            # Ejemplo de filtrado flexible
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
         
-        # 3) Si se pasa un parámetro 'candidata' por GET, cargar sus detalles
+        # Si se pasa un parámetro 'candidata' (GET), cargar sus detalles
         if candidata_param:
-            # Cargar detalles sin requerir busqueda_input
             candidata_detalles = cargar_detalles_candidata(valores, candidata_param)
 
     except Exception as e:
@@ -784,6 +786,7 @@ def buscar():
         return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
 
     return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+
 
 
 
