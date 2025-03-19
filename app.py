@@ -44,8 +44,21 @@ import os
 
 from flask import send_file
 
+from flask import Flask
+from flask_wtf.csrf import CSRFProtect
+
 from dotenv import load_dotenv
 load_dotenv()  # Carga las variables definidas en el archivo .env
+
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired
+
+class LoginForm(FlaskForm):
+    usuario = StringField("Usuario", validators=[DataRequired()])
+    clave = PasswordField("Contraseña", validators=[DataRequired()])
+    submit = SubmitField("Entrar")
+
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -79,6 +92,8 @@ cloudinary.config(
 # Configuración básica de Flask
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+
+csrf = CSRFProtect(app)  # Esto añade protección CSRF a todas las rutas que reciben POST
 
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
@@ -587,18 +602,27 @@ def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
         print(f"Error al filtrar candidatas: {e}")
         return []
 
+from flask import render_template, request, redirect, url_for, session
+from werkzeug.security import check_password_hash
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    from forms import LoginForm  # O, si lo tienes en app.py, ya estará disponible.
+    form = LoginForm()
     mensaje = ""
-    if request.method == 'POST':
-        usuario = request.form['usuario']
-        clave = request.form['clave']
+    if form.validate_on_submit():
+        usuario = form.usuario.data
+        clave = form.clave.data
+        # Verifica si el usuario existe y la contraseña es correcta.
         if usuario in usuarios and check_password_hash(usuarios[usuario], clave):
             session['usuario'] = usuario
             return redirect(url_for('home'))
         else:
             mensaje = "Usuario o clave incorrectos."
-    return render_template('login.html', mensaje=mensaje)
+    return render_template('login.html', form=form, mensaje=mensaje)
+
+from flask import render_template, request, redirect, url_for, session
+from werkzeug.security import check_password_hash
 
 @app.route('/robots.txt')
 def robots_txt():

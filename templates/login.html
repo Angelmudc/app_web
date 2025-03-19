@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Iniciar Sesión</title>
   <style>
-    /* Variables de colores basados en el logo */
+    /* Tus estilos existentes */
     :root {
       --primary-color: #1A5789;
       --accent-color: #00AECF;
@@ -14,12 +14,7 @@
       --text-color: #343a40;
       --transition-duration: 0.3s;
     }
-    /* Reset básico */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Arial', sans-serif;
       background: var(--background-color);
@@ -31,7 +26,6 @@
       align-items: center;
       min-height: 100vh;
     }
-    /* Contenedor principal */
     .container {
       width: 100%;
       max-width: 400px;
@@ -39,46 +33,17 @@
       padding: 30px;
       border-radius: 15px;
       box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-      animation: fadeIn 0.8s ease-out;
       text-align: center;
     }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    /* Logo */
     .logo {
       max-width: 250px;
       margin: 0 auto 20px;
       display: block;
     }
-    /* Mensaje de bienvenida */
-    .welcome {
-      font-size: 1.2rem;
-      color: var(--primary-color);
-      margin-bottom: 20px;
-    }
-    /* Título principal */
-    h2 {
-      color: var(--primary-color);
-      font-size: 2rem;
-      margin-bottom: 10px;
-      position: relative;
-    }
-    h2::after {
-      content: "";
-      display: block;
-      width: 50px;
-      height: 4px;
-      background: var(--accent-color);
-      margin: 10px auto 0;
-      border-radius: 2px;
-    }
-    /* Formularios */
-    form {
-      margin-top: 20px;
-      animation: fadeIn 1s ease-out;
-    }
+    .welcome { font-size: 1.2rem; color: var(--primary-color); margin-bottom: 20px; }
+    h2 { color: var(--primary-color); font-size: 2rem; margin-bottom: 10px; position: relative; }
+    h2::after { content: ""; display: block; width: 50px; height: 4px; background: var(--accent-color); margin: 10px auto 0; border-radius: 2px; }
+    form { margin-top: 20px; }
     input[type="text"],
     input[type="password"] {
       width: 100%;
@@ -90,10 +55,7 @@
       transition: border-color var(--transition-duration) ease;
     }
     input[type="text"]:focus,
-    input[type="password"]:focus {
-      border-color: var(--accent-color);
-      outline: none;
-    }
+    input[type="password"]:focus { border-color: var(--accent-color); outline: none; }
     button {
       width: 100%;
       padding: 15px;
@@ -107,20 +69,13 @@
       cursor: pointer;
       transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
     }
-    button:hover {
-      background-color: #009bbd;
-      transform: translateY(-3px);
-    }
-    .mensaje {
-      color: #d9534f;
-      font-weight: bold;
-      margin-top: 10px;
-    }
+    button:hover { background-color: #009bbd; transform: translateY(-3px); }
+    .mensaje { color: #d9534f; font-weight: bold; margin-top: 10px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Logo (ajusta la ruta al logo según corresponda) -->
+    <!-- Logo (ajusta la ruta según corresponda) -->
     <img src="/static/logo_nuevo.png" alt="Logo" class="logo">
     <h2>Iniciar Sesión</h2>
     <p class="welcome">¡Bienvenido! Por favor, ingresa tus credenciales para continuar.</p>
@@ -128,9 +83,12 @@
       <p class="mensaje">{{ mensaje }}</p>
     {% endif %}
     <form method="POST" action="/login" autocomplete="off">
-      <input type="text" name="usuario" placeholder="Usuario" required autocomplete="off">
-      <input type="password" name="clave" placeholder="Contraseña" required autocomplete="off">
-      <button type="submit">Entrar</button>
+      {{ form.csrf_token }}
+      {{ form.usuario.label }}<br>
+      {{ form.usuario() }}<br>
+      {{ form.clave.label }}<br>
+      {{ form.clave() }}<br>
+      {{ form.submit() }}
     </form>
   </div>
 </body>
