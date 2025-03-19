@@ -44,8 +44,8 @@ import os
 
 from flask import send_file
 
-
-
+from dotenv import load_dotenv
+load_dotenv()  # Carga las variables definidas en el archivo .env
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -53,12 +53,12 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive.file'
 ]
 
-# Verifica que CLAVE1_JSON está cargando correctamente
+# Cargar credenciales y otros datos desde variables de entorno
 clave1_json = os.environ.get("CLAVE1_JSON")
 if not clave1_json:
     raise ValueError("❌ ERROR: La variable de entorno CLAVE1_JSON no está configurada correctamente.")
 
-SPREADSHEET_ID = "1J8cPXScpOCywiJHspSntCo3zPLf7FCOli6vsgSWLNOg"
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 
 clave1 = json.loads(clave1_json)
 credentials = Credentials.from_service_account_info(clave1, scopes=SCOPES)
@@ -69,25 +69,16 @@ service = build('sheets', 'v4', credentials=credentials)
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 sheet = spreadsheet.worksheet("Nueva hoja")
 
+# Configuración de Cloudinary usando variables de entorno
 cloudinary.config(
-    cloud_name="dntyert1y",
-    api_key="146572744812483",
-    api_secret="huBvPbEs1oE5dSJ62FNej_NX-tI"
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET")
 )
-
-
-try:
-    resultado = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID,
-        range="Nueva hoja!A1:Z100"
-    ).execute()
-    print("✅ Conexión exitosa a Google Sheets. Datos obtenidos:", resultado)
-except Exception as e:
-    print("❌ Error conectando a Google Sheets:", e)
 
 # Configuración básica de Flask
 app = Flask(__name__)
-app.secret_key = "clave_secreta_segura"  # Asegúrate de que esta clave sea robusta y esté en una variable de entorno
+app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
