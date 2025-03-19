@@ -37,6 +37,15 @@ from flask import render_template
 from werkzeug.security import generate_password_hash
 from flask import Flask, render_template, request, redirect, url_for, session
 
+from flask import Flask, render_template, request, redirect, url_for, session, send_file
+from fpdf import FPDF
+import io
+import os
+
+from flask import send_file
+
+
+
 
 # Configuración de la API de Google Sheets
 SCOPES = [
@@ -1814,11 +1823,6 @@ def generar_pdf_entrevista(fila_index):
         pdf.cell(0, 8, "Entrevista:", ln=True)
         pdf.ln(2)
         lines = texto_entrevista.split("\n")
-       
-from flask import send_file
-from fpdf import FPDF
-import io
-import os
 
 def generar_pdf_entrevista(fila_index):
     """
