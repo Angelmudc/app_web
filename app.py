@@ -759,10 +759,10 @@ def buscar():
     candidata_param = request.args.get('candidata', '').strip()
 
     try:
-        # Cargar los datos de la hoja (columnas B a O)
+        # Cargar los datos de la hoja: usamos "A:O" en lugar de "B:O"
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"
+            range="Nueva hoja!A:O"
         ).execute()
         valores = hoja.get("values", [])
 
@@ -772,6 +772,7 @@ def buscar():
 
         # Si se envía un término de búsqueda (POST), filtrar resultados
         if busqueda_input:
+            # La función filtrar_por_busqueda espera que el nombre esté en el índice 1 (columna B)
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
         
         # Si se pasa un parámetro 'candidata' (GET), cargar sus detalles
@@ -783,6 +784,7 @@ def buscar():
         return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
 
     return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+
 
 
 
