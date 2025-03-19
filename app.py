@@ -50,16 +50,6 @@ from flask_wtf.csrf import CSRFProtect
 from dotenv import load_dotenv
 load_dotenv()  # Carga las variables definidas en el archivo .env
 
-from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField
-from wtforms.validators import DataRequired
-
-class LoginForm(FlaskForm):
-    usuario = StringField("Usuario", validators=[DataRequired()])
-    clave = PasswordField("Contraseña", validators=[DataRequired()])
-    submit = SubmitField("Entrar")
-
-
 # Configuración de la API de Google Sheets
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',

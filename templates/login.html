@@ -4,92 +4,82 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Iniciar Sesión</title>
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+  <!-- Font Awesome para íconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css">
   <style>
-    /* Tus estilos existentes */
-    :root {
-      --primary-color: #1A5789;
-      --accent-color: #00AECF;
-      --secondary-color: #ffffff;
-      --background-color: #e8f6fa;
-      --text-color: #343a40;
-      --transition-duration: 0.3s;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
+      background: linear-gradient(120deg, #fdfbfb, #ebedee);
       font-family: 'Arial', sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      line-height: 1.6;
-      padding: 20px;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
+      height: 100vh;
     }
-    .container {
-      width: 100%;
-      max-width: 400px;
-      background: var(--secondary-color);
-      padding: 30px;
+    .card {
+      border: none;
       border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+      box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    .card-header {
+      background: #1A5789;
+      color: #fff;
+      border-top-left-radius: 15px;
+      border-top-right-radius: 15px;
       text-align: center;
+      padding: 20px;
+    }
+    .card-body {
+      padding: 30px;
+    }
+    .form-control {
+      border-radius: 10px;
+    }
+    .btn-primary {
+      background: #00AECF;
+      border: none;
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .btn-primary:hover {
+      background: #009bbd;
     }
     .logo {
-      max-width: 250px;
-      margin: 0 auto 20px;
-      display: block;
+      width: 100px;
+      margin-bottom: 20px;
     }
-    .welcome { font-size: 1.2rem; color: var(--primary-color); margin-bottom: 20px; }
-    h2 { color: var(--primary-color); font-size: 2rem; margin-bottom: 10px; position: relative; }
-    h2::after { content: ""; display: block; width: 50px; height: 4px; background: var(--accent-color); margin: 10px auto 0; border-radius: 2px; }
-    form { margin-top: 20px; }
-    input[type="text"],
-    input[type="password"] {
-      width: 100%;
-      padding: 15px;
-      margin: 10px 0;
-      border: 2px solid var(--primary-color);
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color var(--transition-duration) ease;
-    }
-    input[type="text"]:focus,
-    input[type="password"]:focus { border-color: var(--accent-color); outline: none; }
-    button {
-      width: 100%;
-      padding: 15px;
-      margin: 20px 0;
-      border: none;
-      border-radius: 8px;
-      background-color: var(--accent-color);
-      color: var(--secondary-color);
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    button:hover { background-color: #009bbd; transform: translateY(-3px); }
-    .mensaje { color: #d9534f; font-weight: bold; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- Logo (ajusta la ruta según corresponda) -->
-    <img src="/static/logo_nuevo.png" alt="Logo" class="logo">
-    <h2>Iniciar Sesión</h2>
-    <p class="welcome">¡Bienvenido! Por favor, ingresa tus credenciales para continuar.</p>
-    {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
-    {% endif %}
-    <form method="POST" action="/login" autocomplete="off">
-      {{ form.csrf_token }}
-      {{ form.usuario.label }}<br>
-      {{ form.usuario() }}<br>
-      {{ form.clave.label }}<br>
-      {{ form.clave() }}<br>
-      {{ form.submit() }}
-    </form>
+  <div class="card" style="width: 100%; max-width: 400px;">
+    <div class="card-header">
+      <img src="/static/logo_nuevo.png" alt="Logo" class="logo">
+      <h3>Iniciar Sesión</h3>
+    </div>
+    <div class="card-body">
+      {% if mensaje %}
+        <div class="alert alert-danger" role="alert">
+          {{ mensaje }}
+        </div>
+      {% endif %}
+      <form method="POST" action="/login" autocomplete="off">
+        {{ form.csrf_token }}
+        <div class="mb-3">
+          {{ form.usuario.label(class="form-label") }}
+          {{ form.usuario(class="form-control", placeholder="Usuario") }}
+        </div>
+        <div class="mb-3">
+          {{ form.clave.label(class="form-label") }}
+          {{ form.clave(class="form-control", placeholder="Contraseña") }}
+        </div>
+        <div class="d-grid">
+          {{ form.submit(class="btn btn-primary") }}
+        </div>
+      </form>
+    </div>
   </div>
+  <!-- Bootstrap JS (opcional) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
