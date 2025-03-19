@@ -84,8 +84,6 @@ cloudinary.config(
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 
-csrf = CSRFProtect(app)  # Esto añade protección CSRF a todas las rutas que reciben POST
-
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
     "angel": generate_password_hash("0000"),
@@ -752,7 +750,6 @@ def buscar_candidata():
     return render_template('buscar_candidata.html', resultados=resultados, mensaje=mensaje)
 
 @app.route('/buscar', methods=['GET', 'POST'])
-@csrf.exempt
 def buscar():
     resultados = []
     candidata_detalles = None
