@@ -612,9 +612,6 @@ def login():
             mensaje = "Usuario o clave incorrectos."
     return render_template('login.html', form=form, mensaje=mensaje)
 
-from flask import render_template, request, redirect, url_for, session
-from werkzeug.security import check_password_hash
-
 @app.route('/robots.txt')
 def robots_txt():
     return send_from_directory(app.static_folder, "robots.txt")
