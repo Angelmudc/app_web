@@ -45,7 +45,6 @@ import os
 from flask import send_file
 
 from flask import Flask
-from flask_wtf.csrf import CSRFProtect
 
 from dotenv import load_dotenv
 load_dotenv()  # Carga las variables definidas en el archivo .env
@@ -752,11 +751,6 @@ def buscar_candidata():
             mensaje = f"❌ Error al buscar: {str(e)}"
 
     return render_template('buscar_candidata.html', resultados=resultados, mensaje=mensaje)
-
-
-
-
-from flask_wtf.csrf import csrf_exempt
 
 @app.route('/buscar', methods=['GET', 'POST'])
 @csrf_exempt
