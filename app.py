@@ -199,18 +199,19 @@ def buscar_candidata(busqueda):
 def filtrar_por_busqueda(filas, termino):
     resultados = []
     termino = termino.lower()
-    for index, fila in enumerate(filas, start=2):  # Considerando que la primera fila es encabezado
+    for index, fila in enumerate(filas, start=2):  # omitiendo encabezado
         if len(fila) > 1:
-            nombre = fila[1].strip().lower()  # Se asume que el nombre está en la columna B (índice 1)
-            if termino in nombre:
+            nombre = fila[1].strip().lower()  # Se asume que el nombre está en la columna B
+            cedula = fila[14].strip().lower() if len(fila) > 14 else ""
+            if termino in nombre or termino in cedula:
                 resultados.append({
                     'fila_index': index,
                     'nombre': fila[1],
                     'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'ciudad': fila[4] if len(fila) > 4 else "No especificado",
                     'telefono': fila[3] if len(fila) > 3 else "No especificado",
                 })
     return resultados
+
 
 def actualizar_registro(fila_index, usuario_actual):
     try:
@@ -755,39 +756,31 @@ def buscar():
     mensaje = None
 
     # Capturar parámetros
-    busqueda_input = request.form.get('busqueda', '').strip().lower()  # Para POST (búsqueda)
-    candidata_param = request.args.get('candidata', '').strip()        # Para GET (ver detalles)
+    busqueda_input = request.form.get('busqueda', '').strip().lower()
+    print("Búsqueda recibida:", busqueda_input)  # Depuración
+
+    candidata_param = request.args.get('candidata', '').strip()
 
     try:
-        # 1) Cargar siempre los datos de la hoja
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!B:O"
         ).execute()
         valores = hoja.get("values", [])
-
         if not valores or len(valores) < 2:
             return render_template('buscar.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
-
-        # 2) Si hay término de búsqueda (POST), filtrar resultados
         if busqueda_input:
-            # Ejemplo de filtrado flexible
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
-        
-        # 3) Si se pasa un parámetro 'candidata' por GET, cargar sus detalles
+            print("Resultados de búsqueda:", resultados)  # Depuración
         if candidata_param:
-            # Cargar detalles sin requerir busqueda_input
             candidata_detalles = cargar_detalles_candidata(valores, candidata_param)
-
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
+        print(mensaje)
         return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
 
     return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
-
-
-
 
 
 @app.route('/editar', methods=['GET', 'POST'])
