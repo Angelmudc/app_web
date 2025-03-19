@@ -5,86 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Referencias de la Candidata</title>
   <style>
-    body {
-      font-family: 'Arial', sans-serif;
-      background: #e8f6fa;
-      padding: 20px;
-    }
-    .container {
-      max-width: 900px;
-      margin: 40px auto;
-      background: #fff;
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-    }
-    h2, h3 {
-      text-align: center;
-      color: #1A5789;
-    }
-    form {
-      margin: 20px 0;
-    }
-    input[type="text"], textarea {
-      width: 100%;
-      padding: 10px;
-      margin: 10px 0;
-      border: 2px solid #1A5789;
-      border-radius: 8px;
-      font-size: 1rem;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
-      background-color: #00AECF;
-      border: none;
-      border-radius: 8px;
-      color: #fff;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: background-color 0.3s, transform 0.3s;
-    }
-    button:hover {
-      background-color: #009bbd;
-      transform: translateY(-3px);
-    }
-    .mensaje {
-      text-align: center;
-      color: #d9534f;
-      font-weight: bold;
-    }
-    .resultados-section, .detalles-section {
-      margin-top: 30px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      padding: 10px;
-      border: 1px solid #ddd;
-      text-align: center;
-    }
-    .ver-detalles {
-      background-color: #1A5789;
-      color: #fff;
-      padding: 5px 10px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .volver {
-      display: block;
-      margin: 20px auto;
-      text-align: center;
-      padding: 10px;
-      background-color: #1A5789;
-      color: #fff;
-      text-decoration: none;
-      border-radius: 8px;
-      width: 150px;
-    }
+    body { font-family: Arial, sans-serif; background: #e8f6fa; padding: 20px; }
+    .container { max-width: 900px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+    h2, h3 { text-align: center; color: #1A5789; }
+    form { margin: 20px 0; }
+    input[type="text"], textarea { width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #1A5789; border-radius: 8px; font-size: 1rem; }
+    button { width: 100%; padding: 10px; background-color: #00AECF; border: none; border-radius: 8px; color: #fff; font-size: 1rem; cursor: pointer; transition: background-color 0.3s, transform 0.3s; }
+    button:hover { background-color: #009bbd; transform: translateY(-3px); }
+    .mensaje { text-align: center; color: #d9534f; font-weight: bold; }
+    .resultados-section, .detalles-section { margin-top: 30px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+    .ver-detalles { background-color: #1A5789; color: #fff; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; }
+    .volver { display: block; margin: 20px auto; text-align: center; padding: 10px; background-color: #1A5789; color: #fff; text-decoration: none; border-radius: 8px; width: 150px; }
   </style>
 </head>
 <body>
@@ -119,7 +52,7 @@
                 <td>{{ candidata.cedula }}</td>
                 <td>{{ candidata.telefono }}</td>
                 <td>
-                  <form action="/referencias" method="GET">
+                  <form method="GET" action="/referencias">
                     <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
                     <button class="ver-detalles" type="submit">Ver Detalles</button>
                   </form>
@@ -139,9 +72,10 @@
         <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
         
         <h3>Editar Referencias</h3>
-        <form method="POST" action="/referencias?candidata={{ candidata.fila_index }}">
+        <form method="POST" action="/referencias">
+          <!-- Campo oculto para conservar el parámetro candidata -->
+          <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
           <label for="referencias_laborales"><strong>Referencias Laborales:</strong></label>
-          <!-- Se aumenta el número de filas para dar más espacio -->
           <textarea name="referencias_laborales" id="referencias_laborales" rows="6" placeholder="Ingrese las referencias laborales">{{ candidata.referencias_laborales }}</textarea>
           
           <label for="referencias_familiares"><strong>Referencias Familiares:</strong></label>
