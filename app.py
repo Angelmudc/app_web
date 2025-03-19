@@ -735,36 +735,83 @@ def buscar_candidata():
 def buscar():
     resultados = []
     candidata_detalles = None
-    mensaje = ""
-    
-    # Obtener el término de búsqueda (POST) y el parámetro para ver detalles (GET)
+    mensaje = None
+
+    # 1) Capturar lo que se escribe en el formulario
     busqueda_input = request.form.get('busqueda', '').strip().lower()
+
+    # 2) Si vienen parámetros por GET (por ejemplo, ?candidata=2)
     candidata_param = request.args.get('candidata', '').strip()
 
     try:
-        # Cargar los datos de la hoja (columnas B a O)
+        # Cargar las columnas B→O (índices 0→13 en cada fila)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"
+            range="Nueva hoja!B:O"  # Asegúrate de que B→O sean las columnas que quieres
         ).execute()
-        valores = hoja.get("values", [])
-        if not valores or len(valores) < 1:
-            return render_template('buscar.html', resultados=[], candidata=None,
+        valores = hoja.get("values", [])  # 'valores[0]' será la fila de encabezados
+
+        if not valores or len(valores) < 2:
+            return render_template('buscar.html', 
+                                   resultados=[],
+                                   candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
 
-        # Si se envía un término de búsqueda, filtrar los resultados
+        # 3) Si hay término de búsqueda por POST, filtrar
         if busqueda_input:
-            resultados = filtrar_por_busqueda(valores, busqueda_input)
-        
-        # Si se pasa un parámetro 'candidata', cargar sus detalles
+            # valores[1:] omite la fila 0 (encabezado)
+            for index, row in enumerate(valores[1:], start=2):
+                # row[0] = columna B, row[1] = col C, ..., row[13] = col O (si existe)
+                if len(row) > 0:
+                    nombre_lower = row[0].strip().lower()  # B
+                    if busqueda_input in nombre_lower:
+                        resultados.append({
+                            'fila_index': index,           # la fila real en la hoja
+                            'nombre': row[0],             # B
+                            'cedula': row[13] if len(row) > 13 else "",
+                            'telefono': row[2] if len(row) > 2 else "",
+                            'direccion': row[3] if len(row) > 3 else "",
+                            # Agrega más campos si quieres mostrar en la tabla
+                        })
+
+        # 4) Si se pasa ?candidata=XX por GET, cargar detalles de esa fila
         if candidata_param:
-            candidata_detalles = cargar_detalles_candidata(valores, candidata_param)
+            try:
+                fila_index = int(candidata_param)
+                # fila_index = 2 → corresponde a valores[1]
+                # fila_index = 3 → corresponde a valores[2], etc.
+                # Por eso restamos 1
+                row = valores[fila_index - 1]  # OJO: -1 porque 'valores[0]' es encabezado
+                # Construimos el diccionario con TODAS las columnas
+                candidata_detalles = {
+                    'fila_index': fila_index,
+                    'nombre': row[0] if len(row) > 0 else "",
+                    'edad': row[1] if len(row) > 1 else "",
+                    'telefono': row[2] if len(row) > 2 else "",
+                    'direccion': row[3] if len(row) > 3 else "",
+                    'modalidad': row[4] if len(row) > 4 else "",
+                    'rutas': row[5] if len(row) > 5 else "",
+                    'empleo_anterior': row[6] if len(row) > 6 else "",
+                    'anos_experiencia': row[7] if len(row) > 7 else "",
+                    'areas_experiencia': row[8] if len(row) > 8 else "",
+                    'sabe_planchar': row[9] if len(row) > 9 else "",
+                    'referencias_laborales': row[10] if len(row) > 10 else "",
+                    'referencias_familiares': row[11] if len(row) > 11 else "",
+                    'acepta_porcentaje': row[12] if len(row) > 12 else "",
+                    'cedula': row[13] if len(row) > 13 else "",
+                }
+            except (ValueError, IndexError):
+                mensaje = "La fila indicada no es válida."
 
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
 
-    return render_template('buscar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+    # Finalmente renderizamos la plantilla
+    return render_template('buscar.html', 
+                           resultados=resultados, 
+                           candidata=candidata_detalles, 
+                           mensaje=mensaje)
 
 
 def filtrar_por_busqueda(filas, termino):
