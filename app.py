@@ -1814,10 +1814,10 @@ def generar_pdf_entrevista(fila_index):
         pdf.cell(0, 8, "Entrevista:", ln=True)
         pdf.ln(2)
         lines = texto_entrevista.split("\n")
-        for line from flask import send_file
-from fpdf import FPDF
-import io
-import os
+        from flask import send_file
+        from fpdf import FPDF
+        import io
+        import os
 
 def generar_pdf_entrevista(fila_index):
     """
