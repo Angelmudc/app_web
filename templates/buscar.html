@@ -5,206 +5,67 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buscar Candidata</title>
   <style>
-    /* Variables de colores */
-    :root {
-      --primary-color: #1A5789;      /* Azul intenso */
-      --accent-color: #00AECF;       /* Turquesa para acentos */
-      --secondary-color: #ffffff;    /* Blanco para fondos */
-      --background-color: #e8f6fa;   /* Fondo suave */
-      --text-color: #343a40;         /* Gris oscuro */
-      --transition-duration: 0.3s;
-    }
-    /* Reset y estilos generales */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      font-family: Arial, sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      line-height: 1.6;
-      padding: 20px;
-    }
-    .container {
-      max-width: 900px;
-      margin: 40px auto;
-      background: var(--secondary-color);
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-      animation: fadeIn 0.8s ease-out;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    h2 {
-      text-align: center;
-      color: var(--primary-color);
-      font-size: 2rem;
-      margin-bottom: 20px;
-      position: relative;
-    }
-    h2::after {
-      content: "";
-      display: block;
-      width: 50px;
-      height: 4px;
-      background: var(--accent-color);
-      margin: 10px auto 0;
-      border-radius: 2px;
-    }
-    form {
-      margin-top: 20px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      animation: fadeIn 1s ease-out;
-    }
-    input[type="text"] {
-      flex: 1;
-      padding: 15px;
-      border: 2px solid var(--primary-color);
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color var(--transition-duration) ease;
-      min-width: 250px;
-    }
-    input[type="text"]:focus {
-      border-color: var(--accent-color);
-      outline: none;
-    }
-    button {
-      padding: 15px 25px;
-      border: none;
-      border-radius: 8px;
-      background-color: var(--accent-color);
-      color: var(--secondary-color);
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    button:hover {
-      background-color: #009bbd;
-      transform: translateY(-3px);
-    }
-    .mensaje {
-      text-align: center;
-      color: #d9534f;
-      font-weight: bold;
-      margin-top: 10px;
-      animation: fadeIn 1s ease-out;
-    }
-    .resultados-section {
-      margin-top: 30px;
-      animation: fadeIn 1s ease-out;
-    }
-    .table-container {
-      overflow-x: auto;
-      margin-top: 15px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--secondary-color);
-    }
-    th, td {
-      padding: 12px;
-      border: 1px solid #ddd;
-      text-align: center;
-      transition: background-color var(--transition-duration) ease;
-    }
-    th {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-weight: bold;
-    }
-    tr:hover {
-      background-color: #f1f1f1;
-    }
-    .ver-detalles {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-weight: bold;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    .ver-detalles:hover {
-      background-color: #153d5e;
-      transform: scale(1.05);
-    }
+    /* Estilos básicos, puedes ajustarlos a tu diseño */
+    body { font-family: Arial, sans-serif; background: #e8f6fa; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    h2 { text-align: center; color: #1A5789; }
+    input[type="text"] { width: 100%; padding: 10px; margin: 10px 0; }
+    button { padding: 10px 20px; background: #00AECF; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #009bbd; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+    .mensaje { color: red; text-align: center; }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>Buscar Candidata</h2>
-    <!-- Formulario de búsqueda -->
-    <form id="searchForm" method="POST" action="/buscar">
-      <input type="text" name="busqueda" placeholder="Ingrese el nombre o cédula" required>
+    <form method="POST" action="/buscar">
+      <input type="text" name="busqueda" placeholder="Ingrese el nombre" required>
       <button type="submit">Buscar</button>
     </form>
-
     {% if mensaje %}
       <p class="mensaje">{{ mensaje }}</p>
     {% endif %}
-
+    
     {% if resultados %}
-      <div class="resultados-section">
-        <h3>Resultados Encontrados:</h3>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Cédula</th>
-                <th>Teléfono</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for candidata in resultados %}
-              <tr>
-                <td>{{ candidata.nombre }}</td>
-                <td>{{ candidata.cedula }}</td>
-                <td>{{ candidata.telefono }}</td>
-                <td>
-                  <form method="GET" action="/buscar">
-                    <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                    <button type="submit" class="ver-detalles">Ver Detalles</button>
-                  </form>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <h3>Resultados Encontrados:</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>N° Fila</th>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Ciudad</th>
+            <th>Cédula</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for candidata in resultados %}
+          <tr>
+            <td>{{ candidata.fila_index }}</td>
+            <td>{{ candidata.nombre }}</td>
+            <td>{{ candidata.telefono }}</td>
+            <td>{{ candidata.ciudad }}</td>
+            <td>{{ candidata.cedula }}</td>
+            <td>
+              <a href="/buscar?candidata={{ candidata.fila_index }}">Ver Detalles</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     {% endif %}
 
     {% if candidata %}
-      <div class="resultados-section">
-        <h3>Detalles de la Candidata:</h3>
-        <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
-        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
-        <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
-      </div>
+      <h3>Detalles de la Candidata:</h3>
+      <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
+      <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
+      <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
     {% endif %}
+    
+    <p><a href="/">Volver al inicio</a></p>
   </div>
-
-  <script>
-    document.getElementById('searchForm').addEventListener('submit', function() {
-      var submitButton = this.querySelector('button[type="submit"]');
-      submitButton.disabled = true;
-      submitButton.innerText = 'Buscando...';
-    });
-  </script>
 </body>
 </html>
