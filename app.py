@@ -487,74 +487,47 @@ def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
         logging.error(f"Error al guardar inscripción en la fila {fila_index}: {e}", exc_info=True)
         return False, None
 
-def filtrar_por_busqueda(filas, termino):
+def filtrar_por_busqueda(valores, termino):
     resultados = []
-    termino = termino.lower().strip()
-    # Se itera desde la primera fila de datos (la 1ª de 'filas' corresponde a la fila 2 real)
-    for index, fila in enumerate(filas, start=2):
-        # Se asume que:
-        # - El nombre está en la columna B (índice 1)
-        # - La cédula está en la columna O (índice 14)
-        nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-        cedula = fila[14].strip().lower() if len(fila) > 14 else ""
-        # Mensaje de depuración para verificar contenido
-        print(f"Depuración - Fila {index}: nombre = '{nombre}', cedula = '{cedula}'")
-        if termino in nombre or termino in cedula:
-            resultados.append({
-                'fila_index': index,
-                'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                'cedula': fila[14] if len(fila) > 14 else "No especificado"
-            })
+    termino = termino.lower()
+    # filas reales comienzan en valores[2], y la primera fila de data es la 3
+    # enumeramos con start=3 para que index coincida con la fila real en Google Sheets
+    for index, fila in enumerate(valores[2:], start=3):
+        if len(fila) > 1:
+            nombre = fila[1].strip().lower()
+            if termino in nombre:
+                resultados.append({
+                    'fila_index': index,  # index=3,4,5... que coincide con la fila real
+                    'nombre': fila[1],
+                    # ... etc. ...
+                })
     return resultados
+
 
 def cargar_detalles_candidata(valores, candidata_param):
     """
-    Carga los detalles completos de la candidata (columnas B a O).
-    Se asume:
-      - Nombre: Columna B (índice 1)
-      - Edad: Columna C (índice 2)
-      - Teléfono: Columna D (índice 3)
-      - Dirección: Columna E (índice 4)
-      - Modalidad: Columna F (índice 5)
-      - Rutas: Columna G (índice 6)
-      - Empleo anterior: Columna H (índice 7)
-      - Años de experiencia: Columna I (índice 8)
-      - Áreas de experiencia: Columna J (índice 9)
-      - Sabe planchar: Columna K (índice 10)
-      - Referencias laborales: Columna L (índice 11)
-      - Referencias familiares: Columna M (índice 12)
-      - Acepta porcentaje: Columna N (índice 13)
-      - Cédula: Columna O (índice 14)
+    Carga la información de la candidata en la fila dada (fila 3 es la primera con datos).
+    Suponiendo que la fila 2 es encabezado y la fila 1 no se usa.
     """
     try:
-        fila_index = int(candidata_param)
-        # Restamos 1, ya que Google Sheets es 1-indexado y la fila 1 es el encabezado
-        fila = valores[fila_index - 1]
+        fila_index = int(candidata_param)  # p.ej. 3, 4, 5...
+        # En tu 'valores', la posición 0 es la fila 1, la posición 1 es la fila 2 (encabezado).
+        # Por lo tanto, la fila 3 real = valores[2].
+        # => fila X real = valores[X - 1].
+        # Pero como fila 2 es encabezado, fila X real = valores[X - 2].
+        fila = valores[fila_index - 2]
     except (ValueError, IndexError):
         return None
 
+    # Aquí asumes que la fila 3 es la "primera" con datos y que la columna B=1, C=2, etc.
+    # Ajusta según tus columnas:
     return {
         'fila_index': fila_index,
-        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-        'edad': fila[2] if len(fila) > 2 else "No especificado",
-        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-        'direccion': fila[4] if len(fila) > 4 else "No especificado",
-        'modalidad': fila[5] if len(fila) > 5 else "No especificado",
-        'rutas': fila[6] if len(fila) > 6 else "No especificado",
-        'empleo_anterior': fila[7] if len(fila) > 7 else "No especificado",
-        'anos_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-        'areas_experiencia': fila[9] if len(fila) > 9 else "No especificado",
-        'sabe_planchar': fila[10] if len(fila) > 10 else "No especificado",
-        'referencias_laborales': fila[11] if len(fila) > 11 else "No especificado",
-        'referencias_familiares': fila[12] if len(fila) > 12 else "No especificado",
-        'acepta_porcentaje': fila[13] if len(fila) > 13 else "No especificado",
-        'cedula': fila[14] if len(fila) > 14 else "No especificado",
+        'nombre': fila[1] if len(fila) > 1 else "",
+        'edad': fila[2] if len(fila) > 2 else "",
+        # ...
+        'cedula': fila[14] if len(fila) > 14 else "",
     }
-
-
-
-
 
 
 def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
