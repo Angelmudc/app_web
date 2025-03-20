@@ -5,44 +5,91 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Referencias de Candidata</title>
   <style>
-    /* Estilos básicos para la página */
+    :root {
+      --primary-color: #1A5789;
+      --accent-color: #00AECF;
+      --secondary-color: #ffffff;
+      --background-color: #e8f6fa;
+      --text-color: #343a40;
+      --transition-duration: 0.3s;
+    }
+    /* Reset básico */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
     body {
-      font-family: Arial, sans-serif;
-      background-color: #e8f6fa;
-      color: #343a40;
-      margin: 20px;
+      font-family: 'Arial', sans-serif;
+      background: var(--background-color);
+      color: var(--text-color);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
     }
     .container {
-      max-width: 900px;
-      margin: 0 auto;
-      background-color: #ffffff;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 800px;
+      background: var(--secondary-color);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      margin-top: 20px;
     }
-    h1, h2, h3 {
+    h2 {
       text-align: center;
+      color: var(--primary-color);
+      margin-bottom: 20px;
+      position: relative;
     }
-    form {
+    h2::after {
+      content: "";
+      display: block;
+      width: 50px;
+      height: 4px;
+      background: var(--accent-color);
+      margin: 10px auto 0;
+      border-radius: 2px;
+    }
+    form.search-form {
+      display: flex;
+      flex-direction: row;
+      gap: 10px;
       margin-bottom: 20px;
     }
     input[type="text"] {
-      width: 80%;
+      flex: 1;
       padding: 10px;
-      margin: 5px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      border: 2px solid var(--primary-color);
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color var(--transition-duration);
+    }
+    input[type="text"]:focus {
+      border-color: var(--accent-color);
+      outline: none;
     }
     button {
-      padding: 10px 15px;
-      background-color: #1A5789;
-      color: #fff;
+      padding: 10px 20px;
       border: none;
-      border-radius: 4px;
+      border-radius: 8px;
+      background-color: var(--accent-color);
+      color: var(--secondary-color);
+      font-size: 1rem;
+      font-weight: bold;
       cursor: pointer;
+      transition: background-color var(--transition-duration);
     }
     button:hover {
-      background-color: #153d5e;
+      background-color: #009bbd;
+    }
+    .mensaje {
+      text-align: center;
+      color: #d9534f;
+      margin-bottom: 20px;
+      font-weight: bold;
     }
     table {
       width: 100%;
@@ -50,104 +97,133 @@
       margin-top: 20px;
     }
     th, td {
-      padding: 10px;
-      border: 1px solid #ccc;
+      padding: 12px;
+      border: 1px solid #ddd;
       text-align: center;
     }
-    .mensaje {
-      color: #d9534f;
-      text-align: center;
-      font-weight: bold;
-      margin-top: 10px;
+    th {
+      background-color: var(--primary-color);
+      color: var(--secondary-color);
     }
-    .detalle {
-      margin: 20px 0;
-      padding: 10px;
-      border: 1px solid #ccc;
+    tr:nth-child(even) {
+      background-color: #f8f8f8;
+    }
+    .ver-detalles {
+      background-color: var(--primary-color);
+      color: var(--secondary-color);
+      padding: 8px 12px;
+      border: none;
       border-radius: 4px;
+      cursor: pointer;
+      transition: background-color var(--transition-duration);
     }
-    .detalle label {
-      display: inline-block;
-      width: 180px;
-      text-align: right;
-      margin-right: 10px;
-      font-weight: bold;
+    .ver-detalles:hover {
+      background-color: #153d5e;
     }
-    .detalle input[type="text"] {
-      width: 60%;
+    .detalles {
+      margin-top: 30px;
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border-left: 6px solid var(--primary-color);
+    }
+    .detalles p {
+      margin-bottom: 8px;
+    }
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid var(--primary-color);
+      border-radius: 8px;
+      font-size: 1rem;
+      resize: vertical;
+      transition: border-color var(--transition-duration);
+    }
+    textarea:focus {
+      border-color: var(--accent-color);
+      outline: none;
+    }
+    a.volver {
+      display: block;
+      margin: 20px auto 0;
+      text-align: center;
+      padding: 10px;
+      width: 200px;
+      background-color: var(--primary-color);
+      color: var(--secondary-color);
+      text-decoration: none;
+      border-radius: 8px;
+      transition: background-color var(--transition-duration);
+    }
+    a.volver:hover {
+      background-color: #153d5e;
+    }
+    @media (max-width: 600px) {
+      form.search-form {
+        flex-direction: column;
+      }
+      table, th, td, textarea, button {
+        font-size: 0.9rem;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Referencias de Candidata</h1>
-
-    <!-- Formulario de búsqueda -->
-    <form method="POST" action="/referencias">
-      <input type="text" name="busqueda" placeholder="Buscar candidata por nombre..." autofocus>
-      <button type="submit">Buscar</button>
-    </form>
-
-    <!-- Mostrar mensaje si lo hay -->
+    <h2>Referencias de Candidata</h2>
     {% if mensaje %}
       <p class="mensaje">{{ mensaje }}</p>
     {% endif %}
-
-    <!-- Lista de resultados (si no se ha seleccionado una candidata) -->
-    {% if resultados and not candidata %}
-      <h2>Resultados de la Búsqueda</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Fila</th>
-            <th>Nombre</th>
-            <th>Teléfono</th>
-            <th>Cédula</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in resultados %}
-          <tr>
-            <td>{{ item.fila_index }}</td>
-            <td>{{ item.nombre }}</td>
-            <td>{{ item.telefono }}</td>
-            <td>{{ item.cedula }}</td>
-            <td>
-              <!-- Enlace para seleccionar la candidata -->
-              <a href="/referencias?candidata={{ item.fila_index }}">Ver detalles</a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    {% if not candidata %}
+      <!-- Formulario de búsqueda -->
+      <form class="search-form" method="POST" action="/referencias">
+        <input type="text" name="busqueda" placeholder="Ingrese nombre o cédula" required>
+        <button type="submit">Buscar</button>
+      </form>
+      {% if resultados %}
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Cédula</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cand in resultados %}
+              <tr>
+                <td>{{ cand.nombre }}</td>
+                <td>{{ cand.cedula }}</td>
+                <td>
+                  <form method="GET" action="/referencias">
+                    <input type="hidden" name="candidata" value="{{ cand.fila_index }}">
+                    <button type="submit" class="ver-detalles">Ver Detalles</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
     {% endif %}
 
-    <!-- Si ya se seleccionó una candidata, mostrar el formulario para editar las referencias -->
     {% if candidata %}
-      <h2>Editar Referencias</h2>
-      <div class="detalle">
+      <div class="detalles">
+        <h3>Detalles de la Candidata</h3>
         <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
-        <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
         <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
       </div>
       <form method="POST" action="/referencias">
-        <!-- Se pasa el parámetro candidata (fila) oculto -->
         <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-        <div class="detalle">
-          <div>
-            <label for="referencias_laborales">Referencias Laborales:</label>
-            <input type="text" id="referencias_laborales" name="referencias_laborales" value="{{ candidata.referencias_laborales }}">
-          </div>
-          <div style="margin-top: 10px;">
-            <label for="referencias_familiares">Referencias Familiares:</label>
-            <input type="text" id="referencias_familiares" name="referencias_familiares" value="{{ candidata.referencias_familiares }}">
-          </div>
-        </div>
-        <div style="text-align: center;">
-          <button type="submit">Actualizar Referencias</button>
-        </div>
+        <label for="referencias_laborales"><strong>Referencias Laborales:</strong></label>
+        <textarea id="referencias_laborales" name="referencias_laborales" rows="4" placeholder="Ingrese las referencias laborales">{{ candidata.referencias_laborales }}</textarea>
+        <br><br>
+        <label for="referencias_familiares"><strong>Referencias Familiares:</strong></label>
+        <textarea id="referencias_familiares" name="referencias_familiares" rows="4" placeholder="Ingrese las referencias familiares">{{ candidata.referencias_familiares }}</textarea>
+        <br><br>
+        <button type="submit">Guardar Referencias</button>
       </form>
+      <a href="/referencias" class="volver">Volver a Buscar</a>
     {% endif %}
   </div>
 </body>
