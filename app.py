@@ -490,44 +490,37 @@ def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
 def filtrar_por_busqueda(valores, termino):
     resultados = []
     termino = termino.lower()
-    # filas reales comienzan en valores[2], y la primera fila de data es la 3
-    # enumeramos con start=3 para que index coincida con la fila real en Google Sheets
+    # Omitimos las dos primeras filas y enumeramos desde 3
     for index, fila in enumerate(valores[2:], start=3):
         if len(fila) > 1:
-            nombre = fila[1].strip().lower()
+            nombre = fila[1].strip().lower()  # Se asume que el nombre está en la columna B
             if termino in nombre:
                 resultados.append({
-                    'fila_index': index,  # index=3,4,5... que coincide con la fila real
+                    'fila_index': index,  # index = la fila real en la hoja
                     'nombre': fila[1],
-                    # ... etc. ...
+                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
                 })
     return resultados
 
 
+
 def cargar_detalles_candidata(valores, candidata_param):
-    """
-    Carga la información de la candidata en la fila dada (fila 3 es la primera con datos).
-    Suponiendo que la fila 2 es encabezado y la fila 1 no se usa.
-    """
     try:
-        fila_index = int(candidata_param)  # p.ej. 3, 4, 5...
-        # En tu 'valores', la posición 0 es la fila 1, la posición 1 es la fila 2 (encabezado).
-        # Por lo tanto, la fila 3 real = valores[2].
-        # => fila X real = valores[X - 1].
-        # Pero como fila 2 es encabezado, fila X real = valores[X - 2].
+        fila_index = int(candidata_param)  # Por ejemplo, si se selecciona la fila 3, fila_index = 3
+        # La fila 2 es encabezado, por lo que la primera fila de datos es la 3 y se corresponde con valores[1] si la hoja empieza en la fila 2.
+        # Pero en tu caso, si la hoja tiene Fila1 VACÍA, Fila2 = Encabezado y Fila3 = Datos,
+        # entonces para la fila 3 (datos) se debe acceder a valores[3 - 2] = valores[1].
         fila = valores[fila_index - 2]
     except (ValueError, IndexError):
         return None
-
-    # Aquí asumes que la fila 3 es la "primera" con datos y que la columna B=1, C=2, etc.
-    # Ajusta según tus columnas:
     return {
         'fila_index': fila_index,
-        'nombre': fila[1] if len(fila) > 1 else "",
-        'edad': fila[2] if len(fila) > 2 else "",
-        # ...
-        'cedula': fila[14] if len(fila) > 14 else "",
+        'nombre': fila[1] if len(fila) > 1 else "No especificado",
+        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+        'cedula': fila[14] if len(fila) > 14 else "No especificado",
     }
+
 
 
 def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
