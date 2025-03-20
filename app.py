@@ -489,11 +489,16 @@ def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
 
 def filtrar_por_busqueda(filas, termino):
     resultados = []
-    termino = termino.lower()
-    # Se itera desde la fila 2 (ya que la fila 1 es el encabezado)
+    termino = termino.lower().strip()
+    # Se itera desde la primera fila de datos (la 1ª de 'filas' corresponde a la fila 2 real)
     for index, fila in enumerate(filas, start=2):
+        # Se asume que:
+        # - El nombre está en la columna B (índice 1)
+        # - La cédula está en la columna O (índice 14)
         nombre = fila[1].strip().lower() if len(fila) > 1 else ""
         cedula = fila[14].strip().lower() if len(fila) > 14 else ""
+        # Mensaje de depuración para verificar contenido
+        print(f"Depuración - Fila {index}: nombre = '{nombre}', cedula = '{cedula}'")
         if termino in nombre or termino in cedula:
             resultados.append({
                 'fila_index': index,
@@ -515,6 +520,7 @@ def cargar_detalles_candidata(valores, candidata_param):
         'telefono': fila[3] if len(fila) > 3 else "No especificado",
         'cedula': fila[14] if len(fila) > 14 else "No especificado",
     }
+
 
 
 
@@ -2061,13 +2067,13 @@ def referencias():
     candidata = None
     mensaje = None
 
-    # Obtener término de búsqueda desde GET o POST (en minúsculas)
+    # Obtener término de búsqueda desde GET o POST (en minúsculas y sin espacios)
     busqueda_input = (request.args.get('busqueda', '').strip() or request.form.get('busqueda', '').strip()).lower()
     # Obtener el parámetro 'candidata' desde GET o POST
     candidata_param = (request.args.get('candidata', '').strip() or request.form.get('candidata', '').strip())
 
     try:
-        # Se carga el rango completo que incluye columnas A hasta AF
+        # Cargar el rango completo de la hoja (A:AF)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:AF"
@@ -2077,7 +2083,7 @@ def referencias():
             return render_template('referencias.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
         
-        # Si se envía un término de búsqueda y no se ha seleccionado candidata, filtrar resultados
+        # Si se envía un término de búsqueda y NO se ha seleccionado una candidata, filtrar resultados
         if busqueda_input and not candidata_param:
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
             if not resultados:
@@ -2097,7 +2103,7 @@ def referencias():
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('referencias.html', resultados=[], candidata=None, mensaje=mensaje)
     
-    # Si se envía el formulario para actualizar referencias
+    # Si se envía el formulario para actualizar referencias (POST)
     if request.method == 'POST' and candidata_param:
         referencias_laborales = request.form.get('referencias_laborales', '').strip()
         referencias_familiares = request.form.get('referencias_familiares', '').strip()
@@ -2133,7 +2139,6 @@ def referencias():
             mensaje = f"Error al actualizar referencias: {str(e)}"
     
     return render_template('referencias.html', resultados=resultados, candidata=candidata, mensaje=mensaje)
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
