@@ -3,98 +3,152 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Referencias de la Candidata</title>
+  <title>Referencias de Candidata</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #e8f6fa; padding: 20px; }
-    .container { max-width: 900px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
-    h2, h3 { text-align: center; color: #1A5789; }
-    form { margin: 20px 0; }
-    input[type="text"], textarea { width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #1A5789; border-radius: 8px; font-size: 1rem; }
-    button { width: 100%; padding: 10px; background-color: #00AECF; border: none; border-radius: 8px; color: #fff; font-size: 1rem; cursor: pointer; transition: background-color 0.3s, transform 0.3s; }
-    button:hover { background-color: #009bbd; transform: translateY(-3px); }
-    .mensaje { text-align: center; color: #d9534f; font-weight: bold; }
-    .resultados-section, .detalles-section { margin-top: 30px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
-    .ver-detalles { background-color: #1A5789; color: #fff; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; }
-    .volver { display: block; margin: 20px auto; text-align: center; padding: 10px; background-color: #1A5789; color: #fff; text-decoration: none; border-radius: 8px; width: 150px; }
+    /* Estilos básicos para la página */
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #e8f6fa;
+      color: #343a40;
+      margin: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    h1, h2, h3 {
+      text-align: center;
+    }
+    form {
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      width: 80%;
+      padding: 10px;
+      margin: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 10px 15px;
+      background-color: #1A5789;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #153d5e;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ccc;
+      text-align: center;
+    }
+    .mensaje {
+      color: #d9534f;
+      text-align: center;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    .detalle {
+      margin: 20px 0;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .detalle label {
+      display: inline-block;
+      width: 180px;
+      text-align: right;
+      margin-right: 10px;
+      font-weight: bold;
+    }
+    .detalle input[type="text"] {
+      width: 60%;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>Buscar Candidata para Referencias</h2>
-    <!-- Formulario de búsqueda (usa GET para que el término quede en la URL) -->
-    <form id="searchForm" method="GET" action="/referencias">
-      <input type="text" name="busqueda" placeholder="Ingrese el nombre o cédula" required>
-      <button type="submit">🔍 Buscar</button>
+    <h1>Referencias de Candidata</h1>
+
+    <!-- Formulario de búsqueda -->
+    <form method="POST" action="/referencias">
+      <input type="text" name="busqueda" placeholder="Buscar candidata por nombre..." autofocus>
+      <button type="submit">Buscar</button>
     </form>
-    
+
+    <!-- Mostrar mensaje si lo hay -->
     {% if mensaje %}
       <p class="mensaje">{{ mensaje }}</p>
     {% endif %}
-    
-    {% if resultados %}
-      <section class="resultados-section">
-        <h3>Resultados Encontrados:</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Cédula</th>
-              <th>Teléfono</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for candidata in resultados %}
-              <tr>
-                <td>{{ candidata.nombre }}</td>
-                <td>{{ candidata.cedula }}</td>
-                <td>{{ candidata.telefono }}</td>
-                <td>
-                  <form method="GET" action="/referencias">
-                    <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                    <button class="ver-detalles" type="submit">Ver Detalles</button>
-                  </form>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
+
+    <!-- Lista de resultados (si no se ha seleccionado una candidata) -->
+    {% if resultados and not candidata %}
+      <h2>Resultados de la Búsqueda</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Fila</th>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Cédula</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in resultados %}
+          <tr>
+            <td>{{ item.fila_index }}</td>
+            <td>{{ item.nombre }}</td>
+            <td>{{ item.telefono }}</td>
+            <td>{{ item.cedula }}</td>
+            <td>
+              <!-- Enlace para seleccionar la candidata -->
+              <a href="/referencias?candidata={{ item.fila_index }}">Ver detalles</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     {% endif %}
-    
+
+    <!-- Si ya se seleccionó una candidata, mostrar el formulario para editar las referencias -->
     {% if candidata %}
-      <section class="detalles-section">
-        <h3>Detalles de la Candidata:</h3>
+      <h2>Editar Referencias</h2>
+      <div class="detalle">
         <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
-        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
         <p><strong>Teléfono:</strong> {{ candidata.telefono }}</p>
-        
-        <h3>Editar Referencias</h3>
-        <form method="POST" action="/referencias">
-          <!-- Campo oculto para conservar el parámetro candidata -->
-          <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-          <label for="referencias_laborales"><strong>Referencias Laborales:</strong></label>
-          <textarea name="referencias_laborales" id="referencias_laborales" rows="6" placeholder="Ingrese las referencias laborales">{{ candidata.referencias_laborales }}</textarea>
-          
-          <label for="referencias_familiares"><strong>Referencias Familiares:</strong></label>
-          <textarea name="referencias_familiares" id="referencias_familiares" rows="4" placeholder="Ingrese las referencias familiares">{{ candidata.referencias_familiares }}</textarea>
-          
-          <button type="submit">Guardar Referencias</button>
-        </form>
-      </section>
+        <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+      </div>
+      <form method="POST" action="/referencias">
+        <!-- Se pasa el parámetro candidata (fila) oculto -->
+        <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
+        <div class="detalle">
+          <div>
+            <label for="referencias_laborales">Referencias Laborales:</label>
+            <input type="text" id="referencias_laborales" name="referencias_laborales" value="{{ candidata.referencias_laborales }}">
+          </div>
+          <div style="margin-top: 10px;">
+            <label for="referencias_familiares">Referencias Familiares:</label>
+            <input type="text" id="referencias_familiares" name="referencias_familiares" value="{{ candidata.referencias_familiares }}">
+          </div>
+        </div>
+        <div style="text-align: center;">
+          <button type="submit">Actualizar Referencias</button>
+        </div>
+      </form>
     {% endif %}
-    
-    <a href="/" class="volver">🏠 Volver</a>
   </div>
-  
-  <script>
-    document.getElementById('searchForm').addEventListener('submit', function() {
-      var submitButton = this.querySelector('button[type="submit"]');
-      submitButton.disabled = true;
-      submitButton.innerText = 'Buscando...';
-    });
-  </script>
 </body>
 </html>
