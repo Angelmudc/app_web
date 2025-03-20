@@ -28,40 +28,52 @@
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
+      animation: fadeInBody 1s ease-out;
+    }
+    @keyframes fadeInBody {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     .container {
       width: 100%;
-      max-width: 800px;
+      max-width: 900px;
       background: var(--secondary-color);
       padding: 30px;
       border-radius: 15px;
       box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      animation: slideIn 0.8s ease-out;
       margin-top: 20px;
+    }
+    @keyframes slideIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
     }
     h2 {
       text-align: center;
       color: var(--primary-color);
       margin-bottom: 20px;
       position: relative;
+      font-size: 2.2rem;
     }
     h2::after {
       content: "";
       display: block;
-      width: 50px;
-      height: 4px;
+      width: 60px;
+      height: 5px;
       background: var(--accent-color);
       margin: 10px auto 0;
-      border-radius: 2px;
+      border-radius: 3px;
     }
     form.search-form {
       display: flex;
       flex-direction: row;
       gap: 10px;
       margin-bottom: 20px;
+      animation: fadeIn 0.5s ease-out;
     }
     input[type="text"] {
       flex: 1;
-      padding: 10px;
+      padding: 12px;
       border: 2px solid var(--primary-color);
       border-radius: 8px;
       font-size: 1rem;
@@ -72,7 +84,7 @@
       outline: none;
     }
     button {
-      padding: 10px 20px;
+      padding: 12px 20px;
       border: none;
       border-radius: 8px;
       background-color: var(--accent-color);
@@ -80,33 +92,37 @@
       font-size: 1rem;
       font-weight: bold;
       cursor: pointer;
-      transition: background-color var(--transition-duration);
+      transition: background-color var(--transition-duration), transform var(--transition-duration);
     }
     button:hover {
       background-color: #009bbd;
+      transform: translateY(-3px);
     }
     .mensaje {
       text-align: center;
       color: #d9534f;
       margin-bottom: 20px;
       font-weight: bold;
+      animation: fadeIn 0.5s ease-out;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 20px;
+      animation: fadeIn 0.5s ease-out;
     }
     th, td {
       padding: 12px;
       border: 1px solid #ddd;
       text-align: center;
+      transition: background-color var(--transition-duration);
     }
     th {
       background-color: var(--primary-color);
       color: var(--secondary-color);
     }
-    tr:nth-child(even) {
-      background-color: #f8f8f8;
+    tr:hover {
+      background-color: #f1f1f1;
     }
     .ver-detalles {
       background-color: var(--primary-color);
@@ -115,24 +131,31 @@
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      transition: background-color var(--transition-duration);
+      transition: background-color var(--transition-duration), transform var(--transition-duration);
     }
     .ver-detalles:hover {
       background-color: #153d5e;
+      transform: scale(1.05);
     }
     .detalles {
       margin-top: 30px;
-      padding: 15px;
+      padding: 20px;
       background: #f9f9f9;
       border-radius: 8px;
       border-left: 6px solid var(--primary-color);
+      animation: slideIn 0.6s ease-out;
+    }
+    .detalles h3 {
+      margin-bottom: 15px;
+      color: var(--primary-color);
     }
     .detalles p {
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      font-size: 1rem;
     }
     textarea {
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       border: 2px solid var(--primary-color);
       border-radius: 8px;
       font-size: 1rem;
@@ -143,26 +166,25 @@
       border-color: var(--accent-color);
       outline: none;
     }
-    a.volver {
-      display: block;
-      margin: 20px auto 0;
-      text-align: center;
-      padding: 10px;
-      width: 200px;
+    .btn-home {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 20px;
       background-color: var(--primary-color);
       color: var(--secondary-color);
       text-decoration: none;
       border-radius: 8px;
-      transition: background-color var(--transition-duration);
+      transition: background-color var(--transition-duration), transform var(--transition-duration);
     }
-    a.volver:hover {
+    .btn-home:hover {
       background-color: #153d5e;
+      transform: translateY(-3px);
     }
     @media (max-width: 600px) {
       form.search-form {
         flex-direction: column;
       }
-      table, th, td, textarea, button {
+      table, th, td, textarea, button, .btn-home {
         font-size: 0.9rem;
       }
     }
@@ -223,8 +245,9 @@
         <br><br>
         <button type="submit">Guardar Referencias</button>
       </form>
-      <a href="/referencias" class="volver">Volver a Buscar</a>
+      <a href="/referencias" class="btn-home">Volver a Buscar</a>
     {% endif %}
+    <a href="/" class="btn-home">Volver a Home</a>
   </div>
 </body>
 </html>
