@@ -488,43 +488,33 @@ def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
         return False, None
 
 def filtrar_por_busqueda(filas, termino):
-    """
-    Filtra las candidatas según el término ingresado, buscando en el nombre (columna B) y cédula (columna O).
-    """
     resultados = []
     termino = termino.lower()
-    for index, fila in enumerate(filas, start=2):  # Se omite la primera fila (encabezado)
-        if len(fila) > 1:
-            nombre = fila[1].strip().lower()  # Columna B
-            cedula = fila[14].strip().lower() if len(fila) > 14 else ""
-            if termino in nombre or termino in cedula:
-                resultados.append({
-                    'fila_index': index,
-                    'nombre': fila[1],
-                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                })
+    for index, fila in enumerate(filas, start=2):
+        nombre = fila[0].strip().lower() if len(fila) > 0 else ""
+        cedula = fila[13].strip().lower() if len(fila) > 13 else ""
+        if termino in nombre or termino in cedula:
+            resultados.append({
+                'fila_index': index,
+                'nombre': fila[0] if len(fila) > 0 else "No especificado",
+                'telefono': fila[2] if len(fila) > 2 else "No especificado",
+                'cedula': fila[13] if len(fila) > 13 else "No especificado"
+            })
     return resultados
 
 def cargar_detalles_candidata(valores, candidata_param):
-    """
-    Carga los detalles básicos (nombre, teléfono y cédula) de la candidata.
-    Se asume:
-      - Nombre en la columna B (índice 1)
-      - Teléfono en la columna D (índice 3)
-      - Cédula en la columna O (índice 14)
-    """
     try:
         fila_index = int(candidata_param)
-        fila = valores[fila_index - 1]  # Google Sheets es 1-indexado
+        fila = valores[fila_index - 1]
     except (ValueError, IndexError):
         return None
     return {
         'fila_index': fila_index,
-        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-        'cedula': fila[14] if len(fila) > 14 else "No especificado",
+        'nombre': fila[0] if len(fila) > 0 else "No especificado",
+        'telefono': fila[2] if len(fila) > 2 else "No especificado",
+        'cedula': fila[13] if len(fila) > 13 else "No especificado",
     }
+
 
 
 
@@ -2070,14 +2060,12 @@ def referencias():
     candidata = None
     mensaje = None
 
-    # Se obtiene el término de búsqueda y el parámetro 'candidata'
-    busqueda_input = request.form.get('busqueda', '').strip().lower()
-    # Se intenta obtener el parámetro candidato de request.args o request.form
-    candidata_param = (request.args.get('candidata', '').strip() or 
-                        request.form.get('candidata', '').strip())
+    # Obtener término de búsqueda tanto de GET como de POST
+    busqueda_input = (request.args.get('busqueda', '').strip() or request.form.get('busqueda', '').strip()).lower()
+    # Obtener el parámetro 'candidata' tanto de GET como de POST
+    candidata_param = (request.args.get('candidata', '').strip() or request.form.get('candidata', '').strip())
 
     try:
-        # Se carga el rango A:AF (para incluir columnas AE y AF)
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:AF"
@@ -2087,24 +2075,22 @@ def referencias():
             return render_template('referencias.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
         
-        # Si se envía un término de búsqueda y aún no se ha seleccionado candidata, filtramos los resultados
+        # Si se envía un término de búsqueda y aún no se ha seleccionado candidata, filtrar resultados
         if busqueda_input and not candidata_param:
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
             if not resultados:
                 mensaje = "No se encontraron candidatas con ese criterio."
         
-        # Si se ha seleccionado una candidata, se cargan sus detalles
+        # Si se ha seleccionado una candidata, cargar sus detalles y referencias
         if candidata_param:
             candidata = cargar_detalles_candidata(valores, candidata_param)
             fila_idx = int(candidata_param)
             fila = valores[fila_idx - 1]
+            # Aseguramos que la fila tenga suficientes columnas
             if len(fila) < 32:
                 fila.extend([""] * (32 - len(fila)))
-            # Asumimos que:
-            # - Referencias laborales en columna AE (índice 30)
-            # - Referencias familiares en columna AF (índice 31)
-            candidata['referencias_laborales'] = fila[30]
-            candidata['referencias_familiares'] = fila[31]
+            candidata['referencias_laborales'] = fila[30] if len(fila) > 30 else ""
+            candidata['referencias_familiares'] = fila[31] if len(fila) > 31 else ""
     except Exception as e:
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('referencias.html', resultados=[], candidata=None, mensaje=mensaje)
@@ -2115,7 +2101,6 @@ def referencias():
         referencias_familiares = request.form.get('referencias_familiares', '').strip()
         try:
             fila_index = int(candidata_param)
-            # Se actualizan ambas columnas (AE y AF) en un solo llamado
             rango_referencias = f"Nueva hoja!AE{fila_index}:AF{fila_index}"
             body = {
                 "values": [[referencias_laborales, referencias_familiares]]
@@ -2127,7 +2112,7 @@ def referencias():
                 body=body
             ).execute()
             mensaje = "Referencias actualizadas correctamente."
-            # Se relee la fila para recargar los datos
+            # Recargar los datos actualizados
             respuesta = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
                 range="Nueva hoja!A:AF"
@@ -2138,14 +2123,15 @@ def referencias():
                 if len(fila) < 32:
                     fila.extend([""] * (32 - len(fila)))
                 candidata = cargar_detalles_candidata(nuevos_valores, candidata_param)
-                candidata['referencias_laborales'] = fila[30]
-                candidata['referencias_familiares'] = fila[31]
+                candidata['referencias_laborales'] = fila[30] if len(fila) > 30 else ""
+                candidata['referencias_familiares'] = fila[31] if len(fila) > 31 else ""
             else:
                 mensaje += " (No se pudo recargar la información actualizada.)"
         except Exception as e:
             mensaje = f"Error al actualizar referencias: {str(e)}"
     
     return render_template('referencias.html', resultados=resultados, candidata=candidata, mensaje=mensaje)
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

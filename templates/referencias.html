@@ -23,8 +23,8 @@
 <body>
   <div class="container">
     <h2>Buscar Candidata para Referencias</h2>
-    <!-- Formulario de búsqueda -->
-    <form id="searchForm" method="POST" action="/referencias">
+    <!-- Formulario de búsqueda (usa GET para poder combinar parámetros) -->
+    <form id="searchForm" method="GET" action="/referencias">
       <input type="text" name="busqueda" placeholder="Ingrese el nombre o cédula" required>
       <button type="submit">🔍 Buscar</button>
     </form>
