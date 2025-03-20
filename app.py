@@ -490,15 +490,16 @@ def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
 def filtrar_por_busqueda(filas, termino):
     resultados = []
     termino = termino.lower()
+    # Se itera desde la fila 2 (ya que la fila 1 es el encabezado)
     for index, fila in enumerate(filas, start=2):
-        nombre = fila[0].strip().lower() if len(fila) > 0 else ""
-        cedula = fila[13].strip().lower() if len(fila) > 13 else ""
+        nombre = fila[1].strip().lower() if len(fila) > 1 else ""
+        cedula = fila[14].strip().lower() if len(fila) > 14 else ""
         if termino in nombre or termino in cedula:
             resultados.append({
                 'fila_index': index,
-                'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                'cedula': fila[13] if len(fila) > 13 else "No especificado"
+                'nombre': fila[1] if len(fila) > 1 else "No especificado",
+                'telefono': fila[3] if len(fila) > 3 else "No especificado",
+                'cedula': fila[14] if len(fila) > 14 else "No especificado"
             })
     return resultados
 
@@ -510,9 +511,9 @@ def cargar_detalles_candidata(valores, candidata_param):
         return None
     return {
         'fila_index': fila_index,
-        'nombre': fila[0] if len(fila) > 0 else "No especificado",
-        'telefono': fila[2] if len(fila) > 2 else "No especificado",
-        'cedula': fila[13] if len(fila) > 13 else "No especificado",
+        'nombre': fila[1] if len(fila) > 1 else "No especificado",
+        'telefono': fila[3] if len(fila) > 3 else "No especificado",
+        'cedula': fila[14] if len(fila) > 14 else "No especificado",
     }
 
 
@@ -2060,12 +2061,13 @@ def referencias():
     candidata = None
     mensaje = None
 
-    # Obtener término de búsqueda tanto de GET como de POST
+    # Obtener término de búsqueda desde GET o POST (en minúsculas)
     busqueda_input = (request.args.get('busqueda', '').strip() or request.form.get('busqueda', '').strip()).lower()
-    # Obtener el parámetro 'candidata' tanto de GET como de POST
+    # Obtener el parámetro 'candidata' desde GET o POST
     candidata_param = (request.args.get('candidata', '').strip() or request.form.get('candidata', '').strip())
 
     try:
+        # Se carga el rango completo que incluye columnas A hasta AF
         hoja = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range="Nueva hoja!A:AF"
@@ -2075,7 +2077,7 @@ def referencias():
             return render_template('referencias.html', resultados=[], candidata=None,
                                    mensaje="⚠️ No hay datos disponibles.")
         
-        # Si se envía un término de búsqueda y aún no se ha seleccionado candidata, filtrar resultados
+        # Si se envía un término de búsqueda y no se ha seleccionado candidata, filtrar resultados
         if busqueda_input and not candidata_param:
             resultados = filtrar_por_busqueda(valores[1:], busqueda_input)
             if not resultados:
@@ -2086,7 +2088,7 @@ def referencias():
             candidata = cargar_detalles_candidata(valores, candidata_param)
             fila_idx = int(candidata_param)
             fila = valores[fila_idx - 1]
-            # Aseguramos que la fila tenga suficientes columnas
+            # Aseguramos que la fila tenga suficientes columnas (hasta AF, índice 31)
             if len(fila) < 32:
                 fila.extend([""] * (32 - len(fila)))
             candidata['referencias_laborales'] = fila[30] if len(fila) > 30 else ""
@@ -2095,7 +2097,7 @@ def referencias():
         mensaje = f"❌ Error al obtener los datos: {str(e)}"
         return render_template('referencias.html', resultados=[], candidata=None, mensaje=mensaje)
     
-    # Bloque de actualización: se ejecuta solo si se envía el formulario y candidata_param existe
+    # Si se envía el formulario para actualizar referencias
     if request.method == 'POST' and candidata_param:
         referencias_laborales = request.form.get('referencias_laborales', '').strip()
         referencias_familiares = request.form.get('referencias_familiares', '').strip()
@@ -2112,7 +2114,7 @@ def referencias():
                 body=body
             ).execute()
             mensaje = "Referencias actualizadas correctamente."
-            # Recargar los datos actualizados
+            # Recargar datos actualizados
             respuesta = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
                 range="Nueva hoja!A:AF"
