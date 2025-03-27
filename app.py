@@ -807,54 +807,6 @@ def buscar():
                            mensaje=mensaje)
 
 
-def filtrar_por_busqueda(filas, termino):
-    """
-    Filtra las candidatas según el término ingresado.
-    En el rango "B:O":
-      - Índice 0: Nombre (Columna B)
-      - Índice 2: Teléfono (asumiendo que D es teléfono)
-      - Índice 3: Ciudad (asumiendo que E es dirección/ciudad)
-      - Índice 13: Cédula (Columna O)
-    """
-    resultados = []
-    termino = termino.lower()
-    # Usamos enumerate empezando en 1 para que el número de fila coincida con el que ves en la hoja
-    for index, fila in enumerate(filas, start=1):
-        if len(fila) > 0:
-            nombre = fila[0].strip().lower()
-            if termino in nombre:
-                resultados.append({
-                    'fila_index': index,
-                    'nombre': fila[0],
-                    'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                    'ciudad': fila[3] if len(fila) > 3 else "No especificado",
-                    'cedula': fila[13] if len(fila) > 13 else "No especificado",
-                })
-    return resultados
-
-
-def cargar_detalles_candidata(valores, candidata_param):
-    """
-    Carga los detalles básicos de la candidata usando el rango B:O.
-    - Nombre: índice 0
-    - Teléfono: índice 2
-    - Cédula: índice 13
-    """
-    try:
-        fila_index = int(candidata_param)
-        fila = valores[fila_index - 1]  # La hoja es 1-indexada
-    except (ValueError, IndexError):
-        return None
-    return {
-        'fila_index': fila_index,
-        'nombre': fila[0] if len(fila) > 0 else "No especificado",
-        'telefono': fila[2] if len(fila) > 2 else "No especificado",
-        'cedula': fila[13] if len(fila) > 13 else "No especificado",
-    }
-
-
-
-
 @app.route('/editar', methods=['GET', 'POST'])
 def editar():
     resultados = []
@@ -1805,7 +1757,7 @@ def generar_pdf_entrevista(fila_index):
       - Una sección "Referencias" que imprime:
            * Referencias Laborales (columna AE).
            * Referencias Familiares (columna AF).
-           
+
     Requiere:
       - Las fuentes DejaVuSans.ttf y DejaVuSans-Bold.ttf en: app_web/static/fonts/
       - logo_nuevo.png en: app_web/static/
@@ -1896,21 +1848,27 @@ def generar_pdf_entrevista(fila_index):
                 pregunta = parts[0].strip() + ":"
                 respuesta = parts[1].strip()
 
-                # Imprimir pregunta en negro
+                # Imprimir la pregunta con multi_cell para que se envuelva si es muy larga
                 pdf.multi_cell(0, 8, pregunta)
                 pdf.ln(1)
 
-                # Imprimir respuesta en azul con bullet
+                # Imprimir la respuesta en azul precedida de un bullet
                 bullet = "•"
-                pdf.set_font("DejaVuSans", "", 16)  # Fuente grande para bullet
+                # Configurar fuente grande para el bullet
+                pdf.set_font("DejaVuSans", "", 16)
                 bullet_width = pdf.get_string_width(bullet + " ")
-                pdf.set_x(pdf.l_margin)
-                pdf.set_text_color(0, 102, 204)  # Azul para respuesta
-                pdf.cell(bullet_width, 8, bullet + " ", ln=0)
+                # Imprimir el bullet en una celda fija
+                pdf.cell(bullet_width, 8, bullet, ln=0)
+                
+                # Configurar la fuente para la respuesta (más pequeña)
                 pdf.set_font("DejaVuSans", "", 12)
-                pdf.cell(0, 8, respuesta, ln=1)
+                pdf.set_text_color(0, 102, 204)  # Azul para la respuesta
+                # Calcular el ancho disponible para la respuesta después del bullet
+                available_width = pdf.w - pdf.r_margin - (pdf.l_margin + bullet_width)
+                # Usar multi_cell para la respuesta, de modo que se envuelva correctamente
+                pdf.multi_cell(available_width, 8, respuesta)
                 pdf.ln(4)
-                pdf.set_text_color(0, 0, 0)  # Regresar a negro para la siguiente pregunta
+                pdf.set_text_color(0, 0, 0)  # Volver a negro para la siguiente pregunta
             else:
                 pdf.multi_cell(0, 8, line)
                 pdf.ln(4)
@@ -1964,6 +1922,7 @@ def generar_pdf_entrevista(fila_index):
         )
     except Exception as e:
         return f"Error interno generando PDF: {str(e)}", 500
+
 
 from datetime import datetime
 import pandas as pd
