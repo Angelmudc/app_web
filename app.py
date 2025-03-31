@@ -86,7 +86,7 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 # Base de datos de usuarios (puedes usar una real)
 usuarios = {
     "angel": generate_password_hash("0000"),
-    "cris": generate_password_hash("0722"),
+    "Edilenia": generate_password_hash("2003"),
     "Athy": generate_password_hash("2004"),
     "divina": generate_password_hash("0607")
 }
