@@ -51,7 +51,8 @@
             "canastas de plátanos",
             "arepitas de maíz"
           ]
-        },
+        }
+        ,
         {
           "id": "postres",
           "enunciado": "¿Qué postres sabes hacer?",
@@ -64,6 +65,7 @@
             "diferentes dulce"
           ]
         }
+        
         ,
         { "id": "tareas_casa", "enunciado": "¿Qué tareas de la casa te gustan y cuáles no?", "tipo": "texto_largo" },
         { "id": "electrodomesticos", "enunciado": "¿Sabes usar electrodomésticos modernos?", "tipo": "texto" },
