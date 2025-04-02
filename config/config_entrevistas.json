@@ -35,23 +35,18 @@
           "enunciado": "¿Qué sabes cocinar?",
           "tipo": "checkbox",
           "opciones": [
-            "Comida Dominicana",
-            "Diferentes tipos de arroz",
-            "diferentes tipos de granos",
-            "carnes variadas",
-            "ensaladas variadas",
-            "sancocho",
-            "lasaña",
-            "pastelón",
-            "albóndigas",
-            "asopado",
-            "pastas",
-            "camarones",
-            "pechuga a la plancha",
-            "canastas de plátanos",
-            "arepitas de maíz"
+            "Platos caseros",
+            "Platos tradicionales",
+            "Postres",
+            "Ensaladas",
+            "Sopas",
+            "Carnes",
+            "Pescados",
+            "Cocina internacional",
+            "Comida vegetariana"
           ]
-        },
+        }
+        ,
         {
           "id": "postres",
           "enunciado": "¿Qué postres sabes hacer?",
