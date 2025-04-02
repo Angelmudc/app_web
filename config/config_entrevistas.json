@@ -33,7 +33,8 @@
         {
           "id": "que_cocinas",
           "enunciado": "¿Qué sabes cocinar?",
-          "tipo": "checkbox",
+          "tipo": "select",
+          "multiple": true,
           "opciones": [
             "Platos caseros",
             "Platos tradicionales",
