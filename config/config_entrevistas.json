@@ -33,10 +33,19 @@
         {
           "id": "que_cocinas",
           "enunciado": "¿Qué sabes cocinar?",
-          "tipo": "select",
-          "multiple": true,
-          "opciones": ["Platos caseros","Platos tradicionales","Postres","Ensaladas","Sopas","Carnes","Pescados","Cocina internacional","Comida vegetariana"]
-        }
+          "tipo": "multiseleccion",
+          "opciones": [
+            "Platos caseros",
+            "Platos tradicionales",
+            "Postres",
+            "Ensaladas",
+            "Sopas",
+            "Carnes",
+            "Pescados",
+            "Cocina internacional",
+            "Comida vegetariana"
+          ]
+        }        
         ,
         {
           "id": "postres",
