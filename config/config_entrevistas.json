@@ -31,50 +31,22 @@
         { "id": "sabes_cocinar", "enunciado": "¿Sabes cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
         { "id": "gusta_cocinar", "enunciado": "¿Te gusta cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
         {
-          "id": "cocina_platos_caseros",
-          "enunciado": "Platos caseros",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_platos_tradicionales",
-          "enunciado": "Platos tradicionales",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_postres",
-          "enunciado": "Postres",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_ensaladas",
-          "enunciado": "Ensaladas",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_sopas",
-          "enunciado": "Sopas",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_carnes",
-          "enunciado": "Carnes",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_pescados",
-          "enunciado": "Pescados",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_internacional",
-          "enunciado": "Cocina internacional",
-          "tipo": "checkbox"
-        },
-        {
-          "id": "cocina_vegetariana",
-          "enunciado": "Comida vegetariana",
-          "tipo": "checkbox"
-        }        
+          "id": "que_cocinas",
+          "enunciado": "¿Qué sabes cocinar?",
+          "tipo": "checkbox_group",
+          "opciones": [
+            "Platos caseros",
+            "Platos tradicionales",
+            "Postres",
+            "Ensaladas",
+            "Sopas",
+            "Carnes",
+            "Pescados",
+            "Cocina internacional",
+            "Comida vegetariana"
+          ]
+        }
+                
         ,
         {
           "id": "postres",
