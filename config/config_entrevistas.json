@@ -30,8 +30,41 @@
         { "id": "cuidado_ninos", "enunciado": "¿Has cuidado niños y de qué edad?", "tipo": "texto_largo" },
         { "id": "sabes_cocinar", "enunciado": "¿Sabes cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
         { "id": "gusta_cocinar", "enunciado": "¿Te gusta cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
-        { "id": "que_cocinas", "enunciado": "¿Qué sabes cocinar?", "tipo": "texto_largo" },
-        { "id": "postres", "enunciado": "¿Haces postres?", "tipo": "texto_largo" },
+        {
+          "id": "que_cocinas",
+          "enunciado": "¿Qué sabes cocinar?",
+          "tipo": "checkbox",
+          "opciones": [
+            "Comida Dominicana",
+            "Diferentes tipos de arroz",
+            "diferentes tipos de granos",
+            "carnes variadas",
+            "ensaladas variadas",
+            "sancocho",
+            "lasaña",
+            "pastelón",
+            "albóndigas",
+            "asopado",
+            "pastas",
+            "camarones",
+            "pechuga a la plancha",
+            "canastas de plátanos",
+            "arepitas de maíz"
+          ]
+        },
+        {
+          "id": "postres",
+          "enunciado": "¿Qué postres sabes hacer?",
+          "tipo": "checkbox",
+          "opciones": [
+            "Gelatina",
+            "maicena",
+            "flan",
+            "arroz con leche",
+            "diferentes dulce"
+          ]
+        }
+        ,
         { "id": "tareas_casa", "enunciado": "¿Qué tareas de la casa te gustan y cuáles no?", "tipo": "texto_largo" },
         { "id": "electrodomesticos", "enunciado": "¿Sabes usar electrodomésticos modernos?", "tipo": "texto" },
         { "id": "planchar", "enunciado": "¿Sabes planchar?", "tipo": "radio", "opciones": ["Sí", "No"] },
