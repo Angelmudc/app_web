@@ -35,17 +35,7 @@
           "enunciado": "¿Qué sabes cocinar?",
           "tipo": "select",
           "multiple": true,
-          "opciones": [
-            "Platos caseros",
-            "Platos tradicionales",
-            "Postres",
-            "Ensaladas",
-            "Sopas",
-            "Carnes",
-            "Pescados",
-            "Cocina internacional",
-            "Comida vegetariana"
-          ]
+          "opciones": ["Platos caseros","Platos tradicionales","Postres","Ensaladas","Sopas","Carnes","Pescados","Cocina internacional","Comida vegetariana"]
         }
         ,
         {
