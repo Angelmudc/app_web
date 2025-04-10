@@ -2167,194 +2167,252 @@ def referencias():
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
-    # Solo usuarios autenticados (internos) pueden acceder a este módulo
+    """
+    Módulo de Solicitudes que trabaja con la nueva hoja llamada "Solicitudes"
+    con columnas A→I: 
+      A: Id Solicitud
+      B: Fecha Solicitud
+      C: Empleado Solicitante
+      D: Descripción Solicitud
+      E: Estado de Solicitud
+      F: Empleado Asignado
+      G: Fecha de Actualización
+      H: Notas
+      I: Historial de Cambios
+    """
     if 'usuario' not in session:
         return redirect(url_for('login'))
-    # Obtener la acción desde la URL; por defecto mostramos la lista de solicitudes
+
     accion = request.args.get('accion', 'ver').strip()
     mensaje = None
 
     # -----------------------------------
-    # Acción: Registro (crear solicitud)
+    # 1) REGISTRO (crear nueva solicitud)
     # -----------------------------------
     if accion == 'registro':
         if request.method == 'GET':
-            # Mostrar formulario para registrar una nueva solicitud
-            return render_template("solicitudes_registro.html", accion=accion)
+            # Renderiza la sección "Registrar" dentro de tu home.html
+            # (Por ejemplo, mostrando la pestaña de registro)
+            return render_template('home.html', accion=accion, mensaje=mensaje)
+
         elif request.method == 'POST':
-            # Capturar el ID ingresado manualmente
-            solicitud_id = request.form.get("id_solicitud", "").strip()
-            if not solicitud_id:
-                mensaje = "El ID de Solicitud es obligatorio."
-                return render_template("solicitudes_registro.html", accion=accion, mensaje=mensaje)
-            # Capturar la descripción de la solicitud
+            # Capturar campos desde el formulario
+            id_solicitud = request.form.get("id_solicitud", "").strip()
+            if not id_solicitud:
+                mensaje = "El ID de la Solicitud es obligatorio."
+                return render_template('home.html', accion=accion, mensaje=mensaje)
+
             descripcion = request.form.get("descripcion", "").strip()
             if not descripcion:
-                mensaje = "La descripción es requerida."
-                return render_template("solicitudes_registro.html", accion=accion, mensaje=mensaje)
-            # Capturar la fecha actual de registro y el usuario que registra
+                mensaje = "La descripción de la solicitud es obligatoria."
+                return render_template('home.html', accion=accion, mensaje=mensaje)
+
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             empleado_solicitante = session.get('usuario', 'desconocido')
-            # Estado inicial: "Disponible"
             estado = "Disponible"
-            # Las siguientes columnas (Empleado Asignado, Fecha de Actualización, Notas, Historial)
-            # se dejan vacías inicialmente.
-            nuevos_valores = [[
-                solicitud_id,      # AG: ID Solicitud
-                fecha_solicitud,   # AH: Fecha Solicitud
-                empleado_solicitante,  # AI: Empleado Solicitante
-                descripcion,       # AJ: Descripción Solicitud
-                estado,            # AK: Estado de Solicitud
-                "",                # AL: Empleado Asignado
-                "",                # AM: Fecha de Actualización
-                "",                # AN: Notas/Comentarios
-                ""                 # AO: Historial de Cambios
-            ]]
+
+            # Notas e Historial inicialmente vacíos
+            notas_inicial = ""
+            historial_inicial = ""
+
+            # Armar la fila con 9 columnas según tu hoja
+            nueva_fila = [
+                id_solicitud,          # A
+                fecha_solicitud,       # B
+                empleado_solicitante,  # C
+                descripcion,           # D
+                estado,                # E
+                "",                    # F: Empleado Asignado (vacío al crear)
+                "",                    # G: Fecha de Actualización (vacío al crear)
+                notas_inicial,         # H
+                historial_inicial      # I
+            ]
+
             try:
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Nueva hoja!AG:AO",  # Columnas de AG a AO
+                    range="Solicitudes!A:I",
                     valueInputOption="RAW",
-                    body={"values": nuevos_valores}
+                    body={"values": [nueva_fila]}
                 ).execute()
                 mensaje = "Solicitud registrada con éxito."
             except Exception as e:
                 logging.error("Error al registrar solicitud: " + str(e), exc_info=True)
                 mensaje = "Error al registrar la solicitud."
-            return render_template("solicitudes_registro.html", accion=accion, mensaje=mensaje)
+
+            return render_template('home.html', accion=accion, mensaje=mensaje)
 
     # -----------------------------------
-    # Acción: Ver (Listar solicitudes)
+    # 2) VER (listar solicitudes)
     # -----------------------------------
     elif accion == 'ver':
+        solicitudes_data = []
         try:
-            result = service.spreadsheets().values().get(
+            hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!AG:AO"
+                range="Solicitudes!A:I"
             ).execute()
-            solicitudes_data = result.get("values", [])
+            solicitudes_data = hoja.get("values", [])
         except Exception as e:
-            logging.error("Error al obtener solicitudes: " + str(e), exc_info=True)
-            solicitudes_data = []
-            mensaje = "Error al cargar las solicitudes."
-        return render_template("solicitudes_ver.html", accion=accion, solicitudes=solicitudes_data, mensaje=mensaje)
+            logging.error("Error al obtener listado: " + str(e), exc_info=True)
+            mensaje = "Error al cargar el listado de solicitudes."
+
+        # Renderiza tu home.html pasando la variable 'solicitudes' para iterarlas
+        return render_template('home.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
     # -----------------------------------
-    # Acción: Actualizar (Modificar solicitud)
+    # 3) ACTUALIZAR (modificar solicitud)
     # -----------------------------------
     elif accion == 'actualizar':
-        fila = request.args.get("fila", "").strip()
-        if not fila.isdigit():
-            mensaje = "Fila inválida."
-            return redirect(url_for('solicitudes', accion='ver'))
-        fila_index = int(fila)
+        fila_str = request.args.get("fila", "").strip()
+        if not fila_str.isdigit():
+            # Podrías mostrar un formulario en la misma home para que ingresen la fila
+            mensaje = "Fila inválida para actualizar."
+            return render_template('home.html', accion=accion, mensaje=mensaje)
+
+        fila_index = int(fila_str)
+
         if request.method == 'GET':
+            # Cargar la fila específica
             try:
-                rango = f"Nueva hoja!AG{fila_index}:AO{fila_index}"
-                result = service.spreadsheets().values().get(
+                rango = f"Solicitudes!A{fila_index}:I{fila_index}"
+                hoja = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
                     range=rango
                 ).execute()
-                solicitud = result.get("values", [])
-                if solicitud:
-                    solicitud = solicitud[0]
+                solicitud_fila = hoja.get("values", [])
+                if solicitud_fila:
+                    solicitud_fila = solicitud_fila[0]
                 else:
-                    solicitud = []
+                    solicitud_fila = []
             except Exception as e:
                 logging.error("Error al cargar solicitud para actualizar: " + str(e), exc_info=True)
                 mensaje = "Error al cargar la solicitud."
-                solicitud = []
-            return render_template("solicitudes_actualizar.html", accion=accion, solicitud=solicitud, fila=fila_index, mensaje=mensaje)
+                solicitud_fila = []
+
+            # Renderiza home.html con la data de esa fila (si quieres prellenar un formulario)
+            return render_template('home.html', accion=accion, mensaje=mensaje, solicitud=solicitud_fila, fila=fila_index)
+
         elif request.method == 'POST':
-            # Obtener los nuevos datos: estado, empleado asignado y notas
+            # Procesar actualización: Estado, Empleado Asignado, Notas, Historial...
             nuevo_estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
             notas = request.form.get("notas", "").strip()
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
             try:
-                # Recuperar el historial actual (columna AO)
-                rango_historial = f"Nueva hoja!AO{fila_index}"
-                result_hist = service.spreadsheets().values().get(
+                # Primero, obtener el Historial actual (columna I -> índice 8)
+                rango_historial = f"Solicitudes!I{fila_index}"
+                respuesta_hist = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
                     range=rango_historial
                 ).execute()
-                historial = result_hist.get("values", [])
-                if historial and historial[0]:
-                    historial_texto = historial[0][0]
+                historial_actual = respuesta_hist.get("values", [])
+                if historial_actual and historial_actual[0]:
+                    historial_texto = historial_actual[0][0]
                 else:
                     historial_texto = ""
-                # Agregar una nueva entrada al historial
-                nuevo_registro = f"{fecha_actualizacion} - {session.get('usuario','desconocido')}: Estado cambiado a {nuevo_estado}."
+
+                # Agregar nueva entrada al historial
+                nuevo_registro = f"{fecha_actualizacion} - {session.get('usuario','desconocido')}: Cambió estado a {nuevo_estado}."
                 if notas:
                     nuevo_registro += f" Notas: {notas}"
+
                 if historial_texto:
                     historial_texto += "\n" + nuevo_registro
                 else:
                     historial_texto = nuevo_registro
-                # Actualizar las columnas: Estado (AK), Empleado Asignado (AL), Fecha de Actualización (AM), Notas (AN), Historial (AO)
-                update_range = f"Nueva hoja!AK{fila_index}:AO{fila_index}"
-                valores_update = [[nuevo_estado, empleado_asignado, fecha_actualizacion, notas, historial_texto]]
+
+                # Actualizar celdas E (estado), F (Empleado Asignado), G (Fecha de Actualización), H (Notas), I (Historial)
+                # E -> índice 4
+                # F -> índice 5
+                # G -> índice 6
+                # H -> índice 7
+                # I -> índice 8
+                update_range = f"Solicitudes!E{fila_index}:I{fila_index}"
+                valores_update = [[
+                    nuevo_estado,          # E
+                    empleado_asignado,     # F
+                    fecha_actualizacion,   # G
+                    notas,                 # H
+                    historial_texto        # I
+                ]]
+
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
                     range=update_range,
                     valueInputOption="RAW",
                     body={"values": valores_update}
                 ).execute()
-                mensaje = "Solicitud actualizada exitosamente."
+
+                mensaje = "Solicitud actualizada correctamente."
             except Exception as e:
-                logging.error("Error al actualizar solicitud: " + str(e), exc_info=True)
+                logging.error("Error al actualizar la solicitud: " + str(e), exc_info=True)
                 mensaje = "Error al actualizar la solicitud."
-            return redirect(url_for('solicitudes', accion='ver', mensaje=mensaje))
+
+            return render_template('home.html', accion=accion, mensaje=mensaje)
 
     # -----------------------------------
-    # Acción: Reportes (Filtrado por fecha y estado)
+    # 4) REPORTES (filtrar por fecha y estado)
     # -----------------------------------
     elif accion == 'reportes':
         fecha_inicio = request.args.get("fecha_inicio", "").strip()
         fecha_fin = request.args.get("fecha_fin", "").strip()
         estado_filtro = request.args.get("estado", "").strip().lower()
+
+        solicitudes_data = []
+        solicitudes_filtradas = []
         try:
-            result = service.spreadsheets().values().get(
+            hoja = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!AG:AO"
+                range="Solicitudes!A:I"
             ).execute()
-            solicitudes_data = result.get("values", [])
-            solicitudes_filtradas = []
+            solicitudes_data = hoja.get("values", [])
+
+            # Filtramos según la fecha (columna B -> índice 1) y estado (columna E -> índice 4)
             for sol in solicitudes_data:
-                if len(sol) < 2:
+                if len(sol) < 5:
                     continue
-                # La fecha de solicitud se encuentra en la columna AH (índice 1)
-                fecha_solicitud = sol[1]
+
+                # Fecha de Solicitud en B (sol[1])
+                fecha_solicitud_str = sol[1]
                 try:
-                    fecha_dt = datetime.strptime(fecha_solicitud, "%Y-%m-%d %H:%M:%S")
-                except Exception:
+                    fecha_dt = datetime.strptime(fecha_solicitud_str, "%Y-%m-%d %H:%M:%S")
+                except:
+                    # Si no se puede convertir, la salteamos
                     continue
+
+                # Validar rango de fechas
                 if fecha_inicio:
                     inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
                     if fecha_dt < inicio_dt:
                         continue
                 if fecha_fin:
                     fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d")
+                    # Para que incluya el día fin, sumarle horas si deseas
                     if fecha_dt > fin_dt:
                         continue
-                if estado_filtro and len(sol) > 4:
-                    # La columna de estado es AK (índice 4, considerando AG=0, AH=1, AI=2, AJ=3, AK=4)
-                    if sol[4].strip().lower() != estado_filtro:
-                        continue
+
+                # Filtrar por estado
+                estado_actual = sol[4].strip().lower() if sol[4] else ""
+                if estado_filtro and estado_filtro != estado_actual:
+                    continue
+
                 solicitudes_filtradas.append(sol)
-            mensaje = f"Se encontraron {len(solicitudes_filtradas)} solicitudes que cumplen los criterios."
+            
+            mensaje = f"Encontradas {len(solicitudes_filtradas)} solicitudes en el reporte."
         except Exception as e:
-            logging.error("Error al generar reportes de solicitudes: " + str(e), exc_info=True)
-            solicitudes_filtradas = []
+            logging.error("Error al generar reporte de solicitudes: " + str(e), exc_info=True)
             mensaje = "Error al generar el reporte."
-        return render_template("solicitudes_reportes.html", accion=accion, solicitudes=solicitudes_filtradas, mensaje=mensaje)
+
+        return render_template('home.html', accion=accion, mensaje=mensaje, solicitudes_reporte=solicitudes_filtradas)
 
     # -----------------------------------
-    # Acción desconocida: mostrar mensaje
+    # Acción no reconocida
     # -----------------------------------
     else:
         mensaje = "Acción no reconocida."
-        return render_template("solicitudes.html", mensaje=mensaje)
+        return render_template('home.html', accion=accion, mensaje=mensaje)
 
 
 if __name__ == '__main__':

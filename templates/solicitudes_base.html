@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Módulo de Solicitudes{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <!-- CSS exclusivo para Solicitudes (si lo deseas) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/solicitudes.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <!-- Cabecera exclusiva para el módulo de solicitudes -->
+  <header class="bg-primary text-white py-2">
+    <div class="container">
+      <h1>Módulo de Solicitudes</h1>
+    </div>
+  </header>
+
+  <!-- Menú exclusivo: puedes incluir enlaces a las acciones internas -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+      <a class="navbar-brand" href="{{ url_for('solicitudes') }}">Solicitudes</a>
+      <!-- Opcional: otros elementos del menú -->
+    </div>
+  </nav>
+
+  <!-- Contenido principal para solicitudes -->
+  <main class="container my-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer exclusivo para el módulo de solicitudes -->
+  <footer class="bg-light py-3 mt-4">
+    <div class="container text-center">
+      <small>&copy; 2025 Módulo de Solicitudes - Doméstica del Cibao A&D.</small>
+    </div>
+  </footer>
+
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
