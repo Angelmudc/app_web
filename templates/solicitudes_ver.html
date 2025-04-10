@@ -1,42 +1,42 @@
-{% extends "base.html" %}
-
-{% block title %}Ver Solicitudes - Doméstica del Cibao A&D{% endblock %}
+<!-- templates/solicitudes_ver.html -->
+{% extends "solicitudes_layout.html" %}
 
 {% block content %}
-<div class="container mt-4">
-  <h2>Listado de Solicitudes</h2>
+  <h1>Listado de Solicitudes</h1>
   {% if mensaje %}
-    <div class="alert alert-info">{{ mensaje }}</div>
+    <div class="alert alert-danger">{{ mensaje }}</div>
   {% endif %}
-  {% if solicitudes %}
-    <table class="table table-striped">
-      <thead>
+  
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>ID Solicitud</th>
+        <th>Fecha Solicitud</th>
+        <th>Empleado Solicitante</th>
+        <th>Descripción</th>
+        <th>Estado</th>
+        <th>Empleado Asignado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sol in solicitudes %}
+        {% if loop.index0 == 0 %}
+          {# Si la primera fila es encabezado, se salta #}
+          {% continue %}
+        {% endif %}
         <tr>
-          <th>ID Solicitud (AG)</th>
-          <th>Fecha Solicitud (AH)</th>
-          <th>Empleado Solicitante (AI)</th>
-          <th>Descripción (AJ)</th>
-          <th>Estado (AK)</th>
-          <th>Acciones</th>
+          <td>{{ sol[0] }}</td>
+          <td>{{ sol[1] }}</td>
+          <td>{{ sol[2] }}</td>
+          <td>{{ sol[3] }}</td>
+          <td>{{ sol[4] }}</td>
+          <td>{{ sol[5] }}</td>
+          <td>
+            <a href="{{ url_for('solicitudes', accion='actualizar', fila=loop.index0 + 2) }}" class="btn btn-sm btn-info">Actualizar</a>
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        {% for sol in solicitudes %}
-          <tr>
-            <td>{{ sol[0] }}</td>
-            <td>{{ sol[1] }}</td>
-            <td>{{ sol[2] }}</td>
-            <td>{{ sol[3] }}</td>
-            <td>{{ sol[4] }}</td>
-            <td>
-              <a href="{{ url_for('solicitudes', accion='actualizar', fila=loop.index+1) }}" class="btn btn-sm btn-secondary">Actualizar</a>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>No se encontraron solicitudes registradas.</p>
-  {% endif %}
-</div>
+      {% endfor %}
+    </tbody>
+  </table>
 {% endblock %}

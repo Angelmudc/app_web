@@ -2167,70 +2167,44 @@ def referencias():
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
-    """
-    Módulo de Solicitudes que trabaja con la nueva hoja llamada "Solicitudes"
-    con columnas A → I: 
-      A: Id Solicitud
-      B: Fecha Solicitud
-      C: Empleado Solicitante
-      D: Descripción Solicitud
-      E: Estado de Solicitud
-      F: Empleado Asignado
-      G: Fecha de Actualización
-      H: Notas
-      I: Historial de Cambios
-    """
     if 'usuario' not in session:
         return redirect(url_for('login'))
 
     accion = request.args.get('accion', 'ver').strip()
     mensaje = None
 
-    # -----------------------------------
-    # 1) REGISTRO (crear nueva solicitud)
-    # -----------------------------------
+    # Registro
     if accion == 'registro':
         if request.method == 'GET':
-            return render_template(
-                'solicitudes_registro.html',
-                accion=accion,
-                mensaje=mensaje
-            )
+            return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
         elif request.method == 'POST':
-            # Captura de campos
+            # Capturar y validar los datos...
             id_solicitud = request.form.get("id_solicitud", "").strip()
             if not id_solicitud:
                 mensaje = "El ID de la Solicitud es obligatorio."
-                return render_template('solicitudes_registro.html',
-                                       accion=accion, 
-                                       mensaje=mensaje)
+                return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
             descripcion = request.form.get("descripcion", "").strip()
             if not descripcion:
                 mensaje = "La descripción de la solicitud es obligatoria."
-                return render_template('solicitudes_registro.html',
-                                       accion=accion, 
-                                       mensaje=mensaje)
+                return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             empleado_solicitante = session.get('usuario', 'desconocido')
             estado = "Disponible"
-
-            # Notas e Historial iniciales
             notas_inicial = ""
             historial_inicial = ""
 
-            # Armar la fila con 9 columnas
             nueva_fila = [
-                id_solicitud,         
-                fecha_solicitud,      
-                empleado_solicitante, 
-                descripcion,          
-                estado,               
+                id_solicitud,
+                fecha_solicitud,
+                empleado_solicitante,
+                descripcion,
+                estado,
                 "",  # Empleado Asignado
                 "",  # Fecha Actualización
-                notas_inicial,       
-                historial_inicial     
+                notas_inicial,
+                historial_inicial
             ]
 
             try:
@@ -2245,13 +2219,9 @@ def solicitudes():
                 logging.error("Error al registrar solicitud: " + str(e), exc_info=True)
                 mensaje = "Error al registrar la solicitud."
 
-            return render_template('solicitudes_registro.html',
-                                   accion=accion,
-                                   mensaje=mensaje)
+            return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
-    # -----------------------------------
-    # 2) VER (listar solicitudes)
-    # -----------------------------------
+    # Ver solicitudes
     elif accion == 'ver':
         solicitudes_data = []
         try:
@@ -2264,25 +2234,14 @@ def solicitudes():
             logging.error("Error al obtener listado: " + str(e), exc_info=True)
             mensaje = "Error al cargar el listado de solicitudes."
 
-        return render_template(
-            'solicitudes_ver.html',
-            accion=accion,
-            mensaje=mensaje,
-            solicitudes=solicitudes_data
-        )
+        return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # -----------------------------------
-    # 3) ACTUALIZAR (modificar solicitud)
-    # -----------------------------------
+    # Actualizar
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
             mensaje = "Fila inválida para actualizar."
-            return render_template(
-                'solicitudes_actualizar.html',
-                accion=accion,
-                mensaje=mensaje
-            )
+            return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
 
         fila_index = int(fila_str)
 
@@ -2303,20 +2262,16 @@ def solicitudes():
                 mensaje = "Error al cargar la solicitud."
                 solicitud_fila = []
 
-            return render_template(
-                'solicitudes_actualizar.html',
-                accion=accion,
-                mensaje=mensaje,
-                solicitud=solicitud_fila,
-                fila=fila_index
-            )
-
+            return render_template('solicitudes_actualizar.html',
+                                   accion=accion,
+                                   mensaje=mensaje,
+                                   solicitud=solicitud_fila,
+                                   fila=fila_index)
         elif request.method == 'POST':
             nuevo_estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
             notas = request.form.get("notas", "").strip()
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
             try:
                 rango_historial = f"Solicitudes!I{fila_index}"
                 respuesta_hist = service.spreadsheets().values().get(
@@ -2328,24 +2283,16 @@ def solicitudes():
                     historial_texto = historial_actual[0][0]
                 else:
                     historial_texto = ""
-
                 nuevo_registro = f"{fecha_actualizacion} - {session.get('usuario','desconocido')}: Cambió estado a {nuevo_estado}."
                 if notas:
                     nuevo_registro += f" Notas: {notas}"
-
                 if historial_texto:
                     historial_texto += "\n" + nuevo_registro
                 else:
                     historial_texto = nuevo_registro
 
                 update_range = f"Solicitudes!E{fila_index}:I{fila_index}"
-                valores_update = [[
-                    nuevo_estado,         
-                    empleado_asignado,    
-                    fecha_actualizacion,  
-                    notas,               
-                    historial_texto       
-                ]]
+                valores_update = [[nuevo_estado, empleado_asignado, fecha_actualizacion, notas, historial_texto]]
 
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2353,26 +2300,18 @@ def solicitudes():
                     valueInputOption="RAW",
                     body={"values": valores_update}
                 ).execute()
-
                 mensaje = "Solicitud actualizada correctamente."
             except Exception as e:
                 logging.error("Error al actualizar la solicitud: " + str(e), exc_info=True)
                 mensaje = "Error al actualizar la solicitud."
 
-            return render_template(
-                'solicitudes_actualizar.html',
-                accion=accion,
-                mensaje=mensaje
-            )
+            return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
 
-    # -----------------------------------
-    # 4) REPORTES (filtrar por fecha y estado)
-    # -----------------------------------
+    # Reportes
     elif accion == 'reportes':
         fecha_inicio = request.args.get("fecha_inicio", "").strip()
         fecha_fin = request.args.get("fecha_fin", "").strip()
         estado_filtro = request.args.get("estado", "").strip().lower()
-
         solicitudes_data = []
         solicitudes_filtradas = []
         try:
@@ -2381,17 +2320,14 @@ def solicitudes():
                 range="Solicitudes!A1:I"
             ).execute()
             solicitudes_data = result.get("values", [])
-
             for sol in solicitudes_data:
                 if len(sol) < 5:
                     continue
-
                 fecha_solicitud_str = sol[1]
                 try:
                     fecha_dt = datetime.strptime(fecha_solicitud_str, "%Y-%m-%d %H:%M:%S")
                 except:
                     continue
-
                 if fecha_inicio:
                     inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
                     if fecha_dt < inicio_dt:
@@ -2400,35 +2336,21 @@ def solicitudes():
                     fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d")
                     if fecha_dt > fin_dt:
                         continue
-
                 estado_actual = sol[4].strip().lower() if sol[4] else ""
                 if estado_filtro and estado_filtro != estado_actual:
                     continue
-
                 solicitudes_filtradas.append(sol)
-            
             mensaje = f"Encontradas {len(solicitudes_filtradas)} solicitudes en el reporte."
         except Exception as e:
             logging.error("Error al generar reporte de solicitudes: " + str(e), exc_info=True)
             mensaje = "Error al generar el reporte."
 
-        return render_template(
-            'solicitudes_reportes.html',
-            accion=accion,
-            mensaje=mensaje,
-            solicitudes_reporte=solicitudes_filtradas
-        )
+        return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=solicitudes_filtradas)
 
-    # -----------------------------------
-    # Acción no reconocida
-    # -----------------------------------
     else:
         mensaje = "Acción no reconocida."
-        return render_template(
-            'solicitudes_base.html',
-            accion=accion,
-            mensaje=mensaje
-        )
+        # Si la acción no coincide, redirige a una plantilla base para solicitudes
+        return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
 
 
 
