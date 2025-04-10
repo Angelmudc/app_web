@@ -1,23 +1,20 @@
-{% extends "base.html" %}
-
-{% block title %}Registrar Solicitud - Doméstica del Cibao A&D{% endblock %}
+<!-- templates/solicitudes_registro.html -->
+{% extends "solicitudes_layout.html" %}
 
 {% block content %}
-<div class="container mt-4">
-  <h2>Registrar Nueva Solicitud</h2>
+  <h1>Registrar Nueva Solicitud</h1>
   {% if mensaje %}
-    <div class="alert alert-info">{{ mensaje }}</div>
+    <div class="alert alert-danger">{{ mensaje }}</div>
   {% endif %}
-  <form method="POST" action="{{ url_for('solicitudes', accion='registro') }}">
+  <form action="{{ url_for('solicitudes', accion='registro') }}" method="POST">
     <div class="mb-3">
-      <label for="id_solicitud" class="form-label">ID Solicitud</label>
-      <input type="text" class="form-control" id="id_solicitud" name="id_solicitud" placeholder="Ingrese ID (ej. SOL-000001)" required>
+      <label for="id_solicitud" class="form-label">ID Solicitud:</label>
+      <input type="text" name="id_solicitud" id="id_solicitud" class="form-control" required>
     </div>
     <div class="mb-3">
-      <label for="descripcion" class="form-label">Descripción Solicitud</label>
-      <textarea class="form-control" id="descripcion" name="descripcion" rows="4" placeholder="Detalle de la solicitud" required></textarea>
+      <label for="descripcion" class="form-label">Descripción:</label>
+      <textarea name="descripcion" id="descripcion" class="form-control" required></textarea>
     </div>
-    <button type="submit" class="btn btn-primary">Registrar Solicitud</button>
+    <button type="submit" class="btn btn-primary">Registrar</button>
   </form>
-</div>
 {% endblock %}
