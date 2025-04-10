@@ -2169,7 +2169,7 @@ def referencias():
 def solicitudes():
     """
     Módulo de Solicitudes que trabaja con la nueva hoja llamada "Solicitudes"
-    con columnas A → I: 
+    con columnas A → I:
       A: Id Solicitud
       B: Fecha Solicitud
       C: Empleado Solicitante
@@ -2191,19 +2191,32 @@ def solicitudes():
     # -----------------------------------
     if accion == 'registro':
         if request.method == 'GET':
-            # Se renderiza home_solicitudes.html para mostrar la sección de registro
-            return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje)
+            # Renderizamos el formulario para registrar una nueva solicitud
+            return render_template(
+                'solicitudes_registro.html',
+                accion=accion,
+                mensaje=mensaje
+            )
+
         elif request.method == 'POST':
             # Capturar campos desde el formulario
             id_solicitud = request.form.get("id_solicitud", "").strip()
             if not id_solicitud:
                 mensaje = "El ID de la Solicitud es obligatorio."
-                return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje)
+                return render_template(
+                    'solicitudes_registro.html',
+                    accion=accion,
+                    mensaje=mensaje
+                )
 
             descripcion = request.form.get("descripcion", "").strip()
             if not descripcion:
                 mensaje = "La descripción de la solicitud es obligatoria."
-                return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje)
+                return render_template(
+                    'solicitudes_registro.html',
+                    accion=accion,
+                    mensaje=mensaje
+                )
 
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             empleado_solicitante = session.get('usuario', 'desconocido')
@@ -2238,7 +2251,11 @@ def solicitudes():
                 logging.error("Error al registrar solicitud: " + str(e), exc_info=True)
                 mensaje = "Error al registrar la solicitud."
 
-            return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje)
+            return render_template(
+                'solicitudes_registro.html',
+                accion=accion,
+                mensaje=mensaje
+            )
 
     # -----------------------------------
     # 2) VER (listar solicitudes)
@@ -2255,7 +2272,12 @@ def solicitudes():
             logging.error("Error al obtener listado: " + str(e), exc_info=True)
             mensaje = "Error al cargar el listado de solicitudes."
 
-        return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
+        return render_template(
+            'solicitudes_ver.html',
+            accion=accion,
+            mensaje=mensaje,
+            solicitudes=solicitudes_data
+        )
 
     # -----------------------------------
     # 3) ACTUALIZAR (modificar solicitud)
@@ -2264,7 +2286,11 @@ def solicitudes():
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
             mensaje = "Fila inválida para actualizar."
-            return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje)
+            return render_template(
+                'solicitudes_actualizar.html',
+                accion=accion,
+                mensaje=mensaje
+            )
 
         fila_index = int(fila_str)
 
@@ -2285,7 +2311,13 @@ def solicitudes():
                 mensaje = "Error al cargar la solicitud."
                 solicitud_fila = []
 
-            return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje, solicitud=solicitud_fila, fila=fila_index)
+            return render_template(
+                'solicitudes_actualizar.html',
+                accion=accion,
+                mensaje=mensaje,
+                solicitud=solicitud_fila,
+                fila=fila_index
+            )
 
         elif request.method == 'POST':
             nuevo_estado = request.form.get("estado", "").strip()
@@ -2335,7 +2367,11 @@ def solicitudes():
                 logging.error("Error al actualizar la solicitud: " + str(e), exc_info=True)
                 mensaje = "Error al actualizar la solicitud."
 
-            return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje)
+            return render_template(
+                'solicitudes_actualizar.html',
+                accion=accion,
+                mensaje=mensaje
+            )
 
     # -----------------------------------
     # 4) REPORTES (filtrar por fecha y estado)
@@ -2384,14 +2420,23 @@ def solicitudes():
             logging.error("Error al generar reporte de solicitudes: " + str(e), exc_info=True)
             mensaje = "Error al generar el reporte."
 
-        return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=solicitudes_filtradas)
+        return render_template(
+            'solicitudes_reportes.html',
+            accion=accion,
+            mensaje=mensaje,
+            solicitudes_reporte=solicitudes_filtradas
+        )
 
     # -----------------------------------
-    # Accion no reconocida
+    # Acción no reconocida
     # -----------------------------------
     else:
         mensaje = "Acción no reconocida."
-        return render_template('home_solicitudes.html', accion=accion, mensaje=mensaje)
+        return render_template(
+            'solicitudes_base.html',
+            accion=accion,
+            mensaje=mensaje
+        )
 
 
 
