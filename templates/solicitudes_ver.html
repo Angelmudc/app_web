@@ -22,7 +22,7 @@
     <tbody>
       {% for sol in solicitudes %}
         {% if loop.index0 == 0 %}
-          {# Si la primera fila es encabezado, se salta #}
+          {# Suponiendo que la primera fila sean encabezados, se omite #}
           {% continue %}
         {% endif %}
         <tr>
