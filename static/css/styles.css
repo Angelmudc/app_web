@@ -182,173 +182,91 @@ footer {
   --primary-color: #1A5789;        /* Azul intenso */
   --accent-color: #00AECF;         /* Turquesa */
   --secondary-color: #ffffff;      /* Blanco */
-  --background-color: #e8f6fa;      /* Fondo suave */
+  --background-color: #f4f7fb;      /* Fondo suave */
   --text-color: #343a40;           /* Gris oscuro */
   --transition-duration: 0.3s;
-  --font-size-base: 1rem;
-  --font-size-large: 1.2rem;
+  --font-family-base: 'Roboto', sans-serif;
 }
 
-/* 2. Reset Básico y Estilos Globales */
+/* 2. Reset y Estilos Globales */
 *,
 *::before,
 *::after {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
 }
 
 body {
-  font-family: Arial, sans-serif;
+  font-family: var(--font-family-base);
   background: var(--background-color);
   color: var(--text-color);
-  font-size: var(--font-size-large);
-  line-height: 1.5;
-  padding: 20px;
+  font-size: 1rem;
+  margin: 0;
 }
 
 /* 3. Navbar */
 .navbar {
-  background-color: var(--primary-color) !important;
-  padding: 10px 20px;
+  background: var(--primary-color);
 }
 
-.navbar-brand {
+.navbar-brand, .nav-link {
   color: var(--secondary-color) !important;
-  font-weight: bold;
-  font-size: 1.5rem;
+  font-weight: 700;
   transition: color var(--transition-duration);
 }
 
-.navbar-brand:hover {
-  color: #dfe4ea !important;
+.nav-link:hover {
+  color: #cce4f7 !important;
 }
 
 /* 4. Sección Hero */
 .hero-section {
   background: linear-gradient(90deg, var(--primary-color), #005f7e);
   color: var(--secondary-color);
-  padding: 60px 20px;
+  padding: 3rem 1rem;
   text-align: center;
-  border-radius: 10px;
-  margin-bottom: 40px;
-  position: relative;
-  overflow: hidden;
-  animation: fadeIn 1.5s ease-in-out;
-}
-
-.hero-section img {
-  max-width: 160px;
-  transition: transform var(--transition-duration);
-  border-radius: 10px;
-}
-
-.hero-section img:hover {
-  transform: scale(1.05);
+  border-radius: 0.5rem;
+  margin-bottom: 2rem;
 }
 
 .hero-section h1 {
-  font-size: 2.2rem;
-  margin-top: 20px;
+  font-size: 2.5rem;
 }
 
 .hero-section p {
-  margin-top: 15px;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
 }
 
-/* 5. Tarjetas (Cards) */
+/* 5. Contenedores */
+.container {
+  max-width: 1200px;
+  margin: auto;
+}
+
+/* 6. Tarjetas (Cards) */
 .card {
-  background-color: var(--secondary-color);
   border: none;
-  border-radius: 10px;
-  overflow: hidden;
-  transition: transform var(--transition-duration) ease, box-shadow var(--transition-duration) ease;
-  margin-bottom: 20px;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  transition: transform var(--transition-duration);
+  margin-bottom: 1.5rem;
 }
 
 .card:hover {
-  transform: scale(1.03);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+  transform: translateY(-5px);
 }
 
-.card .card-body i {
-  font-size: 3rem;
-  margin-bottom: 15px;
-  color: var(--primary-color);
-  transition: transform var(--transition-duration);
-}
-
-.card:hover .card-body i {
-  transform: rotate(5deg);
-}
-
-.card-title {
-  font-weight: bold;
-  margin-bottom: 10px;
-}
-
-.card-text {
-  font-size: 0.95rem;
-  color: #666;
-}
-
-/* 6. Botones */
+/* 7. Botones */
 .btn {
-  transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
+  border-radius: 0.25rem;
+  transition: background-color var(--transition-duration), transform var(--transition-duration);
 }
 
 .btn:hover {
   transform: translateY(-3px);
 }
 
-/* 7. Contenedores */
-.container {
-  max-width: 1200px;
-  margin: 30px auto;
-  padding: 40px;
-}
-
-/* Tabla con scroll horizontal */
-.table-responsive {
-  overflow-x: auto;
-}
-
-/* 8. Listas de documentos en "ver" */
-.doc-list {
-  list-style: none;
-  padding: 0;
-}
-
-.doc-list li {
-  padding: 10px;
-  border-bottom: 1px solid #dee2e6;
-  transition: background-color var(--transition-duration);
-}
-
-.doc-list li:hover {
-  background-color: #f1f1f1;
-}
-
-/* 9. Animaciones */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* 10. Footer */
+/* 8. Footer */
 footer {
-  text-align: center;
-  padding: 20px;
-  font-size: 0.9rem;
-  color: #666;
-  margin-top: 30px;
   background: var(--secondary-color);
   border-top: 1px solid #ddd;
 }
