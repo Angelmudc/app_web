@@ -1,46 +1,29 @@
-{% extends "base.html" %}
-
-{% block title %}Actualizar Solicitud - Doméstica del Cibao A&D{% endblock %}
+<!-- templates/solicitudes_actualizar.html -->
+{% extends "solicitudes_layout.html" %}
 
 {% block content %}
-<div class="container mt-4">
-  <h2>Actualizar Solicitud</h2>
+  <h1>Actualizar Solicitud</h1>
   {% if mensaje %}
-    <div class="alert alert-info">{{ mensaje }}</div>
+    <div class="alert alert-danger">{{ mensaje }}</div>
   {% endif %}
+
   {% if solicitud %}
-  <form method="POST" action="{{ url_for('solicitudes', accion='actualizar', fila=fila) }}">
-    <div class="mb-3">
-      <label class="form-label">ID Solicitud:</label>
-      <input type="text" class="form-control" value="{{ solicitud[0] }}" disabled>
-    </div>
-    <div class="mb-3">
-      <label class="form-label">Descripción Solicitud:</label>
-      <textarea class="form-control" disabled>{{ solicitud[3] }}</textarea>
-    </div>
-    <div class="mb-3">
-      <label for="estado" class="form-label">Estado de Solicitud</label>
-      <select class="form-select" id="estado" name="estado" required>
-        <option value="">Seleccione Estado</option>
-        <option value="Disponible" {% if solicitud[4] == "Disponible" %}selected{% endif %}>Disponible</option>
-        <option value="Asignada" {% if solicitud[4] == "Asignada" %}selected{% endif %}>Asignada</option>
-        <option value="En Proceso" {% if solicitud[4] == "En Proceso" %}selected{% endif %}>En Proceso</option>
-        <option value="Completada" {% if solicitud[4] == "Completada" %}selected{% endif %}>Completada</option>
-        <option value="Cancelada" {% if solicitud[4] == "Cancelada" %}selected{% endif %}>Cancelada</option>
-      </select>
-    </div>
-    <div class="mb-3">
-      <label for="empleado_asignado" class="form-label">Empleado Asignado</label>
-      <input type="text" class="form-control" id="empleado_asignado" name="empleado_asignado" placeholder="Nombre del empleado asignado" value="{{ solicitud[5] }}">
-    </div>
-    <div class="mb-3">
-      <label for="notas" class="form-label">Notas/Comentarios</label>
-      <textarea class="form-control" id="notas" name="notas" rows="3" placeholder="Notas o comentarios">{{ solicitud[7] }}</textarea>
-    </div>
-    <button type="submit" class="btn btn-primary">Actualizar Solicitud</button>
-  </form>
+    <form action="{{ url_for('solicitudes', accion='actualizar', fila=fila) }}" method="POST">
+      <div class="mb-3">
+        <label for="estado" class="form-label">Estado:</label>
+        <input type="text" name="estado" id="estado" class="form-control" value="{{ solicitud[4] }}" required>
+      </div>
+      <div class="mb-3">
+        <label for="empleado_asignado" class="form-label">Empleado Asignado:</label>
+        <input type="text" name="empleado_asignado" id="empleado_asignado" class="form-control" value="{{ solicitud[5] }}">
+      </div>
+      <div class="mb-3">
+        <label for="notas" class="form-label">Notas:</label>
+        <textarea name="notas" id="notas" class="form-control"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Actualizar</button>
+    </form>
   {% else %}
-    <p>No se encontró la solicitud para actualizar.</p>
+    <p>No se encontró la solicitud.</p>
   {% endif %}
-</div>
 {% endblock %}
