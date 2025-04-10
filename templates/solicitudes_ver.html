@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Ver Solicitudes - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>Listado de Solicitudes</h2>
+  {% if mensaje %}
+    <div class="alert alert-info">{{ mensaje }}</div>
+  {% endif %}
+  {% if solicitudes %}
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>ID Solicitud (AG)</th>
+          <th>Fecha Solicitud (AH)</th>
+          <th>Empleado Solicitante (AI)</th>
+          <th>Descripción (AJ)</th>
+          <th>Estado (AK)</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sol in solicitudes %}
+          <tr>
+            <td>{{ sol[0] }}</td>
+            <td>{{ sol[1] }}</td>
+            <td>{{ sol[2] }}</td>
+            <td>{{ sol[3] }}</td>
+            <td>{{ sol[4] }}</td>
+            <td>
+              <a href="{{ url_for('solicitudes', accion='actualizar', fila=loop.index+1) }}" class="btn btn-sm btn-secondary">Actualizar</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No se encontraron solicitudes registradas.</p>
+  {% endif %}
+</div>
+{% endblock %}

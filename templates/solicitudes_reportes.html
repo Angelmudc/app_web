@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Reportes de Solicitudes - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>Reportes de Solicitudes</h2>
+  {% if mensaje %}
+    <div class="alert alert-info">{{ mensaje }}</div>
+  {% endif %}
+  <!-- Formulario de filtros -->
+  <form method="GET" action="{{ url_for('solicitudes') }}">
+    <input type="hidden" name="accion" value="reportes">
+    <div class="row">
+      <div class="col-md-3 mb-3">
+        <label for="fecha_inicio" class="form-label">Fecha Inicio</label>
+        <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio">
+      </div>
+      <div class="col-md-3 mb-3">
+        <label for="fecha_fin" class="form-label">Fecha Fin</label>
+        <input type="date" class="form-control" id="fecha_fin" name="fecha_fin">
+      </div>
+      <div class="col-md-3 mb-3">
+        <label for="estado" class="form-label">Estado</label>
+        <select class="form-select" id="estado" name="estado">
+          <option value="">Todos</option>
+          <option value="Disponible">Disponible</option>
+          <option value="Asignada">Asignada</option>
+          <option value="En Proceso">En Proceso</option>
+          <option value="Completada">Completada</option>
+          <option value="Cancelada">Cancelada</option>
+        </select>
+      </div>
+      <div class="col-md-3 mb-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Generar Reporte</button>
+      </div>
+    </div>
+  </form>
+  <!-- Reporte: tabla con los resultados filtrados -->
+  {% if solicitudes %}
+    <table class="table table-striped mt-4">
+      <thead>
+        <tr>
+          <th>ID Solicitud</th>
+          <th>Fecha Solicitud</th>
+          <th>Empleado Solicitante</th>
+          <th>Descripción</th>
+          <th>Estado</th>
+          <th>Empleado Asignado</th>
+          <th>Fecha Actualización</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sol in solicitudes %}
+        <tr>
+          <td>{{ sol[0] }}</td>
+          <td>{{ sol[1] }}</td>
+          <td>{{ sol[2] }}</td>
+          <td>{{ sol[3] }}</td>
+          <td>{{ sol[4] }}</td>
+          <td>{{ sol[5] }}</td>
+          <td>{{ sol[6] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No se encontraron solicitudes que cumplan con los criterios.</p>
+  {% endif %}
+</div>
+{% endblock %}
