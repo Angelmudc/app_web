@@ -2169,7 +2169,7 @@ def referencias():
 def solicitudes():
     """
     Módulo de Solicitudes que trabaja con la nueva hoja llamada "Solicitudes"
-    con columnas A → I:
+    con columnas A → I: 
       A: Id Solicitud
       B: Fecha Solicitud
       C: Empleado Solicitante
@@ -2191,58 +2191,52 @@ def solicitudes():
     # -----------------------------------
     if accion == 'registro':
         if request.method == 'GET':
-            # Renderizamos el formulario para registrar una nueva solicitud
             return render_template(
                 'solicitudes_registro.html',
                 accion=accion,
                 mensaje=mensaje
             )
-
         elif request.method == 'POST':
-            # Capturar campos desde el formulario
+            # Captura de campos
             id_solicitud = request.form.get("id_solicitud", "").strip()
             if not id_solicitud:
                 mensaje = "El ID de la Solicitud es obligatorio."
-                return render_template(
-                    'solicitudes_registro.html',
-                    accion=accion,
-                    mensaje=mensaje
-                )
+                return render_template('solicitudes_registro.html',
+                                       accion=accion, 
+                                       mensaje=mensaje)
 
             descripcion = request.form.get("descripcion", "").strip()
             if not descripcion:
                 mensaje = "La descripción de la solicitud es obligatoria."
-                return render_template(
-                    'solicitudes_registro.html',
-                    accion=accion,
-                    mensaje=mensaje
-                )
+                return render_template('solicitudes_registro.html',
+                                       accion=accion, 
+                                       mensaje=mensaje)
 
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             empleado_solicitante = session.get('usuario', 'desconocido')
             estado = "Disponible"
 
-            # Notas e Historial inicialmente vacíos
+            # Notas e Historial iniciales
             notas_inicial = ""
             historial_inicial = ""
 
-            # Armar la fila con 9 columnas según tu hoja
+            # Armar la fila con 9 columnas
             nueva_fila = [
-                id_solicitud,          # A: Id Solicitud
-                fecha_solicitud,       # B: Fecha Solicitud
-                empleado_solicitante,  # C: Empleado Solicitante
-                descripcion,           # D: Descripción Solicitud
-                estado,                # E: Estado de Solicitud
-                "",                    # F: Empleado Asignado (vacío al crear)
-                "",                    # G: Fecha de Actualización (vacío al crear)
-                notas_inicial,         # H: Notas
-                historial_inicial      # I: Historial de Cambios
+                id_solicitud,         
+                fecha_solicitud,      
+                empleado_solicitante, 
+                descripcion,          
+                estado,               
+                "",  # Empleado Asignado
+                "",  # Fecha Actualización
+                notas_inicial,       
+                historial_inicial     
             ]
 
             try:
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Solicitudes!A1:I",  # Usa "A1:I" para mayor compatibilidad
+                    range="Solicitudes!A1:I",
                     valueInputOption="RAW",
                     body={"values": [nueva_fila]}
                 ).execute()
@@ -2251,11 +2245,9 @@ def solicitudes():
                 logging.error("Error al registrar solicitud: " + str(e), exc_info=True)
                 mensaje = "Error al registrar la solicitud."
 
-            return render_template(
-                'solicitudes_registro.html',
-                accion=accion,
-                mensaje=mensaje
-            )
+            return render_template('solicitudes_registro.html',
+                                   accion=accion,
+                                   mensaje=mensaje)
 
     # -----------------------------------
     # 2) VER (listar solicitudes)
@@ -2348,11 +2340,11 @@ def solicitudes():
 
                 update_range = f"Solicitudes!E{fila_index}:I{fila_index}"
                 valores_update = [[
-                    nuevo_estado,         # E: Estado
-                    empleado_asignado,    # F: Empleado Asignado
-                    fecha_actualizacion,  # G: Fecha de Actualización
-                    notas,                # H: Notas
-                    historial_texto       # I: Historial de Cambios
+                    nuevo_estado,         
+                    empleado_asignado,    
+                    fecha_actualizacion,  
+                    notas,               
+                    historial_texto       
                 ]]
 
                 service.spreadsheets().values().update(
