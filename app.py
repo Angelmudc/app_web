@@ -2147,10 +2147,12 @@ import logging
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
+    # Verificar la sesión
     if 'usuario' not in session:
         return redirect(url_for('login'))
 
-    # Si no se especifica 'accion' pero se envía un 'codigo', se asume que es una búsqueda.
+    # Si no se especifica 'accion' pero se envía 'codigo', se asume búsqueda;
+    # de lo contrario, el valor por defecto es 'ver'
     accion = request.args.get('accion', None)
     if accion is None or accion.strip() == "":
         if request.args.get("codigo"):
@@ -2163,12 +2165,12 @@ def solicitudes():
     mensaje = None
 
     # ----------------------------------------------------------------
-    # REGISTRO: Crear nueva orden con datos originales (A-M) y nuevos datos (N-Z)
+    # REGISTRO: Crear nueva orden (datos originales: columnas A-M, nuevos: columnas N-Z)
     if accion == 'registro':
         if request.method == 'GET':
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
         elif request.method == 'POST':
-            # --- Datos originales (Columnas A a M) ---
+            # Datos originales (Columnas A a M)
             codigo = request.form.get("codigo", "").strip()  # Columna A
             if not codigo:
                 mensaje = "El Código de la Orden es obligatorio."
@@ -2198,7 +2200,7 @@ def solicitudes():
                 historial_inicial
             ] + extra_original
 
-            # --- Nuevos datos (Columnas N a Z) ---
+            # Nuevos datos (Columnas N a Z)
             direccion = request.form.get("direccion", "").strip()  # Columna N
             ruta = request.form.get("ruta", "").strip()             # Columna O
             modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()  # Columna P
@@ -2274,7 +2276,7 @@ def solicitudes():
                 return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
             
             header = data[0]
-            # Comparación estricta sin espacios extra
+            # Comparación estricta sin espacios extras en la columna A
             matches = [row for row in data[1:] if row and row[0].strip() == codigo]
             
             if matches:
@@ -2292,7 +2294,80 @@ def solicitudes():
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
 
     # ----------------------------------------------------------------
-    # ACTUALIZAR: Actualización parcial (estado, asignado y notas)
+    # REPORTES: Filtrado de órdenes usando múltiples criterios
+    elif accion == 'reportes':
+        try:
+            result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Solicitudes!A1:Z"
+            ).execute()
+            data = result.get("values", [])
+        except Exception as e:
+            logging.error("Error al obtener datos para reportes: " + str(e), exc_info=True)
+            mensaje = "Error al obtener datos para reportes."
+            return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=[])
+        
+        # data[0] es el encabezado; lo demás son órdenes
+        filtered = data[1:] if len(data) > 1 else []
+
+        # Filtro por Rango de Fechas (Fecha de Solicitud en columna B, índice 1)
+        fecha_inicio = request.args.get("fecha_inicio", "").strip()
+        fecha_fin = request.args.get("fecha_fin", "").strip()
+        try:
+            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d") if fecha_inicio else None
+        except Exception as e:
+            logging.error("Error al convertir fecha_inicio: " + str(e))
+            fecha_inicio_dt = None
+        try:
+            fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d") if fecha_fin else None
+        except Exception as e:
+            logging.error("Error al convertir fecha_fin: " + str(e))
+            fecha_fin_dt = None
+
+        if fecha_inicio_dt or fecha_fin_dt:
+            temp_filtered = []
+            for row in filtered:
+                if len(row) > 1 and row[1]:
+                    try:
+                        order_date = datetime.strptime(row[1][:10], "%Y-%m-%d")
+                    except Exception:
+                        continue
+                    if fecha_inicio_dt and order_date < fecha_inicio_dt:
+                        continue
+                    if fecha_fin_dt and order_date > fecha_fin_dt:
+                        continue
+                    temp_filtered.append(row)
+            filtered = temp_filtered
+
+        # Filtro por Descripción (columna D, índice 3)
+        descripcion_filtro = request.args.get("descripcion", "").strip().lower()
+        if descripcion_filtro:
+            filtered = [row for row in filtered if len(row) > 3 and descripcion_filtro in row[3].lower()]
+
+        # Filtro por Sueldo (columna Y, índice 24)
+        sueldo_filtro = request.args.get("sueldo", "").strip().lower()
+        if sueldo_filtro:
+            filtered = [row for row in filtered if len(row) > 24 and sueldo_filtro in row[24].lower()]
+
+        # Filtro por Ruta (columna O, índice 14)
+        ruta_filtro = request.args.get("ruta", "").strip().lower()
+        if ruta_filtro:
+            filtered = [row for row in filtered if len(row) > 14 and ruta_filtro in row[14].lower()]
+
+        # Filtro por Funciones (columna V, índice 21)
+        funciones_filtro = request.args.get("funciones", "").strip().lower()
+        if funciones_filtro:
+            filtered = [row for row in filtered if len(row) > 21 and funciones_filtro in row[21].lower()]
+
+        header = data[0] if data else []
+        solicitudes_reporte = [header] + filtered if filtered else [header]
+        total_orders = len(data) - 1 if len(data) > 1 else 0
+        filtered_count = len(filtered)
+        mensaje_info = f"Total órdenes: {total_orders}. Órdenes filtradas: {filtered_count}."
+        return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje_info, solicitudes_reporte=solicitudes_reporte)
+
+    # ----------------------------------------------------------------
+    # ACTUALIZAR: Actualización parcial (modifica estado, asignado y notas)
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
@@ -2346,7 +2421,7 @@ def solicitudes():
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
 
     # ----------------------------------------------------------------
-    # EDITAR: Edición completa (todos los campos editables, excepto los fijos)
+    # EDITAR: Edición completa de la orden (modifica todos los campos editables, excepto los fijos)
     elif accion == 'editar':
         if request.method == 'GET':
             codigo = request.args.get("codigo", "").strip()
@@ -2382,6 +2457,7 @@ def solicitudes():
                 mensaje = "Fila inválida para editar."
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
+            # Recoger datos del formulario de edición completa
             codigo = request.form.get("codigo", "").strip()  # Campo de solo lectura
             descripcion = request.form.get("descripcion", "").strip()
             estado = request.form.get("estado", "").strip()
@@ -2430,6 +2506,7 @@ def solicitudes():
             if notas_actuales:
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
+
             extra_original = ["", "", "", ""]  # Columnas J a M sin cambios
             datos_nuevos = [
                 direccion,
@@ -2500,10 +2577,10 @@ def solicitudes():
             mensaje = "Error al cargar órdenes disponibles."
         return render_template('solicitudes_disponibles.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # ----------------------------------------------------------------
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
+
 
 
 if __name__ == '__main__':
