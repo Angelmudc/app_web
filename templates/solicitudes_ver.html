@@ -29,7 +29,8 @@
       </tr>
     </thead>
     <tbody>
-      {# Se asume que la primera fila de "solicitudes" es el encabezado (en caso de búsqueda, se habrá formado la lista con encabezado y resultados) #}
+      {# Se asume que la variable "solicitudes" contiene todas las filas, 
+         siendo la primera el encabezado (esto ocurre en el listado completo). #}
       {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
