@@ -17,6 +17,24 @@
       <label for="descripcion" class="form-label">Descripción:</label>
       <textarea name="descripcion" id="descripcion" class="form-control" required></textarea>
     </div>
+    <hr>
+    <h4>Información del Cliente (no se mostrará en la solicitud)</h4>
+    <div class="mb-3">
+      <label for="nombre_cliente" class="form-label">Nombre del Cliente:</label>
+      <input type="text" name="nombre_cliente" id="nombre_cliente" class="form-control">
+    </div>
+    <div class="mb-3">
+      <label for="ciudad" class="form-label">Ciudad:</label>
+      <input type="text" name="ciudad" id="ciudad" class="form-control">
+    </div>
+    <div class="mb-3">
+      <label for="sector" class="form-label">Sector:</label>
+      <input type="text" name="sector" id="sector" class="form-control">
+    </div>
+    <div class="mb-3">
+      <label for="telefono" class="form-label">Número de Teléfono:</label>
+      <input type="text" name="telefono" id="telefono" class="form-control">
+    </div>
     <button type="submit" class="btn btn-primary">Registrar</button>
   </form>
 {% endblock %}

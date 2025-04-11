@@ -11,17 +11,33 @@
   <!-- Formulario para filtrar el reporte -->
   <form class="row g-3 mb-4" method="GET" action="{{ url_for('solicitudes') }}">
     <input type="hidden" name="accion" value="reportes">
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label for="fecha_inicio" class="form-label">Fecha Inicio (YYYY-MM-DD):</label>
       <input type="text" name="fecha_inicio" id="fecha_inicio" class="form-control">
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label for="fecha_fin" class="form-label">Fecha Fin (YYYY-MM-DD):</label>
       <input type="text" name="fecha_fin" id="fecha_fin" class="form-control">
     </div>
-    <div class="col-md-4">
-      <label for="estado" class="form-label">Estado (filtrar):</label>
+    <div class="col-md-3">
+      <label for="estado" class="form-label">Estado:</label>
       <input type="text" name="estado" id="estado" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label for="nombre_cliente" class="form-label">Nombre del Cliente:</label>
+      <input type="text" name="nombre_cliente" id="nombre_cliente" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label for="ciudad" class="form-label">Ciudad:</label>
+      <input type="text" name="ciudad" id="ciudad" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label for="sector" class="form-label">Sector:</label>
+      <input type="text" name="sector" id="sector" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label for="codigo" class="form-label">Código de Solicitud:</label>
+      <input type="text" name="codigo" id="codigo" class="form-control">
     </div>
     <div class="col-12">
       <button type="submit" class="btn btn-primary">Filtrar</button>

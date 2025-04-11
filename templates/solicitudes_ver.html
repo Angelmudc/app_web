@@ -4,6 +4,14 @@
 {% block content %}
   <h1 class="mb-4">Listado de Solicitudes</h1>
   
+  <!-- Formulario de búsqueda por código -->
+  <form class="mb-4" action="{{ url_for('solicitudes', accion='buscar') }}" method="GET">
+    <div class="input-group">
+      <input type="text" name="codigo" class="form-control" placeholder="Buscar por Código de Solicitud" required>
+      <button type="submit" class="btn btn-primary">Buscar</button>
+    </div>
+  </form>
+  
   {% if mensaje %}
     <div class="alert alert-danger">{{ mensaje }}</div>
   {% endif %}
@@ -21,7 +29,7 @@
       </tr>
     </thead>
     <tbody>
-      {# Se omite la primera fila (encabezados) usando slicing #}
+      {# Itera sobre solicitudes omitiendo la primera fila (encabezados) #}
       {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
@@ -31,7 +39,7 @@
           <td>{{ sol[4] }}</td>
           <td>{{ sol[5] }}</td>
           <td>
-            {# Dado que iteramos sobre solicitudes[1:], loop.index inicia en 1, se suma 1 para obtener la fila en la hoja #}
+            {# loop.index empieza en 1 al usar slicing, se suma 1 para obtener el número de fila exacto en la hoja #}
             <a href="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" class="btn btn-sm btn-info">Actualizar</a>
           </td>
         </tr>
