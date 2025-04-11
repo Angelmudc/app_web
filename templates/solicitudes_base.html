@@ -2,14 +2,14 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1 class="mb-4">Gestión de Solicitudes</h1>
+  <h1 class="mb-4">Gestión de Órdenes</h1>
   {% if mensaje %}
     <div class="alert alert-warning">{{ mensaje }}</div>
   {% endif %}
   <p>Utiliza los enlaces del menú para acceder a cada funcionalidad:</p>
   <ul>
-    <li><a href="{{ url_for('solicitudes', accion='ver') }}">Ver Solicitudes</a></li>
-    <li><a href="{{ url_for('solicitudes', accion='registro') }}">Registrar Solicitud</a></li>
+    <li><a href="{{ url_for('solicitudes', accion='ver') }}">Ver Órdenes</a></li>
+    <li><a href="{{ url_for('solicitudes', accion='registro') }}">Registrar Orden</a></li>
     <li><a href="{{ url_for('solicitudes', accion='reportes') }}">Reportes</a></li>
   </ul>
 {% endblock %}

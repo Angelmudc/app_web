@@ -2173,7 +2173,7 @@ def solicitudes():
     accion = request.args.get('accion', 'ver').strip()
     mensaje = None
 
-    # REGISTRO: Agregar nueva solicitud con campos adicionales
+    # REGISTRO: Agregar nueva orden con datos adicionales y empleado de la orden (columna C)
     if accion == 'registro':
         if request.method == 'GET':
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
@@ -2181,17 +2181,18 @@ def solicitudes():
             # Capturar y validar datos básicos
             id_solicitud = request.form.get("id_solicitud", "").strip()
             if not id_solicitud:
-                mensaje = "El ID de la Solicitud es obligatorio."
+                mensaje = "El ID de la Orden es obligatorio."
                 return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
             descripcion = request.form.get("descripcion", "").strip()
             if not descripcion:
-                mensaje = "La descripción de la solicitud es obligatoria."
+                mensaje = "La descripción de la orden es obligatoria."
                 return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
             # Datos básicos
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            empleado_solicitante = session.get('usuario', 'desconocido')
+            # Ahora se guarda el empleado que hizo la orden
+            empleado_orden = session.get('usuario', 'desconocido')
             estado = "Disponible"
             notas_inicial = ""
             historial_inicial = ""
@@ -2202,15 +2203,15 @@ def solicitudes():
             sector = request.form.get("sector", "").strip()
             telefono = request.form.get("telefono", "").strip()
 
-            # Armar la nueva fila con 13 columnas: A a I + J a M.
+            # Armar la nueva fila con 13 columnas (A a M)
             nueva_fila = [
-                id_solicitud,         # A: ID Solicitud
-                fecha_solicitud,      # B: Fecha Solicitud
-                empleado_solicitante, # C: Empleado Solicitante
+                id_solicitud,         # A: ID Orden
+                fecha_solicitud,      # B: Fecha de la Orden
+                empleado_orden,       # C: Empleado que realizó la Orden
                 descripcion,          # D: Descripción
                 estado,               # E: Estado
-                "",                   # F: Empleado Asignado (vacío al crear)
-                "",                   # G: Fecha de Actualización (vacío al crear)
+                "",                   # F: Empleado Asignado
+                "",                   # G: Fecha de Actualización
                 notas_inicial,        # H: Notas
                 historial_inicial,    # I: Historial de Cambios
                 nombre_cliente,       # J: Nombre del Cliente
@@ -2222,32 +2223,32 @@ def solicitudes():
             try:
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Solicitudes!A1:M",  # Actualizado para A a M
+                    range="Solicitudes!A1:M",  # Se escribe en columnas A a M
                     valueInputOption="RAW",
                     body={"values": [nueva_fila]}
                 ).execute()
-                mensaje = "Solicitud registrada con éxito."
+                mensaje = "Orden registrada con éxito."
             except Exception as e:
-                logging.error("Error al registrar solicitud: " + str(e), exc_info=True)
-                mensaje = "Error al registrar la solicitud."
+                logging.error("Error al registrar orden: " + str(e), exc_info=True)
+                mensaje = "Error al registrar la orden."
 
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
-    # VER: Listar solicitudes (se muestran columnas A a I)
+    # VER: Listar órdenes (se muestran solo las columnas A a I, sin los datos adicionales)
     elif accion == 'ver':
         solicitudes_data = []
         try:
             result = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:M"  # Leer todos los datos, aunque solo se mostrarán A-I
+                range="Solicitudes!A1:M"  # Leer toda la información
             ).execute()
             solicitudes_data = result.get("values", [])
         except Exception as e:
             logging.error("Error al obtener listado: " + str(e), exc_info=True)
-            mensaje = "Error al cargar el listado de solicitudes."
+            mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # BUSCAR: Buscar solicitud por código (ID)
+    # BUSCAR: Buscar orden por código (ID Orden)
     elif accion == 'buscar':
         codigo = request.args.get("codigo", "").strip()
         solicitudes_data = []
@@ -2258,28 +2259,28 @@ def solicitudes():
                 range="Solicitudes!A1:M"
             ).execute()
             solicitudes_data = result.get("values", [])
-            # Iterar desde la segunda fila (asumiendo que la primera fila son encabezados)
+            # Buscar recorriendo los datos desde la segunda fila (asumimos que la primera son encabezados)
             for idx, sol in enumerate(solicitudes_data[1:], start=2):
                 if sol and sol[0] == codigo:
                     solicitud_encontrada = sol
-                    fila_index = idx  # Se asume que los índices en la hoja son 1-based
+                    fila_index = idx  # Índice 1-based de la fila en la hoja
                     break
             if solicitud_encontrada:
-                mensaje = f"Solicitud encontrada en la fila {fila_index}."
-                # Puedes redirigir a la vista de actualizar si lo deseas
+                mensaje = f"Orden encontrada en la fila {fila_index}."
+                # Redirige a la vista de actualización para poder modificar la orden
                 return render_template('solicitudes_actualizar.html',
                                        accion='actualizar',
                                        mensaje=mensaje,
                                        solicitud=solicitud_encontrada,
                                        fila=fila_index)
             else:
-                mensaje = "No se encontró ninguna solicitud con ese código."
+                mensaje = "No se encontró ninguna orden con ese código."
         except Exception as e:
-            logging.error("Error al buscar la solicitud: " + str(e), exc_info=True)
-            mensaje = "Error al buscar la solicitud."
+            logging.error("Error al buscar la orden: " + str(e), exc_info=True)
+            mensaje = "Error al buscar la orden."
         return render_template('solicitudes_ver.html', accion='ver', mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # ACTUALIZAR: Modificar solicitud (se actualizarán campos E a I)
+    # ACTUALIZAR: Modificar orden (se actualizan las columnas E a I)
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
@@ -2288,7 +2289,7 @@ def solicitudes():
         fila_index = int(fila_str)
         if request.method == 'GET':
             try:
-                rango = f"Solicitudes!A{fila_index}:M{fila_index}"  # Leer toda la fila (A a M)
+                rango = f"Solicitudes!A{fila_index}:M{fila_index}"  # Leer la fila completa (A a M)
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
                     range=rango
@@ -2299,8 +2300,8 @@ def solicitudes():
                 else:
                     solicitud_fila = []
             except Exception as e:
-                logging.error("Error al cargar solicitud para actualizar: " + str(e), exc_info=True)
-                mensaje = "Error al cargar la solicitud."
+                logging.error("Error al cargar la orden para actualizar: " + str(e), exc_info=True)
+                mensaje = "Error al cargar la orden."
                 solicitud_fila = []
             return render_template('solicitudes_actualizar.html',
                                    accion=accion,
@@ -2313,7 +2314,7 @@ def solicitudes():
             notas = request.form.get("notas", "").strip()
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
-                # Actualizamos las columnas E a I para la solicitud (no se modifican los datos adicionales)
+                # Actualizamos columnas E a I (Estado, Empleado Asignado, Fecha Actualización, Notas, Historial)
                 rango_historial = f"Solicitudes!I{fila_index}"
                 respuesta_hist = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2340,13 +2341,13 @@ def solicitudes():
                     valueInputOption="RAW",
                     body={"values": valores_update}
                 ).execute()
-                mensaje = "Solicitud actualizada correctamente."
+                mensaje = "Orden actualizada correctamente."
             except Exception as e:
-                logging.error("Error al actualizar la solicitud: " + str(e), exc_info=True)
-                mensaje = "Error al actualizar la solicitud."
+                logging.error("Error al actualizar la orden: " + str(e), exc_info=True)
+                mensaje = "Error al actualizar la orden."
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
 
-    # REPORTES: Filtrar solicitudes por fecha, estado y campos adicionales
+    # REPORTES: Filtrar órdenes por fecha, estado y campos adicionales
     elif accion == 'reportes':
         fecha_inicio = request.args.get("fecha_inicio", "").strip()
         fecha_fin = request.args.get("fecha_fin", "").strip()
@@ -2361,14 +2362,14 @@ def solicitudes():
         try:
             result = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:M"  # Leer hasta la columna M
+                range="Solicitudes!A1:M"
             ).execute()
             solicitudes_data = result.get("values", [])
             for sol in solicitudes_data:
-                # Verificamos que tenga al menos 5 elementos (para evitar errores)
+                # Verificamos que tenga la cantidad mínima de campos
                 if len(sol) < 5:
                     continue
-                # Filtros básicos de fecha y estado
+                # Filtrar por fecha
                 fecha_solicitud_str = sol[1]
                 try:
                     fecha_dt = datetime.strptime(fecha_solicitud_str, "%Y-%m-%d %H:%M:%S")
@@ -2382,10 +2383,11 @@ def solicitudes():
                     fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d")
                     if fecha_dt > fin_dt:
                         continue
+                # Filtrar por estado (columna E)
                 estado_actual = sol[4].strip().lower() if sol[4] else ""
                 if estado_filtro and estado_filtro != estado_actual:
                     continue
-                # Filtros adicionales en campos nuevos (índices: 9: nombre_cliente, 10: ciudad, 11: sector)
+                # Filtrar por datos adicionales: nombre del cliente (columna J), ciudad (K) y sector (L)
                 if nombre_cliente_filtro:
                     campo_cliente = sol[9].strip().lower() if len(sol) > 9 else ""
                     if nombre_cliente_filtro not in campo_cliente:
@@ -2402,16 +2404,15 @@ def solicitudes():
                     if sol[0] != codigo_filtro:
                         continue
                 solicitudes_filtradas.append(sol)
-            mensaje = f"Encontradas {len(solicitudes_filtradas)} solicitudes en el reporte."
+            mensaje = f"Encontradas {len(solicitudes_filtradas)} órdenes en el reporte."
         except Exception as e:
-            logging.error("Error al generar reporte de solicitudes: " + str(e), exc_info=True)
+            logging.error("Error al generar reporte de órdenes: " + str(e), exc_info=True)
             mensaje = "Error al generar el reporte."
         return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=solicitudes_filtradas)
 
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
-
 
 
 if __name__ == '__main__':

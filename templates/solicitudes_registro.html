@@ -2,7 +2,7 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1 class="mb-4">Registrar Nueva Solicitud</h1>
+  <h1 class="mb-4">Registrar Nueva Orden</h1>
   
   {% if mensaje %}
     <div class="alert alert-danger">{{ mensaje }}</div>
@@ -10,7 +10,7 @@
   
   <form action="{{ url_for('solicitudes', accion='registro') }}" method="POST">
     <div class="mb-3">
-      <label for="id_solicitud" class="form-label">ID Solicitud:</label>
+      <label for="id_solicitud" class="form-label">ID Orden:</label>
       <input type="text" name="id_solicitud" id="id_solicitud" class="form-control" required>
     </div>
     <div class="mb-3">
@@ -18,7 +18,7 @@
       <textarea name="descripcion" id="descripcion" class="form-control" required></textarea>
     </div>
     <hr>
-    <h4>Información del Cliente (no se mostrará en la solicitud)</h4>
+    <h4>Información del Cliente (No se mostrará en la orden)</h4>
     <div class="mb-3">
       <label for="nombre_cliente" class="form-label">Nombre del Cliente:</label>
       <input type="text" name="nombre_cliente" id="nombre_cliente" class="form-control">

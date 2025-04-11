@@ -2,7 +2,7 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1 class="mb-4">Reporte de Solicitudes</h1>
+  <h1 class="mb-4">Reporte de Órdenes</h1>
   
   {% if mensaje %}
     <div class="alert alert-info">{{ mensaje }}</div>
@@ -36,7 +36,7 @@
       <input type="text" name="sector" id="sector" class="form-control">
     </div>
     <div class="col-md-3">
-      <label for="codigo" class="form-label">Código de Solicitud:</label>
+      <label for="codigo" class="form-label">Código de Orden:</label>
       <input type="text" name="codigo" id="codigo" class="form-control">
     </div>
     <div class="col-12">
@@ -47,9 +47,9 @@
   <table class="table table-striped">
     <thead>
       <tr>
-        <th>ID Solicitud</th>
-        <th>Fecha Solicitud</th>
-        <th>Empleado Solicitante</th>
+        <th>ID Orden</th>
+        <th>Fecha</th>
+        <th>Empleado de la Orden</th>
         <th>Descripción</th>
         <th>Estado</th>
       </tr>
