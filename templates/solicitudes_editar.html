@@ -1,0 +1,104 @@
+<!-- templates/solicitudes_editar.html -->
+{% extends "solicitudes_layout.html" %}
+
+{% block content %}
+  <h1 class="mb-4">Editar Orden</h1>
+
+  {% if mensaje %}
+    <div class="alert alert-info">{{ mensaje }}</div>
+  {% endif %}
+
+  <form action="{{ url_for('solicitudes', accion='editar') }}" method="POST">
+    <!-- Campo oculto para el identificador de fila -->
+    <input type="hidden" name="fila" value="{{ fila }}">
+    
+    <!-- Información de la Orden -->
+    <div class="mb-3">
+      <label for="codigo" class="form-label">Código de Orden:</label>
+      <input type="text" id="codigo" name="codigo" class="form-control" value="{{ orden[0] }}" readonly>
+    </div>
+
+    <div class="mb-3">
+      <label for="descripcion" class="form-label">Descripción:</label>
+      <input type="text" id="descripcion" name="descripcion" class="form-control" value="{{ orden[3] }}" required>
+    </div>
+
+    <div class="mb-3">
+      <label for="estado" class="form-label">Estado:</label>
+      <select name="estado" id="estado" class="form-control" required>
+        <option value="Disponible" {% if orden[4]|lower == "disponible" %}selected{% endif %}>Disponible</option>
+        <option value="Reemplazo" {% if orden[4]|lower == "reemplazo" %}selected{% endif %}>Reemplazo</option>
+        <option value="Cancelado" {% if orden[4]|lower == "cancelado" %}selected{% endif %}>Cancelado</option>
+        <option value="En proceso" {% if orden[4]|lower == "en proceso" %}selected{% endif %}>En proceso</option>
+        <option value="Pago" {% if orden[4]|lower == "pago" %}selected{% endif %}>Pago</option>
+      </select>
+    </div>
+    
+    <div class="mb-3">
+      <label for="empleado_asignado" class="form-label">Empleado Asignado:</label>
+      <input type="text" id="empleado_asignado" name="empleado_asignado" class="form-control" value="{{ orden[5] }}">
+    </div>
+
+    <div class="mb-3">
+      <label for="notas" class="form-label">Notas Adicionales:</label>
+      <textarea id="notas" name="notas" class="form-control" placeholder="Notas sobre la edición (opcional)"></textarea>
+    </div>
+
+    <hr>
+    <!-- Nuevos Datos (Columnas N a Z) -->
+    <div class="mb-3">
+      <label for="direccion" class="form-label">📍 Dirección:</label>
+      <input type="text" name="direccion" id="direccion" class="form-control" value="{{ orden[13] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="ruta" class="form-label">Ruta más cercana:</label>
+      <input type="text" name="ruta" id="ruta" class="form-control" value="{{ orden[14] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="modalidad_trabajo" class="form-label">Modalidad y días:</label>
+      <input type="text" name="modalidad_trabajo" id="modalidad_trabajo" class="form-control" value="{{ orden[15] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="edad" class="form-label">Edad:</label>
+      <input type="text" name="edad" id="edad" class="form-control" value="{{ orden[16] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="nacionalidad" class="form-label">Nacionalidad:</label>
+      <input type="text" name="nacionalidad" id="nacionalidad" class="form-control" value="{{ orden[17] }}" readonly>
+    </div>
+    <div class="mb-3 form-check">
+      <input type="checkbox" name="habilidades_alfabetizacion" id="habilidades_alfabetizacion" class="form-check-input" {% if orden[18] == 'Sí' %}checked{% endif %}>
+      <label for="habilidades_alfabetizacion" class="form-check-label">Que sepa leer y escribir</label>
+    </div>
+    <div class="mb-3">
+      <label for="experiencia" class="form-label">Experiencia en:</label>
+      <input type="text" name="experiencia" id="experiencia" class="form-control" value="{{ orden[19] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="horario" class="form-label">Horario:</label>
+      <input type="text" name="horario" id="horario" class="form-control" value="{{ orden[20] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="funciones" class="form-label">Funciones:</label>
+      <input type="text" name="funciones" id="funciones" class="form-control" value="{{ orden[21] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="descripcion_casa" class="form-label">Casa/Apto:</label>
+      <input type="text" name="descripcion_casa" id="descripcion_casa" class="form-control" value="{{ orden[22] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="adultos" class="form-label">Adultos:</label>
+      <input type="text" name="adultos" id="adultos" class="form-control" value="{{ orden[23] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="sueldo" class="form-label">Sueldo:</label>
+      <input type="text" name="sueldo" id="sueldo" class="form-control" value="{{ orden[24] }}" required>
+    </div>
+    <div class="mb-3">
+      <label for="notas_solicitud" class="form-label">Notas de la Solicitud:</label>
+      <textarea name="notas_solicitud" id="notas_solicitud" class="form-control">{{ orden[25] if orden|length > 25 else '' }}</textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+  </form>
+{% endblock %}

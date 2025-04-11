@@ -2125,7 +2125,7 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # BUSCAR: Buscar orden por código
+    # BUSCAR: Buscar orden por código para actualización parcial
     elif accion == 'buscar':
         codigo = request.args.get("codigo", "").strip()
         solicitudes_data = []
@@ -2213,6 +2213,135 @@ def solicitudes():
                 logging.error("Error al actualizar la orden: " + str(e), exc_info=True)
                 mensaje = "Error al actualizar la orden."
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
+
+    # EDITAR: Edición completa de la orden (todos los campos editables, excepto los fijos)
+    elif accion == 'editar':
+        if request.method == 'GET':
+            codigo = request.args.get("codigo", "").strip()
+            if not codigo:
+                mensaje = "Debe proporcionar el código de la orden a editar."
+                return render_template('solicitudes_editar_buscar.html', accion=accion, mensaje=mensaje)
+            try:
+                result = service.spreadsheets().values().get(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range="Solicitudes!A1:Z"
+                ).execute()
+                data = result.get("values", [])
+                orden_encontrada = None
+                fila_index = None
+                # Se asume que la primera fila es el encabezado
+                for idx, row in enumerate(data[1:], start=2):
+                    if row and row[0] == codigo:
+                        orden_encontrada = row
+                        fila_index = idx
+                        break
+                if orden_encontrada:
+                    mensaje = f"Orden encontrada en la fila {fila_index}."
+                    return render_template('solicitudes_editar.html',
+                                           accion=accion,
+                                           mensaje=mensaje,
+                                           orden=orden_encontrada,
+                                           fila=fila_index)
+                else:
+                    mensaje = "No se encontró ninguna orden con el código proporcionado."
+                    return render_template('solicitudes_editar_buscar.html', accion=accion, mensaje=mensaje)
+            except Exception as e:
+                logging.error("Error al buscar la orden para editar: " + str(e), exc_info=True)
+                mensaje = "Error al cargar la orden para editar."
+                return render_template('solicitudes_editar_buscar.html', accion=accion, mensaje=mensaje)
+        elif request.method == 'POST':
+            fila_str = request.form.get("fila", "").strip()
+            if not fila_str.isdigit():
+                mensaje = "Fila inválida para editar."
+                return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
+            fila_index = int(fila_str)
+            # Recoger campos del formulario de edición completa
+            codigo = request.form.get("codigo", "").strip()  # Campo de solo lectura
+            descripcion = request.form.get("descripcion", "").strip()
+            estado = request.form.get("estado", "").strip()
+            empleado_asignado = request.form.get("empleado_asignado", "").strip()
+            # Notas adicionales para el historial (campo opcional)
+            notas_actuales = request.form.get("notas", "").strip()
+            # Nuevos datos (Columnas N a Z)
+            direccion = request.form.get("direccion", "").strip()
+            ruta = request.form.get("ruta", "").strip()
+            modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
+            edad = request.form.get("edad", "").strip()
+            nacionalidad = request.form.get("nacionalidad", "Dominicana").strip()
+            alfabetizacion = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"
+            experiencia = request.form.get("experiencia", "").strip()
+            horario = request.form.get("horario", "").strip()
+            funciones = request.form.get("funciones", "").strip()
+            descripcion_casa = request.form.get("descripcion_casa", "").strip()
+            adultos = request.form.get("adultos", "").strip()
+            sueldo = request.form.get("sueldo", "").strip()
+            notas_solicitud = request.form.get("notas_solicitud", "").strip()
+
+            if not descripcion:
+                mensaje = "La descripción es obligatoria."
+                return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=request.form, fila=fila_index)
+
+            fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Leer historial actual (columna I)
+            try:
+                rango_historial = f"Solicitudes!I{fila_index}"
+                respuesta_hist = service.spreadsheets().values().get(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=rango_historial
+                ).execute()
+                historial_actual = respuesta_hist.get("values", [])
+                historial_texto = historial_actual[0][0] if historial_actual and historial_actual[0] else ""
+            except Exception as e:
+                logging.error("Error al leer el historial: " + str(e), exc_info=True)
+                historial_texto = ""
+
+            nuevo_registro = f"{fecha_actualizacion} - {session.get('usuario','desconocido')}: Edición completa."
+            if notas_actuales:
+                nuevo_registro += f" Notas: {notas_actuales}"
+            historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
+
+            # Actualización de los campos editables:
+            # Se actualizan las columnas D a I (dentro de los datos originales) y N a Z (nuevos datos)
+            # Se supone que las columnas A (Código), B (Fecha de Solicitud) y C (Empleado Orden) no se modifican.
+            extra_original = ["", "", "", ""]  # Columnas J a M (sin cambios)
+            datos_nuevos = [
+                direccion,
+                ruta,
+                modalidad_trabajo,
+                edad,
+                nacionalidad,
+                alfabetizacion,
+                experiencia,
+                horario,
+                funciones,
+                descripcion_casa,
+                adultos,
+                sueldo,
+                notas_solicitud
+            ]
+            updated_row = [
+                descripcion,        # Columna D
+                estado,             # Columna E
+                empleado_asignado,  # Columna F
+                fecha_actualizacion,# Columna G
+                "",                 # Columna H (puedes actualizar si lo deseas)
+                historial_texto     # Columna I
+            ] + extra_original + datos_nuevos
+
+            update_range = f"Solicitudes!D{fila_index}:Z{fila_index}"
+            try:
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=update_range,
+                    valueInputOption="RAW",
+                    body={"values": [updated_row]}
+                ).execute()
+                mensaje = "Orden editada correctamente."
+            except Exception as e:
+                logging.error("Error al editar la orden: " + str(e), exc_info=True)
+                mensaje = "Error al editar la orden."
+            return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
 
     # DISPONIBLES: Mostrar todas las órdenes con estado "disponible" o "reemplazo"
     elif accion == 'disponibles':

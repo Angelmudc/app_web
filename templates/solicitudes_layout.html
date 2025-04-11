@@ -28,6 +28,10 @@
           <li class="nav-item">
             <a class="nav-link" href="{{ url_for('solicitudes', accion='disponibles') }}">Órdenes Disponibles</a>
           </li>
+          <li class="nav-item">
+            <!-- Enlace para iniciar búsqueda de orden a editar -->
+            <a class="nav-link" href="{{ url_for('solicitudes', accion='editar_buscar') }}">Editar Orden</a>
+          </li>
         </ul>
       </div>
     </div>
