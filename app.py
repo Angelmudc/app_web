@@ -43,6 +43,10 @@ import io
 import os
 
 import difflib
+import calendar
+from datetime import datetime, timedelta
+
+import difflib
 
 from flask import send_file
 
@@ -2140,30 +2144,31 @@ def referencias():
     return render_template("referencias.html", mensaje=mensaje)
 
 
-from flask import render_template, redirect, url_for, session, request
-from datetime import datetime
-import logging
-
-
 # Suponemos que "service" y "SPREADSHEET_ID" ya están definidos en otro módulo
+
+import difflib
+import calendar
+from datetime import datetime, timedelta
+import logging
+from flask import render_template, redirect, url_for, session, request
 
 # Función auxiliar para búsqueda flexible
 def flexible_match(search_term, text, threshold=0.6):
     """
     Retorna True si:
-      - 'search_term' aparece como subcadena dentro de 'text' (todo en minúsculas), o
-      - La similitud (ratio) calculada con difflib.SequenceMatcher es mayor o igual que el umbral.
+      - search_term aparece como subcadena en text (todo en minúsculas), o
+      - La similitud calculada con difflib.SequenceMatcher es mayor o igual que threshold.
     """
     st = search_term.lower()
     t = text.lower()
     if st in t:
         return True
-    # Calcula el ratio de similitud y compara con el umbral (por defecto 0.6)
     ratio = difflib.SequenceMatcher(None, st, t).ratio()
     return ratio >= threshold
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
+    # Verificar si existe sesión
     if 'usuario' not in session:
         return redirect(url_for('login'))
 
@@ -2180,7 +2185,7 @@ def solicitudes():
     mensaje = None
 
     # ----------------------------------------------------------------
-    # REGISTRO: Crear nueva orden (datos originales: columnas A-M, nuevos: columnas N-Z)
+    # REGISTRO: Crear nueva orden (Datos originales: columnas A–M; Nuevos: columnas N–Z)
     if accion == 'registro':
         if request.method == 'GET':
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
@@ -2197,10 +2202,10 @@ def solicitudes():
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Columna B
             empleado_orden = session.get('usuario', 'desconocido')  # Columna C
             estado = "Disponible"  # Columna E
-            empleado_asignado = ""
-            fecha_actualizacion = ""
-            notas_inicial = ""
-            historial_inicial = ""
+            empleado_asignado = ""      # Columna F
+            fecha_actualizacion = ""    # Columna G
+            notas_inicial = ""          # Columna H
+            historial_inicial = ""      # Columna I
             extra_original = ["", "", "", ""]  # Columnas J a M
 
             datos_originales = [
@@ -2305,7 +2310,7 @@ def solicitudes():
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
 
     # ----------------------------------------------------------------
-    # REPORTES: Filtrar órdenes usando múltiples criterios de búsqueda flexible
+    # REPORTES: Filtrado flexible de órdenes y búsqueda rápida por fechas
     elif accion == 'reportes':
         try:
             result = service.spreadsheets().values().get(
@@ -2318,7 +2323,7 @@ def solicitudes():
             mensaje = "Error al obtener datos para reportes."
             return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=[])
         
-        # data[0] es el encabezado; lo demás son órdenes.
+        # data[0] es el encabezado; las demás filas son órdenes
         filtered = data[1:] if len(data) > 1 else []
 
         # Filtro por Rango de Fechas (Fecha de Solicitud en columna B, índice 1)
@@ -2366,7 +2371,7 @@ def solicitudes():
         if ruta_filtro:
             rf = ruta_filtro.lower()
             filtered = [row for row in filtered if len(row) > 14 and flexible_match(rf, row[14])]
-            
+
         # Filtro flexible por Funciones (columna V, índice 21)
         funciones_filtro = request.args.get("funciones", "").strip()
         if funciones_filtro:
@@ -2378,7 +2383,29 @@ def solicitudes():
         total_orders = len(data) - 1 if len(data) > 1 else 0
         filtered_count = len(filtered)
         mensaje_info = f"Total órdenes: {total_orders}. Órdenes filtradas: {filtered_count}."
-        return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje_info, solicitudes_reporte=solicitudes_reporte)
+
+        # Cálculo de fechas para búsqueda rápida
+        today = datetime.today().date()
+        quick_hoy = today.strftime("%Y-%m-%d")
+        start_week = today - timedelta(days=today.weekday())
+        end_week = start_week + timedelta(days=6)
+        quick_semana_start = start_week.strftime("%Y-%m-%d")
+        quick_semana_end = end_week.strftime("%Y-%m-%d")
+        start_month = today.replace(day=1)
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        end_month = today.replace(day=last_day)
+        quick_mes_start = start_month.strftime("%Y-%m-%d")
+        quick_mes_end = end_month.strftime("%Y-%m-%d")
+
+        return render_template('solicitudes_reportes.html',
+                               accion=accion,
+                               mensaje=mensaje_info,
+                               solicitudes_reporte=solicitudes_reporte,
+                               quick_hoy=quick_hoy,
+                               quick_semana_start=quick_semana_start,
+                               quick_semana_end=quick_semana_end,
+                               quick_mes_start=quick_mes_start,
+                               quick_mes_end=quick_mes_end)
 
     # ----------------------------------------------------------------
     # ACTUALIZAR: Actualización parcial (modifica estado, asignado y notas)
@@ -2419,6 +2446,7 @@ def solicitudes():
                 if notas:
                     nuevo_registro += f" Notas: {notas}"
                 historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
+
                 update_range = f"Solicitudes!E{fila_index}:I{fila_index}"
                 valores_update = [[nuevo_estado, empleado_asignado, fecha_actualizacion, notas, historial_texto]]
                 service.spreadsheets().values().update(
@@ -2590,7 +2618,6 @@ def solicitudes():
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
-
 
 
 

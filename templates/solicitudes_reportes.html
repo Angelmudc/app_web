@@ -7,11 +7,17 @@
   {% if mensaje %}
     <div class="alert alert-info">{{ mensaje }}</div>
   {% endif %}
-  
-  <!-- Formulario de filtros -->
+
+  <!-- Botones de Búsqueda Rápida -->
+  <div class="mb-4">
+    <a href="{{ url_for('solicitudes', accion='reportes', fecha_inicio=quick_hoy, fecha_fin=quick_hoy) }}" class="btn btn-primary">Órdenes de Hoy</a>
+    <a href="{{ url_for('solicitudes', accion='reportes', fecha_inicio=quick_semana_start, fecha_fin=quick_semana_end) }}" class="btn btn-primary">Órdenes de la Semana</a>
+    <a href="{{ url_for('solicitudes', accion='reportes', fecha_inicio=quick_mes_start, fecha_fin=quick_mes_end) }}" class="btn btn-primary">Órdenes del Mes</a>
+  </div>
+
+  <!-- Formulario de Filtros Detallado -->
   <form class="row g-3 mb-4" method="GET" action="{{ url_for('solicitudes') }}">
     <input type="hidden" name="accion" value="reportes">
-    
     <div class="col-md-3">
       <label for="fecha_inicio" class="form-label">Fecha Inicio (YYYY-MM-DD):</label>
       <input type="text" name="fecha_inicio" id="fecha_inicio" class="form-control" value="{{ request.args.get('fecha_inicio','') }}">
@@ -41,7 +47,7 @@
     </div>
   </form>
   
-  <!-- Tabla de resultados -->
+  <!-- Tabla de Resultados -->
   <table class="table table-striped">
     <thead>
       <tr>
