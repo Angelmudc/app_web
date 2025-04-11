@@ -2162,6 +2162,7 @@ def solicitudes():
 
     mensaje = None
 
+    # ----------------------------------------------------------------
     # REGISTRO: Crear nueva orden con datos originales (A-M) y nuevos datos (N-Z)
     if accion == 'registro':
         if request.method == 'GET':
@@ -2243,6 +2244,7 @@ def solicitudes():
                 mensaje = "Error al registrar la orden."
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
+    # ----------------------------------------------------------------
     # VER: Listado completo de órdenes
     elif accion == 'ver':
         solicitudes_data = []
@@ -2257,6 +2259,7 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
+    # ----------------------------------------------------------------
     # BUSCAR: Búsqueda estricta por código, redirigiendo al template solicitudes_busqueda.html
     elif accion == 'buscar':
         codigo = request.args.get("codigo", "").strip()
@@ -2288,6 +2291,7 @@ def solicitudes():
             mensaje = "Error al buscar la orden."
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
 
+    # ----------------------------------------------------------------
     # ACTUALIZAR: Actualización parcial (estado, asignado y notas)
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
@@ -2341,6 +2345,7 @@ def solicitudes():
                 mensaje = "Error al actualizar la orden."
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
 
+    # ----------------------------------------------------------------
     # EDITAR: Edición completa (todos los campos editables, excepto los fijos)
     elif accion == 'editar':
         if request.method == 'GET':
@@ -2377,7 +2382,6 @@ def solicitudes():
                 mensaje = "Fila inválida para editar."
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
-            # Recoger datos del formulario de edición completa
             codigo = request.form.get("codigo", "").strip()  # Campo de solo lectura
             descripcion = request.form.get("descripcion", "").strip()
             estado = request.form.get("estado", "").strip()
@@ -2411,7 +2415,6 @@ def solicitudes():
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_reloaded, fila=fila_index)
 
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
             try:
                 rango_historial = f"Solicitudes!I{fila_index}"
                 respuesta_hist = service.spreadsheets().values().get(
@@ -2423,12 +2426,10 @@ def solicitudes():
             except Exception as e:
                 logging.error("Error al leer el historial: " + str(e), exc_info=True)
                 historial_texto = ""
-
             nuevo_registro = f"{fecha_actualizacion} - {session.get('usuario','desconocido')}: Edición completa."
             if notas_actuales:
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
-
             extra_original = ["", "", "", ""]  # Columnas J a M sin cambios
             datos_nuevos = [
                 direccion,
@@ -2453,7 +2454,6 @@ def solicitudes():
                 "",                 # Columna H
                 historial_texto     # Columna I
             ] + extra_original + datos_nuevos
-
             update_range = f"Solicitudes!D{fila_index}:Z{fila_index}"
             try:
                 service.spreadsheets().values().update(
@@ -2466,7 +2466,6 @@ def solicitudes():
             except Exception as e:
                 logging.error("Error al editar la orden: " + str(e), exc_info=True)
                 mensaje = "Error al editar la orden."
-
             try:
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2476,92 +2475,9 @@ def solicitudes():
             except Exception as e:
                 logging.error("Error al recargar la orden: " + str(e), exc_info=True)
                 orden_actualizada = None
-
             return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_actualizada, fila=fila_index)
-     
-     elif accion == 'reportes':
-    try:
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Solicitudes!A1:Z"  # Asegúrate de que la hoja tenga la estructura esperada
-        ).execute()
-        data = result.get("values", [])
-    except Exception as e:
-        logging.error("Error al obtener datos para reportes: " + str(e), exc_info=True)
-        mensaje = "Error al obtener datos para reportes."
-        return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=[])
 
-    # data[0] se asume que es el encabezado; lo demás son órdenes.
-    filtered = data[1:] if len(data) > 1 else []
-
-    # --- Filtro por Rango de Fechas ---
-    # Se filtrará usando la fecha de solicitud (columna B, índice 1), que tiene el formato "YYYY-MM-DD HH:MM:SS".
-    from datetime import datetime
-    fecha_inicio = request.args.get("fecha_inicio", "").strip()
-    fecha_fin = request.args.get("fecha_fin", "").strip()
-    try:
-        fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d") if fecha_inicio else None
-    except Exception as e:
-        logging.error("Error al convertir fecha_inicio: " + str(e))
-        fecha_inicio_dt = None
-    try:
-        fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d") if fecha_fin else None
-    except Exception as e:
-        logging.error("Error al convertir fecha_fin: " + str(e))
-        fecha_fin_dt = None
-
-    if fecha_inicio_dt or fecha_fin_dt:
-        temp_filtered = []
-        for row in filtered:
-            if len(row) > 1 and row[1]:
-                try:
-                    # Extraemos solo la parte de la fecha
-                    order_date = datetime.strptime(row[1][:10], "%Y-%m-%d")
-                except Exception as e:
-                    continue
-                if fecha_inicio_dt and order_date < fecha_inicio_dt:
-                    continue
-                if fecha_fin_dt and order_date > fecha_fin_dt:
-                    continue
-                temp_filtered.append(row)
-        filtered = temp_filtered
-
-    # --- Filtro por Descripción ---
-    # Por ejemplo, para "santiago salida diaria". Se busca en la columna D (índice 3).
-    descripcion_filtro = request.args.get("descripcion", "").strip().lower()
-    if descripcion_filtro:
-        filtered = [row for row in filtered if len(row) > 3 and descripcion_filtro in row[3].lower()]
-
-    # --- Filtro por Sueldo ---
-    # Sueldo se encuentra en la columna Y (índice 24)
-    sueldo_filtro = request.args.get("sueldo", "").strip().lower()
-    if sueldo_filtro:
-        filtered = [row for row in filtered if len(row) > 24 and sueldo_filtro in row[24].lower()]
-
-    # --- Filtro por Ruta ---
-    # Ruta se encuentra en la columna O (índice 14)
-    ruta_filtro = request.args.get("ruta", "").strip().lower()
-    if ruta_filtro:
-        filtered = [row for row in filtered if len(row) > 14 and ruta_filtro in row[14].lower()]
-
-    # --- Filtro por Funciones ---
-    # Funciones se encuentra en la columna V (índice 21)
-    funciones_filtro = request.args.get("funciones", "").strip().lower()
-    if funciones_filtro:
-        filtered = [row for row in filtered if len(row) > 21 and funciones_filtro in row[21].lower()]
-
-    # Prepara la lista final de resultados incluyendo el encabezado
-    header = data[0] if data else []
-    solicitudes_reporte = [header] + filtered if filtered else [header]
-
-    # Estadísticas: Total de órdenes y cuántas cumplen los filtros.
-    total_orders = len(data) - 1 if len(data) > 1 else 0
-    filtered_count = len(filtered)
-    mensaje_info = f"Total órdenes: {total_orders}. Órdenes filtradas: {filtered_count}."
-
-    return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje_info, solicitudes_reporte=solicitudes_reporte)
-
-
+    # ----------------------------------------------------------------
     # DISPONIBLES: Mostrar órdenes con estado "disponible" o "reemplazo"
     elif accion == 'disponibles':
         solicitudes_data = []
@@ -2584,10 +2500,10 @@ def solicitudes():
             mensaje = "Error al cargar órdenes disponibles."
         return render_template('solicitudes_disponibles.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
+    # ----------------------------------------------------------------
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
-
 
 
 if __name__ == '__main__':
