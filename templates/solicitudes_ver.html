@@ -2,12 +2,12 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1 class="mb-4">Listado de Solicitudes</h1>
+  <h1 class="mb-4">Listado de Órdenes</h1>
   
   <!-- Formulario de búsqueda por código -->
   <form class="mb-4" action="{{ url_for('solicitudes', accion='buscar') }}" method="GET">
     <div class="input-group">
-      <input type="text" name="codigo" class="form-control" placeholder="Buscar por Código de Solicitud" required>
+      <input type="text" name="codigo" class="form-control" placeholder="Buscar por Código de Orden" required>
       <button type="submit" class="btn btn-primary">Buscar</button>
     </div>
   </form>
@@ -19,9 +19,9 @@
   <table class="table table-striped">
     <thead>
       <tr>
-        <th>ID Solicitud</th>
-        <th>Fecha Solicitud</th>
-        <th>Empleado Solicitante</th>
+        <th>ID Orden</th>
+        <th>Fecha</th>
+        <th>Empleado de la Orden</th>
         <th>Descripción</th>
         <th>Estado</th>
         <th>Empleado Asignado</th>
@@ -29,7 +29,7 @@
       </tr>
     </thead>
     <tbody>
-      {# Itera sobre solicitudes omitiendo la primera fila (encabezados) #}
+      {# Se itera omitiendo la primera fila (encabezados) usando slicing #}
       {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
@@ -39,7 +39,7 @@
           <td>{{ sol[4] }}</td>
           <td>{{ sol[5] }}</td>
           <td>
-            {# loop.index empieza en 1 al usar slicing, se suma 1 para obtener el número de fila exacto en la hoja #}
+            {# El loop.index en este caso inicia en 1 (por el slicing), sumamos 1 para obtener la fila correcta en la hoja #}
             <a href="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" class="btn btn-sm btn-info">Actualizar</a>
           </td>
         </tr>

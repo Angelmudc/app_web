@@ -2,7 +2,7 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1 class="mb-4">Actualizar Solicitud</h1>
+  <h1 class="mb-4">Actualizar Orden</h1>
   
   {% if mensaje %}
     <div class="alert alert-danger">{{ mensaje }}</div>
@@ -25,6 +25,6 @@
       <button type="submit" class="btn btn-primary">Actualizar</button>
     </form>
   {% else %}
-    <p>No se encontró la solicitud.</p>
+    <p>No se encontró la orden.</p>
   {% endif %}
 {% endblock %}
