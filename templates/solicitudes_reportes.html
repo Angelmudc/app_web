@@ -8,41 +8,40 @@
     <div class="alert alert-info">{{ mensaje }}</div>
   {% endif %}
   
+  <!-- Formulario de filtros -->
   <form class="row g-3 mb-4" method="GET" action="{{ url_for('solicitudes') }}">
     <input type="hidden" name="accion" value="reportes">
+    
     <div class="col-md-3">
       <label for="fecha_inicio" class="form-label">Fecha Inicio (YYYY-MM-DD):</label>
-      <input type="text" name="fecha_inicio" id="fecha_inicio" class="form-control">
+      <input type="text" name="fecha_inicio" id="fecha_inicio" class="form-control" value="{{ request.args.get('fecha_inicio','') }}">
     </div>
     <div class="col-md-3">
       <label for="fecha_fin" class="form-label">Fecha Fin (YYYY-MM-DD):</label>
-      <input type="text" name="fecha_fin" id="fecha_fin" class="form-control">
+      <input type="text" name="fecha_fin" id="fecha_fin" class="form-control" value="{{ request.args.get('fecha_fin','') }}">
     </div>
     <div class="col-md-3">
-      <label for="estado" class="form-label">Estado:</label>
-      <input type="text" name="estado" id="estado" class="form-control">
+      <label for="descripcion" class="form-label">Descripción:</label>
+      <input type="text" name="descripcion" id="descripcion" class="form-control" placeholder="Ej: santiago salida diaria" value="{{ request.args.get('descripcion','') }}">
     </div>
     <div class="col-md-3">
-      <label for="nombre_cliente" class="form-label">Nombre del Cliente:</label>
-      <input type="text" name="nombre_cliente" id="nombre_cliente" class="form-control">
+      <label for="sueldo" class="form-label">Sueldo:</label>
+      <input type="text" name="sueldo" id="sueldo" class="form-control" placeholder="Valor del sueldo" value="{{ request.args.get('sueldo','') }}">
     </div>
     <div class="col-md-3">
-      <label for="ciudad" class="form-label">Ciudad:</label>
-      <input type="text" name="ciudad" id="ciudad" class="form-control">
+      <label for="ruta" class="form-label">Ruta:</label>
+      <input type="text" name="ruta" id="ruta" class="form-control" placeholder="Ej: Santiago" value="{{ request.args.get('ruta','') }}">
     </div>
     <div class="col-md-3">
-      <label for="sector" class="form-label">Sector:</label>
-      <input type="text" name="sector" id="sector" class="form-control">
-    </div>
-    <div class="col-md-3">
-      <label for="codigo" class="form-label">Código de Orden:</label>
-      <input type="text" name="codigo" id="codigo" class="form-control">
+      <label for="funciones" class="form-label">Funciones:</label>
+      <input type="text" name="funciones" id="funciones" class="form-control" placeholder="Ej: Limpieza, cocina" value="{{ request.args.get('funciones','') }}">
     </div>
     <div class="col-12">
       <button type="submit" class="btn btn-primary">Filtrar</button>
     </div>
   </form>
   
+  <!-- Tabla de resultados -->
   <table class="table table-striped">
     <thead>
       <tr>
@@ -51,23 +50,18 @@
         <th>Empleado</th>
         <th>Descripción</th>
         <th>Estado</th>
-        <th>Acciones</th>
       </tr>
     </thead>
     <tbody>
-      {% for sol in solicitudes_reporte[1:] %}
+      {% for row in solicitudes_reporte[1:] %}
         <tr>
-          <td>{{ sol[0] }}</td>
-          <td>{{ sol[1] }}</td>
-          <td>{{ sol[2] }}</td>
-          <td>{{ sol[3] }}</td>
-          <td>{{ sol[4] }}</td>
-          <td>
-            <a href="{{ url_for('solicitudes', accion='editar', codigo=sol[0]) }}" class="btn btn-sm btn-warning">Editar</a>
-          </td>
+          <td>{{ row[0] }}</td>
+          <td>{{ row[1] }}</td>
+          <td>{{ row[2] }}</td>
+          <td>{{ row[3] }}</td>
+          <td>{{ row[4] }}</td>
         </tr>
       {% endfor %}
     </tbody>
   </table>
 {% endblock %}
-
