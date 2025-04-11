@@ -22,7 +22,7 @@
         </tr>
       </thead>
       <tbody>
-        {# Se imprime la(s) fila(s) de resultado; la primera fila es el encabezado y la(s) siguiente(s) son datos #}
+        {# Se imprimen únicamente las filas de resultado (la primera es el encabezado y la segunda es la orden encontrada) #}
         {% for sol in solicitudes[1:] %}
           <tr>
             <td>{{ sol[0] }}</td>
@@ -40,7 +40,7 @@
       </tbody>
     </table>
   {% elif solicitudes and solicitudes|length == 1 %}
-    <!-- Se muestra solo el encabezado sin resultados -->
+    <!-- Sólo se muestra el encabezado sin resultados -->
     <p>No se encontraron órdenes que coincidan con el código proporcionado.</p>
   {% endif %}
   
