@@ -2016,6 +2016,128 @@ def reporte_inscripciones():
     except Exception as e:
         return f"Error al generar reporte: {str(e)}", 500
 
+@app.route('/referencias', methods=['GET', 'POST'])
+def referencias():
+    """
+    Ruta para gestionar las referencias de candidata en la hoja "Nueva hoja".
+    
+    Modo de operación:
+    - Si el método es POST y se envía "busqueda": realiza búsqueda de candidata por nombre o cédula.
+    - Si es GET y se envía "candidata" (fila): muestra los detalles de la candidata.
+    - Si es POST y se envía "candidata": actualiza las referencias (columnas AE y AF).
+    """
+    mensaje = None
+    resultados = None
+    candidata = None
+
+    # CASO 1: Búsqueda de candidata (método POST y campo "busqueda")
+    if request.method == 'POST' and 'busqueda' in request.form:
+        busqueda = request.form.get("busqueda", "").strip().lower()
+        try:
+            result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Nueva hoja!A1:AF"  # Abarca hasta columna AF
+            ).execute()
+            data = result.get("values", [])
+            if not data:
+                mensaje = "No se encontraron datos en la hoja."
+            else:
+                header = data[0]
+                resultados = []
+                # Iteramos desde la fila 2; i es el índice real de la fila (1-indexado)
+                for i, row in enumerate(data[1:], start=2):
+                    # Extraer nombre (columna B: index 1) y cédula (columna O: index 14)
+                    nombre = row[1] if len(row) > 1 else ""
+                    cedula = row[14] if len(row) > 14 else ""
+                    if busqueda in nombre.lower() or busqueda in cedula.lower():
+                        candidate = {
+                            "nombre": nombre,
+                            "cedula": cedula,
+                            "telefono": row[3] if len(row) > 3 else "",
+                            "codigo": row[15] if len(row) > 15 else "",
+                            "fila_index": i
+                        }
+                        resultados.append(candidate)
+                if not resultados:
+                    mensaje = "No se encontraron candidatos para la búsqueda."
+        except Exception as e:
+            logging.error("Error al realizar la búsqueda: " + str(e), exc_info=True)
+            mensaje = "Error al realizar la búsqueda."
+        # Renderizar template (por ejemplo, "referencias.html") pasando la lista de resultados
+        return render_template("referencias.html", mensaje=mensaje, resultados=resultados)
+
+    # CASO 2: Mostrar detalles de una candidata (método GET, parámetro "candidata")
+    elif request.method == 'GET' and "candidata" in request.args:
+        try:
+            fila_index = int(request.args.get("candidata"))
+            # Recuperar la fila completa. Se asume que la hoja "Nueva hoja" tiene columnas hasta AF.
+            range_str = f"Nueva hoja!A{fila_index}:AF{fila_index}"
+            result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=range_str
+            ).execute()
+            row = result.get("values", [])
+            if row:
+                row = row[0]
+                candidata = {
+                    "nombre": row[1] if len(row) > 1 else "",
+                    "cedula": row[14] if len(row) > 14 else "",
+                    "telefono": row[3] if len(row) > 3 else "",
+                    "codigo": row[15] if len(row) > 15 else "",
+                    "referencias_laborales": row[30] if len(row) > 30 else "",
+                    "referencias_familiares": row[31] if len(row) > 31 else "",
+                    "fila_index": fila_index
+                }
+            else:
+                mensaje = "No se encontró la candidata."
+        except Exception as e:
+            logging.error("Error al cargar datos de la candidata: " + str(e), exc_info=True)
+            mensaje = "Error al cargar los datos de la candidata."
+        return render_template("referencias.html", mensaje=mensaje, candidata=candidata)
+
+    # CASO 3: Actualizar referencias (método POST y campo "candidata")
+    elif request.method == 'POST' and 'candidata' in request.form:
+        try:
+            fila_index = int(request.form.get("candidata"))
+            ref_lab = request.form.get("referencias_laborales", "").strip()
+            ref_fam = request.form.get("referencias_familiares", "").strip()
+            # Actualizar columnas AE y AF (que corresponden a índices 30 y 31, respectivamente).
+            range_update = f"Nueva hoja!AE{fila_index}:AF{fila_index}"
+            update_body = {"values": [[ref_lab, ref_fam]]}
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=range_update,
+                valueInputOption="RAW",
+                body=update_body
+            ).execute()
+            mensaje = "Referencias actualizadas correctamente."
+            # Recuperar la fila actualizada para mostrarla
+            range_str = f"Nueva hoja!A{fila_index}:AF{fila_index}"
+            result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=range_str
+            ).execute()
+            row = result.get("values", [])
+            if row:
+                row = row[0]
+                candidata = {
+                    "nombre": row[1] if len(row) > 1 else "",
+                    "cedula": row[14] if len(row) > 14 else "",
+                    "telefono": row[3] if len(row) > 3 else "",
+                    "codigo": row[15] if len(row) > 15 else "",
+                    "referencias_laborales": row[30] if len(row) > 30 else "",
+                    "referencias_familiares": row[31] if len(row) > 31 else "",
+                    "fila_index": fila_index
+                }
+        except Exception as e:
+            logging.error("Error al actualizar referencias: " + str(e), exc_info=True)
+            mensaje = "Error al actualizar las referencias."
+        return render_template("referencias.html", mensaje=mensaje, candidata=candidata)
+
+    # Caso por defecto: Mostrar formulario de búsqueda sin resultados o candidata
+    return render_template("referencias.html", mensaje=mensaje)
+
+
 from flask import render_template, redirect, url_for, session, request
 from datetime import datetime
 import logging
