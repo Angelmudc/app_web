@@ -2126,35 +2126,40 @@ def solicitudes():
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
     # BUSCAR: Buscar orden por código para actualización parcial
-    elif accion == 'buscar':
-        codigo = request.args.get("codigo", "").strip()
-        solicitudes_data = []
-        solicitud_encontrada = None
-        try:
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:Z"
-            ).execute()
-            solicitudes_data = result.get("values", [])
-            # Se asume que la primera fila es el encabezado
-            for idx, sol in enumerate(solicitudes_data[1:], start=2):
-                if sol and sol[0] == codigo:
-                    solicitud_encontrada = sol
-                    fila_index = idx  # Índice 1-based
-                    break
-            if solicitud_encontrada:
-                mensaje = f"Orden encontrada en la fila {fila_index}."
-                return render_template('solicitudes_actualizar.html',
-                                       accion='actualizar',
-                                       mensaje=mensaje,
-                                       solicitud=solicitud_encontrada,
-                                       fila=fila_index)
-            else:
-                mensaje = "No se encontró ninguna orden con el código proporcionado."
-        except Exception as e:
-            logging.error("Error al buscar la orden: " + str(e), exc_info=True)
-            mensaje = "Error al buscar la orden."
-        return render_template('solicitudes_ver.html', accion='ver', mensaje=mensaje, solicitudes=solicitudes_data)
+elif accion == 'buscar':
+    codigo = request.args.get("codigo", "").strip()
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Solicitudes!A1:Z"
+        ).execute()
+        data = result.get("values", [])
+        if not data:
+            mensaje = "No se encontraron datos en la hoja."
+            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
+        
+        # Se asume que la primera fila es el encabezado
+        header = data[0]
+        # Búsqueda estricta: se comparan exactamente los códigos sin espacios adicionales.
+        matches = [row for row in data[1:] if row and row[0].strip() == codigo]
+        
+        if matches:
+            found_order = matches[0]
+            mensaje = f"Orden encontrada con el código {codigo}."
+            # Se crea una lista con el encabezado y la orden encontrada para que el template muestre sólo esa fila.
+            search_result = [header, found_order]
+            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=search_result)
+        else:
+            mensaje = "No se encontró ninguna orden con el código proporcionado."
+            # En este caso, pasamos únicamente el encabezado para que se muestre la estructura de la tabla junto con el mensaje
+            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[header])
+            
+    except Exception as e:
+        logging.error("Error al buscar la orden: " + str(e), exc_info=True)
+        mensaje = "Error al buscar la orden."
+        return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
+
+
 
     # ACTUALIZAR: Modificar orden (actualiza solo los campos de las columnas E a I)
     elif accion == 'actualizar':
