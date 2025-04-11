@@ -51,6 +51,7 @@
         <th>Empleado</th>
         <th>Descripción</th>
         <th>Estado</th>
+        <th>Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -61,8 +62,12 @@
           <td>{{ sol[2] }}</td>
           <td>{{ sol[3] }}</td>
           <td>{{ sol[4] }}</td>
+          <td>
+            <a href="{{ url_for('solicitudes', accion='editar', codigo=sol[0]) }}" class="btn btn-sm btn-warning">Editar</a>
+          </td>
         </tr>
       {% endfor %}
     </tbody>
   </table>
 {% endblock %}
+

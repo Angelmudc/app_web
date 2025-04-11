@@ -29,7 +29,7 @@
       </tr>
     </thead>
     <tbody>
-      {# Se itera sobre las órdenes omitiendo el encabezado (asumiendo que la primera fila es de encabezados) #}
+      {# Se itera sobre las órdenes omitiendo el encabezado (se asume que la primera fila es de encabezados) #}
       {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
@@ -40,9 +40,11 @@
           <td>{{ sol[5] }}</td>
           <td>
             <a href="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" class="btn btn-sm btn-info">Actualizar</a>
+            <a href="{{ url_for('solicitudes', accion='editar', codigo=sol[0]) }}" class="btn btn-sm btn-warning">Editar</a>
           </td>
         </tr>
       {% endfor %}
     </tbody>
   </table>
 {% endblock %}
+
