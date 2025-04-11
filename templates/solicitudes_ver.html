@@ -13,7 +13,7 @@
   </form>
   
   {% if mensaje %}
-    <div class="alert alert-danger">{{ mensaje }}</div>
+    <div class="alert alert-info">{{ mensaje }}</div>
   {% endif %}
   
   <table class="table table-striped">
@@ -29,7 +29,7 @@
       </tr>
     </thead>
     <tbody>
-      {# Se itera sobre las órdenes omitiendo el encabezado (se asume que la primera fila es de encabezados) #}
+      {# Se asume que la primera fila de "solicitudes" es el encabezado (en caso de búsqueda, se habrá formado la lista con encabezado y resultados) #}
       {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
@@ -47,4 +47,3 @@
     </tbody>
   </table>
 {% endblock %}
-

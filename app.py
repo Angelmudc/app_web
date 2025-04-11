@@ -2024,6 +2024,7 @@ import logging
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
+    # Validación de sesión
     if 'usuario' not in session:
         return redirect(url_for('login'))
 
@@ -2036,7 +2037,7 @@ def solicitudes():
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
         elif request.method == 'POST':
             # --- Datos originales (Columnas A a M) ---
-            codigo = request.form.get("codigo", "").strip()  # Código de Orden (columna A)
+            codigo = request.form.get("codigo", "").strip()  # Código de Orden (Columna A)
             if not codigo:
                 mensaje = "El Código de la Orden es obligatorio."
                 return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
@@ -2101,7 +2102,7 @@ def solicitudes():
             try:
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Solicitudes!A1:Z",  # Escribe en columnas A a Z (26 columnas)
+                    range="Solicitudes!A1:Z",  # Se escribe en columnas A a Z
                     valueInputOption="RAW",
                     body={"values": [nueva_fila]}
                 ).execute()
@@ -2111,7 +2112,7 @@ def solicitudes():
                 mensaje = "Error al registrar la orden."
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
 
-    # VER: Listar órdenes (se muestran solo las columnas A a I)
+    # VER: Listado completo de órdenes
     elif accion == 'ver':
         solicitudes_data = []
         try:
@@ -2125,7 +2126,7 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # BUSCAR: Búsqueda estricta por código y mostrar resultado en template específico
+    # BUSCAR: Búsqueda estricta por código, redirigiendo a un template dedicado (solicitudes_busqueda.html)
     elif accion == 'buscar':
         codigo = request.args.get("codigo", "").strip()
         try:
@@ -2138,9 +2139,9 @@ def solicitudes():
                 mensaje = "No se encontraron datos en la hoja."
                 return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
             
-            # Asumimos que la primera fila es el encabezado
+            # Asumir que la primera fila es el encabezado
             header = data[0]
-            # Búsqueda estricta: comparar exactamente sin espacios extra
+            # Comparación estricta del código sin espacios extra
             matches = [row for row in data[1:] if row and row[0].strip() == codigo]
             
             if matches:
@@ -2157,7 +2158,7 @@ def solicitudes():
             mensaje = "Error al buscar la orden."
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
 
-    # ACTUALIZAR: Modificar orden (actualiza solo los campos de las columnas E a I)
+    # ACTUALIZAR: Actualización parcial (cambio de estado, asignado y notas)
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
@@ -2177,11 +2178,7 @@ def solicitudes():
                 logging.error("Error al cargar la orden para actualizar: " + str(e), exc_info=True)
                 mensaje = "Error al cargar la orden."
                 solicitud_fila = []
-            return render_template('solicitudes_actualizar.html',
-                                   accion=accion,
-                                   mensaje=mensaje,
-                                   solicitud=solicitud_fila,
-                                   fila=fila_index)
+            return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje, solicitud=solicitud_fila, fila=fila_index)
         elif request.method == 'POST':
             nuevo_estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
@@ -2236,11 +2233,7 @@ def solicitudes():
                         break
                 if orden_encontrada:
                     mensaje = f"Orden encontrada en la fila {fila_index}."
-                    return render_template('solicitudes_editar.html',
-                                           accion=accion,
-                                           mensaje=mensaje,
-                                           orden=orden_encontrada,
-                                           fila=fila_index)
+                    return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_encontrada, fila=fila_index)
                 else:
                     mensaje = "No se encontró ninguna orden con el código proporcionado."
                     return render_template('solicitudes_editar_buscar.html', accion=accion, mensaje=mensaje)
@@ -2254,12 +2247,13 @@ def solicitudes():
                 mensaje = "Fila inválida para editar."
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
-            codigo = request.form.get("codigo", "").strip()  # campo de solo lectura
+            # Recoger datos del formulario de edición completa
+            codigo = request.form.get("codigo", "").strip()  # Campo de solo lectura
             descripcion = request.form.get("descripcion", "").strip()
             estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
             notas_actuales = request.form.get("notas", "").strip()
-
+            # Nuevos datos (Columnas N a Z)
             direccion = request.form.get("direccion", "").strip()
             ruta = request.form.get("ruta", "").strip()
             modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
@@ -2355,7 +2349,7 @@ def solicitudes():
 
             return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_actualizada, fila=fila_index)
 
-    # DISPONIBLES: Mostrar todas las órdenes con estado "disponible" o "reemplazo"
+    # DISPONIBLES: Mostrar órdenes con estado "disponible" o "reemplazo"
     elif accion == 'disponibles':
         solicitudes_data = []
         try:
@@ -2380,6 +2374,7 @@ def solicitudes():
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
+
 
 
 if __name__ == '__main__':
