@@ -2256,12 +2256,12 @@ def solicitudes():
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
             # Recoger campos del formulario de edición completa
-            codigo = request.form.get("codigo", "").strip()  # Campo de solo lectura
+            codigo = request.form.get("codigo", "").strip()  # campo de solo lectura
             descripcion = request.form.get("descripcion", "").strip()
             estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
-            # Notas adicionales para el historial (campo opcional)
-            notas_actuales = request.form.get("notas", "").strip()
+            notas_actuales = request.form.get("notas", "").strip()  # Notas adicionales para historial
+
             # Nuevos datos (Columnas N a Z)
             direccion = request.form.get("direccion", "").strip()
             ruta = request.form.get("ruta", "").strip()
@@ -2279,7 +2279,15 @@ def solicitudes():
 
             if not descripcion:
                 mensaje = "La descripción es obligatoria."
-                return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=request.form, fila=fila_index)
+                try:
+                    result = service.spreadsheets().values().get(
+                        spreadsheetId=SPREADSHEET_ID,
+                        range=f"Solicitudes!A{fila_index}:Z{fila_index}"
+                    ).execute()
+                    orden_reloaded = result.get("values", [])[0]
+                except Exception as e:
+                    orden_reloaded = None
+                return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_reloaded, fila=fila_index)
 
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -2301,10 +2309,9 @@ def solicitudes():
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
 
-            # Actualización de los campos editables:
-            # Se actualizan las columnas D a I (dentro de los datos originales) y N a Z (nuevos datos)
-            # Se supone que las columnas A (Código), B (Fecha de Solicitud) y C (Empleado Orden) no se modifican.
-            extra_original = ["", "", "", ""]  # Columnas J a M (sin cambios)
+            # Preparar la fila actualizada.
+            # Se actualizan las columnas D a I (datos originales) y N a Z (nuevos datos)
+            extra_original = ["", "", "", ""]  # Columnas J a M sin cambios
             datos_nuevos = [
                 direccion,
                 ruta,
@@ -2325,7 +2332,7 @@ def solicitudes():
                 estado,             # Columna E
                 empleado_asignado,  # Columna F
                 fecha_actualizacion,# Columna G
-                "",                 # Columna H (puedes actualizar si lo deseas)
+                "",                 # Columna H (se deja en blanco o se actualiza según lo requieras)
                 historial_texto     # Columna I
             ] + extra_original + datos_nuevos
 
@@ -2341,7 +2348,19 @@ def solicitudes():
             except Exception as e:
                 logging.error("Error al editar la orden: " + str(e), exc_info=True)
                 mensaje = "Error al editar la orden."
-            return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
+            
+            # Recargar la orden actualizada para mostrarla en el formulario de edición
+            try:
+                result = service.spreadsheets().values().get(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=f"Solicitudes!A{fila_index}:Z{fila_index}"
+                ).execute()
+                orden_actualizada = result.get("values", [])[0]
+            except Exception as e:
+                logging.error("Error al recargar la orden: " + str(e), exc_info=True)
+                orden_actualizada = None
+
+            return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_actualizada, fila=fila_index)
 
     # DISPONIBLES: Mostrar todas las órdenes con estado "disponible" o "reemplazo"
     elif accion == 'disponibles':
