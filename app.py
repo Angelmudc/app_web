@@ -2126,35 +2126,36 @@ def solicitudes():
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
     
     # BUSCAR: Buscar orden por código
-    elif accion == 'buscar':
-        codigo = request.args.get("codigo", "").strip()
-        solicitudes_data = []
-        solicitud_encontrada = None
-        try:
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:Z"
-            ).execute()
-            solicitudes_data = result.get("values", [])
-            # Iterar desde la segunda fila (suponiendo la primera fila son encabezados)
-            for idx, sol in enumerate(solicitudes_data[1:], start=2):
-                if sol and sol[0] == codigo:
-                    solicitud_encontrada = sol
-                    fila_index = idx  # Índice 1-based de la fila en la hoja
-                    break
-            if solicitud_encontrada:
-                mensaje = f"Orden encontrada en la fila {fila_index}."
-                return render_template('solicitudes_actualizar.html',
-                                       accion='actualizar',
-                                       mensaje=mensaje,
-                                       solicitud=solicitud_encontrada,
-                                       fila=fila_index)
-            else:
-                mensaje = "No se encontró ninguna orden con ese código."
-        except Exception as e:
-            logging.error("Error al buscar la orden: " + str(e), exc_info=True)
-            mensaje = "Error al buscar la orden."
-        return render_template('solicitudes_ver.html', accion='ver', mensaje=mensaje, solicitudes=solicitudes_data)
+elif accion == 'buscar':
+    codigo = request.args.get("codigo", "").strip()
+    solicitudes_data = []
+    solicitud_encontrada = None
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Solicitudes!A1:Z"
+        ).execute()
+        solicitudes_data = result.get("values", [])
+        # Se asume que la primera fila es encabezado; comparar en orden[0] exactamente con el código buscado
+        for idx, sol in enumerate(solicitudes_data[1:], start=2):
+            if sol and sol[0] == codigo:
+                solicitud_encontrada = sol
+                fila_index = idx  # Índice 1-based
+                break
+        if solicitud_encontrada:
+            mensaje = f"Orden encontrada en la fila {fila_index}."
+            return render_template('solicitudes_actualizar.html',
+                                   accion='actualizar',
+                                   mensaje=mensaje,
+                                   solicitud=solicitud_encontrada,
+                                   fila=fila_index)
+        else:
+            mensaje = "No se encontró ninguna orden con el código proporcionado."
+    except Exception as e:
+        logging.error("Error al buscar la orden: " + str(e), exc_info=True)
+        mensaje = "Error al buscar la orden."
+    return render_template('solicitudes_ver.html', accion='ver', mensaje=mensaje, solicitudes=solicitudes_data)
+
     
     # ACTUALIZAR: Modificar orden (actualiza solo los campos de las columnas E a I)
     elif accion == 'actualizar':
