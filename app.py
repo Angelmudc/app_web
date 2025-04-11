@@ -2125,39 +2125,37 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # BUSCAR: Buscar orden por código para actualización parcial
+    # BUSCAR: Búsqueda estricta por código y mostrar resultado en template específico
     elif accion == 'buscar':
-    codigo = request.args.get("codigo", "").strip()
-    try:
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Solicitudes!A1:Z"
-        ).execute()
-        data = result.get("values", [])
-        if not data:
-            mensaje = "No se encontraron datos en la hoja."
-            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
-        
-        # Se asume que la primera fila es el encabezado
-        header = data[0]
-        # Búsqueda estricta: se comparan exactamente los códigos sin espacios adicionales.
-        matches = [row for row in data[1:] if row and row[0].strip() == codigo]
-        
-        if matches:
-            found_order = matches[0]
-            mensaje = f"Orden encontrada con el código {codigo}."
-            # Se crea una lista con el encabezado y la orden encontrada para que el template muestre sólo esa fila.
-            search_result = [header, found_order]
-            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=search_result)
-        else:
-            mensaje = "No se encontró ninguna orden con el código proporcionado."
-            # En este caso, pasamos únicamente el encabezado para que se muestre la estructura de la tabla junto con el mensaje
-            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[header])
+        codigo = request.args.get("codigo", "").strip()
+        try:
+            result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range="Solicitudes!A1:Z"
+            ).execute()
+            data = result.get("values", [])
+            if not data:
+                mensaje = "No se encontraron datos en la hoja."
+                return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
             
-    except Exception as e:
-        logging.error("Error al buscar la orden: " + str(e), exc_info=True)
-        mensaje = "Error al buscar la orden."
-        return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
+            # Asumimos que la primera fila es el encabezado
+            header = data[0]
+            # Búsqueda estricta: comparar exactamente sin espacios extra
+            matches = [row for row in data[1:] if row and row[0].strip() == codigo]
+            
+            if matches:
+                found_order = matches[0]
+                mensaje = f"Orden encontrada con el código {codigo}."
+                search_result = [header, found_order]
+                return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=search_result)
+            else:
+                mensaje = "No se encontró ninguna orden con el código proporcionado."
+                return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[header])
+            
+        except Exception as e:
+            logging.error("Error al buscar la orden: " + str(e), exc_info=True)
+            mensaje = "Error al buscar la orden."
+            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
 
     # ACTUALIZAR: Modificar orden (actualiza solo los campos de las columnas E a I)
     elif accion == 'actualizar':
@@ -2190,7 +2188,6 @@ def solicitudes():
             notas = request.form.get("notas", "").strip()
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
-                # Actualizamos columnas E a I (Estado, Empleado Asignado, Fecha Actualización, Notas, Historial)
                 rango_historial = f"Solicitudes!I{fila_index}"
                 respuesta_hist = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2232,7 +2229,6 @@ def solicitudes():
                 data = result.get("values", [])
                 orden_encontrada = None
                 fila_index = None
-                # Se asume que la primera fila es el encabezado
                 for idx, row in enumerate(data[1:], start=2):
                     if row and row[0] == codigo:
                         orden_encontrada = row
@@ -2258,14 +2254,12 @@ def solicitudes():
                 mensaje = "Fila inválida para editar."
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
-            # Recoger campos del formulario de edición completa
             codigo = request.form.get("codigo", "").strip()  # campo de solo lectura
             descripcion = request.form.get("descripcion", "").strip()
             estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
-            notas_actuales = request.form.get("notas", "").strip()  # Notas adicionales para historial
+            notas_actuales = request.form.get("notas", "").strip()
 
-            # Nuevos datos (Columnas N a Z)
             direccion = request.form.get("direccion", "").strip()
             ruta = request.form.get("ruta", "").strip()
             modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
@@ -2294,7 +2288,6 @@ def solicitudes():
 
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Leer historial actual (columna I)
             try:
                 rango_historial = f"Solicitudes!I{fila_index}"
                 respuesta_hist = service.spreadsheets().values().get(
@@ -2312,8 +2305,6 @@ def solicitudes():
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
 
-            # Preparar la fila actualizada.
-            # Se actualizan las columnas D a I (datos originales) y N a Z (nuevos datos)
             extra_original = ["", "", "", ""]  # Columnas J a M sin cambios
             datos_nuevos = [
                 direccion,
@@ -2335,7 +2326,7 @@ def solicitudes():
                 estado,             # Columna E
                 empleado_asignado,  # Columna F
                 fecha_actualizacion,# Columna G
-                "",                 # Columna H (se deja en blanco o se actualiza según lo requieras)
+                "",                 # Columna H
                 historial_texto     # Columna I
             ] + extra_original + datos_nuevos
 
@@ -2351,8 +2342,7 @@ def solicitudes():
             except Exception as e:
                 logging.error("Error al editar la orden: " + str(e), exc_info=True)
                 mensaje = "Error al editar la orden."
-            
-            # Recargar la orden actualizada para mostrarla en el formulario de edición
+
             try:
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2375,7 +2365,6 @@ def solicitudes():
             ).execute()
             data = result.get("values", [])
             disponibles = []
-            # Se asume que la primera fila es el encabezado; iterar desde la segunda
             for sol in data[1:]:
                 if len(sol) < 5:
                     continue
