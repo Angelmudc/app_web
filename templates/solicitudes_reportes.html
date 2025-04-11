@@ -8,7 +8,6 @@
     <div class="alert alert-info">{{ mensaje }}</div>
   {% endif %}
   
-  <!-- Formulario para filtrar el reporte -->
   <form class="row g-3 mb-4" method="GET" action="{{ url_for('solicitudes') }}">
     <input type="hidden" name="accion" value="reportes">
     <div class="col-md-3">

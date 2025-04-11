@@ -12,27 +12,26 @@
       <div class="card mb-3">
         <div class="card-body">
           <pre id="orderText{{ loop.index }}" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
-Disponible (Código: {{ orden[0] }})
-📍 Dirección: {{ orden[13] }}
-Ruta más cercana: {{ orden[14] }}
-Modalidad de trabajo: {{ orden[15] }}
-Edad: {{ orden[16] }}
-Nacionalidad: {{ orden[17] }}
-Sabe leer y escribir: {% if orden[18] == "Sí" or orden[18] == "true" or orden[18] == "1" %}Sí{% else %}No{% endif %}
-Experiencia en: {{ orden[19] }}
-Horario: {{ orden[20] }}
-Funciones:
-{{ orden[21] }}
+Disponible ( {{ orden[0] }} )
+📍 {{ orden[13] }} ( {{ orden[14] }} )
+Ruta más cercana ( {{ orden[15] }} )
 
-Descripción de la casa:
-{{ orden[22] }}
+{{ orden[16] }}
 
-Adultos en la casa: {{ orden[23] }}
-Sueldo: ${{ orden[24] }}
-Notas: {{ orden[25] }}
+Edad: {{ orden[17] }}
+{{ orden[18] }}
+Que sepa leer y escribir
+Experiencia en: {{ orden[20] }}
+Horario: {{ orden[21] }}
+
+Funciones: {{ orden[22] }}
+
+{% if orden[23] %}Casa: {{ orden[23] }}{% endif %}
+{% if orden[24] %}{{ orden[24] }}{% endif %}
+
+Sueldo:${{ orden[25] }}
           </pre>
           <button class="btn btn-primary" onclick='copyOrderText("{{ loop.index }}")'>Copiar Orden</button>
-
         </div>
       </div>
     {% endfor %}
