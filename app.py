@@ -2016,28 +2016,37 @@ def reporte_inscripciones():
     except Exception as e:
         return f"Error al generar reporte: {str(e)}", 500
 
-from flask import render_template, redirect, url_for, request, session
+from flask import render_template, redirect, url_for, session, request
 from datetime import datetime
 import logging
+
 
 # Suponemos que "service" y "SPREADSHEET_ID" ya están definidos en otro módulo
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
-    # Validación de sesión
     if 'usuario' not in session:
         return redirect(url_for('login'))
 
-    accion = request.args.get('accion', 'ver').strip()
+    # Si no se especifica 'accion' pero se envía un 'codigo', se asume que es una búsqueda.
+    accion = request.args.get('accion', None)
+    if accion is None or accion.strip() == "":
+        if request.args.get("codigo"):
+            accion = "buscar"
+        else:
+            accion = "ver"
+    else:
+        accion = accion.strip()
+
     mensaje = None
 
-    # REGISTRO: Crear nueva orden con datos originales (A-M) y nuevos campos (N-Z)
+    # REGISTRO: Crear nueva orden con datos originales (A-M) y nuevos datos (N-Z)
     if accion == 'registro':
         if request.method == 'GET':
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
         elif request.method == 'POST':
             # --- Datos originales (Columnas A a M) ---
-            codigo = request.form.get("codigo", "").strip()  # Código de Orden (Columna A)
+            codigo = request.form.get("codigo", "").strip()  # Columna A
             if not codigo:
                 mensaje = "El Código de la Orden es obligatorio."
                 return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
@@ -2048,10 +2057,10 @@ def solicitudes():
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Columna B
             empleado_orden = session.get('usuario', 'desconocido')  # Columna C
             estado = "Disponible"  # Columna E
-            empleado_asignado = ""      # Columna F (vacía al registrar)
-            fecha_actualizacion = ""    # Columna G (vacía)
-            notas_inicial = ""          # Columna H (vacía)
-            historial_inicial = ""      # Columna I (vacía)
+            empleado_asignado = ""      # Columna F
+            fecha_actualizacion = ""    # Columna G
+            notas_inicial = ""          # Columna H
+            historial_inicial = ""      # Columna I
             extra_original = ["", "", "", ""]  # Columnas J a M
 
             datos_originales = [
@@ -2102,7 +2111,7 @@ def solicitudes():
             try:
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Solicitudes!A1:Z",  # Se escribe en columnas A a Z
+                    range="Solicitudes!A1:Z",
                     valueInputOption="RAW",
                     body={"values": [nueva_fila]}
                 ).execute()
@@ -2126,7 +2135,7 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
-    # BUSCAR: Búsqueda estricta por código, redirigiendo a un template dedicado (solicitudes_busqueda.html)
+    # BUSCAR: Búsqueda estricta por código, redirigiendo al template solicitudes_busqueda.html
     elif accion == 'buscar':
         codigo = request.args.get("codigo", "").strip()
         try:
@@ -2139,9 +2148,8 @@ def solicitudes():
                 mensaje = "No se encontraron datos en la hoja."
                 return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
             
-            # Asumir que la primera fila es el encabezado
             header = data[0]
-            # Comparación estricta del código sin espacios extra
+            # Comparación estricta sin espacios extra
             matches = [row for row in data[1:] if row and row[0].strip() == codigo]
             
             if matches:
@@ -2158,7 +2166,7 @@ def solicitudes():
             mensaje = "Error al buscar la orden."
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
 
-    # ACTUALIZAR: Actualización parcial (cambio de estado, asignado y notas)
+    # ACTUALIZAR: Actualización parcial (estado, asignado y notas)
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
@@ -2211,7 +2219,7 @@ def solicitudes():
                 mensaje = "Error al actualizar la orden."
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
 
-    # EDITAR: Edición completa de la orden (todos los campos editables, excepto los fijos)
+    # EDITAR: Edición completa (todos los campos editables, excepto los fijos)
     elif accion == 'editar':
         if request.method == 'GET':
             codigo = request.args.get("codigo", "").strip()
