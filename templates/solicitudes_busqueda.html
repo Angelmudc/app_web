@@ -1,0 +1,48 @@
+<!-- templates/solicitudes_busqueda.html -->
+{% extends "solicitudes_layout.html" %}
+
+{% block content %}
+  <h1 class="mb-4">Resultado de Búsqueda</h1>
+  
+  {% if mensaje %}
+    <div class="alert alert-info">{{ mensaje }}</div>
+  {% endif %}
+  
+  {% if solicitudes and solicitudes|length > 1 %}
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Fecha</th>
+          <th>Empleado</th>
+          <th>Descripción</th>
+          <th>Estado</th>
+          <th>Asignado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {# Se imprime la(s) fila(s) de resultado; la primera fila es el encabezado y la(s) siguiente(s) son datos #}
+        {% for sol in solicitudes[1:] %}
+          <tr>
+            <td>{{ sol[0] }}</td>
+            <td>{{ sol[1] }}</td>
+            <td>{{ sol[2] }}</td>
+            <td>{{ sol[3] }}</td>
+            <td>{{ sol[4] }}</td>
+            <td>{{ sol[5] }}</td>
+            <td>
+              <a href="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" class="btn btn-sm btn-info">Actualizar</a>
+              <a href="{{ url_for('solicitudes', accion='editar', codigo=sol[0]) }}" class="btn btn-sm btn-warning">Editar</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif solicitudes and solicitudes|length == 1 %}
+    <!-- Se muestra solo el encabezado sin resultados -->
+    <p>No se encontraron órdenes que coincidan con el código proporcionado.</p>
+  {% endif %}
+  
+  <a href="{{ url_for('solicitudes', accion='ver') }}" class="btn btn-secondary">Ver Todas las Órdenes</a>
+{% endblock %}
