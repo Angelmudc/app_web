@@ -42,6 +42,8 @@ from fpdf import FPDF
 import io
 import os
 
+import difflib
+
 from flask import send_file
 
 from flask import Flask
@@ -2145,14 +2147,27 @@ import logging
 
 # Suponemos que "service" y "SPREADSHEET_ID" ya están definidos en otro módulo
 
+# Función auxiliar para búsqueda flexible
+def flexible_match(search_term, text, threshold=0.6):
+    """
+    Retorna True si:
+      - 'search_term' aparece como subcadena dentro de 'text' (todo en minúsculas), o
+      - La similitud (ratio) calculada con difflib.SequenceMatcher es mayor o igual que el umbral.
+    """
+    st = search_term.lower()
+    t = text.lower()
+    if st in t:
+        return True
+    # Calcula el ratio de similitud y compara con el umbral (por defecto 0.6)
+    ratio = difflib.SequenceMatcher(None, st, t).ratio()
+    return ratio >= threshold
+
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
-    # Verificar la sesión
     if 'usuario' not in session:
         return redirect(url_for('login'))
 
-    # Si no se especifica 'accion' pero se envía 'codigo', se asume búsqueda;
-    # de lo contrario, el valor por defecto es 'ver'
+    # Si no se especifica 'accion' pero se envía 'codigo', se asume búsqueda; de lo contrario se usa "ver"
     accion = request.args.get('accion', None)
     if accion is None or accion.strip() == "":
         if request.args.get("codigo"):
@@ -2182,10 +2197,10 @@ def solicitudes():
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Columna B
             empleado_orden = session.get('usuario', 'desconocido')  # Columna C
             estado = "Disponible"  # Columna E
-            empleado_asignado = ""      # Columna F
-            fecha_actualizacion = ""    # Columna G
-            notas_inicial = ""          # Columna H
-            historial_inicial = ""      # Columna I
+            empleado_asignado = ""
+            fecha_actualizacion = ""
+            notas_inicial = ""
+            historial_inicial = ""
             extra_original = ["", "", "", ""]  # Columnas J a M
 
             datos_originales = [
@@ -2274,11 +2289,8 @@ def solicitudes():
             if not data:
                 mensaje = "No se encontraron datos en la hoja."
                 return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
-            
             header = data[0]
-            # Comparación estricta sin espacios extras en la columna A
             matches = [row for row in data[1:] if row and row[0].strip() == codigo]
-            
             if matches:
                 found_order = matches[0]
                 mensaje = f"Orden encontrada con el código {codigo}."
@@ -2287,14 +2299,13 @@ def solicitudes():
             else:
                 mensaje = "No se encontró ninguna orden con el código proporcionado."
                 return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[header])
-            
         except Exception as e:
             logging.error("Error al buscar la orden: " + str(e), exc_info=True)
             mensaje = "Error al buscar la orden."
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
 
     # ----------------------------------------------------------------
-    # REPORTES: Filtrado de órdenes usando múltiples criterios
+    # REPORTES: Filtrar órdenes usando múltiples criterios de búsqueda flexible
     elif accion == 'reportes':
         try:
             result = service.spreadsheets().values().get(
@@ -2307,7 +2318,7 @@ def solicitudes():
             mensaje = "Error al obtener datos para reportes."
             return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=[])
         
-        # data[0] es el encabezado; lo demás son órdenes
+        # data[0] es el encabezado; lo demás son órdenes.
         filtered = data[1:] if len(data) > 1 else []
 
         # Filtro por Rango de Fechas (Fecha de Solicitud en columna B, índice 1)
@@ -2323,7 +2334,6 @@ def solicitudes():
         except Exception as e:
             logging.error("Error al convertir fecha_fin: " + str(e))
             fecha_fin_dt = None
-
         if fecha_inicio_dt or fecha_fin_dt:
             temp_filtered = []
             for row in filtered:
@@ -2339,25 +2349,29 @@ def solicitudes():
                     temp_filtered.append(row)
             filtered = temp_filtered
 
-        # Filtro por Descripción (columna D, índice 3)
-        descripcion_filtro = request.args.get("descripcion", "").strip().lower()
+        # Filtro flexible por Descripción (columna D, índice 3)
+        descripcion_filtro = request.args.get("descripcion", "").strip()
         if descripcion_filtro:
-            filtered = [row for row in filtered if len(row) > 3 and descripcion_filtro in row[3].lower()]
+            df = descripcion_filtro.lower()
+            filtered = [row for row in filtered if len(row) > 3 and flexible_match(df, row[3])]
 
-        # Filtro por Sueldo (columna Y, índice 24)
-        sueldo_filtro = request.args.get("sueldo", "").strip().lower()
+        # Filtro flexible por Sueldo (columna Y, índice 24)
+        sueldo_filtro = request.args.get("sueldo", "").strip()
         if sueldo_filtro:
-            filtered = [row for row in filtered if len(row) > 24 and sueldo_filtro in row[24].lower()]
+            sf = sueldo_filtro.lower()
+            filtered = [row for row in filtered if len(row) > 24 and flexible_match(sf, row[24])]
 
-        # Filtro por Ruta (columna O, índice 14)
-        ruta_filtro = request.args.get("ruta", "").strip().lower()
+        # Filtro flexible por Ruta (columna O, índice 14)
+        ruta_filtro = request.args.get("ruta", "").strip()
         if ruta_filtro:
-            filtered = [row for row in filtered if len(row) > 14 and ruta_filtro in row[14].lower()]
-
-        # Filtro por Funciones (columna V, índice 21)
-        funciones_filtro = request.args.get("funciones", "").strip().lower()
+            rf = ruta_filtro.lower()
+            filtered = [row for row in filtered if len(row) > 14 and flexible_match(rf, row[14])]
+            
+        # Filtro flexible por Funciones (columna V, índice 21)
+        funciones_filtro = request.args.get("funciones", "").strip()
         if funciones_filtro:
-            filtered = [row for row in filtered if len(row) > 21 and funciones_filtro in row[21].lower()]
+            ff = funciones_filtro.lower()
+            filtered = [row for row in filtered if len(row) > 21 and flexible_match(ff, row[21])]
 
         header = data[0] if data else []
         solicitudes_reporte = [header] + filtered if filtered else [header]
@@ -2405,7 +2419,6 @@ def solicitudes():
                 if notas:
                     nuevo_registro += f" Notas: {notas}"
                 historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
-
                 update_range = f"Solicitudes!E{fila_index}:I{fila_index}"
                 valores_update = [[nuevo_estado, empleado_asignado, fecha_actualizacion, notas, historial_texto]]
                 service.spreadsheets().values().update(
@@ -2421,7 +2434,7 @@ def solicitudes():
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
 
     # ----------------------------------------------------------------
-    # EDITAR: Edición completa de la orden (modifica todos los campos editables, excepto los fijos)
+    # EDITAR: Edición completa (modifica todos los campos editables, excepto los fijos)
     elif accion == 'editar':
         if request.method == 'GET':
             codigo = request.args.get("codigo", "").strip()
@@ -2457,7 +2470,6 @@ def solicitudes():
                 mensaje = "Fila inválida para editar."
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
-            # Recoger datos del formulario de edición completa
             codigo = request.form.get("codigo", "").strip()  # Campo de solo lectura
             descripcion = request.form.get("descripcion", "").strip()
             estado = request.form.get("estado", "").strip()
@@ -2477,7 +2489,6 @@ def solicitudes():
             adultos = request.form.get("adultos", "").strip()
             sueldo = request.form.get("sueldo", "").strip()
             notas_solicitud = request.form.get("notas_solicitud", "").strip()
-
             if not descripcion:
                 mensaje = "La descripción es obligatoria."
                 try:
@@ -2489,7 +2500,6 @@ def solicitudes():
                 except Exception as e:
                     orden_reloaded = None
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_reloaded, fila=fila_index)
-
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
                 rango_historial = f"Solicitudes!I{fila_index}"
@@ -2506,7 +2516,6 @@ def solicitudes():
             if notas_actuales:
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
-
             extra_original = ["", "", "", ""]  # Columnas J a M sin cambios
             datos_nuevos = [
                 direccion,
@@ -2577,9 +2586,11 @@ def solicitudes():
             mensaje = "Error al cargar órdenes disponibles."
         return render_template('solicitudes_disponibles.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
 
+    # ----------------------------------------------------------------
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
+
 
 
 
