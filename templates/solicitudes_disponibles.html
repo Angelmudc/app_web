@@ -6,7 +6,7 @@
   {% if mensaje %}
     <div class="alert alert-info">{{ mensaje }}</div>
   {% endif %}
-
+  
   {% if solicitudes|length > 0 %}
     {% for orden in solicitudes %}
       <div class="card mb-3">
@@ -26,12 +26,10 @@ Horario: {{ orden[20] }}
 
 Funciones: {{ orden[21] }}
 
-{% if orden[22] %}
 Casa: {{ orden[22] }}
-{% endif %}
-{% if orden[23] %}
+
 {{ orden[23] }}
-{% endif %}
+
 Sueldo:$ {{ orden[24] }}
 {% if orden[25] %}
 {{ orden[25] }}
@@ -44,7 +42,7 @@ Sueldo:$ {{ orden[24] }}
   {% else %}
     <p>No hay órdenes disponibles o de reemplazo para copiar.</p>
   {% endif %}
-
+  
   <script>
     function copyOrderText(index) {
       var text = document.getElementById("orderText" + index).innerText;
