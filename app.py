@@ -2125,10 +2125,7 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
     
-    # BUSCAR: Buscar orden por código
-if accion == 'registro':
-    # Código del branch registro
-    ...
+
 elif accion == 'buscar':
     codigo = request.args.get("codigo", "").strip()
     solicitudes_data = []
