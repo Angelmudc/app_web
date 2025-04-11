@@ -19,17 +19,17 @@
   <table class="table table-striped">
     <thead>
       <tr>
-        <th>ID Orden</th>
+        <th>Código</th>
         <th>Fecha</th>
-        <th>Empleado de la Orden</th>
+        <th>Empleado</th>
         <th>Descripción</th>
         <th>Estado</th>
-        <th>Empleado Asignado</th>
+        <th>Asignado</th>
         <th>Acciones</th>
       </tr>
     </thead>
     <tbody>
-      {# Se itera omitiendo la primera fila (encabezados) usando slicing #}
+      {# Se itera sobre las órdenes omitiendo el encabezado (asumiendo que la primera fila es de encabezados) #}
       {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
@@ -39,7 +39,6 @@
           <td>{{ sol[4] }}</td>
           <td>{{ sol[5] }}</td>
           <td>
-            {# El loop.index en este caso inicia en 1 (por el slicing), sumamos 1 para obtener la fila correcta en la hoja #}
             <a href="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" class="btn btn-sm btn-info">Actualizar</a>
           </td>
         </tr>

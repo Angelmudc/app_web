@@ -1,0 +1,53 @@
+<!-- templates/solicitudes_disponibles.html -->
+{% extends "solicitudes_layout.html" %}
+
+{% block content %}
+  <h1 class="mb-4">Órdenes Disponibles / Reemplazo</h1>
+  {% if mensaje %}
+    <div class="alert alert-info">{{ mensaje }}</div>
+  {% endif %}
+  
+  {% if solicitudes|length > 0 %}
+    {% for orden in solicitudes %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <pre id="orderText{{ loop.index }}" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
+Disponible (Código: {{ orden[0] }})
+📍 Dirección: {{ orden[13] }}
+Ruta más cercana: {{ orden[14] }}
+Modalidad de trabajo: {{ orden[15] }}
+Edad: {{ orden[16] }}
+Nacionalidad: {{ orden[17] }}
+Sabe leer y escribir: {% if orden[18] == "Sí" or orden[18] == "true" or orden[18] == "1" %}Sí{% else %}No{% endif %}
+Experiencia en: {{ orden[19] }}
+Horario: {{ orden[20] }}
+Funciones:
+{{ orden[21] }}
+
+Descripción de la casa:
+{{ orden[22] }}
+
+Adultos en la casa: {{ orden[23] }}
+Sueldo: ${{ orden[24] }}
+Notas: {{ orden[25] }}
+          </pre>
+          <button class="btn btn-primary" onclick='copyOrderText("{{ loop.index }}")'>Copiar Orden</button>
+
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p>No hay órdenes disponibles o de reemplazo para copiar.</p>
+  {% endif %}
+  
+  <script>
+    function copyOrderText(index) {
+      var text = document.getElementById("orderText" + index).innerText;
+      navigator.clipboard.writeText(text).then(function() {
+        alert("Orden copiada al portapapeles");
+      }).catch(function(err) {
+        alert("Error al copiar la orden: " + err);
+      });
+    }
+  </script>
+{% endblock %}

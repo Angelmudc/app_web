@@ -47,15 +47,14 @@
   <table class="table table-striped">
     <thead>
       <tr>
-        <th>ID Orden</th>
+        <th>Código</th>
         <th>Fecha</th>
-        <th>Empleado de la Orden</th>
+        <th>Empleado</th>
         <th>Descripción</th>
         <th>Estado</th>
       </tr>
     </thead>
     <tbody>
-      {# Se omite la primera fila (encabezados) con slicing #}
       {% for sol in solicitudes_reporte[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
