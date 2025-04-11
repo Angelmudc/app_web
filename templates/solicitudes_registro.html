@@ -2,10 +2,12 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1>Registrar Nueva Solicitud</h1>
+  <h1 class="mb-4">Registrar Nueva Solicitud</h1>
+  
   {% if mensaje %}
     <div class="alert alert-danger">{{ mensaje }}</div>
   {% endif %}
+  
   <form action="{{ url_for('solicitudes', accion='registro') }}" method="POST">
     <div class="mb-3">
       <label for="id_solicitud" class="form-label">ID Solicitud:</label>

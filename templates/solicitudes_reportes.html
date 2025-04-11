@@ -2,11 +2,12 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1>Reporte de Solicitudes</h1>
+  <h1 class="mb-4">Reporte de Solicitudes</h1>
+  
   {% if mensaje %}
     <div class="alert alert-info">{{ mensaje }}</div>
   {% endif %}
-
+  
   <!-- Formulario para filtrar el reporte -->
   <form class="row g-3 mb-4" method="GET" action="{{ url_for('solicitudes') }}">
     <input type="hidden" name="accion" value="reportes">
@@ -26,7 +27,7 @@
       <button type="submit" class="btn btn-primary">Filtrar</button>
     </div>
   </form>
-
+  
   <table class="table table-striped">
     <thead>
       <tr>
@@ -38,10 +39,8 @@
       </tr>
     </thead>
     <tbody>
-      {% for sol in solicitudes_reporte %}
-        {% if loop.index0 == 0 %}
-          {% continue %}
-        {% endif %}
+      {# Se omite la primera fila (encabezados) con slicing #}
+      {% for sol in solicitudes_reporte[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
           <td>{{ sol[1] }}</td>
@@ -53,4 +52,3 @@
     </tbody>
   </table>
 {% endblock %}
-

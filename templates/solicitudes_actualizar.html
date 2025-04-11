@@ -2,11 +2,12 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1>Actualizar Solicitud</h1>
+  <h1 class="mb-4">Actualizar Solicitud</h1>
+  
   {% if mensaje %}
     <div class="alert alert-danger">{{ mensaje }}</div>
   {% endif %}
-
+  
   {% if solicitud %}
     <form action="{{ url_for('solicitudes', accion='actualizar', fila=fila) }}" method="POST">
       <div class="mb-3">
