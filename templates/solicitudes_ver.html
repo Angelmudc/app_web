@@ -10,7 +10,8 @@
       <input type="text" name="codigo" class="form-control" placeholder="Buscar por Código de Orden" required>
       <button type="submit" class="btn btn-primary">Buscar</button>
     </div>
-  </form>
+  </form>  
+  
   
   {% if mensaje %}
     <div class="alert alert-info">{{ mensaje }}</div>
@@ -29,8 +30,6 @@
       </tr>
     </thead>
     <tbody>
-      {# Se asume que la variable "solicitudes" contiene todas las filas, 
-         siendo la primera el encabezado (esto ocurre en el listado completo). #}
       {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
