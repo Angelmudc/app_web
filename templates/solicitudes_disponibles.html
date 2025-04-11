@@ -6,31 +6,36 @@
   {% if mensaje %}
     <div class="alert alert-info">{{ mensaje }}</div>
   {% endif %}
-  
+
   {% if solicitudes|length > 0 %}
     {% for orden in solicitudes %}
       <div class="card mb-3">
         <div class="card-body">
           <pre id="orderText{{ loop.index }}" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
 Disponible ( {{ orden[0] }} )
-📍 {{ orden[13] }} ( {{ orden[14] }} )
-Ruta más cercana ( {{ orden[15] }} )
+📍 {{ orden[10] }} ( {{ orden[11] }} )
+Ruta más cercana ( {{ orden[14] }} )
 
-{{ orden[16] }}
+{{ orden[15] }}
 
-Edad: {{ orden[17] }}
-Dominicana
+Edad: {{ orden[16] }}
+{{ orden[17] }}
 Que sepa leer y escribir
-Experiencia en: {{ orden[20] }}
-Horario: {{ orden[21] }}
+Experiencia en: {{ orden[19] }}
+Horario: {{ orden[20] }}
 
-Funciones: {{ orden[22] }}
+Funciones: {{ orden[21] }}
 
-Casa: {{ orden[23] }}
-
-{{ orden[24] }}
-
-Sueldo:$ {{ orden[25] }}
+{% if orden[22] %}
+Casa: {{ orden[22] }}
+{% endif %}
+{% if orden[23] %}
+{{ orden[23] }}
+{% endif %}
+Sueldo:$ {{ orden[24] }}
+{% if orden[25] %}
+{{ orden[25] }}
+{% endif %}
           </pre>
           <button class="btn btn-primary" onclick='copyOrderText("{{ loop.index }}")'>Copiar Orden</button>
         </div>
@@ -39,7 +44,7 @@ Sueldo:$ {{ orden[25] }}
   {% else %}
     <p>No hay órdenes disponibles o de reemplazo para copiar.</p>
   {% endif %}
-  
+
   <script>
     function copyOrderText(index) {
       var text = document.getElementById("orderText" + index).innerText;
