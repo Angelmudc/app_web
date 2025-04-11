@@ -12,7 +12,13 @@
     <form action="{{ url_for('solicitudes', accion='actualizar', fila=fila) }}" method="POST">
       <div class="mb-3">
         <label for="estado" class="form-label">Estado:</label>
-        <input type="text" name="estado" id="estado" class="form-control" value="{{ solicitud[4] }}" required>
+        <select name="estado" id="estado" class="form-control" required>
+          <option value="Disponible" {% if solicitud[4]|lower == "disponible" %}selected{% endif %}>Disponible</option>
+          <option value="Reemplazo" {% if solicitud[4]|lower == "reemplazo" %}selected{% endif %}>Reemplazo</option>
+          <option value="Cancelado" {% if solicitud[4]|lower == "cancelado" %}selected{% endif %}>Cancelado</option>
+          <option value="En proceso" {% if solicitud[4]|lower == "en proceso" %}selected{% endif %}>En proceso</option>
+          <option value="Pago" {% if solicitud[4]|lower == "pago" %}selected{% endif %}>Pago</option>
+        </select>
       </div>
       <div class="mb-3">
         <label for="empleado_asignado" class="form-label">Empleado Asignado:</label>
@@ -20,7 +26,7 @@
       </div>
       <div class="mb-3">
         <label for="notas" class="form-label">Notas:</label>
-        <textarea name="notas" id="notas" class="form-control"></textarea>
+        <textarea name="notas" id="notas" class="form-control" placeholder="Ingrese aquí cualquier nota adicional"></textarea>
       </div>
       <button type="submit" class="btn btn-primary">Actualizar</button>
     </form>
