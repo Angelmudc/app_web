@@ -2,7 +2,8 @@
 {% extends "solicitudes_layout.html" %}
 
 {% block content %}
-  <h1>Listado de Solicitudes</h1>
+  <h1 class="mb-4">Listado de Solicitudes</h1>
+  
   {% if mensaje %}
     <div class="alert alert-danger">{{ mensaje }}</div>
   {% endif %}
@@ -20,11 +21,8 @@
       </tr>
     </thead>
     <tbody>
-      {% for sol in solicitudes %}
-        {% if loop.index0 == 0 %}
-          {# Suponiendo que la primera fila sean encabezados, se omite #}
-          {% continue %}
-        {% endif %}
+      {# Se omite la primera fila (encabezados) usando slicing #}
+      {% for sol in solicitudes[1:] %}
         <tr>
           <td>{{ sol[0] }}</td>
           <td>{{ sol[1] }}</td>
@@ -33,7 +31,8 @@
           <td>{{ sol[4] }}</td>
           <td>{{ sol[5] }}</td>
           <td>
-            <a href="{{ url_for('solicitudes', accion='actualizar', fila=loop.index0 + 2) }}" class="btn btn-sm btn-info">Actualizar</a>
+            {# Dado que iteramos sobre solicitudes[1:], loop.index inicia en 1, se suma 1 para obtener la fila en la hoja #}
+            <a href="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" class="btn btn-sm btn-info">Actualizar</a>
           </td>
         </tr>
       {% endfor %}
