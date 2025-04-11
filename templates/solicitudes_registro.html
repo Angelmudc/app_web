@@ -9,32 +9,70 @@
   {% endif %}
   
   <form action="{{ url_for('solicitudes', accion='registro') }}" method="POST">
+    <!-- Datos originales -->
     <div class="mb-3">
-      <label for="id_solicitud" class="form-label">ID Orden:</label>
-      <input type="text" name="id_solicitud" id="id_solicitud" class="form-control" required>
+      <label for="codigo" class="form-label">Disponible (Código de Orden):</label>
+      <input type="text" name="codigo" id="codigo" class="form-control" placeholder="Ej: COD123" required>
     </div>
     <div class="mb-3">
       <label for="descripcion" class="form-label">Descripción:</label>
       <textarea name="descripcion" id="descripcion" class="form-control" required></textarea>
     </div>
+    
     <hr>
-    <h4>Información del Cliente (No se mostrará en la orden)</h4>
+    <!-- Nuevos datos para el formato de copia -->
     <div class="mb-3">
-      <label for="nombre_cliente" class="form-label">Nombre del Cliente:</label>
-      <input type="text" name="nombre_cliente" id="nombre_cliente" class="form-control">
+      <label for="direccion" class="form-label">📍 Dirección:</label>
+      <input type="text" name="direccion" id="direccion" class="form-control" placeholder="Dirección completa" required>
     </div>
     <div class="mb-3">
-      <label for="ciudad" class="form-label">Ciudad:</label>
-      <input type="text" name="ciudad" id="ciudad" class="form-control">
+      <label for="ruta" class="form-label">Ruta más cercana:</label>
+      <input type="text" name="ruta" id="ruta" class="form-control" placeholder="Ej: Ruta 5" required>
     </div>
     <div class="mb-3">
-      <label for="sector" class="form-label">Sector:</label>
-      <input type="text" name="sector" id="sector" class="form-control">
+      <label for="modalidad_trabajo" class="form-label">Modalidad de trabajo:</label>
+      <input type="text" name="modalidad_trabajo" id="modalidad_trabajo" class="form-control" placeholder="Tiempo completo, Medio tiempo, etc." required>
     </div>
     <div class="mb-3">
-      <label for="telefono" class="form-label">Número de Teléfono:</label>
-      <input type="text" name="telefono" id="telefono" class="form-control">
+      <label for="edad" class="form-label">Edad:</label>
+      <input type="number" name="edad" id="edad" class="form-control" placeholder="Ej: 25" required>
     </div>
-    <button type="submit" class="btn btn-primary">Registrar</button>
+    <div class="mb-3">
+      <label for="nacionalidad" class="form-label">Nacionalidad:</label>
+      <input type="text" name="nacionalidad" id="nacionalidad" class="form-control" value="Dominicana" readonly>
+    </div>
+    <div class="mb-3 form-check">
+      <input type="checkbox" name="habilidades_alfabetizacion" id="habilidades_alfabetizacion" class="form-check-input" checked>
+      <label for="habilidades_alfabetizacion" class="form-check-label">Sabe leer y escribir</label>
+    </div>
+    <div class="mb-3">
+      <label for="experiencia" class="form-label">Experiencia en:</label>
+      <input type="text" name="experiencia" id="experiencia" class="form-control" placeholder="Ej: Cuidado infantil, limpieza, etc." required>
+    </div>
+    <div class="mb-3">
+      <label for="horario" class="form-label">Horario:</label>
+      <input type="text" name="horario" id="horario" class="form-control" placeholder="Ej: Mañana, tarde, noche" required>
+    </div>
+    <div class="mb-3">
+      <label for="funciones" class="form-label">Funciones:</label>
+      <textarea name="funciones" id="funciones" class="form-control" placeholder="Detalle de las funciones" required></textarea>
+    </div>
+    <div class="mb-3">
+      <label for="descripcion_casa" class="form-label">Descripción de la casa:</label>
+      <textarea name="descripcion_casa" id="descripcion_casa" class="form-control" placeholder="Descripción de la vivienda" required></textarea>
+    </div>
+    <div class="mb-3">
+      <label for="adultos" class="form-label">Adultos en la casa:</label>
+      <input type="text" name="adultos" id="adultos" class="form-control" placeholder="Ej: 3 adultos" required>
+    </div>
+    <div class="mb-3">
+      <label for="sueldo" class="form-label">Sueldo: $</label>
+      <input type="number" name="sueldo" id="sueldo" class="form-control" placeholder="Ej: 500" required>
+    </div>
+    <div class="mb-3">
+      <label for="notas" class="form-label">Notas sobre la solicitud (opcional):</label>
+      <textarea name="notas" id="notas" class="form-control" placeholder="Información adicional (si aplica)"></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Registrar Orden</button>
   </form>
 {% endblock %}
