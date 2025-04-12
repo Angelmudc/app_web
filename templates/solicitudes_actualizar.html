@@ -9,7 +9,7 @@
   {% endif %}
   
   {% if solicitud %}
-    <form action="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" method="POST">
+    <form action="{{ url_for('solicitudes', accion='actualizar', fila=fila) }}" method="POST">
       <div class="mb-3">
         <label for="estado" class="form-label">Estado:</label>
         <select name="estado" id="estado" class="form-control" required>
