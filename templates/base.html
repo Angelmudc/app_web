@@ -8,15 +8,86 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
   <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-  <!-- Archivo de estilos personalizado -->
+  <!-- Estilos personalizados -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  
+  <!-- Estilos custom inline para animaciones y mejoras -->
+  <style>
+    /* Body y fondo */
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+      color: #333;
+    }
+    /* Navbar con efecto hover y transición */
+    .navbar {
+      transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease;
+      background-color: #343a40;
+    }
+    .navbar:hover {
+      background-color: #23272b;
+    }
+    .navbar .nav-link {
+      transition: transform 0.3s ease, color 0.3s ease;
+    }
+    .navbar .nav-link:hover {
+      transform: scale(1.1);
+      color: #ffc107;
+    }
+    /* Sección hero con animación de entrada */
+    .hero-section {
+      padding: 60px 0;
+      text-align: center;
+      animation: fadeInDown 1s both;
+    }
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-50px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Tarjetas mejoradas */
+    .card {
+      border: none;
+      border-radius: 10px;
+      overflow: hidden;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
+    /* Botones con bordes redondeados y efecto zoom */
+    .btn {
+      border-radius: 50px;
+      transition: background-color 0.3s, transform 0.3s;
+    }
+    .btn:hover {
+      transform: scale(1.05);
+    }
+    /* Alerta con animación de aparición */
+    .alert {
+      animation: fadeIn 1s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    /* Footer con fondo oscuro y texto claro */
+    footer {
+      background-color: #343a40;
+      color: #fff;
+    }
+  </style>
+
   {% block head %}{% endblock %}
 </head>
 <body>
-  <!-- Navbar modernizado -->
-  <nav class="navbar navbar-expand-lg navbar-dark shadow-sm">
+  <!-- Navbar moderno -->
+  <nav class="navbar navbar-expand-lg navbar-dark shadow-sm fixed-top">
     <div class="container">
-      <a class="navbar-brand" href="/">Doméstica del Cibao A&amp;D</a>
+      <a class="navbar-brand" href="/">
+        <!-- Logo o nombre de la aplicación -->
+        Doméstica del Cibao A&amp;D
+      </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
         <span class="navbar-toggler-icon"></span>
       </button>
@@ -33,6 +104,9 @@
     </div>
   </nav>
 
+  <!-- Espacio para que el contenido no quede oculto detrás del navbar fijo -->
+  <div style="height: 70px;"></div>
+
   {% block hero %}{% endblock %}
 
   <main class="container my-5">
@@ -44,7 +118,7 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="bg-light py-4">
+  <footer class="py-4">
     <div class="container text-center">
       <small>&copy; {{ current_year if current_year else "2025" }} Doméstica del Cibao A&amp;D. Todos los derechos reservados.</small>
     </div>
