@@ -7,46 +7,36 @@
   {% if mensaje %}
     <div class="alert alert-info fade-in">{{ mensaje }}</div>
   {% endif %}
-
-  {% if solicitudes|length > 1 %}
-    {% set header = solicitudes[0] %}
-    {% for orden in solicitudes[1:] %}
-      <!-- Suponemos que la fila real está almacenada en orden[?] o según tu diseño; 
-           en este ejemplo, usaremos loop.index más 1 como número de fila.
-           Ajusta esto según corresponda a tu estructura. -->
+  
+  {% if solicitudes.ordenes|length > 0 %}
+    {% for orden in solicitudes.ordenes %}
       <div class="card mb-3 fade-in">
         <div class="card-body">
           <pre id="orderText{{ loop.index }}" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
-Disponible ( {{ orden[0] }} )
-📍 {{ orden[13] }}
-Ruta más cercana ( {{ orden[14] }} )
+Disponible ( {{ orden.datos[0] }} )
+📍 {{ orden.datos[13] }}
+Ruta más cercana ( {{ orden.datos[14] }} )
 
-{{ orden[15] }}
+{{ orden.datos[15] }}
 
-Edad: {{ orden[16] }}
-{{ orden[17] }}
+Edad: {{ orden.datos[16] }}
+{{ orden.datos[17] }}
 Que sepa leer y escribir
-Experiencia en: {{ orden[19] }}
-Horario: {{ orden[20] }}
+Experiencia en: {{ orden.datos[19] }}
+Horario: {{ orden.datos[20] }}
 
-Funciones: {{ orden[21] }}
+Funciones: {{ orden.datos[21] }}
 
-{{ orden[22] }}
+{{ orden.datos[22] }}
 
-{{ orden[23] }}
+{{ orden.datos[23] }}
 
-Sueldo:$ {{ orden[24] }}
-{% if orden[25] %}
-{{ orden[25] }}
+Sueldo:$ {{ orden.datos[24] }}
+{% if orden.datos[25] %}
+{{ orden.datos[25] }}
 {% endif %}
           </pre>
-          <!--
-            El botón de Copiar invoca copyOrderText enviando dos parámetros:
-             - loop.index para identificar el bloque de texto.
-             - (loop.index + 1) como ejemplo de número de fila. 
-            Ajusta esta lógica según cómo determines la fila en tu hoja.
-          -->
-          <button class="btn btn-primary" onclick='copyOrderText("{{ loop.index }}", "{{ loop.index + 1 }}")'>Copiar Orden</button>
+          <button class="btn btn-primary" onclick='copyOrderText("{{ loop.index }}", "{{ orden.fila }}")'>Copiar Orden</button>
         </div>
       </div>
     {% endfor %}
@@ -56,31 +46,26 @@ Sueldo:$ {{ orden[24] }}
 
   <script>
     function copyOrderText(index, fila) {
-      // Se obtiene el contenido del elemento <pre>
-      var textElem = document.getElementById("orderText" + index);
-      if (!textElem) {
-        alert("No se pudo encontrar el contenido a copiar.");
+      var elem = document.getElementById("orderText" + index);
+      if (!elem) {
+        alert("No se encontró el contenido a copiar.");
         return;
       }
-      var text = textElem.innerText;
+      var text = elem.innerText;
       navigator.clipboard.writeText(text).then(function() {
         alert("Orden copiada al portapapeles");
-        // Llamada para marcar la orden como copiada (actualiza la columna AC con la fecha de hoy)
-        // Se envía el número de fila 'fila' al endpoint "/marcar_copiada"
+        // Llama al endpoint para marcar la orden como copiada, enviando el número de fila real.
         fetch('/marcar_copiada', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: 'fila=' + fila
         })
-        .then(function(response) { return response.text(); })
-        .then(function(data) { 
+        .then(response => response.text())
+        .then(data => {
           console.log("Orden marcada: " + data);
-          // Recargar la página para actualizar la lista y que la orden copiada desaparezca
-          location.reload(); 
+          location.reload();
         })
-        .catch(function(err) {
-          alert("Error al marcar la orden: " + err);
-        });
+        .catch(err => { alert("Error al marcar la orden: " + err); });
       }).catch(function(err) {
         alert("Error al copiar la orden: " + err);
       });
