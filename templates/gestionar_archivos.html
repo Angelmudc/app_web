@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Gestionar Archivos - Doméstica del Cibao A&D{% endblock %}
+{% block title %}Gestionar Archivos - Doméstica del Cibao A&amp;D{% endblock %}
 
 {% block hero %}
 <div class="hero-section">
-  <h1>Gestión de Archivos y Entrevistas</h1>
-  <p>Consulta, visualiza y descarga los documentos de las candidatas.</p>
+  <h1 class="display-4 fw-bold">Gestión de Archivos y Entrevistas</h1>
+  <p class="lead">Consulta, visualiza y descarga los documentos de las candidatas con estilo y dinamismo.</p>
 </div>
 {% endblock %}
 
@@ -13,17 +13,17 @@
 {% if accion == "buscar" %}
   <!-- Formulario de Búsqueda -->
   <form method="post" action="/gestionar_archivos?accion=buscar" id="searchForm" class="mb-4">
-    <div class="input-group">
+    <div class="input-group input-group-lg">
       <input type="text" class="form-control" name="busqueda" placeholder="Nombre, cédula, teléfono..." required>
       <button class="btn btn-primary" type="submit" id="searchButton">Buscar</button>
     </div>
   </form>
   {% if resultados %}
     <h2 class="mb-3">Resultados</h2>
-    <div class="row">
+    <div class="row g-4">
       {% for cand in resultados %}
         <div class="col-md-4">
-          <div class="card mb-3 shadow-sm">
+          <div class="card shadow-sm">
             <div class="card-body">
               <h5 class="card-title">{{ cand.nombre }}</h5>
               <p class="card-text">
@@ -41,57 +41,57 @@
   <!-- Visualización de Documentos -->
   <h2 class="mb-4">Documentos de la Fila {{ fila }}</h2>
   {% if docs %}
-    <ul class="doc-list mb-4">
-      <li>
+    <ul class="list-group mb-4">
+      <li class="list-group-item">
         <strong>Depuración:</strong>
         {% if docs.depuracion_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=depuracion&fila={{ fila }}" class="btn btn-outline-primary btn-sm">Descargar</a>
+          <a href="/gestionar_archivos?accion=descargar&doc=depuracion&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
           <span class="text-muted">{{ docs.depuracion_url }}</span>
         {% else %}
           <span class="text-muted">No disponible</span>
         {% endif %}
       </li>
-      <li>
+      <li class="list-group-item">
         <strong>Perfil:</strong>
         {% if docs.perfil_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=perfil&fila={{ fila }}" class="btn btn-outline-primary btn-sm">Descargar</a>
+          <a href="/gestionar_archivos?accion=descargar&doc=perfil&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
           <span class="text-muted">{{ docs.perfil_url }}</span>
         {% else %}
           <span class="text-muted">No disponible</span>
         {% endif %}
       </li>
-      <li>
+      <li class="list-group-item">
         <strong>Cédula 1:</strong>
         {% if docs.cedula1_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=cedula1&fila={{ fila }}" class="btn btn-outline-primary btn-sm">Descargar</a>
+          <a href="/gestionar_archivos?accion=descargar&doc=cedula1&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
           <span class="text-muted">{{ docs.cedula1_url }}</span>
         {% else %}
           <span class="text-muted">No disponible</span>
         {% endif %}
       </li>
-      <li>
+      <li class="list-group-item">
         <strong>Cédula 2:</strong>
         {% if docs.cedula2_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=cedula2&fila={{ fila }}" class="btn btn-outline-primary btn-sm">Descargar</a>
+          <a href="/gestionar_archivos?accion=descargar&doc=cedula2&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
           <span class="text-muted">{{ docs.cedula2_url }}</span>
         {% else %}
           <span class="text-muted">No disponible</span>
         {% endif %}
       </li>
-      <li>
+      <li class="list-group-item">
         <strong>Entrevista (columna Z):</strong>
         {% if docs.entrevista %}
-          <a href="/gestionar_archivos?accion=descargar&doc=pdf&fila={{ fila }}" class="btn btn-outline-primary btn-sm">Generar/Descargar PDF</a>
+          <a href="/gestionar_archivos?accion=descargar&doc=pdf&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Generar/Descargar PDF</a>
         {% else %}
           <span class="text-muted">No disponible</span>
         {% endif %}
       </li>
     </ul>
-    <div>
-      <a href="/gestionar_archivos?accion=descargar&doc=todo&fila={{ fila }}" class="btn btn-primary" id="descargarTodoButton">Descargar TODO (ZIP)</a>
+    <div class="text-center">
+      <a href="/gestionar_archivos?accion=descargar&doc=todo&fila={{ fila }}" class="btn btn-primary btn-lg" id="descargarTodoButton">Descargar TODO (ZIP)</a>
     </div>
   {% else %}
-    <p>No se encontraron documentos en las columnas AA-AD.</p>
+    <p class="text-center">No se encontraron documentos en las columnas AA-AD.</p>
   {% endif %}
 {% endif %}
 {% endblock %}
