@@ -9,14 +9,14 @@
   {% endif %}
   
   {% if solicitud %}
-    <form action="{{ url_for('solicitudes', accion='actualizar', fila=fila) }}" method="POST">
+    <form action="{{ url_for('solicitudes', accion='actualizar', fila=(loop.index + 1)) }}" method="POST">
       <div class="mb-3">
         <label for="estado" class="form-label">Estado:</label>
         <select name="estado" id="estado" class="form-control" required>
+          <option value="En proceso" {% if solicitud[4]|lower == "en proceso" %}selected{% endif %}>En proceso</option>
           <option value="Disponible" {% if solicitud[4]|lower == "disponible" %}selected{% endif %}>Disponible</option>
           <option value="Reemplazo" {% if solicitud[4]|lower == "reemplazo" %}selected{% endif %}>Reemplazo</option>
           <option value="Cancelado" {% if solicitud[4]|lower == "cancelado" %}selected{% endif %}>Cancelado</option>
-          <option value="En proceso" {% if solicitud[4]|lower == "en proceso" %}selected{% endif %}>En proceso</option>
           <option value="Pago" {% if solicitud[4]|lower == "pago" %}selected{% endif %}>Pago</option>
           <option value="Entrevistando" {% if solicitud[4]|lower == "entrevistando" %}selected{% endif %}>Entrevistando</option>
         </select>
@@ -28,6 +28,11 @@
       <div class="mb-3">
         <label for="notas" class="form-label">Notas:</label>
         <textarea name="notas" id="notas" class="form-control" placeholder="Ingrese aquí cualquier nota adicional"></textarea>
+      </div>
+      <!-- Nuevo campo para registrar el pago -->
+      <div class="mb-3">
+        <label for="pago" class="form-label">Pago (Monto):</label>
+        <input type="text" name="pago" id="pago" class="form-control" placeholder="Ingrese el monto pagado">
       </div>
       <button type="submit" class="btn btn-primary">Actualizar</button>
     </form>
