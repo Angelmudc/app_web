@@ -2621,33 +2621,42 @@ def solicitudes():
     # ----------------------------------------------------------------
     # DISPONIBLES: Mostrar órdenes con estado "disponible" o "reemplazo"
     elif accion == 'disponibles':
-        solicitudes_data = []
-        try:
-            # Leer hasta la columna AC para incluir la marca de copia (columna AC es la 29ª)
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:AC"
-            ).execute()
-            data = result.get("values", [])
-            disponibles = []
-            today_str = datetime.today().strftime("%Y-%m-%d")
-            for sol in data[1:]:
+    solicitudes_data = {}
+    try:
+        # Se extiende el rango para incluir la columna AC (29 columnas)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Solicitudes!A1:AC"
+        ).execute()
+        data = result.get("values", [])
+        disponibles = []
+        today_str = datetime.today().strftime("%Y-%m-%d")
+        if len(data) > 1:
+            header = data[0]
+            # Iterar con índice, de modo que la fila real es 'i'
+            for i, sol in enumerate(data[1:], start=2):
+                # Verificamos que existan las columnas necesarias
                 if len(sol) < 5:
                     continue
                 estado_sol = sol[4].strip().lower() if sol[4] else ""
                 if estado_sol in ["disponible", "reemplazo"]:
+                    # Si la columna AC existe (índice 28), y contiene la fecha de hoy, omitimos esta orden
                     if len(sol) >= 29:
                         fecha_copia = sol[28].strip()
                         if fecha_copia == today_str:
                             continue
-                    disponibles.append(sol)
-            solicitudes_data = disponibles
-        except Exception as e:
-            logging.error("Error al cargar órdenes disponibles: " + str(e), exc_info=True)
-            mensaje = "Error al cargar órdenes disponibles."
-        return render_template('solicitudes_disponibles.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
-    
-    # ----------------------------------------------------------------
+                    # Agregamos la orden junto con su número de fila real
+                    disponibles.append({"datos": sol, "fila": i})
+        else:
+            header = []
+        solicitudes_data = {"header": header, "ordenes": disponibles}
+    except Exception as e:
+        logging.error("Error al cargar órdenes disponibles: " + str(e), exc_info=True)
+        mensaje = "Error al cargar órdenes disponibles."
+        solicitudes_data = {"header": [], "ordenes": []}
+    return render_template('solicitudes_disponibles.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
+
+# ----------------------------------------------------------------
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
