@@ -3,13 +3,18 @@
 
 {% block content %}
   <h1 class="mb-4">Órdenes Disponibles / Reemplazo</h1>
+  
   {% if mensaje %}
-    <div class="alert alert-info">{{ mensaje }}</div>
+    <div class="alert alert-info fade-in">{{ mensaje }}</div>
   {% endif %}
 
-  {% if solicitudes|length > 0 %}
-    {% for orden in solicitudes %}
-      <div class="card mb-3">
+  {% if solicitudes|length > 1 %}
+    {% set header = solicitudes[0] %}
+    {% for orden in solicitudes[1:] %}
+      <!-- Suponemos que la fila real está almacenada en orden[?] o según tu diseño; 
+           en este ejemplo, usaremos loop.index más 1 como número de fila.
+           Ajusta esto según corresponda a tu estructura. -->
+      <div class="card mb-3 fade-in">
         <div class="card-body">
           <pre id="orderText{{ loop.index }}" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
 Disponible ( {{ orden[0] }} )
@@ -35,19 +40,47 @@ Sueldo:$ {{ orden[24] }}
 {{ orden[25] }}
 {% endif %}
           </pre>
-          <button class="btn btn-primary" onclick='copyOrderText("{{ loop.index }}")'>Copiar Orden</button>
+          <!--
+            El botón de Copiar invoca copyOrderText enviando dos parámetros:
+             - loop.index para identificar el bloque de texto.
+             - (loop.index + 1) como ejemplo de número de fila. 
+            Ajusta esta lógica según cómo determines la fila en tu hoja.
+          -->
+          <button class="btn btn-primary" onclick='copyOrderText("{{ loop.index }}", "{{ loop.index + 1 }}")'>Copiar Orden</button>
         </div>
       </div>
     {% endfor %}
   {% else %}
-    <p>No hay órdenes disponibles o de reemplazo para copiar.</p>
+    <p class="fade-in">No hay órdenes disponibles o de reemplazo para copiar.</p>
   {% endif %}
 
   <script>
-    function copyOrderText(index) {
-      var text = document.getElementById("orderText" + index).innerText;
+    function copyOrderText(index, fila) {
+      // Se obtiene el contenido del elemento <pre>
+      var textElem = document.getElementById("orderText" + index);
+      if (!textElem) {
+        alert("No se pudo encontrar el contenido a copiar.");
+        return;
+      }
+      var text = textElem.innerText;
       navigator.clipboard.writeText(text).then(function() {
         alert("Orden copiada al portapapeles");
+        // Llamada para marcar la orden como copiada (actualiza la columna AC con la fecha de hoy)
+        // Se envía el número de fila 'fila' al endpoint "/marcar_copiada"
+        fetch('/marcar_copiada', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'fila=' + fila
+        })
+        .then(function(response) { return response.text(); })
+        .then(function(data) { 
+          console.log("Orden marcada: " + data);
+          // Recargar la página para actualizar la lista y que la orden copiada desaparezca
+          location.reload(); 
+        })
+        .catch(function(err) {
+          alert("Error al marcar la orden: " + err);
+        });
       }).catch(function(err) {
         alert("Error al copiar la orden: " + err);
       });
