@@ -9,16 +9,35 @@
   {% endif %}
   
   <form action="{{ url_for('solicitudes', accion='registro') }}" method="POST">
-    <!-- Datos originales (Columnas A a M) -->
+    <!-- Datos originales (Columnas A a I) -->
     <!-- A: Código de Orden -->
     <div class="mb-3">
-      <label for="codigo" class="form-label">Disponible (Código de Orden):</label>
-      <input type="text" name="codigo" id="codigo" class="form-control" placeholder="Ej: 1,657" required>
+      <label for="codigo" class="form-label">Código de Orden:</label>
+      <input type="text" name="codigo" id="codigo" class="form-control" placeholder="Ej: 1657" required>
     </div>
     <!-- D: Descripción de la Solicitud -->
     <div class="mb-3">
       <label for="descripcion" class="form-label">Descripción de la Solicitud:</label>
       <textarea name="descripcion" id="descripcion" class="form-control" placeholder="Descripción breve" required></textarea>
+    </div>
+    
+    <hr>
+    <!-- Información breve del cliente (Columnas J a M) -->
+    <div class="mb-3">
+      <label for="nombre_cliente" class="form-label">Nombre del Cliente:</label>
+      <input type="text" name="nombre_cliente" id="nombre_cliente" class="form-control" placeholder="Nombre del cliente">
+    </div>
+    <div class="mb-3">
+      <label for="ciudad_cliente" class="form-label">Ciudad del Cliente:</label>
+      <input type="text" name="ciudad_cliente" id="ciudad_cliente" class="form-control" placeholder="Ciudad del cliente">
+    </div>
+    <div class="mb-3">
+      <label for="sector" class="form-label">Sector:</label>
+      <input type="text" name="sector" id="sector" class="form-control" placeholder="Sector">
+    </div>
+    <div class="mb-3">
+      <label for="telefono_cliente" class="form-label">Número de Teléfono:</label>
+      <input type="text" name="telefono_cliente" id="telefono_cliente" class="form-control" placeholder="Número de teléfono">
     </div>
     
     <hr>
@@ -33,10 +52,10 @@
       <label for="ruta" class="form-label">Ruta más cercana:</label>
       <input type="text" name="ruta" id="ruta" class="form-control" placeholder="Ej: T" required>
     </div>
-    <!-- P: Modalidad -->
+    <!-- P: Modalidad y Días -->
     <div class="mb-3">
       <label for="modalidad_trabajo" class="form-label">Modalidad y días:</label>
-      <input type="text" name="modalidad_trabajo" id="modalidad_trabajo" class="form-control" placeholder="Ej: Salida diaria - lunes a sabado" required>
+      <input type="text" name="modalidad_trabajo" id="modalidad_trabajo" class="form-control" placeholder="Ej: Salida diaria - lunes a sábado" required>
     </div>
     <!-- Q: Edad -->
     <div class="mb-3">
@@ -48,7 +67,7 @@
       <label for="nacionalidad" class="form-label">Nacionalidad:</label>
       <input type="text" name="nacionalidad" id="nacionalidad" class="form-control" value="Dominicana" readonly>
     </div>
-    <!-- S: Sabe leer y escribir -->
+    <!-- S: Habilidades de Alfabetización -->
     <div class="mb-3 form-check">
       <input type="checkbox" name="habilidades_alfabetizacion" id="habilidades_alfabetizacion" class="form-check-input" checked>
       <label for="habilidades_alfabetizacion" class="form-check-label">Que sepa leer y escribir</label>
@@ -68,7 +87,7 @@
       <label for="funciones" class="form-label">Funciones:</label>
       <input type="text" name="funciones" id="funciones" class="form-control" placeholder="Limpieza general, cocinar" required>
     </div>
-    <!-- W: Descripción de casa (Casa/Apto) -->
+    <!-- W: Descripción de Casa/Apto -->
     <div class="mb-3">
       <label for="descripcion_casa" class="form-label">Casa/Apto:</label>
       <input type="text" name="descripcion_casa" id="descripcion_casa" class="form-control" placeholder="Ej: 4 habitaciones, 3.5 baños, sala, comedor, cocina, marquesina" required>

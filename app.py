@@ -2146,12 +2146,6 @@ def referencias():
 
 # Suponemos que "service" y "SPREADSHEET_ID" ya están definidos en otro módulo
 
-import difflib
-import calendar
-from datetime import datetime, timedelta
-import logging
-from flask import render_template, redirect, url_for, session, request
-
 # Función auxiliar para búsqueda flexible
 def flexible_match(search_term, text, threshold=0.6):
     """
@@ -2166,13 +2160,19 @@ def flexible_match(search_term, text, threshold=0.6):
     ratio = difflib.SequenceMatcher(None, st, t).ratio()
     return ratio >= threshold
 
+import difflib
+import calendar
+from datetime import datetime, timedelta
+import logging
+from flask import render_template, redirect, url_for, session, request
+
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
-    # Verificar si existe sesión
+    # Verificar sesión
     if 'usuario' not in session:
         return redirect(url_for('login'))
-
-    # Si no se especifica 'accion' pero se envía 'codigo', se asume búsqueda; de lo contrario se usa "ver"
+    
+    # Determinar la acción
     accion = request.args.get('accion', None)
     if accion is None or accion.strip() == "":
         if request.args.get("codigo"):
@@ -2206,7 +2206,15 @@ def solicitudes():
             fecha_actualizacion = ""    # Columna G
             notas_inicial = ""          # Columna H
             historial_inicial = ""      # Columna I
-            extra_original = ["", "", "", ""]  # Columnas J a M
+            
+            # --- Información breve del cliente (Nuevos en Registro)
+            # Se tomarán del formulario y se guardarán en columnas J, K, L y M respectivamente.
+            nombre_cliente = request.form.get("nombre_cliente", "").strip()  # Columna J
+            ciudad_cliente = request.form.get("ciudad_cliente", "").strip()  # Columna K
+            sector = request.form.get("sector", "").strip()                  # Columna L
+            telefono_cliente = request.form.get("telefono_cliente", "").strip()  # Columna M
+
+            extra_original = [nombre_cliente, ciudad_cliente, sector, telefono_cliente]
 
             datos_originales = [
                 codigo,
@@ -2322,10 +2330,7 @@ def solicitudes():
             logging.error("Error al obtener datos para reportes: " + str(e), exc_info=True)
             mensaje = "Error al obtener datos para reportes."
             return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=[])
-        
-        # data[0] es el encabezado; las demás filas son órdenes
         filtered = data[1:] if len(data) > 1 else []
-
         # Filtro por Rango de Fechas (Fecha de Solicitud en columna B, índice 1)
         fecha_inicio = request.args.get("fecha_inicio", "").strip()
         fecha_fin = request.args.get("fecha_fin", "").strip()
@@ -2353,37 +2358,31 @@ def solicitudes():
                         continue
                     temp_filtered.append(row)
             filtered = temp_filtered
-
         # Filtro flexible por Descripción (columna D, índice 3)
         descripcion_filtro = request.args.get("descripcion", "").strip()
         if descripcion_filtro:
             df = descripcion_filtro.lower()
             filtered = [row for row in filtered if len(row) > 3 and flexible_match(df, row[3])]
-
         # Filtro flexible por Sueldo (columna Y, índice 24)
         sueldo_filtro = request.args.get("sueldo", "").strip()
         if sueldo_filtro:
             sf = sueldo_filtro.lower()
             filtered = [row for row in filtered if len(row) > 24 and flexible_match(sf, row[24])]
-
         # Filtro flexible por Ruta (columna O, índice 14)
         ruta_filtro = request.args.get("ruta", "").strip()
         if ruta_filtro:
             rf = ruta_filtro.lower()
             filtered = [row for row in filtered if len(row) > 14 and flexible_match(rf, row[14])]
-
         # Filtro flexible por Funciones (columna V, índice 21)
         funciones_filtro = request.args.get("funciones", "").strip()
         if funciones_filtro:
             ff = funciones_filtro.lower()
             filtered = [row for row in filtered if len(row) > 21 and flexible_match(ff, row[21])]
-
         header = data[0] if data else []
         solicitudes_reporte = [header] + filtered if filtered else [header]
         total_orders = len(data) - 1 if len(data) > 1 else 0
         filtered_count = len(filtered)
         mensaje_info = f"Total órdenes: {total_orders}. Órdenes filtradas: {filtered_count}."
-
         # Cálculo de fechas para búsqueda rápida
         today = datetime.today().date()
         quick_hoy = today.strftime("%Y-%m-%d")
@@ -2396,7 +2395,6 @@ def solicitudes():
         end_month = today.replace(day=last_day)
         quick_mes_start = start_month.strftime("%Y-%m-%d")
         quick_mes_end = end_month.strftime("%Y-%m-%d")
-
         return render_template('solicitudes_reportes.html',
                                accion=accion,
                                mensaje=mensaje_info,
@@ -2446,7 +2444,6 @@ def solicitudes():
                 if notas:
                     nuevo_registro += f" Notas: {notas}"
                 historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
-
                 update_range = f"Solicitudes!E{fila_index}:I{fila_index}"
                 valores_update = [[nuevo_estado, empleado_asignado, fecha_actualizacion, notas, historial_texto]]
                 service.spreadsheets().values().update(
@@ -2544,7 +2541,7 @@ def solicitudes():
             if notas_actuales:
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
-            extra_original = ["", "", "", ""]  # Columnas J a M sin cambios
+            extra_original = ["", "", "", ""]  # Las columnas J–M se mantienen sin cambios en edición
             datos_nuevos = [
                 direccion,
                 ruta,
@@ -2618,6 +2615,7 @@ def solicitudes():
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
+
 
 
 
