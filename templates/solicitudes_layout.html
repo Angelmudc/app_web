@@ -12,45 +12,75 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       color: #343a40;
     }
-    /* Contenedor principal con fondo blanco y sombra */
+    /* Contenedor Principal */
     .container-main {
       background-color: #ffffff;
       margin-top: 20px;
       padding: 30px;
       border-radius: 8px;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    /* Navbar: fondo oscuro para que el texto blanco resalte */
+    /* Navbar: fondo oscuro y enlaces en blanco */
     .navbar {
       background-color: #1A5789;
     }
     .navbar-brand, .nav-link {
       color: #ffffff !important;
     }
-    /* Aseguramos que la barra colapsada también tenga fondo oscuro */
     .navbar-collapse {
       background-color: #1A5789;
     }
-    /* Enlaces de navbar cuando se despliega el menú colapsado */
     .navbar-nav .nav-link {
-      color: #ffffff !important;
       padding: 0.5rem 1rem;
     }
-    .navbar-nav .nav-link:hover, .navbar-nav .nav-link:focus {
+    .navbar-nav .nav-link:hover,
+    .navbar-nav .nav-link:focus {
       color: #00AECF !important;
     }
     /* Títulos */
     h1, h2 {
       color: #1A5789;
     }
+    /* Botones personalizados: efectos y estilos para estado disabled */
+    .btn-primary {
+      background-color: #00AECF;
+      border: none;
+      transition: background-color 0.3s, transform 0.3s;
+    }
+    .btn-primary:hover {
+      background-color: #009bbd;
+      transform: translateY(-3px);
+    }
+    .btn-primary:disabled {
+      background-color: #a0d9e7;
+      cursor: not-allowed;
+      opacity: 0.65;
+      transform: none;
+    }
+    .btn-secondary {
+      background-color: #6c757d;
+      border: none;
+      transition: background-color 0.3s, transform 0.3s;
+    }
+    .btn-secondary:hover {
+      background-color: #5a6268;
+      transform: translateY(-3px);
+    }
+    .btn-secondary:disabled {
+      background-color: #aaa;
+      cursor: not-allowed;
+      opacity: 0.65;
+      transform: none;
+    }
   </style>
 </head>
 <body>
-  <!-- Barra de navegación -->
+  <!-- Barra de Navegación -->
   <nav class="navbar navbar-expand-lg">
     <div class="container-fluid">
       <a class="navbar-brand" href="{{ url_for('solicitudes', accion='ver') }}">Órdenes</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContenido" aria-controls="navbarContenido" aria-expanded="false" aria-label="Toggle navigation">
+        <!-- Se invierte el color del icono para que se vea sobre fondo oscuro -->
         <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarContenido">
@@ -76,6 +106,24 @@
   <div class="container container-main">
     {% block content %}{% endblock %}
   </div>
+  
+  <!-- Script para deshabilitar botones al enviar formularios -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      // Selecciona todos los formularios de la página
+      const forms = document.querySelectorAll("form");
+      forms.forEach(form => {
+        form.addEventListener("submit", function(event) {
+          // Encuentra todos los botones dentro del formulario
+          const buttons = form.querySelectorAll("button");
+          buttons.forEach(button => {
+            // Deshabilitar el botón para evitar envíos múltiples
+            button.disabled = true;
+          });
+        });
+      });
+    });
+  </script>
   
   <!-- Bootstrap Bundle JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
