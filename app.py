@@ -2868,27 +2868,45 @@ def otros_inscripcion():
 # ─────────────────────────────────────────────────────────────
 @app.route('/otros_empleos', methods=['GET'])
 def otros_listar():
-    ws = get_sheet_otros()
+    mensaje = ""
+    ws = get_sheet_otros()  # Obtiene la hoja "Otros"
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
-        return render_template("otros_listar.html", mensaje=mensaje, candidatos=[])
+        return render_template("otros_listar.html", mensaje=mensaje, candidatos=[], headers=[])
+    
     try:
         data = ws.get_all_records()
     except Exception as e:
         mensaje = f"Error al obtener datos: {str(e)}"
-        logging.error(mensaje, exc_info=True)
-        return render_template("otros_listar.html", mensaje=mensaje, candidatos=[])
-    query = request.args.get("q", "").strip().lower()
+        return render_template("otros_listar.html", mensaje=mensaje, candidatos=[], headers=[])
+    
+    headers = get_headers_otros()
+    # Definir keys según posición:
+    # Nombre -> índice 2, Cédula -> índice 6, Correo -> índice 1, etc.
+    nombre_key = headers[2]
+    cedula_key = headers[6]
+    email_key = headers[1]
+    
+    # Obtenemos el query para la búsqueda (usamos "q")
+    query = request.args.get("q", "").strip()
     if query:
+        # Filtramos en base a que el query esté contenido en el nombre o en la cédula o en el correo.
         filtered = []
         for row in data:
-            # Se busca por los campos clave: Nombre, Cédula o Código
-            if (query in row.get("Nombre completo", "").lower() or 
-                query in row.get("Cédula", "").lower() or 
-                query in row.get("codigo", "").lower()):
+            # Convertimos a string para manejar números sin error.
+            if (query.lower() in str(row.get(nombre_key, "")).lower() or
+                query.lower() in str(row.get(cedula_key, "")).lower() or
+                query.lower() in str(row.get(email_key, "")).lower()):
                 filtered.append(row)
         data = filtered
-    return render_template("otros_listar.html", candidatos=data, q=query)
+    
+    # Se envía el listado de candidatas junto con la lista de encabezados y los keys para la plantilla.
+    return render_template("otros_listar.html", 
+                           candidatos=data, 
+                           headers=headers,
+                           query=query,
+                           nombre_key=nombre_key,
+                           cedula_key=cedula_key)
 
 
 # ─────────────────────────────────────────────────────────────
