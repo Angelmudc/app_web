@@ -2920,7 +2920,8 @@ def otros_detalle(identifier):
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=[])
     
     try:
-        values = ws.get_all_values()  # Lista de listas; fila 0 = encabezados
+        # Obtener todos los datos como lista de listas (fila 0 = encabezados)
+        values = ws.get_all_values()
     except Exception as e:
         mensaje = f"Error al obtener datos: {e}"
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=[])
@@ -2929,52 +2930,51 @@ def otros_detalle(identifier):
         mensaje = "No hay registros en la hoja."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=values[0] if values else [])
     
+    # Definimos los encabezados para la vista de detalles: de la columna C a la T (índices 2 a 19)
+    headers_detalle = values[0][2:20]
+    
     identifier_norm = identifier.strip().lower()
     candidato_row = None
     row_index = None
-    # Buscamos recorriendo los datos (fila 1 en values es encabezado)
-    for i in range(1, len(values)):
+    for i in range(1, len(values)):  # Desde la fila 2 de la hoja (values[1])
         row = values[i]
-        # Aseguramos que la fila tenga al menos 22 columnas (A-V)
         if len(row) < 22:
             row.extend([""] * (22 - len(row)))
-        nombre = row[2].strip().lower()  if len(row) > 2 else ""
-        cedula = row[6].strip().lower()  if len(row) > 6 else ""
+        nombre = row[2].strip().lower() if len(row) > 2 else ""
+        cedula = row[6].strip().lower() if len(row) > 6 else ""
         codigo = row[18].strip().lower() if len(row) > 18 else ""
-        # El identificador se compara con nombre, cedula o codigo
+        # Comparar el identifier con nombre, cédula o código
         if identifier_norm == nombre or identifier_norm == cedula or identifier_norm == codigo:
             candidato_row = row
-            row_index = i + 1  # Porque values[1] corresponde a la fila 2 de la hoja
+            row_index = i + 1  # La fila en la hoja es i+1
             break
     
     if not candidato_row:
         mensaje = "Candidato no encontrado."
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=values[0][:20])
-    
-    # Para la vista de detalles, vamos a mostrar las columnas A a T (índices 0 a 19)
-    headers_detalle = values[0][:20]
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=headers_detalle)
     
     if request.method == 'POST':
-        # Actualizar las columnas editables: de C a R (índices 2 a 17)
+        # Actualizamos los campos editables: de la columna C a la R (índices 2 a 17)
         updated = candidato_row[:]  # Copia de la fila original
         for idx in range(2, 18):
-            # Cada campo se recibe con nombre "colX" donde X es el índice (2 a 17)
             input_name = f"col{idx}"
             value = request.form.get(input_name, "").strip()
             updated[idx] = value
         try:
-            ultima_col = chr(65 + len(values[0]) - 1)  # Por ejemplo, si hay 22 columnas, ultima_col = chr(65+21) = 'V'
+            ultima_col = chr(65 + len(values[0]) - 1)  # Calcula la letra de la última columna (suponiendo 22 columnas, será 'V')
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated])
             mensaje = "Información actualizada correctamente."
             flash(mensaje, "success")
             candidato_row = updated
         except Exception as e:
             mensaje = f"Error al actualizar: {e}"
-        candidate_details = { headers_detalle[i]: candidato_row[i] for i in range(len(headers_detalle)) }
+            logging.error(mensaje, exc_info=True)
+        candidate_details = { headers_detalle[i]: candidato_row[i+2] for i in range(len(headers_detalle)) }
         return render_template("otros_detalle.html", candidato=candidate_details, headers=headers_detalle, mensaje=mensaje)
     else:
-        candidate_details = { headers_detalle[i]: candidato_row[i] for i in range(len(headers_detalle)) }
+        candidate_details = { headers_detalle[i]: candidato_row[i+2] for i in range(len(headers_detalle)) }
         return render_template("otros_detalle.html", candidato=candidate_details, headers=headers_detalle, mensaje="")
+
 
 
 
