@@ -7,33 +7,62 @@
     {% if mensaje %}
       <div class="alert alert-info">{{ mensaje }}</div>
     {% endif %}
-    <table class="table table-bordered">
-      <thead>
-        <tr>
-          {% for col in headers %}
-            <th>{{ col }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          {% for col in headers %}
-            <td>{{ candidato[col] }}</td>
-          {% endfor %}
-        </tr>
-      </tbody>
-    </table>
+
+    {# Mapeo de encabezados largos a etiquetas cortas para visualización #}
+    {% set mapping = {
+         "Marca temporal": "Timestamp",
+         "Dirección de correo electrónico": "Email",
+         "Nombre completo": "Nombre",
+         "¿Qué edad tienes?": "Edad",
+         "Número de teléfono": "Teléfono",
+         "Dirección completa": "Dirección",
+         "Cédula": "Cédula",
+         "Nivel educativo alcanzado": "Educación",
+         "Carrera o especialidad (si aplica)": "Carrera",
+         "Idioma que dominas": "Idioma",
+         "¿Sabe usar computadora?": "PC",
+         "¿Tiene licencia de conducir?": "Licencia",
+         "Habilidades o conocimientos especiales": "Habilidades",
+         "¿Tiene experiencia laboral?": "Experiencia",
+         "Servicios que está dispuesto(a) a ofrecer": "Servicios",
+         "Dos contactos de referencias laborales y explicación": "Ref Lab",
+         "Dos referencias familiares y especifique qué relación tiene": "Ref Fam",
+         "Términos y Condiciones": "Términos",
+         "codigo": "Código",
+         "fecha": "Fecha"
+    } %}
+    
+    <div class="table-responsive">
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            {% for col in headers %}
+              <th>{{ mapping.get(col, col) }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {% for col in headers %}
+              <td>{{ candidato[col] }}</td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
     
     <h3 class="mt-4">Editar Datos (Columnas C a R)</h3>
     <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato["Nombre completo"] if candidato["Nombre completo"]|trim != "" else candidato["Cédula"]) }}">
       {% for idx in range(2, 18) %}
          <div class="mb-3">
-            <label class="form-label">{{ headers[idx] }}</label>
-            <input type="text" name="col{{ idx }}" class="form-control" value="{{ candidato[headers[idx]] }}">
+            {# headers_detalle en la ruta se obtiene con values[0][2:20] y aquí usamos mapping para mostrar el encabezado corto #}
+            <label class="form-label">{{ mapping.get(headers[idx-2], headers[idx-2]) }}</label>
+            <input type="text" name="col{{ idx }}" class="form-control" value="{{ candidato[mapping.get(headers[idx-2], headers[idx-2])] if candidato[mapping.get(headers[idx-2], headers[idx-2])] is defined else candidato[headers[idx-2]] }}">
          </div>
       {% endfor %}
       <button type="submit" class="btn btn-primary">Actualizar Información</button>
     </form>
+    
   {% else %}
     <div class="alert alert-danger">Candidato no encontrado.</div>
     <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>
