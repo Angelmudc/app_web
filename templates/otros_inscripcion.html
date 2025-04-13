@@ -1,42 +1,59 @@
 {% extends "ordenes_base.html" %}
+
 {% block content %}
-<div class="container container-main">
+<div class="container mt-4">
   <h1 class="mb-4 text-center">Inscripción - Otros Empleos</h1>
+  
   {% if mensaje %}
     <div class="alert alert-warning">{{ mensaje }}</div>
   {% endif %}
-  <form method="POST" action="{{ url_for('otros_inscripcion') }}">
-    <!-- Datos para verificación del candidato -->
+  
+  {% if modo == "enrolar" and candidato %}
+    <!-- Modo inscripción: Se muestran los datos existentes para verificación -->
     <div class="mb-3">
-      <label for="nombre" class="form-label">Nombre Completo:</label>
-      <input type="text" class="form-control" name="nombre" id="nombre" required>
+      <label class="form-label"><strong>Nombre Completo:</strong></label>
+      <p>{{ candidato["Nombre completo"] }}</p>
     </div>
     <div class="mb-3">
-      <label for="cedula" class="form-label">Cédula:</label>
-      <input type="text" class="form-control" name="cedula" id="cedula" required>
+      <label class="form-label"><strong>Cédula:</strong></label>
+      <p>{{ candidato["Cédula"] }}</p>
     </div>
     <div class="mb-3">
-      <label for="edad" class="form-label">Edad:</label>
-      <input type="number" class="form-control" name="edad" id="edad" required>
+      <label class="form-label"><strong>Edad:</strong></label>
+      <p>{{ candidato["¿Qué edad tienes?"] }}</p>
     </div>
     <div class="mb-3">
-      <label for="telefono" class="form-label">Teléfono:</label>
-      <input type="text" class="form-control" name="telefono" id="telefono" required>
+      <label class="form-label"><strong>Número de Teléfono:</strong></label>
+      <p>{{ candidato["Número de teléfono"] }}</p>
     </div>
-    <!-- Datos de inscripción -->
-    <div class="mb-3">
-      <label for="fecha_inscripcion" class="form-label">Fecha de Inscripción (YYYY-MM-DD):</label>
-      <input type="date" class="form-control" name="fecha_inscripcion" id="fecha_inscripcion" required>
-    </div>
-    <div class="mb-3">
-      <label for="monto" class="form-label">Monto:</label>
-      <input type="text" class="form-control" name="monto" id="monto" required>
-    </div>
-    <div class="mb-3">
-      <label for="via_inscripcion" class="form-label">Vía de Inscripción:</label>
-      <input type="text" class="form-control" name="via_inscripcion" id="via_inscripcion" required>
-    </div>
-    <button type="submit" class="btn btn-primary">Registrar Candidato</button>
-  </form>
+    <!-- Formulario para agregar los nuevos datos de inscripción -->
+    <form method="POST" action="{{ url_for('otros_inscripcion') }}">
+      <!-- Campo oculto para mantener la cédula (clave única) -->
+      <input type="hidden" name="cedula" value="{{ candidato['Cédula'] }}">
+      <div class="mb-3">
+        <label for="fecha_inscripcion" class="form-label">Fecha de Inscripción (YYYY-MM-DD):</label>
+        <input type="date" name="fecha_inscripcion" id="fecha_inscripcion" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label for="monto" class="form-label">Monto:</label>
+        <input type="text" name="monto" id="monto" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label for="via_inscripcion" class="form-label">Vía de Inscripción:</label>
+        <input type="text" name="via_inscripcion" id="via_inscripcion" class="form-control" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Confirmar Inscripción</button>
+    </form>
+  
+  {% else %}
+    <!-- Modo búsqueda: Se solicita la cédula para buscar al candidato -->
+    <form method="GET" action="{{ url_for('otros_inscripcion') }}">
+      <div class="mb-3">
+        <label for="cedula" class="form-label">Ingrese la Cédula del Candidato:</label>
+        <input type="text" name="cedula" id="cedula" class="form-control" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Buscar Candidato</button>
+    </form>
+  {% endif %}
 </div>
 {% endblock %}
