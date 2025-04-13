@@ -1,53 +1,42 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Inscripción - Otros Empleos</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
-</head>
-<body>
-  <div class="container mt-4">
-    <h1>Inscripción de Otros Empleos</h1>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-    <form method="POST" action="{{ url_for('otros_inscripcion') }}">
-      <!-- Datos para verificación del candidato -->
-      <div class="mb-3">
-        <label for="nombre" class="form-label">Nombre Completo:</label>
-        <input type="text" class="form-control" name="nombre" id="nombre" required>
-      </div>
-      <div class="mb-3">
-        <label for="cedula" class="form-label">Cédula:</label>
-        <input type="text" class="form-control" name="cedula" id="cedula" required>
-      </div>
-      <div class="mb-3">
-        <label for="edad" class="form-label">Edad:</label>
-        <input type="number" class="form-control" name="edad" id="edad" required>
-      </div>
-      <div class="mb-3">
-        <label for="telefono" class="form-label">Teléfono:</label>
-        <input type="text" class="form-control" name="telefono" id="telefono" required>
-      </div>
-      <!-- Datos de inscripción -->
-      <div class="mb-3">
-        <label for="fecha_inscripcion" class="form-label">Fecha de Inscripción (YYYY-MM-DD):</label>
-        <input type="date" class="form-control" name="fecha_inscripcion" id="fecha_inscripcion" required>
-      </div>
-      <div class="mb-3">
-        <label for="monto" class="form-label">Monto:</label>
-        <input type="text" class="form-control" name="monto" id="monto" required>
-      </div>
-      <div class="mb-3">
-        <label for="via_inscripcion" class="form-label">Vía de Inscripción:</label>
-        <input type="text" class="form-control" name="via_inscripcion" id="via_inscripcion" required>
-      </div>
-      <button type="submit" class="btn btn-primary">Registrar Candidato</button>
-    </form>
-  </div>
-</body>
-</html>
+{% extends "ordenes_base.html" %}
+{% block content %}
+<div class="container container-main">
+  <h1 class="mb-4 text-center">Inscripción - Otros Empleos</h1>
+  {% if mensaje %}
+    <div class="alert alert-warning">{{ mensaje }}</div>
+  {% endif %}
+  <form method="POST" action="{{ url_for('otros_inscripcion') }}">
+    <!-- Datos para verificación del candidato -->
+    <div class="mb-3">
+      <label for="nombre" class="form-label">Nombre Completo:</label>
+      <input type="text" class="form-control" name="nombre" id="nombre" required>
+    </div>
+    <div class="mb-3">
+      <label for="cedula" class="form-label">Cédula:</label>
+      <input type="text" class="form-control" name="cedula" id="cedula" required>
+    </div>
+    <div class="mb-3">
+      <label for="edad" class="form-label">Edad:</label>
+      <input type="number" class="form-control" name="edad" id="edad" required>
+    </div>
+    <div class="mb-3">
+      <label for="telefono" class="form-label">Teléfono:</label>
+      <input type="text" class="form-control" name="telefono" id="telefono" required>
+    </div>
+    <!-- Datos de inscripción -->
+    <div class="mb-3">
+      <label for="fecha_inscripcion" class="form-label">Fecha de Inscripción (YYYY-MM-DD):</label>
+      <input type="date" class="form-control" name="fecha_inscripcion" id="fecha_inscripcion" required>
+    </div>
+    <div class="mb-3">
+      <label for="monto" class="form-label">Monto:</label>
+      <input type="text" class="form-control" name="monto" id="monto" required>
+    </div>
+    <div class="mb-3">
+      <label for="via_inscripcion" class="form-label">Vía de Inscripción:</label>
+      <input type="text" class="form-control" name="via_inscripcion" id="via_inscripcion" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Registrar Candidato</button>
+  </form>
+</div>
+{% endblock %}
