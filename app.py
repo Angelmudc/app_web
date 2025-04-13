@@ -2918,43 +2918,46 @@ def otros_detalle(identifier):
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    
+
     try:
         data = ws.get_all_records()
     except Exception as e:
         mensaje = f"Error al obtener datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    
+
     candidato = None
     row_index = None
     headers = get_headers_otros()
-    
-    # Primero, buscar por "codigo"
+
+    # Normalizamos el valor de identifier
+    identifier_norm = identifier.strip().lower()
+
+    # Primero, buscar por "codigo" (se normaliza la comparación)
     for i, row in enumerate(data, start=2):  # La fila 1 es el encabezado
-        code_val = str(row.get("codigo", "")).strip()
-        if code_val == identifier:
+        code_val = str(row.get("codigo", "")).strip().lower()
+        if code_val == identifier_norm:
             candidato = row
             row_index = i
             break
-    
+
     # Si no se encontró por "codigo", buscar por "Cédula"
     if not candidato:
         for i, row in enumerate(data, start=2):
-            cedula_val = str(row.get("Cédula", "")).strip()
-            if cedula_val == identifier:
+            cedula_val = str(row.get("Cédula", "")).strip().lower()
+            if cedula_val == identifier_norm:
                 candidato = row
                 row_index = i
                 break
-                
+
     if not candidato:
         mensaje = "Candidato no encontrado."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    
+
     if request.method == 'POST':
         form = request.form
         updated_row = []
-        # Actualizar campos de inscripción: "fecha", "monto" y "via".
+        # Actualizar únicamente los campos de inscripción: "fecha", "monto" y "via".
         for header in headers:
             if header == "fecha":
                 updated_row.append(form.get("fecha_inscripcion", "").strip())
@@ -2965,9 +2968,8 @@ def otros_detalle(identifier):
             else:
                 updated_row.append(candidato.get(header, ""))
         try:
-            # Calcula la letra de la última columna (A=65 en ASCII)
-            ultima_col = chr(65 + len(headers) - 1)
-            # Actualizamos la fila con SOLO los datos (sin encabezados)
+            ultima_col = chr(65 + len(headers) - 1)  # Calcula la letra de la última columna (A-Z)
+            # Actualizamos solo la fila de datos (sin encabezado)
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated_row])
             mensaje = "Información actualizada correctamente."
             flash(mensaje, "success")
@@ -2978,6 +2980,7 @@ def otros_detalle(identifier):
         return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
     else:
         return render_template("otros_detalle.html", candidato=candidato, mensaje="")
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
