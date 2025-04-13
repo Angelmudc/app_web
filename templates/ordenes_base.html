@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestión de Órdenes</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #1A5789;
+      --accent-color: #00AECF;
+      --secondary-color: #ffffff;
+      --bg-gradient-start: #f5f5f5;
+      --bg-gradient-end: #e0e0e0;
+      --transition-duration: 0.3s;
+    }
+    /* Fondo animado con gradiente */
+    @keyframes bgGradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    body {
+      background: linear-gradient(270deg, var(--bg-gradient-start), var(--bg-gradient-end));
+      background-size: 400% 400%;
+      animation: bgGradient 15s ease infinite;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #343a40;
+      margin: 0;
+      padding: 0;
+    }
+    /* Contenedor principal con sombra y animación de entrada */
+    .container-main {
+      background-color: var(--secondary-color);
+      margin-top: 20px;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+      animation: slideIn 0.8s ease-out;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Barra de navegación */
+    .navbar {
+      background-color: var(--primary-color);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .navbar-brand, .nav-link {
+      color: var(--secondary-color) !important;
+      font-size: 1.1rem;
+      transition: color var(--transition-duration);
+    }
+    .nav-link:hover, .nav-link:focus {
+      color: var(--accent-color) !important;
+    }
+    .navbar-collapse {
+      background-color: var(--primary-color);
+    }
+    /* Botones personalizados y animaciones */
+    .btn-primary {
+      background-color: var(--accent-color);
+      border: none;
+      transition: background-color var(--transition-duration), transform var(--transition-duration);
+    }
+    .btn-primary:hover {
+      background-color: #009bbd;
+      transform: translateY(-3px) scale(1.02);
+    }
+    .btn-primary:disabled {
+      background-color: #a0d9e7;
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+    .btn-secondary {
+      background-color: #6c757d;
+      border: none;
+      transition: background-color var(--transition-duration), transform var(--transition-duration);
+    }
+    .btn-secondary:hover {
+      background-color: #5a6268;
+      transform: translateY(-3px) scale(1.02);
+    }
+    .btn-secondary:disabled {
+      background-color: #aaa;
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+    /* Títulos */
+    h1, h2 {
+      color: var(--primary-color);
+      margin-bottom: 20px;
+      text-align: center;
+      position: relative;
+    }
+    h1::after, h2::after {
+      content: "";
+      display: block;
+      width: 60px;
+      height: 4px;
+      background-color: var(--accent-color);
+      margin: 10px auto 0;
+      border-radius: 2px;
+    }
+    /* Formularios y tablas */
+    form {
+      margin-bottom: 30px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    thead th {
+      background-color: var(--primary-color);
+      color: var(--secondary-color);
+      padding: 12px;
+      text-align: center;
+    }
+    tbody td {
+      padding: 12px;
+      text-align: center;
+      border: 1px solid #dee2e6;
+    }
+    tbody tr:nth-of-type(even) {
+      background-color: #f8f9fa;
+    }
+    /* Animación de desvanecimiento */
+    .fade-in {
+      animation: fadeIn 0.5s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Barra de navegación -->
+  <nav class="navbar navbar-expand-lg">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('solicitudes', accion='ver') }}">Órdenes</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContenido" aria-controls="navbarContenido" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarContenido">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <!-- Nuevo ítem para ir al inicio (home) -->
+          <li class="nav-item">
+            <a class="nav-link" href="/">Inicio</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('solicitudes', accion='ver') }}">Ver Órdenes</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('solicitudes', accion='registro') }}">Registrar Orden</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('solicitudes', accion='reportes') }}">Reportes</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('solicitudes', accion='disponibles') }}">Órdenes Disponibles</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+  
+  <!-- Contenedor principal -->
+  <div class="container container-main">
+    {% block content %}{% endblock %}
+  </div>
+  
+  <!-- Script para deshabilitar botones al enviar formularios -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const forms = document.querySelectorAll("form");
+      forms.forEach(form => {
+        form.addEventListener("submit", function(event) {
+          const buttons = form.querySelectorAll("button");
+          buttons.forEach(button => {
+            button.disabled = true;
+          });
+        });
+      });
+    });
+  </script>
+  
+  <!-- Bootstrap Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
