@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+{% block title %}Listado de Otros Empleos{% endblock %}
+
+{% block content %}
+  <h1>Listado de Otros Empleos</h1>
+  {% if mensaje %}
+    <div class="alert alert-warning">
+      {{ mensaje }}
+    </div>
+  {% endif %}
+  <form method="GET" action="{{ url_for('otros_listar') }}" class="form-inline mb-3">
+    <input type="text" name="q" class="form-control mr-2" placeholder="Buscar por nombre, cédula o código" value="{{ q }}">
+    <button type="submit" class="btn btn-secondary">Buscar</button>
+    <a href="{{ url_for('otros_inscripcion') }}" class="btn btn-primary ml-2">Nueva Inscripción</a>
+  </form>
+  {% if empleados %}
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre Completo</th>
+          <th>Cédula</th>
+          <th>Fecha de Inscripción</th>
+          <th>Monto</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in empleados %}
+          <tr>
+            <td>{{ emp["codigo"] }}</td>
+            <td>{{ emp["Nombre completo"] }}</td>
+            <td>{{ emp["Cédula"] }}</td>
+            <td>{{ emp["fecha"] }}</td>
+            <td>{{ emp["monto"] }}</td>
+            <td>
+              <a href="{{ url_for('otros_detalle', codigo=emp["codigo"]) }}" class="btn btn-info btn-sm">Detalle / Editar</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No se encontraron registros.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends "layout.html" %}
+{% block title %}Detalle de Inscripción - Otros Empleos{% endblock %}
+
+{% block content %}
+  {% if empleado %}
+    <h1>Detalle y Edición de la Inscripción: {{ empleado["codigo"] }}</h1>
+    {% if mensaje %}
+      <div class="alert alert-info">
+        {{ mensaje }}
+      </div>
+    {% endif %}
+    <form method="POST" action="{{ url_for('otros_detalle', codigo=empleado["codigo"]) }}">
+      <div class="form-group">
+        <label for="correo">Correo Electrónico:</label>
+        <input type="email" class="form-control" name="correo" id="correo" value="{{ empleado["Dirección de correo electrónico"] }}" required>
+      </div>
+      <div class="form-group">
+        <label for="nombre">Nombre Completo:</label>
+        <input type="text" class="form-control" name="nombre" id="nombre" value="{{ empleado["Nombre completo"] }}" required>
+      </div>
+      <div class="form-group">
+        <label for="edad">Edad:</label>
+        <input type="number" class="form-control" name="edad" id="edad" value="{{ empleado["¿Qué edad tienes?"] }}">
+      </div>
+      <div class="form-group">
+        <label for="telefono">Teléfono:</label>
+        <input type="text" class="form-control" name="telefono" id="telefono" value="{{ empleado["Número de teléfono"] }}">
+      </div>
+      <div class="form-group">
+        <label for="direccion">Dirección Completa:</label>
+        <input type="text" class="form-control" name="direccion" id="direccion" value="{{ empleado["Dirección completa"] }}">
+      </div>
+      <div class="form-group">
+        <label for="nivel_educativo">Nivel Educativo Alcanzado:</label>
+        <input type="text" class="form-control" name="nivel_educativo" id="nivel_educativo" value="{{ empleado["Nivel educativo alcanzado"] }}">
+      </div>
+      <div class="form-group">
+        <label for="carrera">Carrera o Especialidad (si aplica):</label>
+        <input type="text" class="form-control" name="carrera" id="carrera" value="{{ empleado["Carrera o especialidad (si aplica)"] }}">
+      </div>
+      <div class="form-group">
+        <label for="idioma">Idioma que Dominas:</label>
+        <input type="text" class="form-control" name="idioma" id="idioma" value="{{ empleado["Idioma que dominas"] }}">
+      </div>
+      <div class="form-group">
+        <label>¿Sabe usar computadora?</label><br>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="sabe_computadora" id="comp_si" value="yes" {% if empleado["¿Sabe usar computadora?"] == "Sí" %}checked{% endif %}>
+          <label class="form-check-label" for="comp_si">Sí</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="sabe_computadora" id="comp_no" value="no" {% if empleado["¿Sabe usar computadora?"] == "No" %}checked{% endif %}>
+          <label class="form-check-label" for="comp_no">No</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>¿Tiene licencia de conducir?</label><br>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="licencia" id="licencia_si" value="yes" {% if empleado["¿Tiene licencia de conducir?"] == "Sí" %}checked{% endif %}>
+          <label class="form-check-label" for="licencia_si">Sí</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="licencia" id="licencia_no" value="no" {% if empleado["¿Tiene licencia de conducir?"] == "No" %}checked{% endif %}>
+          <label class="form-check-label" for="licencia_no">No</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="habilidades">Habilidades o Conocimientos Especiales:</label>
+        <textarea class="form-control" name="habilidades" id="habilidades" rows="3">{{ empleado["Habilidades o conocimientos especiales"] }}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="experiencia">¿Tiene experiencia laboral?</label>
+        <input type="text" class="form-control" name="experiencia" id="experiencia" value="{{ empleado["¿Tiene experiencia laboral?"] }}">
+      </div>
+      <div class="form-group">
+        <label for="servicios_ofrecidos">Servicios que está dispuesto(a) a ofrecer:</label>
+        <input type="text" class="form-control" name="servicios_ofrecidos" id="servicios_ofrecidos" value="{{ empleado["Servicios que está dispuesto(a) a ofrecer"] }}">
+      </div>
+      <div class="form-group">
+        <label for="referencias_laborales">Referencias Laborales:</label>
+        <textarea class="form-control" name="referencias_laborales" id="referencias_laborales" rows="3">{{ empleado["Dos contactos de referencias laborales y explicación"] }}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="referencias_familiares">Referencias Familiares y Relación:</label>
+        <textarea class="form-control" name="referencias_familiares" id="referencias_familiares" rows="3">{{ empleado["Dos referencias familiares y especifique qué relación tiene"] }}</textarea>
+      </div>
+      <div class="form-group form-check">
+        <input type="checkbox" class="form-check-input" name="terminos" id="terminos" {% if empleado["Términos y Condiciones"] == "Aceptado" %}checked{% endif %}>
+        <label class="form-check-label" for="terminos">Acepto los Términos y Condiciones</label>
+      </div>
+      <div class="form-group">
+        <label for="fecha_inscripcion">Fecha de Inscripción:</label>
+        <input type="date" class="form-control" name="fecha_inscripcion" id="fecha_inscripcion" value="{{ empleado["fecha"] }}">
+      </div>
+      <div class="form-group">
+        <label for="monto">Monto:</label>
+        <input type="text" class="form-control" name="monto" id="monto" value="{{ empleado["monto"] }}">
+      </div>
+      <div class="form-group">
+        <label for="via_inscripcion">Vía de Inscripción:</label>
+        <input type="text" class="form-control" name="via_inscripcion" id="via_inscripcion" value="{{ empleado["via"] }}">
+      </div>
+      <button type="submit" class="btn btn-success">Actualizar Información</button>
+      <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al listado</a>
+    </form>
+  {% else %}
+    <div class="alert alert-danger">
+      {{ mensaje or "Candidato no encontrado." }}
+    </div>
+    <a href="{{ url_for('otros_listar') }}" class="btn btn-primary">Volver al listado</a>
+  {% endif %}
+{% endblock %}
