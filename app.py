@@ -2757,72 +2757,93 @@ def marcar_copiada():
 @app.route('/otros_empleos/inscripcion', methods=['GET', 'POST'])
 def otros_inscripcion():
     mensaje = ""
+    ws = get_sheet_otros()  # Función que obtiene la hoja de cálculo
+    if not ws:
+        mensaje = "Error al acceder a la hoja 'Otros'."
+        return render_template("otros_inscripcion.html", mensaje=mensaje)
+
+    headers = get_headers_otros()  # Lista de encabezados de la hoja
+    
+    # Modo GET: si se envía una cédula se busca el candidato
+    if request.method == 'GET':
+        cedula_busqueda = request.args.get("cedula", "").strip()
+        if cedula_busqueda:
+            try:
+                data = ws.get_all_records()  # Obtén los registros (cada uno es un diccionario)
+            except Exception as e:
+                mensaje = f"Error al obtener datos: {str(e)}"
+                return render_template("otros_inscripcion.html", mensaje=mensaje)
+            candidato = None
+            for row in data:
+                # Asegúrate de usar el nombre exacto de la columna para la cédula.
+                if row.get("Cédula", "").strip() == cedula_busqueda:
+                    candidato = row
+                    break
+            if candidato:
+                # Si se encontró, pasamos el candidato y activamos el modo inscripción.
+                return render_template("otros_inscripcion.html", candidato=candidato, modo="enrolar")
+            else:
+                mensaje = "Candidato no encontrado."
+                return render_template("otros_inscripcion.html", mensaje=mensaje)
+        else:
+            # Si aún no se envió una cédula, se muestra el formulario de búsqueda.
+            return render_template("otros_inscripcion.html")
+
+    # Modo POST: se envían los datos de inscripción para actualizar la fila del candidato
     if request.method == 'POST':
-        ws = get_sheet_otros()  # Función que obtiene la hoja (por ejemplo, de Google Sheets)
-        if not ws:
-            mensaje = "Error al acceder a la hoja 'Otros'."
-            return render_template("otros_inscripcion.html", mensaje=mensaje)
-        headers = get_headers_otros()  # Obtiene los encabezados de la hoja
-        form = request.form
-
-        # Datos para verificación (los que se muestran al inscribir)
-        nombre   = form.get("nombre", "").strip()
-        cedula   = form.get("cedula", "").strip()
-        edad     = form.get("edad", "").strip()
-        telefono = form.get("telefono", "").strip()
-
-        # Validar duplicidad usando la cédula
+        cedula = request.form.get("cedula", "").strip()  # Este campo viene oculto en el formulario
+        fecha_inscripcion = request.form.get("fecha_inscripcion", "").strip()
+        monto = request.form.get("monto", "").strip()
+        via_inscripcion = request.form.get("via_inscripcion", "").strip()
+        
         try:
-            idx_cedula = headers.index("Cédula") + 1
-        except ValueError:
-            idx_cedula = None
-        if idx_cedula:
-            cedulas = ws.col_values(idx_cedula)[1:]  # Omitir el encabezado
-            if cedula in cedulas:
-                mensaje = "El candidato ya existe."
-                flash(mensaje, "error")
-                return redirect(url_for("otros_inscripcion"))
-
-        # Datos de inscripción
-        fecha_inscripcion = form.get("fecha_inscripcion", "").strip()
-        monto             = form.get("monto", "").strip()
-        via_inscripcion   = form.get("via_inscripcion", "").strip()
-
-        # Generar código automáticamente
+            data = ws.get_all_records()
+        except Exception as e:
+            mensaje = f"Error al obtener datos: {str(e)}"
+            return render_template("otros_inscripcion.html", mensaje=mensaje)
+        
+        # Buscar al candidato y obtener el índice de la fila (considerando que la fila 1 es el encabezado)
+        row_index = None
+        candidato_actual = None
+        for idx, row in enumerate(data, start=2):
+            if row.get("Cédula", "").strip() == cedula:
+                row_index = idx
+                candidato_actual = row
+                break
+        
+        if not row_index or not candidato_actual:
+            mensaje = "Candidato no encontrado para actualizar."
+            return render_template("otros_inscripcion.html", mensaje=mensaje)
+        
+        # Genera el código automáticamente (asegúrate de tener implementada la función)
         codigo = generate_next_code_otros()
-
-        # Se asume que en la hoja se tienen las siguientes columnas:
-        # "Nombre completo", "Cédula", "¿Qué edad tienes?", "Número de teléfono",
-        # "fecha", "monto", "via" y "codigo"
+        
+        # Construir la nueva fila: se mantiene el resto de los datos y se actualizan las columnas de inscripción.
         new_row = []
         for header in headers:
-            if header == "Nombre completo":
-                new_row.append(nombre)
-            elif header == "Cédula":
-                new_row.append(cedula)
-            elif header == "¿Qué edad tienes?":
-                new_row.append(edad)
-            elif header == "Número de teléfono":
-                new_row.append(telefono)
+            if header == "codigo":
+                new_row.append(codigo)
             elif header == "fecha":
                 new_row.append(fecha_inscripcion)
             elif header == "monto":
                 new_row.append(monto)
             elif header == "via":
                 new_row.append(via_inscripcion)
-            elif header == "codigo":
-                new_row.append(codigo)
             else:
-                new_row.append("")
+                # Conserva el dato ya existente
+                new_row.append(candidato_actual.get(header, ""))
+        
         try:
-            ws.append_row(new_row)
+            # Se calcula la última columna (funciona para hasta 26 columnas: A-Z)
+            ultima_col = chr(64 + len(headers))
+            ws.update(f"A{row_index}:{ultima_col}{row_index}", [headers, new_row])
             mensaje = f"Inscripción exitosa. Código asignado: {codigo}"
             flash(mensaje, "success")
             return redirect(url_for("otros_listar"))
         except Exception as e:
-            mensaje = f"Error al guardar inscripción: {str(e)}"
-            logging.error(mensaje, exc_info=True)
-    return render_template("otros_inscripcion.html", mensaje=mensaje)
+            mensaje = f"Error al actualizar inscripción: {str(e)}"
+            return render_template("otros_inscripcion.html", mensaje=mensaje)
+
 
 
 # ─────────────────────────────────────────────────────────────
