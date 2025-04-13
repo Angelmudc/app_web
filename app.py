@@ -2763,62 +2763,69 @@ def otros_inscripcion():
         return render_template("otros_inscripcion.html", mensaje=mensaje)
 
     headers = get_headers_otros()  # Lista de encabezados de la hoja
-    
-    # Modo GET: si se envía una cédula se busca el candidato
-    if request.method == 'GET':
-        cedula_busqueda = request.args.get("cedula", "").strip()
-        if cedula_busqueda:
-            try:
-                data = ws.get_all_records()  # Obtén los registros (cada uno es un diccionario)
-            except Exception as e:
-                mensaje = f"Error al obtener datos: {str(e)}"
-                return render_template("otros_inscripcion.html", mensaje=mensaje)
-            candidato = None
-            for row in data:
-                # Asegúrate de usar el nombre exacto de la columna para la cédula.
-                if row.get("Cédula", "").strip() == cedula_busqueda:
-                    candidato = row
-                    break
-            if candidato:
-                # Si se encontró, pasamos el candidato y activamos el modo inscripción.
-                return render_template("otros_inscripcion.html", candidato=candidato, modo="enrolar")
-            else:
-                mensaje = "Candidato no encontrado."
-                return render_template("otros_inscripcion.html", mensaje=mensaje)
-        else:
-            # Si aún no se envió una cédula, se muestra el formulario de búsqueda.
-            return render_template("otros_inscripcion.html")
 
-    # Modo POST: se envían los datos de inscripción para actualizar la fila del candidato
-    if request.method == 'POST':
-        cedula = request.form.get("cedula", "").strip()  # Este campo viene oculto en el formulario
-        fecha_inscripcion = request.form.get("fecha_inscripcion", "").strip()
-        monto = request.form.get("monto", "").strip()
-        via_inscripcion = request.form.get("via_inscripcion", "").strip()
-        
+    # Modo GET: se busca al candidato por cédula o nombre mediante el parámetro "q"
+    if request.method == 'GET':
+        query = request.args.get("q", "").strip()
+        if not query:
+            # Mostrar el formulario de búsqueda si aún no se ingresa nada.
+            return render_template("otros_inscripcion.html")
         try:
             data = ws.get_all_records()
         except Exception as e:
             mensaje = f"Error al obtener datos: {str(e)}"
             return render_template("otros_inscripcion.html", mensaje=mensaje)
         
-        # Buscar al candidato y obtener el índice de la fila (considerando que la fila 1 es el encabezado)
+        matches = []
+        for row in data:
+            # Se realiza una búsqueda flexible: si el query aparece en el nombre (en minúsculas)
+            # o si la cédula es exactamente igual al query.
+            if (query.lower() in row.get("Nombre completo", "").lower() or 
+                query == row.get("Cédula", "").strip()):
+                matches.append(row)
+                
+        if not matches:
+            mensaje = "Candidato no encontrado."
+            return render_template("otros_inscripcion.html", mensaje=mensaje)
+        elif len(matches) == 1:
+            # Si hay una sola coincidencia, se muestra la vista de inscripción
+            candidato = matches[0]
+            return render_template("otros_inscripcion.html", candidato=candidato, modo="enrolar", query=query)
+        else:
+            # Si hay múltiples candidatos, se muestra una lista para que el usuario elija
+            return render_template("otros_inscripcion.html", candidatos=matches, modo="seleccion", query=query)
+    
+    # Modo POST: se reciben los datos de inscripción para actualizar la fila del candidato
+    if request.method == 'POST':
+        cedula = request.form.get("cedula", "").strip()  # Campo oculto en el formulario de inscripción
+        fecha_inscripcion = request.form.get("fecha_inscripcion", "").strip()
+        monto = request.form.get("monto", "").strip()
+        via_inscripcion = request.form.get("via_inscripcion", "").strip()
+
+        try:
+            data = ws.get_all_records()
+        except Exception as e:
+            mensaje = f"Error al obtener datos: {str(e)}"
+            return render_template("otros_inscripcion.html", mensaje=mensaje)
+        
         row_index = None
         candidato_actual = None
-        for idx, row in enumerate(data, start=2):
+        # Buscamos el candidato por cédula; se asume que la cédula es la clave única
+        for idx, row in enumerate(data, start=2):  # La fila 1 es el encabezado
             if row.get("Cédula", "").strip() == cedula:
                 row_index = idx
                 candidato_actual = row
                 break
         
         if not row_index or not candidato_actual:
-            mensaje = "Candidato no encontrado para actualizar."
+            mensaje = "Candidato no encontrado para actualización."
             return render_template("otros_inscripcion.html", mensaje=mensaje)
         
-        # Genera el código automáticamente (asegúrate de tener implementada la función)
+        # Genera el código de inscripción automáticamente (implementa generate_next_code_otros())
         codigo = generate_next_code_otros()
-        
-        # Construir la nueva fila: se mantiene el resto de los datos y se actualizan las columnas de inscripción.
+
+        # Se construye la nueva fila manteniendo los datos existentes de identificación
+        # y actualizando las columnas de inscripción: código, fecha, monto y vía.
         new_row = []
         for header in headers:
             if header == "codigo":
@@ -2830,11 +2837,10 @@ def otros_inscripcion():
             elif header == "via":
                 new_row.append(via_inscripcion)
             else:
-                # Conserva el dato ya existente
                 new_row.append(candidato_actual.get(header, ""))
         
         try:
-            # Se calcula la última columna (funciona para hasta 26 columnas: A-Z)
+            # Calcula la última columna (funciona para hasta 26 columnas: A-Z)
             ultima_col = chr(64 + len(headers))
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [headers, new_row])
             mensaje = f"Inscripción exitosa. Código asignado: {codigo}"
@@ -2843,7 +2849,6 @@ def otros_inscripcion():
         except Exception as e:
             mensaje = f"Error al actualizar inscripción: {str(e)}"
             return render_template("otros_inscripcion.html", mensaje=mensaje)
-
 
 
 # ─────────────────────────────────────────────────────────────
