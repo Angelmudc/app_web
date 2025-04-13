@@ -2929,31 +2929,34 @@ def otros_detalle(identifier):
         mensaje = "No hay registros en la hoja."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, short_headers=values[0] if values else [])
     
-    # Definimos la lista de encabezados cortos para mostrar de la columna C a la T (índices 2 a 19):
+    # Usaremos las columnas de la C hasta la T (índices 2 a 19) para mostrar los detalles.
     short_headers = ["Nombre", "Edad", "Teléfono", "Dirección", "Cédula", "Educación", "Carrera", "Idioma", "PC", "Licencia", "Habilidades", "Experiencia", "Servicios", "Ref Lab", "Ref Fam", "Términos", "Código", "Fecha"]
     
     identifier_norm = identifier.strip().lower()
     candidato_row = None
     row_index = None
-    for i in range(1, len(values)):
+    for i in range(1, len(values)):  # i desde 1 para omitir encabezado
         row = values[i]
         if len(row) < 22:
             row.extend([""] * (22 - len(row)))
         nombre = row[2].strip().lower() if len(row) > 2 else ""
         cedula = row[6].strip().lower() if len(row) > 6 else ""
         codigo = row[18].strip().lower() if len(row) > 18 else ""
+        # Comparar con el identificador
         if identifier_norm == nombre or identifier_norm == cedula or identifier_norm == codigo:
             candidato_row = row
             row_index = i + 1
             break
-    
+
     if not candidato_row:
         mensaje = "Candidato no encontrado."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, short_headers=short_headers)
     
+    # En la vista de detalles, mostraremos las columnas 2 a 19 (C a T)
+    # Para facilitar la edición, crearemos un solo formulario con una única tabla donde cada celda es un input.
     if request.method == 'POST':
-        updated = candidato_row[:]
-        for idx in range(2, 18):  # Editables: columnas C a R (índices 2 a 17)
+        updated = candidato_row[:]  # Copia de la fila
+        for idx in range(2, 18):  # Editables: desde columna C (índice 2) hasta R (índice 17)
             input_name = "col" + str(idx)
             value = request.form.get(input_name, "").strip()
             updated[idx] = value
@@ -2966,16 +2969,11 @@ def otros_detalle(identifier):
         except Exception as e:
             mensaje = f"Error al actualizar: {e}"
             logging.error(mensaje, exc_info=True)
-        candidate_details = {}
-        for i in range(len(short_headers)):
-            candidate_details[short_headers[i]] = candidato_row[i+2]
+        candidate_details = { short_headers[i]: candidato_row[i+2] for i in range(len(short_headers)) }
         return render_template("otros_detalle.html", candidato=candidate_details, short_headers=short_headers, mensaje=mensaje)
     else:
-        candidate_details = {}
-        for i in range(len(short_headers)):
-            candidate_details[short_headers[i]] = candidato_row[i+2]
+        candidate_details = { short_headers[i]: candidato_row[i+2] for i in range(len(short_headers)) }
         return render_template("otros_detalle.html", candidato=candidate_details, short_headers=short_headers, mensaje="")
-
 
 
 if __name__ == '__main__':
