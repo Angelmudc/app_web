@@ -21,7 +21,6 @@
       <table class="table table-bordered table-striped">
         <thead>
           <tr>
-            <!-- Mostramos todas las columnas excepto 'monto' (índice 20) y 'via' (índice 21) -->
             <th>Marca temporal</th>
             <th>Correo</th>
             <th>Nombre completo</th>
@@ -69,7 +68,9 @@
               <td>{{ cand[headers[18]] }}</td>
               <td>{{ cand[headers[19]] }}</td>
               <td>
-                <a href="{{ url_for('otros_detalle', codigo=cand[headers[18]]) }}" class="btn btn-sm btn-info">Ver Detalles</a>
+                {# Si el código está vacío, se usa la cédula como identificador #}
+                {% set identifier = cand[headers[18]] if cand[headers[18]]|string|trim != "" else cand[headers[6]] %}
+                <a href="{{ url_for('otros_detalle', identifier=identifier) }}" class="btn btn-sm btn-info">Ver Detalles</a>
               </td>
             </tr>
           {% endfor %}
