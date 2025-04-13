@@ -2920,8 +2920,7 @@ def otros_detalle(identifier):
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=[])
     
     try:
-        # Obtener todos los datos como lista de listas (fila 0 = encabezados)
-        values = ws.get_all_values()
+        values = ws.get_all_values()  # Lista de listas; fila 0 = encabezados
     except Exception as e:
         mensaje = f"Error al obtener datos: {e}"
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=[])
@@ -2930,38 +2929,37 @@ def otros_detalle(identifier):
         mensaje = "No hay registros en la hoja."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=values[0] if values else [])
     
-    # Definimos los encabezados para la vista de detalles: de la columna C a la T (índices 2 a 19)
+    # Definimos los encabezados para detalles: queremos mostrar de la columna C hasta la T (índices 2 a 19)
     headers_detalle = values[0][2:20]
     
     identifier_norm = identifier.strip().lower()
     candidato_row = None
     row_index = None
-    for i in range(1, len(values)):  # Desde la fila 2 de la hoja (values[1])
+    for i in range(1, len(values)):
         row = values[i]
         if len(row) < 22:
             row.extend([""] * (22 - len(row)))
+        # Extraemos los campos relevantes usando índices
         nombre = row[2].strip().lower() if len(row) > 2 else ""
         cedula = row[6].strip().lower() if len(row) > 6 else ""
         codigo = row[18].strip().lower() if len(row) > 18 else ""
-        # Comparar el identifier con nombre, cédula o código
         if identifier_norm == nombre or identifier_norm == cedula or identifier_norm == codigo:
             candidato_row = row
-            row_index = i + 1  # La fila en la hoja es i+1
+            row_index = i + 1
             break
-    
+
     if not candidato_row:
         mensaje = "Candidato no encontrado."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=headers_detalle)
     
     if request.method == 'POST':
-        # Actualizamos los campos editables: de la columna C a la R (índices 2 a 17)
         updated = candidato_row[:]  # Copia de la fila original
-        for idx in range(2, 18):
-            input_name = f"col{idx}"
+        for idx in range(2, 18):  # Editables: columnas C a R (índices 2 a 17)
+            input_name = "col" + str(idx)
             value = request.form.get(input_name, "").strip()
             updated[idx] = value
         try:
-            ultima_col = chr(65 + len(values[0]) - 1)  # Calcula la letra de la última columna (suponiendo 22 columnas, será 'V')
+            ultima_col = chr(65 + len(values[0]) - 1)
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated])
             mensaje = "Información actualizada correctamente."
             flash(mensaje, "success")
@@ -2974,8 +2972,6 @@ def otros_detalle(identifier):
     else:
         candidate_details = { headers_detalle[i]: candidato_row[i+2] for i in range(len(headers_detalle)) }
         return render_template("otros_detalle.html", candidato=candidate_details, headers=headers_detalle, mensaje="")
-
-
 
 
 if __name__ == '__main__':
