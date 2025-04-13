@@ -2749,7 +2749,7 @@ def marcar_copiada():
         logging.error("Error al marcar orden como copiada: " + str(e), exc_info=True)
         return "Error", 500
 
-
+from flask import flash
 
 # ─────────────────────────────────────────────────────────────
 # Ruta: Registro/Inscripción de Otros Empleos
