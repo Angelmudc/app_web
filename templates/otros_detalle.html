@@ -27,21 +27,36 @@
       </table>
     </div>
     
-    <h3 class="mt-4">Editar Datos (Columnas C a R)</h3>
-    <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato["Nombre"] if candidato["Nombre"]|trim != "" else candidato["Cédula"]) }}">
-      {% for idx in range(2, 18) %}
-         <div class="mb-3">
-            {# Usamos short_headers[idx-2] para mostrar la etiqueta corta #}
-            <label class="form-label">{{ short_headers[idx-2] }}</label>
-            <input type="text" name="col{{ idx }}" class="form-control" value="{{ candidato[short_headers[idx-2]] }}">
+    <!-- Formulario para editar (los inputs están disabled por defecto) -->
+    <form id="detalleForm" method="POST" action="{{ url_for('otros_detalle', identifier=candidato['Nombre'] if candidato['Nombre']|trim != '' else candidato['Cédula']) }}">
+      <div class="row">
+      {% for idx in range(0, 16) %}
+         <div class="col-md-4 mb-3">
+            <label class="form-label"><strong>{{ short_headers[idx] }}</strong></label>
+            <input type="text" name="col{{ idx+2 }}" class="form-control detail-input" value="{{ candidato[short_headers[idx]] }}" disabled>
          </div>
       {% endfor %}
-      <button type="submit" class="btn btn-primary">Actualizar Información</button>
+      </div>
+      <div class="text-center">
+         <button type="button" id="editarBtn" class="btn btn-primary" onclick="enableEditing()">Editar</button>
+         <button type="submit" id="guardarBtn" class="btn btn-success" style="display:none;">Guardar Cambios</button>
+      </div>
     </form>
+    
+    <script>
+      function enableEditing() {
+         var inputs = document.querySelectorAll('.detail-input');
+         inputs.forEach(function(input) {
+             input.disabled = false;
+         });
+         document.getElementById("editarBtn").style.display = "none";
+         document.getElementById("guardarBtn").style.display = "inline-block";
+      }
+    </script>
+    
   {% else %}
     <div class="alert alert-danger">Candidato no encontrado.</div>
     <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>
   {% endif %}
 </div>
 {% endblock %}
-
