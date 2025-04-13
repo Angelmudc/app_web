@@ -2914,63 +2914,125 @@ def otros_listar():
 # ─────────────────────────────────────────────────────────────
 @app.route('/otros_empleos/<identifier>', methods=['GET', 'POST'])
 def otros_detalle(identifier):
-    ws = get_sheet_otros()  # Conecta con la hoja "Otros"
+    # Usamos get_all_values para trabajar siempre con listas (por índices)
+    ws = get_sheet_otros()
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
     
     try:
-        data = ws.get_all_records()  # Obtiene una lista de diccionarios con las filas
+        # Obtiene todas las filas (la fila 0 es el encabezado)
+        values = ws.get_all_values()
     except Exception as e:
-        mensaje = f"Error al obtener datos: {str(e)}"
+        mensaje = f"Error al obtener datos: {e}"
         logging.error(mensaje, exc_info=True)
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
     
+    if not values or len(values) < 2:
+        mensaje = "No se encontraron datos."
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
+    
+    # Normalizamos el identificador a minúsculas para la comparación
+    identifier_norm = identifier.strip().lower()
     candidato = None
     row_index = None
-    headers = get_headers_otros()
-    # Normalizamos el parámetro identifier para la comparación
-    identifier_norm = identifier.strip().lower()
-    
-    # Buscar primero por "codigo" y luego por "Cédula"
-    for i, row in enumerate(data, start=2):
-        codigo_val = str(row.get("codigo", "")).strip().lower()
-        cedula_val = str(row.get("Cédula", "")).strip().lower()
-        if codigo_val == identifier_norm or cedula_val == identifier_norm:
+    # Iteramos sobre las filas de datos (fila 1 del array values es la fila 2 de la hoja)
+    for i in range(1, len(values)):
+        row = values[i]
+        # Aseguramos que la fila tenga al menos 22 columnas (A-V)
+        if len(row) < 22:
+            row.extend([""] * (22 - len(row)))
+        # Extraemos los campos relevantes por índice:
+        # Nombre (índice 2), Cédula (índice 6), Código (índice 18)
+        nombre = row[2].strip().lower() if len(row) > 2 else ""
+        cedula = row[6].strip().lower() if len(row) > 6 else ""
+        codigo = row[18].strip().lower() if len(row) > 18 else ""
+        # El usuario puede buscar por nombre, cédula o código
+        if identifier_norm == nombre or identifier_norm == cedula or identifier_norm == codigo:
             candidato = row
-            row_index = i
+            # La fila real en la hoja es i+1 (ya que values[0] es encabezado)
+            row_index = i + 1
             break
 
     if not candidato:
         mensaje = "Candidato no encontrado."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
     
+    # Si se hace POST, se actualizan los campos de inscripción:
+    # Se actualizan: columna T (fecha, índice 19), U (monto, índice 20) y V (via, índice 21)
     if request.method == 'POST':
-        form = request.form
-        updated_row = []
-        # Actualización de campos de inscripción: 'fecha', 'monto' y 'via'
-        for header in headers:
-            if header == "fecha":
-                updated_row.append(form.get("fecha_inscripcion", "").strip())
-            elif header == "monto":
-                updated_row.append(form.get("monto", "").strip())
-            elif header == "via":
-                updated_row.append(form.get("via_inscripcion", "").strip())
-            else:
-                updated_row.append(candidato.get(header, ""))
+        fecha_inscripcion = request.form.get("fecha_inscripcion", "").strip()
+        monto = request.form.get("monto", "").strip()
+        via_inscripcion = request.form.get("via_inscripcion", "").strip()
+        # Genera el código automáticamente; sobreescribe la columna 18
+        codigo_generated = generate_next_code_otros()
+        updated_row = candidato[:]  # Copia la fila original
+        updated_row[18] = codigo_generated
+        updated_row[19] = fecha_inscripcion
+        updated_row[20] = monto
+        updated_row[21] = via_inscripcion
         try:
-            ultima_col = chr(65 + len(headers) - 1)  # Calcula la letra de la última columna (A-Z)
-            # Actualizamos la fila con solo la fila de datos (sin encabezados)
+            # Calcula la letra de la última columna (22 columnas: de A a V)
+            ultima_col = chr(65 + 22 - 1)  # 65+21 = 86 => 'V'
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated_row])
-            mensaje = "Información actualizada correctamente."
+            mensaje = f"Información actualizada correctamente. Código asignado: {codigo_generated}"
             flash(mensaje, "success")
-            candidato = dict(zip(headers, updated_row))
+            candidato = updated_row
         except Exception as e:
-            mensaje = f"Error al actualizar: {str(e)}"
+            mensaje = f"Error al actualizar: {e}"
             logging.error(mensaje, exc_info=True)
-        return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
+        # Convertimos la fila en un diccionario para facilitar la visualización en la plantilla
+        dict_candidate = {
+            "Marca temporal": candidato[0],
+            "Dirección de correo electrónico": candidato[1],
+            "Nombre completo": candidato[2],
+            "¿Qué edad tienes?": candidato[3],
+            "Número de teléfono": candidato[4],
+            "Dirección completa": candidato[5],
+            "Cédula": candidato[6],
+            "Nivel educativo alcanzado": candidato[7],
+            "Carrera o especialidad (si aplica)": candidato[8],
+            "Idioma que dominas": candidato[9],
+            "¿Sabe usar computadora?": candidato[10],
+            "¿Tiene licencia de conducir?": candidato[11],
+            "Habilidades o conocimientos especiales": candidato[12],
+            "¿Tiene experiencia laboral?": candidato[13],
+            "Servicios que está dispuesto(a) a ofrecer": candidato[14],
+            "Dos contactos de referencias laborales y explicación": candidato[15],
+            "Dos referencias familiares y especifique qué relación tiene": candidato[16],
+            "Términos y Condiciones": candidato[17],
+            "codigo": candidato[18],
+            "fecha": candidato[19],
+            "monto": candidato[20],
+            "via": candidato[21]
+        }
+        return render_template("otros_detalle.html", candidato=dict_candidate, mensaje=mensaje)
     else:
-        return render_template("otros_detalle.html", candidato=candidato, mensaje="")
+        dict_candidate = {
+            "Marca temporal": candidato[0],
+            "Dirección de correo electrónico": candidato[1],
+            "Nombre completo": candidato[2],
+            "¿Qué edad tienes?": candidato[3],
+            "Número de teléfono": candidato[4],
+            "Dirección completa": candidato[5],
+            "Cédula": candidato[6],
+            "Nivel educativo alcanzado": candidato[7],
+            "Carrera o especialidad (si aplica)": candidato[8],
+            "Idioma que dominas": candidato[9],
+            "¿Sabe usar computadora?": candidato[10],
+            "¿Tiene licencia de conducir?": candidato[11],
+            "Habilidades o conocimientos especiales": candidato[12],
+            "¿Tiene experiencia laboral?": candidato[13],
+            "Servicios que está dispuesto(a) a ofrecer": candidato[14],
+            "Dos contactos de referencias laborales y explicación": candidato[15],
+            "Dos referencias familiares y especifique qué relación tiene": candidato[16],
+            "Términos y Condiciones": candidato[17],
+            "codigo": candidato[18],
+            "fecha": candidato[19],
+            "monto": candidato[20],
+            "via": candidato[21]
+        }
+        return render_template("otros_detalle.html", candidato=dict_candidate, mensaje="")
 
 
 if __name__ == '__main__':

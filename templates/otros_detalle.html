@@ -2,76 +2,83 @@
 
 {% block content %}
 <div class="container mt-4">
-  {% if candidato %}
-    <h1 class="mb-4 text-center">Detalle del Candidato: {{ candidato["Nombre completo"] }}</h1>
-    {% if mensaje %}
-      <div class="alert alert-info">{{ mensaje }}</div>
-    {% endif %}
-    <table class="table table-bordered">
-      <tr>
-        <th>Marca temporal</th>
-        <td>{{ candidato["Marca temporal"] }}</td>
-      </tr>
-      <tr>
-        <th>Correo</th>
-        <td>{{ candidato["Dirección de correo electrónico"] }}</td>
-      </tr>
-      <tr>
-        <th>Nombre completo</th>
-        <td>{{ candidato["Nombre completo"] }}</td>
-      </tr>
-      <tr>
-        <th>Edad</th>
-        <td>{{ candidato["¿Qué edad tienes?"] }}</td>
-      </tr>
-      <tr>
-        <th>Teléfono</th>
-        <td>{{ candidato["Número de teléfono"] }}</td>
-      </tr>
-      <tr>
-        <th>Dirección</th>
-        <td>{{ candidato["Dirección completa"] }}</td>
-      </tr>
-      <tr>
-        <th>Cédula</th>
-        <td>{{ candidato["Cédula"] }}</td>
-      </tr>
-      <tr>
-        <th>Nivel educativo</th>
-        <td>{{ candidato["Nivel educativo alcanzado"] }}</td>
-      </tr>
-      <tr>
-        <th>Código</th>
-        <td>{{ candidato["codigo"] }}</td>
-      </tr>
-      <tr>
-        <th>Fecha</th>
-        <td>{{ candidato["fecha"] }}</td>
-      </tr>
-      <!-- Agrega más filas según necesites otros detalles -->
-    </table>
-    
-    <!-- Formulario para actualizar datos de inscripción -->
-    <h3 class="mt-4">Editar Datos de Inscripción</h3>
-    <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato['codigo'] if candidato['codigo']|string|trim != '' else candidato['Cédula']) }}">
-      <div class="mb-3">
-        <label for="fecha_inscripcion" class="form-label">Nueva Fecha de Inscripción (YYYY-MM-DD):</label>
-        <input type="date" name="fecha_inscripcion" id="fecha_inscripcion" class="form-control" required>
-      </div>
-      <div class="mb-3">
-        <label for="monto" class="form-label">Nuevo Monto:</label>
-        <input type="text" name="monto" id="monto" class="form-control" required>
-      </div>
-      <div class="mb-3">
-        <label for="via_inscripcion" class="form-label">Nueva Vía de Inscripción:</label>
-        <input type="text" name="via_inscripcion" id="via_inscripcion" class="form-control" required>
-      </div>
-      <button type="submit" class="btn btn-primary">Actualizar Información</button>
-    </form>
+  <h1 class="mb-4 text-center">Listado de Candidatas - Otros Empleos</h1>
   
+  {% if mensaje %}
+    <div class="alert alert-warning">{{ mensaje }}</div>
+  {% endif %}
+  
+  <!-- Formulario de búsqueda -->
+  <form method="GET" action="{{ url_for('otros_listar') }}" class="mb-3">
+    <div class="input-group">
+      <input type="text" name="q" class="form-control" placeholder="Buscar por nombre, cédula o correo" value="{{ query }}">
+      <button type="submit" class="btn btn-primary">Buscar</button>
+    </div>
+  </form>
+  
+  {% if candidatos %}
+    <div class="table-responsive">
+      <table class="table table-bordered table-striped">
+        <thead>
+          <tr>
+            <th>Marca temporal</th>
+            <th>Correo</th>
+            <th>Nombre completo</th>
+            <th>¿Qué edad tienes?</th>
+            <th>Número de teléfono</th>
+            <th>Dirección completa</th>
+            <th>Cédula</th>
+            <th>Nivel educativo</th>
+            <th>Carrera o especialidad</th>
+            <th>Idioma</th>
+            <th>Computadora</th>
+            <th>Licencia</th>
+            <th>Habilidades</th>
+            <th>Experiencia</th>
+            <th>Servicios</th>
+            <th>Referencias laborales</th>
+            <th>Referencias familiares</th>
+            <th>Términos</th>
+            <th>Código</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cand in candidatos %}
+            <tr>
+              <td>{{ cand[0] }}</td>
+              <td>{{ cand[1] }}</td>
+              <td>{{ cand[2] }}</td>
+              <td>{{ cand[3] }}</td>
+              <td>{{ cand[4] }}</td>
+              <td>{{ cand[5] }}</td>
+              <td>{{ cand[6] }}</td>
+              <td>{{ cand[7] }}</td>
+              <td>{{ cand[8] }}</td>
+              <td>{{ cand[9] }}</td>
+              <td>{{ cand[10] }}</td>
+              <td>{{ cand[11] }}</td>
+              <td>{{ cand[12] }}</td>
+              <td>{{ cand[13] }}</td>
+              <td>{{ cand[14] }}</td>
+              <td>{{ cand[15] }}</td>
+              <td>{{ cand[16] }}</td>
+              <td>{{ cand[17] }}</td>
+              <td>{{ cand[18] }}</td>
+              <td>{{ cand[19] }}</td>
+              <td>
+                {# Si se busca por nombre (y se desea usar el nombre), se usa cand[2] como identificador; de lo contrario, se puede priorizar cand[18] (código), y si está vacío, cand[6] (cédula) #}
+                {% set identifier = cand[2] if cand[2]|trim != "" else (cand[18] if cand[18]|trim != "" else cand[6]) %}
+                <a href="{{ url_for('otros_detalle', identifier=identifier) }}" class="btn btn-sm btn-info">Ver Detalles</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   {% else %}
-    <div class="alert alert-danger">Candidato no encontrado.</div>
-    <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>
+    <p>No se encontraron candidatas.</p>
   {% endif %}
 </div>
 {% endblock %}
