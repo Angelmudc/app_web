@@ -8,66 +8,32 @@
       <div class="alert alert-info">{{ mensaje }}</div>
     {% endif %}
     <table class="table table-bordered">
-      <tr>
-        <th>Marca temporal</th>
-        <td>{{ candidato["Marca temporal"] }}</td>
-      </tr>
-      <tr>
-        <th>Correo</th>
-        <td>{{ candidato["Dirección de correo electrónico"] }}</td>
-      </tr>
-      <tr>
-        <th>Nombre completo</th>
-        <td>{{ candidato["Nombre completo"] }}</td>
-      </tr>
-      <tr>
-        <th>Edad</th>
-        <td>{{ candidato["¿Qué edad tienes?"] }}</td>
-      </tr>
-      <tr>
-        <th>Teléfono</th>
-        <td>{{ candidato["Número de teléfono"] }}</td>
-      </tr>
-      <tr>
-        <th>Dirección</th>
-        <td>{{ candidato["Dirección completa"] }}</td>
-      </tr>
-      <tr>
-        <th>Cédula</th>
-        <td>{{ candidato["Cédula"] }}</td>
-      </tr>
-      <tr>
-        <th>Nivel educativo</th>
-        <td>{{ candidato["Nivel educativo alcanzado"] }}</td>
-      </tr>
-      <tr>
-        <th>Código</th>
-        <td>{{ candidato["codigo"] }}</td>
-      </tr>
-      <tr>
-        <th>Fecha</th>
-        <td>{{ candidato["fecha"] }}</td>
-      </tr>
+      <thead>
+        <tr>
+          {% for col in headers %}
+            <th>{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for col in headers %}
+            <td>{{ candidato[col] }}</td>
+          {% endfor %}
+        </tr>
+      </tbody>
     </table>
     
-    <!-- Formulario para actualizar datos de inscripción -->
-    <h3 class="mt-4">Editar Datos de Inscripción</h3>
-    <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato['codigo'] if candidato['codigo']|string|trim != '' else candidato['Cédula']) }}">
-      <div class="mb-3">
-        <label for="fecha_inscripcion" class="form-label">Nueva Fecha de Inscripción (YYYY-MM-DD):</label>
-        <input type="date" name="fecha_inscripcion" id="fecha_inscripcion" class="form-control" required>
-      </div>
-      <div class="mb-3">
-        <label for="monto" class="form-label">Nuevo Monto:</label>
-        <input type="text" name="monto" id="monto" class="form-control" required>
-      </div>
-      <div class="mb-3">
-        <label for="via_inscripcion" class="form-label">Nueva Vía de Inscripción:</label>
-        <input type="text" name="via_inscripcion" id="via_inscripcion" class="form-control" required>
-      </div>
+    <h3 class="mt-4">Editar Datos (Columnas C a R)</h3>
+    <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato["Nombre completo"] if candidato["Nombre completo"]|trim != "" else candidato["Cédula"]) }}">
+      {% for idx in range(2, 18) %}
+         <div class="mb-3">
+            <label class="form-label">{{ headers[idx] }}</label>
+            <input type="text" name="col{{ idx }}" class="form-control" value="{{ candidato[headers[idx]] }}">
+         </div>
+      {% endfor %}
       <button type="submit" class="btn btn-primary">Actualizar Información</button>
     </form>
-  
   {% else %}
     <div class="alert alert-danger">Candidato no encontrado.</div>
     <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>
