@@ -1,46 +1,70 @@
 {% extends "ordenes_base.html" %}
+
 {% block content %}
-<div class="container container-main">
+<div class="container mt-4">
   {% if candidato %}
-    <h1 class="mb-4 text-center">Editar Candidato: {{ candidato["codigo"] }}</h1>
+    <h1 class="mb-4 text-center">Detalle del Candidato: {{ candidato["Nombre completo"] }}</h1>
     {% if mensaje %}
       <div class="alert alert-info">{{ mensaje }}</div>
     {% endif %}
-    <form method="POST" action="{{ url_for('otros_detalle', codigo=candidato["codigo"]) }}">
+    <table class="table table-bordered">
+      <tr>
+        <th>Marca temporal</th>
+        <td>{{ candidato["Marca temporal"] }}</td>
+      </tr>
+      <tr>
+        <th>Correo</th>
+        <td>{{ candidato["Dirección de correo electrónico"] }}</td>
+      </tr>
+      <tr>
+        <th>Nombre completo</th>
+        <td>{{ candidato["Nombre completo"] }}</td>
+      </tr>
+      <tr>
+        <th>Edad</th>
+        <td>{{ candidato["¿Qué edad tienes?"] }}</td>
+      </tr>
+      <tr>
+        <th>Teléfono</th>
+        <td>{{ candidato["Número de teléfono"] }}</td>
+      </tr>
+      <tr>
+        <th>Dirección</th>
+        <td>{{ candidato["Dirección completa"] }}</td>
+      </tr>
+      <tr>
+        <th>Cédula</th>
+        <td>{{ candidato["Cédula"] }}</td>
+      </tr>
+      <!-- Puedes agregar más filas para cada campo si se requiere -->
+      <tr>
+        <th>Codigo</th>
+        <td>{{ candidato["codigo"] }}</td>
+      </tr>
+      <tr>
+        <th>Fecha</th>
+        <td>{{ candidato["fecha"] }}</td>
+      </tr>
+    </table>
+    <!-- Formulario para editar datos de inscripción -->
+    <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato['codigo'] if candidato['codigo']|string|trim != '' else candidato['Cédula']) }}">
       <div class="mb-3">
-        <label for="nombre" class="form-label">Nombre Completo:</label>
-        <input type="text" class="form-control" name="nombre" id="nombre" value="{{ candidato["Nombre completo"] }}" required>
+        <label for="fecha_inscripcion" class="form-label">Nueva Fecha de Inscripción (YYYY-MM-DD):</label>
+        <input type="date" name="fecha_inscripcion" id="fecha_inscripcion" class="form-control" required>
       </div>
       <div class="mb-3">
-        <label for="cedula" class="form-label">Cédula:</label>
-        <input type="text" class="form-control" name="cedula" id="cedula" value="{{ candidato["Cédula"] }}" readonly>
+        <label for="monto" class="form-label">Nuevo Monto:</label>
+        <input type="text" name="monto" id="monto" class="form-control" required>
       </div>
       <div class="mb-3">
-        <label for="edad" class="form-label">Edad:</label>
-        <input type="number" class="form-control" name="edad" id="edad" value="{{ candidato["¿Qué edad tienes?"] }}" required>
+        <label for="via_inscripcion" class="form-label">Nueva Vía de Inscripción:</label>
+        <input type="text" name="via_inscripcion" id="via_inscripcion" class="form-control" required>
       </div>
-      <div class="mb-3">
-        <label for="telefono" class="form-label">Teléfono:</label>
-        <input type="text" class="form-control" name="telefono" id="telefono" value="{{ candidato["Número de teléfono"] }}" required>
-      </div>
-      <div class="mb-3">
-        <label for="fecha_inscripcion" class="form-label">Fecha de Inscripción:</label>
-        <input type="date" class="form-control" name="fecha_inscripcion" id="fecha_inscripcion" value="{{ candidato["fecha"] }}" required>
-      </div>
-      <div class="mb-3">
-        <label for="monto" class="form-label">Monto:</label>
-        <input type="text" class="form-control" name="monto" id="monto" value="{{ candidato["monto"] }}" required>
-      </div>
-      <div class="mb-3">
-        <label for="via_inscripcion" class="form-label">Vía de Inscripción:</label>
-        <input type="text" class="form-control" name="via_inscripcion" id="via_inscripcion" value="{{ candidato["via"] }}" required>
-      </div>
-      <button type="submit" class="btn btn-success">Guardar Cambios</button>
-      <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>
+      <button type="submit" class="btn btn-primary">Actualizar Información</button>
     </form>
   {% else %}
-    <div class="alert alert-danger">{{ mensaje or "Candidato no encontrado." }}</div>
-    <a href="{{ url_for('otros_listar') }}" class="btn btn-primary">Volver al Listado</a>
+    <div class="alert alert-danger">Candidato no encontrado.</div>
+    <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>
   {% endif %}
 </div>
 {% endblock %}
