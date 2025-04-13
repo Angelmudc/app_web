@@ -30,16 +30,16 @@
             <th>Cédula</th>
             <th>Nivel educativo</th>
             <th>Carrera o especialidad</th>
-            <th>Idioma que dominas</th>
-            <th>¿Sabe usar computadora?</th>
-            <th>¿Tiene licencia?</th>
+            <th>Idioma</th>
+            <th>Computadora</th>
+            <th>Licencia</th>
             <th>Habilidades</th>
-            <th>¿Tiene experiencia laboral?</th>
-            <th>Servicios a ofrecer</th>
+            <th>Experiencia</th>
+            <th>Servicios</th>
             <th>Referencias laborales</th>
             <th>Referencias familiares</th>
-            <th>Términos y Condiciones</th>
-            <th>Codigo</th>
+            <th>Términos</th>
+            <th>Código</th>
             <th>Fecha</th>
             <th>Acciones</th>
           </tr>
@@ -47,29 +47,29 @@
         <tbody>
           {% for cand in candidatos %}
             <tr>
-              <td>{{ cand[headers[0]] }}</td>
-              <td>{{ cand[headers[1]] }}</td>
-              <td>{{ cand[headers[2]] }}</td>
-              <td>{{ cand[headers[3]] }}</td>
-              <td>{{ cand[headers[4]] }}</td>
-              <td>{{ cand[headers[5]] }}</td>
-              <td>{{ cand[headers[6]] }}</td>
-              <td>{{ cand[headers[7]] }}</td>
-              <td>{{ cand[headers[8]] }}</td>
-              <td>{{ cand[headers[9]] }}</td>
-              <td>{{ cand[headers[10]] }}</td>
-              <td>{{ cand[headers[11]] }}</td>
-              <td>{{ cand[headers[12]] }}</td>
-              <td>{{ cand[headers[13]] }}</td>
-              <td>{{ cand[headers[14]] }}</td>
-              <td>{{ cand[headers[15]] }}</td>
-              <td>{{ cand[headers[16]] }}</td>
-              <td>{{ cand[headers[17]] }}</td>
-              <td>{{ cand[headers[18]] }}</td>
-              <td>{{ cand[headers[19]] }}</td>
+              <td>{{ cand[0] }}</td>
+              <td>{{ cand[1] }}</td>
+              <td>{{ cand[2] }}</td>
+              <td>{{ cand[3] }}</td>
+              <td>{{ cand[4] }}</td>
+              <td>{{ cand[5] }}</td>
+              <td>{{ cand[6] }}</td>
+              <td>{{ cand[7] }}</td>
+              <td>{{ cand[8] }}</td>
+              <td>{{ cand[9] }}</td>
+              <td>{{ cand[10] }}</td>
+              <td>{{ cand[11] }}</td>
+              <td>{{ cand[12] }}</td>
+              <td>{{ cand[13] }}</td>
+              <td>{{ cand[14] }}</td>
+              <td>{{ cand[15] }}</td>
+              <td>{{ cand[16] }}</td>
+              <td>{{ cand[17] }}</td>
+              <td>{{ cand[18] }}</td>
+              <td>{{ cand[19] }}</td>
               <td>
-                {# Si el código está vacío, se usa la cédula como identificador #}
-                {% set identifier = cand[headers[18]] if cand[headers[18]]|string|trim != "" else cand[headers[6]] %}
+                {# Si se busca por nombre (y se desea usar el nombre), se usa cand[2] como identificador; de lo contrario, se puede priorizar cand[18] (código), y si está vacío, cand[6] (cédula) #}
+                {% set identifier = cand[2] if cand[2]|trim != "" else (cand[18] if cand[18]|trim != "" else cand[6]) %}
                 <a href="{{ url_for('otros_detalle', identifier=identifier) }}" class="btn btn-sm btn-info">Ver Detalles</a>
               </td>
             </tr>
