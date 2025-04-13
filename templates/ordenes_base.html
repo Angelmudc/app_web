@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gestión de Órdenes</title>
+  <title>Gestión de Otros Empleos</title>
   <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
@@ -141,28 +141,20 @@
   <!-- Barra de navegación -->
   <nav class="navbar navbar-expand-lg">
     <div class="container-fluid">
-      <a class="navbar-brand" href="{{ url_for('solicitudes', accion='ver') }}">Órdenes</a>
+      <!-- El texto del logo y el enlace se adaptan a Otros Empleos -->
+      <a class="navbar-brand" href="{{ url_for('otros_listar') }}">Otros Empleos</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContenido" aria-controls="navbarContenido" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarContenido">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-          <!-- Nuevo ítem para ir al inicio (home) -->
           <li class="nav-item">
-            <a class="nav-link" href="/">Inicio</a>
+            <a class="nav-link" href="{{ url_for('otros_listar') }}">Listado</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('solicitudes', accion='ver') }}">Ver Órdenes</a>
+            <a class="nav-link" href="{{ url_for('otros_inscripcion') }}">Inscripción</a>
           </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('solicitudes', accion='registro') }}">Registrar Orden</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('solicitudes', accion='reportes') }}">Reportes</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('solicitudes', accion='disponibles') }}">Órdenes Disponibles</a>
-          </li>
+          <!-- Puedes agregar más elementos de navegación propios del módulo si es necesario -->
         </ul>
       </div>
     </div>
@@ -178,7 +170,7 @@
     document.addEventListener("DOMContentLoaded", function() {
       const forms = document.querySelectorAll("form");
       forms.forEach(form => {
-        form.addEventListener("submit", function(event) {
+        form.addEventListener("submit", function() {
           const buttons = form.querySelectorAll("button");
           buttons.forEach(button => {
             button.disabled = true;
