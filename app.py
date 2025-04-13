@@ -2912,64 +2912,6 @@ def otros_listar():
 # ─────────────────────────────────────────────────────────────
 # Ruta: Detalle y Edición Inline de Otros Empleos
 # ─────────────────────────────────────────────────────────────
-@app.route('/otros_empleos/<codigo>', methods=['GET', 'POST'])
-def otros_detalle(codigo):
-    ws = get_sheet_otros()
-    if not ws:
-        mensaje = "Error al acceder a la hoja 'Otros'."
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    try:
-        data = ws.get_all_records()
-    except Exception as e:
-        mensaje = f"Error al obtener datos: {str(e)}"
-        logging.error(mensaje, exc_info=True)
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    candidato = None
-    row_index = None
-    headers = get_headers_otros()
-    for i, row in enumerate(data, start=2):  # Empezar en 2, ya que la fila 1 es el encabezado
-        if row.get("codigo", "").strip() == codigo:
-            candidato = row
-            row_index = i
-            break
-    if not candidato:
-        mensaje = "Candidato no encontrado."
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    mensaje = ""
-    if request.method == "POST":
-        form = request.form
-        updated_row = []
-        for header in headers:
-            if header == "Nombre completo":
-                updated_row.append(form.get("nombre", "").strip())
-            elif header == "Cédula":
-                # La cédula no se edita para mantener la identidad
-                updated_row.append(candidato.get("Cédula", ""))
-            elif header == "¿Qué edad tienes?":
-                updated_row.append(form.get("edad", "").strip())
-            elif header == "Número de teléfono":
-                updated_row.append(form.get("telefono", "").strip())
-            elif header == "fecha":
-                updated_row.append(form.get("fecha_inscripcion", "").strip())
-            elif header == "monto":
-                updated_row.append(form.get("monto", "").strip())
-            elif header == "via":
-                updated_row.append(form.get("via_inscripcion", "").strip())
-            elif header == "codigo":
-                updated_row.append(candidato.get("codigo", ""))
-            else:
-                updated_row.append(candidato.get(header, ""))
-        try:
-            # Se asume que la hoja tiene como máximo 26 columnas
-            ultima_col = chr(64 + len(headers))
-            ws.update(f"A{row_index}:{ultima_col}{row_index}", [headers, updated_row])
-            mensaje = "Información actualizada correctamente."
-            candidato = dict(zip(headers, updated_row))
-        except Exception as e:
-            mensaje = f"Error al actualizar: {str(e)}"
-            logging.error(mensaje, exc_info=True)
-    return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
-
 @app.route('/otros_empleos/<identifier>', methods=['GET', 'POST'])
 def otros_detalle(identifier):
     ws = get_sheet_otros()  # Conecta con la hoja "Otros"
@@ -3012,8 +2954,7 @@ def otros_detalle(identifier):
     if request.method == 'POST':
         form = request.form
         updated_row = []
-        # Actualizar campos: en este ejemplo, se actualizan "fecha", "monto" y "via"
-        # y se conservan el resto de los datos.
+        # Actualizar campos de inscripción: "fecha", "monto" y "via".
         for header in headers:
             if header == "fecha":
                 updated_row.append(form.get("fecha_inscripcion", "").strip())
@@ -3024,8 +2965,9 @@ def otros_detalle(identifier):
             else:
                 updated_row.append(candidato.get(header, ""))
         try:
-            ultima_col = chr(65 + len(headers) - 1)  # Calcula la letra de la última columna (A-Z)
-            # Actualizamos solo la fila de datos, sin enviar el encabezado
+            # Calcula la letra de la última columna (A=65 en ASCII)
+            ultima_col = chr(65 + len(headers) - 1)
+            # Actualizamos la fila con SOLO los datos (sin encabezados)
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated_row])
             mensaje = "Información actualizada correctamente."
             flash(mensaje, "success")
@@ -3036,7 +2978,6 @@ def otros_detalle(identifier):
         return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
     else:
         return render_template("otros_detalle.html", candidato=candidato, mensaje="")
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
