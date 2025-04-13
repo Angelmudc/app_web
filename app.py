@@ -2875,38 +2875,41 @@ def otros_listar():
         return render_template("otros_listar.html", mensaje=mensaje, candidatos=[], headers=[])
     
     try:
+        # Obtener registros como lista de diccionarios usando la fila 1 como encabezados
         data = ws.get_all_records()
+        logging.info("Total registros obtenidos: " + str(len(data)))
     except Exception as e:
         mensaje = f"Error al obtener datos: {str(e)}"
         return render_template("otros_listar.html", mensaje=mensaje, candidatos=[], headers=[])
     
-    headers = get_headers_otros()
-    # Definir keys según posición:
-    # Nombre -> índice 2, Cédula -> índice 6, Correo -> índice 1, etc.
+    headers = get_headers_otros()  # Se espera que esta función devuelva la lista de encabezados en el orden correcto
+    # Definir keys según posición (por número de columna):
+    # Nombre: índice 2, Cédula: índice 6, Correo: índice 1.
     nombre_key = headers[2]
     cedula_key = headers[6]
     email_key = headers[1]
     
-    # Obtenemos el query para la búsqueda (usamos "q")
+    # Obtener el query de búsqueda (parámetro "q" en la URL)
     query = request.args.get("q", "").strip()
     if query:
-        # Filtramos en base a que el query esté contenido en el nombre o en la cédula o en el correo.
         filtered = []
         for row in data:
-            # Convertimos a string para manejar números sin error.
+            # Convertir a string para evitar errores si el dato es numérico.
             if (query.lower() in str(row.get(nombre_key, "")).lower() or
                 query.lower() in str(row.get(cedula_key, "")).lower() or
                 query.lower() in str(row.get(email_key, "")).lower()):
                 filtered.append(row)
         data = filtered
+        logging.info("Registros después del filtro: " + str(len(data)))
     
-    # Se envía el listado de candidatas junto con la lista de encabezados y los keys para la plantilla.
+    # Si no hay query, data conservará todos los registros (si existen).
     return render_template("otros_listar.html", 
                            candidatos=data, 
                            headers=headers,
                            query=query,
                            nombre_key=nombre_key,
                            cedula_key=cedula_key)
+
 
 
 # ─────────────────────────────────────────────────────────────
