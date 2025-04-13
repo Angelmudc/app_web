@@ -2976,6 +2976,7 @@ def otros_detalle(identifier):
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
+    
     try:
         data = ws.get_all_records()
     except Exception as e:
@@ -2987,14 +2988,15 @@ def otros_detalle(identifier):
     row_index = None
     headers = get_headers_otros()
     
-    # Primero, se intenta buscar por "codigo"
-    for i, row in enumerate(data, start=2):  # Se inicia en 2: fila 1 es el encabezado.
+    # Primero busca por "codigo"
+    for i, row in enumerate(data, start=2):  # Fila 1 es el encabezado
         code_val = str(row.get("codigo", "")).strip()
         if code_val == identifier:
             candidato = row
             row_index = i
             break
-    # Si no se encontró por "codigo", se busca por "Cédula"
+    
+    # Si no se encontró por código, busca por "Cédula"
     if not candidato:
         for i, row in enumerate(data, start=2):
             cedula_val = str(row.get("Cédula", "")).strip()
@@ -3010,7 +3012,7 @@ def otros_detalle(identifier):
     if request.method == 'POST':
         form = request.form
         updated_row = []
-        # Se actualizan las columnas de inscripción: "fecha", "monto" y "via". 
+        # Actualiza únicamente los campos de inscripción: "fecha", "monto" y "via".
         for header in headers:
             if header == "fecha":
                 updated_row.append(form.get("fecha_inscripcion", "").strip())
@@ -3032,6 +3034,7 @@ def otros_detalle(identifier):
         return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
     else:
         return render_template("otros_detalle.html", candidato=candidato, mensaje="")
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
