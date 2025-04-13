@@ -2970,31 +2970,33 @@ def otros_detalle(codigo):
             logging.error(mensaje, exc_info=True)
     return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
 
-    @app.route('/otros_empleos/<identifier>', methods=['GET', 'POST'])
+@app.route('/otros_empleos/<identifier>', methods=['GET', 'POST'])
 def otros_detalle(identifier):
     ws = get_sheet_otros()  # Conecta con la hoja "Otros"
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
+
     try:
         data = ws.get_all_records()
     except Exception as e:
         mensaje = f"Error al obtener datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    
+
     candidato = None
     row_index = None
     headers = get_headers_otros()
-    
-    # Primero, se intenta buscar por "codigo"
-    for i, row in enumerate(data, start=2):  # La fila 1 es el encabezado
+
+    # Primero, buscar por "codigo"
+    for i, row in enumerate(data, start=2):  # Comienza en 2 porque la fila 1 es el encabezado
         code_val = str(row.get("codigo", "")).strip()
         if code_val == identifier:
             candidato = row
             row_index = i
             break
-    # Si no se encontró por código, se busca por "Cédula"
+
+    # Si no se encontró por código, buscar por "Cédula"
     if not candidato:
         for i, row in enumerate(data, start=2):
             cedula_val = str(row.get("Cédula", "")).strip()
@@ -3002,13 +3004,37 @@ def otros_detalle(identifier):
                 candidato = row
                 row_index = i
                 break
+
     if not candidato:
         mensaje = "Candidato no encontrado."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-    
-    # Aquí puedes procesar el POST para actualizar datos si lo requieres.
-    # En este ejemplo solo se muestra la búsqueda de candidato.
-    return render_template("otros_detalle.html", candidato=candidato, mensaje="")
+
+    if request.method == 'POST':
+        form = request.form
+        updated_row = []
+        for header in headers:
+            if header == "fecha":
+                updated_row.append(form.get("fecha_inscripcion", "").strip())
+            elif header == "monto":
+                updated_row.append(form.get("monto", "").strip())
+            elif header == "via":
+                updated_row.append(form.get("via_inscripcion", "").strip())
+            else:
+                updated_row.append(candidato.get(header, ""))
+        try:
+            # Calcula la letra de la última columna (asumiendo hasta 26 columnas, A-Z)
+            ultima_col = chr(65 + len(headers) - 1)
+            ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated_row])
+            mensaje = "Información actualizada correctamente."
+            flash(mensaje, "success")
+            candidato = dict(zip(headers, updated_row))
+        except Exception as e:
+            mensaje = f"Error al actualizar: {str(e)}"
+            logging.error(mensaje, exc_info=True)
+        return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
+    else:
+        return render_template("otros_detalle.html", candidato=candidato, mensaje="")
+
 
 
 if __name__ == '__main__':
