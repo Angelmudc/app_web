@@ -8,34 +8,32 @@
       <div class="alert alert-info">{{ mensaje }}</div>
     {% endif %}
     
-    <div class="table-responsive">
-      <table class="table table-bordered">
-        <thead>
-          <tr>
-            {% for col in short_headers %}
-              <th>{{ col }}</th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            {% for col in short_headers %}
-              <td>{{ candidato[col] }}</td>
-            {% endfor %}
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    
-    <!-- Formulario para editar (los inputs están disabled por defecto) -->
+    <!-- Un solo formulario con una tabla editable -->
     <form id="detalleForm" method="POST" action="{{ url_for('otros_detalle', identifier=candidato['Nombre'] if candidato['Nombre']|trim != '' else candidato['Cédula']) }}">
-      <div class="row">
-      {% for idx in range(0, 16) %}
-         <div class="col-md-4 mb-3">
-            <label class="form-label"><strong>{{ short_headers[idx] }}</strong></label>
-            <input type="text" name="col{{ idx+2 }}" class="form-control detail-input" value="{{ candidato[short_headers[idx]] }}" disabled>
-         </div>
-      {% endfor %}
+      <div class="table-responsive">
+        <table class="table table-bordered">
+          <thead>
+            <tr>
+              {% for col in short_headers %}
+                <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {% for col in short_headers %}
+                {% set idx = loop.index0 %}
+                <td>
+                  <input type="text" name="col{{ idx + 2 }}" class="form-control detail-input" 
+                         value="{{ candidato[col] }}" 
+                         {% if idx < 16 %} disabled {% else %} readonly {% endif %}>
+                  {# Los primeros 16 inputs (para índices 2 a 17) son editables solo cuando se habilitan; 
+                     los últimos dos (para Código y Fecha) permanecen solo lectura #}
+                </td>
+              {% endfor %}
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div class="text-center">
          <button type="button" id="editarBtn" class="btn btn-primary" onclick="enableEditing()">Editar</button>
@@ -46,9 +44,12 @@
     <script>
       function enableEditing() {
          var inputs = document.querySelectorAll('.detail-input');
-         inputs.forEach(function(input) {
-             input.disabled = false;
-         });
+         // Habilitar solo los primeros 16 inputs (correspondientes a columnas C a R)
+         for (var i = 0; i < inputs.length; i++) {
+            if (i < 16) {
+               inputs[i].disabled = false;
+            }
+         }
          document.getElementById("editarBtn").style.display = "none";
          document.getElementById("guardarBtn").style.display = "inline-block";
       }
