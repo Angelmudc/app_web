@@ -14,14 +14,12 @@
       {% for cand in candidatos %}
         <li class="list-group-item">
           {{ cand[nombre_key] }} - Cédula: {{ cand[cedula_key] }} - Teléfono: {{ cand[telefono_key] }}
-          <!-- Al hacer clic, se invoca la búsqueda por la cédula de ese candidato -->
           <a href="{{ url_for('otros_inscripcion') }}?q={{ cand[cedula_key] }}" class="btn btn-sm btn-primary float-end">Seleccionar</a>
         </li>
       {% endfor %}
     </ul>
   
   {% elif modo == "enrolar" and candidato %}
-    <!-- Se muestran los datos existentes para verificación usando los keys -->
     <div class="mb-3">
       <label class="form-label"><strong>Nombre Completo:</strong></label>
       <p>{{ candidato[nombre_key] }}</p>
@@ -38,9 +36,7 @@
       <label class="form-label"><strong>Número de Teléfono:</strong></label>
       <p>{{ candidato[telefono_key] }}</p>
     </div>
-    <!-- Formulario para ingresar los nuevos datos de inscripción -->
     <form method="POST" action="{{ url_for('otros_inscripcion') }}">
-      <!-- Campo oculto para mantener la cédula -->
       <input type="hidden" name="cedula" value="{{ candidato[cedula_key] }}">
       <div class="mb-3">
         <label for="fecha_inscripcion" class="form-label">Fecha de Inscripción (YYYY-MM-DD):</label>
@@ -58,7 +54,6 @@
     </form>
   
   {% else %}
-    <!-- Modo búsqueda inicial: se solicita el query (nombre o cédula) -->
     <form method="GET" action="{{ url_for('otros_inscripcion') }}">
       <div class="mb-3">
         <label for="q" class="form-label">Ingrese el nombre o cédula del candidato:</label>

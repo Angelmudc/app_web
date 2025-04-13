@@ -2762,21 +2762,20 @@ def otros_inscripcion():
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_inscripcion.html", mensaje=mensaje)
     
-    # Obtiene la lista de encabezados; se asume que tiene 22 elementos
-    headers = get_headers_otros()  
+    headers = get_headers_otros()  # Lista de encabezados de la hoja
 
-    # Definición de “keys” según la posición de las columnas:
-    # Los índices se basan en 0:
-    nombre_key = headers[2]    # Columna C
-    edad_key = headers[3]      # Columna D
-    telefono_key = headers[4]  # Columna E
-    cedula_key = headers[6]    # Columna G
+    # Definir los keys basados en los índices fijos:
+    # Índice (basado en 0): Nombre = headers[2], Edad = headers[3], Teléfono = headers[4], Cédula = headers[6]
+    nombre_key = headers[2]
+    edad_key = headers[3]
+    telefono_key = headers[4]
+    cedula_key = headers[6]
 
+    # Modo GET: se busca al candidato por nombre o cédula usando el parámetro "q"
     if request.method == 'GET':
-        # Usamos el parámetro "q" para búsqueda
         query = request.args.get("q", "").strip()
         if not query:
-            # Si no hay query, se muestra el formulario de búsqueda.
+            # Muestra el formulario de búsqueda si aún no se ingresa nada.
             return render_template("otros_inscripcion.html", 
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
@@ -2789,10 +2788,10 @@ def otros_inscripcion():
                                    edad_key=edad_key, telefono_key=telefono_key)
         
         matches = []
-        # Se compara el query en los valores de la columna del nombre y la cédula (en minúsculas)
         for row in data:
+            # Convertimos la cédula en string para usar .lower()
             if (query.lower() in row.get(nombre_key, "").lower() or 
-                query.lower() in row.get(cedula_key, "").lower()):
+                query.lower() in str(row.get(cedula_key, "")).lower()):
                 matches.append(row)
                 
         if not matches:
@@ -2806,14 +2805,13 @@ def otros_inscripcion():
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
         else:
-            # Si se encontraron múltiples candidatos, se muestra una lista para selección.
             return render_template("otros_inscripcion.html", candidatos=matches, modo="seleccion", query=query,
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
     
-    # Modo POST: se reciben y actualizan los datos de inscripción para el candidato.
+    # Modo POST: se actualizan los datos de inscripción para el candidato seleccionado.
     if request.method == 'POST':
-        cedula = request.form.get("cedula", "").strip()  # Se recibe desde un campo oculto
+        cedula = request.form.get("cedula", "").strip()  # Se recibe desde el campo oculto
         fecha_inscripcion = request.form.get("fecha_inscripcion", "").strip()
         monto = request.form.get("monto", "").strip()
         via_inscripcion = request.form.get("via_inscripcion", "").strip()
@@ -2828,9 +2826,9 @@ def otros_inscripcion():
         
         row_index = None
         candidato_actual = None
-        # Se busca el candidato usando la cédula (usando el key de la posición 6)
+        # Buscamos el candidato usando la cédula; convertimos a cadena para aplicar strip
         for idx, row in enumerate(data, start=2):  # La fila 1 es el encabezado.
-            if row.get(cedula_key, "").strip() == cedula:
+            if str(row.get(cedula_key, "")).strip() == cedula:
                 row_index = idx
                 candidato_actual = row
                 break
@@ -2841,27 +2839,28 @@ def otros_inscripcion():
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
         
-        # Se genera el código automáticamente
+        # Genera el código automáticamente
         codigo = generate_next_code_otros()
         
-        # Construcción de la nueva fila usando los índices fijos.
+        # Construir la nueva fila utilizando la posición de columnas:
+        # Posición 18: codigo, 19: fecha, 20: monto, 21: via.
         new_row = []
         for i, header in enumerate(headers):
-            if i == 18:           # Columna S: código
+            if i == 18:           # Columna S: codigo
                 new_row.append(codigo)
-            elif i == 19:         # Columna T: fecha de inscripción
+            elif i == 19:         # Columna T: fecha
                 new_row.append(fecha_inscripcion)
             elif i == 20:         # Columna U: monto
                 new_row.append(monto)
-            elif i == 21:         # Columna V: vía
+            elif i == 21:         # Columna V: via
                 new_row.append(via_inscripcion)
             else:
                 new_row.append(candidato_actual.get(header, ""))
         
         try:
-            # Calcula la letra de la última columna. (A=65 en ASCII)
+            # Calcula la letra de la última columna (A=65 en ASCII)
             ultima_col = chr(65 + len(headers) - 1)
-            # Actualiza solo la fila de datos (sin encabezado) para evitar errores de rango.
+            # Actualiza la fila con solo el row de datos
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [new_row])
             mensaje = f"Inscripción exitosa. Código asignado: {codigo}"
             flash(mensaje, "success")
