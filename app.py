@@ -2761,43 +2761,59 @@ def otros_inscripcion():
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_inscripcion.html", mensaje=mensaje)
+    
+    # Obtiene la lista de encabezados; se asume que tiene 22 elementos
+    headers = get_headers_otros()  
 
-    headers = get_headers_otros()  # Lista de encabezados de la hoja
+    # Definición de “keys” según la posición de las columnas:
+    # Los índices se basan en 0:
+    nombre_key = headers[2]    # Columna C
+    edad_key = headers[3]      # Columna D
+    telefono_key = headers[4]  # Columna E
+    cedula_key = headers[6]    # Columna G
 
-    # Modo GET: se busca al candidato por cédula o nombre mediante el parámetro "q"
     if request.method == 'GET':
+        # Usamos el parámetro "q" para búsqueda
         query = request.args.get("q", "").strip()
         if not query:
-            # Mostrar el formulario de búsqueda si aún no se ingresa nada.
-            return render_template("otros_inscripcion.html")
+            # Si no hay query, se muestra el formulario de búsqueda.
+            return render_template("otros_inscripcion.html", 
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
         try:
             data = ws.get_all_records()
         except Exception as e:
             mensaje = f"Error al obtener datos: {str(e)}"
-            return render_template("otros_inscripcion.html", mensaje=mensaje)
+            return render_template("otros_inscripcion.html", mensaje=mensaje,
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
         
         matches = []
+        # Se compara el query en los valores de la columna del nombre y la cédula (en minúsculas)
         for row in data:
-            # Se realiza una búsqueda flexible: si el query aparece en el nombre (en minúsculas)
-            # o si la cédula es exactamente igual al query.
-            if (query.lower() in row.get("Nombre completo", "").lower() or 
-                query == row.get("Cédula", "").strip()):
+            if (query.lower() in row.get(nombre_key, "").lower() or 
+                query.lower() in row.get(cedula_key, "").lower()):
                 matches.append(row)
                 
         if not matches:
             mensaje = "Candidato no encontrado."
-            return render_template("otros_inscripcion.html", mensaje=mensaje)
+            return render_template("otros_inscripcion.html", mensaje=mensaje,
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
         elif len(matches) == 1:
-            # Si hay una sola coincidencia, se muestra la vista de inscripción
             candidato = matches[0]
-            return render_template("otros_inscripcion.html", candidato=candidato, modo="enrolar", query=query)
+            return render_template("otros_inscripcion.html", candidato=candidato, modo="enrolar", query=query,
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
         else:
-            # Si hay múltiples candidatos, se muestra una lista para que el usuario elija
-            return render_template("otros_inscripcion.html", candidatos=matches, modo="seleccion", query=query)
+            # Si se encontraron múltiples candidatos, se muestra una lista para selección.
+            return render_template("otros_inscripcion.html", candidatos=matches, modo="seleccion", query=query,
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
     
-    # Modo POST: se reciben los datos de inscripción para actualizar la fila del candidato
+    # Modo POST: se reciben y actualizan los datos de inscripción para el candidato.
     if request.method == 'POST':
-        cedula = request.form.get("cedula", "").strip()  # Campo oculto en el formulario de inscripción
+        cedula = request.form.get("cedula", "").strip()  # Se recibe desde un campo oculto
         fecha_inscripcion = request.form.get("fecha_inscripcion", "").strip()
         monto = request.form.get("monto", "").strip()
         via_inscripcion = request.form.get("via_inscripcion", "").strip()
@@ -2806,49 +2822,56 @@ def otros_inscripcion():
             data = ws.get_all_records()
         except Exception as e:
             mensaje = f"Error al obtener datos: {str(e)}"
-            return render_template("otros_inscripcion.html", mensaje=mensaje)
+            return render_template("otros_inscripcion.html", mensaje=mensaje,
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
         
         row_index = None
         candidato_actual = None
-        # Buscamos el candidato por cédula; se asume que la cédula es la clave única
-        for idx, row in enumerate(data, start=2):  # La fila 1 es el encabezado
-            if row.get("Cédula", "").strip() == cedula:
+        # Se busca el candidato usando la cédula (usando el key de la posición 6)
+        for idx, row in enumerate(data, start=2):  # La fila 1 es el encabezado.
+            if row.get(cedula_key, "").strip() == cedula:
                 row_index = idx
                 candidato_actual = row
                 break
         
         if not row_index or not candidato_actual:
             mensaje = "Candidato no encontrado para actualización."
-            return render_template("otros_inscripcion.html", mensaje=mensaje)
+            return render_template("otros_inscripcion.html", mensaje=mensaje,
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
         
-        # Genera el código de inscripción automáticamente (implementa generate_next_code_otros())
+        # Se genera el código automáticamente
         codigo = generate_next_code_otros()
-
-        # Se construye la nueva fila manteniendo los datos existentes de identificación
-        # y actualizando las columnas de inscripción: código, fecha, monto y vía.
+        
+        # Construcción de la nueva fila usando los índices fijos.
         new_row = []
-        for header in headers:
-            if header == "codigo":
+        for i, header in enumerate(headers):
+            if i == 18:           # Columna S: código
                 new_row.append(codigo)
-            elif header == "fecha":
+            elif i == 19:         # Columna T: fecha de inscripción
                 new_row.append(fecha_inscripcion)
-            elif header == "monto":
+            elif i == 20:         # Columna U: monto
                 new_row.append(monto)
-            elif header == "via":
+            elif i == 21:         # Columna V: vía
                 new_row.append(via_inscripcion)
             else:
                 new_row.append(candidato_actual.get(header, ""))
         
         try:
-            # Calcula la última columna (funciona para hasta 26 columnas: A-Z)
-            ultima_col = chr(64 + len(headers))
-            ws.update(f"A{row_index}:{ultima_col}{row_index}", [headers, new_row])
+            # Calcula la letra de la última columna. (A=65 en ASCII)
+            ultima_col = chr(65 + len(headers) - 1)
+            # Actualiza solo la fila de datos (sin encabezado) para evitar errores de rango.
+            ws.update(f"A{row_index}:{ultima_col}{row_index}", [new_row])
             mensaje = f"Inscripción exitosa. Código asignado: {codigo}"
             flash(mensaje, "success")
             return redirect(url_for("otros_listar"))
         except Exception as e:
             mensaje = f"Error al actualizar inscripción: {str(e)}"
-            return render_template("otros_inscripcion.html", mensaje=mensaje)
+            return render_template("otros_inscripcion.html", mensaje=mensaje,
+                                   nombre_key=nombre_key, cedula_key=cedula_key,
+                                   edad_key=edad_key, telefono_key=telefono_key)
+
 
 
 # ─────────────────────────────────────────────────────────────
