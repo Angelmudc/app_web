@@ -2917,49 +2917,59 @@ def otros_detalle(identifier):
     ws = get_sheet_otros()
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=[])
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, short_headers=[])
     
     try:
-        values = ws.get_all_values()  # Lista de listas; fila 0 = encabezados
+        # Obtiene la hoja completa como lista de listas (fila 0 = encabezados)
+        values = ws.get_all_values()
     except Exception as e:
         mensaje = f"Error al obtener datos: {e}"
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=[])
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, short_headers=[])
     
     if not values or len(values) < 2:
         mensaje = "No hay registros en la hoja."
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=values[0] if values else [])
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, short_headers=values[0] if values else [])
     
-    # Definimos los encabezados para detalles: queremos mostrar de la columna C hasta la T (índices 2 a 19)
-    headers_detalle = values[0][2:20]
+    # Definimos la lista de encabezados cortos para las columnas de la C a la T (índices 2 a 19)
+    short_headers = ["Nombre", "Edad", "Teléfono", "Dirección", "Cédula", "Educación", "Carrera", "Idioma", "PC", "Licencia", "Habilidades", "Experiencia", "Servicios", "Ref Lab", "Ref Fam", "Términos", "Código", "Fecha"]
     
     identifier_norm = identifier.strip().lower()
     candidato_row = None
     row_index = None
+    # Buscamos recorriendo las filas de datos (values[1] es la fila 2 en la hoja)
     for i in range(1, len(values)):
         row = values[i]
+        # Aseguramos que la fila tenga al menos 22 columnas (A a V)
         if len(row) < 22:
             row.extend([""] * (22 - len(row)))
-        # Extraemos los campos relevantes usando índices
+        # Tomamos los valores de los campos relevantes (por índices)
         nombre = row[2].strip().lower() if len(row) > 2 else ""
         cedula = row[6].strip().lower() if len(row) > 6 else ""
         codigo = row[18].strip().lower() if len(row) > 18 else ""
+        # Si el identifier coincide con alguno de estos, lo usamos
         if identifier_norm == nombre or identifier_norm == cedula or identifier_norm == codigo:
             candidato_row = row
-            row_index = i + 1
+            row_index = i + 1  # La fila en la hoja (values[1] es la fila 2)
             break
 
     if not candidato_row:
         mensaje = "Candidato no encontrado."
-        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, headers=headers_detalle)
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None, short_headers=short_headers)
+    
+    # Extraer datos de la vista de detalles: de la columna C a la T (índices 2 a 19)
+    candidate_details = {}
+    for idx in range(2, 20):
+        candidate_details[ short_headers[idx-2] ] = candidato_row[idx]
     
     if request.method == 'POST':
+        # Actualiza las columnas editables (de la C a la R, índices 2 a 17)
         updated = candidato_row[:]  # Copia de la fila original
-        for idx in range(2, 18):  # Editables: columnas C a R (índices 2 a 17)
-            input_name = "col" + str(idx)
+        for idx in range(2, 18):
+            input_name = f"col{idx}"
             value = request.form.get(input_name, "").strip()
             updated[idx] = value
         try:
-            ultima_col = chr(65 + len(values[0]) - 1)
+            ultima_col = chr(65 + len(values[0]) - 1)  # Calcula la última columna (por ejemplo, si hay 22 columnas, será 'V')
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated])
             mensaje = "Información actualizada correctamente."
             flash(mensaje, "success")
@@ -2967,11 +2977,12 @@ def otros_detalle(identifier):
         except Exception as e:
             mensaje = f"Error al actualizar: {e}"
             logging.error(mensaje, exc_info=True)
-        candidate_details = { headers_detalle[i]: candidato_row[i+2] for i in range(len(headers_detalle)) }
-        return render_template("otros_detalle.html", candidato=candidate_details, headers=headers_detalle, mensaje=mensaje)
+        candidate_details = {}
+        for idx in range(2, 20):
+            candidate_details[ short_headers[idx-2] ] = candidato_row[idx]
+        return render_template("otros_detalle.html", candidato=candidate_details, short_headers=short_headers, mensaje=mensaje)
     else:
-        candidate_details = { headers_detalle[i]: candidato_row[i+2] for i in range(len(headers_detalle)) }
-        return render_template("otros_detalle.html", candidato=candidate_details, headers=headers_detalle, mensaje="")
+        return render_template("otros_detalle.html", candidato=candidate_details, short_headers=short_headers, mensaje="")
 
 
 if __name__ == '__main__':
