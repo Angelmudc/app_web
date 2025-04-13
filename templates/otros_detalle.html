@@ -7,40 +7,34 @@
     {% if mensaje %}
       <div class="alert alert-info">{{ mensaje }}</div>
     {% endif %}
-    
-    <!-- Un solo formulario con una tabla editable -->
+    <!-- Formulario completo: la tabla se muestra horizontalmente -->
     <form id="detalleForm" method="POST" action="{{ url_for('otros_detalle', identifier=candidato['Nombre'] if candidato['Nombre']|trim != '' else candidato['Cédula']) }}">
       <div class="table-responsive">
-        <table class="table table-bordered">
+        <table class="table table-bordered" style="min-width: 1200px;">
           <thead>
             <tr>
               {% for col in short_headers %}
-                <th>{{ col }}</th>
+                <th style="min-width: 150px; text-align: center;">{{ col }}</th>
               {% endfor %}
             </tr>
           </thead>
           <tbody>
             <tr>
               {% for col in short_headers %}
-                {% set idx = loop.index0 %}
-                <td>
-                  <input type="text" name="col{{ idx + 2 }}" class="form-control detail-input" 
-                         value="{{ candidato[col] }}" 
-                         {% if idx < 16 %} disabled {% else %} readonly {% endif %}>
-                  {# Los primeros 16 inputs (para índices 2 a 17) son editables solo cuando se habilitan; 
-                     los últimos dos (para Código y Fecha) permanecen solo lectura #}
+                <td style="min-width: 150px;">
+                  <input type="text" name="col{{ loop.index0 + 2 }}" class="form-control detail-input" value="{{ candidato[col] }}" disabled>
                 </td>
               {% endfor %}
             </tr>
           </tbody>
         </table>
       </div>
-      <div class="text-center">
+      <div class="text-center mt-3">
          <button type="button" id="editarBtn" class="btn btn-primary" onclick="enableEditing()">Editar</button>
+         <button type="button" id="cancelBtn" class="btn btn-secondary" onclick="cancelEditing()" style="display:none;">Cancelar</button>
          <button type="submit" id="guardarBtn" class="btn btn-success" style="display:none;">Guardar Cambios</button>
       </div>
     </form>
-    
     <script>
       function enableEditing() {
          var inputs = document.querySelectorAll('.detail-input');
@@ -52,9 +46,18 @@
          }
          document.getElementById("editarBtn").style.display = "none";
          document.getElementById("guardarBtn").style.display = "inline-block";
+         document.getElementById("cancelBtn").style.display = "inline-block";
+      }
+      function cancelEditing() {
+         var inputs = document.querySelectorAll('.detail-input');
+         inputs.forEach(function(input) {
+             input.disabled = true;
+         });
+         document.getElementById("editarBtn").style.display = "inline-block";
+         document.getElementById("guardarBtn").style.display = "none";
+         document.getElementById("cancelBtn").style.display = "none";
       }
     </script>
-    
   {% else %}
     <div class="alert alert-danger">Candidato no encontrado.</div>
     <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>
