@@ -15,7 +15,6 @@
       --bg-gradient-end: #e0e0e0;
       --transition-duration: 0.3s;
     }
-    /* Fondo animado con gradiente */
     @keyframes bgGradient {
       0% { background-position: 0% 50%; }
       50% { background-position: 100% 50%; }
@@ -30,7 +29,6 @@
       margin: 0;
       padding: 0;
     }
-    /* Contenedor principal con sombra y animación de entrada */
     .container-main {
       background-color: var(--secondary-color);
       margin-top: 20px;
@@ -43,7 +41,6 @@
       from { opacity: 0; transform: translateY(30px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    /* Barra de navegación */
     .navbar {
       background-color: var(--primary-color);
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -59,7 +56,6 @@
     .navbar-collapse {
       background-color: var(--primary-color);
     }
-    /* Botones personalizados y animaciones */
     .btn-primary {
       background-color: var(--accent-color);
       border: none;
@@ -88,7 +84,6 @@
       cursor: not-allowed;
       opacity: 0.65;
     }
-    /* Títulos */
     h1, h2 {
       color: var(--primary-color);
       margin-bottom: 20px;
@@ -104,7 +99,6 @@
       margin: 10px auto 0;
       border-radius: 2px;
     }
-    /* Formularios y tablas */
     form {
       margin-bottom: 30px;
     }
@@ -127,7 +121,6 @@
     tbody tr:nth-of-type(even) {
       background-color: #f8f9fa;
     }
-    /* Animación de desvanecimiento */
     .fade-in {
       animation: fadeIn 0.5s ease-in;
     }
@@ -138,10 +131,8 @@
   </style>
 </head>
 <body>
-  <!-- Barra de navegación -->
   <nav class="navbar navbar-expand-lg">
     <div class="container-fluid">
-      <!-- El texto del logo y el enlace se adaptan a Otros Empleos -->
       <a class="navbar-brand" href="{{ url_for('otros_listar') }}">Otros Empleos</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContenido" aria-controls="navbarContenido" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
@@ -154,18 +145,26 @@
           <li class="nav-item">
             <a class="nav-link" href="{{ url_for('otros_inscripcion') }}">Inscripción</a>
           </li>
-          <!-- Puedes agregar más elementos de navegación propios del módulo si es necesario -->
         </ul>
       </div>
     </div>
   </nav>
   
-  <!-- Contenedor principal -->
-  <div class="container container-main">
+  <div class="container container-main mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    
     {% block content %}{% endblock %}
   </div>
   
-  <!-- Script para deshabilitar botones al enviar formularios -->
   <script>
     document.addEventListener("DOMContentLoaded", function() {
       const forms = document.querySelectorAll("form");
@@ -180,7 +179,6 @@
     });
   </script>
   
-  <!-- Bootstrap Bundle JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

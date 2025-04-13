@@ -48,6 +48,10 @@ from datetime import datetime, timedelta
 
 import difflib
 
+from flask import Flask, render_template, request, redirect, url_for, flash
+import logging
+
+
 from flask import send_file
 
 from flask import Flask
@@ -2757,25 +2761,23 @@ from flask import flash
 @app.route('/otros_empleos/inscripcion', methods=['GET', 'POST'])
 def otros_inscripcion():
     mensaje = ""
-    ws = get_sheet_otros()  # Función que obtiene la hoja de cálculo
+    ws = get_sheet_otros()  # Obtiene la hoja de cálculo
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_inscripcion.html", mensaje=mensaje)
-    
-    headers = get_headers_otros()  # Lista de encabezados de la hoja
 
-    # Definir los keys basados en los índices fijos:
-    # Índice (basado en 0): Nombre = headers[2], Edad = headers[3], Teléfono = headers[4], Cédula = headers[6]
+    headers = get_headers_otros()
+
+    # Definir "keys" basados en índices:
+    # Nombre -> índice 2, Edad -> índice 3, Teléfono -> índice 4, Cédula -> índice 6.
     nombre_key = headers[2]
     edad_key = headers[3]
     telefono_key = headers[4]
     cedula_key = headers[6]
 
-    # Modo GET: se busca al candidato por nombre o cédula usando el parámetro "q"
     if request.method == 'GET':
         query = request.args.get("q", "").strip()
         if not query:
-            # Muestra el formulario de búsqueda si aún no se ingresa nada.
             return render_template("otros_inscripcion.html", 
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
@@ -2786,14 +2788,12 @@ def otros_inscripcion():
             return render_template("otros_inscripcion.html", mensaje=mensaje,
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
-        
         matches = []
         for row in data:
-            # Convertimos la cédula en string para usar .lower()
+            # Convertir a cadena para evitar errores si la cédula es numérica.
             if (query.lower() in row.get(nombre_key, "").lower() or 
                 query.lower() in str(row.get(cedula_key, "")).lower()):
                 matches.append(row)
-                
         if not matches:
             mensaje = "Candidato no encontrado."
             return render_template("otros_inscripcion.html", mensaje=mensaje,
@@ -2809,13 +2809,11 @@ def otros_inscripcion():
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
     
-    # Modo POST: se actualizan los datos de inscripción para el candidato seleccionado.
     if request.method == 'POST':
-        cedula = request.form.get("cedula", "").strip()  # Se recibe desde el campo oculto
+        cedula = request.form.get("cedula", "").strip()
         fecha_inscripcion = request.form.get("fecha_inscripcion", "").strip()
         monto = request.form.get("monto", "").strip()
         via_inscripcion = request.form.get("via_inscripcion", "").strip()
-
         try:
             data = ws.get_all_records()
         except Exception as e:
@@ -2823,44 +2821,35 @@ def otros_inscripcion():
             return render_template("otros_inscripcion.html", mensaje=mensaje,
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
-        
         row_index = None
         candidato_actual = None
-        # Buscamos el candidato usando la cédula; convertimos a cadena para aplicar strip
         for idx, row in enumerate(data, start=2):  # La fila 1 es el encabezado.
             if str(row.get(cedula_key, "")).strip() == cedula:
                 row_index = idx
                 candidato_actual = row
                 break
-        
         if not row_index or not candidato_actual:
             mensaje = "Candidato no encontrado para actualización."
             return render_template("otros_inscripcion.html", mensaje=mensaje,
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
-        
-        # Genera el código automáticamente
         codigo = generate_next_code_otros()
-        
-        # Construir la nueva fila utilizando la posición de columnas:
-        # Posición 18: codigo, 19: fecha, 20: monto, 21: via.
+        # Se actualizan las columnas de inscripción:
+        # Columna S (índice 18): código, T (índice 19): fecha, U (índice 20): monto, V (índice 21): vía.
         new_row = []
         for i, header in enumerate(headers):
-            if i == 18:           # Columna S: codigo
+            if i == 18:
                 new_row.append(codigo)
-            elif i == 19:         # Columna T: fecha
+            elif i == 19:
                 new_row.append(fecha_inscripcion)
-            elif i == 20:         # Columna U: monto
+            elif i == 20:
                 new_row.append(monto)
-            elif i == 21:         # Columna V: via
+            elif i == 21:
                 new_row.append(via_inscripcion)
             else:
                 new_row.append(candidato_actual.get(header, ""))
-        
         try:
-            # Calcula la letra de la última columna (A=65 en ASCII)
-            ultima_col = chr(65 + len(headers) - 1)
-            # Actualiza la fila con solo el row de datos
+            ultima_col = chr(65 + len(headers) - 1)  # Calcula la letra de la última columna
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [new_row])
             mensaje = f"Inscripción exitosa. Código asignado: {codigo}"
             flash(mensaje, "success")
@@ -2871,6 +2860,7 @@ def otros_inscripcion():
                                    nombre_key=nombre_key, cedula_key=cedula_key,
                                    edad_key=edad_key, telefono_key=telefono_key)
 
+# La ruta 'otros_listar' y otras rutas relacionadas deben estar implementadas para completar el flujo.
 
 
 # ─────────────────────────────────────────────────────────────
