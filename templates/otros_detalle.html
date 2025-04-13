@@ -7,8 +7,8 @@
     {% if mensaje %}
       <div class="alert alert-info">{{ mensaje }}</div>
     {% endif %}
-
-    {# Mapeo de encabezados largos a etiquetas cortas para visualización #}
+    
+    {# Mapeo de encabezados largos a etiquetas cortas #}
     {% set mapping = {
          "Marca temporal": "Timestamp",
          "Dirección de correo electrónico": "Email",
@@ -55,7 +55,6 @@
     <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato["Nombre completo"] if candidato["Nombre completo"]|trim != "" else candidato["Cédula"]) }}">
       {% for idx in range(2, 18) %}
          <div class="mb-3">
-            {# headers_detalle en la ruta se obtiene con values[0][2:20] y aquí usamos mapping para mostrar el encabezado corto #}
             <label class="form-label">{{ mapping.get(headers[idx-2], headers[idx-2]) }}</label>
             <input type="text" name="col{{ idx }}" class="form-control" value="{{ candidato[mapping.get(headers[idx-2], headers[idx-2])] if candidato[mapping.get(headers[idx-2], headers[idx-2])] is defined else candidato[headers[idx-2]] }}">
          </div>
