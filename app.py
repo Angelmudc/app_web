@@ -2988,15 +2988,15 @@ def otros_detalle(identifier):
     row_index = None
     headers = get_headers_otros()
     
-    # Primero busca por "codigo"
-    for i, row in enumerate(data, start=2):  # Fila 1 es el encabezado
+    # Primero, buscar por "codigo"
+    for i, row in enumerate(data, start=2):  # La fila 1 es el encabezado
         code_val = str(row.get("codigo", "")).strip()
         if code_val == identifier:
             candidato = row
             row_index = i
             break
     
-    # Si no se encontró por código, busca por "Cédula"
+    # Si no se encontró por "codigo", buscar por "Cédula"
     if not candidato:
         for i, row in enumerate(data, start=2):
             cedula_val = str(row.get("Cédula", "")).strip()
@@ -3012,7 +3012,8 @@ def otros_detalle(identifier):
     if request.method == 'POST':
         form = request.form
         updated_row = []
-        # Actualiza únicamente los campos de inscripción: "fecha", "monto" y "via".
+        # Actualizar campos: en este ejemplo, se actualizan "fecha", "monto" y "via"
+        # y se conservan el resto de los datos.
         for header in headers:
             if header == "fecha":
                 updated_row.append(form.get("fecha_inscripcion", "").strip())
@@ -3023,7 +3024,8 @@ def otros_detalle(identifier):
             else:
                 updated_row.append(candidato.get(header, ""))
         try:
-            ultima_col = chr(65 + len(headers) - 1)  # Calcula la letra de la última columna
+            ultima_col = chr(65 + len(headers) - 1)  # Calcula la letra de la última columna (A-Z)
+            # Actualizamos solo la fila de datos, sin enviar el encabezado
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated_row])
             mensaje = "Información actualizada correctamente."
             flash(mensaje, "success")
