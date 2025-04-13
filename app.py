@@ -2758,109 +2758,60 @@ def marcar_copiada():
 def otros_inscripcion():
     mensaje = ""
     if request.method == 'POST':
-        ws = get_sheet_otros()
+        ws = get_sheet_otros()  # Función que obtiene la hoja (por ejemplo, de Google Sheets)
         if not ws:
             mensaje = "Error al acceder a la hoja 'Otros'."
             return render_template("otros_inscripcion.html", mensaje=mensaje)
-        headers = get_headers_otros()
+        headers = get_headers_otros()  # Obtiene los encabezados de la hoja
         form = request.form
-        
-        # Mapeo de campos del formulario con las columnas (usar nombres de claves simplificados)
-        # Se espera que el formulario envíe: 'correo', 'nombre', 'edad', 'telefono', 'direccion',
-        # 'cedula', 'nivel_educativo', 'carrera', 'idioma', 'sabe_computadora', 'licencia',
-        # 'habilidades', 'experiencia', 'servicios_ofrecidos', 'referencias_laborales', 'referencias_familiares',
-        # 'terminos' (checkbox), 'fecha_inscripcion', 'monto', 'via_inscripcion'.
-        cedula = form.get("cedula", "").strip()
-        
-        # Validar duplicidad de cédula
+
+        # Datos para verificación (los que se muestran al inscribir)
+        nombre   = form.get("nombre", "").strip()
+        cedula   = form.get("cedula", "").strip()
+        edad     = form.get("edad", "").strip()
+        telefono = form.get("telefono", "").strip()
+
+        # Validar duplicidad usando la cédula
         try:
             idx_cedula = headers.index("Cédula") + 1
         except ValueError:
             idx_cedula = None
         if idx_cedula:
-            cedulas = ws.col_values(idx_cedula)[1:]
+            cedulas = ws.col_values(idx_cedula)[1:]  # Omitir el encabezado
             if cedula in cedulas:
                 mensaje = "El candidato ya existe."
                 flash(mensaje, "error")
                 return redirect(url_for("otros_inscripcion"))
-        
-        # Generar código escalable
+
+        # Datos de inscripción
+        fecha_inscripcion = form.get("fecha_inscripcion", "").strip()
+        monto             = form.get("monto", "").strip()
+        via_inscripcion   = form.get("via_inscripcion", "").strip()
+
+        # Generar código automáticamente
         codigo = generate_next_code_otros()
-        fecha_inscripcion = form.get("fecha_inscripcion", "").strip()  # Se espera "YYYY-MM-DD"
-        monto = form.get("monto", "").strip()
-        via_inscripcion = form.get("via_inscripcion", "").strip()
-        
-        # Construir la nueva fila basándonos en el orden de los encabezados.
-        # Para los campos adicionales, se utiliza la siguiente asignación:
-        # "Marca temporal": Se puede dejar en blanco o asignar datetime.now() si se desea.
-        # "Dirección de correo electrónico": form["correo"]
-        # "Nombre completo": form["nombre"]
-        # "¿Qué edad tienes?": form["edad"]
-        # "Número de teléfono": form["telefono"]
-        # "Dirección completa": form["direccion"]
-        # "Cédula": form["cedula"]
-        # "Nivel educativo alcanzado": form["nivel_educativo"]
-        # "Carrera o especialidad (si aplica)": form["carrera"]
-        # "Idioma que dominas": form["idioma"]
-        # "¿Sabe usar computadora?": "Sí" si form["sabe_computadora"]=="yes" else "No"
-        # "¿Tiene licencia de conducir?": similar
-        # "Habilidades o conocimientos especiales": form["habilidades"]
-        # "¿Tiene experiencia laboral?": form["experiencia"]
-        # "Servicios que está dispuesto(a) a ofrecer": form["servicios_ofrecidos"]
-        # "Dos contactos de referencias laborales y explicación": form["referencias_laborales"]
-        # "Dos referencias familiares y especifique qué relación tiene": form["referencias_familiares"]
-        # "Términos y Condiciones": "Aceptado" si form["terminos"]=="on" else "No Aceptado"
-        # "codigo": se asigna el código generado
-        # "fecha": se asigna el valor de fecha_inscripcion
-        # "monto": se asigna el valor de monto
-        # "via": se asigna el valor de via_inscripcion
+
+        # Se asume que en la hoja se tienen las siguientes columnas:
+        # "Nombre completo", "Cédula", "¿Qué edad tienes?", "Número de teléfono",
+        # "fecha", "monto", "via" y "codigo"
         new_row = []
         for header in headers:
-            if header == "Marca temporal":
-                # Asigna la marca temporal actual (opcional)
-                new_row.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            elif header == "Dirección de correo electrónico":
-                new_row.append(form.get("correo", "").strip())
-            elif header == "Nombre completo":
-                new_row.append(form.get("nombre", "").strip())
-            elif header == "¿Qué edad tienes?":
-                new_row.append(form.get("edad", "").strip())
-            elif header == "Número de teléfono":
-                new_row.append(form.get("telefono", "").strip())
-            elif header == "Dirección completa":
-                new_row.append(form.get("direccion", "").strip())
+            if header == "Nombre completo":
+                new_row.append(nombre)
             elif header == "Cédula":
                 new_row.append(cedula)
-            elif header == "Nivel educativo alcanzado":
-                new_row.append(form.get("nivel_educativo", "").strip())
-            elif header == "Carrera o especialidad (si aplica)":
-                new_row.append(form.get("carrera", "").strip())
-            elif header == "Idioma que dominas":
-                new_row.append(form.get("idioma", "").strip())
-            elif header == "¿Sabe usar computadora?":
-                new_row.append("Sí" if form.get("sabe_computadora") == "yes" else "No")
-            elif header == "¿Tiene licencia de conducir?":
-                new_row.append("Sí" if form.get("licencia") == "yes" else "No")
-            elif header == "Habilidades o conocimientos especiales":
-                new_row.append(form.get("habilidades", "").strip())
-            elif header == "¿Tiene experiencia laboral?":
-                new_row.append(form.get("experiencia", "").strip())
-            elif header == "Servicios que está dispuesto(a) a ofrecer":
-                new_row.append(form.get("servicios_ofrecidos", "").strip())
-            elif header == "Dos contactos de referencias laborales y explicación":
-                new_row.append(form.get("referencias_laborales", "").strip())
-            elif header == "Dos referencias familiares y especifique qué relación tiene":
-                new_row.append(form.get("referencias_familiares", "").strip())
-            elif header == "Términos y Condiciones":
-                new_row.append("Aceptado" if form.get("terminos") == "on" else "No Aceptado")
-            elif header == "codigo":
-                new_row.append(codigo)
+            elif header == "¿Qué edad tienes?":
+                new_row.append(edad)
+            elif header == "Número de teléfono":
+                new_row.append(telefono)
             elif header == "fecha":
                 new_row.append(fecha_inscripcion)
             elif header == "monto":
                 new_row.append(monto)
             elif header == "via":
                 new_row.append(via_inscripcion)
+            elif header == "codigo":
+                new_row.append(codigo)
             else:
                 new_row.append("")
         try:
@@ -2873,6 +2824,7 @@ def otros_inscripcion():
             logging.error(mensaje, exc_info=True)
     return render_template("otros_inscripcion.html", mensaje=mensaje)
 
+
 # ─────────────────────────────────────────────────────────────
 # Ruta: Listado y Búsqueda Flexible de Otros Empleos
 # ─────────────────────────────────────────────────────────────
@@ -2881,24 +2833,25 @@ def otros_listar():
     ws = get_sheet_otros()
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
-        return render_template("otros_listar.html", mensaje=mensaje, empleados=[])
+        return render_template("otros_listar.html", mensaje=mensaje, candidatos=[])
     try:
-        data = ws.get_all_records()  # Cada fila se devuelve como diccionario, usando los encabezados
+        data = ws.get_all_records()
     except Exception as e:
         mensaje = f"Error al obtener datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
-        return render_template("otros_listar.html", mensaje=mensaje, empleados=[])
+        return render_template("otros_listar.html", mensaje=mensaje, candidatos=[])
     query = request.args.get("q", "").strip().lower()
     if query:
         filtered = []
         for row in data:
-            nombre = row.get("Nombre completo", "").strip().lower()
-            cedula = row.get("Cédula", "").strip().lower()
-            codigo = row.get("codigo", "").strip().lower()
-            if query in nombre or query in cedula or query in codigo:
+            # Se busca por los campos clave: Nombre, Cédula o Código
+            if (query in row.get("Nombre completo", "").lower() or 
+                query in row.get("Cédula", "").lower() or 
+                query in row.get("codigo", "").lower()):
                 filtered.append(row)
         data = filtered
-    return render_template("otros_listar.html", empleados=data, q=query)
+    return render_template("otros_listar.html", candidatos=data, q=query)
+
 
 # ─────────────────────────────────────────────────────────────
 # Ruta: Detalle y Edición Inline de Otros Empleos
@@ -2908,87 +2861,58 @@ def otros_detalle(codigo):
     ws = get_sheet_otros()
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
-        return render_template("otros_detalle.html", mensaje=mensaje, empleado=None)
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
     try:
         data = ws.get_all_records()
     except Exception as e:
         mensaje = f"Error al obtener datos: {str(e)}"
-        return render_template("otros_detalle.html", mensaje=mensaje, empleado=None)
-    empleado = None
+        logging.error(mensaje, exc_info=True)
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
+    candidato = None
     row_index = None
     headers = get_headers_otros()
-    # Buscar el registro cuyo campo "codigo" coincide con el parámetro (comparación exacta)
-    for i, row in enumerate(data, start=2):  # se inicia en 2 porque la fila 1 es encabezado
+    for i, row in enumerate(data, start=2):  # Empezar en 2, ya que la fila 1 es el encabezado
         if row.get("codigo", "").strip() == codigo:
-            empleado = row
+            candidato = row
             row_index = i
             break
-    if not empleado:
+    if not candidato:
         mensaje = "Candidato no encontrado."
-        return render_template("otros_detalle.html", mensaje=mensaje, empleado=None)
+        return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
     mensaje = ""
     if request.method == "POST":
         form = request.form
-        # Para cada columna, actualizamos si se envía dato en el formulario; de lo contrario, se conserva el valor original.
         updated_row = []
         for header in headers:
-            if header == "Marca temporal":
-                updated_row.append(empleado.get(header, ""))
-            elif header == "Dirección de correo electrónico":
-                updated_row.append(form.get("correo", "").strip())
-            elif header == "Nombre completo":
+            if header == "Nombre completo":
                 updated_row.append(form.get("nombre", "").strip())
+            elif header == "Cédula":
+                # La cédula no se edita para mantener la identidad
+                updated_row.append(candidato.get("Cédula", ""))
             elif header == "¿Qué edad tienes?":
                 updated_row.append(form.get("edad", "").strip())
             elif header == "Número de teléfono":
                 updated_row.append(form.get("telefono", "").strip())
-            elif header == "Dirección completa":
-                updated_row.append(form.get("direccion", "").strip())
-            elif header == "Cédula":
-                updated_row.append(empleado.get(header, ""))
-            elif header == "Nivel educativo alcanzado":
-                updated_row.append(form.get("nivel_educativo", "").strip())
-            elif header == "Carrera o especialidad (si aplica)":
-                updated_row.append(form.get("carrera", "").strip())
-            elif header == "Idioma que dominas":
-                updated_row.append(form.get("idioma", "").strip())
-            elif header == "¿Sabe usar computadora?":
-                updated_row.append("Sí" if form.get("sabe_computadora") == "yes" else "No")
-            elif header == "¿Tiene licencia de conducir?":
-                updated_row.append("Sí" if form.get("licencia") == "yes" else "No")
-            elif header == "Habilidades o conocimientos especiales":
-                updated_row.append(form.get("habilidades", "").strip())
-            elif header == "¿Tiene experiencia laboral?":
-                updated_row.append(form.get("experiencia", "").strip())
-            elif header == "Servicios que está dispuesto(a) a ofrecer":
-                updated_row.append(form.get("servicios_ofrecidos", "").strip())
-            elif header == "Dos contactos de referencias laborales y explicación":
-                updated_row.append(form.get("referencias_laborales", "").strip())
-            elif header == "Dos referencias familiares y especifique qué relación tiene":
-                updated_row.append(form.get("referencias_familiares", "").strip())
-            elif header == "Términos y Condiciones":
-                updated_row.append("Aceptado" if form.get("terminos") == "on" else "No Aceptado")
-            elif header == "codigo":
-                updated_row.append(empleado.get(header, ""))
             elif header == "fecha":
                 updated_row.append(form.get("fecha_inscripcion", "").strip())
             elif header == "monto":
                 updated_row.append(form.get("monto", "").strip())
             elif header == "via":
                 updated_row.append(form.get("via_inscripcion", "").strip())
+            elif header == "codigo":
+                updated_row.append(candidato.get("codigo", ""))
             else:
-                updated_row.append(empleado.get(header, ""))
+                updated_row.append(candidato.get(header, ""))
         try:
-            # Calcular la última columna según la cantidad de encabezados
-            ultima_columna = chr(64 + len(headers))  # Solo funciona para hasta 26 columnas
-            # Actualizar la fila: Se envía el arreglo de encabezados y la nueva fila
-            ws.update(f"A{row_index}:{ultima_columna}{row_index}", [headers, updated_row])
+            # Se asume que la hoja tiene como máximo 26 columnas
+            ultima_col = chr(64 + len(headers))
+            ws.update(f"A{row_index}:{ultima_col}{row_index}", [headers, updated_row])
             mensaje = "Información actualizada correctamente."
-            empleado = dict(zip(headers, updated_row))
+            candidato = dict(zip(headers, updated_row))
         except Exception as e:
             mensaje = f"Error al actualizar: {str(e)}"
             logging.error(mensaje, exc_info=True)
-    return render_template("otros_detalle.html", empleado=empleado, mensaje=mensaje)
+    return render_template("otros_detalle.html", candidato=candidato, mensaje=mensaje)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

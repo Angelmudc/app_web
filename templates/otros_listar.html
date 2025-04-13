@@ -1,46 +1,55 @@
-{% extends "layout.html" %}
-{% block title %}Listado de Otros Empleos{% endblock %}
-
-{% block content %}
-  <h1>Listado de Otros Empleos</h1>
-  {% if mensaje %}
-    <div class="alert alert-warning">
-      {{ mensaje }}
-    </div>
-  {% endif %}
-  <form method="GET" action="{{ url_for('otros_listar') }}" class="form-inline mb-3">
-    <input type="text" name="q" class="form-control mr-2" placeholder="Buscar por nombre, cédula o código" value="{{ q }}">
-    <button type="submit" class="btn btn-secondary">Buscar</button>
-    <a href="{{ url_for('otros_inscripcion') }}" class="btn btn-primary ml-2">Nueva Inscripción</a>
-  </form>
-  {% if empleados %}
-    <table class="table table-striped">
-      <thead>
-        <tr>
-          <th>Código</th>
-          <th>Nombre Completo</th>
-          <th>Cédula</th>
-          <th>Fecha de Inscripción</th>
-          <th>Monto</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for emp in empleados %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Listado - Otros Empleos</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+</head>
+<body>
+  <div class="container mt-4">
+    <h1>Listado de Candidatos Inscritos</h1>
+    {% if mensaje %}
+      <div class="alert alert-warning">{{ mensaje }}</div>
+    {% endif %}
+    <form method="GET" action="{{ url_for('otros_listar') }}" class="mb-3">
+      <input type="text" name="q" class="form-control" placeholder="Buscar por Nombre, Cédula o Código" value="{{ q }}">
+    </form>
+    {% if candidatos %}
+      <table class="table table-bordered">
+        <thead>
           <tr>
-            <td>{{ emp["codigo"] }}</td>
-            <td>{{ emp["Nombre completo"] }}</td>
-            <td>{{ emp["Cédula"] }}</td>
-            <td>{{ emp["fecha"] }}</td>
-            <td>{{ emp["monto"] }}</td>
-            <td>
-              <a href="{{ url_for('otros_detalle', codigo=emp["codigo"]) }}" class="btn btn-info btn-sm">Detalle / Editar</a>
-            </td>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Cédula</th>
+            <th>Edad</th>
+            <th>Teléfono</th>
+            <th>Fecha de Inscripción</th>
+            <th>Monto</th>
+            <th>Vía</th>
+            <th>Acciones</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>No se encontraron registros.</p>
-  {% endif %}
-{% endblock %}
+        </thead>
+        <tbody>
+          {% for cand in candidatos %}
+            <tr>
+              <td>{{ cand["codigo"] }}</td>
+              <td>{{ cand["Nombre completo"] }}</td>
+              <td>{{ cand["Cédula"] }}</td>
+              <td>{{ cand["¿Qué edad tienes?"] }}</td>
+              <td>{{ cand["Número de teléfono"] }}</td>
+              <td>{{ cand["fecha"] }}</td>
+              <td>{{ cand["monto"] }}</td>
+              <td>{{ cand["via"] }}</td>
+              <td>
+                <a href="{{ url_for('otros_detalle', codigo=cand['codigo']) }}" class="btn btn-sm btn-info">Editar</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No se encontraron candidatos registrados.</p>
+    {% endif %}
+  </div>
+</body>
+</html>
