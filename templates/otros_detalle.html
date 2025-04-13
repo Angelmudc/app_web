@@ -36,17 +36,23 @@
         <th>Cédula</th>
         <td>{{ candidato["Cédula"] }}</td>
       </tr>
-      <!-- Puedes agregar más filas para cada campo si se requiere -->
       <tr>
-        <th>Codigo</th>
+        <th>Nivel educativo</th>
+        <td>{{ candidato["Nivel educativo alcanzado"] }}</td>
+      </tr>
+      <tr>
+        <th>Código</th>
         <td>{{ candidato["codigo"] }}</td>
       </tr>
       <tr>
         <th>Fecha</th>
         <td>{{ candidato["fecha"] }}</td>
       </tr>
+      <!-- Agrega más filas según necesites otros detalles -->
     </table>
-    <!-- Formulario para editar datos de inscripción -->
+    
+    <!-- Formulario para actualizar datos de inscripción -->
+    <h3 class="mt-4">Editar Datos de Inscripción</h3>
     <form method="POST" action="{{ url_for('otros_detalle', identifier=candidato['codigo'] if candidato['codigo']|string|trim != '' else candidato['Cédula']) }}">
       <div class="mb-3">
         <label for="fecha_inscripcion" class="form-label">Nueva Fecha de Inscripción (YYYY-MM-DD):</label>
@@ -62,6 +68,7 @@
       </div>
       <button type="submit" class="btn btn-primary">Actualizar Información</button>
     </form>
+  
   {% else %}
     <div class="alert alert-danger">Candidato no encontrado.</div>
     <a href="{{ url_for('otros_listar') }}" class="btn btn-secondary">Volver al Listado</a>

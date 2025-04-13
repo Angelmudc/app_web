@@ -2918,46 +2918,37 @@ def otros_detalle(identifier):
     if not ws:
         mensaje = "Error al acceder a la hoja 'Otros'."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-
+    
     try:
-        data = ws.get_all_records()
+        data = ws.get_all_records()  # Obtiene una lista de diccionarios con las filas
     except Exception as e:
         mensaje = f"Error al obtener datos: {str(e)}"
         logging.error(mensaje, exc_info=True)
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-
+    
     candidato = None
     row_index = None
     headers = get_headers_otros()
-
-    # Normalizamos el valor de identifier
+    # Normalizamos el parámetro identifier para la comparación
     identifier_norm = identifier.strip().lower()
-
-    # Primero, buscar por "codigo" (se normaliza la comparación)
-    for i, row in enumerate(data, start=2):  # La fila 1 es el encabezado
-        code_val = str(row.get("codigo", "")).strip().lower()
-        if code_val == identifier_norm:
+    
+    # Buscar primero por "codigo" y luego por "Cédula"
+    for i, row in enumerate(data, start=2):
+        codigo_val = str(row.get("codigo", "")).strip().lower()
+        cedula_val = str(row.get("Cédula", "")).strip().lower()
+        if codigo_val == identifier_norm or cedula_val == identifier_norm:
             candidato = row
             row_index = i
             break
 
-    # Si no se encontró por "codigo", buscar por "Cédula"
-    if not candidato:
-        for i, row in enumerate(data, start=2):
-            cedula_val = str(row.get("Cédula", "")).strip().lower()
-            if cedula_val == identifier_norm:
-                candidato = row
-                row_index = i
-                break
-
     if not candidato:
         mensaje = "Candidato no encontrado."
         return render_template("otros_detalle.html", mensaje=mensaje, candidato=None)
-
+    
     if request.method == 'POST':
         form = request.form
         updated_row = []
-        # Actualizar únicamente los campos de inscripción: "fecha", "monto" y "via".
+        # Actualización de campos de inscripción: 'fecha', 'monto' y 'via'
         for header in headers:
             if header == "fecha":
                 updated_row.append(form.get("fecha_inscripcion", "").strip())
@@ -2969,7 +2960,7 @@ def otros_detalle(identifier):
                 updated_row.append(candidato.get(header, ""))
         try:
             ultima_col = chr(65 + len(headers) - 1)  # Calcula la letra de la última columna (A-Z)
-            # Actualizamos solo la fila de datos (sin encabezado)
+            # Actualizamos la fila con solo la fila de datos (sin encabezados)
             ws.update(f"A{row_index}:{ultima_col}{row_index}", [updated_row])
             mensaje = "Información actualizada correctamente."
             flash(mensaje, "success")
