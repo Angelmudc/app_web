@@ -8,8 +8,20 @@
     <div class="alert alert-warning">{{ mensaje }}</div>
   {% endif %}
   
-  {% if modo == "enrolar" and candidato %}
-    <!-- Modo inscripción: Se muestran los datos existentes para verificación -->
+  {% if modo == "seleccion" and candidatos %}
+    <h4 class="mb-3">Se encontraron múltiples candidatos. Seleccione uno:</h4>
+    <ul class="list-group">
+      {% for cand in candidatos %}
+        <li class="list-group-item">
+          {{ cand["Nombre completo"] }} - {{ cand["Cédula"] }} - {{ cand["Número de teléfono"] }}
+          <!-- Al hacer clic, se invoca la búsqueda por la cédula de ese candidato -->
+          <a href="{{ url_for('otros_inscripcion') }}?q={{ cand['Cédula'] }}" class="btn btn-sm btn-primary float-end">Seleccionar</a>
+        </li>
+      {% endfor %}
+    </ul>
+  
+  {% elif modo == "enrolar" and candidato %}
+    <!-- Se muestran los datos existentes para verificación -->
     <div class="mb-3">
       <label class="form-label"><strong>Nombre Completo:</strong></label>
       <p>{{ candidato["Nombre completo"] }}</p>
@@ -26,9 +38,9 @@
       <label class="form-label"><strong>Número de Teléfono:</strong></label>
       <p>{{ candidato["Número de teléfono"] }}</p>
     </div>
-    <!-- Formulario para agregar los nuevos datos de inscripción -->
+    <!-- Formulario para ingresar datos de inscripción -->
     <form method="POST" action="{{ url_for('otros_inscripcion') }}">
-      <!-- Campo oculto para mantener la cédula (clave única) -->
+      <!-- Campo oculto para mantener la cédula -->
       <input type="hidden" name="cedula" value="{{ candidato['Cédula'] }}">
       <div class="mb-3">
         <label for="fecha_inscripcion" class="form-label">Fecha de Inscripción (YYYY-MM-DD):</label>
@@ -46,11 +58,11 @@
     </form>
   
   {% else %}
-    <!-- Modo búsqueda: Se solicita la cédula para buscar al candidato -->
+    <!-- Modo búsqueda inicial: se solicita ingresar un query (nombre o cédula) -->
     <form method="GET" action="{{ url_for('otros_inscripcion') }}">
       <div class="mb-3">
-        <label for="cedula" class="form-label">Ingrese la Cédula del Candidato:</label>
-        <input type="text" name="cedula" id="cedula" class="form-control" required>
+        <label for="q" class="form-label">Ingrese el nombre o cédula del candidato:</label>
+        <input type="text" name="q" id="q" class="form-control" required>
       </div>
       <button type="submit" class="btn btn-primary">Buscar Candidato</button>
     </form>
