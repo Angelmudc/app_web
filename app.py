@@ -97,7 +97,7 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 usuarios = {
     "angel": generate_password_hash("0000"),
     "Edilenia": generate_password_hash("2003"),
-    "Athy": generate_password_hash("2004"),
+    "Ively": generate_password_hash("0712"),
     "divina": generate_password_hash("0607")
 }
 
