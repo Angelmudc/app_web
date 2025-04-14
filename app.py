@@ -2246,7 +2246,7 @@ def solicitudes():
     if 'usuario' not in session:
         return redirect(url_for('login'))
     
-    # Determinar la acción
+    # Determinar la acción: si no se especifica y se recibe "codigo", se asume "buscar"; de lo contrario "ver"
     accion = request.args.get('accion', None)
     if accion is None or accion.strip() == "":
         if request.args.get("codigo"):
@@ -2403,7 +2403,7 @@ def solicitudes():
             return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=[])
         
         filtered = data[1:] if len(data) > 1 else []
-        # Filtro por rango de fechas (columna B, índice 1)
+        # Filtrar por rango de fechas (columna B, índice 1)
         fecha_inicio = request.args.get("fecha_inicio", "").strip()
         fecha_fin = request.args.get("fecha_fin", "").strip()
         try:
@@ -2455,7 +2455,7 @@ def solicitudes():
         filtered_count = len(filtered)
         mensaje_info = f"Total órdenes: {total_orders}. Órdenes filtradas: {filtered_count}."
         
-        # Cálculo de fechas para búsqueda rápida
+        # Cálculo de fechas para búsquedas rápidas.
         today = datetime.today().date()
         quick_hoy = today.strftime("%Y-%m-%d")
         start_week = today - timedelta(days=today.weekday())
@@ -2523,32 +2523,59 @@ def solicitudes():
                 if notas:
                     nuevo_registro += f" Notas: {notas}"
                 historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
-                rango_completo = f"Solicitudes!A{fila_index}:Z{fila_index}"
+                rango_completo = f"Solicitudes!A{fila_index}:AB{fila_index}"
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
                     range=rango_completo
                 ).execute()
                 fila_original = result.get("values", [])[0]
-                # Asegurarse que la fila tenga al menos 26 columnas (A-Z)
-                if len(fila_original) < 26:
-                    fila_original.extend([""] * (26 - len(fila_original)))
+                # Asegurarse que la fila tenga al menos 28 columnas (A a AB)
+                if len(fila_original) < 28:
+                    fila_original.extend([""] * (28 - len(fila_original)))
             except Exception as e:
                 logging.error("Error al obtener datos originales para actualización: " + str(e), exc_info=True)
                 fila_original = []
             
-            # Extra original: columnas J a M (índices 9 a 12)
+            # Extra original: columnas J a M (índices 9 a 12) se preservan sin cambios.
             extra_original = fila_original[9:13] if len(fila_original) >= 13 else ["", "", "", ""]
-            # Datos nuevos: columnas N a Z (índices 13 a 25)
-            datos_nuevos = fila_original[13:26] if len(fila_original) >= 26 else ["" for _ in range(13)]
-            
+            # Para las columnas N a Z, usaremos los valores del formulario (ya que son editables en "editar").
+            direccion = request.form.get("direccion", "").strip()
+            ruta = request.form.get("ruta", "").strip()
+            modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
+            edad = request.form.get("edad", "").strip()
+            nacionalidad = request.form.get("nacionalidad", "Dominicana").strip()
+            alfabetizacion = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"
+            experiencia = request.form.get("experiencia", "").strip()
+            horario = request.form.get("horario", "").strip()
+            funciones = request.form.get("funciones", "").strip()
+            descripcion_casa = request.form.get("descripcion_casa", "").strip()
+            adultos = request.form.get("adultos", "").strip()
+            sueldo = request.form.get("sueldo", "").strip()
+            notas_solicitud = request.form.get("notas_solicitud", "").strip()
+            datos_nuevos_form = [
+                direccion,
+                ruta,
+                modalidad_trabajo,
+                edad,
+                nacionalidad,
+                alfabetizacion,
+                experiencia,
+                horario,
+                funciones,
+                descripcion_casa,
+                adultos,
+                sueldo,
+                notas_solicitud
+            ]
+            # Construir la fila actualizada.
             updated_row = [
-                fila_original[3] if len(fila_original) > 3 else "",  # Descripción (sin cambiar)
-                nuevo_estado,             # Estado
-                empleado_asignado,        # Empleado asignado
-                fecha_actualizacion,      # Fecha de actualización
-                "",                       # Columna H sin cambios
-                historial_texto           # Historial actualizado
-            ] + extra_original + datos_nuevos + [pago, pago_fecha]  # Se agregan Pago (AA) y Fecha de Pago (AB)
+                request.form.get("descripcion", "").strip(),  # Columna D: descripción (tomada del formulario)
+                nuevo_estado,                                   # Columna E: estado
+                empleado_asignado,                              # Columna F: empleado asignado
+                fecha_actualizacion,                            # Columna G: fecha de actualización
+                "",                                             # Columna H: se deja en blanco
+                historial_texto                                 # Columna I: historial actualizado
+            ] + extra_original + datos_nuevos_form + [pago, pago_fecha]  # Se agregan Pago (columna AA) y Fecha de Pago (columna AB)
             
             update_range = f"Solicitudes!D{fila_index}:AB{fila_index}"
             try:
@@ -2601,11 +2628,12 @@ def solicitudes():
                 mensaje = "Fila inválida para editar."
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
-            codigo = request.form.get("codigo", "").strip()
+            # Campos editables del formulario (usados en la edición completa)
             descripcion = request.form.get("descripcion", "").strip()
             estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
             notas_actuales = request.form.get("notas", "").strip()
+            # Nuevos datos (Columnas N a Z) se toman del formulario
             direccion = request.form.get("direccion", "").strip()
             ruta = request.form.get("ruta", "").strip()
             modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
@@ -2647,7 +2675,8 @@ def solicitudes():
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = f"{historial_texto}\n{nuevo_registro}" if historial_texto else nuevo_registro
             try:
-                rango_completo = f"Solicitudes!A{fila_index}:Z{fila_index}"
+                # Obtener la fila completa original (A a AB) para preservar campos no editados
+                rango_completo = f"Solicitudes!A{fila_index}:AB{fila_index}"
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
                     range=rango_completo
@@ -2656,20 +2685,37 @@ def solicitudes():
             except Exception as e:
                 logging.error("Error al obtener datos originales: " + str(e), exc_info=True)
                 fila_original = []
-            # Rellenar la fila original para asegurarse de tener al menos 26 columnas (A-Z)
-            if len(fila_original) < 26:
-                fila_original.extend([""] * (26 - len(fila_original)))
-            extra_original = fila_original[9:13] if len(fila_original) >= 13 else ["", "", "", ""]
-            datos_nuevos = fila_original[13:26] if len(fila_original) >= 26 else ["" for _ in range(13)]
+            # Asegurarse de tener al menos 28 columnas (A a AB)
+            if len(fila_original) < 28:
+                fila_original.extend([""] * (28 - len(fila_original)))
+            # Extra original (Columnas J a M) se preserva del original
+            extra_original = fila_original[9:13]
+            # Para las columnas N a Z, usar los datos editados del formulario
+            datos_nuevos_form = [
+                direccion,
+                ruta,
+                modalidad_trabajo,
+                edad,
+                nacionalidad,
+                alfabetizacion,
+                experiencia,
+                horario,
+                funciones,
+                descripcion_casa,
+                adultos,
+                sueldo,
+                notas_solicitud
+            ]
+            # Se actualiza el rango D a AB; las columnas A-C no se modifican en edición completa.
             updated_row = [
-                descripcion,         # Columna D
-                estado,              # Columna E
-                empleado_asignado,   # Columna F
-                fecha_actualizacion, # Columna G
-                "",                  # Columna H
-                historial_texto      # Columna I
-            ] + extra_original + datos_nuevos
-            update_range = f"Solicitudes!D{fila_index}:Z{fila_index}"
+                descripcion,         # Columna D, descripción (del formulario)
+                estado,              # Columna E, estado (del formulario)
+                empleado_asignado,   # Columna F, empleado asignado
+                fecha_actualizacion, # Columna G, fecha de actualización
+                "",                  # Columna H, se deja en blanco (o se puede conservar original si se desea)
+                historial_texto      # Columna I, historial actualizado
+            ] + extra_original + datos_nuevos_form  # Extra original se conserva; datos nuevos se actualizan
+            update_range = f"Solicitudes!D{fila_index}:AB{fila_index}"
             try:
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2684,7 +2730,7 @@ def solicitudes():
             try:
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
-                    range=f"Solicitudes!A{fila_index}:Z{fila_index}"
+                    range=f"Solicitudes!A{fila_index}:AB{fila_index}"
                 ).execute()
                 orden_actualizada = result.get("values", [])[0]
             except Exception as e:
@@ -2693,12 +2739,11 @@ def solicitudes():
             return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_actualizada, fila=fila_index)
     
     # ----------------------------------------------------------------
-    # DISPONIBLES: Mostrar órdenes con estado "disponible" o "reemplazo",
-    # pero omitiendo las que ya tienen en la columna AC la fecha actual.
+    # DISPONIBLES: Mostrar órdenes con estado "disponible" o "reemplazo", 
+    # omitiendo las que tengan en la columna AC la fecha de hoy.
     elif accion == 'disponibles':
         solicitudes_data = {}
         try:
-            # Leer hasta la columna AC
             result = service.spreadsheets().values().get(
                 spreadsheetId=SPREADSHEET_ID,
                 range="Solicitudes!A1:AC"
@@ -2734,7 +2779,6 @@ def solicitudes():
 
 @app.route('/marcar_copiada', methods=['POST'])
 def marcar_copiada():
-    # Endpoint para marcar una orden como copiada (actualiza la columna AC con la fecha actual)
     fila_str = request.form.get("fila", "").strip()
     if not fila_str.isdigit():
         return "Error: Fila inválida", 400
@@ -2752,6 +2796,7 @@ def marcar_copiada():
     except Exception as e:
         logging.error("Error al marcar orden como copiada: " + str(e), exc_info=True)
         return "Error", 500
+
 
 from flask import flash
 
