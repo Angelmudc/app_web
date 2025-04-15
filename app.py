@@ -2251,7 +2251,7 @@ def solicitudes():
     if 'usuario' not in session:
         return redirect(url_for('login'))
     
-    # Determinar la acción: si no se especifica y se recibe "codigo", se asume "buscar"; de lo contrario "ver"
+    # Determinar la acción según parámetros de la URL
     accion = request.args.get('accion', None)
     if accion is None or accion.strip() == "":
         if request.args.get("codigo"):
@@ -2263,7 +2263,7 @@ def solicitudes():
     
     mensaje = None
 
-    # ---------------- REGISTRO: Crear nueva orden ----------------
+    # ––––––– REGISTRO –––––––
     if accion == 'registro':
         if request.method == 'GET':
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
@@ -2279,7 +2279,7 @@ def solicitudes():
                 return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
             fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             empleado_orden = session.get('usuario', 'desconocido')
-            estado = "En proceso"  # Valor inicial
+            estado = "En proceso"
             empleado_asignado = ""
             fecha_actualizacion = ""
             notas_inicial = ""
@@ -2349,7 +2349,7 @@ def solicitudes():
                 mensaje = "Error al registrar la orden."
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
     
-    # ---------------- VER: Listado completo de órdenes ----------------
+    # ––––––– VER –––––––
     elif accion == 'ver':
         solicitudes_data = []
         try:
@@ -2363,7 +2363,7 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
     
-    # ---------------- BUSCAR: Búsqueda estricta por código ----------------
+    # ––––––– BUSCAR –––––––
     elif accion == 'buscar':
         codigo = request.args.get("codigo", "").strip()
         try:
@@ -2390,7 +2390,7 @@ def solicitudes():
             mensaje = "Error al buscar la orden."
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
     
-    # ---------------- REPORTES: Filtrado flexible y búsqueda por fechas ----------------
+    # ––––––– REPORTES –––––––
     elif accion == 'reportes':
         try:
             result = service.spreadsheets().values().get(
@@ -2473,7 +2473,7 @@ def solicitudes():
                                quick_mes_start=quick_mes_start,
                                quick_mes_end=quick_mes_end)
     
-    # ---------------- ACTUALIZAR: Actualización parcial (con registro de pago) ----------------
+    # ––––––– ACTUALIZAR (PARCIAL): Solo modificar columnas específicas –––––––
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
@@ -2482,7 +2482,7 @@ def solicitudes():
         fila_index = int(fila_str)
         if request.method == 'GET':
             try:
-                rango = f"Solicitudes!A{fila_index}:AB{fila_index}"
+                rango = f"Solicitudes!A{fila_index}:Z{fila_index}"
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
                     range=rango
@@ -2495,6 +2495,8 @@ def solicitudes():
                 solicitud_fila = []
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje, solicitud=solicitud_fila, fila=fila_index)
         elif request.method == 'POST':
+            # Se obtienen los campos del formulario
+            descripcion = request.form.get("descripcion", "").strip()
             nuevo_estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
             notas = request.form.get("notas", "").strip()
@@ -2504,6 +2506,8 @@ def solicitudes():
                 nuevo_estado = "Disponible"
                 pago_fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Actualizar el historial (columna I)
             try:
                 rango_historial = f"Solicitudes!I{fila_index}"
                 respuesta_hist = service.spreadsheets().values().get(
@@ -2519,53 +2523,65 @@ def solicitudes():
             if notas:
                 nuevo_registro += f" Notas: {notas}"
             historial_texto = (historial_texto + "\n" + nuevo_registro) if historial_texto else nuevo_registro
-            try:
-                rango_completo = f"Solicitudes!A{fila_index}:AB{fila_index}"
-                result = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango_completo
-                ).execute()
-                fila_original = result.get("values", [])[0]
-                if len(fila_original) < 28:
-                    fila_original.extend([""] * (28 - len(fila_original)))
-            except Exception as e:
-                logging.error("Error al obtener datos originales para actualización: " + str(e), exc_info=True)
-                mensaje = "Error al cargar la fila original."
-                return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
-            # Preservar información del cliente (Columnas J a M, índices 9 a 12)
-            client_info = fila_original[9:13]
-            nueva_fila = fila_original.copy()
-            nueva_fila[3] = request.form.get("descripcion", "").strip()   # Columna D
-            nueva_fila[4] = nuevo_estado                                  # Columna E
-            nueva_fila[5] = empleado_asignado                             # Columna F
-            nueva_fila[6] = fecha_actualizacion                           # Columna G
-            nueva_fila[7] = ""                                            # Columna H
-            nueva_fila[8] = historial_texto                               # Columna I
-            # Actualización de datos editables (Columnas N a Z, índices 13 a 25)
-            nueva_fila[13] = request.form.get("direccion", "").strip()    # Columna N
-            nueva_fila[14] = request.form.get("ruta", "").strip()         # Columna O
-            nueva_fila[15] = request.form.get("modalidad_trabajo", "").strip()  # Columna P
-            nueva_fila[16] = request.form.get("edad", "").strip()         # Columna Q
-            nueva_fila[17] = request.form.get("nacionalidad", "Dominicana").strip()  # Columna R
-            nueva_fila[18] = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"  # Columna S
-            nueva_fila[19] = request.form.get("experiencia", "").strip()    # Columna T
-            nueva_fila[20] = request.form.get("horario", "").strip()        # Columna U
-            nueva_fila[21] = request.form.get("funciones", "").strip()      # Columna V
-            nueva_fila[22] = request.form.get("descripcion_casa", "").strip()  # Columna W
-            nueva_fila[23] = request.form.get("adultos", "").strip()        # Columna X
-            nueva_fila[24] = request.form.get("sueldo", "").strip()         # Columna Y
-            nueva_fila[25] = request.form.get("notas_solicitud", "").strip() # Columna Z
-            nueva_fila[26] = pago                                           # Columna AA
-            nueva_fila[27] = pago_fecha                                     # Columna AB
-            # Reasignamos la información del cliente para no borrarla
-            nueva_fila[9:13] = client_info
-            update_range = f"Solicitudes!A{fila_index}:AB{fila_index}"
+            
+            # Recopilar datos para las columnas que se deben actualizar:
+            # Actualización de columnas D a I (índices 3 a 8):
+            update_data_1 = [
+                descripcion,        # Columna D: Descripción
+                nuevo_estado,       # Columna E: Estado
+                empleado_asignado,  # Columna F: Empleado asignado
+                fecha_actualizacion,  # Columna G: Fecha de actualización
+                "",                 # Columna H: Notas (en blanco o según convenga)
+                historial_texto     # Columna I: Historial de cambios
+            ]
+            update_range_1 = f"Solicitudes!D{fila_index}:I{fila_index}"
+            
+            # Actualización de columnas N a AB (índices 13 a 27)
+            direccion = request.form.get("direccion", "").strip()
+            ruta = request.form.get("ruta", "").strip()
+            modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
+            edad = request.form.get("edad", "").strip()
+            nacionalidad = request.form.get("nacionalidad", "Dominicana").strip()
+            alfabetizacion = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"
+            experiencia = request.form.get("experiencia", "").strip()
+            horario = request.form.get("horario", "").strip()
+            funciones = request.form.get("funciones", "").strip()
+            descripcion_casa = request.form.get("descripcion_casa", "").strip()
+            adultos = request.form.get("adultos", "").strip()
+            sueldo = request.form.get("sueldo", "").strip()
+            notas_solicitud = request.form.get("notas_solicitud", "").strip()
+            update_data_2 = [
+                direccion,           # Columna N
+                ruta,                # Columna O
+                modalidad_trabajo,   # Columna P
+                edad,                # Columna Q
+                nacionalidad,        # Columna R
+                alfabetizacion,      # Columna S
+                experiencia,         # Columna T
+                horario,             # Columna U
+                funciones,           # Columna V
+                descripcion_casa,    # Columna W
+                adultos,             # Columna X
+                sueldo,              # Columna Y
+                notas_solicitud,     # Columna Z
+                pago,                # Columna AA
+                pago_fecha           # Columna AB
+            ]
+            update_range_2 = f"Solicitudes!N{fila_index}:AB{fila_index}"
+            
+            # Ejecutar las dos actualizaciones separadas (no se tocan columnas J a M)
             try:
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
-                    range=update_range,
+                    range=update_range_1,
                     valueInputOption="RAW",
-                    body={"values": [nueva_fila]}
+                    body={"values": [update_data_1]}
+                ).execute()
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=update_range_2,
+                    valueInputOption="RAW",
+                    body={"values": [update_data_2]}
                 ).execute()
                 mensaje = "Orden actualizada correctamente."
             except Exception as e:
@@ -2573,8 +2589,9 @@ def solicitudes():
                 mensaje = "Error al actualizar la orden."
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
     
-    # ---------------- EDITAR: Edición completa de la orden ----------------
+    # ––––––– EDITAR –––––––
     elif accion == 'editar':
+        # (Aquí puedes aplicar una lógica similar a la de "actualizar" o la que ya manejabas)
         if request.method == 'GET':
             codigo = request.args.get("codigo", "").strip()
             if not codigo:
@@ -2611,7 +2628,7 @@ def solicitudes():
                 return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
             fila_index = int(fila_str)
             try:
-                rango_completo = f"Solicitudes!A{fila_index}:AB{fila_index}"
+                rango_completo = f"Solicitudes!A{fila_index}:Z{fila_index}"
                 result = service.spreadsheets().values().get(
                     spreadsheetId=SPREADSHEET_ID,
                     range=rango_completo
@@ -2646,32 +2663,32 @@ def solicitudes():
             if notas_actuales:
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = (historial_texto + "\n" + nuevo_registro) if historial_texto else nuevo_registro
+            
+            # Aquí puedes optar por una estrategia similar de actualizar rangos separados
+            # o actualizar la fila completa preservando datos críticos. En este ejemplo,
+            # se actualizan las columnas editables (D, E, F, G, H, I y N a Z) sin modificar las columnas no enviadas.
             nueva_fila = fila_original.copy()
-            nueva_fila[3] = descripcion                                   # Columna D
-            nueva_fila[4] = estado                                        # Columna E
-            nueva_fila[5] = empleado_asignado                             # Columna F
-            nueva_fila[6] = fecha_actualizacion                           # Columna G
-            nueva_fila[7] = ""                                            # Columna H
-            nueva_fila[8] = historial_texto                               # Columna I
-            # En la edición completa, si el formulario no reenvía la info del cliente, se preserva la original:
-            client_info = fila_original[9:13]
-            # Actualizamos los campos editables (Columnas N a Z)
-            nueva_fila[13] = request.form.get("direccion", "").strip()    # Columna N
-            nueva_fila[14] = request.form.get("ruta", "").strip()         # Columna O
-            nueva_fila[15] = request.form.get("modalidad_trabajo", "").strip()  # Columna P
-            nueva_fila[16] = request.form.get("edad", "").strip()         # Columna Q
-            nueva_fila[17] = request.form.get("nacionalidad", "Dominicana").strip()  # Columna R
-            nueva_fila[18] = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"  # Columna S
-            nueva_fila[19] = request.form.get("experiencia", "").strip()    # Columna T
-            nueva_fila[20] = request.form.get("horario", "").strip()        # Columna U
-            nueva_fila[21] = request.form.get("funciones", "").strip()      # Columna V
-            nueva_fila[22] = request.form.get("descripcion_casa", "").strip()  # Columna W
-            nueva_fila[23] = request.form.get("adultos", "").strip()        # Columna X
-            nueva_fila[24] = request.form.get("sueldo", "").strip()         # Columna Y
-            nueva_fila[25] = request.form.get("notas_solicitud", "").strip() # Columna Z
-            # Se preserva la info del cliente
-            nueva_fila[9:13] = client_info
-            update_range = f"Solicitudes!A{fila_index}:AB{fila_index}"
+            nueva_fila[3] = descripcion                # Columna D
+            nueva_fila[4] = estado                     # Columna E
+            nueva_fila[5] = empleado_asignado          # Columna F
+            nueva_fila[6] = fecha_actualizacion        # Columna G
+            nueva_fila[7] = ""                         # Columna H
+            nueva_fila[8] = historial_texto            # Columna I
+            # Actualización de columnas N a Z:
+            nueva_fila[13] = request.form.get("direccion", "").strip()    
+            nueva_fila[14] = request.form.get("ruta", "").strip()         
+            nueva_fila[15] = request.form.get("modalidad_trabajo", "").strip()  
+            nueva_fila[16] = request.form.get("edad", "").strip()         
+            nueva_fila[17] = request.form.get("nacionalidad", "Dominicana").strip()  
+            nueva_fila[18] = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"  
+            nueva_fila[19] = request.form.get("experiencia", "").strip()    
+            nueva_fila[20] = request.form.get("horario", "").strip()        
+            nueva_fila[21] = request.form.get("funciones", "").strip()      
+            nueva_fila[22] = request.form.get("descripcion_casa", "").strip()  
+            nueva_fila[23] = request.form.get("adultos", "").strip()        
+            nueva_fila[24] = request.form.get("sueldo", "").strip()         
+            nueva_fila[25] = request.form.get("notas_solicitud", "").strip() 
+            update_range = f"Solicitudes!A{fila_index}:Z{fila_index}"
             try:
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2685,6 +2702,7 @@ def solicitudes():
                 mensaje = "Error al editar la orden."
             return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=nueva_fila, fila=fila_index)
     
+    # ––––––– DISPONIBLES –––––––
     elif accion == 'disponibles':
         solicitudes_data = {}
         try:
@@ -2719,6 +2737,26 @@ def solicitudes():
     else:
         mensaje = "Acción no reconocida."
         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
+
+@app.route('/marcar_copiada', methods=['POST'])
+def marcar_copiada():
+    fila_str = request.form.get("fila", "").strip()
+    if not fila_str.isdigit():
+        return "Error: Fila inválida", 400
+    fila_index = int(fila_str)
+    today_str = datetime.today().strftime("%Y-%m-%d")
+    try:
+        update_range = f"Solicitudes!AC{fila_index}:AC{fila_index}"
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=update_range,
+            valueInputOption="RAW",
+            body={"values": [[today_str]]}
+        ).execute()
+        return "OK", 200
+    except Exception as e:
+        logging.error("Error al marcar orden como copiada: " + str(e), exc_info=True)
+        return "Error", 500
 
 
 from flask import flash
