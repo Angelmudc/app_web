@@ -2247,11 +2247,11 @@ import calendar
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
 def solicitudes():
-    # Verificar sesión
+    # Verificar que haya sesión iniciada
     if 'usuario' not in session:
         return redirect(url_for('login'))
     
-    # Determinar la acción a ejecutar:
+    # Determinar la acción (si se envía "codigo" se asume "buscar"; si no, "ver")
     accion = request.args.get('accion', None)
     if not accion or accion.strip() == "":
         if request.args.get("codigo"):
@@ -2339,7 +2339,7 @@ def solicitudes():
             try:
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID,
-                    range="Solicitudes!A1:Z",
+                    range="Solicitudes!A1:Z",  # Asumiendo que en registro se insertan 26 columnas (A:Z)
                     valueInputOption="RAW",
                     body={"values": [nueva_fila]}
                 ).execute()
@@ -2473,8 +2473,10 @@ def solicitudes():
                                quick_mes_start=quick_mes_start,
                                quick_mes_end=quick_mes_end)
     
-    # ---------------- ACTUALIZAR: Actualización parcial – Actualizar solo los rangos específicos ----------------
+    # ---------------- ACTUALIZAR (PARCIAL): Actualiza solo rangos específicos ----------------
     elif accion == 'actualizar':
+        # IMPORTANTE: En esta rama se realizan dos llamadas separadas para actualizar
+        # únicamente el rango de columnas D–I y el de N–AB, sin tocar las demás.
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
             mensaje = "Fila inválida para actualizar."
@@ -2497,7 +2499,7 @@ def solicitudes():
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje, solicitud=solicitud_fila, fila=fila_index)
         
         elif request.method == 'POST':
-            # Recoger campos para actualizar el rango D a I (6 celdas)
+            # Recoger datos para rango D–I (6 columnas)
             descripcion = request.form.get("descripcion", "").strip()
             nuevo_estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
@@ -2530,12 +2532,13 @@ def solicitudes():
                 nuevo_estado,        # Columna E
                 empleado_asignado,   # Columna F
                 fecha_actualizacion, # Columna G
-                "",                  # Columna H
+                "",                  # Columna H (se deja en blanco)
                 historial_texto      # Columna I
             ]
+            # Rango D–I (6 celdas exactas)
             update_range_1 = f"Solicitudes!D{fila_index}:I{fila_index}"
             
-            # Recoger campos para actualizar el rango N a AB (15 celdas)
+            # Recoger datos para rango N–AB (15 columnas)
             direccion = request.form.get("direccion", "").strip()
             ruta = request.form.get("ruta", "").strip()
             modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
@@ -2549,6 +2552,7 @@ def solicitudes():
             adultos = request.form.get("adultos", "").strip()
             sueldo = request.form.get("sueldo", "").strip()
             notas_solicitud = request.form.get("notas_solicitud", "").strip()
+            
             update_data_2 = [
                 direccion,           # Columna N
                 ruta,                # Columna O
@@ -2566,15 +2570,18 @@ def solicitudes():
                 pago,                # Columna AA
                 pago_fecha           # Columna AB
             ]
+            # Rango N–AB (15 celdas exactas)
             update_range_2 = f"Solicitudes!N{fila_index}:AB{fila_index}"
             
             try:
+                # Actualiza el primer rango (D a I)
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
                     range=update_range_1,
                     valueInputOption="RAW",
                     body={"values": [update_data_1]}
                 ).execute()
+                # Actualiza el segundo rango (N a AB)
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
                     range=update_range_2,
@@ -2662,13 +2669,13 @@ def solicitudes():
             historial_texto = (historial_texto + "\n" + nuevo_registro) if historial_texto else nuevo_registro
             
             nueva_fila = fila_original.copy()
-            nueva_fila[3] = descripcion                # Columna D
-            nueva_fila[4] = estado                     # Columna E
-            nueva_fila[5] = empleado_asignado          # Columna F
-            nueva_fila[6] = fecha_actualizacion        # Columna G
-            nueva_fila[7] = ""                         # Columna H
-            nueva_fila[8] = historial_texto            # Columna I
-            # Actualizamos campos editables de columnas N a Z
+            nueva_fila[3] = descripcion              # Columna D
+            nueva_fila[4] = estado                   # Columna E
+            nueva_fila[5] = empleado_asignado        # Columna F
+            nueva_fila[6] = fecha_actualizacion      # Columna G
+            nueva_fila[7] = ""                       # Columna H
+            nueva_fila[8] = historial_texto          # Columna I
+            # Actualización de campos editables (Columnas N a Z)
             nueva_fila[13] = request.form.get("direccion", "").strip()    
             nueva_fila[14] = request.form.get("ruta", "").strip()         
             nueva_fila[15] = request.form.get("modalidad_trabajo", "").strip()  
