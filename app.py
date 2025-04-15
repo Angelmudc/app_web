@@ -2251,9 +2251,9 @@ def solicitudes():
     if 'usuario' not in session:
         return redirect(url_for('login'))
     
-    # Determinar la acción según parámetros de la URL
+    # Determinar la acción a ejecutar:
     accion = request.args.get('accion', None)
-    if accion is None or accion.strip() == "":
+    if not accion or accion.strip() == "":
         if request.args.get("codigo"):
             accion = "buscar"
         else:
@@ -2263,7 +2263,7 @@ def solicitudes():
     
     mensaje = None
 
-    # ––––––– REGISTRO –––––––
+    # ---------------- REGISTRO: Crear nueva orden ----------------
     if accion == 'registro':
         if request.method == 'GET':
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
@@ -2349,7 +2349,7 @@ def solicitudes():
                 mensaje = "Error al registrar la orden."
             return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
     
-    # ––––––– VER –––––––
+    # ---------------- VER: Listado completo de órdenes ----------------
     elif accion == 'ver':
         solicitudes_data = []
         try:
@@ -2363,7 +2363,7 @@ def solicitudes():
             mensaje = "Error al cargar el listado de órdenes."
         return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
     
-    # ––––––– BUSCAR –––––––
+    # ---------------- BUSCAR: Búsqueda estricta por código ----------------
     elif accion == 'buscar':
         codigo = request.args.get("codigo", "").strip()
         try:
@@ -2390,7 +2390,7 @@ def solicitudes():
             mensaje = "Error al buscar la orden."
             return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
     
-    # ––––––– REPORTES –––––––
+    # ---------------- REPORTES: Filtrado flexible y búsqueda por fechas ----------------
     elif accion == 'reportes':
         try:
             result = service.spreadsheets().values().get(
@@ -2473,13 +2473,14 @@ def solicitudes():
                                quick_mes_start=quick_mes_start,
                                quick_mes_end=quick_mes_end)
     
-    # ––––––– ACTUALIZAR (PARCIAL): Solo modificar columnas específicas –––––––
+    # ---------------- ACTUALIZAR: Actualización parcial – Actualizar solo los rangos específicos ----------------
     elif accion == 'actualizar':
         fila_str = request.args.get("fila", "").strip()
         if not fila_str.isdigit():
             mensaje = "Fila inválida para actualizar."
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
         fila_index = int(fila_str)
+        
         if request.method == 'GET':
             try:
                 rango = f"Solicitudes!A{fila_index}:Z{fila_index}"
@@ -2494,8 +2495,9 @@ def solicitudes():
                 mensaje = "Error al cargar la orden."
                 solicitud_fila = []
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje, solicitud=solicitud_fila, fila=fila_index)
+        
         elif request.method == 'POST':
-            # Se obtienen los campos del formulario
+            # Recoger campos para actualizar el rango D a I (6 celdas)
             descripcion = request.form.get("descripcion", "").strip()
             nuevo_estado = request.form.get("estado", "").strip()
             empleado_asignado = request.form.get("empleado_asignado", "").strip()
@@ -2507,7 +2509,6 @@ def solicitudes():
                 pago_fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # Actualizar el historial (columna I)
             try:
                 rango_historial = f"Solicitudes!I{fila_index}"
                 respuesta_hist = service.spreadsheets().values().get(
@@ -2524,19 +2525,17 @@ def solicitudes():
                 nuevo_registro += f" Notas: {notas}"
             historial_texto = (historial_texto + "\n" + nuevo_registro) if historial_texto else nuevo_registro
             
-            # Recopilar datos para las columnas que se deben actualizar:
-            # Actualización de columnas D a I (índices 3 a 8):
             update_data_1 = [
-                descripcion,        # Columna D: Descripción
-                nuevo_estado,       # Columna E: Estado
-                empleado_asignado,  # Columna F: Empleado asignado
-                fecha_actualizacion,  # Columna G: Fecha de actualización
-                "",                 # Columna H: Notas (en blanco o según convenga)
-                historial_texto     # Columna I: Historial de cambios
+                descripcion,         # Columna D
+                nuevo_estado,        # Columna E
+                empleado_asignado,   # Columna F
+                fecha_actualizacion, # Columna G
+                "",                  # Columna H
+                historial_texto      # Columna I
             ]
             update_range_1 = f"Solicitudes!D{fila_index}:I{fila_index}"
             
-            # Actualización de columnas N a AB (índices 13 a 27)
+            # Recoger campos para actualizar el rango N a AB (15 celdas)
             direccion = request.form.get("direccion", "").strip()
             ruta = request.form.get("ruta", "").strip()
             modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
@@ -2569,7 +2568,6 @@ def solicitudes():
             ]
             update_range_2 = f"Solicitudes!N{fila_index}:AB{fila_index}"
             
-            # Ejecutar las dos actualizaciones separadas (no se tocan columnas J a M)
             try:
                 service.spreadsheets().values().update(
                     spreadsheetId=SPREADSHEET_ID,
@@ -2589,9 +2587,8 @@ def solicitudes():
                 mensaje = "Error al actualizar la orden."
             return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
     
-    # ––––––– EDITAR –––––––
+    # ---------------- EDITAR: Edición completa de la orden ----------------
     elif accion == 'editar':
-        # (Aquí puedes aplicar una lógica similar a la de "actualizar" o la que ya manejabas)
         if request.method == 'GET':
             codigo = request.args.get("codigo", "").strip()
             if not codigo:
@@ -2664,9 +2661,6 @@ def solicitudes():
                 nuevo_registro += f" Notas: {notas_actuales}"
             historial_texto = (historial_texto + "\n" + nuevo_registro) if historial_texto else nuevo_registro
             
-            # Aquí puedes optar por una estrategia similar de actualizar rangos separados
-            # o actualizar la fila completa preservando datos críticos. En este ejemplo,
-            # se actualizan las columnas editables (D, E, F, G, H, I y N a Z) sin modificar las columnas no enviadas.
             nueva_fila = fila_original.copy()
             nueva_fila[3] = descripcion                # Columna D
             nueva_fila[4] = estado                     # Columna E
@@ -2674,7 +2668,7 @@ def solicitudes():
             nueva_fila[6] = fecha_actualizacion        # Columna G
             nueva_fila[7] = ""                         # Columna H
             nueva_fila[8] = historial_texto            # Columna I
-            # Actualización de columnas N a Z:
+            # Actualizamos campos editables de columnas N a Z
             nueva_fila[13] = request.form.get("direccion", "").strip()    
             nueva_fila[14] = request.form.get("ruta", "").strip()         
             nueva_fila[15] = request.form.get("modalidad_trabajo", "").strip()  
@@ -2702,7 +2696,7 @@ def solicitudes():
                 mensaje = "Error al editar la orden."
             return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=nueva_fila, fila=fila_index)
     
-    # ––––––– DISPONIBLES –––––––
+    # ---------------- DISPONIBLES: Mostrar órdenes con estado "disponible" o "reemplazo" ----------------
     elif accion == 'disponibles':
         solicitudes_data = {}
         try:
@@ -2757,7 +2751,6 @@ def marcar_copiada():
     except Exception as e:
         logging.error("Error al marcar orden como copiada: " + str(e), exc_info=True)
         return "Error", 500
-
 
 from flask import flash
 
