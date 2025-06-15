@@ -1,3 +1,5 @@
 clave1.json
 service_account.json
 .env
+venv/
+**/__pycache__/
