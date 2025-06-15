@@ -1,267 +1,90 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Entrevista de Candidatas - Doméstica del Cibao SRL</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h1, h2 { text-align: center; }
-    .mensaje { margin-bottom: 20px; padding: 10px; background-color: #f0f0f0; }
-    .search-form, .interview-form { margin-bottom: 30px; }
-    .search-form input[type="text"] { width: 60%; padding: 8px; }
-    .search-form input[type="submit"] { padding: 8px 15px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    table, th, td { border: 1px solid #ccc; }
-    th, td { padding: 8px; text-align: left; }
-    .form-field { margin-bottom: 15px; }
-    label { font-weight: bold; display: block; margin-bottom: 5px; }
-    input[type="text"], textarea { width: 100%; padding: 8px; }
-    .inline-group { display: flex; gap: 15px; }
-    .inline-group label { display: inline-block; margin-bottom: 0; }
-    input[type="submit"] { padding: 10px 20px; font-size: 1em; }
-  </style>
-</head>
-<body>
-  <h1>Entrevista de Candidatas</h1>
-  
-  <!-- Mensaje -->
-  {% if mensaje %}
-    <div class="mensaje">{{ mensaje }}</div>
-  {% endif %}
-  
-  <!-- Formulario de búsqueda -->
-  <div class="search-form">
-    <form method="post" action="/entrevista">
-      <input type="text" name="busqueda" placeholder="Buscar por nombre" required>
-      <input type="submit" value="Buscar">
+{% extends 'base.html' %}
+{% block title %}Entrevistas{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <h1 class="text-center mb-4">Entrevistas</h1>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat,msg in messages %}
+      <div class="alert alert-{{ 'danger' if cat=='danger' else (cat=='warning' and 'warning' or 'info') }} alert-dismissible fade show">
+        {{ msg }}
+        <button class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {# ——— ETAPA BUSCAR ——— #}
+  {% if etapa=='buscar' %}
+    <form method="post" class="d-flex mb-4">
+      <input type="text" name="busqueda" class="form-control me-2" placeholder="Nombre o cédula">
+      <button class="btn btn-primary">Buscar</button>
     </form>
-  </div>
-  
-  <!-- Resultados de búsqueda -->
-  {% if resultados %}
-    <h2>Resultados de Búsqueda</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Fila</th>
-          <th>Nombre</th>
-          <th>Teléfono</th>
-          <th>Cédula</th>
-          <th>Acción</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for candidato in resultados %}
-          <tr>
-            <td>{{ candidato.fila_index }}</td>
-            <td>{{ candidato.nombre }}</td>
-            <td>{{ candidato.telefono }}</td>
-            <td>{{ candidato.cedula }}</td>
-            <td><a href="/entrevista?candidata={{ candidato.fila_index }}">Seleccionar</a></td>
-          </tr>
+    {% if resultados %}
+      <ul class="list-group">
+        {% for c in resultados %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            {{ c.nombre_completo }} ({{ c.cedula }})
+            <a href="{{ url_for('entrevista') }}?fila={{ c.fila }}" class="btn btn-sm btn-outline-primary">
+              Seleccionar
+            </a>
+          </li>
         {% endfor %}
-      </tbody>
-    </table>
+      </ul>
+    {% endif %}
   {% endif %}
-  
-  <!-- Formulario de entrevista -->
-  {% if candidata %}
-    <h2>Entrevista para: {{ candidata.nombre }}</h2>
-    <div class="interview-form">
-      <form method="post" action="/entrevista">
-        <!-- Campo oculto para identificar la fila -->
-        <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-        <!-- Indicador para guardar -->
-        <input type="hidden" name="guardar" value="1">
-        
-        <div class="form-field">
-          <label>Nombre de la empleada:</label>
-          <input type="text" name="nombre" value="{{ candidata.nombre }}" required>
-        </div>
-        <div class="form-field">
-          <label>Nacionalidad:</label>
-          <input type="text" name="nacionalidad" required>
-        </div>
-        <div class="inline-group">
-          <div class="form-field" style="flex:1;">
-            <label>Edad:</label>
-            <input type="text" name="edad" required>
-          </div>
-          <div class="form-field" style="flex:1;">
-            <label>Estado civil:</label>
-            <input type="text" name="estado_civil" required>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>Dirección:</label>
-          <textarea name="direccion" rows="2" required></textarea>
-        </div>
-        <div class="inline-group">
-          <div class="form-field" style="flex:1;">
-            <label>¿Tienes hijos?</label>
-            <input type="text" name="tienes_hijos" required>
-          </div>
-          <div class="form-field" style="flex:1;">
-            <label>Número de hijos:</label>
-            <input type="text" name="numero_hijos" required>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>¿Edades de los hijos?:</label>
-          <input type="text" name="edades_hijos" required>
-        </div>
-        <div class="form-field">
-          <label>¿Quién cuida a sus hijos?:</label>
-          <input type="text" name="quien_cuida" required>
-        </div>
-        <div class="form-field">
-          <label>¿Cómo te describes como persona?:</label>
-          <textarea name="descripcion_personal" rows="2" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>¿Cuál es tu fuerte?:</label>
-          <textarea name="fuerte" rows="2" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>Modalidad de trabajo:</label>
-          <textarea name="modalidad" rows="2" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>¿Por qué eliges trabajar en una casa de familia?:</label>
-          <textarea name="razon_trabajo" rows="2" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>Labores desempeñadas en trabajos anteriores:</label>
-          <textarea name="labores_anteriores" rows="2" required></textarea>
-        </div>
-        <div class="inline-group">
-          <div class="form-field" style="flex:1;">
-            <label>Tiempo desde el último trabajo:</label>
-            <input type="text" name="tiempo_ultimo_trabajo" required>
-          </div>
-          <div class="form-field" style="flex:1;">
-            <label>¿Por qué saliste de tu último trabajo?:</label>
-            <input type="text" name="razon_salida" required>
-          </div>
-        </div>
-        <div class="inline-group">
-          <div class="form-field" style="flex:1;">
-            <label>¿Has enfrentado situaciones difíciles en el trabajo?</label>
-            <input type="text" name="situacion_dificil" required>
-          </div>
-          <div class="form-field" style="flex:1;">
-            <label>¿Cómo manejaste esa situación?</label>
-            <input type="text" name="manejo_situacion" required>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>¿Cómo manejarías reclamos o malos tratos del jefe?:</label>
-          <textarea name="manejo_reclamo" rows="2" required></textarea>
-        </div>
-        <!-- Preguntas con respuesta Sí/No -->
-        <div class="inline-group">
-          <div class="form-field" style="flex:1;">
-            <label>¿Sabes cocinar?</label>
-            <label><input type="radio" name="sabes_cocinar" value="Sí" required> Sí</label>
-            <label><input type="radio" name="sabes_cocinar" value="No" required> No</label>
-          </div>
-          <div class="form-field" style="flex:1;">
-            <label>¿Te gusta cocinar?</label>
-            <label><input type="radio" name="gusta_cocinar" value="Sí" required> Sí</label>
-            <label><input type="radio" name="gusta_cocinar" value="No" required> No</label>
-          </div>
-          <div class="form-field" style="flex:1;">
-            <label>¿Sabes planchar?</label>
-            <label><input type="radio" name="planchar" value="Sí" required> Sí</label>
-            <label><input type="radio" name="planchar" value="No" required> No</label>
-          </div>
-        </div>
-        <!-- Preguntas largas o que requieren mayor escritura -->
-        <div class="form-field">
-          <label>¿Qué sabes cocinar? (detalla los platos que preparas):</label>
-          <textarea name="que_cocinas" rows="3" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>¿Haces postres? (detalla cuáles):</label>
-          <textarea name="postres" rows="3" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>¿Qué tareas de la casa te gustan y cuáles no?:</label>
-          <textarea name="tareas_casa" rows="3" required></textarea>
-        </div>
-        <!-- Resto de preguntas, presentadas de forma normal -->
-        <div class="form-field">
-          <label>¿Sabes usar electrodomésticos modernos?</label>
-          <input type="text" name="electrodomesticos" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tienes alguna actividad principal (trabajo/estudio)?</label>
-          <input type="text" name="actividad_principal" required>
-        </div>
-        <div class="form-field">
-          <label>Afiliación religiosa:</label>
-          <input type="text" name="afiliacion_religiosa" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tienes cursos en el área doméstica?</label>
-          <input type="text" name="cursos_domesticos" required>
-        </div>
-        <div class="form-field">
-          <label>Nivel académico:</label>
-          <input type="text" name="nivel_academico" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tienes condiciones de salud?</label>
-          <input type="text" name="condiciones_salud" required>
-        </div>
-        <div class="form-field">
-          <label>¿Eres alérgica a algo?</label>
-          <input type="text" name="alergico" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tomas medicamentos?</label>
-          <input type="text" name="medicamentos" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tienes seguro médico?</label>
-          <input type="text" name="seguro_medico" required>
-        </div>
-        <div class="form-field">
-          <label>¿Aceptas hacer pruebas médicas si se solicita?</label>
-          <input type="text" name="pruebas_medicas" required>
-        </div>
-        <div class="form-field">
-          <label>¿Cuántas vacunas del COVID tienes?</label>
-          <input type="text" name="vacunas_covid" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tomas alcohol?</label>
-          <input type="text" name="tomas_alcohol" required>
-        </div>
-        <div class="form-field">
-          <label>¿Fumas?</label>
-          <input type="text" name="fumas" required>
-        </div>
-        <div class="form-field">
-          <label>¿Tienes tatuajes visibles o piercings?</label>
-          <input type="text" name="tatuajes_piercings" required>
-        </div>
-        <!-- Referencias grandes -->
-        <div class="form-field">
-          <label>Referencias laborales:</label>
-          <textarea name="referencias_laborales" rows="4" required></textarea>
-        </div>
-        <div class="form-field">
-          <label>Referencias familiares:</label>
-          <textarea name="referencias_familiares" rows="4" required></textarea>
-        </div>
-        
-        <div class="form-field">
-          <input type="submit" value="Guardar Entrevista">
-        </div>
-      </form>
+
+  {# ——— ETAPA ELEGIR TIPO ——— #}
+  {% if etapa=='elegir_tipo' %}
+    <h3>Selecciona tipo de entrevista para <strong>{{ candidata.nombre_completo }}</strong></h3>
+    <div class="list-group">
+      {% for key, titulo in tipos %}
+        <a href="{{ url_for('entrevista') }}?fila={{ candidata.fila }}&tipo={{ key }}"
+           class="list-group-item list-group-item-action">
+          {{ titulo }}
+        </a>
+      {% endfor %}
     </div>
   {% endif %}
-  
-</body>
-</html>
+
+  {# ——— ETAPA FORMULARIO ——— #}
+  {% if etapa=='formulario' %}
+    <h3>{{ titulo }} — {{ candidata.nombre_completo }}</h3>
+    <form id="entrevistaForm" method="post" action="{{ url_for('entrevista') }}?fila={{ candidata.fila }}&tipo={{ tipo }}">
+      {% for p in preguntas %}
+        <div class="mb-3">
+          <label class="form-label">{{ p.enunciado }}</label>
+          {% if p.tipo=='radio' %}
+            <div>
+              {% for opt in p.opciones %}
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="{{ p.id }}"
+                         value="{{ opt }}" required>
+                  <label class="form-check-label">{{ opt }}</label>
+                </div>
+              {% endfor %}
+            </div>
+          {% elif p.tipo in ['texto_largo','textarea_grande'] %}
+            <textarea class="form-control" name="{{ p.id }}" rows="3" required></textarea>
+          {% else %}
+            <input type="text" class="form-control" name="{{ p.id }}" required>
+          {% endif %}
+        </div>
+      {% endfor %}
+      <button id="submitBtn" class="btn btn-success">Guardar</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    const form = document.getElementById('entrevistaForm');
+    if (form) {
+      form.addEventListener('submit', () => {
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('submitBtn').innerText = 'Guardando...';
+      });
+    }
+  </script>
+{% endblock %}

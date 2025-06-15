@@ -10,56 +10,58 @@
 {% endblock %}
 
 {% block content %}
-{% if accion == "buscar" %}
-  <!-- Formulario de Búsqueda -->
-  <form method="post" action="/subir_fotos?accion=buscar" id="searchForm" class="mb-4">
-    <div class="input-group input-group-lg">
-      <input type="text" class="form-control" name="busqueda" placeholder="Nombre, cédula, teléfono..." required>
-      <button class="btn btn-primary" type="submit" id="searchButton">Buscar</button>
-    </div>
-  </form>
-  {% if resultados %}
-    <h2 class="mb-3">Resultados</h2>
-    <div class="row g-4">
-      {% for cand in resultados %}
-        <div class="col-md-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <h5 class="card-title">{{ cand.nombre }}</h5>
-              <p class="card-text">
-                <strong>Teléfono:</strong> {{ cand.telefono }}<br>
-                <strong>Cédula:</strong> {{ cand.cedula }}
-              </p>
-              <a href="/subir_fotos?accion=subir&fila={{ cand.fila_index }}" class="btn btn-success">Seleccionar</a>
+  {% if accion == "buscar" %}
+    <!-- Formulario de Búsqueda -->
+    <form method="post" action="{{ url_for('subir_fotos.subir_fotos', accion='buscar') }}" id="searchForm" class="mb-4">
+      <div class="input-group input-group-lg">
+        <input type="text" class="form-control" name="busqueda" placeholder="Nombre, cédula, teléfono..." required>
+        <button class="btn btn-primary" type="submit" id="searchButton">Buscar</button>
+      </div>
+    </form>
+
+    {% if resultados %}
+      <h2 class="mb-3">Resultados</h2>
+      <div class="row g-4">
+        {% for cand in resultados %}
+          <div class="col-md-4">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h5 class="card-title">{{ cand.nombre }}</h5>
+                <p class="card-text">
+                  <strong>Teléfono:</strong> {{ cand.telefono }}<br>
+                  <strong>Cédula:</strong> {{ cand.cedula }}
+                </p>
+                <a href="{{ url_for('subir_fotos.subir_fotos', accion='subir', fila=cand.fila) }}" class="btn btn-success">Seleccionar</a>
+              </div>
             </div>
           </div>
-        </div>
-      {% endfor %}
-    </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+  {% elif accion == "subir" %}
+    <!-- Formulario de Subida -->
+    <h2 class="mb-4">Subir Imágenes para la Fila {{ fila }}</h2>
+    <form method="post" action="{{ url_for('subir_fotos.subir_fotos', accion='subir', fila=fila) }}" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label for="depuracion" class="form-label">Imagen Depuración</label>
+        <input class="form-control" type="file" id="depuracion" name="depuracion" required>
+      </div>
+      <div class="mb-3">
+        <label for="perfil" class="form-label">Imagen Perfil</label>
+        <input class="form-control" type="file" id="perfil" name="perfil" required>
+      </div>
+      <div class="mb-3">
+        <label for="cedula1" class="form-label">Imagen Cédula 1</label>
+        <input class="form-control" type="file" id="cedula1" name="cedula1" required>
+      </div>
+      <div class="mb-3">
+        <label for="cedula2" class="form-label">Imagen Cédula 2</label>
+        <input class="form-control" type="file" id="cedula2" name="cedula2" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg">Subir Imágenes</button>
+    </form>
   {% endif %}
-{% elif accion == "subir" %}
-  <!-- Formulario de Subida -->
-  <h2 class="mb-4">Subir Imágenes para la Fila {{ fila }}</h2>
-  <form method="post" action="/subir_fotos?accion=subir&fila={{ fila }}" enctype="multipart/form-data">
-    <div class="mb-3">
-      <label for="depuracion" class="form-label">Imagen Depuración</label>
-      <input class="form-control" type="file" id="depuracion" name="depuracion" required>
-    </div>
-    <div class="mb-3">
-      <label for="perfil" class="form-label">Imagen Perfil</label>
-      <input class="form-control" type="file" id="perfil" name="perfil" required>
-    </div>
-    <div class="mb-3">
-      <label for="cedula1" class="form-label">Imagen Cédula 1</label>
-      <input class="form-control" type="file" id="cedula1" name="cedula1" required>
-    </div>
-    <div class="mb-3">
-      <label for="cedula2" class="form-label">Imagen Cédula 2</label>
-      <input class="form-control" type="file" id="cedula2" name="cedula2" required>
-    </div>
-    <button type="submit" class="btn btn-primary btn-lg">Subir Imágenes</button>
-  </form>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}

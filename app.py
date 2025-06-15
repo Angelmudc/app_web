@@ -1,142 +1,118 @@
-import logging
-import os
-import json
-import io
-import zipfile
-import requests
-import traceback
+from dotenv import load_dotenv
+load_dotenv()
+
+import os, re, unicodedata, io, json, zipfile, logging, calendar
 from datetime import datetime, timedelta
-import pandas as pd
-import unicodedata
+from decimal import Decimal
 
 from flask import (
-    Flask, render_template, request, redirect, url_for, session,
-    send_from_directory, jsonify, send_file, current_app
+    Flask, render_template, request, redirect, url_for,
+    session, send_file, send_from_directory, flash, jsonify, current_app
 )
 from flask_caching import Cache
-
+from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
-import gspread
+from sqlalchemy import or_, cast, String
 
-from rapidfuzz import process
+# Tu factory y las extensiones
+from config_app import create_app, db, sheets, normalize_cedula, credentials
 
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
+# Tu modelo
+from models import Candidata
 
-from fpdf import FPDF
+# —————— Normaliza cédula ——————
+CEDULA_PATTERN = re.compile(r'^\d{11}$')
+def normalize_cedula(raw: str) -> str | None:
+    """
+    Quita todo lo que no sea dígito y formatea como XXX-XXXXXX-X.
+    Devuelve None si tras limpiar no quedan 11 dígitos.
+    """
+    # Eliminamos cualquier carácter no numérico
+    digits = re.sub(r'\D', '', raw or '')
+    # Debe tener 11 dígitos
+    if not CEDULA_PATTERN.fullmatch(digits):
+        return None
+    # Formateamos
+    return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
 
-import unicodedata
-import logging
-from flask import render_template
-
-from werkzeug.security import generate_password_hash
-from flask import Flask, render_template, request, redirect, url_for, session
-
-from flask import Flask, render_template, request, redirect, url_for, session, send_file
-from fpdf import FPDF
-import io
-import os
-
-import difflib
-import calendar
-from datetime import datetime, timedelta
-
-import difflib
-
-from flask import Flask, render_template, request, redirect, url_for, flash
-import logging
-
-
-from flask import send_file
-
-from flask import Flask
-
-from dotenv import load_dotenv
-load_dotenv()  # Carga las variables definidas en el archivo .env
-
-# Configuración de la API de Google Sheets
-SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive.file'
-]
-
-# Cargar credenciales y otros datos desde variables de entorno
-clave1_json = os.environ.get("CLAVE1_JSON")
-if not clave1_json:
-    raise ValueError("❌ ERROR: La variable de entorno CLAVE1_JSON no está configurada correctamente.")
-
-SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
-
-clave1 = json.loads(clave1_json)
-credentials = Credentials.from_service_account_info(clave1, scopes=SCOPES)
-client = gspread.authorize(credentials)
-service = build('sheets', 'v4', credentials=credentials)
-
-# Accede a la hoja de cálculo y obtiene la hoja "Nueva hoja"
-spreadsheet = client.open_by_key(SPREADSHEET_ID)
-sheet = spreadsheet.worksheet("Nueva hoja")
-
-# Configuración de Cloudinary usando variables de entorno
-cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.environ.get("CLOUDINARY_API_KEY"),
-    api_secret=os.environ.get("CLOUDINARY_API_SECRET")
-)
-
-# Configuración básica de Flask
-app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+# —————— Normaliza nombre ——————
+def normalize_nombre(raw: str) -> str:
+    """
+    Elimina acentos y caracteres extraños de un nombre,
+    dejando sólo letras básicas, espacios y guiones.
+    """
+    if not raw:
+        return ''
+    # Descomponer acentos
+    nfkd = unicodedata.normalize('NFKD', raw)
+    # Quitar marcas diacríticas
+    no_accents = ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
+    # Conservar sólo A–Z, espacios y guiones
+    return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
 
 
-# Base de datos de usuarios (puedes usar una real)
-usuarios = {
-    "angel": generate_password_hash("0000"),
-    "Edilenia": generate_password_hash("2003"),
-    "Ively": generate_password_hash("0712"),
-    "divina": generate_password_hash("0607")
-}
 
-# Configuración de caché
-cache_config = {
-    "CACHE_TYPE": "simple",  # Uso de caché en memoria
-    "CACHE_DEFAULT_TIMEOUT": 120  # Caché de búsqueda por 2 minutos
-}
-app.config.from_mapping(cache_config)
+
+app = create_app()
+
+# ─── 2) Inicializamos Cache ───────────────────────────────────────────────────────────────
 cache = Cache(app)
 
-ENTREVISTAS_CONFIG = {}
+# ─── 3) Arrancamos Flask-Migrate ──────────────────────────────────────────────────────────
+migrate = Migrate(app, db)
+
+# ─── 4) Configuración de Cloudinary ───────────────────────────────────────────────────────
+import cloudinary
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
+    api_key=os.getenv("CLOUDINARY_API_KEY", ""),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
+)
+
+# ─── 5) Scopes y cliente de Google Sheets ─────────────────────────────────────────────────
+import os
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+import gspread
+
+SERVICE_ACCOUNT_FILE = os.environ["SERVICE_ACCOUNT_FILE"]
+SPREADSHEET_ID       = os.environ["SPREADSHEET_ID"]
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+]
+credentials = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+service     = build("sheets", "v4", credentials=credentials)
+gspread_cli  = gspread.authorize(credentials)
+sheet        = gspread_cli.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
+
+# ─── 6) Usuarios de ejemplo ────────────────────────────────────────────────────────────────
+from werkzeug.security import generate_password_hash
+
+usuarios = {
+    "angel":    generate_password_hash("0000"),
+    "Edilenia": generate_password_hash("2003"),
+    "x":        generate_password_hash("0000"),
+    "divina":   generate_password_hash("0607"),
+}
+
+# ─── 7) Carga de configuración de entrevistas ───────────────────────────────────────────────
+import json
+import os
 
 try:
-    ruta_config = os.path.join(os.path.dirname(__file__), "config", "config_entrevistas.json")
-
-    # Imprime la ruta final que se usará
-    print("Ruta final de config:", ruta_config)
-
-    # Muestra el contenido de la carpeta donde está app.py
-    print("Contenido de la carpeta principal:",
-          os.listdir(os.path.dirname(__file__)))
-
-    # Muestra el contenido de la carpeta "Config"
-    carpeta_config = os.path.join(os.path.dirname(__file__), "config")
-    print("Contenido de la carpeta config:",
-          os.listdir(carpeta_config))
-
-    # Ahora sí abrimos el archivo JSON
-    with open(ruta_config, "r", encoding="utf-8") as f:
-        ENTREVISTAS_CONFIG = json.load(f)
-
-    print("✅ Configuración de entrevistas cargada con éxito.")
-
+    cfg_path = os.path.join(app.root_path, 'config', 'config_entrevistas.json')
+    with open(cfg_path, encoding='utf-8') as f:
+        entrevistas_cfg = json.load(f)
+    app.logger.info("✅ Configuración de entrevistas cargada con éxito.")
 except Exception as e:
-    print(f"❌ Error al cargar la configuración de entrevistas: {str(e)}")
-    ENTREVISTAS_CONFIG = {}
+    app.logger.error(f"❌ Error cargando config_entrevistas.json: {e}")
+    entrevistas_cfg = {}
 
-
+app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
 
 # Ruta para servir archivos estáticos correctamente
 @app.route('/static/<path:filename>')
@@ -320,74 +296,6 @@ def obtener_datos_filtrar():
         return []
 
 
-def actualizar_datos_editar(fila_index, nuevos_datos):
-    try:
-        columnas = {
-            "codigo": "P",
-            "nombre": "B",
-            "telefono": "D",
-            "cedula": "O",
-            "estado": "Q",
-            "monto": "S",
-            "fecha": "T",
-        }
-
-        for campo, valor in nuevos_datos.items():
-            if campo in columnas and valor:
-                rango = f"Nueva hoja!{columnas[campo]}{fila_index}"
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango,
-                    valueInputOption="RAW",
-                    body={"values": [[valor]]}
-                ).execute()
-
-        print(f"✅ Datos actualizados correctamente en la fila {fila_index}")
-        return True
-    except Exception as e:
-        print(f"❌ Error al actualizar datos en la fila {fila_index}: {e}")
-        return False
-
-def obtener_datos_editar():
-    """
-    Obtiene los datos de la hoja de cálculo y se asegura de que cada fila tenga suficientes columnas.
-    """
-    try:
-        print("📌 Intentando obtener datos de Google Sheets...")  # DEBUG
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range='Nueva hoja!A:Y'
-        ).execute()
-        valores = result.get('values', [])
-
-        print(f"🔹 Datos obtenidos ({len(valores)} filas):")  # DEBUG
-        for fila in valores[:5]:  # Solo muestra las primeras 5 filas
-            print(fila)
-
-        # Asegurar que cada fila tenga al menos 25 columnas
-        datos_completos = [fila + [''] * (25 - len(fila)) for fila in valores]
-
-        return datos_completos
-    except Exception as e:
-        logging.error(f"❌ Error al obtener datos de edición: {e}", exc_info=True)
-        return []
-
-
-def cargar_datos_hoja(rango="Nueva hoja!A:T"):
-    """
-    Carga los datos de la hoja de cálculo según el rango especificado.
-    """
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango
-        ).execute()
-        return hoja.get("values", [])
-    except Exception as e:
-        logging.error(f"Error al cargar datos de la hoja: {e}", exc_info=True)
-        return []
-
-
 def buscar_candidatas_inscripcion(query, datos):
     """
     Busca candidatas en los datos cargados.
@@ -412,27 +320,8 @@ def buscar_candidatas_inscripcion(query, datos):
     return resultados
 
 
-def generar_codigo_unico():
-    """
-    Genera un código único en el formato 'CAN-XXXXXX' basado en los códigos existentes en la columna P.
-    """
-    try:
-        datos = cargar_datos_hoja(rango="Nueva hoja!A:Z")
-        codigos_existentes = set()
-        for fila in datos[1:]:
-            if len(fila) > 15:
-                codigo = fila[15].strip()
-                if codigo.startswith("CAN-"):
-                    codigos_existentes.add(codigo)
-        numero = 1
-        while True:
-            nuevo_codigo = f"CAN-{str(numero).zfill(6)}"
-            if nuevo_codigo not in codigos_existentes:
-                return nuevo_codigo
-            numero += 1
-    except Exception as e:
-        logging.error(f"Error al generar código único: {e}", exc_info=True)
-        return ""
+
+
 
 
 def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
@@ -661,6 +550,72 @@ def generate_next_code_otros():
 from flask import render_template, request, redirect, url_for, session
 from werkzeug.security import check_password_hash
 
+from flask import jsonify
+
+@app.route('/_test_sheets')
+def _test_sheets():
+    """
+    Endpoint de prueba para verificar conexión a Google Sheets.
+    Lee el rango A1:B5 de la hoja "Nueva hoja".
+    """
+    try:
+        valores = sheets.get_values('Nueva hoja!A1:B5')
+        return jsonify({'filas': valores}), 200
+    except Exception as e:
+        app.logger.exception("Error leyendo Google Sheets")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/candidatas')
+def list_candidatas():
+    """
+    Devuelve sólo los encabezados reales (fila 2) de la hoja "Nueva hoja"
+    para que veamos sus nombres exactos.
+    """
+    try:
+        # Leer la fila 2 completa
+        encabezados = sheets.get_values('Nueva hoja!A2:Z2')[0]
+        return jsonify({'encabezados': encabezados}), 200
+    except Exception as e:
+        app.logger.exception("Error obteniendo encabezados en fila 2")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/candidatas_db')
+def list_candidatas_db():
+    """
+    Devuelve todas las candidatas que existen en la tabla 'candidatas' de PostgreSQL.
+    """
+    try:
+        candidatas = Candidata.query.all()
+        resultado = []
+        for c in candidatas:
+            resultado.append({
+                "fila": c.fila,
+                "marca_temporal": c.marca_temporal.isoformat() if c.marca_temporal else None,
+                "nombre_completo": c.nombre_completo,
+                "edad": c.edad,
+                "numero_telefono": c.numero_telefono,
+                "direccion_completa": c.direccion_completa,
+                "modalidad_trabajo_preferida": c.modalidad_trabajo_preferida,
+                "cedula": c.cedula,
+                "codigo": c.codigo,
+                # agrega aquí más campos que quieras exponer
+            })
+        return jsonify({"candidatas": resultado}), 200
+    except Exception as e:
+        app.logger.exception("Error leyendo desde la DB")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/')
+def home():
+    if 'usuario' not in session:
+        return redirect(url_for('login'))
+    return render_template(
+        'home.html',
+        usuario=session['usuario'],
+        current_year=datetime.utcnow().year
+    )
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
@@ -685,14 +640,6 @@ def logout():
     session.pop('usuario', None)  # Cierra la sesión
     return redirect(url_for('login'))
 
-# Ruta protegida (Home)
-@app.route('/')
-def home():
-    if 'usuario' not in session:
-        return redirect(url_for('login'))  # Redirige al login si no está autenticado
-    return render_template('home.html', usuario=session['usuario'])
-
-
 @app.route('/sugerir')
 def sugerir():
     query = request.args.get('busqueda', '')
@@ -704,338 +651,188 @@ def sugerir():
     
     return jsonify(datos_filtrados)
 
+# ─── 2) Cargar ENTREVISTAS_CONFIG desde JSON ──────────────────────
+
+from flask import (
+    render_template, request, redirect, url_for, flash, current_app
+)
+from models import Candidata, db
+
+
 @app.route('/entrevista', methods=['GET', 'POST'])
 def entrevista():
-    # Obtener parámetros de la URL: tipo de entrevista y fila (opcional)
-    tipo_entrevista = request.args.get("tipo", "").strip().lower()
-    fila_param = request.args.get("fila", "").strip()
+    # 1) Obtener parámetros
+    tipo    = request.values.get('tipo', '').strip().lower()
+    fila    = request.values.get('fila', type=int)
+    config  = current_app.config['ENTREVISTAS_CONFIG']
 
-    if tipo_entrevista not in ENTREVISTAS_CONFIG:
-        return "⚠️ Tipo de entrevista no válido.", 400
-
-    entrevista_config = ENTREVISTAS_CONFIG[tipo_entrevista]
-    titulo = entrevista_config.get("titulo", "Entrevista sin título")
-    preguntas = entrevista_config.get("preguntas", [])
-
-    mensaje = None
-    datos = {}         # Aquí se almacenarán los datos ingresados
-    focus_field = None # El id del primer campo faltante
-
-    if request.method == 'POST':
+    # 2) Si llegó POST con respuestas, guardamos
+    if request.method == 'POST' and tipo and fila:
+        preguntas = config[tipo]['preguntas']
         respuestas = []
-        missing_fields = []
-        # Recorrer todas las preguntas
-        for pregunta in preguntas:
-            campo_id = pregunta['id']
-            valor = request.form.get(campo_id, '').strip()
-            datos[campo_id] = valor  # Guardamos el valor ingresado
-            if not valor:
-                missing_fields.append(campo_id)
-            linea = f"{pregunta['enunciado']}: {valor}"
-            respuestas.append(linea)
-        
-        if missing_fields:
-            mensaje = "Por favor, complete todos los campos."
-            focus_field = missing_fields[0]  # Primer campo faltante
-            # Re-renderizamos el formulario conservando los datos ingresados
-            return render_template("entrevista_dinamica.html",
-                                   titulo=titulo,
-                                   preguntas=preguntas,
-                                   mensaje=mensaje,
-                                   datos=datos,
-                                   focus_field=focus_field)
-        
-        entrevista_completa = "\n".join(respuestas)
-        
-        if fila_param.isdigit():
-            fila_index = int(fila_param)
+        faltan = []
+        for p in preguntas:
+            v = request.form.get(p['id'], '').strip()
+            if not v: faltan.append(p['id'])
+            respuestas.append(f"{p['enunciado']}: {v}")
+        if faltan:
+            flash("Por favor completa todos los campos.", "warning")
         else:
-            fila_index = obtener_siguiente_fila()
-        
-        if fila_index is None:
-            mensaje = "❌ Error: No se pudo determinar la fila libre."
-        else:
+            c = Candidata.query.get(fila)
+            c.entrevista = "\n".join(respuestas)
             try:
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=f"Nueva hoja!Z{fila_index}",
-                    valueInputOption="RAW",
-                    body={"values": [[entrevista_completa]]}
-                ).execute()
-                mensaje = f"✅ Entrevista guardada correctamente en la fila {fila_index}."
-            except Exception as e:
-                mensaje = f"❌ Error al guardar la entrevista: {str(e)}"
-    
-    return render_template("entrevista_dinamica.html",
-                           titulo=titulo,
-                           preguntas=preguntas,
-                           mensaje=mensaje,
-                           datos=datos,
-                           focus_field=focus_field)
+                db.session.commit()
+                flash("✅ Entrevista guardada.", "success")
+            except:
+                db.session.rollback()
+                flash("❌ Error al guardar.", "danger")
+        # Después de guardar, redirigimos al mismo formulario para verlo de nuevo
+        return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
+
+    # 3) Si no hay 'fila' seleccionada → mostramos buscador
+    if not fila:
+        resultados = []
+        if request.method == 'POST':  # búsqueda por POST
+            q = request.form.get('busqueda','').strip()
+            if q:
+                like = f"%{q}%"
+                resultados = Candidata.query.filter(
+                    (Candidata.nombre_completo.ilike(like)) |
+                    (Candidata.cedula.ilike(like))
+                ).all()
+                if not resultados:
+                    flash("⚠️ No se encontraron candidatas.", "info")
+            else:
+                flash("⚠️ Ingresa un término de búsqueda.", "warning")
+        return render_template(
+            'entrevista.html',
+            etapa='buscar',
+            resultados=resultados
+        )
+
+    # 4) Si hay fila pero no tipo → mostrar selección de tipo
+    if fila and not tipo:
+        candidata = Candidata.query.get(fila)
+        if not candidata:
+            flash("⚠️ Candidata no encontrada.", "warning")
+            return redirect(url_for('entrevista'))
+        # lista de (clave, título) para los tipos disponibles
+        tipos = [(k, cfg['titulo']) for k, cfg in config.items()]
+        return render_template(
+            'entrevista.html',
+            etapa='elegir_tipo',
+            candidata=candidata,
+            tipos=tipos
+        )
+
+    # 5) Si tenemos fila y tipo → mostrar formulario dinámico
+    if fila and tipo:
+        candidata  = Candidata.query.get(fila)
+        cfg         = config.get(tipo)
+        if not cfg or not candidata:
+            flash("⚠️ Parámetros inválidos.", "danger")
+            return redirect(url_for('entrevista'))
+        return render_template(
+            'entrevista.html',
+            etapa='formulario',
+            candidata=candidata,
+            tipo=tipo,
+            preguntas=cfg.get('preguntas', []),
+            titulo=cfg.get('titulo'),
+            datos={}, mensaje=None, focus_field=None
+        )
+
+    # fallback
+    return redirect(url_for('entrevista'))
 
 
 
-
-@app.route('/buscar_candidata', methods=['GET', 'POST'])
-def buscar_candidata():
-    resultados = []
-    mensaje = None
-
-    if request.method == 'POST':
-        busqueda = request.form.get('busqueda', '').strip().lower()
-
-        try:
-            # Lee la hoja de cálculo (ajusta el rango a tus columnas)
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Z"
-            ).execute()
-            valores = hoja.get("values", [])
-
-            # Itera sobre cada fila (desde la 2 en adelante)
-            for fila_index, fila in enumerate(valores[1:], start=2):
-                # Supongamos que el nombre está en la columna B (fila[1])
-                if len(fila) > 1:
-                    nombre = fila[1].strip().lower()
-                else:
-                    nombre = ""
-
-                # Coincidencia parcial
-                if busqueda in nombre:
-                    resultados.append({
-                        'fila_index': fila_index,
-                        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                        # Agrega más campos si deseas
-                    })
-
-        except Exception as e:
-            mensaje = f"❌ Error al buscar: {str(e)}"
-
-    return render_template('buscar_candidata.html', resultados=resultados, mensaje=mensaje)
+from flask import (
+    Flask, render_template, request,
+    redirect, url_for, flash
+)
+from sqlalchemy import or_
+from models import Candidata, db
+from config_app import normalize_cedula
 
 @app.route('/buscar', methods=['GET', 'POST'])
-def buscar():
+def buscar_candidata():
+    busqueda = (request.form.get('busqueda', '') if request.method == 'POST'
+                else request.args.get('busqueda', '')).strip()
     resultados = []
-    candidata_detalles = None
+    candidata = None
     mensaje = None
 
-    # 1) Capturar lo que se escribe en el formulario
-    busqueda_input = request.form.get('busqueda', '').strip().lower()
+    # Edición
+    if request.method == 'POST' and request.form.get('guardar_edicion'):
+        cid = request.form.get('candidata_id','').strip()
+        if cid.isdigit():
+            obj = Candidata.query.get(int(cid))
+            if obj:
+                obj.nombre_completo             = request.form.get('nombre','').strip() or obj.nombre_completo
+                obj.edad                        = request.form.get('edad','').strip() or obj.edad
+                obj.numero_telefono             = request.form.get('telefono','').strip() or obj.numero_telefono
+                obj.direccion_completa          = request.form.get('direccion','').strip() or obj.direccion_completa
+                obj.modalidad_trabajo_preferida = request.form.get('modalidad','').strip() or obj.modalidad_trabajo_preferida
+                obj.rutas_cercanas              = request.form.get('rutas','').strip() or obj.rutas_cercanas
+                obj.empleo_anterior             = request.form.get('empleo_anterior','').strip() or obj.empleo_anterior
+                obj.anos_experiencia            = request.form.get('anos_experiencia','').strip() or obj.anos_experiencia
+                obj.areas_experiencia           = request.form.get('areas_experiencia','').strip() or obj.areas_experiencia
 
-    # 2) Si vienen parámetros por GET (por ejemplo, ?candidata=2)
-    candidata_param = request.args.get('candidata', '').strip()
+                obj.sabe_planchar               = request.form.get('sabe_planchar') == 'si'
+                obj.contactos_referencias_laborales = request.form.get('contactos_referencias_laborales','').strip() \
+                                                      or obj.contactos_referencias_laborales
+                obj.referencias_familiares_detalle  = request.form.get('referencias_familiares_detalle','').strip() \
+                                                      or obj.referencias_familiares_detalle
 
-    try:
-        # Cargar las columnas B→O (índices 0→13 en cada fila)
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"  # Asegúrate de que B→O sean las columnas que quieres
-        ).execute()
-        valores = hoja.get("values", [])  # 'valores[0]' será la fila de encabezados
+                obj.cedula                      = request.form.get('cedula','').strip() or obj.cedula
+                obj.acepta_porcentaje_sueldo    = 1 if request.form.get('acepta_porcentaje') else 0
 
-        if not valores or len(valores) < 2:
-            return render_template('buscar.html', 
-                                   resultados=[],
-                                   candidata=None,
-                                   mensaje="⚠️ No hay datos disponibles.")
+                try:
+                    db.session.commit()
+                    flash("✅ Datos actualizados correctamente.", "success")
+                    return redirect(url_for('buscar_candidata', candidata_id=cid))
+                except Exception as e:
+                    db.session.rollback()
+                    mensaje = f"❌ Error al guardar: {e}"
+        else:
+            mensaje = "❌ ID de candidata inválido."
 
-        # 3) Si hay término de búsqueda por POST, filtrar
-        if busqueda_input:
-            # valores[1:] omite la fila 0 (encabezado)
-            for index, row in enumerate(valores[1:], start=2):
-                # row[0] = columna B, row[1] = col C, ..., row[13] = col O (si existe)
-                if len(row) > 0:
-                    nombre_lower = row[0].strip().lower()  # B
-                    if busqueda_input in nombre_lower:
-                        resultados.append({
-                            'fila_index': index,           # la fila real en la hoja
-                            'nombre': row[0],             # B
-                            'cedula': row[13] if len(row) > 13 else "",
-                            'telefono': row[2] if len(row) > 2 else "",
-                            'direccion': row[3] if len(row) > 3 else "",
-                            # Agrega más campos si quieres mostrar en la tabla
-                        })
+    # Carga detalles
+    cid = request.args.get('candidata_id','').strip()
+    if cid.isdigit():
+        candidata = Candidata.query.get(int(cid))
+        if not candidata:
+            mensaje = "⚠️ Candidata no encontrada."
 
-        # 4) Si se pasa ?candidata=XX por GET, cargar detalles de esa fila
-        if candidata_param:
-            try:
-                fila_index = int(candidata_param)
-                # fila_index = 2 → corresponde a valores[1]
-                # fila_index = 3 → corresponde a valores[2], etc.
-                # Por eso restamos 1
-                row = valores[fila_index - 1]  # OJO: -1 porque 'valores[0]' es encabezado
-                # Construimos el diccionario con TODAS las columnas
-                candidata_detalles = {
-                    'fila_index': fila_index,
-                    'nombre': row[0] if len(row) > 0 else "",
-                    'edad': row[1] if len(row) > 1 else "",
-                    'telefono': row[2] if len(row) > 2 else "",
-                    'direccion': row[3] if len(row) > 3 else "",
-                    'modalidad': row[4] if len(row) > 4 else "",
-                    'rutas': row[5] if len(row) > 5 else "",
-                    'empleo_anterior': row[6] if len(row) > 6 else "",
-                    'anos_experiencia': row[7] if len(row) > 7 else "",
-                    'areas_experiencia': row[8] if len(row) > 8 else "",
-                    'sabe_planchar': row[9] if len(row) > 9 else "",
-                    'referencias_laborales': row[10] if len(row) > 10 else "",
-                    'referencias_familiares': row[11] if len(row) > 11 else "",
-                    'acepta_porcentaje': row[12] if len(row) > 12 else "",
-                    'cedula': row[13] if len(row) > 13 else "",
-                }
-            except (ValueError, IndexError):
-                mensaje = "La fila indicada no es válida."
+    # Búsqueda global: convertimos edad a String para usar ILIKE
+    if busqueda and not candidata:
+        filtros = [
+            Candidata.nombre_completo.ilike(f"%{busqueda}%"),
+            cast(Candidata.edad, String).ilike(f"%{busqueda}%"),
+            Candidata.numero_telefono.ilike(f"%{busqueda}%"),
+            Candidata.direccion_completa.ilike(f"%{busqueda}%"),
+            Candidata.modalidad_trabajo_preferida.ilike(f"%{busqueda}%"),
+            Candidata.rutas_cercanas.ilike(f"%{busqueda}%"),
+            Candidata.empleo_anterior.ilike(f"%{busqueda}%"),
+            Candidata.anos_experiencia.ilike(f"%{busqueda}%"),
+            Candidata.areas_experiencia.ilike(f"%{busqueda}%"),
+            Candidata.contactos_referencias_laborales.ilike(f"%{busqueda}%"),
+            Candidata.referencias_familiares_detalle.ilike(f"%{busqueda}%"),
+            Candidata.cedula.ilike(f"%{busqueda}%"),
+        ]
+        resultados = Candidata.query.filter(or_(*filtros)).all()
+        if not resultados:
+            mensaje = "⚠️ No se encontraron coincidencias."
 
-    except Exception as e:
-        mensaje = f"❌ Error al obtener los datos: {str(e)}"
-        return render_template('buscar.html', resultados=[], candidata=None, mensaje=mensaje)
+    return render_template(
+        'buscar.html',
+        busqueda=busqueda,
+        resultados=resultados,
+        candidata=candidata,
+        mensaje=mensaje
+    )
 
-    # Finalmente renderizamos la plantilla
-    return render_template('buscar.html', 
-                           resultados=resultados, 
-                           candidata=candidata_detalles, 
-                           mensaje=mensaje)
-
-
-@app.route('/editar', methods=['GET', 'POST'])
-def editar():
-    resultados = []
-    candidata_detalles = None
-    mensaje = None
-
-    # Primero: Cargar la hoja de Google Sheets (rango "Nueva hoja!B:O")
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!B:O"
-        ).execute()
-        valores = hoja.get("values", [])
-        if not valores or len(valores) < 2:
-            mensaje = "⚠️ No hay datos disponibles."
-            return render_template('editar.html', resultados=resultados, candidata=None, mensaje=mensaje)
-    except Exception as e:
-        mensaje = f"Error al obtener datos: {str(e)}"
-        return render_template('editar.html', resultados=resultados, candidata=None, mensaje=mensaje)
-
-    # Caso A: GET con "candidata_seleccionada" para ver detalles
-    if request.method == 'GET' and request.args.get('candidata_seleccionada'):
-        candidata_id = request.args.get('candidata_seleccionada').strip()
-        try:
-            fila_index = int(candidata_id)
-            # El arreglo "valores" incluye la cabecera en posición 0, por lo que fila_index coincide con el número de fila real
-            fila = valores[fila_index - 1]
-            candidata_detalles = {
-                'fila_index': fila_index,
-                'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                'edad': fila[1] if len(fila) > 1 else "No especificado",
-                'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                'direccion': fila[3] if len(fila) > 3 else "No especificado",
-                'modalidad': fila[4] if len(fila) > 4 else "No especificado",
-                'rutas': fila[5] if len(fila) > 5 else "No especificado",
-                'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
-                'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
-                'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-                'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
-                'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
-                'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
-                'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
-                'cedula': fila[13] if len(fila) > 13 else "No especificado",
-            }
-        except Exception as e:
-            mensaje = f"Error al cargar detalles: {str(e)}"
-
-    # Caso B: POST para guardar cambios (se detecta con el campo "guardar_edicion")
-    elif request.method == 'POST' and request.form.get('guardar_edicion'):
-        try:
-            fila_index = request.form.get('fila_index', '').strip()
-            if not fila_index or not fila_index.isdigit():
-                mensaje = "Error: No se pudo determinar la fila a actualizar."
-            else:
-                fila_index = int(fila_index)
-                nuevos_datos = {
-                    'nombre': request.form.get('nombre', '').strip(),
-                    'edad': request.form.get('edad', '').strip(),
-                    'telefono': request.form.get('telefono', '').strip(),
-                    'direccion': request.form.get('direccion', '').strip(),
-                    'modalidad': request.form.get('modalidad', '').strip(),
-                    'rutas': request.form.get('rutas', '').strip(),
-                    'empleo_anterior': request.form.get('empleo_anterior', '').strip(),
-                    'anos_experiencia': request.form.get('anos_experiencia', '').strip(),
-                    'areas_experiencia': request.form.get('areas_experiencia', '').strip(),
-                    'sabe_planchar': request.form.get('sabe_planchar', '').strip(),
-                    'referencias_laborales': request.form.get('referencias_laborales', '').strip(),
-                    'referencias_familiares': request.form.get('referencias_familiares', '').strip(),
-                    'acepta_porcentaje': request.form.get('acepta_porcentaje', '').strip(),
-                    'cedula': request.form.get('cedula', '').strip()
-                }
-                columnas = {
-                    'nombre': "B",
-                    'edad': "C",
-                    'telefono': "D",
-                    'direccion': "E",
-                    'modalidad': "F",
-                    'rutas': "G",
-                    'empleo_anterior': "H",
-                    'anos_experiencia': "I",
-                    'areas_experiencia': "J",
-                    'sabe_planchar': "K",
-                    'referencias_laborales': "L",
-                    'referencias_familiares': "M",
-                    'acepta_porcentaje': "N",
-                    'cedula': "O"
-                }
-                for campo, valor in nuevos_datos.items():
-                    if valor:  # Actualiza solo si se proporcionó un valor
-                        rango = f'Nueva hoja!{columnas[campo]}{fila_index}'
-                        service.spreadsheets().values().update(
-                            spreadsheetId=SPREADSHEET_ID,
-                            range=rango,
-                            valueInputOption="RAW",
-                            body={"values": [[valor]]}
-                        ).execute()
-                mensaje = "Los datos fueron actualizados correctamente."
-                # Recargar detalles actualizados
-                fila = valores[fila_index - 1]
-                candidata_detalles = {
-                    'fila_index': fila_index,
-                    'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                    'edad': fila[1] if len(fila) > 1 else "No especificado",
-                    'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                    'direccion': fila[3] if len(fila) > 3 else "No especificado",
-                    'modalidad': fila[4] if len(fila) > 4 else "No especificado",
-                    'rutas': fila[5] if len(fila) > 5 else "No especificado",
-                    'empleo_anterior': fila[6] if len(fila) > 6 else "No especificado",
-                    'anos_experiencia': fila[7] if len(fila) > 7 else "No especificado",
-                    'areas_experiencia': fila[8] if len(fila) > 8 else "No especificado",
-                    'sabe_planchar': fila[9] if len(fila) > 9 else "No especificado",
-                    'referencias_laborales': fila[10] if len(fila) > 10 else "No especificado",
-                    'referencias_familiares': fila[11] if len(fila) > 11 else "No especificado",
-                    'acepta_porcentaje': fila[12] if len(fila) > 12 else "No especificado",
-                    'cedula': fila[13] if len(fila) > 13 else "No especificado",
-                }
-        except Exception as e:
-            mensaje = f"Error al actualizar datos: {str(e)}"
-
-    # Caso C: Búsqueda simple (sin parámetros de selección ni guardado)
-    else:
-        busqueda = request.values.get('busqueda', '').strip().lower()
-
-    # Si aún no se cargaron detalles (caso C o si no se seleccionó candidata), se generan los resultados de búsqueda
-    if not candidata_detalles:
-        for fila_index, fila in enumerate(valores[1:], start=2):
-            nombre = fila[0].strip().lower() if len(fila) > 0 else ""
-            cedula = fila[13].strip() if len(fila) > 13 else ""
-            if busqueda and not (busqueda in nombre or busqueda in cedula):
-                continue
-            resultados.append({
-                'fila_index': fila_index,
-                'nombre': fila[0] if len(fila) > 0 else "No especificado",
-                'telefono': fila[2] if len(fila) > 2 else "No especificado",
-                'direccion': fila[3] if len(fila) > 3 else "No especificado",
-                'cedula': fila[13] if len(fila) > 13 else "No especificado",
-            })
-
-    return render_template('editar.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
@@ -1101,345 +898,341 @@ def filtrar():
 
 import traceback  # Importa para depuración
 
+from flask import flash, render_template, request, url_for, redirect
+from sqlalchemy import or_
+from datetime import datetime
+from decimal import Decimal
+
+from models import Candidata
+from config_app import db
+from utils_codigo import generar_codigo_unico  # tu nueva función optimizada
+
+def parse_date(s: str):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except:
+        return None
+
+def parse_decimal(s: str):
+    try:
+        return Decimal(s.replace(',', '.'))
+    except:
+        return None
+
 @app.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
     mensaje = ""
-    datos_candidata = {}
     resultados = []
+    candidata = None
 
-    # Cargar los datos de la hoja en el rango A:T
-    datos = cargar_datos_hoja(rango="Nueva hoja!A:T")
-    if not datos or len(datos) < 2:
-        mensaje = "⚠️ No hay datos disponibles en la hoja."
-        return render_template("inscripcion.html", resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
-
+    # 1) POST: guardado o búsqueda vía formulario
     if request.method == "POST":
-        # Caso A: Guardar inscripción
+        # — Guardar inscripción —
         if request.form.get("guardar_inscripcion"):
-            fila_index_str = request.form.get("fila_index", "").strip()
-            if not fila_index_str or not fila_index_str.isdigit():
-                mensaje = "Error: Índice de fila inválido."
-                return render_template("inscripcion.html", resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
-            fila_index = int(fila_index_str)
-            if fila_index < 2 or fila_index > len(datos):
-                mensaje = "Índice de fila fuera de rango."
-                return render_template("inscripcion.html", resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
-            # Recoger los datos ingresados
-            medio = request.form.get("medio", "").strip()
-            estado = request.form.get("estado", "").strip()
-            monto = request.form.get("monto", "").strip()
-            fecha = request.form.get("fecha", "").strip()
-            exito, fila_actual = guardar_inscripcion(fila_index, medio, estado, monto, fecha)
-            if exito:
-                mensaje = "Inscripción guardada correctamente."
-                datos_candidata = {
-                    "fila_index": fila_index,
-                    "codigo": fila_actual[15] if len(fila_actual) > 15 else "",
-                    "nombre": fila_actual[1] if len(fila_actual) > 1 else "No disponible",
-                    "cedula": fila_actual[14] if len(fila_actual) > 14 else "No disponible",
-                    "telefono": fila_actual[3] if len(fila_actual) > 3 else "No disponible",
-                    "direccion": fila_actual[4] if len(fila_actual) > 4 else "No disponible",
-                    "medio": fila_actual[16] if len(fila_actual) > 16 else "No disponible",  # Columna Q
-                    "inscripcion": fila_actual[17] if len(fila_actual) > 17 else "No disponible",  # Columna R
-                    "monto": fila_actual[18] if len(fila_actual) > 18 else "No disponible",        # Columna S
-                    "fecha": fila_actual[19] if len(fila_actual) > 19 else "No disponible"           # Columna T
-                }
-            else:
-                mensaje = "Error al guardar la inscripción."
-            return render_template("inscripcion.html", resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
-        else:
-            # Caso B: Búsqueda (POST)
-            query = request.form.get("buscar", "").strip()
-            if query:
-                resultados = buscar_candidatas_inscripcion(query, datos)
-                if not resultados:
-                    mensaje = "⚠️ No se encontraron coincidencias."
-            return render_template("inscripcion.html", resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
-    else:
-        # Método GET: Mostrar detalles o realizar búsqueda
-        candidata_param = request.args.get("candidata_seleccionada", "").strip()
-        if candidata_param:
+            cid = request.form.get("candidata_id", "").strip()
+            if not cid.isdigit():
+                flash("❌ ID inválido.", "error")
+                return redirect(url_for('inscripcion'))
+
+            obj = Candidata.query.get(int(cid))
+            if not obj:
+                flash("⚠️ Candidata no encontrada.", "error")
+                return redirect(url_for('inscripcion'))
+
+            # Generar código si no existe
+            if not obj.codigo:
+                obj.codigo = generar_codigo_unico()
+
+            # Actualizar campos
+            obj.medio_inscripcion = request.form.get("medio","").strip() or obj.medio_inscripcion
+            obj.inscripcion       = request.form.get("estado") == "si"
+            obj.monto             = parse_decimal(request.form.get("monto","")) or obj.monto
+            obj.fecha             = parse_date(request.form.get("fecha","")) or obj.fecha
+
             try:
-                fila_index = int(candidata_param)
-                if fila_index < 2 or fila_index > len(datos):
-                    mensaje = "Índice de fila fuera de rango."
-                else:
-                    fila = datos[fila_index - 1]
-                    datos_candidata = {
-                        "fila_index": fila_index,
-                        "codigo": fila[15] if len(fila) > 15 and fila[15].strip() else "Se generará automáticamente",
-                        "nombre": fila[1] if len(fila) > 1 else "No disponible",
-                        "cedula": fila[14] if len(fila) > 14 else "No disponible",
-                        "telefono": fila[3] if len(fila) > 3 else "No disponible",
-                        "direccion": fila[4] if len(fila) > 4 else "No disponible",
-                        "medio": fila[16] if len(fila) > 16 else "No disponible"
-                    }
+                db.session.commit()
+                flash(f"✅ Inscripción guardada. Código: {obj.codigo}", "success")
+                candidata = obj
             except Exception as e:
-                mensaje = f"Error al cargar detalles: {str(e)}"
+                db.session.rollback()
+                flash(f"❌ Error al guardar inscripción: {e}", "error")
+                return redirect(url_for('inscripcion'))
+
+        # — Búsqueda vía POST —
         else:
-            query = request.args.get("query", "").strip() or request.args.get("buscar", "").strip()
-            if query:
-                resultados = buscar_candidatas_inscripcion(query, datos)
+            q = request.form.get("buscar","").strip()
+            if q:
+                like = f"%{q}%"
+                resultados = Candidata.query.filter(
+                    or_(
+                        Candidata.nombre_completo.ilike(like),
+                        Candidata.cedula.ilike(like),
+                        Candidata.numero_telefono.ilike(like)
+                    )
+                ).all()
                 if not resultados:
-                    mensaje = "⚠️ No se encontraron coincidencias."
-        return render_template("inscripcion.html", resultados=resultados, datos_candidata=datos_candidata, mensaje=mensaje)
+                    flash("⚠️ No se encontraron coincidencias.", "error")
+
+    # 2) GET: búsqueda o ver detalles
+    else:
+        # — Búsqueda GET —
+        q = request.args.get("buscar","").strip()
+        if q:
+            like = f"%{q}%"
+            resultados = Candidata.query.filter(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.numero_telefono.ilike(like)
+                )
+            ).all()
+            if not resultados:
+                mensaje = "⚠️ No se encontraron coincidencias."
+
+        # — Detalles GET —
+        sel = request.args.get("candidata_seleccionada","").strip()
+        if not resultados and sel.isdigit():
+            candidata = Candidata.query.get(int(sel))
+            if not candidata:
+                mensaje = "⚠️ Candidata no encontrada."
+
+    return render_template(
+        "inscripcion.html",
+        resultados=resultados,
+        candidata=candidata,
+        mensaje=mensaje
+    )
+
+
+from flask import flash, render_template, request, url_for, redirect
+from sqlalchemy import or_
+from datetime import datetime
+from decimal import Decimal
+
+from models import Candidata
+from config_app import db
+
+def parse_date(s: str):
+    """Convierte 'YYYY-MM-DD' a date, o devuelve None."""
+    try:
+        return datetime.strptime(s or "", "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+def parse_decimal(s: str):
+    """Convierte '123.45' o '123,45' a Decimal, o devuelve None."""
+    try:
+        return Decimal((s or "").replace(',', '.'))
+    except:
+        return None
 
 @app.route('/porciento', methods=['GET', 'POST'])
 def porciento():
+    resultados = []
+    candidata = None
+
     if request.method == "POST":
-        # Actualización: Se reciben los datos y se calcula el 25%
+        # ——— Guardar porcentaje ———
+        fila_id = request.form.get('fila_id', '').strip()
+        if not fila_id.isdigit():
+            flash("❌ Fila inválida.", "danger")
+            return redirect(url_for('porciento'))
+
+        obj = Candidata.query.get(int(fila_id))
+        if not obj:
+            flash("⚠️ Candidata no encontrada.", "warning")
+            return redirect(url_for('porciento'))
+
+        # parse inputs
+        fecha_pago   = parse_date(request.form.get("fecha_pago",""))
+        fecha_inicio = parse_date(request.form.get("fecha_inicio",""))
+        monto_total  = parse_decimal(request.form.get("monto_total",""))
+
+        if None in (fecha_pago, fecha_inicio, monto_total):
+            flash("❌ Datos incompletos o inválidos.", "danger")
+            return redirect(url_for('porciento', candidata=fila_id))
+
+        # calcula 25 %
+        porcentaje = (monto_total * Decimal("0.25")).quantize(Decimal("0.01"))
+
+        # guarda en la BD
+        obj.fecha_de_pago = fecha_pago
+        obj.inicio        = fecha_inicio
+        obj.monto_total   = monto_total
+        obj.porciento     = porcentaje
+
         try:
-            fila_index = request.form.get('fila_index', '').strip()
-            if not fila_index or not fila_index.isdigit():
-                return "Error: Fila inválida.", 400
-            fila_index = int(fila_index)
-
-            monto_total_str = request.form.get('monto_total', '').strip()
-            if not monto_total_str:
-                return "Error: monto_total es requerido.", 400
-
-            try:
-                monto_total = float(monto_total_str)
-            except ValueError:
-                return "Error: monto_total debe ser numérico.", 400
-
-            porcentaje = round(monto_total * 0.25, 2)
-            fecha_pago = request.form.get('fecha_pago', '').strip()
-            fecha_inicio = request.form.get('fecha_inicio', '').strip()
-
-            # Actualiza el rango de columnas U a X (índices 20 a 23)
-            rango = f"Nueva hoja!U{fila_index}:X{fila_index}"
-            valores = [[fecha_pago, fecha_inicio, monto_total_str, str(porcentaje)]]
-            body = {"values": valores}
-
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=rango,
-                valueInputOption="RAW",
-                body=body
-            ).execute()
-
-            mensaje = "✅ Datos actualizados correctamente."
+            db.session.commit()
+            flash(f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}.", "success")
+            candidata = obj
         except Exception as e:
-            logging.error(f"Error al actualizar porcentaje: {e}", exc_info=True)
-            return f"❌ Error al actualizar: {e}", 500
+            db.session.rollback()
+            flash(f"❌ Error al actualizar: {e}", "danger")
+            return redirect(url_for('porciento', candidata=fila_id))
 
-        return render_template('porciento.html', mensaje=mensaje)
     else:
-        resultados = []
-        candidata_detalles = None
-        busqueda = request.args.get('busqueda', '').strip().lower()
-        candidata_id = request.args.get('candidata', '').strip()
+        # ——— Búsqueda GET ———
+        q = request.args.get("busqueda","").strip()
+        if q:
+            like = f"%{q}%"
+            resultados = Candidata.query.filter(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.numero_telefono.ilike(like)
+                )
+            ).all()
+            if not resultados:
+                flash("⚠️ No se encontraron coincidencias.", "warning")
 
-        try:
-            hoja = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A:Y"
-            ).execute()
-            valores = hoja.get("values", [])
+        # ——— Detalle GET ———
+        sel = request.args.get("candidata","").strip()
+        if sel.isdigit() and not resultados:
+            candidata = Candidata.query.get(int(sel))
+            if not candidata:
+                flash("⚠️ Candidata no encontrada.", "warning")
 
-            for fila_index, fila in enumerate(valores[1:], start=2):
-                # Aseguramos que la fila tenga al menos 24 columnas (esto cubre hasta índice 23)
-                if len(fila) < 24:
-                    fila.extend([""] * (24 - len(fila)))
+    return render_template(
+        "porciento.html",
+        resultados=resultados,
+        candidata=candidata
+    )
 
-                # Solo procesamos filas que tengan código en la columna P (índice 15)
-                codigo = fila[15].strip() if len(fila) > 15 else ""
-                if not codigo:
-                    continue
 
-                nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-                cedula = fila[14].strip() if len(fila) > 14 else ""
-                telefono = fila[3].strip() if len(fila) > 3 else ""
-
-                if busqueda and (busqueda in nombre or busqueda in cedula):
-                    resultados.append({
-                        'fila_index': fila_index,
-                        'codigo': fila[15],
-                        'nombre': fila[1],
-                        'telefono': telefono,
-                        'cedula': cedula
-                    })
-
-                if candidata_id and str(fila_index) == candidata_id:
-                    candidata_detalles = {
-                        'fila_index': fila_index,
-                        'codigo': fila[15],
-                        'nombre': fila[1],
-                        'fecha_pago': fila[20],
-                        'fecha_inicio': fila[21],
-                        'monto_total': fila[22],
-                        'porcentaje': fila[23],
-                        'telefono': telefono,
-                        'cedula': cedula
-                    }
-        except Exception as e:
-            logging.error(f"Error en búsqueda de candidatas: {e}", exc_info=True)
-
-        return render_template('porciento.html', resultados=resultados, candidata=candidata_detalles)
+from flask import render_template, request, redirect, url_for, flash, session
+from sqlalchemy import or_
+from decimal import Decimal
+from models import Candidata
+from config_app import db
+from datetime import datetime
 
 @app.route('/pagos', methods=['GET', 'POST'])
 def pagos():
-    mensaje = ""
     resultados = []
-    candidata_detalles = None
+    candidata = None
 
-    # Cargar la hoja completa (rango A:Y)
-    try:
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"
-        ).execute()
-        datos = hoja.get("values", [])
-        # Aseguramos que cada fila tenga al menos 25 columnas (índice 0 a 24)
-        for fila in datos:
-            if len(fila) < 25:
-                fila.extend([""] * (25 - len(fila)))
-    except Exception as e:
-        logging.error(f"Error al cargar datos de la hoja: {e}", exc_info=True)
-        return render_template('pagos.html', resultados=[], candidata=None, mensaje="Error al cargar datos.")
+    # — POST: actualizar pago —
+    if request.method == 'POST':
+        fila = request.form.get('fila', type=int)
+        monto_str = request.form.get('monto_pagado', '').strip()
+        calificacion = request.form.get('calificacion', '').strip()
 
-    # Si se envía un POST: procesamos la actualización del pago
-    if request.method == "POST":
+        if not fila or not monto_str or not calificacion:
+            flash("❌ Datos inválidos.", "danger")
+            return redirect(url_for('pagos'))
+
+        # Convertir a Decimal
         try:
-            fila_index_str = request.form.get('fila_index', '').strip()
-            if not fila_index_str or not fila_index_str.isdigit():
-                mensaje = "Error: Índice de fila inválido."
-                return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
-            fila_index = int(fila_index_str)
+            monto_pagado = Decimal(monto_str)
+        except:
+            flash("❌ Monto inválido.", "danger")
+            return redirect(url_for('pagos'))
 
-            monto_pagado_str = request.form.get('monto_pagado', '').strip()
-            if not monto_pagado_str:
-                mensaje = "Error: Ingrese un monto válido."
-                return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
-            monto_pagado = float(monto_pagado_str)
+        obj = Candidata.query.get(fila)
+        if not obj:
+            flash("⚠️ Candidata no encontrada.", "warning")
+            return redirect(url_for('pagos'))
 
-            # Obtener la calificación desde el select
-            calificacion = request.form.get('calificacion', '').strip()
-            if not calificacion:
-                mensaje = "Error: Seleccione una calificación."
-                return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+        # Ahora restamos de porciento (lo que debe), no de monto_total
+        obj.porciento = max(obj.porciento - monto_pagado, Decimal('0'))
+        obj.calificacion = calificacion
 
-            # Obtener el saldo actual desde la columna X (índice 23)
-            hoja_x = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range=f"Nueva hoja!X{fila_index}"
-            ).execute()
-            valores_x = hoja_x.get("values", [])
-            saldo_actual = float(valores_x[0][0]) if valores_x and valores_x[0] and valores_x[0][0] else 0.0
-
-            nuevo_saldo = max(saldo_actual - monto_pagado, 0)
-            # Actualizar en bloque las columnas X y Y: 
-            # Columna X: nuevo saldo, Columna Y: calificación
-            update_range = f"Nueva hoja!X{fila_index}:Y{fila_index}"
-            body = {"values": [[nuevo_saldo, calificacion]]}
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=update_range,
-                valueInputOption="RAW",
-                body=body
-            ).execute()
-            mensaje = "✅ Pago guardado con éxito."
-        except Exception as e:
-            logging.error(f"Error al guardar pago: {e}", exc_info=True)
-            mensaje = f"❌ Error al guardar el pago: {e}"
-        return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
-
-    # Procesamiento para el método GET: búsqueda y visualización de detalles
-    busqueda = request.args.get('busqueda', '').strip().lower() or request.form.get('busqueda', '').strip().lower()
-    candidata_id = request.args.get('candidata', '').strip()
-
-    if busqueda:
-        for idx, fila in enumerate(datos[1:], start=2):
-            nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-            cedula = fila[14].strip() if len(fila) > 14 else ""
-            codigo = fila[15].strip() if len(fila) > 15 else ""
-            telefono = fila[3].strip() if len(fila) > 3 else ""
-            if busqueda in nombre or busqueda in cedula or busqueda == codigo:
-                resultados.append({
-                    'fila_index': idx,
-                    'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                    'telefono': telefono if telefono else "No especificado",
-                    'cedula': cedula if cedula else "No especificado",
-                    'codigo': codigo if codigo else "No especificado"
-                })
-    if candidata_id:
         try:
-            fila_index = int(candidata_id)
-            fila = datos[fila_index - 1]  # Ajuste: Sheets es 1-indexado
-            candidata_detalles = {
-                'fila_index': fila_index,
-                'nombre': fila[1] if len(fila) > 1 else "No especificado",
-                'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                'monto_total': fila[22] if len(fila) > 22 else "0",    # Columna W
-                'porcentaje': fila[23] if len(fila) > 23 else "0",      # Columna X
-                'fecha_pago': fila[20] if len(fila) > 20 else "No registrada",  # Columna U
-                'calificacion': fila[24] if len(fila) > 24 else ""      # Columna Y
-            }
+            db.session.commit()
+            flash("✅ Pago guardado con éxito.", "success")
+            candidata = obj
         except Exception as e:
-            logging.error(f"Error al cargar detalles de candidata: {e}", exc_info=True)
-            mensaje = f"Error al cargar detalles: {e}"
+            db.session.rollback()
+            flash(f"❌ Error al guardar: {e}", "danger")
 
-    return render_template('pagos.html', resultados=resultados, candidata=candidata_detalles, mensaje=mensaje)
+        return render_template('pagos.html',
+                               resultados=[],
+                               candidata=candidata)
 
-import io
-import logging
-from fpdf import FPDF
-from flask import render_template, send_file
+    # — GET: búsqueda y detalle —
+    q = request.args.get('busqueda', '').strip()
+    sel = request.args.get('candidata', '').strip()
 
-# Función auxiliar para extender una fila a una longitud mínima
-def extend_row(row, min_length=25):
-    if len(row) < min_length:
-        row.extend([""] * (min_length - len(row)))
-    return row
+    if q:
+        like = f"%{q}%"
+        filas = Candidata.query.filter(
+            or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+            )
+        ).all()
+
+        for c in filas:
+            resultados.append({
+                'fila':     c.fila,
+                'nombre':   c.nombre_completo,
+                'cedula':   c.cedula,
+                'telefono': c.numero_telefono or 'No especificado',
+            })
+
+        if not resultados:
+            flash("⚠️ No se encontraron coincidencias.", "warning")
+
+    if sel.isdigit() and not resultados:
+        obj = Candidata.query.get(int(sel))
+        if obj:
+            candidata = obj
+        else:
+            flash("⚠️ Candidata no encontrada.", "warning")
+
+    return render_template('pagos.html',
+                           resultados=resultados,
+                           candidata=candidata)
+
+
+
+from flask import Flask, render_template, url_for
+from config_app import create_app, db
+from models import Candidata
+from datetime import datetime
+
 
 @app.route('/reporte_pagos', methods=['GET'])
 def reporte_pagos():
-    pagos_pendientes = []
+    """Muestra un listado de todas las candidatas con porciento pendiente (> 0)."""
     try:
-        # Obtener todos los datos (A:Y) de la hoja
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"
-        ).execute()
-        valores = hoja.get("values", [])
-        
-        if not valores or len(valores) < 2:
-            return render_template('reporte_pagos.html', pagos_pendientes=[], mensaje="⚠️ No hay datos disponibles.")
-        
-        # Procesar cada fila (excluyendo encabezado)
-        for fila in valores[1:]:
-            fila = extend_row(fila, 25)
-            try:
-                # Intentar convertir a float; si falla, se asume que es una fila de encabezado u otro tipo y se salta
-                monto_total = float(fila[22].strip()) if fila[22].strip().replace('.', '', 1).isdigit() else None
-                porcentaje_pendiente = float(fila[23].strip()) if fila[23].strip().replace('.', '', 1).isdigit() else None
-                if monto_total is None or porcentaje_pendiente is None:
-                    # Salta filas que no tienen datos numéricos en las columnas correspondientes
-                    continue
-                
-                if porcentaje_pendiente > 0:
-                    pagos_pendientes.append({
-                        'nombre': fila[1] if fila[1] else "No especificado",
-                        'cedula': fila[14] if fila[14] else "No especificado",
-                        'codigo': fila[15] if fila[15] else "No especificado",
-                        'ciudad': fila[4] if fila[4] else "No especificado",
-                        'monto_total': monto_total,
-                        'porcentaje_pendiente': porcentaje_pendiente,
-                        'fecha_inicio': fila[20] if fila[20] else "No registrada",
-                        'fecha_pago': fila[21] if fila[21] else "No registrada"
-                    })
-            except Exception as e:
-                logging.error(f"Error procesando fila: {fila} - {e}", exc_info=True)
-                continue
+        # Traemos todas las candidatas cuyo campo `porciento` sea mayor a 0
+        pendientes = Candidata.query.filter(Candidata.porciento > 0).all()
+
+        # Construimos la lista de dicts que pasaremos al template
+        pagos_pendientes = []
+        for c in pendientes:
+            pagos_pendientes.append({
+                'nombre': c.nombre_completo,
+                'cedula': c.cedula,
+                'codigo': c.codigo or "No especificado",
+                'ciudad': c.direccion_completa or "No especificado",
+                'monto_total': float(c.monto_total or 0),
+                'porcentaje_pendiente': float(c.porciento or 0),
+                'fecha_inicio': c.inicio.strftime("%Y-%m-%d") if c.inicio else "No registrada",
+                'fecha_pago':  c.fecha_de_pago.strftime("%Y-%m-%d") if c.fecha_de_pago else "No registrada",
+            })
+
+        if not pagos_pendientes:
+            mensaje = "⚠️ No se encontraron pagos pendientes."
+        else:
+            mensaje = None
+
+        return render_template(
+            'reporte_pagos.html',
+            pagos_pendientes=pagos_pendientes,
+            mensaje=mensaje
+        )
 
     except Exception as e:
-        mensaje = f"❌ Error al obtener los datos: {str(e)}"
-        logging.error(mensaje, exc_info=True)
-        return render_template('reporte_pagos.html', pagos_pendientes=[], mensaje=mensaje)
-
-    return render_template('reporte_pagos.html', pagos_pendientes=pagos_pendientes)
+        # Loguea el error y muestra mensaje al usuario
+        current_app.logger.exception("Error en reporte_pagos")
+        return render_template(
+            'reporte_pagos.html',
+            pagos_pendientes=[],
+            mensaje=f"❌ Ocurrió un error al generar el reporte: {e}"
+        ), 500
 
 
 @app.route('/generar_pdf')
@@ -1504,93 +1297,116 @@ def generar_pdf():
         return mensaje
 
 
-@app.route("/subir_fotos", methods=["GET", "POST"])
+from flask import (
+    Blueprint, render_template, request, redirect, url_for,
+    flash
+)
+from werkzeug.utils import secure_filename
+from models import Candidata, db
+
+subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
+
+@subir_bp.route('', methods=['GET', 'POST'])
 def subir_fotos():
-    accion = request.args.get("accion", "buscar").strip()  # Por defecto "buscar"
+    accion = request.args.get('accion', 'buscar')
+    fila_id = request.args.get('fila', type=int)
     mensaje = None
     resultados = []
-    fila = request.args.get("fila", "").strip()
 
-    # 1. Acción BUSCAR: mostrar formulario y procesar búsqueda
-    if accion == "buscar":
-        if request.method == "POST":
-            busqueda = request.form.get("busqueda", "").strip().lower()
-            try:
-                hoja = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range="Nueva hoja!A:Z"
-                ).execute()
-                valores = hoja.get("values", [])
-                # Ajusta índices de columna según tu hoja
-                for fila_index, fila_vals in enumerate(valores[1:], start=2):
-                    nombre = (fila_vals[1].strip().lower() if len(fila_vals) > 1 else "")
-                    cedula = (fila_vals[14].strip().lower() if len(fila_vals) > 14 else "")
-                    telefono = (fila_vals[3].strip().lower() if len(fila_vals) > 3 else "")
-                    # Coincidencia flexible
-                    if busqueda in nombre or busqueda in cedula or busqueda in telefono:
-                        resultados.append({
-                            "fila_index": fila_index,
-                            "nombre": fila_vals[1] if len(fila_vals) > 1 else "No especificado",
-                            "telefono": fila_vals[3] if len(fila_vals) > 3 else "No especificado",
-                            "cedula": fila_vals[14] if len(fila_vals) > 14 else "No especificado"
-                        })
-            except Exception as e:
-                mensaje = f"Error al buscar: {str(e)}"
-        return render_template("subir_fotos.html", accion=accion, mensaje=mensaje, resultados=resultados)
+    # 1) BUSCAR: mostrar formulario y procesar búsqueda en la BD
+    if accion == 'buscar':
+        if request.method == 'POST':
+            q = request.form.get('busqueda', '').strip()
+            if not q:
+                flash("⚠️ Ingresa algo para buscar.", "warning")
+                return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-    # 2. Acción SUBIR: mostrar o procesar formulario de subida
-    if accion == "subir":
-        if request.method == "GET":
-            # Muestra el formulario de subida
-            return render_template("subir_fotos.html", accion=accion, fila=fila)
+            # Busca en nombre, cédula o teléfono
+            like = f"%{q}%"
+            filas = Candidata.query.filter(
+                (Candidata.nombre_completo.ilike(like)) |
+                (Candidata.cedula.ilike(like)) |
+                (Candidata.numero_telefono.ilike(like))
+            ).all()
 
-        if request.method == "POST":
-            # Subir a Cloudinary
-            if not fila.isdigit():
-                mensaje = "Error: La fila debe ser un número válido."
-                return render_template("subir_fotos.html", accion=accion, fila=fila, mensaje=mensaje)
+            if not filas:
+                flash("⚠️ No se encontraron candidatas.", "warning")
+            else:
+                resultados = [{
+                    'fila': c.fila,
+                    'nombre': c.nombre_completo,
+                    'telefono': c.numero_telefono or 'No especificado',
+                    'cedula': c.cedula
+                } for c in filas]
 
-            fila_index = int(fila)
+        return render_template(
+            'subir_fotos.html',
+            accion='buscar',
+            resultados=resultados
+        )
 
-            depuracion_file = request.files.get("depuracion")
-            perfil_file = request.files.get("perfil")
-            cedula1_file = request.files.get("cedula1")
-            cedula2_file = request.files.get("cedula2")
+    # 2) SUBIR: mostrar formulario de subida o procesarlo
+    if accion == 'subir':
+        # Validamos que exista fila_id y la candidata
+        candidata = None
+        if not fila_id:
+            flash("❌ Debes seleccionar primero una candidata.", "danger")
+            return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-            # Helper para subir
-            def subir_a_cloudinary(archivo, folder):
-                if archivo:
-                    resp = cloudinary.uploader.upload(archivo, folder=folder)
-                    return resp.get("secure_url", "")
-                return ""
+        candidata = Candidata.query.get(fila_id)
+        if not candidata:
+            flash("⚠️ Candidata no encontrada.", "warning")
+            return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-            subcarpeta = f"candidata_{fila_index}"
-            try:
-                depuracion_url = subir_a_cloudinary(depuracion_file, subcarpeta)
-                perfil_url = subir_a_cloudinary(perfil_file, subcarpeta)
-                cedula1_url = subir_a_cloudinary(cedula1_file, subcarpeta)
-                cedula2_url = subir_a_cloudinary(cedula2_file, subcarpeta)
-            except Exception as e:
-                mensaje = f"Error subiendo a Cloudinary: {str(e)}"
-                return render_template("subir_fotos.html", accion=accion, fila=fila, mensaje=mensaje)
+        # GET: muestro el formulario
+        if request.method == 'GET':
+            return render_template(
+                'subir_fotos.html',
+                accion='subir',
+                fila=fila_id
+            )
 
-            # Guardar en Google Sheets en AA, AB, AC, AD
-            try:
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=f"Nueva hoja!AA{fila_index}:AD{fila_index}",
-                    valueInputOption="RAW",
-                    body={"values": [[depuracion_url, perfil_url, cedula1_url, cedula2_url]]}
-                ).execute()
-                mensaje = "Imágenes subidas y guardadas correctamente."
-            except Exception as e:
-                mensaje = f"Error al actualizar Google Sheets: {str(e)}"
+        # POST: recibo los archivos y los guardo en la BD
+        files = {
+            'depuracion': request.files.get('depuracion'),
+            'perfil':     request.files.get('perfil'),
+            'cedula1':    request.files.get('cedula1'),
+            'cedula2':    request.files.get('cedula2'),
+        }
 
-            return render_template("subir_fotos.html", accion=accion, fila=fila, mensaje=mensaje)
+        # Validación básica
+        for campo, archivo in files.items():
+            if not archivo or archivo.filename == '':
+                flash(f"❌ Falta el archivo para {campo}.", "danger")
+                return render_template(
+                    'subir_fotos.html',
+                    accion='subir',
+                    fila=fila_id
+                )
 
-    # Si no coincide, redirigimos a buscar
-    return redirect("/subir_fotos?accion=buscar")
+        try:
+            # Leo cada archivo como bytes y lo asigno al modelo
+            candidata.depuracion = files['depuracion'].read()
+            candidata.perfil     = files['perfil'].read()
+            candidata.cedula1    = files['cedula1'].read()
+            candidata.cedula2    = files['cedula2'].read()
 
+            db.session.commit()
+            flash("✅ Imágenes subidas y guardadas en la base de datos.", "success")
+            return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f"❌ Error guardando en la BD: {e}", "danger")
+            return render_template(
+                'subir_fotos.html',
+                accion='subir',
+                fila=fila_id
+            )
+
+    # Cualquier otro caso, vuelvo a buscar
+    return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+app.register_blueprint(subir_bp)
 
 @app.route('/descargar_documentos', methods=["GET"])
 def descargar_documentos():
@@ -1642,335 +1458,179 @@ def descargar_documentos():
         download_name=f"documentos_candidata_{fila_index}.zip"
     )
 
+from flask import send_file, request, redirect, url_for, render_template
+import os, io
+from fpdf import FPDF
+from models import Candidata
+
+# -------------------------------------------------------
+# RUTA PRINCIPAL: BUSCAR, VER y DESCARGAR
+# -------------------------------------------------------
 @app.route("/gestionar_archivos", methods=["GET", "POST"])
 def gestionar_archivos():
-    accion = request.args.get("accion", "buscar").strip()
+    accion = request.args.get("accion", "buscar")
     mensaje = None
     resultados = []
     docs = {}
     fila = request.args.get("fila", "").strip()
 
-    # -----------------------------------------
-    # ACCIÓN: BUSCAR CANDIDATA
-    # -----------------------------------------
-    if accion == "buscar":
-        if request.method == "POST":
-            busqueda = request.form.get("busqueda", "").strip().lower()
-            try:
-                hoja = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range="Nueva hoja!A:Z"  # Ajusta el rango si lo deseas
-                ).execute()
-                valores = hoja.get("values", [])
-                for fila_index, fila_vals in enumerate(valores[1:], start=2):
-                    # Ajusta índices de columna (ej: nombre en B->fila_vals[1], cédula en O->fila_vals[14], etc.)
-                    nombre = (fila_vals[1].strip().lower() if len(fila_vals) > 1 else "")
-                    cedula = (fila_vals[14].strip().lower() if len(fila_vals) > 14 else "")
-                    telefono = (fila_vals[3].strip().lower() if len(fila_vals) > 3 else "")
-                    # Coincidencia flexible
-                    if busqueda in nombre or busqueda in cedula or busqueda in telefono:
-                        resultados.append({
-                            "fila_index": fila_index,
-                            "nombre": fila_vals[1] if len(fila_vals) > 1 else "No especificado",
-                            "telefono": fila_vals[3] if len(fila_vals) > 3 else "No especificado",
-                            "cedula": fila_vals[14] if len(fila_vals) > 14 else "No especificado"
-                        })
-            except Exception as e:
-                mensaje = f"Error al buscar: {str(e)}"
-        return render_template("gestionar_archivos.html", accion=accion, mensaje=mensaje, resultados=resultados)
-
-    # -----------------------------------------
-    # ACCIÓN: VER DOCUMENTOS
-    # -----------------------------------------
-    elif accion == "ver":
-        if not fila.isdigit():
-            mensaje = "Error: La fila debe ser un número válido."
-            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
-
-        fila_index = int(fila)
-        try:
-            # Leer las columnas AA->AD para imágenes y Z para la entrevista (texto).
-            # Ajusta si tu entrevista está en otra columna.
-            rango_imagenes = f"Nueva hoja!AA{fila_index}:AD{fila_index}"
-            hoja_imagenes = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range=rango_imagenes
-            ).execute()
-            row_vals = hoja_imagenes.get("values", [])
-
-            depuracion_url = ""
-            perfil_url = ""
-            cedula1_url = ""
-            cedula2_url = ""
-            if row_vals and len(row_vals[0]) >= 4:
-                depuracion_url, perfil_url, cedula1_url, cedula2_url = row_vals[0][:4]
-
-            # Leer la columna Z para la entrevista (suponiendo que la entrevista se guardó en Z)
-            rango_entrevista = f"Nueva hoja!Z{fila_index}"
-            hoja_entrevista = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range=rango_entrevista
-            ).execute()
-            entrevista_val = hoja_entrevista.get("values", [])
-
-            entrevista_texto = ""
-            if entrevista_val and entrevista_val[0]:
-                entrevista_texto = entrevista_val[0][0]
-
-            docs = {
-                "depuracion_url": depuracion_url,
-                "perfil_url": perfil_url,
-                "cedula1_url": cedula1_url,
-                "cedula2_url": cedula2_url,
-                "entrevista": entrevista_texto
-            }
-        except Exception as e:
-            mensaje = f"Error al leer datos: {str(e)}"
-            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
-
-        return render_template("gestionar_archivos.html", accion=accion, fila=fila, docs=docs, mensaje=mensaje)
-
-    # -----------------------------------------
-    # ACCIÓN: DESCARGAR (doc=todo, depuracion, perfil, cedula1, cedula2, pdf)
-    # -----------------------------------------
-    elif accion == "descargar":
+    # -------- ACCIÓN: DESCARGAR PDF O ZIP O IMÁGENES --------
+    if accion == "descargar":
         doc = request.args.get("doc", "").strip()
         if not fila.isdigit():
             return "Error: Fila inválida", 400
-        fila_index = int(fila)
+        idx = int(fila)
+        if doc == "pdf":
+            return redirect(url_for("generar_pdf_entrevista", fila=idx))
+        # aquí podrías seguir delegando a descargar_todo_en_zip o descargar_uno si las necesitas
+        return "Documento no reconocido", 400
 
-        if doc == "todo":
-            # Descargar todos en ZIP
-            return descargar_todo_en_zip(fila_index)
+    # -------- ACCIÓN: BUSCAR CANDIDATAS --------
+    if accion == "buscar":
+        if request.method == "POST":
+            q = request.form.get("busqueda", "").strip()
+            if q:
+                like = f"%{q}%"
+                filas = Candidata.query.filter(
+                    (Candidata.nombre_completo.ilike(like)) |
+                    (Candidata.cedula.ilike(like)) |
+                    (Candidata.numero_telefono.ilike(like))
+                ).all()
+                resultados = [{
+                    "fila": c.fila,
+                    "nombre": c.nombre_completo,
+                    "telefono": c.numero_telefono or "No especificado",
+                    "cedula": c.cedula or "No especificado"
+                } for c in filas]
+                if not resultados:
+                    mensaje = "⚠️ No se encontraron candidatas."
+        return render_template("gestionar_archivos.html",
+                               accion=accion,
+                               resultados=resultados,
+                               mensaje=mensaje)
 
-        elif doc in ["depuracion", "perfil", "cedula1", "cedula2"]:
-            # Descargar un solo archivo
-            return descargar_uno(fila_index, doc)
+    # -------- ACCIÓN: VER DOCUMENTOS Y ENTREVISTA --------
+    if accion == "ver":
+        if not fila.isdigit():
+            mensaje = "Error: Fila inválida."
+            return render_template("gestionar_archivos.html",
+                                   accion="buscar",
+                                   mensaje=mensaje)
+        idx = int(fila)
+        c = Candidata.query.filter_by(fila=idx).first()
+        if not c:
+            mensaje = "⚠️ Candidata no encontrada."
+            return render_template("gestionar_archivos.html",
+                                   accion="buscar",
+                                   mensaje=mensaje)
 
-        elif doc == "pdf":
-            # Generar PDF de la entrevista y descargar
-            return generar_pdf_entrevista(fila_index)
+        docs["depuracion"] = c.depuracion
+        docs["perfil"]     = c.perfil
+        docs["cedula1"]    = c.cedula1
+        docs["cedula2"]    = c.cedula2
 
-        else:
-            return "Documento no reconocido", 400
+        # Leemos la entrevista desde la BD o desde Sheets si la guardas allí:
+        docs["entrevista"] = c.entrevista or ""
 
-    # Si no coincide, redirigimos a buscar
-    return redirect("/gestionar_archivos?accion=buscar")
+        return render_template("gestionar_archivos.html",
+                               accion=accion,
+                               fila=idx,
+                               docs=docs,
+                               mensaje=mensaje)
+
+    # Si no hay acción válida, redirige a buscar
+    return redirect(url_for("gestionar_archivos", accion="buscar"))
+
 
 # -------------------------------------------------------
-# FUNCIONES AUXILIARES PARA /gestionar_archivos
+# RUTA PARA GENERAR/DESCARGAR EL PDF DE LA ENTREVISTA
 # -------------------------------------------------------
+@app.route('/generar_pdf_entrevista')
+def generar_pdf_entrevista():
+    # 0) Parámetro fila
+    fila_index = request.args.get('fila', type=int)
+    if not fila_index:
+        return "Error: falta parámetro fila", 400
 
-def descargar_todo_en_zip(fila_index):
-    """ Crea un ZIP con depuracion, perfil, cedula1, cedula2 si existen. """
-    try:
-        rango_imagenes = f"Nueva hoja!AA{fila_index}:AD{fila_index}"
-        hoja_imagenes = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_imagenes
-        ).execute()
-        row_vals = hoja_imagenes.get("values", [])
-        depuracion_url, perfil_url, cedula1_url, cedula2_url = [""] * 4
-        if row_vals and len(row_vals[0]) >= 4:
-            depuracion_url, perfil_url, cedula1_url, cedula2_url = row_vals[0][:4]
-    except Exception as e:
-        return f"Error al leer imágenes: {str(e)}", 500
+    # 1) Recupera la candidata y su entrevista
+    c = Candidata.query.get(fila_index)
+    if not c or not c.entrevista:
+        return "No hay entrevista registrada para esa fila", 404
+    texto_entrevista = c.entrevista
 
-    archivos = {
-        "depuracion.png": depuracion_url,
-        "perfil.png": perfil_url,
-        "cedula1.png": cedula1_url,
-        "cedula2.png": cedula2_url
-    }
+    # 2) Referencias desde la BD
+    ref_laborales  = c.referencias_laboral or ""
+    ref_familiares = c.referencias_familiares or ""
 
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, "w") as zf:
-        for nombre_archivo, url in archivos.items():
-            if url:
-                try:
-                    r = requests.get(url)
-                    r.raise_for_status()
-                    zf.writestr(nombre_archivo, r.content)
-                except Exception as ex:
-                    print(f"Error al descargar {nombre_archivo}: {ex}")
-                    continue
-    memory_file.seek(0)
-    return send_file(
-        memory_file,
-        mimetype="application/zip",
-        as_attachment=True,
-        download_name=f"documentos_candidata_{fila_index}.zip"
-    )
-
-def descargar_uno(fila_index, doc):
-    """ Descarga un archivo individual (depuracion, perfil, cedula1, cedula2). """
-    col_map = {
-        "depuracion": 0,
-        "perfil": 1,
-        "cedula1": 2,
-        "cedula2": 3
-    }
-    try:
-        rango_imagenes = f"Nueva hoja!AA{fila_index}:AD{fila_index}"
-        hoja_imagenes = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_imagenes
-        ).execute()
-        row_vals = hoja_imagenes.get("values", [])
-        if not row_vals or len(row_vals[0]) < 4:
-            return "No se encontraron datos en AA-AD", 404
-
-        url = row_vals[0][col_map[doc]]
-        if not url:
-            return f"No hay URL para {doc}", 404
-
-        r = requests.get(url)
-        r.raise_for_status()
-        # Retornamos el archivo con un mimetype genérico
-        # Ajusta si sabes que siempre es PNG
-        return send_file(
-            io.BytesIO(r.content),
-            mimetype="image/png",
-            as_attachment=True,
-            download_name=f"{doc}.png"
-        )
-    except Exception as e:
-        return f"Error al descargar {doc}: {str(e)}", 500
-
-def generar_pdf_entrevista(fila_index):
-    """
-    Genera un PDF de la entrevista de la candidata que imprime:
-      - La entrevista (columna Z) con el diseño original:
-           * Preguntas en negro.
-           * Respuestas en azul precedidas de un bullet grande ("•").
-           * Líneas de separación y encabezado con logo.
-      - Una sección "Referencias" que imprime:
-           * Referencias Laborales (columna AE).
-           * Referencias Familiares (columna AF).
-
-    Requiere:
-      - Las fuentes DejaVuSans.ttf y DejaVuSans-Bold.ttf en: app_web/static/fonts/
-      - logo_nuevo.png en: app_web/static/
-    """
-    # 1. Leer la entrevista (columna Z)
-    try:
-        rango_entrevista = f"Nueva hoja!Z{fila_index}"
-        hoja_entrevista = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_entrevista
-        ).execute()
-        entrevista_val = hoja_entrevista.get("values", [])
-        if not entrevista_val or not entrevista_val[0]:
-            return "No hay entrevista guardada en la columna Z", 404
-        texto_entrevista = entrevista_val[0][0]
-    except Exception as e:
-        return f"Error al leer entrevista: {str(e)}", 500
-
-    # 2. Leer las referencias (columnas AE y AF)
-    try:
-        rango_referencias = f"Nueva hoja!AE{fila_index}:AF{fila_index}"
-        hoja_referencias = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_referencias
-        ).execute()
-        ref_values = hoja_referencias.get("values", [])
-        if ref_values and len(ref_values[0]) >= 2:
-            ref_laborales = ref_values[0][0]
-            ref_familiares = ref_values[0][1]
-        else:
-            ref_laborales = ""
-            ref_familiares = ""
-    except Exception as e:
-        return f"Error al leer referencias: {str(e)}", 500
-
-    # 3. Generar el PDF con el diseño solicitado
     try:
         pdf = FPDF()
         pdf.add_page()
 
-        # Agregar fuentes Unicode
+        # — Fuentes Unicode —
         font_dir = os.path.join(app.root_path, "static", "fonts")
-        regular_font_path = os.path.join(font_dir, "DejaVuSans.ttf")
-        bold_font_path = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
-        if not os.path.exists(regular_font_path) or not os.path.exists(bold_font_path):
-            return "No se encontraron las fuentes en static/fonts/", 500
+        reg = os.path.join(font_dir, "DejaVuSans.ttf")
+        bold= os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+        pdf.add_font("DejaVuSans", "", reg, uni=True)
+        pdf.add_font("DejaVuSans", "B", bold, uni=True)
 
-        pdf.add_font("DejaVuSans", "", regular_font_path, uni=True)
-        pdf.add_font("DejaVuSans", "B", bold_font_path, uni=True)
-
-        # LOGO (sin fondo)
-        logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        if os.path.exists(logo_path):
-            image_width = 70  # Ajusta el tamaño del logo
-            x_pos = (pdf.w - image_width) / 2
-            pdf.image(logo_path, x=x_pos, y=10, w=image_width)
-        else:
-            print("Logo no encontrado:", logo_path)
-
-        # Línea superior debajo del logo
+        # — Logo y líneas —
+        logo = os.path.join(app.root_path, "static", "logo_nuevo.png")
+        if os.path.exists(logo):
+            w = 70
+            x = (pdf.w - w) / 2
+            pdf.image(logo, x=x, y=10, w=w)
         pdf.set_line_width(0.5)
         pdf.set_draw_color(0, 0, 0)
         pdf.line(pdf.l_margin, 30, pdf.w - pdf.r_margin, 30)
-
         pdf.set_y(40)
 
-        # Título con fondo azul
+        # — Título —
         pdf.set_font("DejaVuSans", "B", 18)
-        pdf.set_fill_color(0, 102, 204)  # Azul
-        pdf.set_text_color(255, 255, 255)  # Texto en blanco
+        pdf.set_fill_color(0, 102, 204)
+        pdf.set_text_color(255, 255, 255)
         pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C", fill=True)
-
-        # Línea inferior debajo del título
-        current_y = pdf.get_y()
-        pdf.set_line_width(0.5)
-        pdf.set_draw_color(0, 0, 0)
-        pdf.line(pdf.l_margin, current_y, pdf.w - pdf.r_margin, current_y)
+        y = pdf.get_y()
+        pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
         pdf.ln(10)
 
-        # Sección: Entrevista (Columna Z)
+        # — Entrevista —
         pdf.set_font("DejaVuSans", "", 12)
-        pdf.set_text_color(0, 0, 0)  # Preguntas en negro
-        lines = texto_entrevista.split("\n")
-        for line in lines:
+        pdf.set_text_color(0, 0, 0)
+        for line in texto_entrevista.split("\n"):
             pdf.set_x(pdf.l_margin)
             if ":" in line:
-                parts = line.split(":", 1)
-                pregunta = parts[0].strip() + ":"
-                respuesta = parts[1].strip()
+                q, a = line.split(":", 1)
+                pregunta  = q.strip() + ":"
+                respuesta = a.strip()
 
-                # Imprimir la pregunta con multi_cell para que se envuelva si es muy larga
                 pdf.multi_cell(0, 8, pregunta)
                 pdf.ln(1)
 
-                # Imprimir la respuesta en azul precedida de un bullet
                 bullet = "•"
-                # Configurar fuente grande para el bullet
                 pdf.set_font("DejaVuSans", "", 16)
-                bullet_width = pdf.get_string_width(bullet + " ")
-                # Imprimir el bullet en una celda fija
-                pdf.cell(bullet_width, 8, bullet, ln=0)
-                
-                # Configurar la fuente para la respuesta (más pequeña)
+                bw = pdf.get_string_width(bullet + " ")
+                pdf.cell(bw, 8, bullet, ln=0)
+
                 pdf.set_font("DejaVuSans", "", 12)
-                pdf.set_text_color(0, 102, 204)  # Azul para la respuesta
-                # Calcular el ancho disponible para la respuesta después del bullet
-                available_width = pdf.w - pdf.r_margin - (pdf.l_margin + bullet_width)
-                # Usar multi_cell para la respuesta, de modo que se envuelva correctamente
-                pdf.multi_cell(available_width, 8, respuesta)
+                pdf.set_text_color(0, 102, 204)
+                avail_w = pdf.w - pdf.r_margin - (pdf.l_margin + bw)
+                pdf.multi_cell(avail_w, 8, respuesta)
                 pdf.ln(4)
-                pdf.set_text_color(0, 0, 0)  # Volver a negro para la siguiente pregunta
+
+                pdf.set_text_color(0, 0, 0)
+                pdf.set_font("DejaVuSans", "", 12)
             else:
                 pdf.multi_cell(0, 8, line)
                 pdf.ln(4)
         pdf.ln(5)
-        
-        # Sección: Referencias
+
+        # — Referencias —
         pdf.set_font("DejaVuSans", "B", 14)
         pdf.set_text_color(0, 102, 204)
         pdf.cell(0, 10, "Referencias", ln=True)
         pdf.ln(3)
-        
-        # Referencias Laborales (Columna AE)
+
+        # Laborales
         pdf.set_font("DejaVuSans", "B", 12)
         pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 8, "Referencias Laborales:", ln=True)
@@ -1979,253 +1639,226 @@ def generar_pdf_entrevista(fila_index):
             pdf.set_text_color(0, 102, 204)
             pdf.multi_cell(0, 8, ref_laborales)
         else:
-            pdf.set_text_color(0, 0, 0)
             pdf.cell(0, 8, "No hay referencias laborales.", ln=True)
         pdf.ln(5)
-        
-        # Referencias Familiares (Columna AF)
+
+        # Familiares
         pdf.set_font("DejaVuSans", "B", 12)
+        pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 8, "Referencias Familiares:", ln=True)
         pdf.set_font("DejaVuSans", "", 12)
         if ref_familiares:
             pdf.set_text_color(0, 102, 204)
             pdf.multi_cell(0, 8, ref_familiares)
         else:
-            pdf.set_text_color(0, 0, 0)
             pdf.cell(0, 8, "No hay referencias familiares.", ln=True)
         pdf.ln(5)
 
-        # Generar el PDF en memoria
-        pdf_output = pdf.output(dest="S")
-        if isinstance(pdf_output, str):
-            pdf_bytes = pdf_output.encode("latin1")
-        else:
-            pdf_bytes = pdf_output
-        memory_file = io.BytesIO(pdf_bytes)
-        memory_file.seek(0)
-
+        # — Salida —
+        output    = pdf.output(dest="S")
+        pdf_bytes = output if isinstance(output, (bytes, bytearray)) else output.encode("latin1")
+        buf       = io.BytesIO(pdf_bytes); buf.seek(0)
         return send_file(
-            memory_file,
+            buf,
             mimetype="application/pdf",
             as_attachment=True,
             download_name=f"entrevista_candidata_{fila_index}.pdf"
         )
+
     except Exception as e:
-        return f"Error interno generando PDF: {str(e)}", 500
+        return f"Error interno generando PDF: {e}", 500
 
 
-from datetime import datetime
-import pandas as pd
+@app.route("/gestionar_archivos/descargar_uno", methods=["GET"])
+def descargar_uno_db():
+    cid = request.args.get("id", type=int)
+    doc = request.args.get("doc", "").strip()
+    if not cid or doc not in ("depuracion","perfil","cedula1","cedula2"):
+        return "Error: parámetros inválidos", 400
+    candidata = Candidata.query.get(cid)
+    if not candidata:
+        return "Candidata no encontrada", 404
+    data = getattr(candidata, doc)
+    if not data:
+        return f"No hay archivo para {doc}", 404
+
+    return send_file(
+        io.BytesIO(data),
+        mimetype="image/png",
+        as_attachment=True,
+        download_name=f"{doc}.png"
+    )
+
+from flask import send_file, render_template, request
 import io
-from flask import render_template, request, send_file
+import pandas as pd
+from datetime import datetime
+from models import Candidata
 
 @app.route('/reporte_inscripciones', methods=['GET'])
 def reporte_inscripciones():
+    # 1) Parámetros mes, año y descarga
     try:
         mes = int(request.args.get('mes', datetime.today().month))
         anio = int(request.args.get('anio', datetime.today().year))
-        descargar = request.args.get('descargar', '0')  # "1" para descargar, "0" para visualizar
+        descargar = request.args.get('descargar', '0')  # "1" para descargar Excel
     except Exception as e:
-        return f"Parámetros inválidos: {str(e)}", 400
+        return f"Parámetros inválidos: {e}", 400
 
+    # 2) Query a la base de datos
     try:
-        # Leer la hoja completa desde A hasta T (20 columnas)
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:T"
-        ).execute()
-        datos = hoja.get("values", [])
-        if not datos or len(datos) < 2:
-            return "No hay inscripciones registradas.", 404
-
-        # Definir nombres de columnas para el rango A:T (20 columnas)
-        # Solo usaremos algunas, pero es necesario asignar nombres para todas.
-        columnas = [
-            "Col_A",      # Columna A (no utilizada)
-            "Nombre",     # Columna B
-            "Col_C",      # Columna C
-            "Teléfono",   # Columna D
-            "Dirección",  # Columna E (la usaremos como Ciudad)
-            "Col_F",      # Columna F
-            "Col_G",      # Columna G
-            "Col_H",      # Columna H
-            "Col_I",      # Columna I
-            "Col_J",      # Columna J
-            "Col_K",      # Columna K
-            "Col_L",      # Columna L
-            "Col_M",      # Columna M
-            "Col_N",      # Columna N
-            "Cédula",     # Columna O
-            "Código",     # Columna P
-            "Medio",      # Columna Q
-            "Inscripción",# Columna R
-            "Monto",      # Columna S
-            "Fecha"       # Columna T
-        ]
-        df = pd.DataFrame(datos[1:], columns=columnas)
-        
-        # Convertir la columna 'Fecha' a texto y limpiarla
-        df['Fecha'] = df['Fecha'].astype(str).str.strip().str.replace('"', '').str.replace("'", "")
-        # Convertir la columna 'Fecha' a datetime usando el formato ISO "YYYY-MM-DD"
-        df['Fecha'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d', errors='coerce')
-        # Si siguen siendo todas NaT, intentar sin formato
-        if df['Fecha'].isnull().all():
-            df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-        if df['Fecha'].isnull().all():
-            return "No se pudieron convertir las fechas. Revisa el contenido de la columna Fecha en la hoja.", 400
-
-        # Filtrar registros por mes y año solicitados
-        df_reporte = df[(df['Fecha'].dt.month == mes) & (df['Fecha'].dt.year == anio)]
-        
-        if df_reporte.empty:
-            mensaje = f"No se encontraron inscripciones para {mes}/{anio}."
-            return render_template("reporte_inscripciones.html", reporte_html="", mes=mes, anio=anio, mensaje=mensaje)
-        
-        # Seleccionar únicamente las columnas que se quieren mostrar
-        columnas_mostrar = ["Nombre", "Dirección", "Teléfono", "Cédula", "Código", "Medio", "Inscripción", "Monto", "Fecha"]
-        df_reporte = df_reporte[columnas_mostrar]
-        # Renombrar "Dirección" a "Ciudad"
-        df_reporte.rename(columns={"Dirección": "Ciudad"}, inplace=True)
-        
-        if descargar == "1":
-            output = io.BytesIO()
-            writer = pd.ExcelWriter(output, engine='xlsxwriter')
-            df_reporte.to_excel(writer, index=False, sheet_name='Reporte')
-            writer.save()
-            output.seek(0)
-            filename = f"Reporte_Inscripciones_{anio}_{str(mes).zfill(2)}.xlsx"
-            return send_file(
-                output,
-                attachment_filename=filename,
-                as_attachment=True,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-        else:
-            reporte_html = df_reporte.to_html(classes="table table-striped", index=False)
-            return render_template("reporte_inscripciones.html", reporte_html=reporte_html, mes=mes, anio=anio, mensaje="")
+        # Solo candidatas inscritas (inscripcion=True) con fecha de inscripción en ese mes/año
+        query = Candidata.query.filter(
+            Candidata.inscripcion.is_(True),
+            Candidata.fecha.isnot(None),
+            db.extract('month', Candidata.fecha) == mes,
+            db.extract('year', Candidata.fecha) == anio
+        ).all()
     except Exception as e:
-        return f"Error al generar reporte: {str(e)}", 500
+        return f"Error al consultar la base de datos: {e}", 500
+
+    # 3) Si no hay resultados
+    if not query:
+        mensaje = f"No se encontraron inscripciones para {mes}/{anio}."
+        return render_template("reporte_inscripciones.html",
+                               reporte_html="",
+                               mes=mes,
+                               anio=anio,
+                               mensaje=mensaje)
+
+    # 4) Convertir a DataFrame
+    df = pd.DataFrame([{
+        "Nombre":         c.nombre_completo,
+        "Ciudad":         (c.direccion_completa or ""),
+        "Teléfono":       (c.numero_telefono or ""),
+        "Cédula":         c.cedula,
+        "Código":         (c.codigo or ""),
+        "Medio":          (c.medio_inscripcion or ""),
+        "Inscripción":    "Sí" if c.inscripcion else "No",
+        "Monto":          float(c.monto or 0),
+        "Fecha":          c.fecha.strftime("%Y-%m-%d") if c.fecha else ""
+    } for c in query])
+
+    # 5) Descarga o visualización
+    if descargar == "1":
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Reporte')
+        output.seek(0)
+        filename = f"Reporte_Inscripciones_{anio}_{mes:02d}.xlsx"
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    else:
+        reporte_html = df.to_html(classes="table table-striped", index=False, border=0)
+        return render_template("reporte_inscripciones.html",
+                               reporte_html=reporte_html,
+                               mes=mes,
+                               anio=anio,
+                               mensaje="")
+
+from flask import (
+    render_template, request, redirect, url_for, flash
+)
+from models import Candidata, db
+from sqlalchemy import or_
 
 @app.route('/referencias', methods=['GET', 'POST'])
 def referencias():
-    """
-    Ruta para gestionar las referencias de candidata en la hoja "Nueva hoja".
-    
-    Modo de operación:
-    - Si el método es POST y se envía "busqueda": realiza búsqueda de candidata por nombre o cédula.
-    - Si es GET y se envía "candidata" (fila): muestra los detalles de la candidata.
-    - Si es POST y se envía "candidata": actualiza las referencias (columnas AE y AF).
-    """
     mensaje = None
-    resultados = None
+    accion = request.args.get('accion', 'buscar')
+    resultados = []
     candidata = None
 
-    # CASO 1: Búsqueda de candidata (método POST y campo "busqueda")
+    # 1) BÚSQUEDA
     if request.method == 'POST' and 'busqueda' in request.form:
-        busqueda = request.form.get("busqueda", "").strip().lower()
-        try:
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Nueva hoja!A1:AF"  # Abarca hasta columna AF
-            ).execute()
-            data = result.get("values", [])
-            if not data:
-                mensaje = "No se encontraron datos en la hoja."
-            else:
-                header = data[0]
-                resultados = []
-                # Iteramos desde la fila 2; i es el índice real de la fila (1-indexado)
-                for i, row in enumerate(data[1:], start=2):
-                    # Extraer nombre (columna B: index 1) y cédula (columna O: index 14)
-                    nombre = row[1] if len(row) > 1 else ""
-                    cedula = row[14] if len(row) > 14 else ""
-                    if busqueda in nombre.lower() or busqueda in cedula.lower():
-                        candidate = {
-                            "nombre": nombre,
-                            "cedula": cedula,
-                            "telefono": row[3] if len(row) > 3 else "",
-                            "codigo": row[15] if len(row) > 15 else "",
-                            "fila_index": i
-                        }
-                        resultados.append(candidate)
-                if not resultados:
-                    mensaje = "No se encontraron candidatos para la búsqueda."
-        except Exception as e:
-            logging.error("Error al realizar la búsqueda: " + str(e), exc_info=True)
-            mensaje = "Error al realizar la búsqueda."
-        # Renderizar template (por ejemplo, "referencias.html") pasando la lista de resultados
-        return render_template("referencias.html", mensaje=mensaje, resultados=resultados)
-
-    # CASO 2: Mostrar detalles de una candidata (método GET, parámetro "candidata")
-    elif request.method == 'GET' and "candidata" in request.args:
-        try:
-            fila_index = int(request.args.get("candidata"))
-            # Recuperar la fila completa. Se asume que la hoja "Nueva hoja" tiene columnas hasta AF.
-            range_str = f"Nueva hoja!A{fila_index}:AF{fila_index}"
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range=range_str
-            ).execute()
-            row = result.get("values", [])
-            if row:
-                row = row[0]
-                candidata = {
-                    "nombre": row[1] if len(row) > 1 else "",
-                    "cedula": row[14] if len(row) > 14 else "",
-                    "telefono": row[3] if len(row) > 3 else "",
-                    "codigo": row[15] if len(row) > 15 else "",
-                    "referencias_laborales": row[30] if len(row) > 30 else "",
-                    "referencias_familiares": row[31] if len(row) > 31 else "",
-                    "fila_index": fila_index
+        termino = request.form['busqueda'].strip()
+        if termino:
+            like = f"%{termino}%"
+            filas = Candidata.query.filter(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.numero_telefono.ilike(like)
+                )
+            ).all()
+            resultados = [
+                {
+                    'id': c.fila,
+                    'nombre': c.nombre_completo,
+                    'cedula': c.cedula,
+                    'telefono': c.numero_telefono or 'No especificado'
                 }
-            else:
-                mensaje = "No se encontró la candidata."
-        except Exception as e:
-            logging.error("Error al cargar datos de la candidata: " + str(e), exc_info=True)
-            mensaje = "Error al cargar los datos de la candidata."
-        return render_template("referencias.html", mensaje=mensaje, candidata=candidata)
+                for c in filas
+            ]
+            if not resultados:
+                mensaje = "⚠️ No se encontraron candidatas."
+        else:
+            mensaje = "⚠️ Ingresa un término de búsqueda."
+        accion = 'buscar'
+        return render_template(
+            'referencias.html',
+            accion=accion,
+            resultados=resultados,
+            mensaje=mensaje
+        )
 
-    # CASO 3: Actualizar referencias (método POST y campo "candidata")
-    elif request.method == 'POST' and 'candidata' in request.form:
-        try:
-            fila_index = int(request.form.get("candidata"))
-            ref_lab = request.form.get("referencias_laborales", "").strip()
-            ref_fam = request.form.get("referencias_familiares", "").strip()
-            # Actualizar columnas AE y AF (que corresponden a índices 30 y 31, respectivamente).
-            range_update = f"Nueva hoja!AE{fila_index}:AF{fila_index}"
-            update_body = {"values": [[ref_lab, ref_fam]]}
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=range_update,
-                valueInputOption="RAW",
-                body=update_body
-            ).execute()
-            mensaje = "Referencias actualizadas correctamente."
-            # Recuperar la fila actualizada para mostrarla
-            range_str = f"Nueva hoja!A{fila_index}:AF{fila_index}"
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range=range_str
-            ).execute()
-            row = result.get("values", [])
-            if row:
-                row = row[0]
-                candidata = {
-                    "nombre": row[1] if len(row) > 1 else "",
-                    "cedula": row[14] if len(row) > 14 else "",
-                    "telefono": row[3] if len(row) > 3 else "",
-                    "codigo": row[15] if len(row) > 15 else "",
-                    "referencias_laborales": row[30] if len(row) > 30 else "",
-                    "referencias_familiares": row[31] if len(row) > 31 else "",
-                    "fila_index": fila_index
-                }
-        except Exception as e:
-            logging.error("Error al actualizar referencias: " + str(e), exc_info=True)
-            mensaje = "Error al actualizar las referencias."
-        return render_template("referencias.html", mensaje=mensaje, candidata=candidata)
+    # 2) VER DETALLE
+    candidata_id = request.args.get('candidata', type=int)
+    if request.method == 'GET' and candidata_id:
+        candidata = Candidata.query.get(candidata_id)
+        if not candidata:
+            mensaje = "⚠️ Candidata no encontrada."
+            accion = 'buscar'
+            return render_template(
+                'referencias.html',
+                accion=accion,
+                resultados=[],
+                mensaje=mensaje
+            )
+        accion = 'ver'
+        return render_template(
+            'referencias.html',
+            accion=accion,
+            candidata=candidata,
+            mensaje=mensaje
+        )
 
-    # Caso por defecto: Mostrar formulario de búsqueda sin resultados o candidata
-    return render_template("referencias.html", mensaje=mensaje)
+    # 3) GUARDAR REFERENCIAS
+    if request.method == 'POST' and 'candidata_id' in request.form:
+        cid = request.form.get('candidata_id', type=int)
+        candidata = Candidata.query.get(cid)
+        if not candidata:
+            mensaje = "⚠️ Candidata no existe."
+        else:
+            candidata.referencias_laboral    = request.form.get('referencias_laboral', '').strip()
+            candidata.referencias_familiares = request.form.get('referencias_familiares', '').strip()
+            try:
+                db.session.commit()
+                mensaje = "✅ Referencias actualizadas."
+            except Exception as e:
+                db.session.rollback()
+                mensaje = f"❌ Error al guardar: {e}"
+        accion = 'ver'
+        return render_template(
+            'referencias.html',
+            accion=accion,
+            candidata=candidata,
+            mensaje=mensaje
+        )
+
+    # 4) MODO BÚSQUEDA POR DEFECTO
+    return render_template(
+        'referencias.html',
+        accion='buscar',
+        resultados=[],
+        mensaje=mensaje
+    )
+
+
 
 
 from flask import render_template, redirect, url_for, session, request
@@ -2885,6 +2518,146 @@ def otros_detalle(identifier):
     else:
         candidate_details = { short_headers[i]: candidato_row[i+2] for i in range(len(short_headers)) }
         return render_template("otros_detalle.html", candidato=candidate_details, short_headers=short_headers, mensaje="")
+
+
+
+
+@app.route('/registro-publico', methods=['GET', 'POST'])
+def registro_publico():
+    """
+    Versión amigable y sin login del formulario de inscripción.
+    """
+    if request.method == 'POST':
+        # 1) Recogemos datos
+        nombre_raw  = request.form.get('nombre_completo', '').strip()
+        cedula_raw  = request.form.get('cedula', '').strip()
+        edad        = request.form.get('edad', '').strip() or None
+        telefono    = request.form.get('numero_telefono', '').strip() or None
+        direccion   = request.form.get('direccion_completa', '').strip() or None
+        modalidad   = request.form.get('modalidad_trabajo_preferida', '').strip() or None
+        rutas       = request.form.get('rutas_cercanas', '').strip() or None
+        empleo_ant  = request.form.get('empleo_anterior', '').strip() or None
+        anos_exp    = request.form.get('anos_experiencia', '').strip() or None
+        areas_exp   = request.form.get('areas_experiencia', '').strip() or None
+        plancha     = True if request.form.get('sabe_planchar') == 'si' else False
+        ref_laboral = request.form.get('contactos_referencias_laborales', '').strip() or None
+        ref_familia = request.form.get('referencias_familiares_detalle', '').strip() or None
+        acepta_pct  = True if request.form.get('acepta_porcentaje_sueldo') == '1' else False
+
+        # 2) Normalizamos y validamos
+        nombre = normalize_nombre(nombre_raw)
+        cedula = normalize_cedula(cedula_raw)
+        if not cedula:
+            flash('❌ Tu cédula no es válida. Debe tener 11 dígitos.', 'danger')
+            return redirect(url_for('registro_publico'))
+        if not nombre:
+            flash('❌ Tu nombre es obligatorio.', 'danger')
+            return redirect(url_for('registro_publico'))
+        if Candidata.query.filter_by(cedula=cedula).first():
+            flash('❌ Ya estamos registrados con tu cédula.', 'danger')
+            return redirect(url_for('registro_publico'))
+
+        # 3) Creamos y guardamos
+        nueva = Candidata(
+            nombre_completo                 = nombre,
+            cedula                          = cedula,
+            edad                            = edad,
+            numero_telefono                 = telefono,
+            direccion_completa              = direccion,
+            modalidad_trabajo_preferida     = modalidad,
+            rutas_cercanas                  = rutas,
+            empleo_anterior                 = empleo_ant,
+            anos_experiencia                = anos_exp,
+            areas_experiencia               = areas_exp,
+            sabe_planchar                   = plancha,
+            contactos_referencias_laborales = ref_laboral,
+            referencias_familiares_detalle  = ref_familia,
+            acepta_porcentaje_sueldo        = acepta_pct
+        )
+        try:
+            db.session.add(nueva)
+            db.session.commit()
+            flash('✅ ¡Listo! Ya estás registrada.', 'success')
+            return redirect(url_for('registro_publico'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'❌ Error al guardar: {e}', 'danger')
+            return redirect(url_for('registro_publico'))
+
+    # GET → mostramos el formulario
+    return render_template('registro_publico.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        # 1) Recogemos datos del formulario
+        nombre_raw    = request.form.get('nombre_completo', '').strip()
+        cedula_raw    = request.form.get('cedula', '').strip()
+        edad          = request.form.get('edad', '').strip() or None
+        telefono      = request.form.get('numero_telefono', '').strip() or None
+        direccion     = request.form.get('direccion_completa', '').strip() or None
+        modalidad     = request.form.get('modalidad_trabajo_preferida', '').strip() or None
+        rutas         = request.form.get('rutas_cercanas', '').strip() or None
+        empleo_ant    = request.form.get('empleo_anterior', '').strip() or None
+        anos_exp      = request.form.get('anos_experiencia', '').strip() or None
+        areas_exp     = request.form.get('areas_experiencia', '').strip() or None
+        plancha       = True if request.form.get('sabe_planchar') == 'si' else False
+        ref_laboral   = request.form.get('contactos_referencias_laborales', '').strip() or None
+        ref_familia   = request.form.get('referencias_familiares_detalle', '').strip() or None
+        raw_pct = request.form.get('acepta_porcentaje_sueldo')
+        pct_acepta = True if raw_pct == 'si' else False
+
+
+        # 2) Normalizamos algunos
+        nombre = normalize_nombre(nombre_raw)
+        cedula = normalize_cedula(cedula_raw)
+        if not cedula:
+            flash('Cédula inválida. Debe tener 11 dígitos.', 'danger')
+            return redirect(url_for('register'))
+
+        # 3) Validaciones mínimas
+        if not nombre:
+            flash('El nombre es obligatorio.', 'danger')
+            return redirect(url_for('register'))
+
+        # 4) Chequear duplicados
+        if Candidata.query.filter_by(cedula=cedula).first():
+            flash('Ya existe una candidata con esa cédula.', 'danger')
+            return redirect(url_for('register'))
+
+        # 5) Crear objeto
+        nueva = Candidata(
+            nombre_completo                = nombre,
+            cedula                         = cedula,
+            edad                           = edad,
+            numero_telefono                = telefono,
+            direccion_completa             = direccion,
+            modalidad_trabajo_preferida    = modalidad,
+            rutas_cercanas                 = rutas,
+            empleo_anterior                = empleo_ant,
+            anos_experiencia               = anos_exp,
+            areas_experiencia              = areas_exp,
+            sabe_planchar                  = plancha,
+            contactos_referencias_laborales= ref_laboral,
+            referencias_familiares_detalle = ref_familia,
+            acepta_porcentaje_sueldo       = pct_acepta
+        )
+
+        # 6) Guardar en la base
+        try:
+            db.session.add(nueva)
+            db.session.commit()
+            flash('Candidata registrada ✅', 'success')
+            return redirect(url_for('register'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al guardar: {e}', 'danger')
+            return redirect(url_for('register'))
+
+    # GET → mostramos el formulario
+    return render_template('register.html')
+
 
 
 if __name__ == '__main__':

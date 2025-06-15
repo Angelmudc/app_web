@@ -6,159 +6,144 @@
   <title>Reporte de Inscripciones - {{ mes }}/{{ anio }}</title>
   <style>
     :root {
-      --primary-color: #1A5789;
-      --accent-color: #00AECF;
-      --secondary-color: #ffffff;
-      --background-color: #e8f6fa;
-      --text-color: #343a40;
-      --transition-duration: 0.3s;
-      --font-size: 1.2rem;
+      --primary: #1A5789;
+      --accent:  #00AECF;
+      --light:   #ffffff;
+      --bg:      #e8f6fa;
+      --text:    #343a40;
+      --radius:  8px;
+      --pad:     16px;
+      --font:    1rem;
     }
+    * { box-sizing: border-box; margin:0; padding:0; }
     body {
       font-family: Arial, sans-serif;
-      background-color: var(--background-color);
-      color: var(--text-color);
-      padding: 20px;
-      font-size: var(--font-size);
-      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: var(--pad);
+      font-size: var(--font);
+      line-height: 1.5;
     }
     .container {
-      max-width: 900px;
-      margin: 30px auto;
-      background: var(--secondary-color);
-      padding: 40px;
-      border-radius: 10px;
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
-      text-align: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      background: var(--light);
+      padding: 2rem;
+      border-radius: var(--radius);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     h1, h2 {
-      color: var(--primary-color);
-      margin-bottom: 20px;
+      color: var(--primary);
+      margin-bottom: 1rem;
     }
     form {
-      margin-bottom: 30px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2rem;
     }
-    label {
-      display: block;
-      margin: 15px 0 5px;
-      font-weight: bold;
+    form label {
+      flex: 1 0 100%;
       text-align: left;
+      font-weight: bold;
+      margin-bottom: .5rem;
     }
-    input[type="number"],
-    input[type="text"],
-    select {
-      width: 100%;
-      padding: 12px;
-      margin-bottom: 15px;
+    form input, form select, form button {
+      flex: 1 1 200px;
+      padding: .75rem;
       border: 1px solid #ccc;
-      border-radius: 5px;
+      border-radius: var(--radius);
+      font-size: var(--font);
     }
-    button {
-      width: 100%;
-      padding: 15px;
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-size: 1.1rem;
+    form button {
+      background: var(--primary);
+      color: var(--light);
       border: none;
-      border-radius: 5px;
       cursor: pointer;
-      transition: background-color var(--transition-duration) ease;
+      transition: background .3s;
     }
-    button:hover {
-      background-color: var(--accent-color);
+    form button:hover {
+      background: var(--accent);
     }
-    .btn-download {
+    .btn-download, .volver {
       display: inline-block;
-      padding: 12px 20px;
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
+      margin-top: 1.5rem;
+      padding: .75rem 1.5rem;
+      background: var(--primary);
+      color: var(--light);
       text-decoration: none;
+      border-radius: var(--radius);
+      transition: background .3s;
       font-weight: bold;
-      border-radius: 5px;
-      transition: background-color var(--transition-duration) ease;
-      margin-bottom: 20px;
     }
-    .btn-download:hover {
-      background-color: var(--accent-color);
-    }
-    .volver {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 14px 24px;
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      text-decoration: none;
-      font-weight: bold;
-      border-radius: 5px;
-      transition: background-color var(--transition-duration) ease;
-    }
+    .btn-download:hover,
     .volver:hover {
-      background-color: var(--accent-color);
+      background: var(--accent);
     }
-    /* Contenedor para hacer scroll horizontal si la tabla es muy ancha */
     .table-responsive {
       width: 100%;
       overflow-x: auto;
-      margin-bottom: 20px;
+      margin-bottom: 1.5rem;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 700px; /* Opcional, para forzar algo de ancho mínimo */
-    }
-    table, th, td {
-      border: 1px solid #ccc;
+      min-width: 800px;
     }
     th, td {
-      padding: 14px;
+      padding: .75rem;
+      border: 1px solid #ddd;
       text-align: left;
-      font-size: 1rem;
     }
     th {
-      background-color: var(--accent-color);
-      color: var(--secondary-color);
-      white-space: nowrap;
+      background: var(--accent);
+      color: var(--light);
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
     .mensaje {
-      margin-top: 20px;
-      font-weight: bold;
+      margin: 1.5rem 0;
       color: #d9534f;
+      font-weight: bold;
+      text-align: center;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Reporte de Inscripciones</h1>
-    
-    <!-- Formulario de búsqueda de reporte -->
-    <form method="GET" action="/reporte_inscripciones">
-      <label for="mes">Mes (1-12):</label>
+    <h1>📋 Reporte de Inscripciones</h1>
+
+    <form method="get" action="{{ url_for('reporte_inscripciones') }}">
+      <label for="mes">Mes (1–12)</label>
       <input type="number" id="mes" name="mes" min="1" max="12" value="{{ mes }}" required />
-      
-      <label for="anio">Año:</label>
+
+      <label for="anio">Año</label>
       <input type="number" id="anio" name="anio" value="{{ anio }}" required />
-      
-      <button type="submit">Buscar Reporte</button>
+
+      <button type="submit">Buscar</button>
     </form>
-    
+
     {% if reporte_html %}
-      <h2>Inscripciones para {{ mes }}/{{ anio }}</h2>
-      <!-- Contenedor con scroll horizontal -->
+      <h2>Resultados para {{ mes }}/{{ anio }}</h2>
       <div class="table-responsive">
         {{ reporte_html | safe }}
       </div>
-      <a class="btn-download" href="/reporte_inscripciones?mes={{ mes }}&anio={{ anio }}&descargar=1">
-        Descargar Reporte en Excel
+      <a 
+        class="btn-download"
+        href="{{ url_for('reporte_inscripciones', mes=mes, anio=anio, descargar='1') }}"
+      >
+        📥 Descargar Excel
       </a>
     {% else %}
       {% if mensaje %}
         <p class="mensaje">{{ mensaje }}</p>
       {% else %}
-        <p>No se encontraron inscripciones para este período.</p>
+        <p class="mensaje">No se encontraron inscripciones en este período.</p>
       {% endif %}
     {% endif %}
-    
-    <a href="/" class="volver">🏠 Volver a Home</a>
+
+    <a href="{{ url_for('home') }}" class="volver">🏠 Volver al Inicio</a>
   </div>
 </body>
 </html>
