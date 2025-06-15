@@ -10,110 +10,109 @@
 {% endblock %}
 
 {% block content %}
-{% if accion == "buscar" %}
-  <!-- Formulario de Búsqueda -->
-  <form method="post" action="/gestionar_archivos?accion=buscar" id="searchForm" class="mb-4">
-    <div class="input-group input-group-lg">
-      <input type="text" class="form-control" name="busqueda" placeholder="Nombre, cédula, teléfono..." required>
-      <button class="btn btn-primary" type="submit" id="searchButton">Buscar</button>
-    </div>
-  </form>
-  {% if resultados %}
-    <h2 class="mb-3">Resultados</h2>
-    <div class="row g-4">
-      {% for cand in resultados %}
-        <div class="col-md-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <h5 class="card-title">{{ cand.nombre }}</h5>
-              <p class="card-text">
-                <strong>Teléfono:</strong> {{ cand.telefono }}<br>
-                <strong>Cédula:</strong> {{ cand.cedula }}
-              </p>
-              <a href="/gestionar_archivos?accion=ver&fila={{ cand.fila_index }}" class="btn btn-success">Ver Documentos</a>
+  {% if accion == "buscar" %}
+    <!-- Formulario de Búsqueda -->
+    <form method="post" action="{{ url_for('gestionar_archivos', accion='buscar') }}" id="searchForm" class="mb-4">
+      <div class="input-group input-group-lg">
+        <input type="text" class="form-control" name="busqueda" placeholder="Nombre, cédula, teléfono..." required>
+        <button class="btn btn-primary" type="submit" id="searchButton">Buscar</button>
+      </div>
+    </form>
+
+    {% if resultados %}
+      <h2 class="mb-3">Resultados</h2>
+      <div class="row g-4">
+        {% for cand in resultados %}
+          <div class="col-md-4">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h5 class="card-title">{{ cand.nombre }}</h5>
+                <p class="card-text">
+                  <strong>Teléfono:</strong> {{ cand.telefono }}<br>
+                  <strong>Cédula:</strong> {{ cand.cedula }}
+                </p>
+                <a href="{{ url_for('gestionar_archivos', accion='ver', fila=cand.fila) }}" class="btn btn-success">
+                  Ver Documentos
+                </a>
+              </div>
             </div>
           </div>
-        </div>
-      {% endfor %}
-    </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+  {% elif accion == "ver" %}
+    <!-- Visualización de Documentos -->
+    <h2 class="mb-4">Documentos de la Fila {{ fila }}</h2>
+    {% if docs %}
+      <ul class="list-group mb-4">
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>Depuración</span>
+          {% if docs.depuracion %}
+            <a href="{{ url_for('descargar_uno_db', id=fila, doc='depuracion') }}" class="btn btn-outline-primary btn-sm">
+              Descargar
+            </a>
+          {% else %}
+            <span class="text-muted">No disponible</span>
+          {% endif %}
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>Perfil</span>
+          {% if docs.perfil %}
+            <a href="{{ url_for('descargar_uno_db', id=fila, doc='perfil') }}" class="btn btn-outline-primary btn-sm">
+              Descargar
+            </a>
+          {% else %}
+            <span class="text-muted">No disponible</span>
+          {% endif %}
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>Cédula 1</span>
+          {% if docs.cedula1 %}
+            <a href="{{ url_for('descargar_uno_db', id=fila, doc='cedula1') }}" class="btn btn-outline-primary btn-sm">
+              Descargar
+            </a>
+          {% else %}
+            <span class="text-muted">No disponible</span>
+          {% endif %}
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>Cédula 2</span>
+          {% if docs.cedula2 %}
+            <a href="{{ url_for('descargar_uno_db', id=fila, doc='cedula2') }}" class="btn btn-outline-primary btn-sm">
+              Descargar
+            </a>
+          {% else %}
+            <span class="text-muted">No disponible</span>
+          {% endif %}
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>Entrevista</span>
+          {% if docs.entrevista %}
+            <a href="{{ url_for('generar_pdf_entrevista', fila=fila) }}" class="btn btn-outline-primary btn-sm">
+              Generar/Descargar PDF
+            </a>
+          {% else %}
+            <span class="text-muted">No disponible</span>
+          {% endif %}
+        </li>
+      </ul>
+    {% else %}
+      <p class="text-center">No se encontraron documentos almacenados.</p>
+    {% endif %}
   {% endif %}
-{% elif accion == "ver" %}
-  <!-- Visualización de Documentos -->
-  <h2 class="mb-4">Documentos de la Fila {{ fila }}</h2>
-  {% if docs %}
-    <ul class="list-group mb-4">
-      <li class="list-group-item">
-        <strong>Depuración:</strong>
-        {% if docs.depuracion_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=depuracion&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
-          <span class="text-muted">{{ docs.depuracion_url }}</span>
-        {% else %}
-          <span class="text-muted">No disponible</span>
-        {% endif %}
-      </li>
-      <li class="list-group-item">
-        <strong>Perfil:</strong>
-        {% if docs.perfil_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=perfil&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
-          <span class="text-muted">{{ docs.perfil_url }}</span>
-        {% else %}
-          <span class="text-muted">No disponible</span>
-        {% endif %}
-      </li>
-      <li class="list-group-item">
-        <strong>Cédula 1:</strong>
-        {% if docs.cedula1_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=cedula1&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
-          <span class="text-muted">{{ docs.cedula1_url }}</span>
-        {% else %}
-          <span class="text-muted">No disponible</span>
-        {% endif %}
-      </li>
-      <li class="list-group-item">
-        <strong>Cédula 2:</strong>
-        {% if docs.cedula2_url %}
-          <a href="/gestionar_archivos?accion=descargar&doc=cedula2&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Descargar</a>
-          <span class="text-muted">{{ docs.cedula2_url }}</span>
-        {% else %}
-          <span class="text-muted">No disponible</span>
-        {% endif %}
-      </li>
-      <li class="list-group-item">
-        <strong>Entrevista (columna Z):</strong>
-        {% if docs.entrevista %}
-          <a href="/gestionar_archivos?accion=descargar&doc=pdf&fila={{ fila }}" class="btn btn-outline-primary btn-sm ms-2">Generar/Descargar PDF</a>
-        {% else %}
-          <span class="text-muted">No disponible</span>
-        {% endif %}
-      </li>
-    </ul>
-    <div class="text-center">
-      <a href="/gestionar_archivos?accion=descargar&doc=todo&fila={{ fila }}" class="btn btn-primary btn-lg" id="descargarTodoButton">Descargar TODO (ZIP)</a>
-    </div>
-  {% else %}
-    <p class="text-center">No se encontraron documentos en las columnas AA-AD.</p>
-  {% endif %}
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
   document.addEventListener("DOMContentLoaded", function() {
-    // Desactivar el botón de búsqueda
+    // Botón de búsqueda
     const searchForm = document.getElementById("searchForm");
     if (searchForm) {
       searchForm.addEventListener("submit", function() {
         const btn = document.getElementById("searchButton");
         btn.disabled = true;
         btn.innerText = "Buscando...";
-      });
-    }
-    // Desactivar el botón de "Descargar TODO"
-    const descargarTodoButton = document.getElementById("descargarTodoButton");
-    if (descargarTodoButton) {
-      descargarTodoButton.addEventListener("click", function() {
-        descargarTodoButton.disabled = true;
-        descargarTodoButton.innerText = "Descargando...";
       });
     }
   });

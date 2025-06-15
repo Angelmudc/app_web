@@ -1,176 +1,127 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gestionar Pagos</title>
-  <style>
-    /* Variables de colores basados en el logo */
-    :root {
-      --primary-color: #1A5789;
-      --accent-color: #00AECF;
-      --secondary-color: #ffffff;
-      --background-color: #e8f6fa;
-      --text-color: #343a40;
-      --transition-duration: 0.3s;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Arial', sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      line-height: 1.6;
-      overflow-x: hidden;
-      padding: 20px;
-    }
-    .container {
-      max-width: 900px;
-      margin: 40px auto;
-      background: var(--secondary-color);
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-      animation: fadeIn 0.8s ease-out;
-    }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-    h2 { text-align: center; color: var(--primary-color); font-size: 2rem; margin-bottom: 20px; animation: slideDown 0.5s ease-out; position: relative; }
-    h2::after { content: ""; display: block; width: 50px; height: 4px; background: var(--accent-color); margin: 10px auto 0; border-radius: 2px; }
-    h3 { text-align: center; color: var(--primary-color); margin: 20px 0 15px; animation: slideDown 0.5s ease-out; }
-    form { animation: fadeIn 1s ease-out; }
-    input[type="text"], input[type="number"], input[type="date"], select {
-      width: 100%;
-      padding: 15px;
-      margin: 15px 0;
-      border: 2px solid var(--primary-color);
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color var(--transition-duration) ease;
-    }
-    input[type="text"]:focus, input[type="number"]:focus, input[type="date"]:focus, select:focus {
-      border-color: var(--accent-color);
-      outline: none;
-    }
-    button {
-      width: 100%;
-      padding: 15px;
-      margin: 15px 0;
-      border: none;
-      border-radius: 8px;
-      background-color: var(--accent-color);
-      color: var(--secondary-color);
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    button:hover { background-color: #009bbd; transform: translateY(-3px); }
-    button:disabled { opacity: 0.7; cursor: not-allowed; }
-    .mensaje { text-align: center; color: #d9534f; font-weight: bold; margin-top: 10px; animation: fadeIn 1s ease-out; }
-    .resultados-section { margin-top: 30px; animation: fadeIn 1s ease-out; }
-    .table-container { overflow-x: auto; animation: fadeIn 1s ease-out; }
-    table { width: 100%; border-collapse: collapse; background: var(--secondary-color); }
-    th, td { padding: 15px; border: 1px solid #ddd; text-align: center; transition: background-color var(--transition-duration) ease; }
-    th { background-color: var(--primary-color); color: var(--secondary-color); font-weight: bold; }
-    tr:hover { background-color: #f1f1f1; }
-    .ver-detalles { background-color: var(--primary-color); color: var(--secondary-color); font-weight: bold; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease; }
-    .ver-detalles:hover { background-color: #153d5e; transform: scale(1.05); }
-    .detalles-section { margin-top: 30px; animation: fadeIn 1s ease-out; }
-    .detalle { background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 6px solid var(--primary-color); transition: transform var(--transition-duration) ease; }
-    .detalle:hover { transform: scale(1.02); }
-    .detalle strong { color: var(--primary-color); }
-    .volver { display: block; margin: 30px auto; background-color: var(--primary-color); text-align: center; padding: 15px; width: 200px; color: var(--secondary-color); font-weight: bold; text-decoration: none; border-radius: 8px; transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease; }
-    .volver:hover { background-color: #153d5e; transform: translateY(-3px); }
-    @media (max-width: 768px) {
-      .container { margin: 20px; padding: 20px; }
-      h2 { font-size: 1.8rem; }
-      input[type="text"], input[type="number"], input[type="date"], select, button { font-size: 0.9rem; }
-      th, td { padding: 10px; }
-      .volver { width: 150px; }
-    }
-  </style>
-</head>
-<body>
+{# pagos.html #}
+{% extends "base.html" %}
+
+{% block title %}💰 Gestionar Pagos{% endblock %}
+
+{# Hereda todos los estilos de base.html, no necesita block head #}
+
+{% block content %}
   <div class="container">
     <h2>💰 Gestionar Pagos</h2>
 
-    {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
-    {% endif %}
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          <div class="alert alert-{{ 
+            'success' if category=='success' else 
+            ('danger' if category=='danger' else 'warning') 
+          }} alert-dismissible fade show" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
 
-    <!-- Formulario de búsqueda -->
-    <form id="searchForm" method="GET" action="/pagos">
-      <input type="text" name="busqueda" placeholder="Ingrese nombre, cédula o código" value="{{ request.args.get('busqueda', '') }}" required>
-      <button type="submit">🔍 Buscar Candidata</button>
+    <!-- Form de búsqueda -->
+    <form id="searchForm" method="GET" action="{{ url_for('pagos') }}">
+      <div class="row g-2 mb-4">
+        <div class="col">
+          <input type="text"
+                 name="busqueda"
+                 class="form-control"
+                 placeholder="Ingrese nombre, cédula o código"
+                 value="{{ request.args.get('busqueda','') }}"
+                 required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">🔍 Buscar Candidata</button>
+        </div>
+      </div>
     </form>
 
+    <!-- Tabla de resultados -->
     {% if resultados %}
-      <section class="resultados-section">
+      <div class="table-responsive mb-4">
         <h3>Resultados Encontrados:</h3>
-        <div class="table-container">
-          <table>
-            <thead>
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Cédula</th>
+              <th>Teléfono</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in resultados %}
               <tr>
-                <th>Nombre</th>
-                <th>Cédula</th>
-                <th>Teléfono</th>
-                <th>Acción</th>
+                <td>{{ row.nombre }}</td>
+                <td>{{ row.cedula }}</td>
+                <td>{{ row.telefono or 'No especificado' }}</td>
+                <td>
+                  <form method="GET" action="{{ url_for('pagos') }}">
+                    <input type="hidden" name="candidata" value="{{ row.fila }}">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">
+                      📄 Ver Detalles
+                    </button>
+                  </form>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {% for candidata in resultados %}
-                <tr>
-                  <td>{{ candidata.nombre }}</td>
-                  <td>{{ candidata.cedula }}</td>
-                  <td>{{ candidata.telefono }}</td>
-                  <td>
-                    <form method="GET" action="/pagos">
-                      <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                      <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
-                    </form>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% endif %}
 
+    <!-- Sección detalle -->
     {% if candidata %}
-      <section class="detalles-section">
-        <h3>Detalles de la Candidata Seleccionada</h3>
-        <div class="detalle"><strong>Nombre:</strong> {{ candidata.nombre }}</div>
-        <div class="detalle"><strong>Cédula:</strong> {{ candidata.cedula }}</div>
-        <div class="detalle"><strong>Teléfono:</strong> {{ candidata.telefono }}</div>
-        <div class="detalle"><strong>Monto Total:</strong> {{ candidata.monto_total }}</div>
-        <div class="detalle"><strong>Porcentaje:</strong> {{ candidata.porcentaje }}</div>
-        <div class="detalle"><strong>Fecha de Pago:</strong> {{ candidata.fecha_pago }}</div>
-        <div class="detalle"><strong>Calificación:</strong> {{ candidata.calificacion }}</div>
-        <!-- Formulario para actualizar pago con calificación -->
-        <form method="POST" action="/pagos">
-          <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-          <input type="number" step="any" name="monto_pagado" placeholder="Ingrese monto pagado" required>
-          <select name="calificacion" required>
-            <option value="">Seleccione Calificación</option>
-            <option value="Dio problemas para pagar el porciento">Dio problemas para pagar el porciento</option>
-            <option value="Pago incompleto">Pago incompleto</option>
-            <option value="Pago completo">Pago completo</option>
-          </select>
-          <button type="submit">Guardar Pago</button>
+      <div class="mb-4">
+        <h3>Detalles de la Candidata</h3>
+        <ul class="list-group mb-3">
+          <li class="list-group-item"><strong>Nombre:</strong> {{ candidata.nombre_completo }}</li>
+          <li class="list-group-item"><strong>Cédula:</strong> {{ candidata.cedula }}</li>
+          <li class="list-group-item"><strong>Teléfono:</strong> {{ candidata.numero_telefono or 'No especificado' }}</li>
+          <li class="list-group-item"><strong>Monto Total:</strong> {{ candidata.monto_total }}</li>
+          <li class="list-group-item"><strong>Porcentaje:</strong> {{ candidata.porciento }}</li>
+          <li class="list-group-item"><strong>Fecha de Pago:</strong> {{ candidata.fecha_de_pago }}</li>
+          <li class="list-group-item"><strong>Calificación:</strong> {{ candidata.calificacion }}</li>
+        </ul>
+
+        <!-- Form de actualización -->
+        <form method="POST" action="{{ url_for('pagos') }}">
+          <input type="hidden" name="fila" value="{{ candidata.fila }}">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="monto_pagado" class="form-label">Monto pagado</label>
+              <input type="number" step="any" id="monto_pagado" name="monto_pagado" class="form-control" placeholder="Monto pagado" required>
+            </div>
+            <div class="col-md-6">
+              <label for="calificacion" class="form-label">Calificación</label>
+              <select id="calificacion" name="calificacion" class="form-select" required>
+                <option value="">Seleccione Calificación</option>
+                <option value="Dio problemas para pagar el porciento">Dio problemas…</option>
+                <option value="Pago incompleto">Pago incompleto</option>
+                <option value="Pago completo">Pago completo</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success">Guardar Pago</button>
         </form>
-      </section>
+      </div>
     {% endif %}
 
-    <a href="/" class="volver">🏠 Volver al Inicio</a>
+    <a href="{{ url_for('home') }}" class="btn btn-secondary">🏠 Volver al Inicio</a>
   </div>
+{% endblock %}
 
+{% block scripts %}
   <script>
-    document.getElementById('searchForm').addEventListener('submit', function() {
-      var submitButton = this.querySelector('button[type="submit"]');
-      submitButton.disabled = true;
-      submitButton.innerText = 'Buscando...';
+    document.getElementById('searchForm').addEventListener('submit', function(){
+      var btn = this.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      btn.innerText = 'Buscando…';
     });
   </script>
-</body>
-</html>
+{% endblock %}

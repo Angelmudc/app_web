@@ -1,252 +1,92 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Inscripción de Candidatas</title>
-  <style>
-    :root {
-      --primary-color: #1A5789;
-      --accent-color: #00AECF;
-      --secondary-color: #ffffff;
-      --background-color: #e8f6fa;
-      --text-color: #343a40;
-      --transition-duration: 0.3s;
-      --font-size: 1.2rem;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: Arial, sans-serif;
-      background-color: var(--background-color);
-      color: var(--text-color);
-      font-size: var(--font-size);
-      line-height: 1.5;
-      padding: 20px;
-      text-align: center;
-    }
-    .container {
-      max-width: 900px;
-      background: var(--secondary-color);
-      margin: 40px auto;
-      padding: 40px;
-      border-radius: 10px;
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
-    }
-    h1, h2 {
-      color: var(--primary-color);
-      margin-bottom: 20px;
-      position: relative;
-    }
-    h1::after, h2::after {
-      content: "";
-      display: block;
-      width: 60px;
-      height: 4px;
-      background: var(--accent-color);
-      margin: 10px auto 0;
-      border-radius: 2px;
-    }
-    label {
-      font-weight: bold;
-      margin: 15px 0 5px;
-      text-align: left;
-      display: block;
-    }
-    input[type="text"],
-    input[type="date"],
-    select {
-      width: 100%;
-      padding: 14px;
-      margin-bottom: 15px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      font-size: var(--font-size);
-    }
-    button {
-      width: 100%;
-      padding: 15px;
-      margin-top: 10px;
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-size: 1.1rem;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    button:hover {
-      background-color: var(--accent-color);
-      transform: translateY(-2px);
-    }
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    hr {
-      margin: 30px 0;
-      border: 0;
-      border-top: 1px solid #ccc;
-    }
-    p {
-      margin: 10px 0;
-      text-align: left;
-      font-size: 1rem;
-    }
-    .resultados-section {
-      text-align: left;
-      margin-top: 30px;
-    }
-    .resultado-item {
-      background: #f9f9f9;
-      margin: 15px 0;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    }
-    .resultado-item h3 {
-      margin-bottom: 8px;
-      color: var(--primary-color);
-      font-size: 1.3rem;
-    }
-    .resultado-item p {
-      margin: 6px 0;
-      font-size: 1rem;
-    }
-    .ver-detalles-btn {
-      display: inline-block;
-      background-color: var(--accent-color);
-      color: #fff;
-      padding: 10px 15px;
-      border-radius: 5px;
-      text-decoration: none;
-      font-weight: bold;
-      transition: background-color var(--transition-duration) ease;
-      margin-top: 10px;
-    }
-    .ver-detalles-btn:hover {
-      background-color: #00a0cf;
-    }
-    .volver {
-      display: inline-block;
-      margin-top: 20px;
-      background-color: var(--primary-color);
-      padding: 14px 24px;
-      color: var(--secondary-color);
-      text-decoration: none;
-      font-weight: bold;
-      border-radius: 5px;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    .volver:hover {
-      background-color: var(--accent-color);
-      transform: translateY(-2px);
-    }
-    .mensaje {
-      margin-top: 20px;
-      color: #d9534f;
-      font-weight: bold;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🔍 Inscripción de Candidatas</h1>
+{# inscripcion.html #}
+{% extends "base.html" %}
 
-    <!-- Formulario de búsqueda (GET) -->
-    <form method="GET" action="/inscripcion" id="searchForm">
-      <label for="buscar">Buscar por cédula o nombre:</label>
-      <input type="text" id="buscar" name="buscar" placeholder="Ingrese cédula o nombre" required />
-      <button type="submit" id="buscarBtn">🔎 Buscar</button>
+{% block title %}Inscripción de Candidatas{% endblock %}
+
+{# Eliminado block head: hereda todo el CSS del base.html #}
+
+{% block content %}
+  <div class="container">
+    <h1>Inscripción de Candidatas</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          <div class="alert alert-{{ 'success' if category=='success' else 'danger' }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Formulario de búsqueda -->
+    <form method="get" action="{{ url_for('inscripcion') }}">
+      <label for="buscar">Buscar por nombre, cédula o teléfono:</label>
+      <input type="text" id="buscar" name="buscar" placeholder="Ejemplo: Ángel" value="{{ request.args.get('buscar','') }}" required />
+      <button class="btn btn-primary mt-2">🔎 Buscar</button>
     </form>
 
-    <hr />
-
-    <!-- Sección de resultados de búsqueda -->
     {% if resultados %}
-      <div class="resultados-section">
-        <h2>Resultados de la Búsqueda</h2>
-        {% for candidata in resultados %}
-          <div class="resultado-item">
-            <h3>{{ candidata.nombre }}</h3>
-            <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
-            <p><strong>Código:</strong> {{ candidata.codigo if candidata.codigo else "Sin código" }}</p>
-            <a href="/inscripcion?candidata_seleccionada={{ candidata.fila_index }}" class="ver-detalles-btn">
-              📄 Ver Detalles
-            </a>
-          </div>
-        {% endfor %}
+    <div class="mt-4">
+      <h2>Resultados</h2>
+      {% for c in resultados %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5 class="card-title">{{ c.nombre_completo }}</h5>
+          <p class="card-text"><strong>Cédula:</strong> {{ c.cedula }}</p>
+          <p class="card-text"><strong>Teléfono:</strong> {{ c.numero_telefono or '–' }}</p>
+          <a href="{{ url_for('inscripcion', candidata_seleccionada=c.fila) }}" class="btn btn-outline-secondary">Ver Detalles</a>
+        </div>
       </div>
-      <hr />
+      {% endfor %}
+    </div>
     {% endif %}
 
-    <!-- Sección de detalles de la candidata -->
-    {% if datos_candidata %}
-      <h2>📄 Datos de la Candidata</h2>
-      <p><strong>Código:</strong> {{ datos_candidata.codigo }}</p>
-      <p><strong>Nombre:</strong> {{ datos_candidata.nombre }}</p>
-      <p><strong>Cédula:</strong> {{ datos_candidata.cedula }}</p>
-      <p><strong>Teléfono:</strong> {{ datos_candidata.telefono }}</p>
-      <p><strong>Dirección:</strong> {{ datos_candidata.direccion }}</p>
-      <p><strong>Medio de Inscripción:</strong> {{ datos_candidata.medio }}</p>
-      
-      <hr />
-      
-      <!-- Formulario de inscripción (POST) -->
-      <h2>📝 Completar Inscripción</h2>
-      <form method="POST" action="/inscripcion" id="inscribirForm">
+    {% if candidata %}
+    <div class="mt-4">
+      <h2>Datos de la Candidata</h2>
+      <ul class="list-group mb-3">
+        <li class="list-group-item"><strong>Código:</strong> {{ candidata.codigo or 'Se generará al guardar' }}</li>
+        <li class="list-group-item"><strong>Nombre:</strong> {{ candidata.nombre_completo }}</li>
+        <li class="list-group-item"><strong>Cédula:</strong> {{ candidata.cedula }}</li>
+        <li class="list-group-item"><strong>Teléfono:</strong> {{ candidata.numero_telefono or '–' }}</li>
+        <li class="list-group-item"><strong>Dirección:</strong> {{ candidata.direccion_completa or '–' }}</li>
+      </ul>
+
+      <h2>Formulario de Inscripción</h2>
+      <form method="post" action="{{ url_for('inscripcion') }}">
         <input type="hidden" name="guardar_inscripcion" value="1" />
-        <input type="hidden" name="fila_index" value="{{ datos_candidata.fila_index }}" />
+        <input type="hidden" name="candidata_id" value="{{ candidata.fila }}" />
 
-        <label for="medio">Medio de Inscripción:</label>
-        <select id="medio" name="medio">
-          <option value="Vía Oficina">Vía Oficina</option>
-          <option value="Transferencia Bancaria">Transferencia Bancaria</option>
-        </select>
+        <div class="mb-3">
+          <label for="medio" class="form-label">Medio de Inscripción:</label>
+          <select id="medio" name="medio" class="form-select">
+            <option value="Vía Oficina" {% if candidata.medio_inscripcion=='Vía Oficina' %}selected{% endif %}>Vía Oficina</option>
+            <option value="Transferencia Bancaria" {% if candidata.medio_inscripcion=='Transferencia Bancaria' %}selected{% endif %}>Transferencia Bancaria</option>
+          </select>
+        </div>
 
-        <label for="estado">Estado:</label>
-        <select id="estado" name="estado">
-          <option value="Sí">Sí</option>
-          <option value="No">No</option>
-        </select>
+        <div class="mb-3">
+          <label for="estado" class="form-label">Estado:</label>
+          <select id="estado" name="estado" class="form-select">
+            <option value="si" {% if candidata.inscripcion %}selected{% endif %}>Sí</option>
+            <option value="no" {% if not candidata.inscripcion %}selected{% endif %}>No</option>
+          </select>
+        </div>
 
-        <label for="monto">Monto:</label>
-        <input type="text" id="monto" name="monto" value="500" />
+        <div class="mb-3">
+          <label for="monto" class="form-label">Monto:</label>
+          <input type="text" id="monto" name="monto" class="form-control" value="{{ candidata.monto or '' }}" />
+        </div>
 
-        <label for="fecha">Fecha:</label>
-        <input type="date" id="fecha" name="fecha" />
+        <div class="mb-3">
+          <label for="fecha" class="form-label">Fecha:</label>
+          <input type="date" id="fecha" name="fecha" class="form-control" value="{{ candidata.fecha.isoformat() if candidata.fecha else '' }}" />
+        </div>
 
-        <button type="submit" id="guardarBtn">💾 Guardar Inscripción</button>
+        <button type="submit" class="btn btn-success">💾 Guardar Inscripción</button>
       </form>
+    </div>
     {% endif %}
 
-    <hr />
-    <a href="/" class="volver">🏠 Volver a Home</a>
-
-    {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
-    {% endif %}
+    <a href="{{ url_for('home') }}" class="btn btn-secondary mt-4">🏠 Volver</a>
   </div>
-
-  <!-- Script para desactivar botones al enviar formularios -->
-  <script>
-    // Desactivar botón de búsqueda
-    const searchForm = document.getElementById('searchForm');
-    if (searchForm) {
-      searchForm.addEventListener('submit', function() {
-        const btn = document.getElementById('buscarBtn');
-        btn.disabled = true;
-        btn.innerText = 'Buscando...';
-      });
-    }
-    // Desactivar botón de inscripción
-    const inscribirForm = document.getElementById('inscribirForm');
-    if (inscribirForm) {
-      inscribirForm.addEventListener('submit', function() {
-        const btn = document.getElementById('guardarBtn');
-        btn.disabled = true;
-        btn.innerText = 'Guardando...';
-      });
-    }
-  </script>
-</body>
-</html>
+{% endblock %}

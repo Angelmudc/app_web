@@ -1,253 +1,72 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Referencias de Candidata</title>
-  <style>
-    :root {
-      --primary-color: #1A5789;
-      --accent-color: #00AECF;
-      --secondary-color: #ffffff;
-      --background-color: #e8f6fa;
-      --text-color: #343a40;
-      --transition-duration: 0.3s;
-    }
-    /* Reset básico */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      font-family: 'Arial', sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      animation: fadeInBody 1s ease-out;
-    }
-    @keyframes fadeInBody {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    .container {
-      width: 100%;
-      max-width: 900px;
-      background: var(--secondary-color);
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-      animation: slideIn 0.8s ease-out;
-      margin-top: 20px;
-    }
-    @keyframes slideIn {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    h2 {
-      text-align: center;
-      color: var(--primary-color);
-      margin-bottom: 20px;
-      position: relative;
-      font-size: 2.2rem;
-    }
-    h2::after {
-      content: "";
-      display: block;
-      width: 60px;
-      height: 5px;
-      background: var(--accent-color);
-      margin: 10px auto 0;
-      border-radius: 3px;
-    }
-    form.search-form {
-      display: flex;
-      flex-direction: row;
-      gap: 10px;
-      margin-bottom: 20px;
-      animation: fadeIn 0.5s ease-out;
-    }
-    input[type="text"] {
-      flex: 1;
-      padding: 12px;
-      border: 2px solid var(--primary-color);
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color var(--transition-duration);
-    }
-    input[type="text"]:focus {
-      border-color: var(--accent-color);
-      outline: none;
-    }
-    button {
-      padding: 12px 20px;
-      border: none;
-      border-radius: 8px;
-      background-color: var(--accent-color);
-      color: var(--secondary-color);
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background-color var(--transition-duration), transform var(--transition-duration);
-    }
-    button:hover {
-      background-color: #009bbd;
-      transform: translateY(-3px);
-    }
-    .mensaje {
-      text-align: center;
-      color: #d9534f;
-      margin-bottom: 20px;
-      font-weight: bold;
-      animation: fadeIn 0.5s ease-out;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-      animation: fadeIn 0.5s ease-out;
-    }
-    th, td {
-      padding: 12px;
-      border: 1px solid #ddd;
-      text-align: center;
-      transition: background-color var(--transition-duration);
-    }
-    th {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-    }
-    tr:hover {
-      background-color: #f1f1f1;
-    }
-    .ver-detalles {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      padding: 8px 12px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background-color var(--transition-duration), transform var(--transition-duration);
-    }
-    .ver-detalles:hover {
-      background-color: #153d5e;
-      transform: scale(1.05);
-    }
-    .detalles {
-      margin-top: 30px;
-      padding: 20px;
-      background: #f9f9f9;
-      border-radius: 8px;
-      border-left: 6px solid var(--primary-color);
-      animation: slideIn 0.6s ease-out;
-    }
-    .detalles h3 {
-      margin-bottom: 15px;
-      color: var(--primary-color);
-    }
-    .detalles p {
-      margin-bottom: 10px;
-      font-size: 1rem;
-    }
-    textarea {
-      width: 100%;
-      padding: 12px;
-      border: 2px solid var(--primary-color);
-      border-radius: 8px;
-      font-size: 1rem;
-      resize: vertical;
-      transition: border-color var(--transition-duration);
-    }
-    textarea:focus {
-      border-color: var(--accent-color);
-      outline: none;
-    }
-    .btn-home {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 12px 20px;
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      text-decoration: none;
-      border-radius: 8px;
-      transition: background-color var(--transition-duration), transform var(--transition-duration);
-    }
-    .btn-home:hover {
-      background-color: #153d5e;
-      transform: translateY(-3px);
-    }
-    @media (max-width: 600px) {
-      form.search-form {
-        flex-direction: column;
-      }
-      table, th, td, textarea, button, .btn-home {
-        font-size: 0.9rem;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Referencias de Candidata</h2>
-    {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
-    {% endif %}
-    {% if not candidata %}
-      <!-- Formulario de búsqueda -->
-      <form class="search-form" method="POST" action="/referencias">
-        <input type="text" name="busqueda" placeholder="Ingrese nombre o cédula" required>
-        <button type="submit">Buscar</button>
-      </form>
-      {% if resultados %}
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Cédula</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for cand in resultados %}
-              <tr>
-                <td>{{ cand.nombre }}</td>
-                <td>{{ cand.cedula }}</td>
-                <td>
-                  <form method="GET" action="/referencias">
-                    <input type="hidden" name="candidata" value="{{ cand.fila_index }}">
-                    <button type="submit" class="ver-detalles">Ver Detalles</button>
-                  </form>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      {% endif %}
+{% extends 'base.html' %}
+{% block title %}Referencias de Candidata{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <h2 class="mb-4 text-center">Referencias de Candidata</h2>
+  {% if mensaje %}
+    <div class="alert alert-warning">{{ mensaje }}</div>
+  {% endif %}
+
+  {% if accion == 'buscar' %}
+    <!-- Form de búsqueda -->
+    <form method="POST" action="{{ url_for('referencias') }}" class="mb-4">
+      <div class="input-group">
+        <input type="text" name="busqueda" class="form-control" placeholder="Ingrese nombre o cédula" required>
+        <button class="btn btn-primary">Buscar</button>
+      </div>
+    </form>
+
+    {% if resultados %}
+      <table class="table table-hover">
+        <thead>
+          <tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th>Acción</th></tr>
+        </thead>
+        <tbody>
+        {% for c in resultados %}
+          <tr>
+            <td>{{ c.nombre }}</td>
+            <td>{{ c.cedula }}</td>
+            <td>{{ c.telefono }}</td>
+            <td>
+              <a href="{{ url_for('referencias', candidata=c.id) }}" class="btn btn-sm btn-info">
+                Ver
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
     {% endif %}
 
-    {% if candidata %}
-      <div class="detalles">
-        <h3>Detalles de la Candidata</h3>
-        <p><strong>Nombre:</strong> {{ candidata.nombre }}</p>
+  {% elif accion == 'ver' %}
+    <!-- Detalles de la candidata -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">{{ candidata.nombre_completo }}</h5>
         <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+        <p><strong>Teléfono:</strong> {{ candidata.numero_telefono or '—' }}</p>
       </div>
-      <form method="POST" action="/referencias">
-        <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-        <label for="referencias_laborales"><strong>Referencias Laborales:</strong></label>
-        <textarea id="referencias_laborales" name="referencias_laborales" rows="4" placeholder="Ingrese las referencias laborales">{{ candidata.referencias_laborales }}</textarea>
-        <br><br>
-        <label for="referencias_familiares"><strong>Referencias Familiares:</strong></label>
-        <textarea id="referencias_familiares" name="referencias_familiares" rows="4" placeholder="Ingrese las referencias familiares">{{ candidata.referencias_familiares }}</textarea>
-        <br><br>
-        <button type="submit">Guardar Referencias</button>
-      </form>
-      <a href="/referencias" class="btn-home">Volver a Buscar</a>
-    {% endif %}
-    <a href="/" class="btn-home">Volver a Home</a>
+    </div>
+
+    <!-- Form para editar referencias -->
+    <form method="POST" action="{{ url_for('referencias') }}">
+      <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+      <div class="mb-3">
+        <label class="form-label">Referencias Laborales</label>
+        <textarea name="referencias_laboral" class="form-control" rows="4">{{ candidata.referencias_laboral }}</textarea>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Referencias Familiares</label>
+        <textarea name="referencias_familiares" class="form-control" rows="4">{{ candidata.referencias_familiares }}</textarea>
+      </div>
+      <button class="btn btn-success">Guardar</button>
+      <a href="{{ url_for('referencias') }}" class="btn btn-secondary ms-2">Nueva Búsqueda</a>
+    </form>
+  {% endif %}
+
+  <div class="text-center mt-5">
+    <a href="{{ url_for('home') }}" class="btn btn-outline-primary">🏠 Inicio</a>
   </div>
-</body>
-</html>
+</div>
+{% endblock %}

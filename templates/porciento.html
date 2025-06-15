@@ -1,256 +1,48 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Calcular Porcentaje</title>
-  <style>
-    /* Variables de colores basados en el logo */
-    :root {
-      --primary-color: #1A5789;      /* Azul intenso para títulos y botones */
-      --accent-color: #00AECF;       /* Turquesa para acentos y efectos */
-      --secondary-color: #ffffff;    /* Blanco para fondos y textos secundarios */
-      --background-color: #e8f6fa;   /* Fondo suave que evoca agua y frescura */
-      --text-color: #343a40;         /* Gris oscuro para textos */
-      --transition-duration: 0.3s;
-    }
+{# porciento.html #}
+{% extends "base.html" %}
 
-    /* Reset básico */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+{% block title %}🔢 Calcular Porcentaje{% endblock %}
 
-    body {
-      font-family: 'Arial', sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      line-height: 1.6;
-      overflow-x: hidden;
-      padding: 20px;
-    }
+{# Eliminado block head para heredar todos los estilos de base.html #}
 
-    /* Contenedor principal */
-    .container {
-      max-width: 900px;
-      margin: 40px auto;
-      background: var(--secondary-color);
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-      animation: fadeIn 0.8s ease-out;
-    }
-
-    /* Animaciones */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes slideDown {
-      from { transform: translateY(-20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-
-    /* Títulos y encabezados */
-    h2 {
-      text-align: center;
-      color: var(--primary-color);
-      font-size: 2rem;
-      margin-bottom: 20px;
-      animation: slideDown 0.5s ease-out;
-      position: relative;
-    }
-    h2::after {
-      content: "";
-      display: block;
-      width: 50px;
-      height: 4px;
-      background: var(--accent-color);
-      margin: 10px auto 0;
-      border-radius: 2px;
-    }
-    h3 {
-      text-align: center;
-      color: var(--primary-color);
-      margin: 20px 0 15px;
-      animation: slideDown 0.5s ease-out;
-    }
-
-    /* Formularios y botones */
-    form {
-      animation: fadeIn 1s ease-out;
-    }
-    input[type="text"],
-    input[type="number"],
-    input[type="date"] {
-      width: 100%;
-      padding: 15px;
-      margin: 15px 0;
-      border: 2px solid var(--primary-color);
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color var(--transition-duration) ease;
-    }
-    input[type="text"]:focus,
-    input[type="number"]:focus,
-    input[type="date"]:focus {
-      border-color: var(--accent-color);
-      outline: none;
-    }
-    button {
-      width: 100%;
-      padding: 15px;
-      margin: 15px 0;
-      border: none;
-      border-radius: 8px;
-      background-color: var(--accent-color);
-      color: var(--secondary-color);
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    button:hover {
-      background-color: #009bbd;
-      transform: translateY(-3px);
-    }
-    button:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
-    }
-
-    /* Mensajes de alerta */
-    .mensaje {
-      text-align: center;
-      color: #d9534f;
-      font-weight: bold;
-      margin-top: 10px;
-      animation: fadeIn 1s ease-out;
-    }
-
-    /* Sección de resultados */
-    .resultados-section {
-      margin-top: 30px;
-      animation: fadeIn 1s ease-out;
-    }
-    .table-container {
-      overflow-x: auto;
-      animation: fadeIn 1s ease-out;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--secondary-color);
-    }
-    th, td {
-      padding: 15px;
-      border: 1px solid #ddd;
-      text-align: center;
-      transition: background-color var(--transition-duration) ease;
-    }
-    th {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-weight: bold;
-    }
-    tr:hover {
-      background-color: #f1f1f1;
-    }
-    .ver-detalles {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-weight: bold;
-      border: none;
-      padding: 10px 15px;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    .ver-detalles:hover {
-      background-color: #153d5e;
-      transform: scale(1.05);
-    }
-
-    /* Sección de detalles de candidata y formulario de actualización */
-    .detalles-section {
-      margin-top: 30px;
-      animation: fadeIn 1s ease-out;
-    }
-    .detalle {
-      background: #f9f9f9;
-      padding: 15px;
-      border-radius: 8px;
-      margin: 10px 0;
-      border-left: 6px solid var(--primary-color);
-      transition: transform var(--transition-duration) ease;
-    }
-    .detalle:hover {
-      transform: scale(1.02);
-    }
-    .detalle strong {
-      color: var(--primary-color);
-    }
-
-    /* Botón de volver */
-    .volver {
-      display: block;
-      margin: 30px auto;
-      background-color: var(--primary-color);
-      text-align: center;
-      padding: 15px;
-      width: 200px;
-      color: var(--secondary-color);
-      font-weight: bold;
-      text-decoration: none;
-      border-radius: 8px;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    .volver:hover {
-      background-color: #153d5e;
-      transform: translateY(-3px);
-    }
-
-    /* Diseño responsivo */
-    @media (max-width: 768px) {
-      .container {
-        margin: 20px;
-        padding: 20px;
-      }
-      h2 {
-        font-size: 1.8rem;
-      }
-      input[type="text"], input[type="number"], input[type="date"], button {
-        font-size: 0.9rem;
-      }
-      th, td {
-        padding: 10px;
-      }
-      .volver {
-        width: 150px;
-      }
-    }
-  </style>
-</head>
-<body>
+{% block content %}
   <div class="container">
     <h2>🔢 Calcular Porcentaje</h2>
 
-    {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
-    {% endif %}
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, text in messages %}
+          <p class="mensaje alert alert-{{ 'success' if category=='success' else ('danger' if category=='danger' else 'warning') }}">
+            {{ text }}
+          </p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
 
-    <!-- Formulario de búsqueda para candidatas -->
-    <form id="searchForm" method="GET" action="/porciento">
-      <input type="text" name="busqueda" placeholder="Ingrese nombre o cédula" value="{{ request.args.get('busqueda', '') }}">
-      <button type="submit">🔍 Buscar Candidata</button>
+    <!-- Búsqueda -->
+    <form id="searchForm" method="GET" action="{{ url_for('porciento') }}">
+      <div class="row g-2 mb-3">
+        <div class="col">
+          <input type="text"
+                 name="busqueda"
+                 class="form-control"
+                 placeholder="Ingrese nombre o cédula"
+                 value="{{ request.args.get('busqueda','') }}"
+                 required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">🔍 Buscar</button>
+        </div>
+      </div>
     </form>
 
+    <!-- Resultados -->
     {% if resultados %}
-      <section class="resultados-section">
-        <h3>Resultados Encontrados:</h3>
-        <div class="table-container">
-          <table>
+      <div class="resultados-section mb-4">
+        <h3>Resultados Encontrados</h3>
+        <div class="table-responsive">
+          <table class="table table-hover">
             <thead>
               <tr>
                 <th>Nombre</th>
@@ -260,51 +52,71 @@
               </tr>
             </thead>
             <tbody>
-              {% for candidata in resultados %}
+              {% for cand in resultados %}
                 <tr>
-                  <td>{{ candidata.nombre }}</td>
-                  <td>{{ candidata.cedula }}</td>
-                  <td>{{ candidata.telefono }}</td>
+                  <td>{{ cand.nombre_completo }}</td>
+                  <td>{{ cand.cedula }}</td>
+                  <td>{{ cand.numero_telefono or 'N/A' }}</td>
                   <td>
-                    <form action="/porciento" method="GET">
-                      <input type="hidden" name="candidata" value="{{ candidata.fila_index }}">
-                      <button class="ver-detalles" type="submit">📄 Ver Detalles</button>
-                    </form>
+                    <a href="{{ url_for('porciento', candidata=cand.fila) }}" class="btn btn-sm btn-outline-secondary">
+                      📄 Ver Detalles
+                    </a>
                   </td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
-      </section>
+      </div>
     {% endif %}
 
+    <!-- Detalles + Formulario de actualización -->
     {% if candidata %}
-      <section class="detalles-section">
-        <h3>Detalles de la Candidata Seleccionada</h3>
-        <div class="detalle"><strong>👤 Nombre:</strong> {{ candidata.nombre }}</div>
-        <div class="detalle"><strong>📞 Teléfono:</strong> {{ candidata.telefono }}</div>
-        <div class="detalle"><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</div>
-        
-        <!-- Formulario para actualizar porcentaje -->
-        <form method="POST" action="/porciento">
-          <input type="hidden" name="fila_index" value="{{ candidata.fila_index }}">
-          <input type="text" name="fecha_pago" placeholder="Fecha de Pago (YYYY-MM-DD)" required>
-          <input type="text" name="fecha_inicio" placeholder="Fecha de Inicio (YYYY-MM-DD)" required>
-          <input type="number" step="any" name="monto_total" placeholder="Monto Total" required>
-          <button type="submit">Calcular y Actualizar 25%</button>
+      <div class="detalles-section mb-4">
+        <h3>Detalles de la Candidata</h3>
+        <ul class="list-group mb-3">
+          <li class="list-group-item"><strong>👤 Nombre:</strong> {{ candidata.nombre_completo }}</li>
+          <li class="list-group-item"><strong>📞 Teléfono:</strong> {{ candidata.numero_telefono or 'N/A' }}</li>
+          <li class="list-group-item"><strong>🆔 Cédula:</strong> {{ candidata.cedula }}</li>
+          {% if candidata.monto_total is not none %}
+            <li class="list-group-item"><strong>💰 Monto Total:</strong> {{ candidata.monto_total }}</li>
+            <li class="list-group-item"><strong>📊 25 %:</strong> {{ candidata.porciento }}</li>
+            <li class="list-group-item"><strong>📅 Pago el:</strong> {{ candidata.fecha_de_pago }}</li>
+            <li class="list-group-item"><strong>🗓️ Inicia el:</strong> {{ candidata.inicio }}</li>
+          {% endif %}
+        </ul>
+
+        <form method="POST" action="{{ url_for('porciento') }}">
+          <input type="hidden" name="fila_id" value="{{ candidata.fila }}">
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label for="fecha_pago" class="form-label">Fecha de Pago</label>
+              <input type="date" id="fecha_pago" name="fecha_pago" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label for="fecha_inicio" class="form-label">Fecha de Inicio</label>
+              <input type="date" id="fecha_inicio" name="fecha_inicio" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label for="monto_total" class="form-label">Monto Total</label>
+              <input type="number" step="any" id="monto_total" name="monto_total" class="form-control" placeholder="Monto Total" required>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success">Calcular y Guardar 25 %</button>
         </form>
-      </section>
+      </div>
     {% endif %}
 
-    <a href="/" class="volver">🏠 Volver al Inicio</a>
+    <a href="{{ url_for('home') }}" class="btn btn-secondary">🏠 Volver al Inicio</a>
   </div>
+{% endblock %}
+
+{% block scripts %}
   <script>
-    document.getElementById('searchForm').addEventListener('submit', function() {
-      var submitButton = this.querySelector('button[type="submit"]');
-      submitButton.disabled = true;
-      submitButton.innerText = 'Buscando...';
+    document.getElementById('searchForm').addEventListener('submit', function(){
+      var btn = this.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      btn.innerText = 'Buscando...';
     });
   </script>
-</body>
-</html>
+{% endblock %}

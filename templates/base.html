@@ -4,21 +4,33 @@
   <meta charset="UTF-8">
   <title>{% block title %}Mi Aplicación{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
   <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+
+  <!-- Font Awesome (para íconos) -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"
+  />
+
   <!-- Estilos personalizados -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-  
-  <!-- Estilos custom inline para animaciones y mejoras -->
+
+  <!-- Estilos inline para animaciones y mejoras -->
   <style>
     /* Body y fondo */
     body {
       font-family: 'Roboto', sans-serif;
       background: linear-gradient(135deg, #f8f9fa, #e9ecef);
       color: #333;
+      margin: 0;
+      padding: 0;
     }
+
     /* Navbar con efecto hover y transición */
     .navbar {
       transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease;
@@ -29,12 +41,14 @@
     }
     .navbar .nav-link {
       transition: transform 0.3s ease, color 0.3s ease;
+      color: #fff !important;
     }
     .navbar .nav-link:hover {
       transform: scale(1.1);
-      color: #ffc107;
+      color: #ffc107 !important;
     }
-    /* Sección hero con animación de entrada */
+
+    /* Hero / Jumbotron con animación de entrada */
     .hero-section {
       padding: 60px 0;
       text-align: center;
@@ -44,17 +58,37 @@
       from { opacity: 0; transform: translateY(-50px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
     /* Tarjetas mejoradas */
     .card {
       border: none;
       border-radius: 10px;
       overflow: hidden;
       transition: transform 0.3s, box-shadow 0.3s;
+      background-color: #fff;
     }
     .card:hover {
       transform: translateY(-5px);
       box-shadow: 0 10px 20px rgba(0,0,0,0.2);
     }
+    .card .card-body i {
+      font-size: 3rem;
+      margin-bottom: 15px;
+      color: #4a69bd;
+      transition: transform 0.3s;
+    }
+    .card:hover .card-body i {
+      transform: rotate(5deg);
+    }
+    .card-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .card-text {
+      font-size: 0.95rem;
+      color: #666;
+    }
+
     /* Botones con bordes redondeados y efecto zoom */
     .btn {
       border-radius: 50px;
@@ -63,6 +97,7 @@
     .btn:hover {
       transform: scale(1.05);
     }
+
     /* Alerta con animación de aparición */
     .alert {
       animation: fadeIn 1s ease-out;
@@ -71,10 +106,12 @@
       from { opacity: 0; }
       to { opacity: 1; }
     }
+
     /* Footer con fondo oscuro y texto claro */
     footer {
       background-color: #343a40;
       color: #fff;
+      padding: 20px 0;
     }
   </style>
 
@@ -84,8 +121,7 @@
   <!-- Navbar moderno -->
   <nav class="navbar navbar-expand-lg navbar-dark shadow-sm fixed-top">
     <div class="container">
-      <a class="navbar-brand" href="/">
-        <!-- Logo o nombre de la aplicación -->
+      <a class="navbar-brand" href="{{ url_for('home') }}">
         Doméstica del Cibao A&amp;D
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -93,11 +129,30 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ms-auto">
+          <!-- Agrega o ajusta estos enlaces según tus rutas reales -->
           <li class="nav-item">
-            <a class="nav-link" href="/subir_fotos?accion=buscar">Subir Fotos</a>
+            <a class="nav-link" href="{{ url_for('home') }}">Inicio</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/gestionar_archivos?accion=buscar">Gestionar Archivos</a>
+            <a class="nav-link" href="{{ url_for('buscar_candidata') }}">Buscar/Editar</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('inscripcion') }}">Inscripción</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('porciento') }}">Porciento</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('pagos') }}">Pagos</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('solicitudes') }}">Solicitudes</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('otros_listar') }}">Otros Empleos</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('register') }}">Registrar</a>
           </li>
         </ul>
       </div>
@@ -110,16 +165,22 @@
   {% block hero %}{% endblock %}
 
   <main class="container my-5">
-    {% with mensaje=mensaje %}
-      {% if mensaje %}
-        <div class="alert alert-info text-center">{{ mensaje }}</div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, text in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ text }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+          </div>
+        {% endfor %}
       {% endif %}
     {% endwith %}
+
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="py-4">
-    <div class="container text-center">
+  <footer class="text-center">
+    <div class="container">
       <small>&copy; {{ current_year if current_year else "2025" }} Doméstica del Cibao A&amp;D. Todos los derechos reservados.</small>
     </div>
   </footer>
