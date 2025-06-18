@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.so
+*.pyc
 
 # Entorno virtual
 venv/
