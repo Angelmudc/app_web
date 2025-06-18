@@ -1,335 +1,121 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Filtrar Candidatas</title>
-  <style>
-    /* Variables de colores basados en el logo */
-    :root {
-      --primary-color: #1A5789;
-      --accent-color: #00AECF;
-      --secondary-color: #ffffff;
-      --background-color: #e8f6fa;
-      --text-color: #343a40;
-      --transition-duration: 0.3s;
-    }
+{# templates/filtrar.html #}
+{% extends 'base.html' %}
 
-    /* Reset básico */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+{% block title %}Filtrar Candidatas{% endblock %}
 
-    body {
-      font-family: 'Arial', sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      line-height: 1.6;
-      padding: 20px;
-    }
+{% block content %}
+<div class="container py-4">
+  <h2 class="mb-4">🔍 Filtrar Candidatas</h2>
 
-    /* Contenedor principal */
-    .container {
-      max-width: 900px;
-      margin: 40px auto;
-      background: var(--secondary-color);
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-      animation: fadeIn 0.8s ease-out;
-    }
+  {# Mensaje de alerta #}
+  {% if mensaje %}
+    <div class="alert alert-warning">{{ mensaje }}</div>
+  {% endif %}
 
-    /* Animaciones */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes slideDown {
-      from { transform: translateY(-20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
+  {# Formulario de filtros #}
+  <form method="POST" action="{{ url_for('filtrar') }}" class="mb-5">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label for="ciudad" class="form-label">Ciudad / Dirección</label>
+        <input
+          type="text"
+          class="form-control"
+          id="ciudad" name="ciudad"
+          placeholder="Ingresa ciudad o parte de la dirección"
+          value="{{ request.values.get('ciudad','') }}"
+        >
+      </div>
+      <div class="col-md-6">
+        <label for="rutas" class="form-label">Rutas Cercanas</label>
+        <input
+          type="text"
+          class="form-control"
+          id="rutas" name="rutas"
+          placeholder="Ingresa rutas cercanas"
+          value="{{ request.values.get('rutas','') }}"
+        >
+      </div>
+      <div class="col-md-6">
+        <label for="modalidad" class="form-label">Modalidad de trabajo</label>
+        <select class="form-select" id="modalidad" name="modalidad">
+          <option value="" {% if not request.values.get('modalidad') %}selected{% endif %}>(Sin filtro)</option>
+          <option value="salida diaria" {% if request.values.get('modalidad')=='salida diaria' %}selected{% endif %}>Salida diaria</option>
+          <option value="dormida"       {% if request.values.get('modalidad')=='dormida'       %}selected{% endif %}>Dormida</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label for="experiencia_anos" class="form-label">Años de experiencia</label>
+        <select class="form-select" id="experiencia_anos" name="experiencia_anos">
+          <option value="" {% if not request.values.get('experiencia_anos') %}selected{% endif %}>(Sin filtro)</option>
+          <option value="1 año"           {% if request.values.get('experiencia_anos')=='1 año'           %}selected{% endif %}>1 año</option>
+          <option value="2 años"          {% if request.values.get('experiencia_anos')=='2 años'          %}selected{% endif %}>2 años</option>
+          <option value="3 años o más"    {% if request.values.get('experiencia_anos')=='3 años o más'    %}selected{% endif %}>3 años o más</option>
+          <option value="sin experiencia" {% if request.values.get('experiencia_anos')=='sin experiencia' %}selected{% endif %}>Sin experiencia</option>
+        </select>
+      </div>
+      <div class="col-12">
+        <label for="areas_experiencia" class="form-label">Áreas de experiencia</label>
+        <select class="form-select" id="areas_experiencia" name="areas_experiencia">
+          <option value="" {% if not request.values.get('areas_experiencia') %}selected{% endif %}>(Sin filtro)</option>
+          <option value="limpieza"             {% if request.values.get('areas_experiencia')=='limpieza'              %}selected{% endif %}>Limpieza</option>
+          <option value="cocinera"             {% if request.values.get('areas_experiencia')=='cocinera'              %}selected{% endif %}>Cocinera</option>
+          <option value="niñera"               {% if request.values.get('areas_experiencia')=='niñera'                %}selected{% endif %}>Niñera</option>
+          <option value="cuidar envejeciente"  {% if request.values.get('areas_experiencia')=='cuidar envejeciente'   %}selected{% endif %}>Cuidar envejeciente</option>
+          <option value="todas las anteriores" {% if request.values.get('areas_experiencia')=='todas las anteriores'  %}selected{% endif %}>Todas las anteriores</option>
+          <option value="enfermeria"           {% if request.values.get('areas_experiencia')=='enfermeria'            %}selected{% endif %}>Enfermería</option>
+        </select>
+      </div>
+      <div class="col-12 text-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-filter"></i> Aplicar filtros
+        </button>
+      </div>
+    </div>
+  </form>
 
-    /* Títulos y encabezados */
-    h2 {
-      text-align: center;
-      color: var(--primary-color);
-      font-size: 2rem;
-      margin-bottom: 20px;
-      animation: slideDown 0.5s ease-out;
-      position: relative;
-    }
-    h2::after {
-      content: "";
-      display: block;
-      width: 50px;
-      height: 4px;
-      background: var(--accent-color);
-      margin: 10px auto 0;
-      border-radius: 2px;
-    }
-    h3 {
-      text-align: center;
-      color: var(--primary-color);
-      margin: 20px 0 15px;
-      animation: slideDown 0.5s ease-out;
-    }
-
-    /* Formularios y campos */
-    form {
-      animation: fadeIn 1s ease-out;
-      margin-bottom: 20px;
-    }
-    input[type="text"] {
-      width: 100%;
-      padding: 15px;
-      margin: 15px 0;
-      border: 2px solid var(--primary-color);
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color var(--transition-duration) ease;
-    }
-    input[type="text"]:focus {
-      border-color: var(--accent-color);
-      outline: none;
-    }
-    .opciones {
-      margin: 15px 0;
-    }
-    .opciones label {
-      display: block;
-      margin-bottom: 5px;
-      cursor: pointer;
-    }
-    input[type="radio"] {
-      margin-right: 8px;
-    }
-    button {
-      width: 100%;
-      padding: 15px;
-      margin: 15px 0;
-      border: none;
-      border-radius: 8px;
-      background-color: var(--accent-color);
-      color: var(--secondary-color);
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    button:hover {
-      background-color: #009bbd;
-      transform: translateY(-3px);
-    }
-
-    /* Mensajes de alerta */
-    .mensaje {
-      text-align: center;
-      color: #d9534f;
-      font-weight: bold;
-      margin-top: 10px;
-      animation: fadeIn 1s ease-out;
-    }
-
-    /* Sección de resultados */
-    .resultados-section {
-      margin-top: 30px;
-      animation: fadeIn 1s ease-out;
-    }
-    .table-container {
-      overflow-x: auto;
-      animation: fadeIn 1s ease-out;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--secondary-color);
-    }
-    th, td {
-      padding: 15px;
-      border: 1px solid #ddd;
-      text-align: center;
-      transition: background-color var(--transition-duration) ease;
-    }
-    th {
-      background-color: var(--primary-color);
-      color: var(--secondary-color);
-      font-weight: bold;
-    }
-    tr:hover {
-      background-color: #f1f1f1;
-    }
-
-    /* Botón de volver */
-    .volver {
-      display: block;
-      margin: 30px auto;
-      background-color: var(--primary-color);
-      text-align: center;
-      padding: 15px;
-      width: 220px;
-      color: var(--secondary-color);
-      font-weight: bold;
-      text-decoration: none;
-      border-radius: 8px;
-      transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease;
-    }
-    .volver:hover {
-      background-color: #153d5e;
-      transform: translateY(-3px);
-    }
-
-    @media (max-width: 768px) {
-      .container {
-        margin: 20px;
-        padding: 20px;
-      }
-      h2 {
-        font-size: 1.8rem;
-      }
-      input[type="text"], button {
-        font-size: 0.9rem;
-      }
-      th, td {
-        padding: 10px;
-      }
-      .volver {
-        width: 150px;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Filtrar Candidatas</h2>
-    
-    {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
+  {# Resultados #}
+  {% if resultados %}
+    <h5>Resultados ({{ resultados|length }})</h5>
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Nombre</th>
+            <th>Código</th>
+            <th>Teléfono</th>
+            <th>Dirección</th>
+            <th>Rutas</th>
+            <th>Cédula</th>
+            <th>Modalidad</th>
+            <th>Experiencia</th>
+            <th>Áreas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in resultados %}
+            <tr>
+              <td>{{ c.nombre }}</td>
+              <td>{{ c.codigo }}</td>
+              <td>{{ c.telefono }}</td>
+              <td>{{ c.direccion }}</td>
+              <td>{{ c.rutas or '—' }}</td>
+              <td>{{ c.cedula }}</td>
+              <td>{{ c.modalidad }}</td>
+              <td>{{ c.experiencia_anos }}</td>
+              <td>{{ c.areas_experiencia }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    {% if not mensaje %}
+      <div class="alert alert-info">No se encontraron candidatas con los filtros aplicados.</div>
     {% endif %}
-    
-    <!-- Formulario para aplicar filtros -->
-    <form method="POST" action="/filtrar">
-      <!-- Ciudad / Dirección -->
-      <input type="text" name="ciudad" placeholder="Ciudad o parte de la dirección">
-      
-      <!-- Modalidad de trabajo preferida -->
-      <div class="opciones">
-        <p><strong>Modalidad de trabajo preferida</strong></p>
-        <label>
-          <input type="radio" name="modalidad" value="salida diaria">
-          Salida diaria
-        </label>
-        <label>
-          <input type="radio" name="modalidad" value="dormida">
-          Dormida
-        </label>
-        <label>
-          <input type="radio" name="modalidad" value="">
-          (Sin filtro de modalidad)
-        </label>
-      </div>
-      
-      <!-- Años de experiencia -->
-      <div class="opciones">
-        <p><strong>Años de experiencia</strong></p>
-        <label>
-          <input type="radio" name="experiencia_anos" value="1 año">
-          1 año
-        </label>
-        <label>
-          <input type="radio" name="experiencia_anos" value="2 años">
-          2 años
-        </label>
-        <label>
-          <input type="radio" name="experiencia_anos" value="3 años o más">
-          3 años o más
-        </label>
-        <label>
-          <input type="radio" name="experiencia_anos" value="sin experiencia">
-          Sin experiencia
-        </label>
-        <label>
-          <input type="radio" name="experiencia_anos" value="">
-          (Sin filtro de experiencia)
-        </label>
-      </div>
-      
-      <!-- Áreas de experiencia -->
-      <div class="opciones">
-        <p><strong>Áreas de experiencia</strong></p>
-        <label>
-          <input type="radio" name="areas_experiencia" value="limpieza">
-          Limpieza
-        </label>
-        <label>
-          <input type="radio" name="areas_experiencia" value="cocinera">
-          Cocinera
-        </label>
-        <label>
-          <input type="radio" name="areas_experiencia" value="niñera">
-          Niñera
-        </label>
-        <label>
-          <input type="radio" name="areas_experiencia" value="cuidar envejeciente">
-          Cuidar envejeciente
-        </label>
-        <label>
-          <input type="radio" name="areas_experiencia" value="todas las anteriores">
-          Todas las anteriores
-        </label>
-        <label>
-          <input type="radio" name="areas_experiencia" value="enfermeria">
-          Enfermería
-        </label>
-        <label>
-          <input type="radio" name="areas_experiencia" value="">
-          (Sin filtro de áreas)
-        </label>
-      </div>
-      
-      <button type="submit">Filtrar</button>
-    </form>
-    
-    <!-- Sección de resultados -->
-    {% if resultados %}
-      <section class="resultados-section">
-        <h3>Resultados:</h3>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Código</th>
-                <th>Teléfono</th>
-                <th>Dirección</th>
-                <th>Cédula</th>
-                <th>Modalidad</th>
-                <th>Experiencia</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for candidata in resultados %}
-                <tr>
-                  <td>{{ candidata.nombre }}</td>
-                  <td>{{ candidata.codigo }}</td>
-                  <td>{{ candidata.telefono }}</td>
-                  <td>{{ candidata.direccion }}</td>
-                  <td>{{ candidata.cedula }}</td>
-                  <td>{{ candidata.modalidad }}</td>
-                  <td>{{ candidata.experiencia_anos }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    {% else %}
-      <p class="mensaje">No se encontraron candidatas con los filtros aplicados.</p>
-    {% endif %}
-    
-    <a href="/" class="volver">🏠 Volver al Inicio</a>
-  </div>
-</body>
-</html>
+  {% endif %}
 
+  <a href="{{ url_for('home') }}" class="btn btn-outline-secondary mt-4">
+    <i class="fas fa-home"></i> Volver al Inicio
+  </a>
+</div>
+{% endblock %}

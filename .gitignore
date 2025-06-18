@@ -1,1 +1,16 @@
-clave1.json
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Entorno virtual
+venv/
+.env
+service_account.json
+
+# Flask-Migrate
+migrations/versions/*.pyc
+migrations/__pycache__/
+
+# Editor tmp
+*.swp
