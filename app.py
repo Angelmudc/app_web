@@ -16,8 +16,8 @@ from werkzeug.utils import secure_filename
 
 from sqlalchemy import or_, cast, String
 
-# Tu factory y las extensiones
 from config_app import create_app, db, sheets, normalize_cedula, credentials
+
 
 # Tu modelo
 from models import Candidata
