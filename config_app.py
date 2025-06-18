@@ -2,7 +2,6 @@ import os
 import re
 import json
 from pathlib import Path
-from dotenv import load_dotenv
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
@@ -10,67 +9,65 @@ import gspread
 import cloudinary
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from flask_migrate import Migrate  # Import para migraciones
+from flask_migrate import Migrate
 
-# ─── 1) Carga de variables de entorno ─────────────────────────────────
-env_path = Path(__file__).parent / '.env'
-load_dotenv(env_path, override=True)
-
-# ─── 2) Instancia global de SQLAlchemy y Cache ───────────────────────
+# ─── 1) Instancias globales de SQLAlchemy y Cache ─────────────────────
 db = SQLAlchemy()
 cache = Cache()
 
-# ─── 3) Autenticación de Google desde fichero de cuenta de servicio ───
+# ─── 2) Google Service Account ────────────────────────────────────────
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.file"
 ]
-# Ruta al JSON en .env
+
+# Render inyecta tu archivo secreto en /etc/secrets/<filename>
 svc_file = os.getenv("SERVICE_ACCOUNT_FILE", "").strip()
 if not svc_file:
-    raise RuntimeError("❌ Debes definir SERVICE_ACCOUNT_FILE en el .env")
-def_path = Path(__file__).parent / svc_file
-if not def_path.exists():
-    raise RuntimeError(f"❌ No encuentro el archivo de credenciales: {def_path}")
-# Carga credenciales
-credentials = Credentials.from_service_account_file(str(def_path), scopes=SCOPES)
+    raise RuntimeError("❌ Define SERVICE_ACCOUNT_FILE como variable de entorno en Render (por ejemplo: /etc/secrets/service_account.json)")
 
-# Cliente de Google Sheets
+# Como Render monta el Secret File en /etc/secrets/<filename>,
+# podemos usar directamente esa ruta absoluta:
+cred_path = Path(svc_file)
+if not cred_path.exists():
+    raise RuntimeError(f"❌ No encuentro el Secret File de Google: {cred_path}")
+
+credentials = Credentials.from_service_account_file(str(cred_path), scopes=SCOPES)
+
+# Cliente de Google Sheets y Drive
 gspread_client = gspread.authorize(credentials)
 sheets_service = build("sheets", "v4", credentials=credentials)
-# Alias para import en app.py
-sheets = sheets_service
+sheets = sheets_service  # alias para importar en app.py
 
-# ─── SPREADSHEET_ID ──────────────────────────────────────────────────
+# ─── 3) ID de la hoja de cálculo ───────────────────────────────────────
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 if not SPREADSHEET_ID:
-    raise RuntimeError("❌ Debes definir SPREADSHEET_ID en el .env")
+    raise RuntimeError("❌ Define SPREADSHEET_ID como Environment Variable en Render")
 
-# ─── 4) Configuración de Cloudinary ──────────────────────────────────
+# ─── 4) Configuración de Cloudinary ───────────────────────────────────
 cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
-    api_key=os.getenv("CLOUDINARY_API_KEY", ""),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", "").strip(),
+    api_key=os.getenv("CLOUDINARY_API_KEY", "").strip(),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET", "").strip()
 )
 
-# ─── 5) Normalización de cédula ──────────────────────────────────────
+# ─── 5) Normalización de cédula ───────────────────────────────────────
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
-
 def normalize_cedula(raw: str) -> str | None:
     digits = re.sub(r'\D', '', raw or '')
     return digits if CEDULA_PATTERN.fullmatch(digits) else None
 
-# ─── 6) Factory de la aplicación Flask ───────────────────────────────
+# ─── 6) Factory de la aplicación Flask ─────────────────────────────────
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
 
-    # Clave secreta
+    # Secreto de Flask
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev')
 
-    # Base de datos
+    # Base de datos (render usará DATABASE_URL)
     db_url = os.getenv('DATABASE_URL', '').strip()
     if not db_url:
-        raise RuntimeError("❌ Debes definir DATABASE_URL en tu .env")
+        raise RuntimeError("❌ Define DATABASE_URL como Environment Variable en Render")
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -79,25 +76,26 @@ def create_app():
     app.config['CACHE_DEFAULT_TIMEOUT'] = 120
     cache.init_app(app)
 
-    # Extensiones
+    # Inicializar extensiones
     db.init_app(app)
     Migrate(app, db)
 
-    # Config entrevistas
-    try:
-        cfg_path = Path(app.root_path) / 'config' / 'config_entrevistas.json'
-        with open(cfg_path, encoding='utf-8') as f:
-            entrevistas_cfg = json.load(f)
-        app.logger.info("✅ Configuración de entrevistas cargada con éxito.")
-    except Exception as e:
-        app.logger.error(f"❌ Error al cargar config_entrevistas.json: {e}")
-        entrevistas_cfg = {}
-    app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
+    # Carga opcional de config_entrevistas.json (dentro del repo)
+    cfg_path = Path(app.root_path) / 'config' / 'config_entrevistas.json'
+    entrevistas_cfg = {}
+    if cfg_path.exists():
+        try:
+            with open(cfg_path, encoding='utf-8') as f:
+                entrevistas_cfg = json.load(f)
+            app.logger.info("✅ Configuraciones de entrevistas cargadas.")
+        except Exception as e:
+            app.logger.error(f"❌ Error al leer config_entrevistas.json: {e}")
 
+    app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
     return app
 
-# ─── 7) Instancia para ejecución directa ─────────────────────────────
+# ─── 7) Instancia principal ────────────────────────────────────────────
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
