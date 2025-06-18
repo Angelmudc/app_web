@@ -16,8 +16,8 @@ from werkzeug.utils import secure_filename
 
 from sqlalchemy import or_, cast, String
 
-# Tu factory y las extensiones
 from config_app import create_app, db, sheets, normalize_cedula, credentials
+
 
 # Tu modelo
 from models import Candidata
@@ -95,7 +95,7 @@ from werkzeug.security import generate_password_hash
 usuarios = {
     "angel":    generate_password_hash("0000"),
     "Edilenia": generate_password_hash("2003"),
-    "x":        generate_password_hash("0000"),
+    "caty":        generate_password_hash("0000"),
     "divina":   generate_password_hash("0607"),
 }
 
@@ -318,73 +318,6 @@ def buscar_candidatas_inscripcion(query, datos):
                 "cedula": fila[14] if len(fila) > 14 else ""
             })
     return resultados
-
-
-
-
-
-
-def guardar_inscripcion(fila_index, medio, estado, monto, fecha):
-    """
-    Guarda los datos de inscripción para la candidata en la fila especificada.
-    
-    Se actualizan las siguientes columnas:
-      - Q (índice 16): Medio de inscripción
-      - R (índice 17): Inscripción (Estado)
-      - S (índice 18): Monto
-      - T (índice 19): Fecha
-    
-    Si la fila no tiene código en la columna P (índice 15), se genera un código único.
-    Retorna (True, fila_actual) si tiene éxito; de lo contrario, (False, None).
-    """
-    try:
-        # Primero, obtenemos la fila actual (rango A:T)
-        rango_fila = f"Nueva hoja!A{fila_index}:T{fila_index}"
-        respuesta = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_fila
-        ).execute()
-        datos = respuesta.get("values", [])
-        if not datos:
-            return False, None
-        fila_actual = datos[0]
-
-        # Verificar si existe código en la columna P (índice 15) y generarlo si es necesario
-        if len(fila_actual) < 16 or not fila_actual[15].strip():
-            nuevo_codigo = generar_codigo_unico()
-            rango_codigo = f"Nueva hoja!P{fila_index}"
-            service.spreadsheets().values().update(
-                spreadsheetId=SPREADSHEET_ID,
-                range=rango_codigo,
-                valueInputOption="RAW",
-                body={"values": [[nuevo_codigo]]}
-            ).execute()
-            # Aseguramos que la lista tenga al menos 16 elementos
-            if len(fila_actual) < 16:
-                fila_actual.extend([""] * (16 - len(fila_actual)))
-            fila_actual[15] = nuevo_codigo
-
-        # Actualizar las columnas Q, R, S y T en bloque
-        update_range = f"Nueva hoja!Q{fila_index}:T{fila_index}"
-        valores = [[medio, estado, monto, fecha]]
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=update_range,
-            valueInputOption="RAW",
-            body={"values": valores}
-        ).execute()
-
-        # Releer la fila actualizada para retornar datos consistentes
-        respuesta_actual = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=rango_fila
-        ).execute()
-        fila_actualizada = respuesta_actual.get("values", [])[0]
-
-        return True, fila_actualizada
-    except Exception as e:
-        logging.error(f"Error al guardar inscripción en la fila {fila_index}: {e}", exc_info=True)
-        return False, None
 
 def filtrar_por_busqueda(valores, termino):
     resultados = []
@@ -833,68 +766,67 @@ def buscar_candidata():
         mensaje=mensaje
     )
 
+from flask import current_app
+from sqlalchemy import or_
 
 @app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
-    resultados = []  
-    mensaje = None  
+    # 1) Lee filtros del formulario (GET o POST)
+    ciudad      = request.values.get('ciudad', '').strip()
+    rutas       = request.values.get('rutas', '').strip()
+    modalidad   = request.values.get('modalidad', '').strip()
+    experiencia = request.values.get('experiencia_anos', '').strip()
+    areas       = request.values.get('areas_experiencia', '').strip()
+
+    # 2) Construye dinámicamente la lista de condiciones
+    filtros = []
+    if ciudad:
+        filtros.append(Candidata.direccion_completa.ilike(f'%{ciudad}%'))
+    if rutas:
+        filtros.append(Candidata.rutas_cercanas.ilike(f'%{rutas}%'))
+    if modalidad:
+        filtros.append(Candidata.modalidad_trabajo_preferida.ilike(f'%{modalidad}%'))
+    if experiencia:
+        filtros.append(Candidata.anos_experiencia.ilike(f'%{experiencia}%'))
+    if areas:
+        filtros.append(Candidata.areas_experiencia.ilike(f'%{areas}%'))
+
+    # 3) Condiciones fijas: debe tener código y porciento vacío o 0
+    filtros.append(Candidata.codigo.isnot(None))
+    filtros.append(or_(Candidata.porciento == None, Candidata.porciento == 0))
+
     try:
-        # Se asume que obtener_datos_filtrar() está definida y retorna datos del rango "Nueva hoja!A:Z"
-        datos = obtener_datos_filtrar()  # Ejemplo de implementación:
-        # def obtener_datos_filtrar():
-        #     result = service.spreadsheets().values().get(
-        #         spreadsheetId=SPREADSHEET_ID,
-        #         range="Nueva hoja!A:Z"
-        #     ).execute()
-        #     return result.get('values', [])
-        logging.info(f"🔍 Datos obtenidos ({len(datos)} filas)")
-        if not datos or len(datos) < 2:
-            mensaje = "⚠️ No se encontraron datos en la hoja de cálculo."
-            return render_template('filtrar.html', resultados=[], mensaje=mensaje)
+        # 4) Ejecuta la consulta
+        query = Candidata.query.filter(*filtros)
+        candidatas = query.all()
 
-        # Construir la lista de candidatas sin filtrar por inscripción
-        for idx, fila in enumerate(datos[1:], start=2):
-            fila = extend_row(fila, 24)
-            candidata = extraer_candidata(fila, idx)
-            resultados.append(candidata)
+        # 5) Mapea a dicts para el template
+        resultados = [{
+            'fila':               c.fila,
+            'nombre':             c.nombre_completo,
+            'codigo':             c.codigo,
+            'telefono':           c.numero_telefono,
+            'direccion':          c.direccion_completa,
+            'rutas':              c.rutas_cercanas,
+            'cedula':             c.cedula,
+            'modalidad':          c.modalidad_trabajo_preferida,
+            'experiencia_anos':   c.anos_experiencia,
+            'areas_experiencia':  c.areas_experiencia,
+        } for c in candidatas]
 
-        # Filtrar para incluir solo candidatas que tengan código y que en "porciento" estén vacías o sean 0
-        resultados = [
-            c for c in resultados
-            if c['codigo'] and (
-                not c['porciento'] or (c['porciento'].replace('.', '', 1).isdigit() and float(c['porciento']) == 0)
-            )
-        ]
-
-        # Recoger los filtros adicionales (para búsqueda en dirección, modalidad, experiencia y áreas)
-        filtro_direccion = normalizar_texto(request.values.get('ciudad', ''))
-        filtro_modalidad = normalizar_texto(request.values.get('modalidad', ''))
-        filtro_experiencia = normalizar_texto(request.values.get('experiencia_anos', ''))
-        filtro_areas = normalizar_texto(request.values.get('areas_experiencia', ''))
-
-        # Aplicar filtros si al menos uno tiene valor
-        if filtro_direccion or filtro_modalidad or filtro_experiencia or filtro_areas:
-            resultados_filtrados = []
-            for candidata in resultados:
-                direccion_norm = normalizar_texto(candidata.get('direccion', ''))
-                modalidad_norm = normalizar_texto(candidata.get('modalidad', ''))
-                experiencia_norm = normalizar_texto(candidata.get('experiencia_anos', ''))
-                areas_norm = normalizar_texto(candidata.get('areas_experiencia', ''))
-                if (filtro_direccion in direccion_norm and
-                    filtro_modalidad in modalidad_norm and
-                    filtro_experiencia in experiencia_norm and
-                    filtro_areas in areas_norm):
-                    resultados_filtrados.append(candidata)
-            if resultados_filtrados:
-                resultados = resultados_filtrados
-            else:
-                mensaje = ("⚠️ No se encontraron resultados para los filtros aplicados.")
+        mensaje = None
+        if (ciudad or rutas or modalidad or experiencia or areas) and not resultados:
+            mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
 
     except Exception as e:
-        mensaje = f"❌ Error al obtener los datos: {str(e)}"
-        logging.error(mensaje, exc_info=True)
+        current_app.logger.error(f"Error al filtrar candidatas en la DB: {e}", exc_info=True)
+        resultados = []
+        mensaje = f"❌ Error al filtrar los datos: {e}"
 
+    # 6) Renderiza la plantilla
     return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
+
+
 
 import traceback  # Importa para depuración
 
