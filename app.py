@@ -71,15 +71,18 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
 )
 
-# ─── 5) Scopes y cliente de Google Sheets ─────────────────────────────────────────────────
+# ─── 5) Scopes de Google Sheets ──────────────────────────────────────────────────────────
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+]
+
+# ─── 6) Credenciales desde JSON en CLAVE1_JSON ─────────────────────────────────────────
+import os, json
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import gspread
 
-import os
-import json
-from google.oauth2.service_account import Credentials
-
-# ─── Credenciales desde JSON en CLAVE1_JSON ─────────────────────────
 clave_json = os.getenv("CLAVE1_JSON", "").strip()
 if not clave_json:
     raise RuntimeError("❌ Debes definir CLAVE1_JSON en las Environment Variables")
@@ -91,32 +94,27 @@ except json.JSONDecodeError as e:
 
 credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
 
-# ─── ID de Google Sheet ─────────────────────────────────────────────
+# ─── 7) ID de Google Sheet y clientes ──────────────────────────────────────────────────
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 if not SPREADSHEET_ID:
     raise RuntimeError("❌ Debes definir SPREADSHEET_ID en las Environment Variables")
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
-]
-credentials = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-service     = build("sheets", "v4", credentials=credentials)
-gspread_cli  = gspread.authorize(credentials)
-sheet        = gspread_cli.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
 
-# ─── 6) Usuarios de ejemplo ────────────────────────────────────────────────────────────────
+service    = build("sheets", "v4", credentials=credentials)
+gspread_cli = gspread.authorize(credentials)
+sheet       = gspread_cli.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
+
+# ─── 8) Usuarios de ejemplo ──────────────────────────────────────────────────────────────
 from werkzeug.security import generate_password_hash
 
 usuarios = {
     "angel":    generate_password_hash("0000"),
     "Edilenia": generate_password_hash("2003"),
-    "caty":        generate_password_hash("0000"),
+    "caty":     generate_password_hash("0000"),
     "divina":   generate_password_hash("0607"),
 }
 
-# ─── 7) Carga de configuración de entrevistas ───────────────────────────────────────────────
-import json
-import os
+# ─── 9) Carga de configuración de entrevistas ────────────────────────────────────────────
+import os, json
 
 try:
     cfg_path = os.path.join(app.root_path, 'config', 'config_entrevistas.json')
@@ -128,6 +126,7 @@ except Exception as e:
     entrevistas_cfg = {}
 
 app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
+
 
 # Ruta para servir archivos estáticos correctamente
 @app.route('/static/<path:filename>')
