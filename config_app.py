@@ -11,6 +11,7 @@ import cloudinary
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from flask_migrate import Migrate
+from flask_login import LoginManager
 
 # 1) Carga .env local (sólo para desarrollo)
 env_path = Path(__file__).parent.parent / '.env'
@@ -26,18 +27,16 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.file"
 ]
 
-# ─── 4) Leer credenciales desde la ENV CLAVE1_JSON ────────────────
+# 4) Leer credenciales desde la ENV CLAVE1_JSON
 clave_json = os.getenv("CLAVE1_JSON", "").strip()
 if not clave_json:
     raise RuntimeError("❌ Debes definir la variable CLAVE1_JSON con el JSON completo de tu cuenta de servicio")
-
 try:
     info = json.loads(clave_json)
 except json.JSONDecodeError as e:
     raise RuntimeError(f"❌ CLAVE1_JSON no es un JSON válido: {e}")
 
-# 5) Crear credenciales desde el dict en memoria
-credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
+# 5) Crear credenciales desde el dict en memoria\credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
 
 # 6) Cliente de Google Sheets y Sheets API
 gspread_client = gspread.authorize(credentials)
@@ -84,6 +83,16 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
 
+    # ─── Inicializa Flask-Login ─────────────────────────
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'clients.login_client'
+
+    from models import User
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.query.get(int(user_id))
+
     # Carga de configuración adicional (entrevistas)
     try:
         cfg_path = Path(app.root_path) / 'config' / 'config_entrevistas.json'
@@ -94,6 +103,12 @@ def create_app():
         app.logger.error(f"❌ No pude cargar config_entrevistas.json: {e}")
         entrevistas_cfg = {}
     app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
+
+    # Registro de Blueprints
+    from app.clients import clients_bp
+    from app.domestica import domestica_bp
+    app.register_blueprint(clients_bp)
+    app.register_blueprint(domestica_bp)
 
     return app
 
