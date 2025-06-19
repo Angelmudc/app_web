@@ -19,12 +19,35 @@
 
   <!-- Estilos inline para animaciones y mejoras -->
   <style>
-    body { font-family: 'Roboto', sans-serif; background: linear-gradient(135deg, #f8f9fa, #e9ecef); color: #333; margin: 0; padding: 0; }
-    .navbar { transition: background-color 0.3s, box-shadow 0.3s; background-color: #343a40; }
-    .navbar:hover { background-color: #23272b; }
-    .btn { border-radius: 50px; transition: transform 0.3s; }
-    .btn:hover { transform: scale(1.05); }
-    footer { background-color: #343a40; color: #fff; padding: 20px 0; margin-top: 40px; }
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+      color: #333;
+      margin: 0;
+      padding: 0;
+      /* aquí agregamos el padding-top para no tapar el h1 */
+      padding-top: 100px;
+    }
+    .navbar {
+      transition: background-color 0.3s, box-shadow 0.3s;
+      background-color: #343a40;
+    }
+    .navbar:hover {
+      background-color: #23272b;
+    }
+    .btn {
+      border-radius: 50px;
+      transition: transform 0.3s;
+    }
+    .btn:hover {
+      transform: scale(1.05);
+    }
+    footer {
+      background-color: #343a40;
+      color: #fff;
+      padding: 20px 0;
+      margin-top: 40px;
+    }
   </style>
 </head>
 <body>
@@ -34,9 +57,6 @@
       <a class="navbar-brand" href="{{ url_for('registro_publico') }}">Doméstica del Cibao A&amp;D</a>
     </div>
   </nav>
-
-  <!-- Espacio para navbar fijo -->
-  <div style="height: 70px;"></div>
 
   <div class="container py-5">
     <h1 class="text-center mb-4">Registro de Candidata</h1>
