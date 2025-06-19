@@ -36,6 +36,9 @@ from fpdf import FPDF
 # Tu modelo
 from models import Candidata
 
+# app.py
+from config_app import create_app
+
 # —————— Normaliza cédula ——————
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 def normalize_cedula(raw: str) -> str | None:
