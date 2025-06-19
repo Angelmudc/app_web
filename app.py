@@ -72,14 +72,29 @@ cloudinary.config(
 )
 
 # ─── 5) Scopes y cliente de Google Sheets ─────────────────────────────────────────────────
-import os
-from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import gspread
 
-SERVICE_ACCOUNT_FILE = os.environ["SERVICE_ACCOUNT_FILE"]
-SPREADSHEET_ID       = os.environ["SPREADSHEET_ID"]
+import os
+import json
+from google.oauth2.service_account import Credentials
 
+# ─── Credenciales desde JSON en CLAVE1_JSON ─────────────────────────
+clave_json = os.getenv("CLAVE1_JSON", "").strip()
+if not clave_json:
+    raise RuntimeError("❌ Debes definir CLAVE1_JSON en las Environment Variables")
+
+try:
+    info = json.loads(clave_json)
+except json.JSONDecodeError as e:
+    raise RuntimeError(f"❌ CLAVE1_JSON no es un JSON válido: {e}")
+
+credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
+
+# ─── ID de Google Sheet ─────────────────────────────────────────────
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
+if not SPREADSHEET_ID:
+    raise RuntimeError("❌ Debes definir SPREADSHEET_ID en las Environment Variables")
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.file",
