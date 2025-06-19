@@ -39,12 +39,32 @@ from models import Candidata
 # —————— Normaliza cédula ——————
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 def normalize_cedula(raw: str) -> str | None:
-    # ... tu función existente ...
-    # (no cambiado)
+    """
+    Quita todo lo que no sea dígito y formatea como XXX-XXXXXX-X.
+    Devuelve None si tras limpiar no quedan 11 dígitos.
+    """
+    # 1) Eliminamos cualquier carácter que no sea 0–9
+    digits = re.sub(r'\D', '', raw or '')
+    # 2) Si no quedan exactamente 11 dígitos, no es válida
+    if not CEDULA_PATTERN.fullmatch(digits):
+        return None
+    # 3) Formateamos con guiones: 3-6-2
+    return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
 
 # —————— Normaliza nombre ——————
 def normalize_nombre(raw: str) -> str:
-    # ... tu función existente ...
+    """
+    Elimina acentos y caracteres extraños de un nombre,
+    dejando sólo letras básicas, espacios y guiones.
+    """
+    if not raw:
+        return ''
+    # Descomponer acentos
+    nfkd = unicodedata.normalize('NFKD', raw)
+    # Quitar marcas diacríticas
+    no_accents = ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
+    # Conservar sólo A–Z, espacios y guiones
+    return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
 
 # ─────────── Inicializa la app ───────────
 app = create_app()
