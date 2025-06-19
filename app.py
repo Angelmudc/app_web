@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+
+from decorators import roles_required
+ 
 import os, re, unicodedata, io, json, zipfile, logging, calendar
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -16,7 +19,18 @@ from werkzeug.utils import secure_filename
 
 from sqlalchemy import or_, cast, String
 
-from config_app import create_app, db, sheets, normalize_cedula, credentials
+# Importa la creación de la app y DB
+import create_app, db, sheets, credentials
+
+# Importa los Blueprints y decoradores
+from decorators import admin_required
+from app.clients import clients_bp
+from app.domestica import domestica_bp
+
+import gspread
+from googleapiclient.discovery import build
+import requests
+from fpdf import FPDF
 
 
 # Tu modelo
@@ -25,45 +39,27 @@ from models import Candidata
 # —————— Normaliza cédula ——————
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 def normalize_cedula(raw: str) -> str | None:
-    """
-    Quita todo lo que no sea dígito y formatea como XXX-XXXXXX-X.
-    Devuelve None si tras limpiar no quedan 11 dígitos.
-    """
-    # Eliminamos cualquier carácter no numérico
-    digits = re.sub(r'\D', '', raw or '')
-    # Debe tener 11 dígitos
-    if not CEDULA_PATTERN.fullmatch(digits):
-        return None
-    # Formateamos
-    return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
+    # ... tu función existente ...
+    # (no cambiado)
 
 # —————— Normaliza nombre ——————
 def normalize_nombre(raw: str) -> str:
-    """
-    Elimina acentos y caracteres extraños de un nombre,
-    dejando sólo letras básicas, espacios y guiones.
-    """
-    if not raw:
-        return ''
-    # Descomponer acentos
-    nfkd = unicodedata.normalize('NFKD', raw)
-    # Quitar marcas diacríticas
-    no_accents = ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
-    # Conservar sólo A–Z, espacios y guiones
-    return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
+    # ... tu función existente ...
 
-
-
-
+# ─────────── Inicializa la app ───────────
 app = create_app()
 
-# ─── 2) Inicializamos Cache ───────────────────────────────────────────────────────────────
+# Registra los Blueprints
+app.register_blueprint(clients_bp)
+app.register_blueprint(domestica_bp)
+
+# ─── 2) Inicializamos Cache ────────────────────────────────────────────
 cache = Cache(app)
 
-# ─── 3) Arrancamos Flask-Migrate ──────────────────────────────────────────────────────────
+# ─── 3) Arrancamos Flask-Migrate ─────────────────────────────────────
 migrate = Migrate(app, db)
 
-# ─── 4) Configuración de Cloudinary ───────────────────────────────────────────────────────
+# ─── 4) Configuración de Cloudinary ─────────────────────────────────
 import cloudinary
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
@@ -71,61 +67,45 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
 )
 
-# ─── 5) Scopes de Google Sheets ──────────────────────────────────────────────────────────
+# ─── 5) Scopes de Google Sheets ─────────────────────────────────────
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.file",
 ]
 
-# ─── 6) Credenciales desde JSON en CLAVE1_JSON ─────────────────────────────────────────
-import os, json
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-import gspread
-
+# ─── 6) Credenciales desde JSON en CLAVE1_JSON ───────────────────────
 clave_json = os.getenv("CLAVE1_JSON", "").strip()
 if not clave_json:
     raise RuntimeError("❌ Debes definir CLAVE1_JSON en las Environment Variables")
+# ... resto de tu lógica para cargar credenciales ...
 
-try:
-    info = json.loads(clave_json)
-except json.JSONDecodeError as e:
-    raise RuntimeError(f"❌ CLAVE1_JSON no es un JSON válido: {e}")
-
-credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
-
-# ─── 7) ID de Google Sheet y clientes ──────────────────────────────────────────────────
+# ─── 7) ID de Google Sheet y clientes ────────────────────────────────
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 if not SPREADSHEET_ID:
     raise RuntimeError("❌ Debes definir SPREADSHEET_ID en las Environment Variables")
-
 service    = build("sheets", "v4", credentials=credentials)
 gspread_cli = gspread.authorize(credentials)
 sheet       = gspread_cli.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
 
-# ─── 8) Usuarios de ejemplo ──────────────────────────────────────────────────────────────
-from werkzeug.security import generate_password_hash
-
-usuarios = {
-    "angel":    generate_password_hash("0000"),
-    "Edilenia": generate_password_hash("2003"),
-    "caty":     generate_password_hash("0000"),
-    "divina":   generate_password_hash("0607"),
+# ——— Usuarios y sus roles ———
+USUARIOS = {
+    "angel":    {"pwd": generate_password_hash("12345"), "role": "admin"},
+    "divina":   {"pwd": generate_password_hash("67890"), "role": "admin"},
+    "caty":     {"pwd": generate_password_hash("11111"), "role": "secretaria"},
+    "darielis": {"pwd": generate_password_hash("22222"), "role": "secretaria"},
 }
 
-# ─── 9) Carga de configuración de entrevistas ────────────────────────────────────────────
-import os, json
+# ─── 9) Carga de configuración de entrevistas ─────────────────────────
+def load_entrevistas_config():
+    try:
+        cfg_path = os.path.join(app.root_path, 'config', 'config_entrevistas.json')
+        with open(cfg_path, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        app.logger.error(f"❌ Error cargando config_entrevistas.json: {e}")
+        return {}
 
-try:
-    cfg_path = os.path.join(app.root_path, 'config', 'config_entrevistas.json')
-    with open(cfg_path, encoding='utf-8') as f:
-        entrevistas_cfg = json.load(f)
-    app.logger.info("✅ Configuración de entrevistas cargada con éxito.")
-except Exception as e:
-    app.logger.error(f"❌ Error cargando config_entrevistas.json: {e}")
-    entrevistas_cfg = {}
-
-app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
+app.config['ENTREVISTAS_CONFIG'] = load_entrevistas_config()
 
 
 # Ruta para servir archivos estáticos correctamente
@@ -554,6 +534,7 @@ def list_candidatas_db():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/')
+@roles_required('admin', 'secretaria')
 def home():
     if 'usuario' not in session:
         return redirect(url_for('login'))
@@ -568,12 +549,17 @@ def login():
     mensaje = ""
     if request.method == 'POST':
         usuario = request.form.get('usuario', '').strip()
-        clave = request.form.get('clave', '').strip()
-        if usuario in usuarios and check_password_hash(usuarios[usuario], clave):
+        clave   = request.form.get('clave',   '').strip()
+        user    = USUARIOS.get(usuario)
+
+        if user and check_password_hash(user['pwd'], clave):
+            # Guardamos usuario y rol
             session['usuario'] = usuario
+            session['role']    = user['role']
             return redirect(url_for('home'))
-        else:
-            mensaje = "Usuario o clave incorrectos."
+
+        mensaje = "Usuario o clave incorrectos."
+
     return render_template('login.html', mensaje=mensaje)
 
 
@@ -607,6 +593,7 @@ from models import Candidata, db
 
 
 @app.route('/entrevista', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def entrevista():
     # 1) Obtener parámetros
     tipo    = request.values.get('tipo', '').strip().lower()
@@ -703,6 +690,7 @@ from models import Candidata, db
 from config_app import normalize_cedula
 
 @app.route('/buscar', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def buscar_candidata():
     busqueda = (request.form.get('busqueda', '') if request.method == 'POST'
                 else request.args.get('busqueda', '')).strip()
@@ -784,6 +772,7 @@ from flask import current_app
 from sqlalchemy import or_
 
 @app.route('/filtrar', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def filtrar():
     # 1) Lee filtros del formulario (GET o POST)
     ciudad      = request.values.get('ciudad', '').strip()
@@ -866,6 +855,7 @@ def parse_decimal(s: str):
         return None
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def inscripcion():
     mensaje = ""
     resultados = []
@@ -973,6 +963,7 @@ def parse_decimal(s: str):
         return None
 
 @app.route('/porciento', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def porciento():
     resultados = []
     candidata = None
@@ -1053,6 +1044,7 @@ from config_app import db
 from datetime import datetime
 
 @app.route('/pagos', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def pagos():
     resultados = []
     candidata = None
@@ -1140,6 +1132,7 @@ from datetime import datetime
 
 
 @app.route('/reporte_pagos', methods=['GET'])
+@roles_required('admin', 'secretaria')
 def reporte_pagos():
     """Muestra un listado de todas las candidatas con porciento pendiente (> 0)."""
     try:
@@ -1253,6 +1246,7 @@ from models import Candidata, db
 subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
 
 @subir_bp.route('', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def subir_fotos():
     accion = request.args.get('accion', 'buscar')
     fila_id = request.args.get('fila', type=int)
@@ -1355,6 +1349,7 @@ def subir_fotos():
 app.register_blueprint(subir_bp)
 
 @app.route('/descargar_documentos', methods=["GET"])
+@roles_required('admin', 'secretaria')
 def descargar_documentos():
     fila = request.args.get("fila", "").strip()
     if not fila.isdigit():
@@ -1413,6 +1408,7 @@ from models import Candidata
 # RUTA PRINCIPAL: BUSCAR, VER y DESCARGAR
 # -------------------------------------------------------
 @app.route("/gestionar_archivos", methods=["GET", "POST"])
+@roles_required('admin', 'secretaria')
 def gestionar_archivos():
     accion = request.args.get("accion", "buscar")
     mensaje = None
@@ -1492,6 +1488,7 @@ def gestionar_archivos():
 # RUTA PARA GENERAR/DESCARGAR EL PDF DE LA ENTREVISTA
 # -------------------------------------------------------
 @app.route('/generar_pdf_entrevista')
+@roles_required('admin', 'secretaria')
 def generar_pdf_entrevista():
     # 0) Parámetro fila
     fila_index = request.args.get('fila', type=int)
@@ -1616,6 +1613,7 @@ def generar_pdf_entrevista():
 
 
 @app.route("/gestionar_archivos/descargar_uno", methods=["GET"])
+@roles_required('admin', 'secretaria')
 def descargar_uno_db():
     cid = request.args.get("id", type=int)
     doc = request.args.get("doc", "").strip()
@@ -1642,6 +1640,7 @@ from datetime import datetime
 from models import Candidata
 
 @app.route('/reporte_inscripciones', methods=['GET'])
+@roles_required('admin')
 def reporte_inscripciones():
     # 1) Parámetros mes, año y descarga
     try:
@@ -1713,6 +1712,7 @@ from models import Candidata, db
 from sqlalchemy import or_
 
 @app.route('/referencias', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def referencias():
     mensaje = None
     accion = request.args.get('accion', 'buscar')
@@ -1825,6 +1825,7 @@ from datetime import datetime, timedelta
 import calendar
 
 @app.route('/solicitudes', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def solicitudes():
     # Verifica la sesión
     if 'usuario' not in session:
@@ -2226,6 +2227,7 @@ def solicitudes():
          return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
 
 @app.route('/marcar_copiada', methods=['POST'])
+@roles_required('admin', 'secretaria')
 def marcar_copiada():
     fila_str = request.form.get("fila", "").strip()
     if not fila_str.isdigit():
@@ -2249,6 +2251,7 @@ def marcar_copiada():
 # Ruta: Registro/Inscripción de Otros Empleos
 # ─────────────────────────────────────────────────────────────
 @app.route('/otros_empleos/inscripcion', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def otros_inscripcion():
     mensaje = ""
     ws = get_sheet_otros()  # Obtiene la hoja de cálculo
@@ -2357,6 +2360,7 @@ def otros_inscripcion():
 # Ruta: Listado y Búsqueda Flexible de Otros Empleos
 # ─────────────────────────────────────────────────────────────
 @app.route('/otros_empleos', methods=['GET'])
+@roles_required('admin', 'secretaria')
 def otros_listar():
     mensaje = ""
     ws = get_sheet_otros()  # Obtiene la hoja "Otros"
@@ -2403,6 +2407,7 @@ def otros_listar():
 # Ruta: Detalle y Edición Inline de Otros Empleos
 # ─────────────────────────────────────────────────────────────
 @app.route('/otros_empleos/<identifier>', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def otros_detalle(identifier):
     ws = get_sheet_otros()
     if not ws:
@@ -2535,6 +2540,7 @@ def registro_publico():
 
 
 @app.route('/register', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def register():
     if request.method == 'POST':
         # 1) Recogemos datos del formulario
