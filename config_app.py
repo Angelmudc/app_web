@@ -13,7 +13,7 @@ from googleapiclient.discovery import build
 from flask_migrate import Migrate
 
 # 1) Carga .env local (sólo para desarrollo)
-env_path = Path(__file__).parent / '.env'
+env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path, override=True)
 
 # 2) Instancias globales
@@ -26,23 +26,20 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.file"
 ]
 
-# ─── 4) Leer SERVICE_ACCOUNT_FILE y resolver ruta ─────────────────
-svc_file = os.getenv("SERVICE_ACCOUNT_FILE", "").strip()
-if not svc_file:
-    raise RuntimeError("❌ Debes definir SERVICE_ACCOUNT_FILE en las Environment Variables de Render")
+# ─── 4) Leer credenciales desde la ENV CLAVE1_JSON ────────────────
+clave_json = os.getenv("CLAVE1_JSON", "").strip()
+if not clave_json:
+    raise RuntimeError("❌ Debes definir la variable CLAVE1_JSON con el JSON completo de tu cuenta de servicio")
 
-# Si la ruta no es absoluta, la tomamos relativa al proyecto
-path_obj = Path(svc_file)
-if not path_obj.is_absolute():
-    path_obj = Path(__file__).parent / svc_file
+try:
+    info = json.loads(clave_json)
+except json.JSONDecodeError as e:
+    raise RuntimeError(f"❌ CLAVE1_JSON no es un JSON válido: {e}")
 
-if not path_obj.exists():
-    raise RuntimeError(f"❌ No encuentro el archivo de credenciales: {path_obj}")
+# 5) Crear credenciales desde el dict en memoria
+credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
 
-# 5) Cargar credenciales desde fichero
-credentials = Credentials.from_service_account_file(str(path_obj), scopes=SCOPES)
-
-# 6) Cliente de Google Sheets y alias
+# 6) Cliente de Google Sheets y Sheets API
 gspread_client = gspread.authorize(credentials)
 sheets = build("sheets", "v4", credentials=credentials)
 
