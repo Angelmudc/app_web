@@ -15,7 +15,7 @@ import cloudinary
 USUARIOS = {
     "angel":    {"pwd_hash": generate_password_hash("12345"), "role": "admin"},
     "divina":   {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
-    "caty":     {"pwd_hash": generate_password_hash("11111"), "role": "secretaria"},
+    "kathy":     {"pwd_hash": generate_password_hash("11111"), "role": "secretaria"},
     "darielis": {"pwd_hash": generate_password_hash("22222"), "role": "secretaria"},
 }
 

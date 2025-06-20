@@ -17,7 +17,6 @@
   <!-- Estilos personalizados -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 
-  <!-- Estilos inline para animaciones y mejoras -->
   <style>
     body {
       font-family: 'Roboto', sans-serif;
@@ -25,7 +24,6 @@
       color: #333;
       margin: 0;
       padding: 0;
-      /* aquí agregamos el padding-top para no tapar el h1 */
       padding-top: 100px;
     }
     .navbar {
@@ -51,7 +49,6 @@
   </style>
 </head>
 <body>
-  <!-- Navbar mínimo -->
   <nav class="navbar navbar-dark bg-dark fixed-top">
     <div class="container">
       <a class="navbar-brand" href="{{ url_for('registro_publico') }}">Doméstica del Cibao A&amp;D</a>
@@ -149,27 +146,27 @@
       <div class="mb-3">
         <label class="form-label">Áreas de experiencia * (marca todas las que correspondan)</label>
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia[]" id="area_1" value="Limpieza">
+          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_1" value="Limpieza">
           <label class="form-check-label" for="area_1">Limpieza</label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia[]" id="area_2" value="Cocinera">
-          <label class="form-check-label" for="area_2">Cocinera</label>
+          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_2" value="Cocina">
+          <label class="form-check-label" for="area_2">Cocina</label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia[]" id="area_3" value="Niñera">
+          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_3" value="Niñera">
           <label class="form-check-label" for="area_3">Niñera</label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia[]" id="area_4" value="Cuidar envejeciente">
-          <label class="form-check-label" for="area_4">Cuidar envejeciente</label>
+          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_4" value="Cuidado de ancianos">
+          <label class="form-check-label" for="area_4">Cuidado de ancianos</label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia[]" id="area_5" value="Todas las anteriores">
+          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_5" value="Todas las anteriores">
           <label class="form-check-label" for="area_5">Todas las anteriores</label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia[]" id="area_6" value="Enfermería">
+          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_6" value="Enfermería">
           <label class="form-check-label" for="area_6">Enfermería</label>
         </div>
       </div>
@@ -206,11 +203,11 @@
         <label class="form-label">¿Aceptas que cobremos un % de tu sueldo como honorarios? *</label>
         <div class="form-text">Es un único pago que te explicamos al final</div>
         <div class="form-check">
-          <input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_si" value="si" required>
+          <input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_si" value="1" required>
           <label class="form-check-label" for="acepta_si">Sí</label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_no" value="no">
+          <input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_no" value="0">
           <label class="form-check-label" for="acepta_no">No</label>
         </div>
       </div>

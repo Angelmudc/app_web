@@ -2,7 +2,6 @@
 
 {% block title %}Doméstica del Cibao A&D – Inicio{% endblock %}
 
-{# Contenido de la sección “hero” (Jumbotron) #}
 {% block hero %}
   <section class="hero-section">
     <div class="container">
@@ -80,6 +79,21 @@
               </p>
               <a href="{{ url_for('pagos') }}" class="btn btn-primary mt-auto">
                 Ir a Pagos
+              </a>
+            </div>
+          </div>
+        </div>
+        <!-- Filtrar -->
+        <div class="col">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body d-flex flex-column">
+              <i class="fas fa-filter"></i>
+              <h5 class="card-title mt-3">🔎 Filtrar</h5>
+              <p class="card-text flex-grow-1">
+                Filtra candidatas por ciudad, modalidad, experiencia y más criterios.
+              </p>
+              <a href="{{ url_for('filtrar') }}" class="btn btn-primary mt-auto">
+                Ir a Filtrar
               </a>
             </div>
           </div>

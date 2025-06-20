@@ -69,7 +69,7 @@ cloudinary.config(
 USUARIOS = {
     "angel":    {"pwd": generate_password_hash("12345"), "role": "admin"},
     "divina":   {"pwd": generate_password_hash("67890"), "role": "admin"},
-    "caty":     {"pwd": generate_password_hash("11111"), "role": "secretaria"},
+    "kathy":     {"pwd": generate_password_hash("11111"), "role": "secretaria"},
     "darielis": {"pwd": generate_password_hash("22222"), "role": "secretaria"},
 }
 
