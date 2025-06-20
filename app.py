@@ -1,7 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-
 from decorators import roles_required, admin_required
 
 import os, re, unicodedata, io, json, zipfile, logging, calendar
@@ -19,14 +18,11 @@ from werkzeug.utils import secure_filename
 
 from sqlalchemy import or_, cast, String
 
-import gspread
-from googleapiclient.discovery import build
 import requests
 from fpdf import FPDF
 
 from models import Candidata
 from config_app import create_app, db
-
 
 # —————— Normaliza cédula ——————
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
@@ -40,7 +36,6 @@ def normalize_cedula(raw: str) -> str | None:
         return None
     return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
 
-
 # —————— Normaliza nombre ——————
 def normalize_nombre(raw: str) -> str:
     """
@@ -52,7 +47,6 @@ def normalize_nombre(raw: str) -> str:
     nfkd = unicodedata.normalize('NFKD', raw)
     no_accents = ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
     return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
-
 
 # ─────────── Inicializa la app ───────────
 app = create_app()
@@ -71,26 +65,6 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
 )
 
-# ─── 5) Scopes de Google Sheets ─────────────────────────────────────
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
-]
-
-# ─── 6) Credenciales desde JSON en CLAVE1_JSON ───────────────────────
-clave_json = os.getenv("CLAVE1_JSON", "").strip()
-if not clave_json:
-    raise RuntimeError("❌ Debes definir CLAVE1_JSON en las Environment Variables")
-# (aquí seguiría tu lógica para cargar `credentials`...)
-
-# ─── 7) ID de Google Sheet ──────────────────────────────────────────
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
-if not SPREADSHEET_ID:
-    raise RuntimeError("❌ Debes definir SPREADSHEET_ID en las Environment Variables")
-service     = build("sheets", "v4", credentials=credentials)
-gspread_cli = gspread.authorize(credentials)
-sheet       = gspread_cli.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
-
 # ——— Usuarios y sus roles ———
 USUARIOS = {
     "angel":    {"pwd": generate_password_hash("12345"), "role": "admin"},
@@ -99,7 +73,7 @@ USUARIOS = {
     "darielis": {"pwd": generate_password_hash("22222"), "role": "secretaria"},
 }
 
-# ─── 9) Carga de configuración de entrevistas ─────────────────────────
+# ─── 5) Carga de configuración de entrevistas ─────────────────────────
 def load_entrevistas_config():
     try:
         cfg_path = os.path.join(app.root_path, 'config', 'config_entrevistas.json')
