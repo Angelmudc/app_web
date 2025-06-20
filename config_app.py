@@ -27,8 +27,8 @@ env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path, override=True)
 
 # 2) Instancias
-db    = SQLAlchemy()
-cache = Cache()
+db      = SQLAlchemy()
+cache   = Cache()
 migrate = Migrate()
 
 # 3) Scopes Google
@@ -43,9 +43,11 @@ if not clave_json:
     raise RuntimeError("❌ Debes definir CLAVE1_JSON")
 info = json.loads(clave_json)
 credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
+
+# Inicializa gspread y Sheets API
 gspread_client = gspread.authorize(credentials)
-sheets_service  = build("sheets", "v4", credentials=credentials)
-SPREADSHEET_ID  = os.getenv("SPREADSHEET_ID", "").strip()
+sheets_service = build("sheets", "v4", credentials=credentials)
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 if not SPREADSHEET_ID:
     raise RuntimeError("❌ Debes definir SPREADSHEET_ID")
 
@@ -112,7 +114,45 @@ def create_app():
 
     return app
 
-# 8) Instancia principal
+# 8) Cliente de Google Sheets unificado
+class SheetsClient:
+    def __init__(self, service, spreadsheet_id):
+        self._service = service
+        self._ss_id = spreadsheet_id
+
+    def get_values(self, rango, **kwargs):
+        res = self._service.values().get(
+            spreadsheetId=self._ss_id,
+            range=rango,
+            **kwargs
+        ).execute()
+        return res.get('values', [])
+
+    def update_values(self, rango, body, value_input_option="RAW", **kwargs):
+        return self._service.values().update(
+            spreadsheetId=self._ss_id,
+            range=rango,
+            valueInputOption=value_input_option,
+            body=body,
+            **kwargs
+        ).execute()
+
+    def append_values(self, rango, body, value_input_option="RAW", **kwargs):
+        return self._service.values().append(
+            spreadsheetId=self._ss_id,
+            range=rango,
+            valueInputOption=value_input_option,
+            body=body,
+            **kwargs
+        ).execute()
+
+# Exponemos 'sheets' para usar en app.py
+sheets = SheetsClient(
+    sheets_service.spreadsheets(),
+    SPREADSHEET_ID
+)
+
+# 9) Instancia principal
 app = create_app()
 
 if __name__ == '__main__':
