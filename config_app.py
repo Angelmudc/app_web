@@ -11,6 +11,18 @@ import cloudinary
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from flask_migrate import Migrate
+
+# Parche para compatibilidad Flask-Login con Werkzeug 3.x
+import werkzeug
+try:
+    # En versiones antiguas de Werkzeug
+    from werkzeug.urls import url_decode
+except ImportError:
+    # En Werkzeug 3.x url_decode se mueve a werkzeug.http
+    from werkzeug.http import url_decode as _url_decode
+    import werkzeug.urls as _urls
+    _urls.url_decode = _url_decode
+
 from flask_login import LoginManager
 
 # 1) Carga .env local (sólo para desarrollo)
@@ -36,7 +48,8 @@ try:
 except json.JSONDecodeError as e:
     raise RuntimeError(f"❌ CLAVE1_JSON no es un JSON válido: {e}")
 
-# 5) Crear credenciales desde el dict en memoria\credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
+# 5) Crear credenciales desde el dict en memoria
+credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
 
 # 6) Cliente de Google Sheets y Sheets API
 gspread_client = gspread.authorize(credentials)
