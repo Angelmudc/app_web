@@ -6,25 +6,15 @@ from dotenv import load_dotenv
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
-import gspread
-import cloudinary
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
 from flask_migrate import Migrate
-
-# Parche para compatibilidad Flask-Login con Werkzeug 3.x
-import werkzeug
-try:
-    from werkzeug.urls import url_decode
-except ImportError:
-    from werkzeug.http import url_decode as _url_decode
-    import werkzeug.urls as _urls
-    _urls.url_decode = _url_decode
-
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+import gspread
+import cloudinary
 
-# Usuarios en memoria (antes estaban en app.py)
+# Usuarios en memoria
 USUARIOS = {
     "angel":    {"pwd_hash": generate_password_hash("12345"), "role": "admin"},
     "divina":   {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
@@ -32,82 +22,67 @@ USUARIOS = {
     "darielis": {"pwd_hash": generate_password_hash("22222"), "role": "secretaria"},
 }
 
-# 1) Carga .env local (sólo para desarrollo)
+# 1) Carga .env
 env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path, override=True)
 
-# 2) Instancias globales
+# 2) Instancias
 db = SQLAlchemy()
 cache = Cache()
 
-# 3) Scopes de Google
+# 3) Scopes Google
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.file"
 ]
 
-# 4) Leer credenciales desde la ENV CLAVE1_JSON
+# 4) Credenciales desde ENV
 clave_json = os.getenv("CLAVE1_JSON", "").strip()
 if not clave_json:
-    raise RuntimeError("❌ Debes definir la variable CLAVE1_JSON con el JSON completo de tu cuenta de servicio")
-try:
-    info = json.loads(clave_json)
-except json.JSONDecodeError as e:
-    raise RuntimeError(f"❌ CLAVE1_JSON no es un JSON válido: {e}")
-
-# 5) Crear credenciales desde el dict en memoria
+    raise RuntimeError("❌ Debes definir CLAVE1_JSON")
+info = json.loads(clave_json)
 credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
-
-# 6) Cliente de Google Sheets y Sheets API
 gspread_client = gspread.authorize(credentials)
 sheets = build("sheets", "v4", credentials=credentials)
-
-# 7) SPREADSHEET_ID
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 if not SPREADSHEET_ID:
-    raise RuntimeError("❌ Debes definir SPREADSHEET_ID en las Environment Variables de Render")
+    raise RuntimeError("❌ Debes definir SPREADSHEET_ID")
 
-# 8) Configuración de Cloudinary
+# 5) Cloudinary
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
     api_key=os.getenv("CLOUDINARY_API_KEY", ""),
     api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
 )
 
-# 9) Normalización de cédula
+# 6) Normalización cédula
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 def normalize_cedula(raw: str) -> str | None:
     digits = re.sub(r'\D', '', raw or '')
     return digits if CEDULA_PATTERN.fullmatch(digits) else None
 
-# 10) Factory de la aplicación Flask
+# 7) Factory
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
-
-    # Clave secreta
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev')
-
-    # Base de datos
     db_url = os.getenv('DATABASE_URL', '').strip()
     if not db_url:
-        raise RuntimeError("❌ Debes definir DATABASE_URL en las Environment Variables de Render")
+        raise RuntimeError("❌ Debes definir DATABASE_URL")
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-    # Caché
     app.config['CACHE_TYPE'] = 'simple'
     app.config['CACHE_DEFAULT_TIMEOUT'] = 120
-    cache.init_app(app)
 
     # Inicializar extensiones
+    cache.init_app(app)
     db.init_app(app)
     Migrate(app, db)
 
-    # ─── Inicializa Flask-Login ─────────────────────────
+    # ── Flask-Login ─────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
-    # Si no tienes un blueprint de clientes, apunta al nombre de tu vista de login:
-    login_manager.login_view = 'login'
+    # Si no tienes un blueprint “clients”, pon aquí tu ruta de login real:
+    login_manager.login_view = 'domestica.login'
 
     class User(UserMixin):
         def __init__(self, username, role):
@@ -119,29 +94,29 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         data = USUARIOS.get(user_id)
-        if not data:
-            return None
-        return User(user_id, data['role'])
+        return User(user_id, data['role']) if data else None
 
-    # Carga de configuración adicional (entrevistas)
+    # Cargar config entrevistas
     try:
         cfg_path = Path(app.root_path) / 'config' / 'config_entrevistas.json'
         with open(cfg_path, encoding='utf-8') as f:
             entrevistas_cfg = json.load(f)
-        app.logger.info("✅ Config entrevistas cargada.")
-    except Exception as e:
-        app.logger.error(f"❌ No pude cargar config_entrevistas.json: {e}")
+    except Exception:
         entrevistas_cfg = {}
     app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
 
-    # --- Aquí ya no registramos blueprints de 'clients' ni 'domestica' ---
-    # Si en el futuro quieres añadir otro blueprint, haz:
-    #   from mymodule import my_bp
-    #   app.register_blueprint(my_bp)
+    # ── Rutas ───────────────────────────────
+    @app.route("/")
+    def index():
+        return "¡Bienvenido! Usa /domestica para entrar.", 200
+
+    # Registrar sólo tu blueprint de “domestica”
+    from services.domestica import domestica_bp
+    app.register_blueprint(domestica_bp)
 
     return app
 
-# 11) Instancia principal
+# 8) Instancia principal
 app = create_app()
 
 if __name__ == '__main__':
