@@ -15,15 +15,22 @@ from flask_migrate import Migrate
 # Parche para compatibilidad Flask-Login con Werkzeug 3.x
 import werkzeug
 try:
-    # En versiones antiguas de Werkzeug
     from werkzeug.urls import url_decode
 except ImportError:
-    # En Werkzeug 3.x url_decode se mueve a werkzeug.http
     from werkzeug.http import url_decode as _url_decode
     import werkzeug.urls as _urls
     _urls.url_decode = _url_decode
 
-from flask_login import LoginManager
+from flask_login import LoginManager, UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# Usuarios en memoria (antes estaban en app.py)
+USUARIOS = {
+    "angel":    {"pwd_hash": generate_password_hash("12345"), "role": "admin"},
+    "divina":   {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
+    "caty":     {"pwd_hash": generate_password_hash("11111"), "role": "secretaria"},
+    "darielis": {"pwd_hash": generate_password_hash("22222"), "role": "secretaria"},
+}
 
 # 1) Carga .env local (sólo para desarrollo)
 env_path = Path(__file__).parent.parent / '.env'
@@ -101,10 +108,19 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'clients.login_client'
 
-    from models import User
+    class User(UserMixin):
+        def __init__(self, username, role):
+            self.id = username
+            self.role = role
+        def check_password(self, password):
+            return check_password_hash(USUARIOS[self.id]['pwd_hash'], password)
+
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        data = USUARIOS.get(user_id)
+        if not data:
+            return None
+        return User(user_id, data['role'])
 
     # Carga de configuración adicional (entrevistas)
     try:
