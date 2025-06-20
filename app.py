@@ -2,8 +2,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-from decorators import roles_required
- 
+from decorators import roles_required, admin_required
+
 import os, re, unicodedata, io, json, zipfile, logging, calendar
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -18,11 +18,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
 from sqlalchemy import or_, cast, String
-
-# Importa los Blueprints y decoradores
-from decorators import admin_required
-from app.clients import clients_bp
-from app.domestica import domestica_bp
 
 import gspread
 from googleapiclient.discovery import build
@@ -40,13 +35,11 @@ def normalize_cedula(raw: str) -> str | None:
     Quita todo lo que no sea dígito y formatea como XXX-XXXXXX-X.
     Devuelve None si tras limpiar no quedan 11 dígitos.
     """
-    # 1) Eliminamos cualquier carácter que no sea 0–9
     digits = re.sub(r'\D', '', raw or '')
-    # 2) Si no quedan exactamente 11 dígitos, no es válida
     if not CEDULA_PATTERN.fullmatch(digits):
         return None
-    # 3) Formateamos con guiones: 3-6-2
     return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
+
 
 # —————— Normaliza nombre ——————
 def normalize_nombre(raw: str) -> str:
@@ -56,19 +49,13 @@ def normalize_nombre(raw: str) -> str:
     """
     if not raw:
         return ''
-    # Descomponer acentos
     nfkd = unicodedata.normalize('NFKD', raw)
-    # Quitar marcas diacríticas
     no_accents = ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
-    # Conservar sólo A–Z, espacios y guiones
     return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
+
 
 # ─────────── Inicializa la app ───────────
 app = create_app()
-
-# Registra los Blueprints
-app.register_blueprint(clients_bp)
-app.register_blueprint(domestica_bp)
 
 # ─── 2) Inicializamos Cache ────────────────────────────────────────────
 cache = Cache(app)
@@ -94,13 +81,13 @@ SCOPES = [
 clave_json = os.getenv("CLAVE1_JSON", "").strip()
 if not clave_json:
     raise RuntimeError("❌ Debes definir CLAVE1_JSON en las Environment Variables")
-# ... resto de tu lógica para cargar credenciales ...
+# (aquí seguiría tu lógica para cargar `credentials`...)
 
-# ─── 7) ID de Google Sheet y clientes ────────────────────────────────
+# ─── 7) ID de Google Sheet ──────────────────────────────────────────
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 if not SPREADSHEET_ID:
     raise RuntimeError("❌ Debes definir SPREADSHEET_ID en las Environment Variables")
-service    = build("sheets", "v4", credentials=credentials)
+service     = build("sheets", "v4", credentials=credentials)
 gspread_cli = gspread.authorize(credentials)
 sheet       = gspread_cli.open_by_key(SPREADSHEET_ID).worksheet("Nueva hoja")
 
@@ -125,27 +112,12 @@ def load_entrevistas_config():
 app.config['ENTREVISTAS_CONFIG'] = load_entrevistas_config()
 
 
+
 # Ruta para servir archivos estáticos correctamente
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory(os.path.join(app.root_path, 'static'), filename)
 
-def obtener_siguiente_fila():
-    """
-    Esta función obtiene la siguiente fila vacía en la hoja de cálculo.
-    Se asume que la columna A se usa para indicar filas ocupadas.
-    """
-    try:
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:A"  # Asegúrate de usar la columna adecuada.
-        ).execute()
-        values = result.get("values", [])
-        # La cantidad de filas ocupadas + 1 es la siguiente fila disponible.
-        return len(values) + 1
-    except Exception as e:
-        print(f"Error al obtener la siguiente fila: {str(e)}")
-        return None
 
 def buscar_candidata(busqueda):
     """
@@ -192,35 +164,6 @@ def buscar_candidata(busqueda):
         logging.error(f"Error en buscar_candidata: {str(e)}", exc_info=True)
         return []
 
-def actualizar_registro(fila_index, usuario_actual):
-    try:
-        # Definir la celda de la columna EA (donde se registra la edición)
-        celda_registro = f"Nueva hoja!EA{fila_index}"
-        
-        # Obtener el valor actual en la celda EA
-        respuesta = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=celda_registro
-        ).execute()
-        valores = respuesta.get("values", [])
-        registro_actual = valores[0][0] if valores and valores[0] else ""
-        
-        # Evitar duplicados: si el usuario ya se encuentra, no se agrega de nuevo
-        if usuario_actual in registro_actual.split(", "):
-            nuevo_registro = registro_actual
-        else:
-            # Si ya existe un registro, concatenamos el nuevo usuario
-            nuevo_registro = f"{registro_actual}, {usuario_actual}" if registro_actual else usuario_actual
-        
-        # Actualizar la celda EA con el nuevo registro
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=celda_registro,
-            valueInputOption="RAW",
-            body={"values": [[nuevo_registro]]}
-        ).execute()
-    except Exception as e:
-        logging.error(f"Error actualizando el registro en la fila {fila_index}: {str(e)}", exc_info=True)
 
 
 def normalizar_texto(texto):
@@ -497,6 +440,7 @@ from werkzeug.security import check_password_hash
 from flask import jsonify
 
 @app.route('/_test_sheets')
+@roles_required('admin','secretaria')
 def _test_sheets():
     """
     Endpoint de prueba para verificar conexión a Google Sheets.
@@ -510,6 +454,7 @@ def _test_sheets():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/candidatas')
+@roles_required('admin','secretaria')
 def list_candidatas():
     """
     Devuelve sólo los encabezados reales (fila 2) de la hoja "Nueva hoja"
@@ -525,6 +470,7 @@ def list_candidatas():
 
 
 @app.route('/candidatas_db')
+@roles_required('admin','secretaria')
 def list_candidatas_db():
     """
     Devuelve todas las candidatas que existen en la tabla 'candidatas' de PostgreSQL.
@@ -586,11 +532,13 @@ def robots_txt():
 
 # Ruta de Logout
 @app.route('/logout')
+@roles_required('admin','secretaria')
 def logout():
     session.pop('usuario', None)  # Cierra la sesión
     return redirect(url_for('login'))
 
 @app.route('/sugerir')
+@roles_required('admin','secretaria')
 def sugerir():
     query = request.args.get('busqueda', '')
     if not query:
@@ -1192,6 +1140,7 @@ def reporte_pagos():
 
 
 @app.route('/generar_pdf')
+@roles_required('admin','secretaria')
 def generar_pdf():
     try:
         # Obtener datos de la hoja
