@@ -27,8 +27,9 @@ env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path, override=True)
 
 # 2) Instancias
-db = SQLAlchemy()
+db    = SQLAlchemy()
 cache = Cache()
+migrate = Migrate()
 
 # 3) Scopes Google
 SCOPES = [
@@ -43,8 +44,8 @@ if not clave_json:
 info = json.loads(clave_json)
 credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
 gspread_client = gspread.authorize(credentials)
-sheets = build("sheets", "v4", credentials=credentials)
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
+sheets_service  = build("sheets", "v4", credentials=credentials)
+SPREADSHEET_ID  = os.getenv("SPREADSHEET_ID", "").strip()
 if not SPREADSHEET_ID:
     raise RuntimeError("❌ Debes definir SPREADSHEET_ID")
 
@@ -65,28 +66,30 @@ def normalize_cedula(raw: str) -> str | None:
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev')
+
     db_url = os.getenv('DATABASE_URL', '').strip()
     if not db_url:
         raise RuntimeError("❌ Debes definir DATABASE_URL")
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['CACHE_TYPE'] = 'simple'
-    app.config['CACHE_DEFAULT_TIMEOUT'] = 120
+    app.config.update({
+        'SQLALCHEMY_DATABASE_URI': db_url,
+        'SQLALCHEMY_TRACK_MODIFICATIONS': False,
+        'CACHE_TYPE': 'simple',
+        'CACHE_DEFAULT_TIMEOUT': 120,
+    })
 
     # Inicializar extensiones
     cache.init_app(app)
     db.init_app(app)
-    Migrate(app, db)
+    migrate.init_app(app, db)
 
     # ── Flask-Login ─────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
-    # Ajusta esto si cambias la ruta de tu formulario de login
     login_manager.login_view = 'login'
 
     class User(UserMixin):
         def __init__(self, username, role):
-            self.id = username
+            self.id   = username
             self.role = role
         def check_password(self, password):
             return check_password_hash(USUARIOS[self.id]['pwd_hash'], password)
@@ -105,14 +108,7 @@ def create_app():
         entrevistas_cfg = {}
     app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
 
-    # ── Rutas ───────────────────────────────
-    @app.route("/")
-    def index():
-        return "¡Bienvenido! Tu app está viva.", 200
-
-    # Si más adelante agregas blueprints, regístralos aquí:
-    # from services.domestica import domestica_bp
-    # app.register_blueprint(domestica_bp)
+    # **No definimos aquí la ruta “/”**. Todas las rutas las pones en app.py
 
     return app
 
