@@ -471,7 +471,6 @@ def list_candidatas_db():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/')
-@roles_required('admin', 'secretaria')
 def home():
     if 'usuario' not in session:
         return redirect(url_for('login'))
