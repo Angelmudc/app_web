@@ -25,7 +25,7 @@ import requests
 from fpdf import FPDF
 
 from models import Candidata
-from config_app import create_app, db, sheets, credentials
+from config_app import create_app, db
 
 
 # —————— Normaliza cédula ——————

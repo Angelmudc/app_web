@@ -9,9 +9,6 @@ from flask_caching import Cache
 from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-import gspread
 import cloudinary
 
 # Usuarios en memoria
@@ -26,49 +23,23 @@ USUARIOS = {
 env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path, override=True)
 
-# 2) Instancias
+# 2) Instancias globales
 db      = SQLAlchemy()
 cache   = Cache()
 migrate = Migrate()
 
-# 3) Scopes Google
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file"
-]
-
-# 4) Credenciales desde ENV
-clave_json = os.getenv("CLAVE1_JSON", "").strip()
-if not clave_json:
-    raise RuntimeError("❌ Debes definir CLAVE1_JSON")
-info = json.loads(clave_json)
-credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
-
-# Inicializa gspread y Sheets API
-gspread_client = gspread.authorize(credentials)
-sheets_service = build("sheets", "v4", credentials=credentials)
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
-if not SPREADSHEET_ID:
-    raise RuntimeError("❌ Debes definir SPREADSHEET_ID")
-
-# 5) Cloudinary
-cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
-    api_key=os.getenv("CLOUDINARY_API_KEY", ""),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
-)
-
-# 6) Normalización cédula
+# 3) Normalización de cédula
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 def normalize_cedula(raw: str) -> str | None:
     digits = re.sub(r'\D', '', raw or '')
     return digits if CEDULA_PATTERN.fullmatch(digits) else None
 
-# 7) Factory
+# 4) Factory de la app
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev')
 
+    # Base de datos
     db_url = os.getenv('DATABASE_URL', '').strip()
     if not db_url:
         raise RuntimeError("❌ Debes definir DATABASE_URL")
@@ -101,7 +72,7 @@ def create_app():
         data = USUARIOS.get(user_id)
         return User(user_id, data['role']) if data else None
 
-    # Cargar config entrevistas
+    # Cargar config entrevistas (opcional)
     try:
         cfg_path = Path(app.root_path) / 'config' / 'config_entrevistas.json'
         with open(cfg_path, encoding='utf-8') as f:
@@ -110,49 +81,18 @@ def create_app():
         entrevistas_cfg = {}
     app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
 
-    # **No definimos aquí la ruta “/”**. Todas las rutas las pones en app.py
+    # **Rutas definidas en app.py**
 
     return app
 
-# 8) Cliente de Google Sheets unificado
-class SheetsClient:
-    def __init__(self, service, spreadsheet_id):
-        self._service = service
-        self._ss_id = spreadsheet_id
-
-    def get_values(self, rango, **kwargs):
-        res = self._service.values().get(
-            spreadsheetId=self._ss_id,
-            range=rango,
-            **kwargs
-        ).execute()
-        return res.get('values', [])
-
-    def update_values(self, rango, body, value_input_option="RAW", **kwargs):
-        return self._service.values().update(
-            spreadsheetId=self._ss_id,
-            range=rango,
-            valueInputOption=value_input_option,
-            body=body,
-            **kwargs
-        ).execute()
-
-    def append_values(self, rango, body, value_input_option="RAW", **kwargs):
-        return self._service.values().append(
-            spreadsheetId=self._ss_id,
-            range=rango,
-            valueInputOption=value_input_option,
-            body=body,
-            **kwargs
-        ).execute()
-
-# Exponemos 'sheets' para usar en app.py
-sheets = SheetsClient(
-    sheets_service.spreadsheets(),
-    SPREADSHEET_ID
+# 5) Cloudinary
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
+    api_key=os.getenv("CLOUDINARY_API_KEY", ""),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
 )
 
-# 9) Instancia principal
+# 6) Instancia principal
 app = create_app()
 
 if __name__ == '__main__':
