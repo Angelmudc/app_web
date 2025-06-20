@@ -81,8 +81,8 @@ def create_app():
     # ── Flask-Login ─────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
-    # Si no tienes un blueprint “clients”, pon aquí tu ruta de login real:
-    login_manager.login_view = 'domestica.login'
+    # Ajusta esto si cambias la ruta de tu formulario de login
+    login_manager.login_view = 'login'
 
     class User(UserMixin):
         def __init__(self, username, role):
@@ -108,11 +108,11 @@ def create_app():
     # ── Rutas ───────────────────────────────
     @app.route("/")
     def index():
-        return "¡Bienvenido! Usa /domestica para entrar.", 200
+        return "¡Bienvenido! Tu app está viva.", 200
 
-    # Registrar sólo tu blueprint de “domestica”
-    from services.domestica import domestica_bp
-    app.register_blueprint(domestica_bp)
+    # Si más adelante agregas blueprints, regístralos aquí:
+    # from services.domestica import domestica_bp
+    # app.register_blueprint(domestica_bp)
 
     return app
 
