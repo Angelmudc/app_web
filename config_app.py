@@ -106,7 +106,8 @@ def create_app():
     # ─── Inicializa Flask-Login ─────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
-    login_manager.login_view = 'clients.login_client'
+    # Si no tienes un blueprint de clientes, apunta al nombre de tu vista de login:
+    login_manager.login_view = 'login'
 
     class User(UserMixin):
         def __init__(self, username, role):
@@ -133,11 +134,10 @@ def create_app():
         entrevistas_cfg = {}
     app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
 
-    # Registro de Blueprints
-    from app.clients import clients_bp
-    from app.domestica import domestica_bp
-    app.register_blueprint(clients_bp)
-    app.register_blueprint(domestica_bp)
+    # --- Aquí ya no registramos blueprints de 'clients' ni 'domestica' ---
+    # Si en el futuro quieres añadir otro blueprint, haz:
+    #   from mymodule import my_bp
+    #   app.register_blueprint(my_bp)
 
     return app
 
