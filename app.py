@@ -19,9 +19,6 @@ from werkzeug.utils import secure_filename
 
 from sqlalchemy import or_, cast, String
 
-# Importa la creación de la app y DB
-import create_app, db, sheets, credentials
-
 # Importa los Blueprints y decoradores
 from decorators import admin_required
 from app.clients import clients_bp
@@ -32,12 +29,9 @@ from googleapiclient.discovery import build
 import requests
 from fpdf import FPDF
 
-
-# Tu modelo
 from models import Candidata
+from config_app import create_app, db, sheets, credentials
 
-# app.py
-from config_app import create_app
 
 # —————— Normaliza cédula ——————
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
