@@ -1,4 +1,5 @@
 # decorators.py
+
 from functools import wraps
 from flask import session, abort
 
@@ -20,3 +21,6 @@ def roles_required(*permitted_roles):
             return f(*args, **kwargs)
         return wrapped
     return decorator
+
+# Alias para acceso sólo de administradores
+admin_required = roles_required('admin')
