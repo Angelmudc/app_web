@@ -2428,7 +2428,15 @@ def registro_publico():
         rutas       = request.form.get('rutas_cercanas', '').strip() or None
         empleo_ant  = request.form.get('empleo_anterior', '').strip() or None
         anos_exp    = request.form.get('anos_experiencia', '').strip() or None
-        areas_exp   = request.form.get('areas_experiencia', '').strip() or None
+
+        # — Ajuste para áreas de experiencia múltiples —
+        areas_list = request.form.getlist('areas_experiencia')
+        if areas_list:
+            # Unir en un solo string: "Limpieza, Cocina, Niñera"
+            areas_exp = ', '.join(a.strip() for a in areas_list if a.strip())
+        else:
+            areas_exp = None
+
         plancha     = True if request.form.get('sabe_planchar') == 'si' else False
         ref_laboral = request.form.get('contactos_referencias_laborales', '').strip() or None
         ref_familia = request.form.get('referencias_familiares_detalle', '').strip() or None
