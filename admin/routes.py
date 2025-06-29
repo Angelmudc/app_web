@@ -326,25 +326,43 @@ def nuevo_reemplazo(s_id):
 @login_required
 @admin_required
 def detalle_solicitud(cliente_id, id):
+    # 1) Carga la solicitud
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
-    reemplazos = s.reemplazos
+
+    # 2) Historial de envíos (inicial + reemplazos)
     envios = []
     if s.candidata:
-        envios.append({'tipo':'Envío inicial','candidata':s.candidata,'fecha':s.fecha_solicitud})
-    for idx, r in enumerate(reemplazos, start=1):
+        envios.append({
+            'tipo':     'Envío inicial',
+            'candidata': s.candidata,
+            'fecha':     s.fecha_solicitud
+        })
+    for idx, r in enumerate(s.reemplazos, start=1):
         if r.candidata_new:
             envios.append({
-                'tipo': f'Reemplazo {idx}',
+                'tipo':     f'Reemplazo {idx}',
                 'candidata': r.candidata_new,
-                'fecha': r.fecha_inicio_reemplazo or r.created_at
+                'fecha':     r.fecha_inicio_reemplazo or r.created_at
             })
+
+    # 3) Historial de cancelaciones (puede ser 0 o 1)
+    cancelaciones = []
+    if s.estado == 'cancelada' and s.fecha_cancelacion:
+        cancelaciones.append({
+            'fecha':  s.fecha_cancelacion,
+            'motivo': s.motivo_cancelacion
+        })
+
+    # 4) Reemplazos directos (detalle)
+    reemplazos = s.reemplazos
+
     return render_template(
         'admin/solicitud_detail.html',
-        solicitud=s,
-        envios=envios,
-        reemplazos=reemplazos
+        solicitud      = s,
+        envios         = envios,
+        cancelaciones  = cancelaciones,
+        reemplazos     = reemplazos
     )
-
 
 @admin_bp.route('/api/candidatas')
 @login_required
@@ -446,3 +464,32 @@ def copiar_solicitud(id):
     db.session.commit()
     flash(f'Solicitud {s.codigo_solicitud} copiada. Ya no se mostrará hasta mañana.', 'success')
     return redirect(url_for('admin.copiar_solicitudes'))
+
+@admin_bp.route(
+    '/clientes/<int:cliente_id>/solicitudes/<int:id>/cancelar',
+    methods=['GET', 'POST']
+)
+@login_required
+@admin_required
+def cancelar_solicitud(cliente_id, id):
+    # Cargamos solo la solicitud de ese cliente
+    s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+
+    if request.method == 'POST':
+        motivo = request.form.get('motivo', '').strip()
+        if not motivo:
+            flash('Debes indicar un motivo de cancelación.', 'warning')
+        else:
+            # Marcamos cancelada sin borrar nada más
+            s.estado = 'cancelada'
+            s.fecha_cancelacion = datetime.utcnow()
+            s.motivo_cancelacion = motivo
+            db.session.commit()
+            flash('Solicitud cancelada con éxito.', 'success')
+            # Volvemos al detalle de cliente
+            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
+    return render_template(
+        'admin/cancelar_solicitud.html',
+        solicitud=s
+    )

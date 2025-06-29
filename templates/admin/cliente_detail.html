@@ -56,15 +56,12 @@
         <td>{{ s.tipo_plan or '—' }}</td>
         <td>{{ s.estado or 'proceso' }}</td>
         <td class="text-nowrap">
-          <a href="{{ url_for('admin.editar_solicitud_admin',
-                               cliente_id=cliente.id, id=s.id) }}"
+          <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
              class="btn btn-sm btn-warning">Editar</a>
-          <a href="{{ url_for('admin.gestionar_plan',
-                               cliente_id=cliente.id, id=s.id) }}"
+          <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
              class="btn btn-sm btn-info">Gestionar Plan</a>
           {% if s.estado == 'activa' %}
-          <a href="{{ url_for('admin.registrar_pago',
-                               cliente_id=cliente.id, id=s.id) }}"
+          <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}"
              class="btn btn-sm btn-success">Registrar Pago</a>
           {% endif %}
           <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
@@ -72,13 +69,24 @@
           <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
              class="btn btn-sm btn-secondary">Ver</a>
           <form method="post"
-                action="{{ url_for('admin.eliminar_solicitud_admin',
-                                    cliente_id=cliente.id, id=s.id) }}"
+                action="{{ url_for('admin.eliminar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
                 class="d-inline"
                 onsubmit="return confirm('¿Eliminar solicitud {{ s.codigo_solicitud }}?')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-sm btn-danger">Borrar</button>
           </form>
+
+          {# Botón de cancelar para estados activa o reemplazo #}
+          {% if s.estado in ['activa', 'reemplazo'] %}
+          <form method="post"
+                action="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id) }}"
+                class="d-inline ms-1"
+                onsubmit="return confirm('¿Cancelar solicitud {{ s.codigo_solicitud }}?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger">Cancelar</button>
+          </form>
+          {% endif %}
+
         </td>
       </tr>
       {% else %}

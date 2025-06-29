@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Cancelar Solicitud {{ solicitud.codigo_solicitud }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="mb-4">Cancelar Solicitud {{ solicitud.codigo_solicitud }}</h1>
+  <p>
+    <strong>Ciudad/Sector:</strong> {{ solicitud.ciudad_sector }}<br>
+    <strong>Modalidad:</strong> {{ solicitud.modalidad_trabajo }}
+  </p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ 'danger' if category=='danger' else 'success' }} alert-dismissible fade show">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="post"
+        action="{{ url_for('admin.cancelar_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}"
+        novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label for="motivo" class="form-label">Motivo de cancelación</label>
+      <textarea id="motivo"
+                name="motivo"
+                class="form-control{% if form and form.motivo.errors %} is-invalid{% endif %}"
+                rows="4"
+                required>{{ request.form.get('motivo', '') }}</textarea>
+      {% if form and form.motivo.errors %}
+        <div class="invalid-feedback">
+          {{ form.motivo.errors[0] }}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-danger">
+        <i class="fas fa-times-circle me-1"></i> Confirmar cancelación
+      </button>
+      <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}"
+         class="btn btn-secondary">
+        <i class="fas fa-arrow-left me-1"></i> Volver sin cancelar
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

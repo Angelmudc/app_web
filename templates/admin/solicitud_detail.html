@@ -16,15 +16,26 @@
     <dd class="col-sm-9">{{ solicitud.modalidad_trabajo }}</dd>
 
     <dt class="col-sm-3">Estado</dt>
-    <dd class="col-sm-9">{{ solicitud.estado }}</dd>
+    <dd class="col-sm-9 text-capitalize">{{ solicitud.estado }}</dd>
 
-    <!-- Añade aquí cuantos campos básicos quieras mostrar -->
+    {% if solicitud.fecha_cancelacion %}
+      <dt class="col-sm-3">Fecha Cancelación</dt>
+      <dd class="col-sm-9">{{ solicitud.fecha_cancelacion.strftime('%Y-%m-%d %H:%M') }}</dd>
+
+      <dt class="col-sm-3">Motivo Cancelación</dt>
+      <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
+    {% endif %}
   </dl>
 
+  {# 1) Historial de Envíos #}
   <h2>Historial de Envíos</h2>
-  <table class="table table-striped">
+  <table class="table table-striped mb-4">
     <thead>
-      <tr><th>Tipo</th><th>Candidata</th><th>Fecha</th></tr>
+      <tr>
+        <th>Tipo</th>
+        <th>Candidata</th>
+        <th>Fecha</th>
+      </tr>
     </thead>
     <tbody>
       {% for e in envios %}
@@ -34,11 +45,35 @@
         <td>{{ e.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="3" class="text-center">No hay envíos</td></tr>
+      <tr>
+        <td colspan="3" class="text-center">No hay envíos registrados.</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
 
+  {# 2) Sección de Cancelaciones (si hay) #}
+  {% if solicitud.estado == 'cancelada' %}
+    <h2>Cancelaciones</h2>
+    <table class="table table-bordered mb-4">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Fecha</th>
+          <th>Motivo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>{{ solicitud.fecha_cancelacion.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ solicitud.motivo_cancelacion }}</td>
+        </tr>
+      </tbody>
+    </table>
+  {% endif %}
+
+  {# 3) Reemplazos #}
   <h2>Reemplazos</h2>
   <table class="table table-bordered">
     <thead class="table-light">
@@ -62,18 +97,34 @@
         <td>{{ r.motivo_fallo }}</td>
         <td>{{ r.fecha_fallo.strftime('%Y-%m-%d %H:%M') }}</td>
         <td>{{ 'Sí' if r.oportunidad_nueva else 'No' }}</td>
-        <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
-        <td>{{ r.fecha_fin_reemplazo and r.fecha_fin_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
-        <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}</td>
+        <td>
+          {{ r.fecha_inicio_reemplazo 
+               and r.fecha_inicio_reemplazo.strftime('%Y-%m-%d %H:%M') 
+               or '—' }}
+        </td>
+        <td>
+          {{ r.fecha_fin_reemplazo 
+               and r.fecha_fin_reemplazo.strftime('%Y-%m-%d %H:%M') 
+               or '—' }}
+        </td>
+        <td>
+          {{ r.candidata_new 
+               and r.candidata_new.nombre_completo 
+               or '—' }}
+        </td>
         <td>{{ r.nota_adicional or '—' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="text-center">No hay reemplazos</td></tr>
+      <tr>
+        <td colspan="9" class="text-center">No hay reemplazos.</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
 
   <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}"
-     class="btn btn-secondary">← Volver al cliente</a>
+     class="btn btn-secondary">
+    ← Volver al cliente
+  </a>
 </div>
 {% endblock %}

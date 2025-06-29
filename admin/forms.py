@@ -9,7 +9,8 @@ from wtforms import (
     HiddenField,
     SelectField,
     SubmitField,
-    SelectMultipleField
+    SelectMultipleField,
+    DecimalField
 )
 from wtforms.validators import DataRequired, Length, Optional, NumberRange
 from wtforms.widgets import ListWidget, CheckboxInput
@@ -113,9 +114,11 @@ class AdminSolicitudForm(FlaskForm):
         'Habitaciones',
         validators=[DataRequired(), NumberRange(min=0)]
     )
-    banos = IntegerField(
+    banos = DecimalField(
         'Baños',
-        validators=[DataRequired(), NumberRange(min=0)]
+        places=1,
+        validators=[DataRequired()],
+        render_kw={"step": "0.5", "min": "0"}
     )
     dos_pisos = BooleanField('¿Tiene dos pisos?')
 
@@ -136,7 +139,8 @@ class AdminSolicitudForm(FlaskForm):
     )
     ninos = IntegerField(
         'Niños',
-        validators=[DataRequired(), NumberRange(min=0)]
+        validators=[Optional(), NumberRange(min=0)],
+        render_kw={"min": "0"}   
     )
     edades_ninos = StringField(
         'Edades niños',

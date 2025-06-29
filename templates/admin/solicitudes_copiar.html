@@ -9,7 +9,7 @@
   {% if solicitudes %}
   <ul class="list-group mb-4">
     {% for s in solicitudes %}
-      {# Si está en estado "reemplazo", muestro todos los reemplazos; si no, solo los con oportunidad_nueva #}
+      {# Determinar reemplazos a mostrar #}
       {% if s.estado == 'reemplazo' %}
         {% set reems = s.reemplazos %}
       {% else %}
@@ -66,7 +66,7 @@ Sueldo: ${{ s.sueldo }} mensual{% if s.pasaje_aporte %} pasaje incluido.{% else 
         <form method="post"
               action="{{ url_for('admin.copiar_solicitud', id=s.id) }}"
               class="d-none copy-form">
-          {{ csrf_token() }}
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         </form>
       </li>
     {% endfor %}
@@ -93,7 +93,7 @@ Sueldo: ${{ s.sueldo }} mensual{% if s.pasaje_aporte %} pasaje incluido.{% else 
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.copy-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      var text = btn.getAttribute('data-order-text').trim();
+      const text = btn.getAttribute('data-order-text').trim();
       navigator.clipboard.writeText(text).then(function() {
         btn.closest('li').querySelector('.copy-form').submit();
       }).catch(function(err) {

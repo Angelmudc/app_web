@@ -13,6 +13,8 @@ from sqlalchemy.dialects.postgresql import ARRAY
 # Si tienes modelos que heredan de UserMixin:
 from flask_login import UserMixin
 
+from sqlalchemy import Float
+
 
 class Candidata(db.Model):
     __tablename__ = 'candidatas'
@@ -150,12 +152,12 @@ class Solicitud(db.Model):
 
     # Habitaciones y baños
     habitaciones     = db.Column(db.Integer, nullable=False)
-    banos            = db.Column(db.Integer, nullable=False)
+    banos            = db.Column(db.Float,   nullable=False)
     dos_pisos        = db.Column(db.Boolean, nullable=False, default=False)
 
     # Ocupantes
     adultos          = db.Column(db.Integer, nullable=False)
-    ninos            = db.Column(db.Integer, nullable=False)
+    ninos            = db.Column(db.Integer, nullable=True)
     edades_ninos     = db.Column(db.String(100), nullable=True)
 
     # Compensación
@@ -194,6 +196,9 @@ class Solicitud(db.Model):
     reemplazos  = db.relationship('Reemplazo', back_populates='solicitud',
                                   cascade='all, delete-orphan')
     last_copiado_at = db.Column(db.DateTime, nullable=True)
+
+    fecha_cancelacion    = db.Column(db.DateTime, nullable=True)
+    motivo_cancelacion   = db.Column(db.String(255), nullable=True)
 
 class Reemplazo(db.Model):
     __tablename__ = 'reemplazos'

@@ -57,11 +57,18 @@ def create_app():
     if not db_url:
         raise RuntimeError("❌ Debes definir DATABASE_URL")
     app.config.update({
-        'SQLALCHEMY_DATABASE_URI':        db_url,
+        'SQLALCHEMY_DATABASE_URI':    db_url,
         'SQLALCHEMY_TRACK_MODIFICATIONS': False,
-        'CACHE_TYPE':                     'simple',
-        'CACHE_DEFAULT_TIMEOUT':          120,
+        'CACHE_TYPE':                 'simple',
+        'CACHE_DEFAULT_TIMEOUT':      120,
+        # Para conexión SSL en Render Postgres:
+        'SQLALCHEMY_ENGINE_OPTIONS': {
+            'connect_args': {
+                'sslmode': 'require'
+            }
+        }
     })
+
 
     # Inicializar extensiones
     db.init_app(app)
