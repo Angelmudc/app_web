@@ -13,6 +13,8 @@
   {% if accion == "buscar" %}
     <!-- Formulario de Búsqueda -->
     <form method="post" action="{{ url_for('subir_fotos.subir_fotos', accion='buscar') }}" id="searchForm" class="mb-4">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="input-group input-group-lg">
         <input type="text" class="form-control" name="busqueda" placeholder="Nombre, cédula, teléfono..." required>
         <button class="btn btn-primary" type="submit" id="searchButton">Buscar</button>
@@ -43,6 +45,8 @@
     <!-- Formulario de Subida -->
     <h2 class="mb-4">Subir Imágenes para la Fila {{ fila }}</h2>
     <form method="post" action="{{ url_for('subir_fotos.subir_fotos', accion='subir', fila=fila) }}" enctype="multipart/form-data">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="mb-3">
         <label for="depuracion" class="form-label">Imagen Depuración</label>
         <input class="form-control" type="file" id="depuracion" name="depuracion" required>

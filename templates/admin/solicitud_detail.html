@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Detalle Solicitud {{ solicitud.codigo_solicitud }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1>Solicitud {{ solicitud.codigo_solicitud }}</h1>
+
+  <dl class="row mb-4">
+    <dt class="col-sm-3">Fecha Solicitud</dt>
+    <dd class="col-sm-9">{{ solicitud.fecha_solicitud.strftime('%Y-%m-%d') }}</dd>
+
+    <dt class="col-sm-3">Ciudad / Sector</dt>
+    <dd class="col-sm-9">{{ solicitud.ciudad_sector }}</dd>
+
+    <dt class="col-sm-3">Modalidad</dt>
+    <dd class="col-sm-9">{{ solicitud.modalidad_trabajo }}</dd>
+
+    <dt class="col-sm-3">Estado</dt>
+    <dd class="col-sm-9">{{ solicitud.estado }}</dd>
+
+    <!-- Añade aquí cuantos campos básicos quieras mostrar -->
+  </dl>
+
+  <h2>Historial de Envíos</h2>
+  <table class="table table-striped">
+    <thead>
+      <tr><th>Tipo</th><th>Candidata</th><th>Fecha</th></tr>
+    </thead>
+    <tbody>
+      {% for e in envios %}
+      <tr>
+        <td>{{ e.tipo }}</td>
+        <td>{{ e.candidata.nombre_completo }}</td>
+        <td>{{ e.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="text-center">No hay envíos</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Reemplazos</h2>
+  <table class="table table-bordered">
+    <thead class="table-light">
+      <tr>
+        <th>#</th>
+        <th>Candidata Fallida</th>
+        <th>Motivo</th>
+        <th>Fecha Fallo</th>
+        <th>Oportunidad</th>
+        <th>Inicio Reemplazo</th>
+        <th>Fin Reemplazo</th>
+        <th>Candidata Nueva</th>
+        <th>Nota</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reemplazos %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ r.candidata_old.nombre_completo }}</td>
+        <td>{{ r.motivo_fallo }}</td>
+        <td>{{ r.fecha_fallo.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ 'Sí' if r.oportunidad_nueva else 'No' }}</td>
+        <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
+        <td>{{ r.fecha_fin_reemplazo and r.fecha_fin_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
+        <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}</td>
+        <td>{{ r.nota_adicional or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="text-center">No hay reemplazos</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}"
+     class="btn btn-secondary">← Volver al cliente</a>
+</div>
+{% endblock %}

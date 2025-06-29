@@ -11,6 +11,8 @@
   {% if accion == 'buscar' %}
     <!-- Form de búsqueda -->
     <form method="POST" action="{{ url_for('referencias') }}" class="mb-4">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="input-group">
         <input type="text" name="busqueda" class="form-control" placeholder="Ingrese nombre o cédula" required>
         <button class="btn btn-primary">Buscar</button>
@@ -51,6 +53,8 @@
 
     <!-- Form para editar referencias -->
     <form method="POST" action="{{ url_for('referencias') }}">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
       <div class="mb-3">
         <label class="form-label">Referencias Laborales</label>

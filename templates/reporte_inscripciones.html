@@ -1,149 +1,44 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reporte de Inscripciones - {{ mes }}/{{ anio }}</title>
-  <style>
-    :root {
-      --primary: #1A5789;
-      --accent:  #00AECF;
-      --light:   #ffffff;
-      --bg:      #e8f6fa;
-      --text:    #343a40;
-      --radius:  8px;
-      --pad:     16px;
-      --font:    1rem;
-    }
-    * { box-sizing: border-box; margin:0; padding:0; }
-    body {
-      font-family: Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      padding: var(--pad);
-      font-size: var(--font);
-      line-height: 1.5;
-    }
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: var(--light);
-      padding: 2rem;
-      border-radius: var(--radius);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    h1, h2 {
-      color: var(--primary);
-      margin-bottom: 1rem;
-    }
-    form {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-    form label {
-      flex: 1 0 100%;
-      text-align: left;
-      font-weight: bold;
-      margin-bottom: .5rem;
-    }
-    form input, form select, form button {
-      flex: 1 1 200px;
-      padding: .75rem;
-      border: 1px solid #ccc;
-      border-radius: var(--radius);
-      font-size: var(--font);
-    }
-    form button {
-      background: var(--primary);
-      color: var(--light);
-      border: none;
-      cursor: pointer;
-      transition: background .3s;
-    }
-    form button:hover {
-      background: var(--accent);
-    }
-    .btn-download, .volver {
-      display: inline-block;
-      margin-top: 1.5rem;
-      padding: .75rem 1.5rem;
-      background: var(--primary);
-      color: var(--light);
-      text-decoration: none;
-      border-radius: var(--radius);
-      transition: background .3s;
-      font-weight: bold;
-    }
-    .btn-download:hover,
-    .volver:hover {
-      background: var(--accent);
-    }
-    .table-responsive {
-      width: 100%;
-      overflow-x: auto;
-      margin-bottom: 1.5rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 800px;
-    }
-    th, td {
-      padding: .75rem;
-      border: 1px solid #ddd;
-      text-align: left;
-    }
-    th {
-      background: var(--accent);
-      color: var(--light);
-      position: sticky;
-      top: 0;
-      z-index: 1;
-    }
-    .mensaje {
-      margin: 1.5rem 0;
-      color: #d9534f;
-      font-weight: bold;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>📋 Reporte de Inscripciones</h1>
+{% extends "base.html" %}
+{% block title %}📋 Reporte de Inscripciones{% endblock %}
 
-    <form method="get" action="{{ url_for('reporte_inscripciones') }}">
-      <label for="mes">Mes (1–12)</label>
-      <input type="number" id="mes" name="mes" min="1" max="12" value="{{ mes }}" required />
+{% block content %}
+<div class="container py-5">
+  <h1>📋 Reporte de Inscripciones</h1>
 
-      <label for="anio">Año</label>
-      <input type="number" id="anio" name="anio" value="{{ anio }}" required />
+  <form method="get" action="{{ url_for('reporte_inscripciones') }}" class="row g-3 mb-4">
+    <!-- CSRF Token -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-      <button type="submit">Buscar</button>
-    </form>
+    <div class="col-sm-6">
+      <label for="mes" class="form-label">Mes (1–12)</label>
+      <input type="number" id="mes" name="mes" min="1" max="12" value="{{ mes }}" class="form-control" required />
+    </div>
+    <div class="col-sm-6">
+      <label for="anio" class="form-label">Año</label>
+      <input type="number" id="anio" name="anio" value="{{ anio }}" class="form-control" required />
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Buscar</button>
+    </div>
+  </form>
 
-    {% if reporte_html %}
-      <h2>Resultados para {{ mes }}/{{ anio }}</h2>
-      <div class="table-responsive">
-        {{ reporte_html | safe }}
-      </div>
-      <a 
-        class="btn-download"
-        href="{{ url_for('reporte_inscripciones', mes=mes, anio=anio, descargar='1') }}"
-      >
-        📥 Descargar Excel
-      </a>
-    {% else %}
-      {% if mensaje %}
-        <p class="mensaje">{{ mensaje }}</p>
-      {% else %}
-        <p class="mensaje">No se encontraron inscripciones en este período.</p>
-      {% endif %}
-    {% endif %}
+  {% if reporte_html %}
+    <h2 class="mt-4">Resultados para {{ mes }}/{{ anio }}</h2>
+    <div class="table-responsive mb-3">
+      {{ reporte_html | safe }}
+    </div>
+    <a 
+      href="{{ url_for('reporte_inscripciones', mes=mes, anio=anio, descargar='1') }}"
+      class="btn btn-outline-success"
+    >
+      📥 Descargar Excel
+    </a>
+  {% else %}
+    <p class="alert alert-warning mt-4">
+      {{ mensaje or 'No se encontraron inscripciones en este período.' }}
+    </p>
+  {% endif %}
 
-    <a href="{{ url_for('home') }}" class="volver">🏠 Volver al Inicio</a>
-  </div>
-</body>
-</html>
+  <a href="{{ url_for('home') }}" class="btn btn-secondary mt-4">🏠 Volver al Inicio</a>
+</div>
+{% endblock %}

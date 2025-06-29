@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Nuevo Cliente' if nuevo else 'Editar Cliente' }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1>{{ 'Nuevo Cliente' if nuevo else 'Editar Cliente' }}</h1>
+  <form method="POST">
+    {{ cliente_form.hidden_tag() }}
+
+    <div class="mb-3">
+      {{ cliente_form.codigo.label(class="form-label") }}
+      {% if not nuevo %}
+        {{ cliente_form.codigo(class="form-control", readonly=true) }}
+      {% else %}
+        {{ cliente_form.codigo(class="form-control") }}
+      {% endif %}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.nombre_completo.label(class="form-label") }}
+      {{ cliente_form.nombre_completo(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.email.label(class="form-label") }}
+      {{ cliente_form.email(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.telefono.label(class="form-label") }}
+      {{ cliente_form.telefono(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.direccion.label(class="form-label") }}
+      {{ cliente_form.direccion(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.ciudad.label(class="form-label") }}
+      {{ cliente_form.ciudad(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.provincia.label(class="form-label") }}
+      {{ cliente_form.provincia(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.notas_admin.label(class="form-label") }}
+      {{ cliente_form.notas_admin(class="form-control", rows=3) }}
+    </div>
+
+    <button type="submit" class="btn btn-primary">
+      {{ 'Crear Cliente' if nuevo else 'Guardar Cambios' }}
+    </button>
+    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary ms-2">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

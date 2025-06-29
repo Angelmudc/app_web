@@ -20,9 +20,10 @@ from sqlalchemy import or_, cast, String
 
 import requests
 from fpdf import FPDF
-
 from models import Candidata
 from config_app import create_app, db
+
+from flask_wtf.csrf import CSRFProtect
 
 # —————— Normaliza cédula ——————
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
@@ -57,6 +58,8 @@ cache = Cache(app)
 # ─── 3) Arrancamos Flask-Migrate ─────────────────────────────────────
 migrate = Migrate(app, db)
 
+csrf = CSRFProtect(app)
+
 # ─── 4) Configuración de Cloudinary ─────────────────────────────────
 import cloudinary
 cloudinary.config(
@@ -65,7 +68,6 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
 )
 
-# ——— Usuarios y sus roles ———
 USUARIOS = {
     "angel":    {"pwd": generate_password_hash("12345"), "role": "admin"},
     "divina":   {"pwd": generate_password_hash("67890"), "role": "admin"},
@@ -93,52 +95,6 @@ def static_files(filename):
     return send_from_directory(os.path.join(app.root_path, 'static'), filename)
 
 
-def buscar_candidata(busqueda):
-    """
-    Función mejorada para buscar candidatas:
-    - Si 'busqueda' empieza con "can-", se interpreta como código y se realiza una coincidencia exacta en la columna de código.
-    - De lo contrario, se busca de forma flexible por nombre (coincidencia parcial).
-    
-    Retorna una lista de diccionarios con los campos: fila_index, codigo, nombre, cedula y telefono.
-    """
-    try:
-        # Obtiene todos los datos de la hoja
-        datos = sheet.get_all_values()
-        if not datos or len(datos) < 2:
-            return []
-
-        resultados = []
-        termino = busqueda.strip().lower()
-
-        # Si se busca por código (ej.: "CAN-000123"), la búsqueda es exacta en la columna P (índice 15)
-        if termino.startswith("can-"):
-            for index, fila in enumerate(datos[1:], start=2):
-                if len(fila) > 15 and fila[15].strip().lower() == termino:
-                    resultados.append({
-                        "fila_index": index,
-                        "codigo": fila[15],
-                        "nombre": fila[1] if len(fila) > 1 else "",
-                        "cedula": fila[14] if len(fila) > 14 else "",
-                        "telefono": fila[3] if len(fila) > 3 else ""
-                    })
-        else:
-            # Búsqueda flexible por nombre (columna B, índice 1)
-            for index, fila in enumerate(datos[1:], start=2):
-                if len(fila) > 1 and termino in fila[1].strip().lower():
-                    resultados.append({
-                        "fila_index": index,
-                        "codigo": fila[15] if len(fila) > 15 else "",
-                        "nombre": fila[1],
-                        "cedula": fila[14] if len(fila) > 14 else "",
-                        "telefono": fila[3] if len(fila) > 3 else ""
-                    })
-        return resultados
-
-    except Exception as e:
-        logging.error(f"Error en buscar_candidata: {str(e)}", exc_info=True)
-        return []
-
-
 
 def normalizar_texto(texto):
     """
@@ -154,211 +110,6 @@ def extend_row(row, min_length=24):
     if len(row) < min_length:
         row.extend([""] * (min_length - len(row)))
     return row
-
-def extraer_candidata(fila, idx):
-    """
-    Extrae la información relevante de la fila y la devuelve como diccionario.
-    Se asume:
-      - Nombre: Columna B (índice 1)
-      - Teléfono: Columna D (índice 3)
-      - Dirección: Columna E (índice 4)
-      - Modalidad: Columna F (índice 5)
-      - Años de experiencia: Columna I (índice 8)
-      - Áreas de experiencia: Columna J (índice 9)
-      - Cédula: Columna O (índice 14)
-      - Código: Columna P (índice 15)
-      - Porciento: Columna X (índice 23)
-    """
-    fila = extend_row(fila, 24)
-    return {
-        'fila_index': idx,
-        'codigo': fila[15].strip() if len(fila) > 15 else "",
-        'nombre': fila[1].strip() if len(fila) > 1 else "",
-        'telefono': fila[3].strip() if len(fila) > 3 else "",
-        'direccion': fila[4].strip() if len(fila) > 4 else "",
-        'modalidad': fila[5].strip() if len(fila) > 5 else "",
-        'experiencia_anos': fila[8].strip() if len(fila) > 8 else "",
-        'areas_experiencia': fila[9].strip() if len(fila) > 9 else "",
-        'cedula': fila[14].strip() if len(fila) > 14 else "",
-        'porciento': fila[23].strip() if len(fila) > 23 else ""
-    }
-
-
-def filtrar_candidata(candidata, filtros):
-    # Retorna True si la candidata cumple con todos los filtros.
-    ciudad = filtros.get("ciudad")
-    modalidad = filtros.get("modalidad")
-    experiencia = filtros.get("experiencia_anos")
-    areas = filtros.get("areas_experiencia")
-    return ((not ciudad or ciudad in candidata.get("direccion", "").lower()) and
-            (not modalidad or modalidad in candidata.get("modalidad", "").lower()) and
-            (not experiencia or experiencia in candidata.get("experiencia_anos", "").lower()) and
-            (not areas or areas in candidata.get("areas_experiencia", "").lower()))
-
-def cumple_filtros(candidata, filtros):
-    """
-    Verifica si la candidata cumple con los filtros aplicados en forma parcial.
-    Se normalizan tanto el valor de la candidata como el término de filtro para que:
-      - No importe mayúsculas/minúsculas.
-      - Se eliminen acentos.
-    Se usan las claves: 'direccion', 'modalidad', 'experiencia_anos' y 'areas_experiencia'.
-    """
-    for clave in ['direccion', 'modalidad', 'experiencia_anos', 'areas_experiencia']:
-        termino = filtros.get(clave, "")
-        if termino:
-            termino_norm = normalizar_texto(termino)
-            valor_norm = normalizar_texto(candidata.get(clave, ""))
-            if termino_norm not in valor_norm:
-                return False
-    return True
-
-def obtener_datos_filtrar():
-    try:
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Z"
-        ).execute()
-        return result.get('values', [])
-    except Exception as e:
-        logging.error(f"Error al obtener datos para filtrar: {e}", exc_info=True)
-        return []
-
-
-def buscar_candidatas_inscripcion(query, datos):
-    """
-    Busca candidatas en los datos cargados.
-    Se asume:
-      - Nombre en columna B (índice 1)
-      - Cédula en columna O (índice 14)
-      - Código en columna P (índice 15)
-    Retorna una lista de diccionarios con fila_index, código, nombre y cédula.
-    """
-    resultados = []
-    query_lower = query.strip().lower()
-    for idx, fila in enumerate(datos[1:], start=2):  # se omite encabezado
-        nombre = fila[1].strip().lower() if len(fila) > 1 else ""
-        cedula = fila[14].strip().lower() if len(fila) > 14 else ""
-        if query_lower in nombre or query_lower in cedula:
-            resultados.append({
-                "fila_index": idx,
-                "codigo": fila[15] if len(fila) > 15 else "",
-                "nombre": fila[1] if len(fila) > 1 else "",
-                "cedula": fila[14] if len(fila) > 14 else ""
-            })
-    return resultados
-
-def filtrar_por_busqueda(valores, termino):
-    resultados = []
-    termino = termino.lower()
-    # Omitimos las dos primeras filas y enumeramos desde 3
-    for index, fila in enumerate(valores[2:], start=3):
-        if len(fila) > 1:
-            nombre = fila[1].strip().lower()  # Se asume que el nombre está en la columna B
-            if termino in nombre:
-                resultados.append({
-                    'fila_index': index,  # index = la fila real en la hoja
-                    'nombre': fila[1],
-                    'telefono': fila[3] if len(fila) > 3 else "No especificado",
-                    'cedula': fila[14] if len(fila) > 14 else "No especificado",
-                })
-    return resultados
-
-
-
-def cargar_detalles_candidata(valores, candidata_param):
-    try:
-        fila_index = int(candidata_param)  # Por ejemplo, si se selecciona la fila 3, fila_index = 3
-        # La fila 2 es encabezado, por lo que la primera fila de datos es la 3 y se corresponde con valores[1] si la hoja empieza en la fila 2.
-        # Pero en tu caso, si la hoja tiene Fila1 VACÍA, Fila2 = Encabezado y Fila3 = Datos,
-        # entonces para la fila 3 (datos) se debe acceder a valores[3 - 2] = valores[1].
-        fila = valores[fila_index - 2]
-    except (ValueError, IndexError):
-        return None
-    return {
-        'fila_index': fila_index,
-        'nombre': fila[1] if len(fila) > 1 else "No especificado",
-        'telefono': fila[3] if len(fila) > 3 else "No especificado",
-        'cedula': fila[14] if len(fila) > 14 else "No especificado",
-    }
-
-
-
-def filtrar_candidatas(ciudad="", modalidad="", experiencia="", areas=""):
-    """
-    Filtra candidatas basándose en los criterios ingresados.
-    - Permite coincidencias parciales en la *Ciudad* (Columna E).
-    - Solo muestra candidatas con inscripción en "Sí" (Columna R).
-    """
-    try:
-        datos = obtener_datos_filtrar()
-        resultados = []
-
-        for fila in datos:
-            if len(fila) < 16:  # Asegurar que haya suficientes columnas
-                continue
-
-            # 🔹 Extraer valores y normalizar
-            ciudad_fila = normalizar_texto(fila[0])  # Columna E: Ciudad/Dirección
-            modalidad_fila = normalizar_texto(fila[1])  # Columna F: Modalidad
-            experiencia_fila = normalizar_texto(fila[2])  # Columna I: Años de experiencia
-            areas_fila = normalizar_texto(fila[3])  # Columna J: Áreas de experiencia
-            inscripcion_fila = fila[4].strip().lower()  # Columna R: Inscripción
-
-            # 🔹 Solo mostrar inscritas
-            if inscripcion_fila != "si":
-                continue
-
-            # 🔹 Validar filtros
-            cumple_ciudad = not ciudad or ciudad in ciudad_fila
-            cumple_modalidad = not modalidad or modalidad == modalidad_fila
-            cumple_experiencia = not experiencia or experiencia == experiencia_fila
-            cumple_areas = not areas or areas in areas_fila
-
-            if cumple_ciudad and cumple_modalidad and cumple_experiencia and cumple_areas:
-                resultados.append({
-                    'ciudad': fila[0],  # Columna E
-                    'modalidad': fila[1],  # Columna F
-                    'experiencia': fila[2],  # Columna I
-                    'areas_experiencia': fila[3],  # Columna J
-                })
-
-        return resultados
-
-    except Exception as e:
-        print(f"Error al filtrar candidatas: {e}")
-        return []
-
-  # ─────────────────────────────────────────────────────────────
-# MÓDULO: OTROS EMPLEOS
-# ─────────────────────────────────────────────────────────────
-# Este bloque trabaja sobre la hoja "Otros" ubicada en:
-# https://docs.google.com/spreadsheets/d/14cB_82oGO5eBvt5QyrfGkSkoVrTRmfVHpI5K-Dzyilc/edit?usp=sharing
-#
-# La hoja tiene la siguiente estructura:
-#
-# A: Marca temporal  
-# B: Dirección de correo electrónico  
-# C: Nombre completo  
-# D: ¿Qué edad tienes?  
-# E: Número de teléfono  
-# F: Dirección completa  
-# G: Cédula  
-# H: Nivel educativo alcanzado  
-# I: Carrera o especialidad (si aplica)  
-# J: Idioma que dominas  
-# K: ¿Sabe usar computadora?  
-# L: ¿Tiene licencia de conducir?  
-# M: Habilidades o conocimientos especiales  
-# N: ¿Tiene experiencia laboral?  
-# O: Servicios que está dispuesto(a) a ofrecer  
-# P: Dos contactos de referencias laborales y explicación  
-# Q: Dos referencias familiares y especifique qué relación tiene  
-# R: Términos y Condiciones  
-# S: codigo  
-# T: fecha  
-# U: monto  
-# V: via
-# ─────────────────────────────────────────────────────────────
 
 def get_sheet_otros():
     """
@@ -407,6 +158,10 @@ def generate_next_code_otros():
                 continue
     next_num = max_num + 1
     return f"OPE-{next_num:06d}"
+
+@app.errorhandler(403)
+def forbidden(e):
+    return render_template('errors/403.html'), 403
 
 from flask import render_template, request, redirect, url_for, session
 from werkzeug.security import check_password_hash
@@ -470,6 +225,7 @@ def list_candidatas_db():
         app.logger.exception("Error leyendo desde la DB")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/')
 def home():
     if 'usuario' not in session:
@@ -479,6 +235,7 @@ def home():
         usuario=session['usuario'],
         current_year=datetime.utcnow().year
     )
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -2556,7 +2313,6 @@ def register():
 
     # GET → mostramos el formulario
     return render_template('register.html')
-
 
 
 if __name__ == '__main__':

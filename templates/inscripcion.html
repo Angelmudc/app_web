@@ -3,8 +3,6 @@
 
 {% block title %}Inscripción de Candidatas{% endblock %}
 
-{# Eliminado block head: hereda todo el CSS del base.html #}
-
 {% block content %}
   <div class="container">
     <h1>Inscripción de Candidatas</h1>
@@ -19,6 +17,8 @@
 
     <!-- Formulario de búsqueda -->
     <form method="get" action="{{ url_for('inscripcion') }}">
+      <!-- CSRF Token (aunque es GET, lo incluimos por consistencia) -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label for="buscar">Buscar por nombre, cédula o teléfono:</label>
       <input type="text" id="buscar" name="buscar" placeholder="Ejemplo: Ángel" value="{{ request.args.get('buscar','') }}" required />
       <button class="btn btn-primary mt-2">🔎 Buscar</button>
@@ -53,6 +53,8 @@
 
       <h2>Formulario de Inscripción</h2>
       <form method="post" action="{{ url_for('inscripcion') }}">
+        <!-- CSRF Token -->
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="guardar_inscripcion" value="1" />
         <input type="hidden" name="candidata_id" value="{{ candidata.fila }}" />
 

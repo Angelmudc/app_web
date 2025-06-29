@@ -4,19 +4,10 @@
   <meta charset="UTF-8">
   <title>Registro de Candidata</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-
-  <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-
-  <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" />
-
-  <!-- Estilos personalizados -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-
   <style>
     body {
       font-family: 'Roboto', sans-serif;
@@ -68,6 +59,8 @@
     {% endwith %}
 
     <form method="post" action="{{ url_for('registro_publico') }}">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <!-- Nombre completo -->
       <div class="mb-3">
@@ -124,64 +117,28 @@
       <!-- Años de experiencia -->
       <div class="mb-3">
         <label class="form-label">¿Cuántos años de experiencia laboral tienes? *</label>
-        <div class="form-check">
-          <input class="form-check-input" type="radio" name="anos_experiencia" id="exp_1" value="1 año" required>
-          <label class="form-check-label" for="exp_1">1 año</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="radio" name="anos_experiencia" id="exp_2" value="2 años">
-          <label class="form-check-label" for="exp_2">2 años</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="radio" name="anos_experiencia" id="exp_3" value="3 años o más">
-          <label class="form-check-label" for="exp_3">3 años o más</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="radio" name="anos_experiencia" id="exp_4" value="Sin experiencia">
-          <label class="form-check-label" for="exp_4">Sin experiencia</label>
-        </div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="anos_experiencia" id="exp_1" value="1 año" required><label class="form-check-label" for="exp_1">1 año</label></div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="anos_experiencia" id="exp_2" value="2 años"><label class="form-check-label" for="exp_2">2 años</label></div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="anos_experiencia" id="exp_3" value="3 años o más"><label class="form-check-label" for="exp_3">3 años o más</label></div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="anos_experiencia" id="exp_4" value="Sin experiencia"><label class="form-check-label" for="exp_4">Sin experiencia</label></div>
       </div>
 
       <!-- Áreas de experiencia -->
       <div class="mb-3">
         <label class="form-label">Áreas de experiencia * (marca todas las que correspondan)</label>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_1" value="Limpieza">
-          <label class="form-check-label" for="area_1">Limpieza</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_2" value="Cocina">
-          <label class="form-check-label" for="area_2">Cocina</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_3" value="Niñera">
-          <label class="form-check-label" for="area_3">Niñera</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_4" value="Cuidado de ancianos">
-          <label class="form-check-label" for="area_4">Cuidado de ancianos</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_5" value="Todas las anteriores">
-          <label class="form-check-label" for="area_5">Todas las anteriores</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_6" value="Enfermería">
-          <label class="form-check-label" for="area_6">Enfermería</label>
-        </div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_1" value="Limpieza"><label class="form-check-label" for="area_1">Limpieza</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_2" value="Cocina"><label class="form-check-label" for="area_2">Cocina</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_3" value="Niñera"><label class="form-check-label" for="area_3">Niñera</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_4" value="Cuidado de ancianos"><label class="form-check-label" for="area_4">Cuidado de ancianos</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_5" value="Todas las anteriores"><label class="form-check-label" for="area_5">Todas las anteriores</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="areas_experiencia" id="area_6" value="Enfermería"><label class="form-check-label" for="area_6">Enfermería</label></div>
       </div>
 
       <!-- Sabe planchar -->
       <div class="mb-3">
         <label class="form-label">¿Sabes planchar? *</label>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="radio" name="sabe_planchar" id="planch_si" value="si" required>
-          <label class="form-check-label" for="planch_si">Sí</label>
-        </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="radio" name="sabe_planchar" id="planch_no" value="no">
-          <label class="form-check-label" for="planch_no">No</label>
-        </div>
+        <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="sabe_planchar" id="planch_si" value="si" required><label class="form-check-label" for="planch_si">Sí</label></div>
+        <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="sabe_planchar" id="planch_no" value="no"><label class="form-check-label" for="planch_no">No</label></div>
       </div>
 
       <!-- Referencias laborales -->
@@ -202,14 +159,8 @@
       <div class="mb-3">
         <label class="form-label">¿Aceptas que cobremos un % de tu sueldo como honorarios? *</label>
         <div class="form-text">Es un único pago que te explicamos al final</div>
-        <div class="form-check">
-          <input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_si" value="1" required>
-          <label class="form-check-label" for="acepta_si">Sí</label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_no" value="0">
-          <label class="form-check-label" for="acepta_no">No</label>
-        </div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_si" value="1" required><label class="form-check-label" for="acepta_si">Sí</label></div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="acepta_porcentaje_sueldo" id="acepta_no" value="0"><label class="form-check-label" for="acepta_no">No</label></div>
       </div>
 
       <!-- Cédula -->
@@ -231,7 +182,6 @@
     </div>
   </footer>
 
-  <!-- Bootstrap JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

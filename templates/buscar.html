@@ -1,9 +1,7 @@
-{# buscar.html #}
+{# templates/buscar.html #}
 {% extends "base.html" %}
 
 {% block title %}🔍 Buscar y ✏️ Editar Candidata{% endblock %}
-
-{# Eliminado block head: hereda todo del base.html #}
 
 {% block content %}
   <div class="container py-4">
@@ -19,6 +17,7 @@
     {% if not candidata %}
       <h2>🔍 Buscar Candidata</h2>
       <form method="GET" class="row g-2 mb-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="col-auto">
           <input name="busqueda" class="form-control" placeholder="Busca nombre, edad, teléfono..." value="{{ busqueda or '' }}">
         </div>
@@ -47,6 +46,7 @@
     {% else %}
       <h2>✏️ Editar Candidata</h2>
       <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="busqueda" value="{{ busqueda or '' }}">
         <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
         <input type="hidden" name="guardar_edicion" value="1">

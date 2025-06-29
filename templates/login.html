@@ -115,13 +115,19 @@
 <body>
   <div class="container">
     <!-- Logo (ajusta la ruta al logo según corresponda) -->
-    <img src="/static/logo_nuevo.png" alt="Logo" class="logo">
+    <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Logo" class="logo">
+
     <h2>Iniciar Sesión</h2>
     <p class="welcome">¡Bienvenido! Por favor, ingresa tus credenciales para continuar.</p>
+
     {% if mensaje %}
       <p class="mensaje">{{ mensaje }}</p>
     {% endif %}
-    <form method="POST" action="/login" autocomplete="off">
+
+    <form method="POST" action="{{ url_for('login') }}" autocomplete="off">
+      <!-- CSRF Token oculto -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
       <input type="text" name="usuario" placeholder="Usuario" required autocomplete="off">
       <input type="password" name="clave" placeholder="Contraseña" required autocomplete="off">
       <button type="submit">Entrar</button>

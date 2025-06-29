@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Gestionar Plan – {{ solicitud.codigo_solicitud }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1>Gestionar Plan para {{ solicitud.codigo_solicitud }}</h1>
+  <form method="POST">
+    {{ form.csrf_token }}
+
+    <div class="mb-3">
+      <label for="tipo_plan" class="form-label">Plan</label>
+      <select id="tipo_plan" name="tipo_plan" class="form-control">
+        <option value="Básico"    {% if solicitud.tipo_plan == 'Básico'    %}selected{% endif %}>Básico</option>
+        <option value="Premium"   {% if solicitud.tipo_plan == 'Premium'   %}selected{% endif %}>Premium</option>
+        <option value="VIP"       {% if solicitud.tipo_plan == 'VIP'       %}selected{% endif %}>VIP</option>
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label for="abono" class="form-label">Abono</label>
+      <input
+        id="abono"
+        name="abono"
+        type="text"
+        class="form-control"
+        value="{{ form.abono.data or solicitud.abono or '' }}"
+        placeholder="Introduzca el monto abonado"
+      >
+    </div>
+
+    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+    <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}"
+       class="btn btn-secondary ms-2">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

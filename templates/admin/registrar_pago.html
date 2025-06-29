@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Registrar Pago{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1>Registrar Pago para {{ solicitud.codigo_solicitud }}</h1>
+
+  <form method="POST">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+      {{ form.candidata_id.label(class="form-label") }}
+      {{ form.candidata_id(class="form-select") }}
+    </div>
+
+    <div class="mb-3">
+      {{ form.monto_pagado.label(class="form-label") }}
+      {{ form.monto_pagado(class="form-control") }}
+    </div>
+
+    <button type="submit" class="btn btn-success">{{ form.submit.label.text }}</button>
+    <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}"
+       class="btn btn-secondary">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

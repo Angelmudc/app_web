@@ -17,6 +17,9 @@
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css"
   />
 
+  <!-- Select2 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/css/select2.min.css" rel="stylesheet" />
+
   <!-- Estilos personalizados -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 
@@ -30,8 +33,7 @@
       margin: 0;
       padding: 0;
     }
-
-    /* Navbar con efecto hover y transición */
+    /* Navbar */
     .navbar {
       transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease;
       background-color: #343a40;
@@ -47,8 +49,7 @@
       transform: scale(1.1);
       color: #ffc107 !important;
     }
-
-    /* Hero / Jumbotron con animación de entrada */
+    /* Hero */
     .hero-section {
       padding: 60px 0;
       text-align: center;
@@ -58,8 +59,7 @@
       from { opacity: 0; transform: translateY(-50px); }
       to { opacity: 1; transform: translateY(0); }
     }
-
-    /* Tarjetas mejoradas */
+    /* Tarjetas */
     .card {
       border: none;
       border-radius: 10px;
@@ -88,8 +88,7 @@
       font-size: 0.95rem;
       color: #666;
     }
-
-    /* Botones con bordes redondeados y efecto zoom */
+    /* Botones */
     .btn {
       border-radius: 50px;
       transition: background-color 0.3s, transform 0.3s;
@@ -97,8 +96,7 @@
     .btn:hover {
       transform: scale(1.05);
     }
-
-    /* Alerta con animación de aparición */
+    /* Alerta */
     .alert {
       animation: fadeIn 1s ease-out;
     }
@@ -106,8 +104,7 @@
       from { opacity: 0; }
       to { opacity: 1; }
     }
-
-    /* Footer con fondo oscuro y texto claro */
+    /* Footer */
     footer {
       background-color: #343a40;
       color: #fff;
@@ -118,7 +115,7 @@
   {% block head %}{% endblock %}
 </head>
 <body>
-  <!-- Navbar moderno -->
+  <!-- Navbar -->
   <nav class="navbar navbar-expand-lg navbar-dark shadow-sm fixed-top">
     <div class="container">
       <a class="navbar-brand" href="{{ url_for('home') }}">
@@ -129,38 +126,20 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ms-auto">
-          <!-- Agrega o ajusta estos enlaces según tus rutas reales -->
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('home') }}">Inicio</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('buscar_candidata') }}">Buscar/Editar</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('inscripcion') }}">Inscripción</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('porciento') }}">Porciento</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('pagos') }}">Pagos</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('solicitudes') }}">Solicitudes</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('otros_listar') }}">Otros Empleos</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('register') }}">Registrar</a>
-          </li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('home') }}">Inicio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('buscar_candidata') }}">Buscar/Editar</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('inscripcion') }}">Inscripción</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('porciento') }}">Porciento</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('pagos') }}">Pagos</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('solicitudes') }}">Solicitudes</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('otros_listar') }}">Otros Empleos</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('register') }}">Registrar</a></li>
         </ul>
       </div>
     </div>
   </nav>
 
-  <!-- Espacio para que el contenido no quede oculto detrás del navbar fijo -->
-  <div style="height: 70px;"></div>
+  <div style="height:70px;"></div>
 
   {% block hero %}{% endblock %}
 
@@ -170,23 +149,27 @@
         {% for category, text in messages %}
           <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
             {{ text }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
           </div>
         {% endfor %}
       {% endif %}
     {% endwith %}
-
     {% block content %}{% endblock %}
   </main>
 
   <footer class="text-center">
     <div class="container">
-      <small>&copy; {{ current_year if current_year else "2025" }} Doméstica del Cibao A&amp;D. Todos los derechos reservados.</small>
+      <small>&copy; {{ current_year or "2025" }} Doméstica del Cibao A&amp;D. Todos los derechos reservados.</small>
     </div>
   </footer>
 
   <!-- Bootstrap JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- jQuery (necesario para Select2) -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <!-- Select2 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/js/select2.min.js"></script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

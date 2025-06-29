@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reporte de Pagos Pendientes</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <style>
     :root {
       --primary-color: #1A5789;
@@ -120,7 +121,7 @@
           <tbody>
             {% for pago in pagos_pendientes %}
             <tr>
-              <td>{{ pago.nombre }}</td>
+              <td>{{ pago.nombre_completo }}</td>
               <td>{{ pago.cedula }}</td>
               <td>{{ pago.codigo }}</td>
               <td>{{ pago.ciudad }}</td>
@@ -135,7 +136,7 @@
       </div>
     {% endif %}
 
-    <a href="{{ url_for('generar_pdf') }}" class="btn">Generar PDF</a>
+    <a href="{{ url_for('reporte_pagos') }}" class="btn">🔄 Refrescar</a>
     <a href="{{ url_for('home') }}" class="btn">🏠 Volver al Inicio</a>
   </div>
 </body>

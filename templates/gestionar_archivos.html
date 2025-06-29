@@ -13,6 +13,8 @@
   {% if accion == "buscar" %}
     <!-- Formulario de Búsqueda -->
     <form method="post" action="{{ url_for('gestionar_archivos', accion='buscar') }}" id="searchForm" class="mb-4">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="input-group input-group-lg">
         <input type="text" class="form-control" name="busqueda" placeholder="Nombre, cédula, teléfono..." required>
         <button class="btn btn-primary" type="submit" id="searchButton">Buscar</button>

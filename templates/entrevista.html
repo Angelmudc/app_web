@@ -16,7 +16,8 @@
   {# ——— ETAPA BUSCAR ——— #}
   {% if etapa=='buscar' %}
     <form method="post" class="d-flex mb-4">
-      <input type="text" name="busqueda" class="form-control me-2" placeholder="Nombre o cédula">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="busqueda" class="form-control me-2" placeholder="Nombre o cédula" required>
       <button class="btn btn-primary">Buscar</button>
     </form>
     {% if resultados %}
@@ -49,7 +50,10 @@
   {# ——— ETAPA FORMULARIO ——— #}
   {% if etapa=='formulario' %}
     <h3>{{ titulo }} — {{ candidata.nombre_completo }}</h3>
-    <form id="entrevistaForm" method="post" action="{{ url_for('entrevista') }}?fila={{ candidata.fila }}&tipo={{ tipo }}">
+    <form id="entrevistaForm"
+          method="post"
+          action="{{ url_for('entrevista') }}?fila={{ candidata.fila }}&tipo={{ tipo }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% for p in preguntas %}
         <div class="mb-3">
           <label class="form-label">{{ p.enunciado }}</label>
@@ -57,16 +61,25 @@
             <div>
               {% for opt in p.opciones %}
                 <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="{{ p.id }}"
-                         value="{{ opt }}" required>
+                  <input class="form-check-input"
+                         type="radio"
+                         name="{{ p.id }}"
+                         value="{{ opt }}"
+                         required>
                   <label class="form-check-label">{{ opt }}</label>
                 </div>
               {% endfor %}
             </div>
           {% elif p.tipo in ['texto_largo','textarea_grande'] %}
-            <textarea class="form-control" name="{{ p.id }}" rows="3" required></textarea>
+            <textarea class="form-control"
+                      name="{{ p.id }}"
+                      rows="3"
+                      required></textarea>
           {% else %}
-            <input type="text" class="form-control" name="{{ p.id }}" required>
+            <input type="text"
+                   class="form-control"
+                   name="{{ p.id }}"
+                   required>
           {% endif %}
         </div>
       {% endfor %}

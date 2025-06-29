@@ -1,69 +1,214 @@
-﻿# models.py
-from config_app import db
+﻿from config_app import db
 from datetime import datetime
-from sqlalchemy import CheckConstraint, LargeBinary, text
+
+# Para server_default=text(...)
+from sqlalchemy import text, LargeBinary
+
+# Alias para no confundir con flask_wtf.Enum
+from sqlalchemy import Enum as SAEnum
+
+# ARRAY nativo de Postgres
+from sqlalchemy.dialects.postgresql import ARRAY
+
+# Si tienes modelos que heredan de UserMixin:
+from flask_login import UserMixin
+
 
 class Candidata(db.Model):
     __tablename__ = 'candidatas'
 
-    # ΓöÇΓöÇΓöÇ Campos b├ísicos ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    fila                           = db.Column(db.Integer,   primary_key=True)
-    marca_temporal                 = db.Column(db.DateTime,  default=datetime.utcnow, nullable=False)
-    nombre_completo                = db.Column(db.String(200), nullable=False)
-    edad                           = db.Column(db.String(50))
-    numero_telefono                = db.Column(db.String(50))
-    direccion_completa             = db.Column(db.String(300))
-    modalidad_trabajo_preferida    = db.Column(db.String(100))
-    rutas_cercanas                 = db.Column(db.String(200))
-    empleo_anterior                = db.Column(db.Text)
-    anos_experiencia               = db.Column(db.String(50))
-    areas_experiencia              = db.Column(db.Text)
-    sabe_planchar                  = db.Column(db.Boolean, server_default=text('false'), nullable=False)
-    contactos_referencias_laborales= db.Column(db.Text)
-    referencias_familiares_detalle = db.Column(db.Text)
-
-    # ΓöÇΓöÇΓöÇ Inscripci├│n y pagos ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    acepta_porcentaje_sueldo = db.Column(
-    db.Boolean,
-    server_default=text('false'),
-    nullable=False,
-    comment="Si acepta que se cobre un porcentaje de su sueldo (true=S├¡, false=No)"
+    fila                            = db.Column(db.Integer, primary_key=True)
+    marca_temporal                  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    nombre_completo                 = db.Column(db.String(200), nullable=False)
+    edad                            = db.Column(db.String(50))
+    numero_telefono                 = db.Column(db.String(50))
+    direccion_completa              = db.Column(db.String(300))
+    modalidad_trabajo_preferida     = db.Column(db.String(100))
+    rutas_cercanas                  = db.Column(db.String(200))
+    empleo_anterior                 = db.Column(db.Text)
+    anos_experiencia                = db.Column(db.String(50))
+    areas_experiencia               = db.Column(db.Text)
+    sabe_planchar                   = db.Column(db.Boolean, server_default=text('false'), nullable=False)
+    contactos_referencias_laborales = db.Column(db.Text)
+    referencias_familiares_detalle  = db.Column(db.Text)
+    acepta_porcentaje_sueldo        = db.Column(
+        db.Boolean,
+        server_default=text('false'),
+        nullable=False,
+        comment="Si acepta que se cobre un porcentaje de su sueldo (true=Sí, false=No)"
     )
-    cedula                         = db.Column(db.String(50), unique=True, nullable=False, index=True)
-    codigo                         = db.Column(db.String(50), unique=True, index=True)
-    medio_inscripcion              = db.Column(db.String(100))
-    inscripcion                    = db.Column(db.Boolean, server_default=text('false'), nullable=False)
-    monto                          = db.Column(db.Numeric(12, 2))
-    fecha                          = db.Column(db.Date)
-    fecha_de_pago                  = db.Column(db.Date)
-    inicio                         = db.Column(db.Date)
-    monto_total                    = db.Column(db.Numeric(12, 2))
-    porciento                      = db.Column(db.Numeric(8, 2))
-    calificacion                   = db.Column(db.String(100))
+    cedula                          = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    codigo                          = db.Column(db.String(50), unique=True, index=True)
+    medio_inscripcion               = db.Column(db.String(100))
+    inscripcion                     = db.Column(db.Boolean, server_default=text('false'), nullable=False)
+    monto                           = db.Column(db.Numeric(12, 2))
+    fecha                           = db.Column(db.Date)
+    fecha_de_pago                   = db.Column(db.Date)
+    inicio                          = db.Column(db.Date)
+    monto_total                     = db.Column(db.Numeric(12, 2))
+    porciento                       = db.Column(db.Numeric(8, 2))
+    calificacion                    = db.Column(db.String(100))
+    entrevista                      = db.Column(db.Text)
+    depuracion                      = db.Column(LargeBinary)
+    perfil                          = db.Column(LargeBinary)
+    cedula1                         = db.Column(LargeBinary)
+    cedula2                         = db.Column(LargeBinary)
+    referencias_laboral             = db.Column(db.Text)
+    referencias_familiares          = db.Column(db.Text)
 
-    # ΓöÇΓöÇΓöÇ Entrevista ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    entrevista                     = db.Column(db.Text)
-
-    # ΓöÇΓöÇΓöÇ Im├ígenes (ahora almacenadas como BLOB directo) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    depuracion                     = db.Column(LargeBinary)
-    perfil                         = db.Column(LargeBinary)
-    cedula1                        = db.Column(LargeBinary)
-    cedula2                        = db.Column(LargeBinary)
-
-    # ΓöÇΓöÇΓöÇ Referencias finales ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    referencias_laboral            = db.Column(db.Text)
-    referencias_familiares         = db.Column(db.Text)
-
-    __table_args__ = (
-        CheckConstraint(
-            'acepta_porcentaje_sueldo BETWEEN -10000.00 AND 10000.00',
-            name='chk_acepta_porcentaje'
-        ),
-        CheckConstraint(
-            'porciento BETWEEN -10000.00 AND 10000.00',
-            name='chk_porciento'
-        ),
+    solicitudes = db.relationship(
+        'Solicitud',
+        back_populates='candidata',
+        cascade='all, delete-orphan'
     )
 
-    def __repr__(self):
-        return f"<Candidata {self.nombre_completo}>"
+
+class Cliente(db.Model):
+    __tablename__ = 'clientes'
+
+    id                     = db.Column(db.Integer, primary_key=True)
+    codigo               = db.Column(db.String(20), unique=True, nullable=False)
+    nombre_completo        = db.Column(db.String(200), nullable=False)  # nuevo campo
+    created_at             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    email                  = db.Column(db.String(100), nullable=False)
+    telefono               = db.Column(db.String(20),  nullable=False)
+
+    porcentaje_deposito    = db.Column(db.Numeric(5,2), nullable=False, default=0.00)
+    monto_deposito_requerido = db.Column(db.Numeric(10,2))
+    monto_deposito_pagado  = db.Column(db.Numeric(10,2))
+    estado_deposito        = db.Column(
+                                db.Enum('pendiente','confirmado', name='estado_deposito_enum'),
+                                nullable=False,
+                                default='pendiente'
+                             )
+    notas_admin            = db.Column(db.Text)
+
+    # Ubicación
+    direccion              = db.Column(db.Text)
+    ciudad                 = db.Column(db.String(100))
+    provincia              = db.Column(db.String(100))
+
+    # Métricas de solicitudes
+    total_solicitudes      = db.Column(db.Integer,  nullable=False, default=0)
+    fecha_ultima_solicitud = db.Column(db.DateTime, nullable=True)
+    fecha_registro         = db.Column(
+                                db.DateTime,
+                                nullable=False,
+                                default=datetime.utcnow
+                             )
+    fecha_ultima_actividad = db.Column(db.DateTime, nullable=True)
+
+    solicitudes = db.relationship(
+        'Solicitud',
+        back_populates='cliente',
+        order_by='Solicitud.fecha_solicitud.desc()',
+        cascade='all, delete-orphan'
+    )
+
+
+class Solicitud(db.Model):
+    __tablename__ = 'solicitudes'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    cliente_id       = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
+    fecha_solicitud  = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    codigo_solicitud = db.Column(db.String(50), nullable=False, unique=True)
+
+    # Plan y pago
+    tipo_plan        = db.Column(db.String(50), nullable=True)
+    abono            = db.Column(db.String(100), nullable=True)
+    estado = db.Column(
+        SAEnum(
+            'proceso',
+            'activa',
+            'pagada',
+            'cancelada',
+            'reemplazo',          # ← nuevo
+            name='estado_solicitud_enum'
+        ),
+        nullable=False,
+        default='proceso'
+    )
+
+    # Ubicación y rutas
+    ciudad_sector    = db.Column(db.String(200), nullable=False)
+    rutas_cercanas   = db.Column(db.String(200), nullable=True)
+
+    # Detalles de la oferta de trabajo
+    modalidad_trabajo = db.Column(db.String(100), nullable=False)
+    edad_requerida    = db.Column(db.String(50), nullable=False)
+    experiencia       = db.Column(db.Text, nullable=False)
+    horario           = db.Column(db.String(100), nullable=False)
+    funciones         = db.Column(db.Text, nullable=False)
+
+    # Tipo de lugar
+    tipo_lugar       = db.Column(
+                         SAEnum('casa', 'oficina', 'apto', 'otro', name='tipo_lugar_enum'),
+                         nullable=False
+                       )
+
+    # Habitaciones y baños
+    habitaciones     = db.Column(db.Integer, nullable=False)
+    banos            = db.Column(db.Integer, nullable=False)
+    dos_pisos        = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Ocupantes
+    adultos          = db.Column(db.Integer, nullable=False)
+    ninos            = db.Column(db.Integer, nullable=False)
+    edades_ninos     = db.Column(db.String(100), nullable=True)
+
+    # Compensación
+    sueldo           = db.Column(db.String(100), nullable=False)
+    pasaje_aporte    = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Nota adicional
+    nota_cliente     = db.Column(db.Text, nullable=True)
+
+    # ——— NUEVAS COLUMNAS ———
+    areas_comunes = db.Column(
+        ARRAY(db.String(50)),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::VARCHAR[]")
+    )
+    area_otro     = db.Column(
+        db.String(200),
+        nullable=True,
+        default='',
+        server_default=text("''")
+    )
+    # ——————————————————
+
+    # Nuevas columnas para pago total
+    candidata_id     = db.Column(
+                         db.Integer,
+                         db.ForeignKey('candidatas.fila'),
+                         nullable=True
+                       )
+    monto_pagado     = db.Column(db.String(100), nullable=True)
+
+    # Relaciones
+    cliente     = db.relationship('Cliente', back_populates='solicitudes')
+    candidata   = db.relationship('Candidata', back_populates='solicitudes')
+    reemplazos  = db.relationship('Reemplazo', back_populates='solicitud',
+                                  cascade='all, delete-orphan')
+    last_copiado_at = db.Column(db.DateTime, nullable=True)
+
+class Reemplazo(db.Model):
+    __tablename__ = 'reemplazos'
+    id                     = db.Column(db.Integer, primary_key=True)
+    solicitud_id           = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=False)
+    candidata_old_id       = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=False)
+    motivo_fallo           = db.Column(db.Text,    nullable=False)
+    fecha_fallo            = db.Column(db.DateTime,nullable=False, default=datetime.utcnow)
+    oportunidad_nueva      = db.Column(db.Boolean, nullable=False, default=False)
+    fecha_inicio_reemplazo = db.Column(db.DateTime,nullable=True)
+    fecha_fin_reemplazo    = db.Column(db.DateTime,nullable=True)
+    candidata_new_id       = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=True)
+    nota_adicional         = db.Column(db.Text,    nullable=True)
+    created_at             = db.Column(db.DateTime,nullable=False, default=datetime.utcnow)
+    # relaciones:
+    solicitud              = db.relationship('Solicitud', back_populates='reemplazos')
+    candidata_old          = db.relationship('Candidata', foreign_keys=[candidata_old_id])
+    candidata_new          = db.relationship('Candidata', foreign_keys=[candidata_new_id])

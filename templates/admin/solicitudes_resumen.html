@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block title %}Resumen de Solicitudes{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Resumen de Solicitudes</h1>
+    <div>
+      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary me-2">
+        ← Inicio
+      </a>
+      <a href="{{ url_for('admin.copiar_solicitudes') }}" class="btn btn-primary">
+        Copiar Solicitudes
+      </a>
+    </div>
+  </div>
+
+  <div class="row mb-5">
+    <div class="col">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5>En Proceso</h5>
+          <p class="display-6">{{ proc_count }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5>Activas</h5>
+          <p class="display-6">{{ act_count }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5>Pagadas</h5>
+          <p class="display-6">{{ pag_count }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Ingreso por Mes (Solicitudes Pagadas)</h3>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Mes</th>
+        <th># Solicitudes</th>
+        <th>Total Pagado (RD$)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for mes, cantidad, total in stats_mensual %}
+      <tr>
+        <td>{{ mes.strftime('%Y-%m') }}</td>
+        <td>{{ cantidad }}</td>
+        <td>{{ '{:,.2f}'.format(total) }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="text-center">No hay pagos registrados.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</div>
+{% endblock %}

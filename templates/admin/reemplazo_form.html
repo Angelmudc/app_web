@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Activar Reemplazo{% endblock %}
+
+{% block head %}
+  <!-- jQuery UI CSS para Autocomplete -->
+  <link
+    rel="stylesheet"
+    href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css"
+  />
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Activar Reemplazo</h1>
+    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
+      ← Volver
+    </a>
+  </div>
+
+  <form method="POST" novalidate>
+    {{ form.csrf_token }}
+
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        <ul class="mb-0">
+          {% for field, errors in form.errors.items() %}
+            {% for error in errors %}
+              <li><strong>{{ form[field].label.text }}:</strong> {{ error }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <!-- Candidata que falló -->
+    <div class="mb-3">
+      <label for="candidata_old_name" class="form-label">
+        {{ form.candidata_old_name.label.text }}
+      </label>
+      <div class="input-group">
+        {{ form.candidata_old_name(id="candidata_old_name", class="form-control") }}
+        <button type="button" id="btn_search_old" class="btn btn-outline-secondary">
+          <i class="fas fa-search"></i>
+        </button>
+      </div>
+      {{ form.candidata_old_id(id="candidata_old_id") }}
+    </div>
+
+    <!-- Motivo del fallo -->
+    <div class="mb-3">
+      {{ form.motivo_fallo.label(class="form-label") }}
+      {{ form.motivo_fallo(class="form-control", rows=3) }}
+    </div>
+
+    <!-- Fecha de inicio del reemplazo -->
+    <div class="mb-3">
+      {{ form.fecha_inicio_reemplazo.label(class="form-label") }}
+      {{ form.fecha_inicio_reemplazo(class="form-control") }}
+    </div>
+
+    <!-- Botones -->
+    <div class="mt-4">
+      <button type="submit" class="btn btn-primary">
+        {{ form.submit.label.text }}
+      </button>
+      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary ms-2">
+        Cancelar
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <!-- jQuery + jQuery UI -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+  <script>
+    function bindAutocomplete(textSel, hiddenSel, buttonSel) {
+      $(textSel).autocomplete({
+        source: function(req, resp) {
+          $.getJSON("{{ url_for('admin.api_candidatas') }}", { q: req.term })
+           .done(data => {
+             resp(data.results.map(item => ({
+               label: item.text,
+               value: item.text,
+               id:    item.id
+             })));
+           });
+        },
+        minLength: 2,
+        select: function(_e, ui) {
+          $(hiddenSel).val(ui.item.id);
+        }
+      });
+      $(buttonSel).on('click', function(){
+        $(textSel).autocomplete('search', $(textSel).val());
+      });
+    }
+
+    $(function(){
+      bindAutocomplete('#candidata_old_name', '#candidata_old_id', '#btn_search_old');
+    });
+  </script>
+{% endblock %}

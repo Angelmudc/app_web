@@ -3,8 +3,6 @@
 
 {% block title %}🔢 Calcular Porcentaje{% endblock %}
 
-{# Eliminado block head para heredar todos los estilos de base.html #}
-
 {% block content %}
   <div class="container">
     <h2>🔢 Calcular Porcentaje</h2>
@@ -22,6 +20,8 @@
 
     <!-- Búsqueda -->
     <form id="searchForm" method="GET" action="{{ url_for('porciento') }}">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="row g-2 mb-3">
         <div class="col">
           <input type="text"
@@ -87,6 +87,8 @@
         </ul>
 
         <form method="POST" action="{{ url_for('porciento') }}">
+          <!-- CSRF Token -->
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="fila_id" value="{{ candidata.fila }}">
           <div class="row g-3 mb-3">
             <div class="col-md-4">

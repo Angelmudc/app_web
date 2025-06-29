@@ -3,8 +3,6 @@
 
 {% block title %}💰 Gestionar Pagos{% endblock %}
 
-{# Hereda todos los estilos de base.html, no necesita block head #}
-
 {% block content %}
   <div class="container">
     <h2>💰 Gestionar Pagos</h2>
@@ -26,6 +24,8 @@
 
     <!-- Form de búsqueda -->
     <form id="searchForm" method="GET" action="{{ url_for('pagos') }}">
+      <!-- CSRF Token -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="row g-2 mb-4">
         <div class="col">
           <input type="text"
@@ -62,6 +62,7 @@
                 <td>{{ row.telefono or 'No especificado' }}</td>
                 <td>
                   <form method="GET" action="{{ url_for('pagos') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="candidata" value="{{ row.fila }}">
                     <button class="btn btn-sm btn-outline-secondary" type="submit">
                       📄 Ver Detalles
@@ -91,6 +92,8 @@
 
         <!-- Form de actualización -->
         <form method="POST" action="{{ url_for('pagos') }}">
+          <!-- CSRF Token -->
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="fila" value="{{ candidata.fila }}">
           <div class="row g-3 mb-3">
             <div class="col-md-6">

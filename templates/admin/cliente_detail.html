@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}Detalle Cliente{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1>Cliente: {{ cliente.nombre_completo }}</h1>
+
+  <dl class="row mb-4">
+    <dt class="col-sm-3">Código</dt>
+    <dd class="col-sm-9">{{ cliente.codigo }}</dd>
+
+    <dt class="col-sm-3">Email</dt>
+    <dd class="col-sm-9">{{ cliente.email }}</dd>
+
+    <dt class="col-sm-3">Teléfono</dt>
+    <dd class="col-sm-9">{{ cliente.telefono }}</dd>
+
+    <dt class="col-sm-3">Registro</dt>
+    <dd class="col-sm-9">{{ cliente.fecha_registro.strftime('%Y-%m-%d') }}</dd>
+
+    <dt class="col-sm-3">Última solicitud</dt>
+    <dd class="col-sm-9">
+      {{ cliente.fecha_ultima_solicitud and cliente.fecha_ultima_solicitud.strftime('%Y-%m-%d') or '—' }}
+    </dd>
+
+    <dt class="col-sm-3">Total solicitudes</dt>
+    <dd class="col-sm-9">{{ cliente.total_solicitudes }}</dd>
+
+    <dt class="col-sm-3">Notas Admin</dt>
+    <dd class="col-sm-9">{{ cliente.notas_admin or '—' }}</dd>
+  </dl>
+
+  <a href="{{ url_for('admin.nueva_solicitud_admin', cliente_id=cliente.id) }}"
+     class="btn btn-success mb-3">+ Nueva Solicitud</a>
+
+  <h2>Solicitudes</h2>
+  <table class="table table-bordered">
+    <thead class="table-light">
+      <tr>
+        <th>Código</th>
+        <th>Fecha</th>
+        <th>Ciudad/Sector</th>
+        <th>Modalidad</th>
+        <th>Plan</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in cliente.solicitudes %}
+      <tr>
+        <td>{{ s.codigo_solicitud }}</td>
+        <td>{{ s.fecha_solicitud.strftime('%Y-%m-%d') }}</td>
+        <td>{{ s.ciudad_sector }}</td>
+        <td>{{ s.modalidad_trabajo }}</td>
+        <td>{{ s.tipo_plan or '—' }}</td>
+        <td>{{ s.estado or 'proceso' }}</td>
+        <td class="text-nowrap">
+          <a href="{{ url_for('admin.editar_solicitud_admin',
+                               cliente_id=cliente.id, id=s.id) }}"
+             class="btn btn-sm btn-warning">Editar</a>
+          <a href="{{ url_for('admin.gestionar_plan',
+                               cliente_id=cliente.id, id=s.id) }}"
+             class="btn btn-sm btn-info">Gestionar Plan</a>
+          {% if s.estado == 'activa' %}
+          <a href="{{ url_for('admin.registrar_pago',
+                               cliente_id=cliente.id, id=s.id) }}"
+             class="btn btn-sm btn-success">Registrar Pago</a>
+          {% endif %}
+          <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
+             class="btn btn-sm btn-secondary">Reemplazo</a>
+          <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
+             class="btn btn-sm btn-secondary">Ver</a>
+          <form method="post"
+                action="{{ url_for('admin.eliminar_solicitud_admin',
+                                    cliente_id=cliente.id, id=s.id) }}"
+                class="d-inline"
+                onsubmit="return confirm('¿Eliminar solicitud {{ s.codigo_solicitud }}?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-danger">Borrar</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="text-center">No hay solicitudes.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
+    ← Volver a clientes
+  </a>
+</div>
+{% endblock %}
