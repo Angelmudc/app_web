@@ -2314,6 +2314,12 @@ def register():
     # GET → mostramos el formulario
     return render_template('register.html')
 
+from flask import send_from_directory
+
+@app.route('/iw4sjki37enb1kv6qkrxb1tms5l9gl.html')
+def facebook_verification():
+    return send_from_directory('static', 'iw4sjki37enb1kv6qkrxb1tms5l9gl.html')
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
