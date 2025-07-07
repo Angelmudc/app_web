@@ -124,30 +124,35 @@
             </span>
           </td>
           <td class="text-nowrap text-center">
-            <!-- Ver y editar siempre -->
+            <!-- Ver -->
             <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-info me-1" title="Ver">
               <i class="bi bi-eye-fill"></i>
             </a>
+            <!-- Editar -->
             <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-warning me-1" title="Editar">
               <i class="bi bi-pencil-fill"></i>
             </a>
-
-            <!-- Registrar pago: ahora también en 'proceso' -->
+            <!-- Plan / Abono -->
+            {% if s.estado in ['proceso','cancelada'] %}
+            <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
+               class="btn btn-sm btn-outline-primary me-1" title="Gestionar Plan">
+              <i class="bi bi-credit-card-fill"></i>
+            </a>
+            {% endif %}
+            <!-- Registrar pago (activa o proceso) -->
             {% if s.estado in ['activa','proceso'] %}
             <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-success me-1" title="Registrar Pago">
               <i class="bi bi-cash-stack"></i>
             </a>
             {% endif %}
-
             <!-- Reemplazo -->
             <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
                class="btn btn-sm btn-outline-secondary me-1" title="Reemplazo">
               <i class="bi bi-arrow-repeat"></i>
             </a>
-
             <!-- Cancelar -->
             {% if s.estado in ['activa','proceso','reemplazo'] %}
             <form method="post"
