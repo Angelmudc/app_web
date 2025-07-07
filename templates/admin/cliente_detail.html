@@ -124,6 +124,7 @@
             </span>
           </td>
           <td class="text-nowrap text-center">
+            <!-- Ver y editar siempre -->
             <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-info me-1" title="Ver">
               <i class="bi bi-eye-fill"></i>
@@ -132,16 +133,22 @@
                class="btn btn-sm btn-outline-warning me-1" title="Editar">
               <i class="bi bi-pencil-fill"></i>
             </a>
-            {% if s.estado == 'activa' %}
+
+            <!-- Registrar pago: ahora también en 'proceso' -->
+            {% if s.estado in ['activa','proceso'] %}
             <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-success me-1" title="Registrar Pago">
               <i class="bi bi-cash-stack"></i>
             </a>
             {% endif %}
+
+            <!-- Reemplazo -->
             <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
                class="btn btn-sm btn-outline-secondary me-1" title="Reemplazo">
               <i class="bi bi-arrow-repeat"></i>
             </a>
+
+            <!-- Cancelar -->
             {% if s.estado in ['activa','proceso','reemplazo'] %}
             <form method="post"
                   action="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id) }}"
