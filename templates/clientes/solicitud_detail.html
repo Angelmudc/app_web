@@ -1,0 +1,77 @@
+{% extends "clientes/base.html" %}
+{% block title %}Detalle {{ s.codigo_solicitud }}{% endblock %}
+
+{% block content %}
+  <div class="mb-4">
+    <h2>Solicitud {{ s.codigo_solicitud }}</h2>
+    <small class="text-muted">
+      Fecha de envío: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
+      {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
+        — <span class="badge bg-danger">Publicado hoy</span>
+      {% endif %}
+    </small>
+  </div>
+
+  <!-- Detalles principales -->
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header bg-primary text-white">Detalles de la solicitud</div>
+    <ul class="list-group list-group-flush">
+      <li class="list-group-item">
+        <strong>Áreas comunes:</strong> {{ s.areas_comunes|join(', ') }}
+      </li>
+      {% if s.area_otro %}
+        <li class="list-group-item">
+          <strong>Otra área:</strong> {{ s.area_otro }}
+        </li>
+      {% endif %}
+      <li class="list-group-item">
+        <strong>Nota adicional:</strong><br>
+        {{ s.nota_cliente }}
+      </li>
+      <li class="list-group-item">
+        <strong>Estado:</strong> <span class="fw-bold">{{ s.estado }}</span>
+      </li>
+      {% if s.estado == 'cancelada' %}
+        <li class="list-group-item bg-warning">
+          <strong>Motivo cancelación:</strong><br>
+          {{ s.motivo_cancelacion }}
+        </li>
+      {% endif %}
+    </ul>
+  </div>
+
+  <!-- Seguimiento -->
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header bg-light">Seguimiento</div>
+    <ul class="list-group list-group-flush">
+      {% for e in envios %}
+        <li class="list-group-item">
+          <strong>{{ e.tipo }}:</strong>
+          {{ e.candidata }} —
+          {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
+        </li>
+      {% endfor %}
+      {% if cancelaciones %}
+        <li class="list-group-item bg-warning">
+          <strong>Cancelada el {{ cancelaciones[0].fecha.strftime('%d/%m/%Y %H:%M') }}:</strong>
+          {{ cancelaciones[0].motivo }}
+        </li>
+      {% endif %}
+      {% if not envios and not cancelaciones %}
+        <li class="list-group-item text-muted">Sin movimientos aún.</li>
+      {% endif %}
+    </ul>
+  </div>
+
+  <!-- Acciones -->
+  <div class="d-flex">
+    {% if s.estado == 'proceso' %}
+      <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}"
+         class="btn btn-outline-primary me-2">Editar</a>
+      <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}"
+         class="btn btn-outline-danger">Cancelar</a>
+    {% endif %}
+    <a href="{{ url_for('clientes.listar_solicitudes') }}"
+       class="btn btn-outline-secondary ms-auto">Volver</a>
+  </div>
+{% endblock %}

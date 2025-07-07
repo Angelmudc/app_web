@@ -1,3 +1,4 @@
+{# templates/admin/cliente_form.html #}
 {% extends 'base.html' %}
 {% block title %}{{ 'Nuevo Cliente' if nuevo else 'Editar Cliente' }}{% endblock %}
 
@@ -49,6 +50,28 @@
     <div class="mb-3">
       {{ cliente_form.notas_admin.label(class="form-label") }}
       {{ cliente_form.notas_admin(class="form-control", rows=3) }}
+    </div>
+
+    {# Credenciales #}
+    <hr>
+    <div class="mb-3">
+      {{ cliente_form.username.label(class="form-label") }}
+      {{ cliente_form.username(class="form-control", readonly=(not nuevo)) }}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.password.label(class="form-label") }}
+      {{ cliente_form.password(class="form-control") }}
+      {% if not nuevo %}
+        <small class="form-text text-muted">
+          Deja en blanco para conservar la contraseña actual.
+        </small>
+      {% endif %}
+    </div>
+
+    <div class="mb-3">
+      {{ cliente_form.confirm.label(class="form-label") }}
+      {{ cliente_form.confirm(class="form-control") }}
     </div>
 
     <button type="submit" class="btn btn-primary">

@@ -1,0 +1,23 @@
+{% extends "clientes/base.html" %}
+{% block title %}Ayuda & Contacto{% endblock %}
+
+{% block content %}
+  <h2>Ayuda & Contacto</h2>
+
+  <p>Si tienes cualquier duda o necesitas asistencia, escríbenos por:</p>
+  <ul>
+    <li><strong>WhatsApp:</strong> <a href="https://wa.me/1234567890" target="_blank">+1 234 567 890</a></li>
+    <li><strong>Email:</strong> <a href="mailto:soporte@miempresa.com">soporte@miempresa.com</a></li>
+    <li><strong>Teléfono:</strong> (809) 123-4567</li>
+  </ul>
+
+  <h3>Preguntas Frecuentes</h3>
+  <dl>
+    <dt>¿Cómo creo una nueva solicitud?</dt>
+    <dd>Desde el menú “Mis Solicitudes” haz clic en “+ Nueva Solicitud”.</dd>
+    <dt>¿Puedo cancelar yo mismo?</dt>
+    <dd>Sí, hasta que el estado sea <em>proceso</em>. Después admin lo aprueba.</dd>
+    <dt>¿Dónde veo el estado de mi solicitud?</dt>
+    <dd>En “Mis Solicitudes” verás el estado y, al hacer clic, el detalle.</dd>
+  </dl>
+{% endblock %}

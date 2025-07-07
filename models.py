@@ -65,12 +65,20 @@ class Candidata(db.Model):
     )
 
 
-class Cliente(db.Model):
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
+from config_app import db
+
+class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 
     id                     = db.Column(db.Integer, primary_key=True)
-    codigo               = db.Column(db.String(20), unique=True, nullable=False)
-    nombre_completo        = db.Column(db.String(200), nullable=False)  # nuevo campo
+    codigo                 = db.Column(db.String(20), unique=True, nullable=False)
+    username               = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash          = db.Column(db.String(128), nullable=False)
+
+    nombre_completo        = db.Column(db.String(200), nullable=False)
     created_at             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     email                  = db.Column(db.String(100), nullable=False)
@@ -94,11 +102,7 @@ class Cliente(db.Model):
     # Métricas de solicitudes
     total_solicitudes      = db.Column(db.Integer,  nullable=False, default=0)
     fecha_ultima_solicitud = db.Column(db.DateTime, nullable=True)
-    fecha_registro         = db.Column(
-                                db.DateTime,
-                                nullable=False,
-                                default=datetime.utcnow
-                             )
+    fecha_registro         = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     fecha_ultima_actividad = db.Column(db.DateTime, nullable=True)
 
     solicitudes = db.relationship(
@@ -107,6 +111,13 @@ class Cliente(db.Model):
         order_by='Solicitud.fecha_solicitud.desc()',
         cascade='all, delete-orphan'
     )
+
+    def set_password(self, password):
+        # fuerza PBKDF2-SHA256 para hashes <128 caracteres
+        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
 
 class Solicitud(db.Model):
@@ -120,85 +131,79 @@ class Solicitud(db.Model):
     # Plan y pago
     tipo_plan        = db.Column(db.String(50), nullable=True)
     abono            = db.Column(db.String(100), nullable=True)
-    estado = db.Column(
-        SAEnum(
-            'proceso',
-            'activa',
-            'pagada',
-            'cancelada',
-            'reemplazo',          # ← nuevo
-            name='estado_solicitud_enum'
-        ),
-        nullable=False,
-        default='proceso'
-    )
+    estado           = db.Column(
+                          SAEnum(
+                              'proceso','activa','pagada','cancelada','reemplazo',
+                              name='estado_solicitud_enum'
+                          ),
+                          nullable=False,
+                          default='proceso'
+                       )
 
     # Ubicación y rutas
-    ciudad_sector    = db.Column(db.String(200), nullable=False)
+    ciudad_sector    = db.Column(db.String(200), nullable=True)
     rutas_cercanas   = db.Column(db.String(200), nullable=True)
 
     # Detalles de la oferta de trabajo
-    modalidad_trabajo = db.Column(db.String(100), nullable=False)
-    edad_requerida    = db.Column(db.String(50), nullable=False)
-    experiencia       = db.Column(db.Text, nullable=False)
-    horario           = db.Column(db.String(100), nullable=False)
-    funciones         = db.Column(db.Text, nullable=False)
+    modalidad_trabajo = db.Column(db.String(100), nullable=True)
+    edad_requerida    = db.Column(db.String(50), nullable=True)
+    experiencia       = db.Column(db.Text, nullable=True)
+    horario           = db.Column(db.String(100), nullable=True)
+    funciones         = db.Column(db.Text, nullable=True)
 
     # Tipo de lugar
     tipo_lugar       = db.Column(
-                         SAEnum('casa', 'oficina', 'apto', 'otro', name='tipo_lugar_enum'),
-                         nullable=False
+                         SAEnum('casa','oficina','apto','otro', name='tipo_lugar_enum'),
+                         nullable=True
                        )
 
     # Habitaciones y baños
-    habitaciones     = db.Column(db.Integer, nullable=False)
-    banos            = db.Column(db.Float,   nullable=False)
+    habitaciones     = db.Column(db.Integer, nullable=True)
+    banos            = db.Column(db.Float,   nullable=True)
     dos_pisos        = db.Column(db.Boolean, nullable=False, default=False)
 
     # Ocupantes
-    adultos          = db.Column(db.Integer, nullable=False)
+    adultos          = db.Column(db.Integer, nullable=True)
     ninos            = db.Column(db.Integer, nullable=True)
     edades_ninos     = db.Column(db.String(100), nullable=True)
 
     # Compensación
-    sueldo           = db.Column(db.String(100), nullable=False)
-    pasaje_aporte    = db.Column(db.Boolean, nullable=False, default=False)
+    sueldo           = db.Column(db.String(100), nullable=True)
+    pasaje_aporte    = db.Column(db.Boolean, nullable=True, default=False)
 
     # Nota adicional
     nota_cliente     = db.Column(db.Text, nullable=True)
 
-    # ——— NUEVAS COLUMNAS ———
-    areas_comunes = db.Column(
-        ARRAY(db.String(50)),
-        nullable=False,
-        default=list,
-        server_default=text("ARRAY[]::VARCHAR[]")
-    )
-    area_otro     = db.Column(
-        db.String(200),
-        nullable=True,
-        default='',
-        server_default=text("''")
-    )
-    # ——————————————————
+    # Áreas comunes (nuevo portal)
+    areas_comunes    = db.Column(
+                           ARRAY(db.String(50)),
+                           nullable=False,
+                           default=list,
+                           server_default=text("ARRAY[]::VARCHAR[]")
+                        )
+    area_otro        = db.Column(
+                           db.String(200),
+                           nullable=True,
+                           default='',
+                           server_default=text("''")
+                        )
 
-    # Nuevas columnas para pago total
-    candidata_id     = db.Column(
-                         db.Integer,
-                         db.ForeignKey('candidatas.fila'),
-                         nullable=True
-                       )
+    # Pago total y candidatas
+    candidata_id     = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=True)
     monto_pagado     = db.Column(db.String(100), nullable=True)
 
     # Relaciones
-    cliente     = db.relationship('Cliente', back_populates='solicitudes')
-    candidata   = db.relationship('Candidata', back_populates='solicitudes')
-    reemplazos  = db.relationship('Reemplazo', back_populates='solicitud',
-                                  cascade='all, delete-orphan')
-    last_copiado_at = db.Column(db.DateTime, nullable=True)
+    cliente          = db.relationship('Cliente', back_populates='solicitudes')
+    candidata        = db.relationship('Candidata', back_populates='solicitudes')
+    reemplazos       = db.relationship(
+                           'Reemplazo',
+                           back_populates='solicitud',
+                           cascade='all, delete-orphan'
+                       )
+    last_copiado_at  = db.Column(db.DateTime, nullable=True)
 
-    fecha_cancelacion    = db.Column(db.DateTime, nullable=True)
-    motivo_cancelacion   = db.Column(db.String(255), nullable=True)
+    fecha_cancelacion  = db.Column(db.DateTime, nullable=True)
+    motivo_cancelacion = db.Column(db.String(255), nullable=True)
 
 class Reemplazo(db.Model):
     __tablename__ = 'reemplazos'

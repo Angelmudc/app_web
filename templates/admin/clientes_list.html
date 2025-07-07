@@ -28,29 +28,35 @@
   <table class="table table-striped align-middle">
     <thead class="table-light">
       <tr>
-        <th scope="col">#</th>
-        <th scope="col">Código</th>
-        <th scope="col">Nombre</th>
-        <th scope="col">Email</th>
-        <th scope="col">Teléfono</th>
-        <th scope="col">Solicitudes</th>
-        <th scope="col">Registro</th>
-        <th scope="col">Acciones</th>
+        <th>#</th>
+        <th>Código</th>
+        <th>Nombre</th>
+        <th>Email</th>
+        <th>Teléfono</th>
+        <th>Usuario</th>
+        <th>Contraseña (hash)</th>
+        <th>Solicitudes</th>
+        <th>Registro</th>
+        <th>Acciones</th>
       </tr>
     </thead>
     <tbody>
       {% for c in clientes %}
       <tr>
-        <th scope="row">{{ c.id }}</th>
+        <td>{{ c.id }}</td>
         <td>{{ c.codigo }}</td>
         <td>{{ c.nombre_completo }}</td>
         <td>{{ c.email }}</td>
         <td>{{ c.telefono }}</td>
+        <td>{{ c.username }}</td>
+        <td class="text-truncate" style="max-width:200px;">{{ c.password_hash }}</td>
         <td>{{ c.total_solicitudes }}</td>
         <td>{{ c.fecha_registro.strftime('%Y-%m-%d') }}</td>
         <td class="text-nowrap">
-          <a href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}" class="btn btn-sm btn-info">Ver</a>
-          <a href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}" class="btn btn-sm btn-warning">Editar</a>
+          <a href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}"
+             class="btn btn-sm btn-info">Ver</a>
+          <a href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}"
+             class="btn btn-sm btn-warning">Editar</a>
           <form
             method="post"
             action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}"
@@ -64,7 +70,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="8" class="text-center py-4">No se encontraron clientes.</td>
+        <td colspan="10" class="text-center py-4">No se encontraron clientes.</td>
       </tr>
       {% endfor %}
     </tbody>

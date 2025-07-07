@@ -22,6 +22,8 @@ from admin.forms import (
     AdminGestionPlanForm
 )
 
+from utils import letra_por_indice
+
 
 admin_bp = Blueprint(
     'admin',
@@ -92,28 +94,39 @@ def listar_clientes():
     clientes = query.order_by(Cliente.fecha_registro.desc()).all()
     return render_template('admin/clientes_list.html', clientes=clientes, q=q)
 
-
 @admin_bp.route('/clientes/nuevo', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def nuevo_cliente():
     cliente_form   = AdminClienteForm()
     solicitud_form = AdminSolicitudForm(prefix='sol')
+
     if cliente_form.validate_on_submit():
+        # 1) Crear instancia y poblar campos básicos
         c = Cliente()
         cliente_form.populate_obj(c)
+
+        # 2) Asignar credenciales
+        c.username = cliente_form.username.data
+        c.set_password(cliente_form.password.data)  # Asume método en modelo Cliente
+
+        # 3) Registro de fecha y guardado
         c.fecha_registro = datetime.utcnow()
         db.session.add(c)
         db.session.flush()
+
+        # 4) Crear solicitud inicial si se indicó código
         if solicitud_form.codigo_solicitud.data:
             s = Solicitud(cliente_id=c.id, fecha_solicitud=datetime.utcnow())
             solicitud_form.populate_obj(s)
             db.session.add(s)
             c.total_solicitudes      = 1
             c.fecha_ultima_solicitud = datetime.utcnow()
+
         db.session.commit()
         flash('Cliente y solicitud creados correctamente.', 'success')
         return redirect(url_for('admin.listar_clientes'))
+
     return render_template(
         'admin/cliente_form.html',
         cliente_form=cliente_form,
@@ -122,27 +135,34 @@ def nuevo_cliente():
     )
 
 
-@admin_bp.route('/clientes/<int:cliente_id>')
-@login_required
-@admin_required
-def detalle_cliente(cliente_id):
-    c = Cliente.query.get_or_404(cliente_id)
-    return render_template('admin/cliente_detail.html', cliente=c)
-
-
 @admin_bp.route('/clientes/<int:cliente_id>/editar', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def editar_cliente(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminClienteForm(obj=c)
+
+    if request.method == 'GET':
+        # dejar el usuario para edición, pero no la contraseña
+        form.password.data = ''
+        form.confirm.data  = ''
+
     if form.validate_on_submit():
+        # Actualizar datos básicos
         form.populate_obj(c)
+        # Si vino contraseña, actulizar hash
+        if form.password.data:
+            c.set_password(form.password.data)
         c.fecha_ultima_actividad = datetime.utcnow()
         db.session.commit()
-        flash('Cliente actualizado.', 'success')
+        flash('Cliente actualizado correctamente.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
-    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+
+    return render_template(
+        'admin/cliente_form.html',
+        cliente_form=form,
+        nuevo=False
+    )
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/eliminar', methods=['POST'])
@@ -155,6 +175,12 @@ def eliminar_cliente(cliente_id):
     flash('Cliente eliminado.', 'success')
     return redirect(url_for('admin.listar_clientes'))
 
+@admin_bp.route('/clientes/<int:cliente_id>')
+@login_required
+@admin_required
+def detalle_cliente(cliente_id):
+    c = Cliente.query.get_or_404(cliente_id)
+    return render_template('admin/cliente_detail.html', cliente=c)
 
 # ——— Rutas de Solicitudes y Reemplazos ———
 
@@ -174,16 +200,12 @@ def nueva_solicitud_admin(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminSolicitudForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+
     if form.validate_on_submit():
         idx = c.total_solicitudes or 0
-        def letra_por_indice(i):
-            res = ''
-            while True:
-                res = chr(ord('A') + (i % 26)) + res
-                i = i // 26 - 1
-                if i < 0: break
-            return res
         nuevo_codigo = f"{c.codigo}-{letra_por_indice(idx)}"
+
+        # Creamos la solicitud con el nuevo código
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
@@ -191,15 +213,18 @@ def nueva_solicitud_admin(cliente_id):
         )
         form.populate_obj(s)
         s.codigo_solicitud = nuevo_codigo
-        s.areas_comunes = form.areas_comunes.data
-        s.area_otro     = form.area_otro.data
+        s.areas_comunes    = form.areas_comunes.data
+        s.area_otro        = form.area_otro.data
+
         db.session.add(s)
         c.total_solicitudes      = idx + 1
         c.fecha_ultima_solicitud = datetime.utcnow()
         c.fecha_ultima_actividad = datetime.utcnow()
         db.session.commit()
+
         flash(f'Solicitud {nuevo_codigo} creada correctamente.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
     return render_template(
         'admin/solicitud_form.html',
         form=form,

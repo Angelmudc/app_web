@@ -1,0 +1,16 @@
+{% extends "clientes/base.html" %}
+{% block content %}
+  <h2>Ingreso de Clientes</h2>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    <div>
+      {{ form.username.label }}<br>
+      {{ form.username(size=32) }}
+    </div>
+    <div>
+      {{ form.password.label }}<br>
+      {{ form.password(size=32) }}
+    </div>
+    <button type="submit">Entrar</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "clientes/base.html" %}
+{% block title %}Mis Solicitudes{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Mis Solicitudes</h2>
+    <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success">
+      + Nueva Solicitud
+    </a>
+  </div>
+
+  <ul class="list-group">
+    {% for s in solicitudes %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <div>
+          <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}">
+            <strong>{{ s.codigo_solicitud }}</strong>
+          </a>
+          — {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
+          {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
+            <span class="badge bg-danger ms-2">Publicado hoy</span>
+          {% endif %}
+          <br>
+          <small>Estado: <span class="fw-bold">{{ s.estado }}</span></small>
+        </div>
+        <div>
+          {% if s.estado == 'proceso' %}
+            <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}"
+               class="btn btn-sm btn-primary me-1">Editar</a>
+            <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}"
+               class="btn btn-sm btn-danger">Cancelar</a>
+          {% else %}
+            <span class="text-muted">No editable</span>
+          {% endif %}
+        </div>
+      </li>
+    {% else %}
+      <li class="list-group-item">No tienes solicitudes aún.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}

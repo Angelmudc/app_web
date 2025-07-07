@@ -14,6 +14,7 @@ from wtforms import (
 )
 from wtforms.validators import DataRequired, Length, Optional, NumberRange
 from wtforms.widgets import ListWidget, CheckboxInput
+from wtforms import StringField, PasswordField, TextAreaField
 
 # --------------------------------------------------------------------
 # Campo de “checkbox múltiple” personalizado para WTForms:
@@ -26,6 +27,10 @@ class AdminLoginForm(FlaskForm):
     username = StringField('Usuario', validators=[DataRequired(), Length(max=50)])
     password = StringField('Contraseña', validators=[DataRequired(), Length(max=100)])
 
+
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, TextAreaField
+from wtforms.validators import DataRequired, Length, Optional, EqualTo
 
 class AdminClienteForm(FlaskForm):
     codigo = StringField(
@@ -60,6 +65,39 @@ class AdminClienteForm(FlaskForm):
     notas_admin = TextAreaField(
         'Notas administrativas',
         validators=[Optional()]
+    )
+
+    # --- Credenciales ---
+    username = StringField(
+        'Usuario',
+        validators=[DataRequired(), Length(min=4, max=50)]
+    )
+    password = PasswordField(
+        'Contraseña',
+        validators=[
+            Optional(),
+            Length(min=8, message="La contraseña debe tener al menos 8 caracteres")
+        ]
+    )
+    confirm  = PasswordField(
+        'Repetir Contraseña',
+        validators=[
+            Optional(),
+            EqualTo('password', message="Las contraseñas deben coincidir")
+        ]
+    )
+
+
+    # ——— Campos nuevos ———
+    username = StringField(
+        'Usuario',
+        validators=[DataRequired(), Length(min=4, max=50)],
+        render_kw={"placeholder": "Usuario único"}
+    )
+    password = PasswordField(
+        'Contraseña',
+        validators=[DataRequired(), Length(min=8)],
+        render_kw={"placeholder": "Mínimo 8 caracteres"}
     )
 
 

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
-from flask import Flask
+from flask import Flask, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
 from flask_migrate import Migrate
@@ -14,7 +14,7 @@ import cloudinary
 from flask_wtf import CSRFProtect
 
 # 1) Carga .env
-env_path = Path(__file__).parent.parent / '.env'
+env_path = Path(__file__).parent / '.env'
 load_dotenv(env_path, override=True)
 
 # 2) Instancias globales
@@ -51,6 +51,8 @@ def create_app():
     from admin.routes import admin_bp
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
+    from clientes.routes import clientes_bp
+    app.register_blueprint(clientes_bp)
 
     # — Configuración de base de datos y cache —————————————
     db_url = os.getenv('DATABASE_URL', '').strip()
@@ -69,16 +71,28 @@ def create_app():
         }
     })
 
-
     # Inicializar extensiones
     db.init_app(app)
     cache.init_app(app)
     migrate.init_app(app, db)
 
+    # — Helpers globales para plantillas —
+    from datetime import datetime as _dt
+    app.jinja_env.globals['now'] = _dt.utcnow
+    app.jinja_env.globals['current_year'] = _dt.utcnow().year
+
     # — Flask-Login ————————————————————————————————
     login_manager = LoginManager()
     login_manager.init_app(app)
-    login_manager.login_view = 'admin.login'
+    # ya no usamos login_view, manejamos redirecciones manualmente
+
+    @login_manager.unauthorized_handler
+    def unauthorized_callback():
+        # si accediendo a /clientes → su login
+        if request.path.startswith('/clientes'):
+            return redirect(url_for('clientes.login', next=request.url))
+        # en otro caso → admin login
+        return redirect(url_for('admin.login', next=request.url))
 
     class User(UserMixin):
         def __init__(self, username, role):
@@ -90,8 +104,16 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
+        # intenta admin primero
         data = USUARIOS.get(user_id)
-        return User(user_id, data['role']) if data else None
+        if data:
+            return User(user_id, data['role'])
+        # si no, carga Cliente
+        try:
+            from models import Cliente
+            return Cliente.query.get(int(user_id))
+        except:
+            return None
 
     # — Carga config entrevistas (opcional) —————————————
     try:

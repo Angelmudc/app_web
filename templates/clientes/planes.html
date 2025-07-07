@@ -1,0 +1,145 @@
+{% extends "clientes/base.html" %}
+{% block title %}Planes{% endblock %}
+
+{% block content %}
+  <div class="text-center mb-5">
+    <!-- Imagen de los planes -->
+    <img src="{{ url_for('static', filename='images/planes.jpg') }}"
+         alt="Nuestros planes"
+         class="img-fluid rounded shadow"
+         style="max-height: 400px; object-fit: cover;">
+  </div>
+
+  <h2 class="text-center mb-4">Conoce nuestros planes</h2>
+  <p class="text-center text-muted mb-5">
+    Elige el plan que mejor se adapte a tus necesidades y solicita tu doméstica.
+  </p>
+
+  <div class="row gy-4">
+    <!-- Plan Básico -->
+    <div class="col-md-4">
+      <div class="card h-100 border-primary">
+        <div class="card-header bg-primary text-white text-center">
+          <h3 class="h5 mb-0">Básico</h3>
+        </div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-4">
+            <li>• Depuración policial</li>
+            <li>• Presentación de doméstica</li>
+            <li>• 15 días de garantía</li>
+            <li>• 1 reemplazo</li>
+            <li>• Entrevista virtual o presencial</li>
+          </ul>
+          <div class="text-center">
+            <span class="display-6 fw-bold">3,500</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Plan Premium -->
+    <div class="col-md-4">
+      <div class="card h-100 border-warning">
+        <div class="card-header bg-warning text-white text-center">
+          <h3 class="h5 mb-0">Premium</h3>
+        </div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-4">
+            <li>• Todo lo del plan básico</li>
+            <li>• 1 mes de garantía</li>
+            <li>• 2 reemplazos</li>
+            <li>• Horario personalizado</li>
+            <li>• Test de compatibilidad</li>
+          </ul>
+          <div class="text-center">
+            <span class="display-6 fw-bold">5,000</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Plan VIP -->
+    <div class="col-md-4">
+      <div class="card h-100 border-dark">
+        <div class="card-header bg-dark text-white text-center">
+          <h3 class="h5 mb-0">VIP</h3>
+        </div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-4">
+            <li>• Todo lo del plan básico y premium</li>
+            <li>• Atención VIP inmediata</li>
+            <li>• Seguimiento personalizado</li>
+            <li>• 2 meses de garantía</li>
+            <li>• Sin límites de reemplazo</li>
+          </ul>
+          <div class="text-center">
+            <span class="display-6 fw-bold">7,500</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-5 text-center">
+    <p class="fw-semibold">
+      <i class="bi bi-info-circle-fill me-2"></i>
+      Todos los planes incluyen una orientación personalizada para la doméstica.
+    </p>
+  </div>
+
+  <!-- Sección de detalles -->
+  <div class="mt-5">
+    <h3>¿Qué significa cada característica?</h3>
+    <dl class="row">
+      <dt class="col-sm-4">Depuración policial</dt>
+      <dd class="col-sm-8">
+        Verificación de antecedentes penales para garantizar la seguridad y confiabilidad de la candidata.
+      </dd>
+
+      <dt class="col-sm-4">Presentación de doméstica</dt>
+      <dd class="col-sm-8">
+        Entrevista y breve introducción de la candidata antes de iniciar el servicio.
+      </dd>
+
+      <dt class="col-sm-4">Garantía</dt>
+      <dd class="col-sm-8">
+        Durante el periodo (15 días, 1 mes o 2 meses según el plan), si la candidata no cumple expectativas, ofrecemos reemplazo gratuito.
+      </dd>
+
+      <dt class="col-sm-4">Reemplazo</dt>
+      <dd class="col-sm-8">
+        Cambio de candidata sin costo adicional dentro del periodo de garantía: 1 vez (Básico), 2 veces (Premium) o ilimitado (VIP).
+      </dd>
+
+      <dt class="col-sm-4">Entrevista virtual o presencial</dt>
+      <dd class="col-sm-8">
+        Oportunidad de conocer a la candidata y aclarar tus necesidades antes de la contratación.
+      </dd>
+
+      <dt class="col-sm-4">Test de compatibilidad</dt>
+      <dd class="col-sm-8">
+        Evaluación de perfil y preferencias para asegurar la mejor afinidad entre cliente y candidata.
+      </dd>
+
+      <dt class="col-sm-4">Horario personalizado</dt>
+      <dd class="col-sm-8">
+        Ajustamos el turno de trabajo según tus tiempos y necesidades específicas.
+      </dd>
+
+      <dt class="col-sm-4">Atención VIP inmediata</dt>
+      <dd class="col-sm-8">
+        Canal de comunicación prioritario para resolver cualquier duda o emergencia al instante.
+      </dd>
+
+      <dt class="col-sm-4">Seguimiento personalizado</dt>
+      <dd class="col-sm-8">
+        Informes periódicos sobre el desempeño y satisfacción para optimizar el servicio.
+      </dd>
+
+      <dt class="col-sm-4">Orientación personalizada</dt>
+      <dd class="col-sm-8">
+        Capacitación y recomendaciones a la candidata según las particularidades de tu hogar.
+      </dd>
+    </dl>
+  </div>
+{% endblock %}

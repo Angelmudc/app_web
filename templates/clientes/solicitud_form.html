@@ -1,0 +1,255 @@
+<!-- templates/clientes/solicitud_form.html -->
+{% extends 'clientes/base.html' %}
+{% block title %}{{ 'Nueva Solicitud' if nuevo else 'Editar Solicitud' }} | Mi Empresa{% endblock %}
+
+{% block content %}
+<div class="container-main">
+  <div class="card content-card mb-5">
+    <div class="card-body">
+
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="hero-title">{{ 'Nueva Solicitud' if nuevo else 'Editar Solicitud' }}</h2>
+        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">← Volver</a>
+      </div>
+
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+
+        {% if form.errors %}
+          <div class="alert alert-danger">
+            <ul class="mb-0">
+              {% for field, errs in form.errors.items() %}
+                {% for e in errs %}
+                  <li><strong>{{ form[field].label.text }}:</strong> {{ e }}</li>
+                {% endfor %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <!-- Sección 1: Datos de Contacto -->
+        <div class="form-section">
+          <h3 class="form-section-title">Datos de Contacto</h3>
+          <div class="row g-3">
+            <div class="col-md-6">
+              {{ form.correo.label(class="form-label") }}
+              {{ form.correo(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.nombre.label(class="form-label") }}
+              {{ form.nombre(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.telefono.label(class="form-label") }}
+              {{ form.telefono(class="form-control") }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 2: Ubicación -->
+        <div class="form-section">
+          <h3 class="form-section-title">Ubicación</h3>
+          <div class="row g-3">
+            <div class="col-md-4">
+              {{ form.ciudad.label(class="form-label") }}
+              {{ form.ciudad(class="form-control") }}
+            </div>
+            <div class="col-md-4">
+              {{ form.sector.label(class="form-label") }}
+              {{ form.sector(class="form-control") }}
+            </div>
+            <div class="col-md-4">
+              {{ form.rutas.label(class="form-label") }}
+              {{ form.rutas(class="form-control") }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 3: Horarios y Modalidades -->
+        <div class="form-section">
+          <h3 class="form-section-title">Horarios y Modalidades</h3>
+          <div class="row g-3">
+            <div class="col-md-6">
+              {{ form.con_dormida.label(class="form-label") }}
+              {{ form.con_dormida(class="form-select") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.con_salida.label(class="form-label") }}
+              {{ form.con_salida(class="form-select") }}
+            </div>
+            <div class="col-12">
+              {{ form.horario.label(class="form-label") }}
+              {{ form.horario(class="form-control") }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 4: Perfil del Personal Requerido -->
+        <div class="form-section">
+          <h3 class="form-section-title">Perfil del Personal</h3>
+          <div class="row g-3">
+            <div class="col-md-6">
+              {{ form.edad.label(class="form-label") }}
+              <div>
+                {% for sub in form.edad %}
+                  <div class="form-check form-check-inline">
+                    {{ sub(class="form-check-input") }}
+                    <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              {{ form.nacionalidad.label(class="form-label d-block") }}
+              {% for sub in form.nacionalidad %}
+                <div class="form-check form-check-inline">
+                  {{ sub(class="form-check-input") }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              {{ form.nivel_acad.label(class="form-label d-block") }}
+              {% for sub in form.nivel_acad %}
+                <div class="form-check form-check-inline">
+                  {{ sub(class="form-check-input") }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              {{ form.experiencia.label(class="form-label") }}
+              <div>
+                {% for sub in form.experiencia %}
+                  <div class="form-check">
+                    {{ sub(class="form-check-input") }}
+                    <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 5: Funciones y Domicilio -->
+        <div class="form-section">
+          <h3 class="form-section-title">Funciones y Domicilio</h3>
+          <div class="row g-3">
+            <div class="col-md-6">
+              {{ form.funciones.label(class="form-label") }}
+              <div>
+                {% for sub in form.funciones %}
+                  <div class="form-check">
+                    {{ sub(class="form-check-input") }}
+                    <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              {{ form.tipo_domi.label(class="form-label") }}
+              {{ form.tipo_domi(class="form-select") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.habitaciones.label(class="form-label") }}
+              {{ form.habitaciones(class="form-select") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.banos.label(class="form-label") }}
+              {{ form.banos(class="form-select") }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 6: Espacios y Compañía -->
+        <div class="form-section">
+          <h3 class="form-section-title">Espacios y Compañía</h3>
+          <div class="row g-3">
+            <div class="col-12">
+              {{ form.areas_comunes.label(class="form-label") }}
+              <div>
+                {% for sub in form.areas_comunes %}
+                  <div class="form-check form-check-inline">
+                    {{ sub(class="form-check-input") }}
+                    <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              {{ form.area_otro.label(class="form-label") }}
+              {{ form.area_otro(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.integrantes.label(class="form-label") }}
+              <div>
+                {% for sub in form.integrantes %}
+                  <div class="form-check form-check-inline">
+                    {{ sub(class="form-check-input") }}
+                    <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 7: Cantidades y Comentarios -->
+        <div class="form-section">
+          <h3 class="form-section-title">Cantidades y Comentarios</h3>
+          <div class="row g-3">
+            <div class="col-md-4">
+              {{ form.cant_adultos.label(class="form-label") }}
+              {{ form.cant_adultos(class="form-control") }}
+            </div>
+            <div class="col-md-4">
+              {{ form.cant_ninos.label(class="form-label") }}
+              {{ form.cant_ninos(class="form-control") }}
+            </div>
+            <div class="col-md-4">
+              {{ form.cant_mascotas.label(class="form-label") }}
+              {{ form.cant_mascotas(class="form-control") }}
+            </div>
+            <div class="col-12">
+              {{ form.sugerencia.label(class="form-label") }}
+              {{ form.sugerencia(class="form-control") }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 8: Condiciones y Envío -->
+        <div class="form-section">
+          <h3 class="form-section-title">Términos y Envío</h3>
+          <div class="row g-3 align-items-center">
+            <div class="col-md-6">
+              {{ form.sueldo.label(class="form-label") }}
+              {{ form.sueldo(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+              <div class="form-check mt-4">
+                {{ form.transporte(class="form-check-input") }}
+                <label class="form-check-label ms-2" for="{{ form.transporte.id }}">Incluirá transporte</label>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                {{ form.acepta_terminos(class="form-check-input") }}
+                <label class="form-check-label ms-2" for="{{ form.acepta_terminos.id }}">
+                  Acepto los términos de servicio
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Botones -->
+        <div class="text-end mt-4">
+          {{ form.submit(class="btn btn-primary me-2") }}
+          <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
