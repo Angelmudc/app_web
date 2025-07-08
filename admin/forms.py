@@ -102,12 +102,6 @@ class AdminClienteForm(FlaskForm):
 
 
 class AdminSolicitudForm(FlaskForm):
-    codigo_solicitud = StringField(
-        'Código de solicitud',
-        validators=[Optional(), Length(max=50)],
-        render_kw={"placeholder": "p.ej. C001-A"}
-    )
-
     ciudad_sector     = StringField(
         'Ciudad / Sector',
         validators=[DataRequired(), Length(max=200)]
@@ -132,9 +126,19 @@ class AdminSolicitudForm(FlaskForm):
         'Horario',
         validators=[DataRequired(), Length(max=100)]
     )
-    funciones         = TextAreaField(
-        'Funciones',
-        validators=[DataRequired()]
+    funciones = SelectMultipleField(
+        'Funciones a realizar al personal',
+        choices=[
+            ('limpieza','Limpieza General'),
+            ('cocinar','Cocinar'),
+            ('lavar','Lavar'),
+            ('ninos','Cuidar Niños'),
+            ('envejeciente','Cuidar Envejecientes'),
+            ('otro','Otro'),
+        ],
+        validators=[DataRequired()],
+        option_widget=CheckboxInput(),
+        widget=ListWidget(prefix_label=False)
     )
 
     tipo_lugar = SelectField(
@@ -155,14 +159,14 @@ class AdminSolicitudForm(FlaskForm):
     banos = DecimalField(
         'Baños',
         places=1,
-        validators=[DataRequired()],
+        validators=[DataRequired(), NumberRange(min=0)],
         render_kw={"step": "0.5", "min": "0"}
     )
     dos_pisos = BooleanField('¿Tiene dos pisos?')
 
     areas_comunes = MultiCheckboxField(
         'Áreas comunes',
-        choices=[],  # Se define en la vista con AREAS_COMUNES_CHOICES
+        choices=[],  # lo rellenas en la vista con AREAS_COMUNES_CHOICES
         default=[],
         validators=[Optional()]
     )

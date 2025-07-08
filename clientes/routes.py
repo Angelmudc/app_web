@@ -4,18 +4,19 @@ from flask import (
 )
 from flask_login import login_required, current_user, login_user, logout_user
 from werkzeug.security import check_password_hash
-from datetime import datetime
+from datetime import datetime, date
+from functools import wraps
 
 from .forms import (
     ClienteLoginForm,
-    ClienteCancelForm
+    ClienteCancelForm,
+    SolicitudForm,
+    ClienteSolicitudForm
 )
 from models import Cliente, Solicitud
 from config_app import db
 from utils import letra_por_indice
-from datetime import date
-from functools import wraps
-from .forms import SolicitudForm 
+
 
 def cliente_required(f):
     @wraps(f)
@@ -108,6 +109,8 @@ def listar_solicitudes():
     )
 
 
+
+
 @clientes_bp.route('/solicitudes/nueva', methods=['GET', 'POST'])
 @login_required
 @cliente_required
@@ -116,42 +119,33 @@ def nueva_solicitud():
 
     if form.validate_on_submit():
         # Generar código único
-        count = Solicitud.query.filter_by(cliente_id=current_user.id).count()
+        count  = Solicitud.query.filter_by(cliente_id=current_user.id).count()
         codigo = f"{current_user.codigo}-{letra_por_indice(count)}"
 
-        # Crear instancia de Solicitud
+        # Crear instancia de Solicitud (edad_requerida como CSV)
         s = Solicitud(
             cliente_id        = current_user.id,
             fecha_solicitud   = datetime.utcnow(),
             codigo_solicitud  = codigo,
-            correo            = form.correo.data,
-            nombre            = form.nombre.data,
-            prev_solicitud    = form.prev_solicitud.data,
-            telefono          = form.telefono.data,
-            ciudad            = form.ciudad.data,
-            sector            = form.sector.data,
-            rutas             = form.rutas.data,
-            con_dormida       = form.con_dormida.data,
-            con_salida        = form.con_salida.data,
+            ciudad_sector     = form.ciudad_sector.data,
+            rutas_cercanas    = form.rutas_cercanas.data,
+            modalidad_trabajo = form.modalidad_trabajo.data,
+            edad_requerida    = ','.join(form.edad_requerida.data),
+            experiencia       = form.experiencia.data,
             horario           = form.horario.data,
-            edad              = form.edad.data,           # lista de strings
-            nacionalidad      = form.nacionalidad.data,
-            nivel_acad        = form.nivel_acad.data,
-            experiencia       = form.experiencia.data,    # lista de strings
-            funciones         = form.funciones.data,      # lista de strings
-            tipo_domi         = form.tipo_domi.data,
+            funciones         = form.funciones.data,
+            tipo_lugar        = form.tipo_lugar.data,
             habitaciones      = form.habitaciones.data,
             banos             = form.banos.data,
-            areas_comunes     = form.areas_comunes.data,  # lista de strings
-            area_otro         = form.area_otro.data,
-            integrantes       = form.integrantes.data,    # lista de strings
-            cant_adultos      = form.cant_adultos.data,
-            cant_ninos        = form.cant_ninos.data,
-            cant_mascotas     = form.cant_mascotas.data,
-            sugerencia        = form.sugerencia.data,
+            dos_pisos         = form.dos_pisos.data,
+            adultos           = form.adultos.data,
+            ninos             = form.ninos.data,
+            edades_ninos      = form.edades_ninos.data,
             sueldo            = form.sueldo.data,
-            transporte        = form.transporte.data,
-            acepta_terminos   = form.acepta_terminos.data
+            pasaje_aporte     = form.pasaje_aporte.data,
+            nota_cliente      = form.nota_cliente.data,
+            areas_comunes     = form.areas_comunes.data,
+            area_otro         = form.area_otro.data
         )
 
         db.session.add(s)
@@ -160,10 +154,44 @@ def nueva_solicitud():
         flash(f'Solicitud {codigo} creada correctamente.', 'success')
         return redirect(url_for('clientes.listar_solicitudes'))
 
+    return render_template('clientes/solicitud_form.html', form=form)
+
+
+@clientes_bp.route('/solicitudes/<int:id>/editar', methods=['GET','POST'])
+@login_required
+@cliente_required
+def editar_solicitud(id):
+    s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
+    form = SolicitudForm(obj=s)
+
+    if request.method == 'GET':
+        # Pre-carga manual de todos los campos múltiples
+        form.edad_requerida.data    = s.edad_requerida or []
+        form.areas_comunes.data      = s.areas_comunes   or []
+        form.area_otro.data          = s.area_otro       or ''
+        form.nota_cliente.data       = s.nota_cliente    or ''
+
+    if form.validate_on_submit():
+        form.populate_obj(s)
+        # los que populate_obj no maneja bien
+        s.edad_requerida             = form.edad_requerida.data
+        s.areas_comunes              = form.areas_comunes.data
+        s.area_otro                  = form.area_otro.data
+        s.nota_cliente               = form.nota_cliente.data
+        s.fecha_ultima_modificacion  = datetime.utcnow()
+
+        db.session.commit()
+        flash('Solicitud actualizada.', 'success')
+        return redirect(url_for('clientes.detalle_solicitud', id=id))
+
     return render_template(
         'clientes/solicitud_form.html',
-        form=form
+        form=form,
+        editar=True,
+        solicitud=s
     )
+
+
 
 from datetime import datetime
 
@@ -203,32 +231,6 @@ def detalle_solicitud(id):
         envios=envios,
         cancelaciones=cancelaciones,
         hoy=date.today()
-    )
-
-
-@clientes_bp.route('/solicitudes/<int:id>/editar', methods=['GET','POST'])
-@login_required
-@cliente_required
-def editar_solicitud(id):
-    s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
-    form = ClienteSolicitudForm(obj=s)
-    if request.method == 'GET':
-        form.areas_comunes.data = s.areas_comunes or []
-        form.area_otro.data     = s.area_otro or ''
-        form.detalles.data      = s.nota_cliente or ''
-    if form.validate_on_submit():
-        s.areas_comunes = form.areas_comunes.data
-        s.area_otro     = form.area_otro.data
-        s.nota_cliente  = form.detalles.data
-        s.fecha_ultima_modificacion = datetime.utcnow()
-        db.session.commit()
-        flash('Solicitud actualizada.', 'success')
-        return redirect(url_for('clientes.detalle_solicitud', id=id))
-
-    return render_template(
-        'clientes/solicitud_form.html',
-        form=form,
-        editar=True
     )
 
 @clientes_bp.route('/solicitudes/<int:id>/cancelar', methods=['GET','POST'])

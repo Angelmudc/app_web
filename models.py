@@ -73,37 +73,45 @@ from config_app import db
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 
-    id                     = db.Column(db.Integer, primary_key=True)
-    codigo                 = db.Column(db.String(20), unique=True, nullable=False)
-    username               = db.Column(db.String(50), unique=True, nullable=False)
-    password_hash          = db.Column(db.String(128), nullable=False)
+    id                       = db.Column(db.Integer, primary_key=True)
+    codigo                   = db.Column(db.String(20), unique=True, nullable=False)
+    username                 = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash            = db.Column(db.String(128), nullable=False)
 
-    nombre_completo        = db.Column(db.String(200), nullable=False)
-    created_at             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    # Nuevo campo para distinguir administradores
+    role                     = db.Column(
+                                  db.String(20),
+                                  nullable=False,
+                                  default='cliente',
+                                  comment="Valores: 'cliente' o 'admin'"
+                              )
 
-    email                  = db.Column(db.String(100), nullable=False)
-    telefono               = db.Column(db.String(20),  nullable=False)
+    nombre_completo          = db.Column(db.String(200), nullable=False)
+    created_at               = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-    porcentaje_deposito    = db.Column(db.Numeric(5,2), nullable=False, default=0.00)
+    email                    = db.Column(db.String(100), nullable=False)
+    telefono                 = db.Column(db.String(20),  nullable=False)
+
+    porcentaje_deposito      = db.Column(db.Numeric(5,2), nullable=False, default=0.00)
     monto_deposito_requerido = db.Column(db.Numeric(10,2))
-    monto_deposito_pagado  = db.Column(db.Numeric(10,2))
-    estado_deposito        = db.Column(
-                                db.Enum('pendiente','confirmado', name='estado_deposito_enum'),
-                                nullable=False,
-                                default='pendiente'
-                             )
-    notas_admin            = db.Column(db.Text)
+    monto_deposito_pagado    = db.Column(db.Numeric(10,2))
+    estado_deposito          = db.Column(
+                                  db.Enum('pendiente','confirmado', name='estado_deposito_enum'),
+                                  nullable=False,
+                                  default='pendiente'
+                              )
+    notas_admin              = db.Column(db.Text)
 
     # Ubicación
-    direccion              = db.Column(db.Text)
-    ciudad                 = db.Column(db.String(100))
-    provincia              = db.Column(db.String(100))
+    direccion                = db.Column(db.Text)
+    ciudad                   = db.Column(db.String(100))
+    provincia                = db.Column(db.String(100))
 
     # Métricas de solicitudes
-    total_solicitudes      = db.Column(db.Integer,  nullable=False, default=0)
-    fecha_ultima_solicitud = db.Column(db.DateTime, nullable=True)
-    fecha_registro         = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    fecha_ultima_actividad = db.Column(db.DateTime, nullable=True)
+    total_solicitudes        = db.Column(db.Integer,  nullable=False, default=0)
+    fecha_ultima_solicitud   = db.Column(db.DateTime, nullable=True)
+    fecha_registro           = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    fecha_ultima_actividad   = db.Column(db.DateTime, nullable=True)
 
     solicitudes = db.relationship(
         'Solicitud',
@@ -113,13 +121,11 @@ class Cliente(UserMixin, db.Model):
     )
 
     def set_password(self, password):
-        # fuerza PBKDF2-SHA256 para hashes <128 caracteres
         self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-
-
+        
 class Solicitud(db.Model):
     __tablename__ = 'solicitudes'
 
@@ -146,10 +152,15 @@ class Solicitud(db.Model):
 
     # Detalles de la oferta de trabajo
     modalidad_trabajo = db.Column(db.String(100), nullable=True)
-    edad_requerida    = db.Column(db.String(50), nullable=True)
+    edad_requerida    = db.Column(db.String(200), nullable=True)
     experiencia       = db.Column(db.Text, nullable=True)
     horario           = db.Column(db.String(100), nullable=True)
-    funciones         = db.Column(db.Text, nullable=True)
+    funciones = db.Column(
+        ARRAY(db.String(50)),
+        nullable=True,
+        default=list,
+        server_default=text("ARRAY[]::VARCHAR[]")
+    )
 
     # Tipo de lugar
     tipo_lugar       = db.Column(
@@ -204,6 +215,7 @@ class Solicitud(db.Model):
 
     fecha_cancelacion  = db.Column(db.DateTime, nullable=True)
     motivo_cancelacion = db.Column(db.String(255), nullable=True)
+
 
 class Reemplazo(db.Model):
     __tablename__ = 'reemplazos'

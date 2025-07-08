@@ -40,7 +40,7 @@ Que sepa leer y escribir
 Experiencia en: {{ s.experiencia }}
 Horario: {{ s.horario }}
 
-Funciones: {{ s.funciones }}
+Funciones: {{ s.funciones | join(', ') }}
 
 {{ s.tipo_lugar.title() }} {{ s.habitaciones }} habitaciones, {{ s.banos }} baños{% if s.areas_comunes %}, {{ s.areas_comunes|join(', ') }}{% endif %}.
 

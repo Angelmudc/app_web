@@ -10,11 +10,10 @@ from logging.config import fileConfig
 from flask import current_app
 from alembic import context
 
-# ——— Inicializa tu app y empuja el contexto de Flask ———
-from config_app import create_app
-app = create_app()
-app.app_context().push()
-# ————————————————————————————————————————————————
+# Ya no empujamos el context aquí al nivel de módulo:
+# from config_app import create_app
+# app = create_app()
+# app.app_context().push()
 
 # this is the Alembic Config object, which provides access to the .ini file
 config = context.config
@@ -46,6 +45,7 @@ config.set_main_option('sqlalchemy.url', get_engine_url())
 # Accede al metadata de tu base de datos
 target_db = current_app.extensions['migrate'].db
 
+
 def get_metadata():
     if hasattr(target_db, 'metadatas'):
         return target_db.metadatas[None]
@@ -64,7 +64,8 @@ def run_migrations_offline():
 
 
 def run_migrations_online():
-    def process_revision_directives(context, revision, directives):
+    # Aquí Alembic ya está dentro del app context cuando se invoca via flask db upgrade
+    def process_revision_directives(context_, revision, directives):
         if getattr(config.cmd_opts, 'autogenerate', False):
             script = directives[0]
             if script.upgrade_ops.is_empty():

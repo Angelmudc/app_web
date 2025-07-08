@@ -193,6 +193,7 @@ AREAS_COMUNES_CHOICES = [
     ('todas_anteriores','Todas las anteriores'),
 ]
 
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET','POST'])
 @login_required
 @admin_required
@@ -201,23 +202,31 @@ def nueva_solicitud_admin(cliente_id):
     form = AdminSolicitudForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
-    if form.validate_on_submit():
-        idx = c.total_solicitudes or 0
-        nuevo_codigo = f"{c.codigo}-{letra_por_indice(idx)}"
+    if request.method == 'GET':
+        form.funciones.data     = []
+        form.areas_comunes.data = []
+        form.area_otro.data     = ''
+        form.edad_requerida.data = ''  # para evitar None
 
-        # Creamos la solicitud con el nuevo código
+    if form.validate_on_submit():
+        count = Solicitud.query.filter_by(cliente_id=c.id).count()
+        nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
+
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
             codigo_solicitud = nuevo_codigo
         )
         form.populate_obj(s)
-        s.codigo_solicitud = nuevo_codigo
-        s.areas_comunes    = form.areas_comunes.data
-        s.area_otro        = form.area_otro.data
+
+        # Convertimos cada campo a la forma que espera el modelo (ARRAY)
+        s.edad_requerida = [form.edad_requerida.data]
+        s.funciones      = form.funciones.data
+        s.areas_comunes  = form.areas_comunes.data
+        s.area_otro      = form.area_otro.data
 
         db.session.add(s)
-        c.total_solicitudes      = idx + 1
+        c.total_solicitudes      = count + 1
         c.fecha_ultima_solicitud = datetime.utcnow()
         c.fecha_ultima_actividad = datetime.utcnow()
         db.session.commit()
@@ -240,17 +249,25 @@ def editar_solicitud_admin(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminSolicitudForm(obj=s)
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+
     if request.method == 'GET':
-        form.areas_comunes.data = s.areas_comunes or []
-        form.area_otro.data     = s.area_otro or ''
+        form.edad_requerida.data = (s.edad_requerida or [''])[0]
+        form.funciones.data      = s.funciones or []
+        form.areas_comunes.data  = s.areas_comunes or []
+        form.area_otro.data      = s.area_otro or ''
+
     if form.validate_on_submit():
         form.populate_obj(s)
-        s.areas_comunes = form.areas_comunes.data
-        s.area_otro     = form.area_otro.data
+        s.edad_requerida           = [form.edad_requerida.data]
+        s.funciones                = form.funciones.data
+        s.areas_comunes            = form.areas_comunes.data
+        s.area_otro                = form.area_otro.data
         s.fecha_ultima_modificacion = datetime.utcnow()
         db.session.commit()
+
         flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
     return render_template(
         'admin/solicitud_form.html',
         form=form,
@@ -258,6 +275,8 @@ def editar_solicitud_admin(cliente_id, id):
         solicitud=s,
         nuevo=False
     )
+
+
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
