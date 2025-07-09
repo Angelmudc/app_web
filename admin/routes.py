@@ -94,43 +94,38 @@ def listar_clientes():
     clientes = query.order_by(Cliente.fecha_registro.desc()).all()
     return render_template('admin/clientes_list.html', clientes=clientes, q=q)
 
+
 @admin_bp.route('/clientes/nuevo', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def nuevo_cliente():
-    cliente_form   = AdminClienteForm()
-    solicitud_form = AdminSolicitudForm(prefix='sol')
+    cliente_form = AdminClienteForm()
 
     if cliente_form.validate_on_submit():
-        # 1) Crear instancia y poblar campos básicos
-        c = Cliente()
-        cliente_form.populate_obj(c)
-
-        # 2) Asignar credenciales
-        c.username = cliente_form.username.data
-        c.set_password(cliente_form.password.data)  # Asume método en modelo Cliente
-
-        # 3) Registro de fecha y guardado
-        c.fecha_registro = datetime.utcnow()
-        db.session.add(c)
-        db.session.flush()
-
-        # 4) Crear solicitud inicial si se indicó código
-        if solicitud_form.codigo_solicitud.data:
-            s = Solicitud(cliente_id=c.id, fecha_solicitud=datetime.utcnow())
-            solicitud_form.populate_obj(s)
-            db.session.add(s)
-            c.total_solicitudes      = 1
-            c.fecha_ultima_solicitud = datetime.utcnow()
-
-        db.session.commit()
-        flash('Cliente y solicitud creados correctamente.', 'success')
-        return redirect(url_for('admin.listar_clientes'))
+        # 1) Validar unicidad de código y usuario
+        existe_codigo = Cliente.query.filter_by(codigo=cliente_form.codigo.data).first()
+        existe_usuario = Cliente.query.filter_by(username=cliente_form.username.data).first()
+        if existe_codigo:
+            flash(f"El código «{cliente_form.codigo.data}» ya está en uso.", "danger")
+        elif existe_usuario:
+            flash(f"El usuario «{cliente_form.username.data}» ya existe.", "danger")
+        else:
+            # 2) Crear instancia y poblar campos
+            c = Cliente()
+            cliente_form.populate_obj(c)
+            # 3) Asignar credenciales
+            c.username = cliente_form.username.data
+            c.set_password(cliente_form.password.data)
+            # 4) Fecha de registro y guardado
+            c.fecha_registro = datetime.utcnow()
+            db.session.add(c)
+            db.session.commit()
+            flash('Cliente creado correctamente.', 'success')
+            return redirect(url_for('admin.listar_clientes'))
 
     return render_template(
         'admin/cliente_form.html',
         cliente_form=cliente_form,
-        solicitud_form=solicitud_form,
         nuevo=True
     )
 
@@ -150,11 +145,12 @@ def editar_cliente(cliente_id):
     if form.validate_on_submit():
         # Actualizar datos básicos
         form.populate_obj(c)
-        # Si vino contraseña, actulizar hash
+        # Si vino contraseña, actualizar hash
         if form.password.data:
             c.set_password(form.password.data)
         c.fecha_ultima_actividad = datetime.utcnow()
         db.session.commit()
+
         flash('Cliente actualizado correctamente.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
@@ -203,28 +199,32 @@ def nueva_solicitud_admin(cliente_id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        form.funciones.data     = []
-        form.areas_comunes.data = []
-        form.area_otro.data     = ''
-        form.edad_requerida.data = ''  # para evitar None
+        form.funciones.data      = []
+        form.areas_comunes.data  = []
+        form.area_otro.data      = ''
+        form.edad_requerida.data = ''
 
     if form.validate_on_submit():
-        count = Solicitud.query.filter_by(cliente_id=c.id).count()
+        # Genera el código automáticamente, sin leer nada del formulario
+        count       = Solicitud.query.filter_by(cliente_id=c.id).count()
         nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
 
+        # Crea la solicitud con el código generado
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
             codigo_solicitud = nuevo_codigo
         )
+        # Sobreescribe los campos del modelo con los del formulario
         form.populate_obj(s)
 
-        # Convertimos cada campo a la forma que espera el modelo (ARRAY)
+        # Ajustes de arrays y campos especiales
         s.edad_requerida = [form.edad_requerida.data]
         s.funciones      = form.funciones.data
         s.areas_comunes  = form.areas_comunes.data
         s.area_otro      = form.area_otro.data
 
+        # Guarda todo
         db.session.add(s)
         c.total_solicitudes      = count + 1
         c.fecha_ultima_solicitud = datetime.utcnow()
@@ -240,7 +240,6 @@ def nueva_solicitud_admin(cliente_id):
         cliente_id=cliente_id,
         nuevo=True
     )
-
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar', methods=['GET','POST'])
 @login_required
@@ -275,9 +274,6 @@ def editar_solicitud_admin(cliente_id, id):
         solicitud=s,
         nuevo=False
     )
-
-
-
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
 @login_required

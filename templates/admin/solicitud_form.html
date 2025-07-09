@@ -1,106 +1,150 @@
+{# templates/admin/solicitud_form.html #}
 {% extends 'base.html' %}
 
-{% block title %}Detalle Solicitud {{ solicitud.codigo_solicitud }}{% endblock %}
+{% block title %}
+  {% if nuevo %}
+    Nueva Solicitud
+  {% else %}
+    Detalle Solicitud {{ solicitud.codigo_solicitud }}
+  {% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Solicitud {{ solicitud.codigo_solicitud }}</h1>
-    <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary">
+    <h1 class="h3">
+      {% if nuevo %}
+        Nueva Solicitud
+      {% else %}
+        Solicitud {{ solicitud.codigo_solicitud }}
+      {% endif %}
+    </h1>
+    <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
+       class="btn btn-secondary">
       ← Volver
     </a>
   </div>
 
-  <div class="row g-4">
-    <div class="col-md-6">
-      <label class="form-label"><strong>Ciudad / Sector:</strong></label>
-      <p>{{ solicitud.ciudad_sector }}</p>
-    </div>
-    <div class="col-md-6">
-      <label class="form-label"><strong>Rutas cercanas:</strong></label>
-      <p>{{ solicitud.rutas_cercanas }}</p>
-    </div>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
 
-    <div class="col-md-6">
-      <label class="form-label"><strong>Modalidad de trabajo:</strong></label>
-      <p>{{ solicitud.modalidad_trabajo }}</p>
-    </div>
-    <div class="col-md-6">
-      <label class="form-label"><strong>Edad requerida:</strong></label>
-      <p>{{ solicitud.edad_requerida | join(', ') }}</p>
-    </div>
-
-    <div class="col-12">
-      <label class="form-label"><strong>Experiencia:</strong></label>
-      <p>{{ solicitud.experiencia }}</p>
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label"><strong>Horario:</strong></label>
-      <p>{{ solicitud.horario }}</p>
-    </div>
-    <div class="col-md-6">
-      <label class="form-label"><strong>Funciones:</strong></label>
-      <p>{{ solicitud.funciones | join(', ') }}</p>
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label"><strong>Tipo de lugar:</strong></label>
-      <p>{{ solicitud.tipo_lugar }}</p>
-    </div>
-    <div class="col-md-6">
-      <label class="form-label"><strong>Habitaciones:</strong></label>
-      <p>{{ solicitud.habitaciones }}</p>
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label"><strong>Baños:</strong></label>
-      <p>{{ solicitud.banos }}</p>
-    </div>
-    <div class="col-md-6">
-      <label class="form-label"><strong>Dos pisos:</strong></label>
-      <p>{{ 'Sí' if solicitud.dos_pisos else 'No' }}</p>
-    </div>
-
-    <div class="col-md-4">
-      <label class="form-label"><strong>Adultos:</strong></label>
-      <p>{{ solicitud.adultos }}</p>
-    </div>
-    <div class="col-md-4">
-      <label class="form-label"><strong>Niños:</strong></label>
-      <p>{{ solicitud.ninos }}</p>
-    </div>
-    <div class="col-md-4">
-      <label class="form-label"><strong>Edades de los niños:</strong></label>
-      <p>{{ solicitud.edades_ninos }}</p>
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label"><strong>Sueldo:</strong></label>
-      <p>{{ solicitud.sueldo }}</p>
-    </div>
-    <div class="col-md-6">
-      <label class="form-label"><strong>Pasaje aporta:</strong></label>
-      <p>{{ 'Sí' if solicitud.pasaje_aporte else 'No' }}</p>
-    </div>
-
-    <div class="col-12">
-      <label class="form-label"><strong>Áreas comunes:</strong></label>
-      <p>{{ solicitud.areas_comunes | join(', ') }}</p>
-    </div>
-    {% if solicitud.area_otro %}
-    <div class="col-12">
-      <label class="form-label"><strong>Otra área:</strong></label>
-      <p>{{ solicitud.area_otro }}</p>
-    </div>
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        <ul>
+          {% for errs in form.errors.values() %}
+            {% for err in errs %}
+              <li>{{ err }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
     {% endif %}
 
-    {% if solicitud.nota_cliente %}
-    <div class="col-12">
-      <label class="form-label"><strong>Nota adicional:</strong></label>
-      <p>{{ solicitud.nota_cliente }}</p>
+    <div class="row g-3">
+      <div class="col-md-6">
+        {{ form.ciudad_sector.label(class="form-label") }}
+        {{ form.ciudad_sector(class="form-control") }}
+      </div>
+      <div class="col-md-6">
+        {{ form.rutas_cercanas.label(class="form-label") }}
+        {{ form.rutas_cercanas(class="form-control") }}
+      </div>
+      <div class="col-md-6">
+        {{ form.modalidad_trabajo.label(class="form-label") }}
+        {{ form.modalidad_trabajo(class="form-control") }}
+      </div>
+      <div class="col-md-6">
+        {{ form.edad_requerida.label(class="form-label") }}
+        {{ form.edad_requerida(class="form-control") }}
+      </div>
+      <div class="col-12">
+        {{ form.experiencia.label(class="form-label") }}
+        {{ form.experiencia(class="form-control", rows=3) }}
+      </div>
+      <div class="col-md-6">
+        {{ form.horario.label(class="form-label") }}
+        {{ form.horario(class="form-control") }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">{{ form.funciones.label.text }}</label>
+        <div>
+          {% for subfield in form.funciones %}
+            <div class="form-check form-check-inline">
+              {{ subfield(class="form-check-input") }}
+              {{ subfield.label(class="form-check-label") }}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-md-6">
+        {{ form.tipo_lugar.label(class="form-label") }}
+        {{ form.tipo_lugar(class="form-select") }}
+      </div>
+      <div class="col-md-3">
+        {{ form.habitaciones.label(class="form-label") }}
+        {{ form.habitaciones(class="form-control") }}
+      </div>
+      <div class="col-md-3">
+        {{ form.banos.label(class="form-label") }}
+        {{ form.banos(class="form-control") }}
+      </div>
+      <div class="col-md-6">
+        <div class="form-check">
+          {{ form.dos_pisos(class="form-check-input") }}
+          {{ form.dos_pisos.label(class="form-check-label") }}
+        </div>
+      </div>
+      <div class="col-md-4">
+        {{ form.adultos.label(class="form-label") }}
+        {{ form.adultos(class="form-control") }}
+      </div>
+      <div class="col-md-4">
+        {{ form.ninos.label(class="form-label") }}
+        {{ form.ninos(class="form-control") }}
+      </div>
+      <div class="col-md-4">
+        {{ form.edades_ninos.label(class="form-label") }}
+        {{ form.edades_ninos(class="form-control") }}
+      </div>
+      <div class="col-md-6">
+        {{ form.sueldo.label(class="form-label") }}
+        {{ form.sueldo(class="form-control") }}
+      </div>
+      <div class="col-md-6">
+        <div class="form-check">
+          {{ form.pasaje_aporte(class="form-check-input") }}
+          {{ form.pasaje_aporte.label(class="form-check-label") }}
+        </div>
+      </div>
+      <div class="col-12">
+        <label class="form-label">{{ form.areas_comunes.label.text }}</label>
+        <div>
+          {% for subfield in form.areas_comunes %}
+            <div class="form-check form-check-inline">
+              {{ subfield(class="form-check-input") }}
+              {{ subfield.label(class="form-check-label") }}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-md-6">
+        {{ form.area_otro.label(class="form-label") }}
+        {{ form.area_otro(class="form-control") }}
+      </div>
+      <div class="col-12">
+        {{ form.nota_cliente.label(class="form-label") }}
+        {{ form.nota_cliente(class="form-control", rows=3) }}
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">
+          {% if nuevo %}Crear{% else %}Actualizar{% endif %}
+        </button>
+        <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
+           class="btn btn-secondary">
+          Cancelar
+        </a>
+      </div>
     </div>
-    {% endif %}
-  </div>
+  </form>
 </div>
 {% endblock %}

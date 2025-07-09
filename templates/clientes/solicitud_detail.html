@@ -2,63 +2,107 @@
 {% block title %}Detalle {{ s.codigo_solicitud }}{% endblock %}
 
 {% block content %}
-  <div class="mb-4">
-    <h2>Solicitud {{ s.codigo_solicitud }}</h2>
-    <small class="text-muted">
-      Fecha de envío: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
-      {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
-        — <span class="badge bg-danger">Publicado hoy</span>
-      {% endif %}
-    </small>
+<div class="container py-4">
+  <!-- Encabezado -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2>Solicitud {{ s.codigo_solicitud }}</h2>
+      <small class="text-muted">
+        Enviada: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
+        {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
+          <span class="badge bg-danger ms-2">Publicado hoy</span>
+        {% endif %}
+      </small>
+    </div>
+    <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left-circle"></i> Volver
+    </a>
   </div>
 
-  <!-- Detalles principales -->
+  <!-- Resumen de la solicitud -->
   <div class="card mb-4 shadow-sm">
-    <div class="card-header bg-primary text-white">Detalles de la solicitud</div>
+    <div class="card-header bg-primary text-white">
+      <i class="bi bi-info-circle"></i> Resumen
+    </div>
     <ul class="list-group list-group-flush">
       <li class="list-group-item">
-        <strong>Áreas comunes:</strong> {{ s.areas_comunes|join(', ') }}
-      </li>
-      {% if s.area_otro %}
-        <li class="list-group-item">
-          <strong>Otra área:</strong> {{ s.area_otro }}
-        </li>
-      {% endif %}
-      <li class="list-group-item">
-        <strong>Nota adicional:</strong><br>
-        {{ s.nota_cliente }}
+        <strong>Plan:</strong> {{ s.tipo_plan or '—' }}
       </li>
       <li class="list-group-item">
-        <strong>Estado:</strong> <span class="fw-bold">{{ s.estado }}</span>
+        <strong>Abono:</strong> {{ s.abono or '—' }}
+      </li>
+      <li class="list-group-item">
+        <strong>Candidata asignada:</strong>
+        {{ s.candidata.nombre_completo if s.candidata else '—' }}
+      </li>
+      <li class="list-group-item">
+        <strong>Estado:</strong>
+        <span class="fw-bold">{{ s.estado }}</span>
       </li>
       {% if s.estado == 'cancelada' %}
-        <li class="list-group-item bg-warning">
-          <strong>Motivo cancelación:</strong><br>
-          {{ s.motivo_cancelacion }}
-        </li>
+      <li class="list-group-item bg-warning">
+        <strong>Motivo de cancelación:</strong>
+        {{ s.motivo_cancelacion }}
+      </li>
       {% endif %}
+      <li class="list-group-item">
+        <strong>Nota:</strong> {{ s.nota_cliente or '—' }}
+      </li>
     </ul>
   </div>
 
+  <!-- Información completa (solo si está activa) -->
+  {% if s.estado == 'activa' %}
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header bg-success text-white">
+      <i class="bi bi-list-ul"></i> Información completa
+    </div>
+    <ul class="list-group list-group-flush">
+      <li class="list-group-item"><strong>Ciudad / Sector:</strong> {{ s.ciudad_sector or '—' }}</li>
+      <li class="list-group-item"><strong>Rutas cercanas:</strong> {{ s.rutas_cercanas or '—' }}</li>
+      <li class="list-group-item"><strong>Modalidad:</strong> {{ s.modalidad_trabajo or '—' }}</li>
+      <li class="list-group-item">
+        <strong>Edad requerida:</strong>
+        {{ s.edad_requerida|join(', ') }}
+      </li>
+      <li class="list-group-item"><strong>Experiencia:</strong> {{ s.experiencia or '—' }}</li>
+      <li class="list-group-item"><strong>Horario:</strong> {{ s.horario or '—' }}</li>
+      <li class="list-group-item"><strong>Funciones:</strong> {{ s.funciones|join(', ') or '—' }}</li>
+      <li class="list-group-item"><strong>Tipo de lugar:</strong> {{ s.tipo_lugar or '—' }}</li>
+      <li class="list-group-item"><strong>Habitaciones:</strong> {{ s.habitaciones or '—' }}</li>
+      <li class="list-group-item"><strong>Baños:</strong> {{ s.banos or '—' }}</li>
+      <li class="list-group-item"><strong>Dos pisos:</strong> {{ 'Sí' if s.dos_pisos else 'No' }}</li>
+      <li class="list-group-item"><strong>Adultos:</strong> {{ s.adultos or '—' }}</li>
+      <li class="list-group-item"><strong>Niños:</strong> {{ s.ninos or '—' }}</li>
+      <li class="list-group-item"><strong>Edades niños:</strong> {{ s.edades_ninos or '—' }}</li>
+      <li class="list-group-item"><strong>Sueldo:</strong> {{ s.sueldo or '—' }}</li>
+      <li class="list-group-item"><strong>Pasaje aporta:</strong> {{ 'Sí' if s.pasaje_aporte else 'No' }}</li>
+      <li class="list-group-item"><strong>Áreas comunes:</strong> {{ s.areas_comunes|join(', ') }}</li>
+      {% if s.area_otro %}
+      <li class="list-group-item"><strong>Otra área:</strong> {{ s.area_otro }}</li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
   <!-- Seguimiento -->
   <div class="card mb-4 shadow-sm">
-    <div class="card-header bg-light">Seguimiento</div>
+    <div class="card-header bg-light">
+      <i class="bi bi-clock-history"></i> Seguimiento
+    </div>
     <ul class="list-group list-group-flush">
       {% for e in envios %}
-        <li class="list-group-item">
-          <strong>{{ e.tipo }}:</strong>
-          {{ e.candidata }} —
-          {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
-        </li>
+      <li class="list-group-item">
+        <strong>{{ e.tipo }}:</strong> {{ e.candidata }} — {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
+      </li>
       {% endfor %}
       {% if cancelaciones %}
-        <li class="list-group-item bg-warning">
-          <strong>Cancelada el {{ cancelaciones[0].fecha.strftime('%d/%m/%Y %H:%M') }}:</strong>
-          {{ cancelaciones[0].motivo }}
-        </li>
+      <li class="list-group-item bg-warning">
+        <strong>Cancelada:</strong> {{ cancelaciones[0].fecha.strftime('%d/%m/%Y %H:%M') }} — {{ cancelaciones[0].motivo }}
+      </li>
       {% endif %}
       {% if not envios and not cancelaciones %}
-        <li class="list-group-item text-muted">Sin movimientos aún.</li>
+      <li class="list-group-item text-muted">Sin movimientos aún.</li>
       {% endif %}
     </ul>
   </div>
@@ -66,12 +110,16 @@
   <!-- Acciones -->
   <div class="d-flex">
     {% if s.estado == 'proceso' %}
-      <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}"
-         class="btn btn-outline-primary me-2">Editar</a>
-      <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}"
-         class="btn btn-outline-danger">Cancelar</a>
+    <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}" class="btn btn-outline-primary me-2">
+      <i class="bi bi-pencil-square"></i> Editar
+    </a>
+    <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}" class="btn btn-outline-danger me-2">
+      <i class="bi bi-x-circle"></i> Cancelar
+    </a>
     {% endif %}
-    <a href="{{ url_for('clientes.listar_solicitudes') }}"
-       class="btn btn-outline-secondary ms-auto">Volver</a>
+    <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary ms-auto">
+      <i class="bi bi-arrow-left-circle"></i> Volver
+    </a>
   </div>
+</div>
 {% endblock %}

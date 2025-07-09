@@ -86,8 +86,7 @@
   <div class="mt-5">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h2 class="h4">Solicitudes</h2>
-      <a href="{{ url_for('admin.nueva_solicitud_admin', cliente_id=cliente.id) }}" 
-         class="btn btn-success">
+      <a href="{{ url_for('admin.nueva_solicitud_admin', cliente_id=cliente.id) }}" class="btn btn-success">
         <i class="bi bi-plus-lg"></i> Nueva Solicitud
       </a>
     </div>
@@ -113,7 +112,7 @@
           <td>{{ s.modalidad_trabajo or '—' }}</td>
           <td>{{ s.tipo_plan or '—' }}</td>
           <td>
-            <span class="badge 
+            <span class="badge
               {% if s.estado == 'proceso' %}bg-secondary
               {% elif s.estado == 'activa' %}bg-primary
               {% elif s.estado == 'pagada' %}bg-success
@@ -134,14 +133,12 @@
                class="btn btn-sm btn-outline-warning me-1" title="Editar">
               <i class="bi bi-pencil-fill"></i>
             </a>
-            <!-- Plan / Abono -->
-            {% if s.estado in ['proceso','cancelada'] %}
+            <!-- Gestionar Plan (siempre aparece) -->
             <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-primary me-1" title="Gestionar Plan">
               <i class="bi bi-credit-card-fill"></i>
             </a>
-            {% endif %}
-            <!-- Registrar pago (activa o proceso) -->
+            <!-- Registrar pago (solo activa o proceso) -->
             {% if s.estado in ['activa','proceso'] %}
             <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-success me-1" title="Registrar Pago">
@@ -153,7 +150,7 @@
                class="btn btn-sm btn-outline-secondary me-1" title="Reemplazo">
               <i class="bi bi-arrow-repeat"></i>
             </a>
-            <!-- Cancelar -->
+            <!-- Cancelar (solo activa, proceso o reemplazo) -->
             {% if s.estado in ['activa','proceso','reemplazo'] %}
             <form method="post"
                   action="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id) }}"

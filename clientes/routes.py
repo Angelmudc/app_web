@@ -90,6 +90,14 @@ def ayuda():
     return render_template('clientes/ayuda.html')
 
 
+AREAS_COMUNES_CHOICES = [
+    ('sala', 'Sala'), ('comedor', 'Comedor'),
+    ('cocina','Cocina'), ('salon_juegos','Salón de juegos'),
+    ('terraza','Terraza'), ('jardin','Jardín'),
+    ('estudio','Estudio'), ('patio','Patio'),
+    ('piscina','Piscina'), ('marquesina','Marquesina'),
+    ('todas_anteriores','Todas las anteriores'),
+]
 
 @clientes_bp.route('/solicitudes')
 @login_required
@@ -109,52 +117,51 @@ def listar_solicitudes():
     )
 
 
-
-
 @clientes_bp.route('/solicitudes/nueva', methods=['GET', 'POST'])
 @login_required
 @cliente_required
 def nueva_solicitud():
     form = SolicitudForm()
+    # Cargar las opciones de áreas comunes
+    form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+
+    if request.method == 'GET':
+        # Inicializar listas para evitar None
+        form.funciones.data      = []
+        form.areas_comunes.data  = []
+        form.edad_requerida.data = ''
 
     if form.validate_on_submit():
-        # Generar código único
+        # 1) Generar código único
         count  = Solicitud.query.filter_by(cliente_id=current_user.id).count()
         codigo = f"{current_user.codigo}-{letra_por_indice(count)}"
 
-        # Crear instancia de Solicitud (edad_requerida como CSV)
+        # 2) Crear instancia de Solicitud sólo con código y fecha
         s = Solicitud(
-            cliente_id        = current_user.id,
-            fecha_solicitud   = datetime.utcnow(),
-            codigo_solicitud  = codigo,
-            ciudad_sector     = form.ciudad_sector.data,
-            rutas_cercanas    = form.rutas_cercanas.data,
-            modalidad_trabajo = form.modalidad_trabajo.data,
-            edad_requerida    = ','.join(form.edad_requerida.data),
-            experiencia       = form.experiencia.data,
-            horario           = form.horario.data,
-            funciones         = form.funciones.data,
-            tipo_lugar        = form.tipo_lugar.data,
-            habitaciones      = form.habitaciones.data,
-            banos             = form.banos.data,
-            dos_pisos         = form.dos_pisos.data,
-            adultos           = form.adultos.data,
-            ninos             = form.ninos.data,
-            edades_ninos      = form.edades_ninos.data,
-            sueldo            = form.sueldo.data,
-            pasaje_aporte     = form.pasaje_aporte.data,
-            nota_cliente      = form.nota_cliente.data,
-            areas_comunes     = form.areas_comunes.data,
-            area_otro         = form.area_otro.data
+            cliente_id       = current_user.id,
+            fecha_solicitud  = datetime.utcnow(),
+            codigo_solicitud = codigo
         )
+        # 3) Poblar el resto de campos del formulario
+        form.populate_obj(s)
 
+        # 4) Asegurar que los campos ARRAY sean listas
+        s.edad_requerida = [form.edad_requerida.data] if form.edad_requerida.data else []
+        s.funciones      = form.funciones.data
+        s.areas_comunes  = form.areas_comunes.data
+
+        # 5) Guardar en base de datos
         db.session.add(s)
         db.session.commit()
 
         flash(f'Solicitud {codigo} creada correctamente.', 'success')
         return redirect(url_for('clientes.listar_solicitudes'))
 
-    return render_template('clientes/solicitud_form.html', form=form)
+    return render_template(
+        'clientes/solicitud_form.html',
+        form=form,
+        nuevo=True
+    )
 
 
 @clientes_bp.route('/solicitudes/<int:id>/editar', methods=['GET','POST'])
