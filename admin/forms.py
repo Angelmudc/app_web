@@ -1,36 +1,30 @@
-# admin/forms.py
-
 from flask_wtf import FlaskForm
 from wtforms import (
-    StringField,
-    TextAreaField,
-    BooleanField,
-    IntegerField,
-    HiddenField,
-    SelectField,
-    SubmitField,
-    SelectMultipleField,
-    DecimalField
+    StringField, PasswordField, TextAreaField, BooleanField,
+    IntegerField, HiddenField, SelectField, SelectMultipleField,
+    DecimalField, SubmitField, RadioField
 )
-from wtforms.validators import DataRequired, Length, Optional, NumberRange
+from wtforms.validators import (
+    DataRequired, InputRequired, Optional, Length,
+    NumberRange, EqualTo
+)
 from wtforms.widgets import ListWidget, CheckboxInput
-from wtforms import StringField, PasswordField, TextAreaField
 
-# --------------------------------------------------------------------
-# Campo de “checkbox múltiple” personalizado para WTForms:
+# Campo de checkbox múltiple personalizado para WTForms
 class MultiCheckboxField(SelectMultipleField):
     widget = ListWidget(prefix_label=False)
     option_widget = CheckboxInput()
-# --------------------------------------------------------------------
 
 class AdminLoginForm(FlaskForm):
-    username = StringField('Usuario', validators=[DataRequired(), Length(max=50)])
-    password = StringField('Contraseña', validators=[DataRequired(), Length(max=100)])
-
-
-from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, TextAreaField
-from wtforms.validators import DataRequired, Length, Optional, EqualTo
+    username = StringField(
+        'Usuario',
+        validators=[DataRequired(), Length(max=50)]
+    )
+    password = PasswordField(
+        'Contraseña',
+        validators=[DataRequired(), Length(max=100)]
+    )
+    submit = SubmitField('Iniciar sesión')
 
 class AdminClienteForm(FlaskForm):
     codigo = StringField(
@@ -66,29 +60,6 @@ class AdminClienteForm(FlaskForm):
         'Notas administrativas',
         validators=[Optional()]
     )
-
-    # --- Credenciales ---
-    username = StringField(
-        'Usuario',
-        validators=[DataRequired(), Length(min=4, max=50)]
-    )
-    password = PasswordField(
-        'Contraseña',
-        validators=[
-            Optional(),
-            Length(min=8, message="La contraseña debe tener al menos 8 caracteres")
-        ]
-    )
-    confirm  = PasswordField(
-        'Repetir Contraseña',
-        validators=[
-            Optional(),
-            EqualTo('password', message="Las contraseñas deben coincidir")
-        ]
-    )
-
-
-    # ——— Campos nuevos ———
     username = StringField(
         'Usuario',
         validators=[DataRequired(), Length(min=4, max=50)],
@@ -96,10 +67,14 @@ class AdminClienteForm(FlaskForm):
     )
     password = PasswordField(
         'Contraseña',
-        validators=[DataRequired(), Length(min=8)],
+        validators=[Optional(), Length(min=8, message="La contraseña debe tener al menos 8 caracteres")],
         render_kw={"placeholder": "Mínimo 8 caracteres"}
     )
-
+    confirm = PasswordField(
+        'Repetir Contraseña',
+        validators=[Optional(), EqualTo('password', message="Las contraseñas deben coincidir")]
+    )
+    submit = SubmitField('Guardar cliente')
 
 class AdminSolicitudForm(FlaskForm):
     ciudad_sector     = StringField(
@@ -114,44 +89,57 @@ class AdminSolicitudForm(FlaskForm):
         'Modalidad trabajo',
         validators=[DataRequired(), Length(max=100)]
     )
-    edad_requerida    = StringField(
+
+    edad_requerida = RadioField(
         'Edad requerida',
-        validators=[DataRequired(), Length(max=50)]
+        choices=[
+            ('18-25', '18–25 años'),
+            ('26-35', '26–35 años'),
+            ('36-45', '36–45 años'),
+            ('45+',   'Mayor de 45'),
+            ('otra',  'Otra...')
+        ],
+        validators=[InputRequired()],
+        coerce=str
     )
-    experiencia       = TextAreaField(
+    edad_otro = StringField(
+        'Otra edad',
+        validators=[Optional(), Length(max=50)],
+        render_kw={"placeholder": "Especifique otra edad"}
+    )
+
+    experiencia = TextAreaField(
         'Experiencia',
         validators=[DataRequired()]
     )
-    horario           = StringField(
+    horario = StringField(
         'Horario',
         validators=[DataRequired(), Length(max=100)]
     )
-    funciones = SelectMultipleField(
+
+    funciones = MultiCheckboxField(
         'Funciones a realizar al personal',
         choices=[
-            ('limpieza','Limpieza General'),
-            ('cocinar','Cocinar'),
-            ('lavar','Lavar'),
-            ('ninos','Cuidar Niños'),
-            ('envejeciente','Cuidar Envejecientes'),
-            ('otro','Otro'),
+            ('limpieza',     'Limpieza General'),
+            ('cocinar',      'Cocinar'),
+            ('lavar',        'Lavar'),
+            ('ninos',        'Cuidar Niños'),
+            ('envejeciente', 'Cuidar Envejecientes'),
+            ('otro',         'Otro'),
         ],
-        validators=[DataRequired()],
-        option_widget=CheckboxInput(),
-        widget=ListWidget(prefix_label=False)
+        validators=[DataRequired()]
     )
 
     tipo_lugar = SelectField(
         'Tipo de lugar',
         choices=[
-            ('casa', 'Casa'),
+            ('casa',    'Casa'),
             ('oficina', 'Oficina'),
-            ('apto', 'Apto'),
-            ('otro', 'Otro')
+            ('apto',    'Apto'),
+            ('otro',    'Otro')
         ],
         validators=[DataRequired()]
     )
-
     habitaciones = IntegerField(
         'Habitaciones',
         validators=[DataRequired(), NumberRange(min=0)]
@@ -166,11 +154,11 @@ class AdminSolicitudForm(FlaskForm):
 
     areas_comunes = MultiCheckboxField(
         'Áreas comunes',
-        choices=[],  # lo rellenas en la vista con AREAS_COMUNES_CHOICES
+        choices=[],  # rellenas en la vista con AREAS_COMUNES_CHOICES
         default=[],
         validators=[Optional()]
     )
-    area_otro     = StringField(
+    area_otro = StringField(
         'Otra área',
         validators=[Optional(), Length(max=200)]
     )
@@ -182,7 +170,7 @@ class AdminSolicitudForm(FlaskForm):
     ninos = IntegerField(
         'Niños',
         validators=[Optional(), NumberRange(min=0)],
-        render_kw={"min": "0"}   
+        render_kw={"min": "0"}
     )
     edades_ninos = StringField(
         'Edades niños',
@@ -194,17 +182,33 @@ class AdminSolicitudForm(FlaskForm):
         validators=[DataRequired(), Length(max=50)],
         render_kw={"placeholder": "Ej. 23,000 mensual"}
     )
-    pasaje_aporte = BooleanField('¿Aporta pasaje?')
-    nota_cliente  = TextAreaField(
+
+    pasaje_aporte = RadioField(
+        '¿Aporta pasaje?',
+        choices=[
+            ('1', 'Sí, aporta pasaje'),
+            ('0', 'No aporta pasaje')
+        ],
+        validators=[InputRequired()],
+        coerce=lambda v: v == '1'
+    )
+
+    nota_cliente = TextAreaField(
         'Nota adicional',
         validators=[Optional()]
     )
-
+    submit = SubmitField('Guardar solicitud')
 
 class AdminGestionPlanForm(FlaskForm):
-    tipo_plan = StringField('Tipo de plan', validators=[DataRequired(), Length(max=50)])
-    abono     = StringField('Abono',         validators=[DataRequired(), Length(max=20)])
-
+    tipo_plan = StringField(
+        'Tipo de plan',
+        validators=[DataRequired(), Length(max=50)]
+    )
+    abono = StringField(
+        'Abono',
+        validators=[DataRequired(), Length(max=20)]
+    )
+    submit = SubmitField('Guardar plan')
 
 class AdminPagoForm(FlaskForm):
     candidata_id = SelectField(
@@ -219,15 +223,15 @@ class AdminPagoForm(FlaskForm):
     )
     submit = SubmitField('Registrar pago')
 
-
 class AdminReemplazoForm(FlaskForm):
-    candidata_old_id   = HiddenField(validators=[DataRequired()])
+    candidata_old_id = HiddenField(
+        validators=[DataRequired()]
+    )
     candidata_old_name = StringField(
         'Candidata que falló',
         validators=[DataRequired(), Length(max=200)]
     )
-
-    motivo_fallo           = TextAreaField(
+    motivo_fallo = TextAreaField(
         'Motivo del fallo',
         validators=[DataRequired(), Length(max=500)]
     )
@@ -236,5 +240,4 @@ class AdminReemplazoForm(FlaskForm):
         validators=[DataRequired(), Length(max=16)],
         render_kw={"type": "datetime-local"}
     )
-
-    submit = SubmitField('Activar Reemplazo')
+    submit = SubmitField('Activar reemplazo')

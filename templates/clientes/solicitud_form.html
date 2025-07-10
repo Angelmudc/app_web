@@ -22,9 +22,7 @@
     display: flex; align-items: center;
     margin-bottom: 1rem;
   }
-  .section-title i {
-    margin-right: 0.5rem;
-  }
+  .section-title i { margin-right: 0.5rem; }
   .form-label {
     font-size: 1.1rem; font-weight: 600; color: #1a237e;
     margin-bottom: 0.5rem;
@@ -68,9 +66,7 @@
 
         <!-- Sección 1: Ubicación y rutas -->
         <div class="section">
-          <div class="section-title">
-            <i class="bi bi-geo-alt-fill"></i> Ubicación y rutas
-          </div>
+          <div class="section-title"><i class="bi bi-geo-alt-fill"></i> Ubicación y rutas</div>
           <div class="mb-3">
             <label class="form-label"><strong>{{ form.ciudad_sector.label.text }}</strong></label>
             {{ form.ciudad_sector(class="form-control", placeholder="Ciudad / Sector") }}
@@ -83,9 +79,7 @@
 
         <!-- Sección 2: Detalles de la oferta -->
         <div class="section">
-          <div class="section-title">
-            <i class="bi bi-card-checklist"></i> Detalles de la oferta
-          </div>
+          <div class="section-title"><i class="bi bi-card-checklist"></i> Detalles de la oferta</div>
           <div class="mb-3">
             <label class="form-label"><strong>{{ form.modalidad_trabajo.label.text }}</strong></label>
             {{ form.modalidad_trabajo(class="form-control", placeholder="Modalidad de trabajo") }}
@@ -124,9 +118,7 @@
 
         <!-- Sección 3: Tipo de lugar -->
         <div class="section">
-          <div class="section-title">
-            <i class="bi bi-building"></i> Tipo de lugar
-          </div>
+          <div class="section-title"><i class="bi bi-building"></i> Tipo de lugar</div>
           <div class="mb-3">
             <label class="form-label"><strong>{{ form.tipo_lugar.label.text }}</strong></label>
             {{ form.tipo_lugar(class="form-select") }}
@@ -135,9 +127,7 @@
 
         <!-- Sección 4: Habitaciones, Baños y Áreas comunes -->
         <div class="section">
-          <div class="section-title">
-            <i class="bi bi-house-door-fill"></i> Habitaciones y Áreas comunes
-          </div>
+          <div class="section-title"><i class="bi bi-house-door-fill"></i> Habitaciones y Áreas comunes</div>
           <div class="row g-3 mb-3">
             <div class="col-md-4">
               <label class="form-label"><strong>{{ form.habitaciones.label.text }}</strong></label>
@@ -177,9 +167,7 @@
 
         <!-- Sección 5: Ocupantes -->
         <div class="section">
-          <div class="section-title">
-            <i class="bi bi-people-fill"></i> Ocupantes
-          </div>
+          <div class="section-title"><i class="bi bi-people-fill"></i> Ocupantes</div>
           <div class="row g-3">
             <div class="col-md-4">
               <label class="form-label"><strong>{{ form.adultos.label.text }}</strong></label>
@@ -198,28 +186,29 @@
 
         <!-- Sección 6: Compensación -->
         <div class="section">
-          <div class="section-title">
-            <i class="bi bi-currency-dollar"></i> Compensación
-          </div>
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label"><strong>{{ form.sueldo.label.text }}</strong></label>
-              {{ form.sueldo(class="form-control", placeholder="Sueldo a pagar") }}
-            </div>
-            <div class="col-md-6 d-flex align-items-center">
-              <div class="form-check mt-3">
-                {{ form.pasaje_aporte(class="form-check-input") }}
-                <label class="form-check-label ms-2" for="{{ form.pasaje_aporte.id }}"><strong>Pasaje aporta</strong></label>
+          <fieldset>
+            <legend class="section-title"><i class="bi bi-currency-dollar"></i> Compensación</legend>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label"><strong>{{ form.sueldo.label.text }}</strong></label>
+                {{ form.sueldo(class="form-control", placeholder="Sueldo a pagar") }}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label d-block"><strong>{{ form.pasaje_aporte.label.text }}</strong></label>
+                {% for sub in form.pasaje_aporte %}
+                  <div class="form-check form-check-inline">
+                    {{ sub(class="form-check-input") }}
+                    <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                  </div>
+                {% endfor %}
               </div>
             </div>
-          </div>
+          </fieldset>
         </div>
 
-        <!-- Sección 7: Nota del cliente -->
+        <!-- Sección 7: Nota adicional -->
         <div class="section">
-          <div class="section-title">
-            <i class="bi bi-chat-text-fill"></i> Nota adicional
-          </div>
+          <div class="section-title"><i class="bi bi-chat-text-fill"></i> Nota adicional</div>
           <div class="mb-3">
             <label class="form-label"><strong>{{ form.nota_cliente.label.text }}</strong></label>
             {{ form.nota_cliente(rows=3, class="form-control", placeholder="Comentarios adicionales") }}
@@ -231,6 +220,7 @@
           <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">Cancelar</a>
         </div>
       </form>
+
     </div>
   </div>
 </div>

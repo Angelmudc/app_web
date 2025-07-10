@@ -13,16 +13,11 @@
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3">
-      {% if nuevo %}
-        Nueva Solicitud
-      {% else %}
-        Solicitud {{ solicitud.codigo_solicitud }}
-      {% endif %}
+      {% if nuevo %}Nueva Solicitud{% else %}Solicitud {{ solicitud.codigo_solicitud }}{% endif %}
     </h1>
-    <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
-       class="btn btn-secondary">
-      ← Volver
-    </a>
+    <a href="{{ url_for('admin.detalle_cliente',
+             cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
+       class="btn btn-secondary">← Volver</a>
   </div>
 
   <form method="post" novalidate>
@@ -41,6 +36,7 @@
     {% endif %}
 
     <div class="row g-3">
+      <!-- Ubicación y rutas -->
       <div class="col-md-6">
         {{ form.ciudad_sector.label(class="form-label") }}
         {{ form.ciudad_sector(class="form-control") }}
@@ -49,22 +45,46 @@
         {{ form.rutas_cercanas.label(class="form-label") }}
         {{ form.rutas_cercanas(class="form-control") }}
       </div>
+
+      <!-- Detalles de la oferta -->
       <div class="col-md-6">
         {{ form.modalidad_trabajo.label(class="form-label") }}
         {{ form.modalidad_trabajo(class="form-control") }}
       </div>
+
+      <!-- Edad requerida -->
       <div class="col-md-6">
-        {{ form.edad_requerida.label(class="form-label") }}
-        {{ form.edad_requerida(class="form-control") }}
+        <label class="form-label">{{ form.edad_requerida.label.text }}</label>
+        <div>
+          {% for subfield in form.edad_requerida %}
+            <div class="form-check form-check-inline">
+              {{ subfield(class="form-check-input") }}
+              {{ subfield.label(class="form-check-label") }}
+            </div>
+          {% endfor %}
+        </div>
       </div>
+
+      <!-- “Otra edad” input, inicialmente oculto salvo que venga seleccionado -->
+      <div class="col-md-6 mt-2 {% if form.edad_requerida.data != 'otra' %}d-none{% endif %}"
+           id="edad-otro-container">
+        {{ form.edad_otro.label(class="form-label") }}
+        {{ form.edad_otro(class="form-control") }}
+      </div>
+
+      <!-- Experiencia -->
       <div class="col-12">
         {{ form.experiencia.label(class="form-label") }}
         {{ form.experiencia(class="form-control", rows=3) }}
       </div>
+
+      <!-- Horario -->
       <div class="col-md-6">
         {{ form.horario.label(class="form-label") }}
         {{ form.horario(class="form-control") }}
       </div>
+
+      <!-- Funciones -->
       <div class="col-12">
         <label class="form-label">{{ form.funciones.label.text }}</label>
         <div>
@@ -76,6 +96,8 @@
           {% endfor %}
         </div>
       </div>
+
+      <!-- Hogar -->
       <div class="col-md-6">
         {{ form.tipo_lugar.label(class="form-label") }}
         {{ form.tipo_lugar(class="form-select") }}
@@ -106,16 +128,8 @@
         {{ form.edades_ninos.label(class="form-label") }}
         {{ form.edades_ninos(class="form-control") }}
       </div>
-      <div class="col-md-6">
-        {{ form.sueldo.label(class="form-label") }}
-        {{ form.sueldo(class="form-control") }}
-      </div>
-      <div class="col-md-6">
-        <div class="form-check">
-          {{ form.pasaje_aporte(class="form-check-input") }}
-          {{ form.pasaje_aporte.label(class="form-check-label") }}
-        </div>
-      </div>
+
+      <!-- Áreas comunes -->
       <div class="col-12">
         <label class="form-label">{{ form.areas_comunes.label.text }}</label>
         <div>
@@ -131,15 +145,37 @@
         {{ form.area_otro.label(class="form-label") }}
         {{ form.area_otro(class="form-control") }}
       </div>
+
+      <!-- Compensación -->
+      <div class="col-md-6">
+        {{ form.sueldo.label(class="form-label") }}
+        {{ form.sueldo(class="form-control") }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">{{ form.pasaje_aporte.label.text }}</label>
+        <div>
+          {% for subfield in form.pasaje_aporte %}
+            <div class="form-check form-check-inline">
+              {{ subfield(class="form-check-input") }}
+              {{ subfield.label(class="form-check-label") }}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Nota adicional -->
       <div class="col-12">
         {{ form.nota_cliente.label(class="form-label") }}
         {{ form.nota_cliente(class="form-control", rows=3) }}
       </div>
+
+      <!-- Botones -->
       <div class="col-12">
         <button type="submit" class="btn btn-primary">
           {% if nuevo %}Crear{% else %}Actualizar{% endif %}
         </button>
-        <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
+        <a href="{{ url_for('admin.detalle_cliente',
+               cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
            class="btn btn-secondary">
           Cancelar
         </a>
@@ -147,4 +183,34 @@
     </div>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const radios = document.querySelectorAll(
+    'input[name="{{ form.edad_requerida.name }}"]'
+  );
+  const container = document.getElementById('edad-otro-container');
+
+  function toggleEdadOtro() {
+    const otra = document.querySelector(
+      'input[name="{{ form.edad_requerida.name }}"][value="otra"]'
+    );
+    if (otra && otra.checked) {
+      container.classList.remove('d-none');
+    } else {
+      container.classList.add('d-none');
+      // limpiar si se oculta
+      const input = document.querySelector(
+        'input[name="{{ form.edad_otro.name }}"]'
+      );
+      if (input) input.value = '';
+    }
+  }
+
+  radios.forEach(r => r.addEventListener('change', toggleEdadOtro));
+  toggleEdadOtro();
+});
+</script>
 {% endblock %}

@@ -1,3 +1,4 @@
+{# templates/admin/solicitudes_copiar.html #}
 {% extends 'base.html' %}
 {% block title %}Copiar Solicitudes{% endblock %}
 
@@ -9,7 +10,6 @@
   {% if solicitudes %}
   <ul class="list-group mb-4">
     {% for s in solicitudes %}
-      {# Determinar reemplazos a mostrar #}
       {% if s.estado == 'reemplazo' %}
         {% set reems = s.reemplazos %}
       {% else %}
@@ -22,7 +22,7 @@
             <strong>{{ s.codigo_solicitud }}</strong> —
             {{ s.ciudad_sector }} —
             {{ s.modalidad_trabajo }} —
-            Edad: {{ s.edad_requerida }}
+            Edad: {{ s.edad_requerida[0] if s.edad_requerida else '' }}
           </div>
           <button
             type="button"
@@ -34,7 +34,7 @@ Ruta más cercana ( {{ s.rutas_cercanas }} )
 
 Modalidad: {{ s.modalidad_trabajo }}
 
-Edad: {{ s.edad_requerida }}
+Edad: {{ s.edad_requerida[0] if s.edad_requerida else '' }}
 Dominicana
 Que sepa leer y escribir
 Experiencia en: {{ s.experiencia }}
@@ -42,11 +42,11 @@ Horario: {{ s.horario }}
 
 Funciones: {{ s.funciones | join(', ') }}
 
-{{ s.tipo_lugar.title() }} {{ s.habitaciones }} habitaciones, {{ s.banos }} baños{% if s.areas_comunes %}, {{ s.areas_comunes|join(', ') }}{% endif %}.
+{{ s.tipo_lugar.title() }} {{ s.habitaciones }} habitaciones, {{ s.banos }} baños{% if s.areas_comunes %}, {% for val in s.areas_comunes %}{% for cv, cl in AREAS_COMUNES_CHOICES %}{% if cv == val %}{{ cl }}{% endif %}{% endfor %}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}.
 
 {% if s.adultos %}{{ s.adultos }} Adultos{% endif %}{% if s.ninos %} y {{ s.ninos }} {% if s.ninos == 1 %}niño{% else %}niñas{% endif %}{% if s.edades_ninos %} de {{ s.edades_ninos }}{% endif %}.{% endif %}
 
-Sueldo: ${{ s.sueldo }} mensual{% if s.pasaje_aporte %} pasaje incluido.{% else %} más una ayuda de pasaje.{% endif %}
+Sueldo: ${{ s.sueldo }} mensual{% if s.pasaje_aporte %} más ayuda del pasaje{% else %} pasaje incluido{% endif %}
 ">
             Copiar
           </button>
@@ -56,9 +56,7 @@ Sueldo: ${{ s.sueldo }} mensual{% if s.pasaje_aporte %} pasaje incluido.{% else 
         <div class="mt-2">
           <small class="text-warning">
             Reemplazos pendientes ({{ reems|length }}):
-            {{ reems
-               | map(attribute='candidata_new.nombre_completo')
-               | join(', ') }}
+            {{ reems | map(attribute='candidata_new.nombre_completo') | join(', ') }}
           </small>
         </div>
         {% endif %}

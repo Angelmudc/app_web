@@ -1,16 +1,10 @@
-from flask import (
-    Blueprint, render_template, redirect, url_for,
-    flash, request, jsonify, abort
-)
-from flask_login import (
-    login_user, logout_user, login_required,
-    UserMixin, current_user
-)
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, abort
+from flask_login import login_user, logout_user, login_required, UserMixin, current_user
 from werkzeug.security import check_password_hash
-from datetime import datetime, date
-
-from sqlalchemy import or_, func, cast
-from sqlalchemy.types import Date, Numeric
+from datetime import datetime, date, timedelta
+from sqlalchemy import or_, func, cast, desc
+from sqlalchemy.types import Numeric
+from functools import wraps
 
 from config_app import db, USUARIOS
 from models import Cliente, Solicitud, Candidata, Reemplazo
@@ -21,9 +15,7 @@ from admin.forms import (
     AdminReemplazoForm,
     AdminGestionPlanForm
 )
-
 from utils import letra_por_indice
-
 
 admin_bp = Blueprint(
     'admin',
@@ -190,6 +182,7 @@ AREAS_COMUNES_CHOICES = [
 ]
 
 
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET','POST'])
 @login_required
 @admin_required
@@ -199,49 +192,53 @@ def nueva_solicitud_admin(cliente_id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
+        # No preseleccionamos edad aquí; el usuario la elegirá
         form.funciones.data      = []
         form.areas_comunes.data  = []
         form.area_otro.data      = ''
-        form.edad_requerida.data = ''
+        form.edad_otro.data      = ''
 
     if form.validate_on_submit():
-        # Genera el código automáticamente, sin leer nada del formulario
-        count       = Solicitud.query.filter_by(cliente_id=c.id).count()
-        nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
-
-        # Crea la solicitud con el código generado
+        # crear instancia
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
-            codigo_solicitud = nuevo_codigo
+            codigo_solicitud = f"{c.codigo}-{letra_por_indice(
+                                   Solicitud.query.filter_by(cliente_id=c.id).count()
+                                 )}"
         )
-        # Sobreescribe los campos del modelo con los del formulario
+        # poblamos campos simples
         form.populate_obj(s)
 
-        # Ajustes de arrays y campos especiales
-        s.edad_requerida = [form.edad_requerida.data]
-        s.funciones      = form.funciones.data
-        s.areas_comunes  = form.areas_comunes.data
-        s.area_otro      = form.area_otro.data
+        # edad: si eligió “otra”, usamos el texto
+        if form.edad_requerida.data == 'otra':
+            valor_edad = form.edad_otro.data.strip()
+        else:
+            valor_edad = form.edad_requerida.data
+        s.edad_requerida = [valor_edad]
 
-        # Guarda todo
+        # resto de arrays
+        s.funciones       = form.funciones.data
+        s.areas_comunes   = form.areas_comunes.data
+        s.area_otro       = form.area_otro.data
+        s.pasaje_aporte   = form.pasaje_aporte.data
+
+        # guardar
         db.session.add(s)
-        c.total_solicitudes      = count + 1
+        c.total_solicitudes      += 1
         c.fecha_ultima_solicitud = datetime.utcnow()
         c.fecha_ultima_actividad = datetime.utcnow()
         db.session.commit()
 
-        flash(f'Solicitud {nuevo_codigo} creada correctamente.', 'success')
+        flash(f'Solicitud {s.codigo_solicitud} creada.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
-    return render_template(
-        'admin/solicitud_form.html',
-        form=form,
-        cliente_id=cliente_id,
-        nuevo=True
-    )
+    return render_template('admin/solicitud_form.html',
+                           form=form, cliente_id=cliente_id, nuevo=True)
 
-@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar', methods=['GET','POST'])
+
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar',
+                methods=['GET','POST'])
 @login_required
 @admin_required
 def editar_solicitud_admin(cliente_id, id):
@@ -250,30 +247,49 @@ def editar_solicitud_admin(cliente_id, id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        form.edad_requerida.data = (s.edad_requerida or [''])[0]
+        # cargar edad: si no coincide con las opciones, activo “otra”
+        guardada = (s.edad_requerida or [''])[0]
+        opciones = {v for v,_ in form.edad_requerida.choices}
+        if guardada in opciones:
+            form.edad_requerida.data = guardada
+            form.edad_otro.data      = ''
+        else:
+            form.edad_requerida.data = 'otra'
+            form.edad_otro.data      = guardada
+
         form.funciones.data      = s.funciones or []
         form.areas_comunes.data  = s.areas_comunes or []
         form.area_otro.data      = s.area_otro or ''
+        # WTForms sabrá marcar pasaje_aporte.data = True/False
+        form.pasaje_aporte.data  = s.pasaje_aporte
 
     if form.validate_on_submit():
+        # poblar simples
         form.populate_obj(s)
-        s.edad_requerida           = [form.edad_requerida.data]
+
+        # edad: elegimos el campo correcto
+        if form.edad_requerida.data == 'otra':
+            valor_edad = form.edad_otro.data.strip()
+        else:
+            valor_edad = form.edad_requerida.data
+        s.edad_requerida = [valor_edad]
+
+        # resto de arrays
         s.funciones                = form.funciones.data
         s.areas_comunes            = form.areas_comunes.data
         s.area_otro                = form.area_otro.data
+        s.pasaje_aporte            = form.pasaje_aporte.data
         s.fecha_ultima_modificacion = datetime.utcnow()
-        db.session.commit()
 
+        db.session.commit()
         flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
-    return render_template(
-        'admin/solicitud_form.html',
-        form=form,
-        cliente_id=cliente_id,
-        solicitud=s,
-        nuevo=False
-    )
+    return render_template('admin/solicitud_form.html',
+                           form=form, cliente_id=cliente_id,
+                           solicitud=s, nuevo=False)
+
+
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
 @login_required
@@ -321,19 +337,25 @@ def registrar_pago(cliente_id, id):
         (c.fila, c.nombre_completo) for c in Candidata.query.all()
     ]
     if form.validate_on_submit():
-        s.candidata_id = form.candidata_id.data
-        s.monto_pagado = form.monto_pagado.data
-        s.estado       = 'pagada'
-        s.fecha_ultima_actividad = datetime.utcnow()
+        # 1) Registramos los datos del pago
+        s.candidata_id             = form.candidata_id.data
+        s.monto_pagado             = form.monto_pagado.data
+        s.estado                   = 'pagada'
+        # 2) Actualizamos los timestamps
+        s.fecha_ultima_actividad   = datetime.utcnow()
+        s.fecha_ultima_modificacion = datetime.utcnow()
         db.session.commit()
+
         flash('Pago registrado y solicitud marcada como pagada.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
     return render_template(
         'admin/registrar_pago.html',
         form=form,
         cliente_id=cliente_id,
         solicitud=s
     )
+
 
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET','POST'])
@@ -441,30 +463,237 @@ def listar_solicitudes():
     )
 
 
+# En admin/routes.py, asegúrate de tener estos imports:
+
+
 @admin_bp.route('/solicitudes/resumen')
 @login_required
 @admin_required
 def resumen_solicitudes():
-    proc_count = Solicitud.query.filter_by(estado='proceso').count()
-    act_count  = Solicitud.query.filter_by(estado='activa').count()
-    pag_count  = Solicitud.query.filter_by(estado='pagada').count()
-    stats_mensual = db.session.query(
-        func.date_trunc('month', Solicitud.fecha_solicitud).label('mes'),
-        func.count(Solicitud.id).label('cantidad'),
-        func.sum(
-            cast(func.replace(Solicitud.monto_pagado, ',',''), Numeric(12,2))
-        ).label('total_pagado')
-    ).filter(Solicitud.estado=='pagada') \
-     .group_by('mes') \
-     .order_by('mes') \
-     .all()
+    hoy         = date.today()
+    week_start  = hoy - timedelta(days=hoy.weekday())
+    month_start = date(hoy.year, hoy.month, 1)
+
+    # — Totales y estados —
+    total_sol    = Solicitud.query.count()
+    proc_count   = Solicitud.query.filter_by(estado='proceso').count()
+    act_count    = Solicitud.query.filter_by(estado='activa').count()
+    pag_count    = Solicitud.query.filter_by(estado='pagada').count()
+    cancel_count = Solicitud.query.filter_by(estado='cancelada').count()
+    repl_count   = Solicitud.query.filter_by(estado='reemplazo').count()
+
+    # — Tasas de conversión, reemplazo y abandono —
+    conversion_rate  = (pag_count   / total_sol * 100) if total_sol else 0
+    replacement_rate = (repl_count  / total_sol * 100) if total_sol else 0
+    abandon_rate     = (cancel_count/ total_sol * 100) if total_sol else 0
+
+    # — Promedios de tiempo (en días) —
+    avg_pub_secs = db.session.query(
+        func.avg(func.extract('epoch',
+            Solicitud.last_copiado_at - Solicitud.fecha_solicitud))
+    ).filter(Solicitud.last_copiado_at.isnot(None)).scalar() or 0
+    avg_pub_days = avg_pub_secs / 86400
+
+    avg_pay_secs = db.session.query(
+        func.avg(func.extract('epoch',
+            Solicitud.fecha_ultima_modificacion - Solicitud.fecha_solicitud))
+    ).filter(Solicitud.estado=='pagada').scalar() or 0
+    avg_pay_days = avg_pay_secs / 86400
+
+    avg_cancel_secs = db.session.query(
+        func.avg(func.extract('epoch',
+            Solicitud.fecha_cancelacion - Solicitud.fecha_solicitud))
+    ).filter(Solicitud.fecha_cancelacion.isnot(None)).scalar() or 0
+    avg_cancel_days = avg_cancel_secs / 86400
+
+    # — Top 5 ciudades por número de solicitudes —
+    top_cities = (
+        db.session.query(
+            Solicitud.ciudad_sector,
+            func.count(Solicitud.id).label('cnt')
+        )
+        .group_by(Solicitud.ciudad_sector)
+        .order_by(desc('cnt'))
+        .limit(5)
+        .all()
+    )
+
+    # — Distribución por modalidad de trabajo —
+    modality_dist = (
+        db.session.query(
+            Solicitud.modalidad_trabajo,
+            func.count(Solicitud.id)
+        )
+        .group_by(Solicitud.modalidad_trabajo)
+        .all()
+    )
+
+    # — Backlog: en proceso >7 días —
+    backlog_threshold_days = 7
+    backlog_alert = (
+        Solicitud.query
+        .filter_by(estado='proceso')
+        .filter(Solicitud.fecha_solicitud < datetime.utcnow() - timedelta(days=backlog_threshold_days))
+        .count()
+    )
+
+    # — Tendencias de nuevas solicitudes —
+    trend_new_weekly  = (
+        db.session.query(
+            func.date_trunc('week', Solicitud.fecha_solicitud).label('period'),
+            func.count(Solicitud.id)
+        )
+        .group_by('period').order_by('period')
+        .all()
+    )
+    trend_new_monthly = (
+        db.session.query(
+            func.date_trunc('month', Solicitud.fecha_solicitud).label('period'),
+            func.count(Solicitud.id)
+        )
+        .group_by('period').order_by('period')
+        .all()
+    )
+
+    # — Tendencias de pagos —
+    trend_paid_weekly  = (
+        db.session.query(
+            func.date_trunc('week', Solicitud.fecha_ultima_modificacion).label('period'),
+            func.count(Solicitud.id)
+        )
+        .filter(Solicitud.estado=='pagada')
+        .group_by('period').order_by('period')
+        .all()
+    )
+    trend_paid_monthly = (
+        db.session.query(
+            func.date_trunc('month', Solicitud.fecha_ultima_modificacion).label('period'),
+            func.count(Solicitud.id)
+        )
+        .filter(Solicitud.estado=='pagada')
+        .group_by('period').order_by('period')
+        .all()
+    )
+
+    # — Tendencias de cancelaciones —
+    trend_cancel_weekly  = (
+        db.session.query(
+            func.date_trunc('week', Solicitud.fecha_cancelacion).label('period'),
+            func.count(Solicitud.id)
+        )
+        .filter(Solicitud.estado=='cancelada')
+        .group_by('period').order_by('period')
+        .all()
+    )
+    trend_cancel_monthly = (
+        db.session.query(
+            func.date_trunc('month', Solicitud.fecha_cancelacion).label('period'),
+            func.count(Solicitud.id)
+        )
+        .filter(Solicitud.estado=='cancelada')
+        .group_by('period').order_by('period')
+        .all()
+    )
+
+    # — Órdenes realizadas (basadas en fecha_solicitud) —
+    orders_today = Solicitud.query.filter(func.date(Solicitud.fecha_solicitud)==hoy).count()
+    orders_week  = Solicitud.query.filter(Solicitud.fecha_solicitud>=week_start).count()
+    orders_month = Solicitud.query.filter(Solicitud.fecha_solicitud>=month_start).count()
+
+    # — Solicitudes Publicadas (copiadas) —
+    daily_copy   = Solicitud.query.filter(func.date(Solicitud.last_copiado_at)==hoy).count()
+    weekly_copy  = Solicitud.query.filter(func.date(Solicitud.last_copiado_at)>=week_start).count()
+    monthly_copy = Solicitud.query.filter(Solicitud.last_copiado_at>=month_start).count()
+
+    # — Pagos por periodo —
+    daily_paid   = Solicitud.query.filter_by(estado='pagada')\
+                     .filter(func.date(Solicitud.fecha_ultima_modificacion)==hoy).count()
+    weekly_paid  = Solicitud.query.filter_by(estado='pagada')\
+                     .filter(func.date(Solicitud.fecha_ultima_modificacion)>=week_start).count()
+    monthly_paid = Solicitud.query.filter_by(estado='pagada')\
+                     .filter(Solicitud.fecha_ultima_modificacion>=month_start).count()
+
+    # — Cancelaciones por periodo —
+    daily_cancel   = Solicitud.query.filter_by(estado='cancelada')\
+                       .filter(func.date(Solicitud.fecha_cancelacion)==hoy).count()
+    weekly_cancel  = Solicitud.query.filter_by(estado='cancelada')\
+                       .filter(func.date(Solicitud.fecha_cancelacion)>=week_start).count()
+    monthly_cancel = Solicitud.query.filter_by(estado='cancelada')\
+                       .filter(Solicitud.fecha_cancelacion>=month_start).count()
+
+    # — Reemplazos por periodo (solo semana/mes) —
+    weekly_repl  = Solicitud.query.filter_by(estado='reemplazo')\
+                     .filter(func.date(Solicitud.fecha_ultima_modificacion)>=week_start).count()
+    monthly_repl = Solicitud.query.filter_by(estado='reemplazo')\
+                     .filter(Solicitud.fecha_ultima_modificacion>=month_start).count()
+
+    # — Estadísticas mensuales de ingreso (pagadas) —
+    stats_mensual = (
+        db.session.query(
+            func.date_trunc('month', Solicitud.fecha_solicitud).label('mes'),
+            func.count(Solicitud.id).label('cantidad'),
+            func.sum(
+                cast(func.replace(Solicitud.monto_pagado, ',', ''), Numeric(12,2))
+            ).label('total_pagado')
+        )
+        .filter(Solicitud.estado=='pagada')
+        .group_by('mes').order_by('mes')
+        .all()
+    )
+
     return render_template(
         'admin/solicitudes_resumen.html',
+        # Totales y estados
+        total_sol=total_sol,
         proc_count=proc_count,
         act_count=act_count,
         pag_count=pag_count,
+        cancel_count=cancel_count,
+        repl_count=repl_count,
+        # Tasas y promedios
+        conversion_rate=conversion_rate,
+        replacement_rate=replacement_rate,
+        abandon_rate=abandon_rate,
+        avg_pub_days=avg_pub_days,
+        avg_pay_days=avg_pay_days,
+        avg_cancel_days=avg_cancel_days,
+        # Top y distribución
+        top_cities=top_cities,
+        modality_dist=modality_dist,
+        backlog_threshold_days=backlog_threshold_days,
+        backlog_alert=backlog_alert,
+        # Tendencias
+        trend_new_weekly=trend_new_weekly,
+        trend_new_monthly=trend_new_monthly,
+        trend_paid_weekly=trend_paid_weekly,
+        trend_paid_monthly=trend_paid_monthly,
+        trend_cancel_weekly=trend_cancel_weekly,
+        trend_cancel_monthly=trend_cancel_monthly,
+        # Órdenes realizadas
+        orders_today=orders_today,
+        orders_week=orders_week,
+        orders_month=orders_month,
+        # Publicadas (copias)
+        daily_copy=daily_copy,
+        weekly_copy=weekly_copy,
+        monthly_copy=monthly_copy,
+        # Pagos
+        daily_paid=daily_paid,
+        weekly_paid=weekly_paid,
+        monthly_paid=monthly_paid,
+        # Cancelaciones
+        daily_cancel=daily_cancel,
+        weekly_cancel=weekly_cancel,
+        monthly_cancel=monthly_cancel,
+        # Reemplazos
+        weekly_repl=weekly_repl,
+        monthly_repl=monthly_repl,
+        # Ingreso mensual
         stats_mensual=stats_mensual
     )
+
+
+
 
 
 @admin_bp.route('/solicitudes/copiar')
@@ -484,16 +713,17 @@ def copiar_solicitudes():
         .filter(Solicitud.estado=='reemplazo')\
         .order_by(Solicitud.fecha_solicitud.desc())\
         .all()
-    sin_reemp =	base\
+    sin_reemp = base\
         .filter(Solicitud.estado=='activa')\
         .order_by(Solicitud.fecha_solicitud.desc())\
         .all()
     solicitudes = con_reemp + sin_reemp
+
     return render_template(
         'admin/solicitudes_copiar.html',
-        solicitudes=solicitudes
+        solicitudes=solicitudes,
+        AREAS_COMUNES_CHOICES=AREAS_COMUNES_CHOICES
     )
-
 
 @admin_bp.route('/solicitudes/<int:id>/copiar', methods=['POST'])
 @login_required

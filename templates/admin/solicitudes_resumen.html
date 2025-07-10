@@ -1,3 +1,4 @@
+{# templates/admin/solicitudes_resumen.html #}
 {% extends 'base.html' %}
 {% block title %}Resumen de Solicitudes{% endblock %}
 
@@ -16,56 +17,245 @@
     </div>
   </div>
 
-  <div class="row mb-5">
-    <div class="col">
-      <div class="card text-center">
-        <div class="card-body">
+  <!-- 1. Solicitudes por Estado -->
+  <section class="mb-5">
+    <h2 class="h4 mb-3">Solicitudes por Estado</h2>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
           <h5>En Proceso</h5>
           <p class="display-6">{{ proc_count }}</p>
-        </div>
+        </div></div>
       </div>
-    </div>
-    <div class="col">
-      <div class="card text-center">
-        <div class="card-body">
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
           <h5>Activas</h5>
           <p class="display-6">{{ act_count }}</p>
-        </div>
+        </div></div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
+          <h5>Canceladas</h5>
+          <p class="display-6">{{ cancel_count }}</p>
+          <small class="text-muted d-block">Hoy: {{ daily_cancel }}</small>
+          <small class="text-muted d-block">Semana: {{ weekly_cancel }}</small>
+          <small class="text-muted d-block">Mes: {{ monthly_cancel }}</small>
+        </div></div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
+          <h5>Reemplazos</h5>
+          <p class="display-6">{{ repl_count }}</p>
+          <small class="text-muted d-block">Semana: {{ weekly_repl }}</small>
+          <small class="text-muted d-block">Mes: {{ monthly_repl }}</small>
+        </div></div>
       </div>
     </div>
-    <div class="col">
-      <div class="card text-center">
-        <div class="card-body">
-          <h5>Pagadas</h5>
-          <p class="display-6">{{ pag_count }}</p>
-        </div>
-      </div>
-    </div>
-  </div>
+  </section>
 
-  <h3>Ingreso por Mes (Solicitudes Pagadas)</h3>
-  <table class="table table-bordered">
-    <thead>
-      <tr>
-        <th>Mes</th>
-        <th># Solicitudes</th>
-        <th>Total Pagado (RD$)</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for mes, cantidad, total in stats_mensual %}
-      <tr>
-        <td>{{ mes.strftime('%Y-%m') }}</td>
-        <td>{{ cantidad }}</td>
-        <td>{{ '{:,.2f}'.format(total) }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="3" class="text-center">No hay pagos registrados.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <!-- 2. Pagos -->
+  <section class="mb-5">
+    <h2 class="h4 mb-3">Pagos</h2>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
+          <h5>Hoy</h5>
+          <p class="display-6">{{ daily_paid }}</p>
+        </div></div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
+          <h5>Esta Semana</h5>
+          <p class="display-6">{{ weekly_paid }}</p>
+        </div></div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
+          <h5>Este Mes</h5>
+          <p class="display-6">{{ monthly_paid }}</p>
+        </div></div>
+      </div>
+      <div class="col-md-3">
+        <div class="card text-center"><div class="card-body">
+          <h5>Total Pagadas</h5>
+          <p class="display-6">{{ pag_count }}</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Órdenes Realizadas -->
+  <section class="mb-5">
+    <h2 class="h4 mb-3">Órdenes Realizadas</h2>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="card text-center"><div class="card-body">
+          <h5>Hoy</h5>
+          <p class="display-6">{{ orders_today }}</p>
+        </div></div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center"><div class="card-body">
+          <h5>Esta Semana</h5>
+          <p class="display-6">{{ orders_week }}</p>
+        </div></div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center"><div class="card-body">
+          <h5>Este Mes</h5>
+          <p class="display-6">{{ orders_month }}</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Solicitudes Publicadas -->
+  <section class="mb-5">
+    <h2 class="h4 mb-3">Solicitudes Publicadas</h2>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="card text-center"><div class="card-body">
+          <h5>Hoy</h5>
+          <p class="display-6">{{ daily_copy }}</p>
+        </div></div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center"><div class="card-body">
+          <h5>Esta Semana</h5>
+          <p class="display-6">{{ weekly_copy }}</p>
+        </div></div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center"><div class="card-body">
+          <h5>Este Mes</h5>
+          <p class="display-6">{{ monthly_copy }}</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Ingreso por Mes -->
+  <section class="mb-5">
+    <h2 class="h4 mb-3">Ingreso por Mes (Solicitudes Pagadas)</h2>
+    <table class="table table-bordered">
+      <thead>
+        <tr>
+          <th>Mes</th>
+          <th># Solicitudes</th>
+          <th>Total Pagado (RD$)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for mes, cantidad, total in stats_mensual %}
+        <tr>
+          <td>{{ mes.strftime('%Y-%m') }}</td>
+          <td>{{ cantidad }}</td>
+          <td>{{ '{:,.2f}'.format(total) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="text-center">No hay pagos registrados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 6. Tendencias (gráficas) -->
+  <section class="mb-5">
+    <h2 class="h4 mb-3">Tendencias Semanales y Mensuales</h2>
+    <div class="row g-4">
+      <div class="col-md-4"><canvas id="chartNewWeekly"></canvas></div>
+      <div class="col-md-4"><canvas id="chartNewMonthly"></canvas></div>
+      <div class="col-md-4"><canvas id="chartPaidWeekly"></canvas></div>
+      <div class="col-md-4"><canvas id="chartPaidMonthly"></canvas></div>
+      <div class="col-md-4"><canvas id="chartCancelWeekly"></canvas></div>
+      <div class="col-md-4"><canvas id="chartCancelMonthly"></canvas></div>
+    </div>
+  </section>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Construcción de arrays de etiquetas y valores para cada serie
+{% set lw  = [] %}{% set vw  = [] %}
+{% set lmo = [] %}{% set vmo = [] %}
+{% set lpw = [] %}{% set vpw = [] %}
+{% set lpm = [] %}{% set vpm = [] %}
+{% set lcw = [] %}{% set vcw = [] %}
+{% set lcm = [] %}{% set vcm = [] %}
+
+{% for p,c in trend_new_weekly %}
+  {% if p %}
+    {% set _ = lw.append(p.strftime('%Y-%m-%d')) %}
+    {% set _ = vw.append(c) %}
+  {% endif %}
+{% endfor %}
+{% for p,c in trend_new_monthly %}
+  {% if p %}
+    {% set _ = lmo.append(p.strftime('%Y-%m-%d')) %}
+    {% set _ = vmo.append(c) %}
+  {% endif %}
+{% endfor %}
+{% for p,c in trend_paid_weekly %}
+  {% if p %}
+    {% set _ = lpw.append(p.strftime('%Y-%m-%d')) %}
+    {% set _ = vpw.append(c) %}
+  {% endif %}
+{% endfor %}
+{% for p,c in trend_paid_monthly %}
+  {% if p %}
+    {% set _ = lpm.append(p.strftime('%Y-%m-%d')) %}
+    {% set _ = vpm.append(c) %}
+  {% endif %}
+{% endfor %}
+{% for p,c in trend_cancel_weekly %}
+  {% if p %}
+    {% set _ = lcw.append(p.strftime('%Y-%m-%d')) %}
+    {% set _ = vcw.append(c) %}
+  {% endif %}
+{% endfor %}
+{% for p,c in trend_cancel_monthly %}
+  {% if p %}
+    {% set _ = lcm.append(p.strftime('%Y-%m-%d')) %}
+    {% set _ = vcm.append(c) %}
+  {% endif %}
+{% endfor %}
+
+// Datos en JSON
+const dataSets = {
+  NewWeekly:    { labels: {{ lw|tojson }}, data: {{ vw|tojson }} },
+  NewMonthly:   { labels: {{ lmo|tojson }}, data: {{ vmo|tojson }} },
+  PaidWeekly:   { labels: {{ lpw|tojson }}, data: {{ vpw|tojson }} },
+  PaidMonthly:  { labels: {{ lpm|tojson }}, data: {{ vpm|tojson }} },
+  CancelWeekly: { labels: {{ lcw|tojson }}, data: {{ vcw|tojson }} },
+  CancelMonthly:{ labels: {{ lcm|tojson }}, data: {{ vcm|tojson }} }
+};
+
+Object.entries(dataSets).forEach(([key, set]) => {
+  new Chart(
+    document.getElementById('chart' + key),
+    {
+      type: 'line',
+      data: {
+        labels: set.labels,
+        datasets: [{
+          label: '',
+          data: set.data,
+          fill: false
+        }]
+      },
+      options: {
+        scales: {
+          x: { display: true, title: { display: true, text: 'Fecha' } },
+          y: { beginAtZero: true }
+        }
+      }
+    }
+  );
+});
+</script>
 {% endblock %}

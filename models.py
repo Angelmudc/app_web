@@ -129,92 +129,96 @@ class Cliente(UserMixin, db.Model):
 class Solicitud(db.Model):
     __tablename__ = 'solicitudes'
 
-    id               = db.Column(db.Integer, primary_key=True)
-    cliente_id       = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
-    fecha_solicitud  = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    codigo_solicitud = db.Column(db.String(50), nullable=False, unique=True)
+    id                     = db.Column(db.Integer, primary_key=True)
+    cliente_id             = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
+    fecha_solicitud        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    codigo_solicitud       = db.Column(db.String(50), nullable=False, unique=True)
 
     # Plan y pago
-    tipo_plan        = db.Column(db.String(50), nullable=True)
-    abono            = db.Column(db.String(100), nullable=True)
-    estado           = db.Column(
-                          SAEnum(
-                              'proceso','activa','pagada','cancelada','reemplazo',
-                              name='estado_solicitud_enum'
-                          ),
-                          nullable=False,
-                          default='proceso'
-                       )
+    tipo_plan              = db.Column(db.String(50), nullable=True)
+    abono                  = db.Column(db.String(100), nullable=True)
+    estado                 = db.Column(
+                                SAEnum(
+                                    'proceso','activa','pagada','cancelada','reemplazo',
+                                    name='estado_solicitud_enum'
+                                ),
+                                nullable=False,
+                                default='proceso'
+                             )
 
     # Ubicación y rutas
-    ciudad_sector    = db.Column(db.String(200), nullable=True)
-    rutas_cercanas   = db.Column(db.String(200), nullable=True)
+    ciudad_sector          = db.Column(db.String(200), nullable=True)
+    rutas_cercanas         = db.Column(db.String(200), nullable=True)
 
     # Detalles de la oferta de trabajo
-    modalidad_trabajo = db.Column(db.String(100), nullable=True)
-    edad_requerida    = db.Column(db.String(200), nullable=True)
-    experiencia       = db.Column(db.Text, nullable=True)
-    horario           = db.Column(db.String(100), nullable=True)
-    funciones = db.Column(
-        ARRAY(db.String(50)),
-        nullable=True,
-        default=list,
-        server_default=text("ARRAY[]::VARCHAR[]")
-    )
+    modalidad_trabajo      = db.Column(db.String(100), nullable=True)
+    edad_requerida         = db.Column(db.String(200), nullable=True)
+    experiencia            = db.Column(db.Text, nullable=True)
+    horario                = db.Column(db.String(100), nullable=True)
+    funciones              = db.Column(
+                                ARRAY(db.String(50)),
+                                nullable=True,
+                                default=list,
+                                server_default=text("ARRAY[]::VARCHAR[]")
+                             )
 
     # Tipo de lugar
-    tipo_lugar       = db.Column(
-                         SAEnum('casa','oficina','apto','otro', name='tipo_lugar_enum'),
-                         nullable=True
-                       )
+    tipo_lugar             = db.Column(
+                                SAEnum('casa','oficina','apto','otro', name='tipo_lugar_enum'),
+                                nullable=True
+                             )
 
     # Habitaciones y baños
-    habitaciones     = db.Column(db.Integer, nullable=True)
-    banos            = db.Column(db.Float,   nullable=True)
-    dos_pisos        = db.Column(db.Boolean, nullable=False, default=False)
+    habitaciones           = db.Column(db.Integer, nullable=True)
+    banos                  = db.Column(db.Float,   nullable=True)
+    dos_pisos              = db.Column(db.Boolean, nullable=False, default=False)
 
     # Ocupantes
-    adultos          = db.Column(db.Integer, nullable=True)
-    ninos            = db.Column(db.Integer, nullable=True)
-    edades_ninos     = db.Column(db.String(100), nullable=True)
+    adultos                = db.Column(db.Integer, nullable=True)
+    ninos                  = db.Column(db.Integer, nullable=True)
+    edades_ninos           = db.Column(db.String(100), nullable=True)
 
     # Compensación
-    sueldo           = db.Column(db.String(100), nullable=True)
-    pasaje_aporte    = db.Column(db.Boolean, nullable=True, default=False)
+    sueldo                 = db.Column(db.String(100), nullable=True)
+    pasaje_aporte          = db.Column(db.Boolean, nullable=True, default=False)
 
     # Nota adicional
-    nota_cliente     = db.Column(db.Text, nullable=True)
+    nota_cliente           = db.Column(db.Text, nullable=True)
 
     # Áreas comunes (nuevo portal)
-    areas_comunes    = db.Column(
-                           ARRAY(db.String(50)),
-                           nullable=False,
-                           default=list,
-                           server_default=text("ARRAY[]::VARCHAR[]")
-                        )
-    area_otro        = db.Column(
-                           db.String(200),
-                           nullable=True,
-                           default='',
-                           server_default=text("''")
-                        )
+    areas_comunes          = db.Column(
+                                ARRAY(db.String(50)),
+                                nullable=False,
+                                default=list,
+                                server_default=text("ARRAY[]::VARCHAR[]")
+                             )
+    area_otro              = db.Column(
+                                db.String(200),
+                                nullable=True,
+                                default='',
+                                server_default=text("''")
+                             )
 
     # Pago total y candidatas
-    candidata_id     = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=True)
-    monto_pagado     = db.Column(db.String(100), nullable=True)
+    candidata_id           = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=True)
+    monto_pagado           = db.Column(db.String(100), nullable=True)
 
     # Relaciones
-    cliente          = db.relationship('Cliente', back_populates='solicitudes')
-    candidata        = db.relationship('Candidata', back_populates='solicitudes')
-    reemplazos       = db.relationship(
-                           'Reemplazo',
-                           back_populates='solicitud',
-                           cascade='all, delete-orphan'
-                       )
-    last_copiado_at  = db.Column(db.DateTime, nullable=True)
+    cliente                = db.relationship('Cliente', back_populates='solicitudes')
+    candidata              = db.relationship('Candidata', back_populates='solicitudes')
+    reemplazos             = db.relationship(
+                                'Reemplazo',
+                                back_populates='solicitud',
+                                cascade='all, delete-orphan'
+                             )
 
-    fecha_cancelacion  = db.Column(db.DateTime, nullable=True)
-    motivo_cancelacion = db.Column(db.String(255), nullable=True)
+    # Fechas de publicación y modificación
+    last_copiado_at        = db.Column(db.DateTime, nullable=True)
+    fecha_ultima_modificacion = db.Column(db.DateTime, nullable=True)
+
+    # Cancelación
+    fecha_cancelacion      = db.Column(db.DateTime, nullable=True)
+    motivo_cancelacion     = db.Column(db.String(255), nullable=True)
 
 
 class Reemplazo(db.Model):
