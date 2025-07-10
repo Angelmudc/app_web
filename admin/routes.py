@@ -192,49 +192,55 @@ def nueva_solicitud_admin(cliente_id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        # No preseleccionamos edad aquí; el usuario la elegirá
-        form.funciones.data      = []
-        form.areas_comunes.data  = []
-        form.area_otro.data      = ''
-        form.edad_otro.data      = ''
+        form.funciones.data     = []
+        form.areas_comunes.data = []
+        form.area_otro.data     = ''
+        # si añadiste un campo para otra edad:
+        form.edad_otro.data     = ''
 
     if form.validate_on_submit():
-        # crear instancia
+        # 1) Generar código
+        count        = Solicitud.query.filter_by(cliente_id=c.id).count()
+        nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
+
+        # 2) Crear instancia con código correcto
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
-            codigo_solicitud = f"{c.codigo}-{letra_por_indice(
-                                   Solicitud.query.filter_by(cliente_id=c.id).count()
-                                 )}"
+            codigo_solicitud = nuevo_codigo
         )
-        # poblamos campos simples
         form.populate_obj(s)
 
-        # edad: si eligió “otra”, usamos el texto
-        if form.edad_requerida.data == 'otra':
+        # 3) Edad requerida: toma “otro” si corresponde
+        if form.edad_requerida.data == 'otro':
             valor_edad = form.edad_otro.data.strip()
         else:
             valor_edad = form.edad_requerida.data
         s.edad_requerida = [valor_edad]
 
-        # resto de arrays
-        s.funciones       = form.funciones.data
-        s.areas_comunes   = form.areas_comunes.data
-        s.area_otro       = form.area_otro.data
-        s.pasaje_aporte   = form.pasaje_aporte.data
+        # 4) Resto de arrays y booleanos
+        s.funciones      = form.funciones.data
+        s.areas_comunes  = form.areas_comunes.data
+        s.area_otro      = form.area_otro.data
+        s.pasaje_aporte  = form.pasaje_aporte.data
 
-        # guardar
+        # 5) Guardar y actualizar métricas
         db.session.add(s)
         c.total_solicitudes      += 1
-        c.fecha_ultima_solicitud = datetime.utcnow()
-        c.fecha_ultima_actividad = datetime.utcnow()
+        c.fecha_ultima_solicitud  = datetime.utcnow()
+        c.fecha_ultima_actividad  = datetime.utcnow()
         db.session.commit()
 
-        flash(f'Solicitud {s.codigo_solicitud} creada.', 'success')
+        flash(f'Solicitud {nuevo_codigo} creada.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
-    return render_template('admin/solicitud_form.html',
-                           form=form, cliente_id=cliente_id, nuevo=True)
+    return render_template(
+        'admin/solicitud_form.html',
+        form=form,
+        cliente_id=cliente_id,
+        nuevo=True
+    )
+
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar',
