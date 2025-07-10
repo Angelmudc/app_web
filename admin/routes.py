@@ -198,11 +198,9 @@ def nueva_solicitud_admin(cliente_id):
         form.edad_otro.data     = ''
 
     if form.validate_on_submit():
-        # 1) Generar código
-        count        = Solicitud.query.filter_by(cliente_id=c.id).count()
+        count       = Solicitud.query.filter_by(cliente_id=c.id).count()
         nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
 
-        # 2) Crear instancia
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
@@ -210,24 +208,22 @@ def nueva_solicitud_admin(cliente_id):
         )
         form.populate_obj(s)
 
-        # 3) Edad (solo string)
+        # 🌟 Guardar la edad como STRING, no como LISTA
         if form.edad_requerida.data == 'otra':
             valor_edad = form.edad_otro.data.strip()
         else:
             valor_edad = form.edad_requerida.data
         s.edad_requerida = valor_edad
 
-        # 4) Resto de arrays/booleanos
-        s.funciones      = form.funciones.data
-        s.areas_comunes  = form.areas_comunes.data
-        s.area_otro      = form.area_otro.data
-        s.pasaje_aporte  = form.pasaje_aporte.data
+        s.funciones       = form.funciones.data
+        s.areas_comunes   = form.areas_comunes.data
+        s.area_otro       = form.area_otro.data
+        s.pasaje_aporte   = form.pasaje_aporte.data
 
-        # 5) Guardar
         db.session.add(s)
-        c.total_solicitudes     += 1
-        c.fecha_ultima_solicitud = datetime.utcnow()
-        c.fecha_ultima_actividad = datetime.utcnow()
+        c.total_solicitudes      += 1
+        c.fecha_ultima_solicitud  = datetime.utcnow()
+        c.fecha_ultima_actividad  = datetime.utcnow()
         db.session.commit()
 
         flash(f'Solicitud {nuevo_codigo} creada.', 'success')
@@ -251,9 +247,8 @@ def editar_solicitud_admin(cliente_id, id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        # Cargar edad: si no coincide con nuestras opciones, poner “otra”
         guardada = s.edad_requerida or ''
-        opciones = {val for val, _ in form.edad_requerida.choices}
+        opciones = {v for v,_ in form.edad_requerida.choices}
         if guardada in opciones:
             form.edad_requerida.data = guardada
             form.edad_otro.data      = ''
@@ -261,15 +256,15 @@ def editar_solicitud_admin(cliente_id, id):
             form.edad_requerida.data = 'otra'
             form.edad_otro.data      = guardada
 
-        form.funciones.data      = s.funciones or []
-        form.areas_comunes.data  = s.areas_comunes or []
-        form.area_otro.data      = s.area_otro or ''
-        form.pasaje_aporte.data  = s.pasaje_aporte
+        form.funciones.data     = s.funciones or []
+        form.areas_comunes.data = s.areas_comunes or []
+        form.area_otro.data     = s.area_otro or ''
+        form.pasaje_aporte.data = s.pasaje_aporte
 
     if form.validate_on_submit():
         form.populate_obj(s)
 
-        # Guardar edad como string
+        # 🌟 Misma corrección aquí
         if form.edad_requerida.data == 'otra':
             valor_edad = form.edad_otro.data.strip()
         else:
@@ -293,6 +288,7 @@ def editar_solicitud_admin(cliente_id, id):
         solicitud=s,
         nuevo=False
     )
+
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])

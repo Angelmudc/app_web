@@ -22,7 +22,14 @@
             <strong>{{ s.codigo_solicitud }}</strong> —
             {{ s.ciudad_sector }} —
             {{ s.modalidad_trabajo }} —
-            Edad: {{ s.edad_requerida[0] if s.edad_requerida else '' }}
+            {# limpieza de llaves en la edad #}
+            {% set edad_raw = s.edad_requerida or '' %}
+            {% if edad_raw.startswith('{') and edad_raw.endswith('}') %}
+              {% set edad = edad_raw[1:-1] %}
+            {% else %}
+              {% set edad = edad_raw %}
+            {% endif %}
+            Edad: {{ edad }}
           </div>
           <button
             type="button"
@@ -34,7 +41,7 @@ Ruta más cercana ( {{ s.rutas_cercanas }} )
 
 Modalidad: {{ s.modalidad_trabajo }}
 
-Edad: {{ s.edad_requerida[0] if s.edad_requerida else '' }}
+Edad: {{ edad }}
 Dominicana
 Que sepa leer y escribir
 Experiencia en: {{ s.experiencia }}
