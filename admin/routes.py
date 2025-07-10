@@ -195,7 +195,6 @@ def nueva_solicitud_admin(cliente_id):
         form.funciones.data     = []
         form.areas_comunes.data = []
         form.area_otro.data     = ''
-        # si añadiste un campo para otra edad:
         form.edad_otro.data     = ''
 
     if form.validate_on_submit():
@@ -203,7 +202,7 @@ def nueva_solicitud_admin(cliente_id):
         count        = Solicitud.query.filter_by(cliente_id=c.id).count()
         nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
 
-        # 2) Crear instancia con código correcto
+        # 2) Crear instancia
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
@@ -211,24 +210,24 @@ def nueva_solicitud_admin(cliente_id):
         )
         form.populate_obj(s)
 
-        # 3) Edad requerida: toma “otro” si corresponde
-        if form.edad_requerida.data == 'otro':
+        # 3) Edad (solo string)
+        if form.edad_requerida.data == 'otra':
             valor_edad = form.edad_otro.data.strip()
         else:
             valor_edad = form.edad_requerida.data
-        s.edad_requerida = [valor_edad]
+        s.edad_requerida = valor_edad
 
-        # 4) Resto de arrays y booleanos
+        # 4) Resto de arrays/booleanos
         s.funciones      = form.funciones.data
         s.areas_comunes  = form.areas_comunes.data
         s.area_otro      = form.area_otro.data
         s.pasaje_aporte  = form.pasaje_aporte.data
 
-        # 5) Guardar y actualizar métricas
+        # 5) Guardar
         db.session.add(s)
-        c.total_solicitudes      += 1
-        c.fecha_ultima_solicitud  = datetime.utcnow()
-        c.fecha_ultima_actividad  = datetime.utcnow()
+        c.total_solicitudes     += 1
+        c.fecha_ultima_solicitud = datetime.utcnow()
+        c.fecha_ultima_actividad = datetime.utcnow()
         db.session.commit()
 
         flash(f'Solicitud {nuevo_codigo} creada.', 'success')
@@ -242,7 +241,6 @@ def nueva_solicitud_admin(cliente_id):
     )
 
 
-
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar',
                 methods=['GET','POST'])
 @login_required
@@ -253,9 +251,9 @@ def editar_solicitud_admin(cliente_id, id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        # cargar edad: si no coincide con las opciones, activo “otra”
-        guardada = (s.edad_requerida or [''])[0]
-        opciones = {v for v,_ in form.edad_requerida.choices}
+        # Cargar edad: si no coincide con nuestras opciones, poner “otra”
+        guardada = s.edad_requerida or ''
+        opciones = {val for val, _ in form.edad_requerida.choices}
         if guardada in opciones:
             form.edad_requerida.data = guardada
             form.edad_otro.data      = ''
@@ -266,21 +264,18 @@ def editar_solicitud_admin(cliente_id, id):
         form.funciones.data      = s.funciones or []
         form.areas_comunes.data  = s.areas_comunes or []
         form.area_otro.data      = s.area_otro or ''
-        # WTForms sabrá marcar pasaje_aporte.data = True/False
         form.pasaje_aporte.data  = s.pasaje_aporte
 
     if form.validate_on_submit():
-        # poblar simples
         form.populate_obj(s)
 
-        # edad: elegimos el campo correcto
+        # Guardar edad como string
         if form.edad_requerida.data == 'otra':
             valor_edad = form.edad_otro.data.strip()
         else:
             valor_edad = form.edad_requerida.data
-        s.edad_requerida = [valor_edad]
+        s.edad_requerida = valor_edad
 
-        # resto de arrays
         s.funciones                = form.funciones.data
         s.areas_comunes            = form.areas_comunes.data
         s.area_otro                = form.area_otro.data
@@ -291,10 +286,13 @@ def editar_solicitud_admin(cliente_id, id):
         flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
-    return render_template('admin/solicitud_form.html',
-                           form=form, cliente_id=cliente_id,
-                           solicitud=s, nuevo=False)
-
+    return render_template(
+        'admin/solicitud_form.html',
+        form=form,
+        cliente_id=cliente_id,
+        solicitud=s,
+        nuevo=False
+    )
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
