@@ -466,64 +466,87 @@ def buscar_candidata():
 from flask import current_app
 from sqlalchemy import or_
 
-@app.route('/filtrar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
+@app.route('/filtrar', methods=['GET', 'POST'])
 def filtrar():
-    # 1) Lee filtros del formulario (GET o POST)
-    ciudad      = request.values.get('ciudad', '').strip()
-    rutas       = request.values.get('rutas', '').strip()
-    modalidad   = request.values.get('modalidad', '').strip()
-    experiencia = request.values.get('experiencia_anos', '').strip()
-    areas       = request.values.get('areas_experiencia', '').strip()
+    # 1) Leer valores y mantenerlos para la plantilla
+    form_data = {
+        'ciudad':           request.values.get('ciudad', '').strip(),
+        'rutas':            request.values.get('rutas', '').strip(),
+        'modalidad':        request.values.get('modalidad', '').strip(),
+        'experiencia_anos': request.values.get('experiencia_anos', '').strip(),
+        'areas_experiencia':request.values.get('areas_experiencia', '').strip(),
+    }
 
-    # 2) Construye dinámicamente la lista de condiciones
+    # 2) Construir filtros dinámicos
     filtros = []
-    if ciudad:
-        filtros.append(Candidata.direccion_completa.ilike(f'%{ciudad}%'))
-    if rutas:
-        filtros.append(Candidata.rutas_cercanas.ilike(f'%{rutas}%'))
-    if modalidad:
-        filtros.append(Candidata.modalidad_trabajo_preferida.ilike(f'%{modalidad}%'))
-    if experiencia:
-        filtros.append(Candidata.anos_experiencia.ilike(f'%{experiencia}%'))
-    if areas:
-        filtros.append(Candidata.areas_experiencia.ilike(f'%{areas}%'))
 
-    # 3) Condiciones fijas: debe tener código y porciento vacío o 0
+    # — ciudad: split en palabras y AND de ilike
+    if form_data['ciudad']:
+        for p in re.split(r'[,\s]+', form_data['ciudad']):
+            if p:
+                filtros.append(Candidata.direccion_completa.ilike(f"%{p}%"))
+
+    # — rutas: split en palabras y AND de ilike
+    if form_data['rutas']:
+        for r in re.split(r'[,\s]+', form_data['rutas']):
+            if r:
+                filtros.append(Candidata.rutas_cercanas.ilike(f"%{r}%"))
+
+    # — modalidad: ahora con ILIKE para evitar case-sensitive y espacios
+    if form_data['modalidad']:
+        filtros.append(Candidata.modalidad_trabajo_preferida.ilike(f"%{form_data['modalidad']}%"))
+
+    # — experiencia
+    if form_data['experiencia_anos']:
+        ea = form_data['experiencia_anos']
+        if ea == '3 años o más':
+            filtros.append(or_(
+                Candidata.anos_experiencia.ilike('%3 años%'),
+                Candidata.anos_experiencia.ilike('%4 años%'),
+                Candidata.anos_experiencia.ilike('%5 años%'),
+            ))
+        else:
+            filtros.append(Candidata.anos_experiencia == ea)
+
+    # — áreas de experiencia
+    if form_data['areas_experiencia']:
+        filtros.append(Candidata.areas_experiencia.ilike(f"%{form_data['areas_experiencia']}%"))
+
+    # 3) Condiciones fijas
     filtros.append(Candidata.codigo.isnot(None))
     filtros.append(or_(Candidata.porciento == None, Candidata.porciento == 0))
 
+    # 4) Ejecutar consulta
+    mensaje = None
     try:
-        # 4) Ejecuta la consulta
-        query = Candidata.query.filter(*filtros)
+        query = Candidata.query.filter(*filtros).order_by(Candidata.nombre_completo)
         candidatas = query.all()
-
-        # 5) Mapea a dicts para el template
-        resultados = [{
-            'fila':               c.fila,
-            'nombre':             c.nombre_completo,
-            'codigo':             c.codigo,
-            'telefono':           c.numero_telefono,
-            'direccion':          c.direccion_completa,
-            'rutas':              c.rutas_cercanas,
-            'cedula':             c.cedula,
-            'modalidad':          c.modalidad_trabajo_preferida,
-            'experiencia_anos':   c.anos_experiencia,
-            'areas_experiencia':  c.areas_experiencia,
-        } for c in candidatas]
-
-        mensaje = None
-        if (ciudad or rutas or modalidad or experiencia or areas) and not resultados:
+        if any(form_data.values()) and not candidatas:
             mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
-
     except Exception as e:
-        current_app.logger.error(f"Error al filtrar candidatas en la DB: {e}", exc_info=True)
-        resultados = []
+        current_app.logger.error(f"Error al filtrar candidatas: {e}", exc_info=True)
+        candidatas = []
         mensaje = f"❌ Error al filtrar los datos: {e}"
 
-    # 6) Renderiza la plantilla
-    return render_template('filtrar.html', resultados=resultados, mensaje=mensaje)
+    # 5) Preparar dicts para la tabla
+    resultados = [{
+        'nombre':           c.nombre_completo,
+        'codigo':           c.codigo,
+        'telefono':         c.numero_telefono,
+        'direccion':        c.direccion_completa,
+        'rutas':            c.rutas_cercanas,
+        'cedula':           c.cedula,
+        'modalidad':        c.modalidad_trabajo_preferida,
+        'experiencia_anos': c.anos_experiencia,
+    } for c in candidatas]
 
+    return render_template(
+        'filtrar.html',
+        form_data=form_data,
+        resultados=resultados,
+        mensaje=mensaje
+    )
 
 
 import traceback  # Importa para depuración

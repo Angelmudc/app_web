@@ -15,6 +15,10 @@ from flask_login import UserMixin
 
 from sqlalchemy import Float
 
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
+from config_app import db
 
 class Candidata(db.Model):
     __tablename__ = 'candidatas'
@@ -64,19 +68,11 @@ class Candidata(db.Model):
         cascade='all, delete-orphan'
     )
 
-
-from datetime import datetime
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin
-from config_app import db
-
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 
     id                       = db.Column(db.Integer, primary_key=True)
     codigo                   = db.Column(db.String(20), unique=True, nullable=False)
-    username                 = db.Column(db.String(50), unique=True, nullable=False)
-    password_hash            = db.Column(db.String(128), nullable=False)
 
     # Nuevo campo para distinguir administradores
     role                     = db.Column(
@@ -102,10 +98,9 @@ class Cliente(UserMixin, db.Model):
                               )
     notas_admin              = db.Column(db.Text)
 
-    # Ubicación
-    direccion                = db.Column(db.Text)
+    # Ubicación simplificada
     ciudad                   = db.Column(db.String(100))
-    provincia                = db.Column(db.String(100))
+    sector                   = db.Column(db.String(100))
 
     # Métricas de solicitudes
     total_solicitudes        = db.Column(db.Integer,  nullable=False, default=0)
@@ -119,12 +114,6 @@ class Cliente(UserMixin, db.Model):
         order_by='Solicitud.fecha_solicitud.desc()',
         cascade='all, delete-orphan'
     )
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
         
 class Solicitud(db.Model):
     __tablename__ = 'solicitudes'

@@ -3,77 +3,161 @@
 
 {% block content %}
 <div class="container py-4">
+  <!-- Acciones principales -->
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Clientes</h1>
-    <div>
-      <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-success me-2">
-        + Nuevo Cliente
+    <div class="btn-group" role="group" aria-label="Acciones principales">
+      <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-success">
+        <i class="bi bi-person-plus-fill"></i>
+        <span class="ms-1">Nuevo Cliente</span>
       </a>
-      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary">
-        Ver Solicitudes
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary">
+        <i class="bi bi-card-list"></i>
+        <span class="ms-1">Solicitudes</span>
+      </a>
+      <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="btn btn-warning">
+        <i class="bi bi-lightning-fill"></i>
+        <span class="ms-1">Procesar Pendientes</span>
+      </a>
+      <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="btn btn-info">
+        <i class="bi bi-calendar-day-fill"></i>
+        <span class="ms-1">Resumen Hoy</span>
       </a>
     </div>
   </div>
 
-  <form class="d-flex mb-4" method="get">
+  <!-- Buscador -->
+  <form class="d-flex mb-4" method="get" action="{{ url_for('admin.listar_clientes') }}">
     <input
       name="q"
       class="form-control me-2"
-      placeholder="Buscar por ID, código, nombre o teléfono"
+      placeholder="Buscar por ID, código, nombre, email o teléfono"
       value="{{ q }}"
     >
-    <button class="btn btn-primary">Buscar</button>
+    <button class="btn btn-outline-secondary">
+      <i class="bi bi-search"></i>
+      <span class="ms-1">Buscar</span>
+    </button>
   </form>
 
-  <table class="table table-striped align-middle">
-    <thead class="table-light">
-      <tr>
-        <th>#</th>
-        <th>Código</th>
-        <th>Nombre</th>
-        <th>Email</th>
-        <th>Teléfono</th>
-        <th>Usuario</th>
-        <th>Contraseña (hash)</th>
-        <th>Solicitudes</th>
-        <th>Registro</th>
-        <th>Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in clientes %}
-      <tr>
-        <td>{{ c.id }}</td>
-        <td>{{ c.codigo }}</td>
-        <td>{{ c.nombre_completo }}</td>
-        <td>{{ c.email }}</td>
-        <td>{{ c.telefono }}</td>
-        <td>{{ c.username }}</td>
-        <td class="text-truncate" style="max-width:200px;">{{ c.password_hash }}</td>
-        <td>{{ c.total_solicitudes }}</td>
-        <td>{{ c.fecha_registro.strftime('%Y-%m-%d') }}</td>
-        <td class="text-nowrap">
-          <a href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}"
-             class="btn btn-sm btn-info">Ver</a>
-          <a href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}"
-             class="btn btn-sm btn-warning">Editar</a>
-          <form
-            method="post"
-            action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}"
-            class="d-inline"
-            onsubmit="return confirm('¿Eliminar cliente #{{ c.id }}?')"
-          >
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-sm btn-danger">Borrar</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="10" class="text-center py-4">No se encontraron clientes.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% if clientes %}
+    <div class="table-responsive">
+      <table class="table table-striped align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Email</th>
+            <th>Teléfono</th>
+            <th>Ciudad</th>
+            <th>Sector</th>
+            <th>Solicitudes</th>
+            <th>Registro</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in clientes %}
+          <tr>
+            <td>{{ c.id }}</td>
+            <td>{{ c.codigo }}</td>
+            <td>{{ c.nombre_completo }}</td>
+            <td>{{ c.email }}</td>
+            <td>{{ c.telefono }}</td>
+            <td>{{ c.ciudad or '—' }}</td>
+            <td>{{ c.sector or '—' }}</td>
+            <td>{{ c.total_solicitudes }}</td>
+            <td>{{ c.fecha_registro.strftime('%Y-%m-%d') }}</td>
+            <td>
+              <div class="btn-group">
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary dropdown-toggle"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                  Acciones
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <a class="dropdown-item" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}">
+                      <i class="bi bi-eye-fill me-1"></i> Ver
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">
+                      <i class="bi bi-pencil-fill me-1"></i> Editar
+                    </a>
+                  </li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <a class="dropdown-item text-warning" 
+                       href="{{ url_for('admin.acciones_solicitudes_proceso') }}">
+                      <i class="bi bi-lightning-fill me-1"></i> Procesar Pendientes
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item text-info"
+                       href="{{ url_for('admin.resumen_diario_clientes') }}">
+                      <i class="bi bi-calendar-day-fill me-1"></i> Resumen Hoy
+                    </a>
+                  </li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <a class="dropdown-item text-danger"
+                       href="#"
+                       onclick="if(confirm('¿Eliminar cliente #{{ c.id }}?')) document.getElementById('del-{{c.id}}').submit();">
+                      <i class="bi bi-trash-fill me-1"></i> Eliminar
+                    </a>
+                    <form id="del-{{c.id}}" method="post"
+                          action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}"
+                          style="display:none">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    </form>
+                  </li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Paginación -->
+    {% if pagination %}
+    <nav class="mt-3">
+      <ul class="pagination justify-content-center">
+        {% if pagination.has_prev %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('admin.listar_clientes', page=pagination.prev_num, q=q) }}">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+        </li>
+        {% endif %}
+        {% for p in pagination.iter_pages() %}
+          {% if p %}
+            <li class="page-item{% if p == pagination.page %} active{% endif %}">
+              <a class="page-link" href="{{ url_for('admin.listar_clientes', page=p, q=q) }}">{{ p }}</a>
+            </li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('admin.listar_clientes', page=pagination.next_num, q=q) }}">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+    {% endif %}
+
+  {% else %}
+    <div class="alert alert-info">
+      No se encontraron clientes.
+    </div>
+  {% endif %}
 </div>
 {% endblock %}

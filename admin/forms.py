@@ -44,35 +44,17 @@ class AdminClienteForm(FlaskForm):
         'Teléfono',
         validators=[DataRequired(), Length(max=20)]
     )
-    direccion = StringField(
-        'Dirección',
-        validators=[Optional(), Length(max=200)]
-    )
     ciudad = StringField(
         'Ciudad',
         validators=[Optional(), Length(max=100)]
     )
-    provincia = StringField(
-        'Provincia',
+    sector = StringField(
+        'Sector',
         validators=[Optional(), Length(max=100)]
     )
     notas_admin = TextAreaField(
         'Notas administrativas',
         validators=[Optional()]
-    )
-    username = StringField(
-        'Usuario',
-        validators=[DataRequired(), Length(min=4, max=50)],
-        render_kw={"placeholder": "Usuario único"}
-    )
-    password = PasswordField(
-        'Contraseña',
-        validators=[Optional(), Length(min=8, message="La contraseña debe tener al menos 8 caracteres")],
-        render_kw={"placeholder": "Mínimo 8 caracteres"}
-    )
-    confirm = PasswordField(
-        'Repetir Contraseña',
-        validators=[Optional(), EqualTo('password', message="Las contraseñas deben coincidir")]
     )
     submit = SubmitField('Guardar cliente')
 

@@ -91,24 +91,18 @@ def listar_clientes():
 @login_required
 @admin_required
 def nuevo_cliente():
-    cliente_form = AdminClienteForm()
+    form = AdminClienteForm()
 
-    if cliente_form.validate_on_submit():
-        # 1) Validar unicidad de código y usuario
-        existe_codigo = Cliente.query.filter_by(codigo=cliente_form.codigo.data).first()
-        existe_usuario = Cliente.query.filter_by(username=cliente_form.username.data).first()
+    if form.validate_on_submit():
+        # 1) Validar unicidad de código
+        existe_codigo = Cliente.query.filter_by(codigo=form.codigo.data).first()
         if existe_codigo:
-            flash(f"El código «{cliente_form.codigo.data}» ya está en uso.", "danger")
-        elif existe_usuario:
-            flash(f"El usuario «{cliente_form.username.data}» ya existe.", "danger")
+            flash(f"El código «{form.codigo.data}» ya está en uso.", "danger")
         else:
             # 2) Crear instancia y poblar campos
             c = Cliente()
-            cliente_form.populate_obj(c)
-            # 3) Asignar credenciales
-            c.username = cliente_form.username.data
-            c.set_password(cliente_form.password.data)
-            # 4) Fecha de registro y guardado
+            form.populate_obj(c)
+            # 3) Fecha de registro y guardado
             c.fecha_registro = datetime.utcnow()
             db.session.add(c)
             db.session.commit()
@@ -117,7 +111,7 @@ def nuevo_cliente():
 
     return render_template(
         'admin/cliente_form.html',
-        cliente_form=cliente_form,
+        cliente_form=form,
         nuevo=True
     )
 
@@ -129,17 +123,9 @@ def editar_cliente(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminClienteForm(obj=c)
 
-    if request.method == 'GET':
-        # dejar el usuario para edición, pero no la contraseña
-        form.password.data = ''
-        form.confirm.data  = ''
-
     if form.validate_on_submit():
         # Actualizar datos básicos
         form.populate_obj(c)
-        # Si vino contraseña, actualizar hash
-        if form.password.data:
-            c.set_password(form.password.data)
         c.fecha_ultima_actividad = datetime.utcnow()
         db.session.commit()
 
@@ -762,4 +748,114 @@ def cancelar_solicitud(cliente_id, id):
     return render_template(
         'admin/cancelar_solicitud.html',
         solicitud=s
+    )
+
+from sqlalchemy import func  # si no está ya importado
+from config_app import db    # si no está ya importado
+
+# 1) Clientes con solicitudes en proceso
+@admin_bp.route('/solicitudes/proceso/clients')
+@login_required
+@admin_required
+def listar_clientes_con_proceso():
+    resultados = db.session.query(
+        Cliente, func.count(Solicitud.id).label('pendientes')
+    ).join(Solicitud, Solicitud.cliente_id == Cliente.id) \
+     .filter(Solicitud.estado == 'proceso') \
+     .group_by(Cliente.id) \
+     .order_by(Cliente.nombre_completo) \
+     .all()
+
+    return render_template(
+        'admin/solicitudes_proceso_clients.html',
+        resultados=resultados
+    )
+
+
+# 2) Listar solicitudes en proceso de un cliente
+@admin_bp.route('/solicitudes/proceso/<int:cliente_id>')
+@login_required
+@admin_required
+def listar_solicitudes_de_cliente_proceso(cliente_id):
+    c = Cliente.query.get_or_404(cliente_id)
+    solicitudes = Solicitud.query \
+        .filter_by(cliente_id=cliente_id, estado='proceso') \
+        .order_by(Solicitud.fecha_solicitud.desc()) \
+        .all()
+
+    return render_template(
+        'admin/solicitudes_proceso_list.html',
+        cliente=c,
+        solicitudes=solicitudes
+    )
+
+
+# 3) Editar/Finalizar una solicitud en proceso
+@admin_bp.route('/solicitudes/proceso/acciones')
+@login_required
+@admin_required
+def acciones_solicitudes_proceso():
+    solicitudes = Solicitud.query \
+        .filter_by(estado='proceso') \
+        .order_by(Solicitud.fecha_solicitud.desc()) \
+        .all()
+    return render_template(
+        'admin/solicitudes_proceso_acciones.html',
+        solicitudes=solicitudes
+    )
+
+@admin_bp.route('/solicitudes/<int:id>/activar', methods=['POST'])
+@login_required
+@admin_required
+def activar_solicitud_directa(id):
+    s = Solicitud.query.get_or_404(id)
+    if s.estado == 'proceso':
+        s.estado = 'activa'
+        s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        flash(f'Solicitud {s.codigo_solicitud} marcada como activa.', 'success')
+    return redirect(url_for('admin.acciones_solicitudes_proceso'))
+
+@admin_bp.route('/solicitudes/<int:id>/cancelar_directo', methods=['POST'])
+@login_required
+@admin_required
+def cancelar_solicitud_directa(id):
+    s = Solicitud.query.get_or_404(id)
+    if s.estado == 'proceso':
+        s.estado = 'cancelada'
+        s.fecha_cancelacion = datetime.utcnow()
+        s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        flash(f'Solicitud {s.codigo_solicitud} cancelada.', 'success')
+    return redirect(url_for('admin.acciones_solicitudes_proceso'))
+
+
+from datetime import date
+from sqlalchemy import func
+
+@admin_bp.route('/clientes/resumen_diario')
+@login_required
+@admin_required
+def resumen_diario_clientes():
+    hoy = date.today()
+
+    # Agrupa sólo las solicitudes de hoy por cliente
+    resumen = (
+        db.session.query(
+            Cliente.nombre_completo,
+            Cliente.codigo,
+            Cliente.telefono,
+            func.count(Solicitud.id).label('total_solicitudes')
+        )
+        .join(Solicitud, Solicitud.cliente_id == Cliente.id)
+        .filter(func.date(Solicitud.fecha_solicitud) == hoy)
+        .group_by(Cliente.id, Cliente.nombre_completo, Cliente.codigo, Cliente.telefono)
+        .order_by(Cliente.nombre_completo)
+        .all()
+    )
+
+    return render_template(
+        'admin/clientes_resumen_diario.html',
+        resumen=resumen,
+        hoy=hoy
     )

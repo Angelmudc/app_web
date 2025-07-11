@@ -28,11 +28,11 @@
           <dt class="col-sm-4">Teléfono</dt>
           <dd class="col-sm-8">{{ cliente.telefono }}</dd>
 
-          <dt class="col-sm-4">Dirección</dt>
-          <dd class="col-sm-8">{{ cliente.direccion or '—' }}</dd>
+          <dt class="col-sm-4">Ciudad</dt>
+          <dd class="col-sm-8">{{ cliente.ciudad or '—' }}</dd>
 
-          <dt class="col-sm-4">Ciudad / Prov.</dt>
-          <dd class="col-sm-8">{{ cliente.ciudad or '—' }} / {{ cliente.provincia or '—' }}</dd>
+          <dt class="col-sm-4">Sector</dt>
+          <dd class="col-sm-8">{{ cliente.sector or '—' }}</dd>
         </dl>
       </div>
     </div>
@@ -133,12 +133,12 @@
                class="btn btn-sm btn-outline-warning me-1" title="Editar">
               <i class="bi bi-pencil-fill"></i>
             </a>
-            <!-- Gestionar Plan (siempre aparece) -->
+            <!-- Gestionar Plan -->
             <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-primary me-1" title="Gestionar Plan">
               <i class="bi bi-credit-card-fill"></i>
             </a>
-            <!-- Registrar pago (solo activa o proceso) -->
+            <!-- Registrar pago -->
             {% if s.estado in ['activa','proceso'] %}
             <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}"
                class="btn btn-sm btn-outline-success me-1" title="Registrar Pago">
@@ -150,7 +150,7 @@
                class="btn btn-sm btn-outline-secondary me-1" title="Reemplazo">
               <i class="bi bi-arrow-repeat"></i>
             </a>
-            <!-- Cancelar (solo activa, proceso o reemplazo) -->
+            <!-- Cancelar -->
             {% if s.estado in ['activa','proceso','reemplazo'] %}
             <form method="post"
                   action="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id) }}"

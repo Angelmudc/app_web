@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Resumen Diario de Clientes{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <!-- Botones de navegación -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Solicitudes de Hoy ({{ hoy.strftime('%Y-%m-%d') }})</h1>
+    <div>
+      <a href="{{ url_for('home') }}" class="btn btn-outline-secondary me-2">
+        <i class="fas fa-home"></i> Inicio
+      </a>
+      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Volver a Clientes
+      </a>
+    </div>
+  </div>
+
+  {% if resumen %}
+    <table class="table table-striped align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Cliente</th>
+          <th>Código</th>
+          <th>Teléfono</th>
+          <th class="text-end"># Solicitudes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for nombre, codigo, telefono, total in resumen %}
+          <tr>
+            <td>{{ nombre }}</td>
+            <td>{{ codigo }}</td>
+            <td>{{ telefono }}</td>
+            <td class="text-end">{{ total }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="alert alert-info">
+      No hay solicitudes para hoy.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

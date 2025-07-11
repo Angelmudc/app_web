@@ -33,18 +33,13 @@
     </div>
 
     <div class="mb-3">
-      {{ cliente_form.direccion.label(class="form-label") }}
-      {{ cliente_form.direccion(class="form-control") }}
-    </div>
-
-    <div class="mb-3">
       {{ cliente_form.ciudad.label(class="form-label") }}
       {{ cliente_form.ciudad(class="form-control") }}
     </div>
 
     <div class="mb-3">
-      {{ cliente_form.provincia.label(class="form-label") }}
-      {{ cliente_form.provincia(class="form-control") }}
+      {{ cliente_form.sector.label(class="form-label") }}
+      {{ cliente_form.sector(class="form-control") }}
     </div>
 
     <div class="mb-3">
@@ -52,32 +47,12 @@
       {{ cliente_form.notas_admin(class="form-control", rows=3) }}
     </div>
 
-    {# Credenciales #}
-    <hr>
-    <div class="mb-3">
-      {{ cliente_form.username.label(class="form-label") }}
-      {{ cliente_form.username(class="form-control", readonly=(not nuevo)) }}
-    </div>
-
-    <div class="mb-3">
-      {{ cliente_form.password.label(class="form-label") }}
-      {{ cliente_form.password(class="form-control") }}
-      {% if not nuevo %}
-        <small class="form-text text-muted">
-          Deja en blanco para conservar la contraseña actual.
-        </small>
-      {% endif %}
-    </div>
-
-    <div class="mb-3">
-      {{ cliente_form.confirm.label(class="form-label") }}
-      {{ cliente_form.confirm(class="form-control") }}
-    </div>
-
     <button type="submit" class="btn btn-primary">
       {{ 'Crear Cliente' if nuevo else 'Guardar Cambios' }}
     </button>
-    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary ms-2">Cancelar</a>
+    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary ms-2">
+      Cancelar
+    </a>
   </form>
 </div>
 {% endblock %}
