@@ -64,24 +64,18 @@
           <!-- Modalidad -->
           <div class="col-md-4">
             <label class="form-label">Modalidad</label>
+            {% for val,label in [
+              ('salida diaria','Salida diaria'),
+              ('dormida','Dormida'),
+              ('','(Sin filtro)')
+            ] %}
             <div class="form-check">
               <input class="form-check-input" type="radio" name="modalidad"
-                     id="mod-1" value="salida diaria"
-                     {% if form_data.modalidad=='salida diaria' %}checked{% endif %}>
-              <label class="form-check-label" for="mod-1">Salida diaria</label>
+                     id="mod-{{ loop.index }}" value="{{ val }}"
+                     {% if form_data.modalidad==val %}checked{% endif %}>
+              <label class="form-check-label" for="mod-{{ loop.index }}">{{ label }}</label>
             </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="modalidad"
-                     id="mod-2" value="dormida"
-                     {% if form_data.modalidad=='dormida' %}checked{% endif %}>
-              <label class="form-check-label" for="mod-2">Dormida</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="modalidad"
-                     id="mod-0" value=""
-                     {% if not form_data.modalidad %}checked{% endif %}>
-              <label class="form-check-label" for="mod-0">(Sin filtro)</label>
-            </div>
+            {% endfor %}
           </div>
 
           <!-- Años de experiencia -->
@@ -127,7 +121,25 @@
           </div>
         </div>
 
-        <div class="text-end mt-4">
+        <hr>
+
+        <!-- Filtro por Estado -->
+        <div class="row g-3 mb-4">
+          <div class="col-md-4">
+            <label class="form-label">Estado</label>
+            <select class="form-select" name="estado">
+              <option value="">(Sin filtro)</option>
+              {% for est in estados %}
+                <option value="{{ est }}"
+                  {% if form_data.estado==est %}selected{% endif %}>
+                  {{ est.replace('_',' ').capitalize() }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="text-end">
           <button type="submit" class="btn btn-primary px-5 py-2">Aplicar Filtros</button>
         </div>
       </form>
@@ -151,6 +163,7 @@
               <th>Cédula</th>
               <th>Modalidad</th>
               <th>Experiencia</th>
+              <th>Estado</th>
             </tr>
           </thead>
           <tbody>
@@ -164,6 +177,7 @@
               <td>{{ c.cedula }}</td>
               <td>{{ c.modalidad }}</td>
               <td>{{ c.experiencia_anos }}</td>
+              <td>{{ c.estado.replace('_',' ').capitalize() }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -196,7 +210,7 @@
         info: false,
         lengthChange: false,
         pageLength: 10,
-        columnDefs: [{ orderable: false, targets: [4] }] // desactiva orden en Rutas
+        columnDefs: [{ orderable: false, targets: [4] }]
       });
     });
   </script>

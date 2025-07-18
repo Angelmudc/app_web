@@ -44,6 +44,7 @@ def create_app():
     # ── Clave secreta para CSRF y sesiones ───────────────────────
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'cambia_esta_clave_a_una_muy_segura')
 
+    app.config['WTF_CSRF_ENABLED'] = True
     # ── Inicializar CSRF antes de registrar blueprints ───────────
     csrf.init_app(app)
 

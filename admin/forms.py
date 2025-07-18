@@ -78,7 +78,7 @@ class AdminSolicitudForm(FlaskForm):
             ('18-25', '18–25 años'),
             ('26-35', '26–35 años'),
             ('36-45', '36–45 años'),
-            ('45+',   'Mayor de 45'),
+            ('mayor45',   'Mayor de 45'),   # <— cambiamos el value
             ('otra',  'Otra...')
         ],
         validators=[InputRequired()],

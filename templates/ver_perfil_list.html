@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Seleccione la candidata</h2>
+  <p>Resultados para "{{ query }}":</p>
+  <ul>
+    {% for c in matches %}
+      <li>
+        {{ c.nombre_completo }} (fila {{ c.fila }}, cédula {{ c.cedula }})
+        — <a href="{{ url_for('ver_perfil', fila=c.fila) }}">Ver perfil</a>
+      </li>
+    {% endfor %}
+  </ul>
+  <p><a href="{{ url_for('list_candidatas') }}">Volver al listado</a></p>
+{% endblock %}

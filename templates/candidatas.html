@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Listado de Candidatas</h2>
+
+  <!-- Buscador -->
+  <form method="get" action="{{ url_for('list_candidatas') }}" class="row g-2 mb-4">
+    <div class="col-auto">
+      <input
+        type="text"
+        name="q"
+        value="{{ query }}"
+        class="form-control"
+        placeholder="Buscar por nombre o cédula…"
+      >
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Buscar</button>
+      <a href="{{ url_for('list_candidatas') }}" class="btn btn-secondary">Ver todas</a>
+    </div>
+  </form>
+
+  {% if candidatas %}
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Fila</th>
+        <th>Nombre</th>
+        <th>Cédula</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in candidatas %}
+      <tr>
+        <td>{{ c.fila }}</td>
+        <td>{{ c.nombre_completo }}</td>
+        <td>{{ c.cedula }}</td>
+        <td>{{ c.estado.replace('_',' ') | capitalize }}</td>
+        <td class="d-flex gap-2">
+          <!-- Ver perfil -->
+          <a
+            href="{{ url_for('ver_perfil', fila=c.fila) }}"
+            class="btn btn-sm btn-info"
+          >Ver perfil</a>
+
+          <!-- Finalizar proceso -->
+          <a
+            href="{{ url_for('finalizar_proceso', fila=c.fila) }}"
+            class="btn btn-sm btn-success"
+          >Finalizar</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="text-muted">No hay candidatas para mostrar.</p>
+  {% endif %}
+</div>
+{% endblock %}

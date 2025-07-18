@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block title %}Registrar llamada — {{ candidata.nombre_completo }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <!-- Barra de navegación -->
+  <nav class="mb-4">
+    <a href="{{ url_for('home') }}">Inicio</a> |
+    <a href="{{ url_for('list_candidatas') }}">Listado de Candidatas</a> |
+    <a href="{{ url_for('listado_llamadas_candidatas') }}">Llamadas</a> |
+    <strong>Registrar llamada</strong>
+  </nav>
+
+  <h1 class="mb-4">Registrar llamada — {{ candidata.nombre_completo }}</h1>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+      {{ form.resultado.label(class="form-label") }}
+      {{ form.resultado(class="form-select") }}
+    </div>
+    <div class="mb-3">
+      {{ form.notas.label(class="form-label") }}
+      {{ form.notas(class="form-control", rows=3) }}
+    </div>
+    <button type="submit" class="btn btn-success">{{ form.submit.label.text }}</button>
+    <a href="{{ url_for('listado_llamadas_candidatas') }}" class="btn btn-secondary">← Volver a Llamadas</a>
+  </form>
+</div>
+{% endblock %}

@@ -35,12 +35,13 @@
     <div class="mb-5">
       <h2 class="h4">Gestión de Candidatas</h2>
       <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-2">
+
         <!-- Buscar / Editar -->
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-search"></i>
-              <h5 class="card-title mt-3">🔍 Buscar / Editar</h5>
+              <i class="fas fa-search fa-2x mb-3"></i>
+              <h5 class="card-title">🔍 Buscar / Editar</h5>
               <p class="card-text flex-grow-1">
                 Busca cualquier candidata por nombre o cédula y edita sus datos inline.
               </p>
@@ -50,12 +51,13 @@
             </div>
           </div>
         </div>
+
         <!-- Inscripción -->
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-user-plus"></i>
-              <h5 class="card-title mt-3">📝 Inscripción</h5>
+              <i class="fas fa-user-plus fa-2x mb-3"></i>
+              <h5 class="card-title">📝 Inscripción</h5>
               <p class="card-text flex-grow-1">
                 Registra la inscripción de candidatas, asigna código, monto y fecha.
               </p>
@@ -65,14 +67,15 @@
             </div>
           </div>
         </div>
+
         <!-- Porciento -->
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-percentage"></i>
-              <h5 class="card-title mt-3">💲 Porciento</h5>
+              <i class="fas fa-percentage fa-2x mb-3"></i>
+              <h5 class="card-title">💲 Porciento</h5>
               <p class="card-text flex-grow-1">
-                Calcula los porcentajes pendientes de las candidatas.
+                Calcula los porcentajes pendientes de las candidatas y marca estado.
               </p>
               <a href="{{ url_for('porciento') }}" class="btn btn-primary mt-auto">
                 Ir a Porcentaje
@@ -80,12 +83,13 @@
             </div>
           </div>
         </div>
+
         <!-- Pagos -->
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-file-invoice-dollar"></i>
-              <h5 class="card-title mt-3">💳 Pagos</h5>
+              <i class="fas fa-file-invoice-dollar fa-2x mb-3"></i>
+              <h5 class="card-title">💳 Pagos</h5>
               <p class="card-text flex-grow-1">
                 Gestiona pagos pendientes, registra abonos y calificaciones.
               </p>
@@ -95,14 +99,15 @@
             </div>
           </div>
         </div>
-        <!-- Filtrar -->
+
+        <!-- Filtrar General -->
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-filter"></i>
-              <h5 class="card-title mt-3">🔎 Filtrar</h5>
+              <i class="fas fa-filter fa-2x mb-3"></i>
+              <h5 class="card-title">🔎 Filtrar Candidatas</h5>
               <p class="card-text flex-grow-1">
-                Filtra candidatas por ciudad, modalidad, experiencia y más criterios.
+                Filtra por ciudad, rutas, modalidad, experiencia y áreas.
               </p>
               <a href="{{ url_for('filtrar') }}" class="btn btn-primary mt-auto">
                 Ir a Filtrar
@@ -110,6 +115,39 @@
             </div>
           </div>
         </div>
+
+        <!-- Estadísticas de Procesos -->
+        <div class="col">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body d-flex flex-column">
+              <i class="fas fa-chart-pie fa-2x mb-3"></i>
+              <h5 class="card-title">📊 Dashboard Procesos</h5>
+              <p class="card-text flex-grow-1">
+                Totales, entradas diarias y desglose por estado.
+              </p>
+              <a href="{{ url_for('dashboard_procesos') }}" class="btn btn-primary mt-auto">
+                Ver Dashboard
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Finalizar Proceso -->
+        <div class="col">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body d-flex flex-column">
+              <i class="fas fa-clipboard-check fa-2x mb-3"></i>
+              <h5 class="card-title">✅ Finalizar Proceso</h5>
+              <p class="card-text flex-grow-1">
+                Completa el proceso de selección: sube fotos, asigna grupos y actualiza estado.
+              </p>
+              <a href="{{ url_for('finalizar_proceso') }}" class="btn btn-primary mt-auto">
+                Ir a Finalizar
+              </a>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -121,10 +159,10 @@
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-list-alt"></i>
-              <h5 class="card-title mt-3">📈 Reporte Inscripciones</h5>
+              <i class="fas fa-list-alt fa-2x mb-3"></i>
+              <h5 class="card-title">📈 Reporte Inscripciones</h5>
               <p class="card-text flex-grow-1">
-                Filtra inscripciones por mes y año. Descarga en Excel o visualiza online.
+                Filtra inscripciones por mes/año. Descarga en Excel o visualiza online.
               </p>
               <a href="{{ url_for('reporte_inscripciones') }}" class="btn btn-secondary mt-auto">
                 Ver Reporte Inscripciones
@@ -136,8 +174,8 @@
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-chart-bar"></i>
-              <h5 class="card-title mt-3">📄 Reporte Pagos</h5>
+              <i class="fas fa-chart-bar fa-2x mb-3"></i>
+              <h5 class="card-title">📄 Reporte Pagos</h5>
               <p class="card-text flex-grow-1">
                 Genera PDF con los pagos pendientes de todas las candidatas.
               </p>
@@ -158,8 +196,8 @@
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-folder-plus"></i>
-              <h5 class="card-title mt-3">📤 Subir Fotos</h5>
+              <i class="fas fa-folder-plus fa-2x mb-3"></i>
+              <h5 class="card-title">📤 Subir Fotos</h5>
               <p class="card-text flex-grow-1">
                 Sube imágenes de candidatas a Cloudinary y guarda URLs en la base.
               </p>
@@ -173,8 +211,8 @@
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-folder-open"></i>
-              <h5 class="card-title mt-3">📥 Gestionar Archivos</h5>
+              <i class="fas fa-folder-open fa-2x mb-3"></i>
+              <h5 class="card-title">📥 Gestionar Archivos</h5>
               <p class="card-text flex-grow-1">
                 Descarga o visualiza documentos y entrevistas de candidatas.
               </p>
@@ -188,8 +226,8 @@
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-address-book"></i>
-              <h5 class="card-title mt-3">🗂️ Referencias</h5>
+              <i class="fas fa-address-book fa-2x mb-3"></i>
+              <h5 class="card-title">🗂️ Referencias</h5>
               <p class="card-text flex-grow-1">
                 Busca y edita las referencias laborales y familiares de una candidata.
               </p>
@@ -203,8 +241,8 @@
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
-              <i class="fas fa-pencil-alt"></i>
-              <h5 class="card-title mt-3">📝 Entrevista</h5>
+              <i class="fas fa-pencil-alt fa-2x mb-3"></i>
+              <h5 class="card-title">📝 Entrevista</h5>
               <p class="card-text flex-grow-1">
                 Realiza y guarda entrevistas dinámicas directamente en la base de datos.
               </p>
@@ -214,6 +252,7 @@
             </div>
           </div>
         </div>
+
       </div>
     </div>
 

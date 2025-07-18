@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block title %}Llamadas a Candidatas{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <!-- Barra de navegación -->
+  <nav class="mb-4">
+    <a href="{{ url_for('home') }}">Inicio</a> |
+    <a href="{{ url_for('list_candidatas') }}">Listado de Candidatas</a> |
+    <strong>Llamadas</strong>
+  </nav>
+
+  <h1 class="mb-4">Registro de Llamadas a Candidatas</h1>
+
+  <h3>En proceso > 7 días</h3>
+  {% set candidatas = en_proceso %}
+  {% include '_tabla_llamadas_candidatas.html' %}
+
+  <h3>Inscripción > 7 días</h3>
+  {% set candidatas = en_inscripcion %}
+  {% include '_tabla_llamadas_candidatas.html' %}
+
+  <h3>Lista para trabajar</h3>
+  {% set candidatas = lista_trabajar %}
+  {% include '_tabla_llamadas_candidatas.html' %}
+</div>
+{% endblock %}

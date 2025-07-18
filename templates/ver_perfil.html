@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Perfil de {{ candidata.nombre_completo }}</h2>
+  {% if candidata.foto_perfil %}
+    <img 
+      src="{{ url_for('perfil_candidata', fila=candidata.fila) }}" 
+      alt="Foto de perfil de {{ candidata.nombre_completo }}"
+      class="img-fluid rounded mb-3"
+    >
+    <p>
+      <a 
+        href="{{ url_for('perfil_candidata', fila=candidata.fila) }}" 
+        download="perfil_{{ candidata.fila }}.png" 
+        class="btn btn-secondary"
+      >Descargar foto</a>
+    </p>
+  {% else %}
+    <p class="text-warning">No hay foto de perfil cargada.</p>
+  {% endif %}
+  <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
+  <p><strong>Estado:</strong> {{ candidata.estado.replace('_',' ') | capitalize }}</p>
+  <p><a href="{{ url_for('list_candidatas') }}" class="btn btn-link">← Volver al listado</a></p>
+{% endblock %}

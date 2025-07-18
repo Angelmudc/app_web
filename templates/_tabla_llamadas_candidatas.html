@@ -1,0 +1,34 @@
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Estado</th>
+      <th>Días desde ingreso</th>
+      <th>Llamadas</th>
+      <th>Última llamada</th>
+      <th>Acción</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for c in candidatas %}
+    {% set dias = (hoy - c.marca_temporal.date()).days %}
+    <tr>
+      <td>{{ c.nombre_completo }}</td>
+      <td>{{ c.estado.replace('_',' ').title() }}</td>
+      <td>{{ dias }} días</td>
+      <td>{{ c.llamadas|length }}</td>
+      <td>
+        {% if c.llamadas %}
+          {{ c.llamadas[-1].fecha_llamada.strftime('%Y-%m-%d %H:%M') }}
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>
+        <a href="{{ url_for('registrar_llamada_candidata', fila=c.fila) }}"
+           class="btn btn-sm btn-primary">Llamar</a>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>

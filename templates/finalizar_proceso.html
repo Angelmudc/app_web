@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Finalizar Proceso – {{ candidata.nombre_completo }}{% endblock %}
+
+{% block content %}
+  <div class="container my-4">
+    <!-- El bloque de flash está en base.html y mostrará errores/éxitos -->
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <h2 class="h5 mb-0">Finalizar Proceso: {{ candidata.nombre_completo }}</h2>
+      </div>
+      <div class="card-body">
+        <form
+          method="post"
+          action="{{ url_for('finalizar_proceso', fila=candidata.fila) }}"
+          enctype="multipart/form-data"
+        >
+          <!-- CSRF token -->
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="row">
+            <!-- Foto de perfil -->
+            <div class="col-md-4 mb-3">
+              <label for="foto_perfil" class="form-label">Foto de perfil</label>
+              <input
+                class="form-control"
+                type="file"
+                id="foto_perfil"
+                name="foto_perfil"
+                accept="image/*"
+                required
+              >
+            </div>
+            <!-- Cédula frontal -->
+            <div class="col-md-4 mb-3">
+              <label for="cedula1" class="form-label">Cédula (frontal)</label>
+              <input
+                class="form-control"
+                type="file"
+                id="cedula1"
+                name="cedula1"
+                accept="image/*"
+                required
+              >
+            </div>
+            <!-- Cédula reverso -->
+            <div class="col-md-4 mb-3">
+              <label for="cedula2" class="form-label">Cédula (reverso)</label>
+              <input
+                class="form-control"
+                type="file"
+                id="cedula2"
+                name="cedula2"
+                accept="image/*"
+                required
+              >
+            </div>
+          </div>
+
+          <!-- Grupos de empleo -->
+          <fieldset class="mb-3">
+            <legend class="col-form-label pt-0">Selecciona los grupos de empleo</legend>
+            <div class="row">
+              {% for grupo in grupos %}
+                <div class="col-sm-6 col-lg-4">
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      name="grupos_empleo"
+                      id="grupo_{{ loop.index }}"
+                      value="{{ grupo }}"
+                      {% if candidata.grupos_empleo and (grupo in candidata.grupos_empleo) %}checked{% endif %}
+                    >
+                    <label class="form-check-label" for="grupo_{{ loop.index }}">
+                      {{ grupo }}
+                    </label>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          <div class="text-end">
+            <button type="submit" class="btn btn-success">Guardar y Finalizar</button>
+          </div>
+        </form>
+
+        <!-- Botón para volver atrás -->
+        <div class="mt-3">
+          <a href="{{ url_for('list_candidatas') }}" class="btn btn-link">
+            ← Volver al listado de candidatas
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

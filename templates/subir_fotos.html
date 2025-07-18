@@ -44,26 +44,26 @@
   {% elif accion == "subir" %}
     <!-- Formulario de Subida -->
     <h2 class="mb-4">Subir Imágenes para la Fila {{ fila }}</h2>
-    <form method="post" action="{{ url_for('subir_fotos.subir_fotos', accion='subir', fila=fila) }}" enctype="multipart/form-data">
+    <form method="post"
+          action="{{ url_for('subir_fotos.subir_fotos', accion='subir', fila=fila) }}"
+          enctype="multipart/form-data">
       <!-- CSRF Token -->
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="mb-3">
-        <label for="depuracion" class="form-label">Imagen Depuración</label>
-        <input class="form-control" type="file" id="depuracion" name="depuracion" required>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="depuracion" class="form-label">Imagen Depuración</label>
+          <input class="form-control" type="file" id="depuracion" name="depuracion" required>
+        </div>
+        <div class="col-md-6 mb-3">
+          <label for="perfil" class="form-label">Imagen Perfil</label>
+          <input class="form-control" type="file" id="perfil" name="perfil" required>
+        </div>
       </div>
-      <div class="mb-3">
-        <label for="perfil" class="form-label">Imagen Perfil</label>
-        <input class="form-control" type="file" id="perfil" name="perfil" required>
+
+      <div class="text-end">
+        <button type="submit" class="btn btn-primary btn-lg">Subir Imágenes</button>
       </div>
-      <div class="mb-3">
-        <label for="cedula1" class="form-label">Imagen Cédula 1</label>
-        <input class="form-control" type="file" id="cedula1" name="cedula1" required>
-      </div>
-      <div class="mb-3">
-        <label for="cedula2" class="form-label">Imagen Cédula 2</label>
-        <input class="form-control" type="file" id="cedula2" name="cedula2" required>
-      </div>
-      <button type="submit" class="btn btn-primary btn-lg">Subir Imágenes</button>
     </form>
   {% endif %}
 {% endblock %}

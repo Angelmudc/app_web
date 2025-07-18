@@ -132,7 +132,9 @@
           <li class="nav-item"><a class="nav-link" href="{{ url_for('inscripcion') }}">Inscripción</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('porciento') }}">Porciento</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('pagos') }}">Pagos</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('solicitudes') }}">Solicitudes</a></li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('admin.listar_solicitudes') }}">Solicitudes</a>
+          </li>
           <!-- Enlace agregado para Acciones Rápidas -->
           <li class="nav-item">
             <a class="nav-link" href="{{ url_for('admin.acciones_solicitudes_proceso') }}">

@@ -25,6 +25,12 @@ from config_app import create_app, db
 
 from flask_wtf.csrf import CSRFProtect
 
+from config_app import csrf
+
+from models import LlamadaCandidata       # el modelo de llamadas
+from forms  import LlamadaCandidataForm   # el WTForm de llamadas
+
+
 # —————— Normaliza cédula ——————
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 def normalize_cedula(raw: str) -> str | None:
@@ -182,20 +188,26 @@ def _test_sheets():
         app.logger.exception("Error leyendo Google Sheets")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/candidatas')
-@roles_required('admin','secretaria')
+# --- bloque antiguo comentado arriba ----------------------------------
+
+@app.route('/candidatas', methods=['GET'])
+@roles_required('admin', 'secretaria')
 def list_candidatas():
-    """
-    Devuelve sólo los encabezados reales (fila 2) de la hoja "Nueva hoja"
-    para que veamos sus nombres exactos.
-    """
-    try:
-        # Leer la fila 2 completa
-        encabezados = sheets.get_values('Nueva hoja!A2:Z2')[0]
-        return jsonify({'encabezados': encabezados}), 200
-    except Exception as e:
-        app.logger.exception("Error obteniendo encabezados en fila 2")
-        return jsonify({'error': str(e)}), 500
+    q = request.args.get('q', '').strip()
+    if q:
+        like = f"%{q}%"
+        candidatas = Candidata.query.filter(
+            (Candidata.nombre_completo.ilike(like)) |
+            (Candidata.cedula.ilike(like))
+        ).order_by(Candidata.nombre_completo).all()
+    else:
+        candidatas = Candidata.query.order_by(Candidata.nombre_completo).all()
+
+    return render_template(
+        'candidatas.html',
+        candidatas=candidatas,
+        query=q
+    )
 
 
 @app.route('/candidatas_db')
@@ -463,41 +475,41 @@ def buscar_candidata():
         mensaje=mensaje
     )
 
-from flask import current_app
-from sqlalchemy import or_
 
-@roles_required('admin', 'secretaria')
+
+from flask import current_app, render_template, request
+from sqlalchemy import or_
+import re
+from decorators import roles_required 
+from models import Candidata
+
 @app.route('/filtrar', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
 def filtrar():
     # 1) Leer valores y mantenerlos para la plantilla
     form_data = {
-        'ciudad':           request.values.get('ciudad', '').strip(),
-        'rutas':            request.values.get('rutas', '').strip(),
-        'modalidad':        request.values.get('modalidad', '').strip(),
-        'experiencia_anos': request.values.get('experiencia_anos', '').strip(),
-        'areas_experiencia':request.values.get('areas_experiencia', '').strip(),
+        'ciudad':            request.values.get('ciudad', '').strip(),
+        'rutas':             request.values.get('rutas', '').strip(),
+        'modalidad':         request.values.get('modalidad', '').strip(),
+        'experiencia_anos':  request.values.get('experiencia_anos', '').strip(),
+        'areas_experiencia': request.values.get('areas_experiencia', '').strip(),
+        'estado':            request.values.get('estado', '').strip(),  # ej. "proceso inscripcion"
     }
 
     # 2) Construir filtros dinámicos
     filtros = []
 
-    # — ciudad: split en palabras y AND de ilike
     if form_data['ciudad']:
         for p in re.split(r'[,\s]+', form_data['ciudad']):
-            if p:
-                filtros.append(Candidata.direccion_completa.ilike(f"%{p}%"))
+            filtros.append(Candidata.direccion_completa.ilike(f"%{p}%"))
 
-    # — rutas: split en palabras y AND de ilike
     if form_data['rutas']:
         for r in re.split(r'[,\s]+', form_data['rutas']):
-            if r:
-                filtros.append(Candidata.rutas_cercanas.ilike(f"%{r}%"))
+            filtros.append(Candidata.rutas_cercanas.ilike(f"%{r}%"))
 
-    # — modalidad: ahora con ILIKE para evitar case-sensitive y espacios
     if form_data['modalidad']:
         filtros.append(Candidata.modalidad_trabajo_preferida.ilike(f"%{form_data['modalidad']}%"))
 
-    # — experiencia
     if form_data['experiencia_anos']:
         ea = form_data['experiencia_anos']
         if ea == '3 años o más':
@@ -509,9 +521,13 @@ def filtrar():
         else:
             filtros.append(Candidata.anos_experiencia == ea)
 
-    # — áreas de experiencia
     if form_data['areas_experiencia']:
         filtros.append(Candidata.areas_experiencia.ilike(f"%{form_data['areas_experiencia']}%"))
+
+    # — estado: normalizamos espacios a guión bajo para que encaje con el enum
+    if form_data['estado']:
+        estado_norm = form_data['estado'].replace(' ', '_')
+        filtros.append(Candidata.estado == estado_norm)
 
     # 3) Condiciones fijas
     filtros.append(Candidata.codigo.isnot(None))
@@ -520,8 +536,10 @@ def filtrar():
     # 4) Ejecutar consulta
     mensaje = None
     try:
-        query = Candidata.query.filter(*filtros).order_by(Candidata.nombre_completo)
-        candidatas = query.all()
+        candidatas = (Candidata.query
+                      .filter(*filtros)
+                      .order_by(Candidata.nombre_completo)
+                      .all())
         if any(form_data.values()) and not candidatas:
             mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
     except Exception as e:
@@ -529,7 +547,7 @@ def filtrar():
         candidatas = []
         mensaje = f"❌ Error al filtrar los datos: {e}"
 
-    # 5) Preparar dicts para la tabla
+    # 5) Preparar resultado para la tabla
     resultados = [{
         'nombre':           c.nombre_completo,
         'codigo':           c.codigo,
@@ -539,14 +557,28 @@ def filtrar():
         'cedula':           c.cedula,
         'modalidad':        c.modalidad_trabajo_preferida,
         'experiencia_anos': c.anos_experiencia,
+        'estado':           c.estado
     } for c in candidatas]
+
+    # 6) Lista de estados para el select
+    estados = [
+        'en_proceso',
+        'proceso_inscripcion',
+        'inscrita',
+        'inscrita_incompleta',
+        'lista_para_trabajar',
+        'trabajando',
+        'descalificada'
+    ]
 
     return render_template(
         'filtrar.html',
         form_data=form_data,
         resultados=resultados,
-        mensaje=mensaje
+        mensaje=mensaje,
+        estados=estados
     )
+
 
 
 import traceback  # Importa para depuración
@@ -597,11 +629,25 @@ def inscripcion():
             if not obj.codigo:
                 obj.codigo = generar_codigo_unico()
 
-            # Actualizar campos
-            obj.medio_inscripcion = request.form.get("medio","").strip() or obj.medio_inscripcion
-            obj.inscripcion       = request.form.get("estado") == "si"
-            obj.monto             = parse_decimal(request.form.get("monto","")) or obj.monto
-            obj.fecha             = parse_date(request.form.get("fecha","")) or obj.fecha
+            # Actualizar campos básicos
+            obj.medio_inscripcion = request.form.get("medio", "").strip() or obj.medio_inscripcion
+            obj.inscripcion       = (request.form.get("estado") == "si")
+            obj.monto             = parse_decimal(request.form.get("monto", "")) or obj.monto
+            obj.fecha             = parse_date(request.form.get("fecha", "")) or obj.fecha
+
+            # — Ajustar estado según datos de inscripción —
+            if obj.inscripcion:
+                # Si tiene monto y fecha, está completamente inscrita
+                if obj.monto and obj.fecha:
+                    obj.estado = 'inscrita'
+                else:
+                    obj.estado = 'inscrita_incompleta'
+            else:
+                obj.estado = 'proceso_inscripcion'
+
+            # Auditoría de estado
+            obj.fecha_cambio_estado  = datetime.utcnow()
+            obj.usuario_cambio_estado = session.get('usuario', 'desconocido')
 
             try:
                 db.session.commit()
@@ -614,7 +660,7 @@ def inscripcion():
 
         # — Búsqueda vía POST —
         else:
-            q = request.form.get("buscar","").strip()
+            q = request.form.get("buscar", "").strip()
             if q:
                 like = f"%{q}%"
                 resultados = Candidata.query.filter(
@@ -630,7 +676,7 @@ def inscripcion():
     # 2) GET: búsqueda o ver detalles
     else:
         # — Búsqueda GET —
-        q = request.args.get("buscar","").strip()
+        q = request.args.get("buscar", "").strip()
         if q:
             like = f"%{q}%"
             resultados = Candidata.query.filter(
@@ -644,7 +690,7 @@ def inscripcion():
                 mensaje = "⚠️ No se encontraron coincidencias."
 
         # — Detalles GET —
-        sel = request.args.get("candidata_seleccionada","").strip()
+        sel = request.args.get("candidata_seleccionada", "").strip()
         if not resultados and sel.isdigit():
             candidata = Candidata.query.get(int(sel))
             if not candidata:
@@ -656,7 +702,6 @@ def inscripcion():
         candidata=candidata,
         mensaje=mensaje
     )
-
 
 from flask import flash, render_template, request, url_for, redirect
 from sqlalchemy import or_
@@ -710,15 +755,18 @@ def porciento():
         # calcula 25 %
         porcentaje = (monto_total * Decimal("0.25")).quantize(Decimal("0.01"))
 
-        # guarda en la BD
-        obj.fecha_de_pago = fecha_pago
-        obj.inicio        = fecha_inicio
-        obj.monto_total   = monto_total
-        obj.porciento     = porcentaje
+        # — Asignar valores y cambiar estado a ‘trabajando’ —
+        obj.fecha_de_pago       = fecha_pago
+        obj.inicio              = fecha_inicio
+        obj.monto_total         = monto_total
+        obj.porciento           = porcentaje
+        obj.estado              = 'trabajando'
+        obj.fecha_cambio_estado = datetime.utcnow()
+        obj.usuario_cambio_estado = session.get('usuario', 'desconocido')
 
         try:
             db.session.commit()
-            flash(f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}.", "success")
+            flash(f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}. Estado: Trabajando.", "success")
             candidata = obj
         except Exception as e:
             db.session.rollback()
@@ -727,7 +775,7 @@ def porciento():
 
     else:
         # ——— Búsqueda GET ———
-        q = request.args.get("busqueda","").strip()
+        q = request.args.get('busqueda', '').strip()
         if q:
             like = f"%{q}%"
             resultados = Candidata.query.filter(
@@ -741,7 +789,7 @@ def porciento():
                 flash("⚠️ No se encontraron coincidencias.", "warning")
 
         # ——— Detalle GET ———
-        sel = request.args.get("candidata","").strip()
+        sel = request.args.get('candidata','').strip()
         if sel.isdigit() and not resultados:
             candidata = Candidata.query.get(int(sel))
             if not candidata:
@@ -892,74 +940,12 @@ def reporte_pagos():
         ), 500
 
 
-@app.route('/generar_pdf')
-@roles_required('admin','secretaria')
-def generar_pdf():
-    try:
-        # Obtener datos de la hoja
-        hoja = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range="Nueva hoja!A:Y"
-        ).execute()
-        valores = hoja.get("values", [])
-        
-        if not valores or len(valores) < 2:
-            return "⚠️ No hay datos disponibles para generar el PDF."
-
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(200, 10, "Reporte de Pagos Pendientes", ln=True, align="C")
-        pdf.ln(10)
-        pdf.set_font("Arial", "", 10)
-
-        # Procesar filas (saltamos el encabezado)
-        for fila in valores[1:]:
-            fila = extend_row(fila, 25)
-            try:
-                # Validamos que los datos sean numéricos antes de la conversión
-                if not fila[23].strip().replace('.', '', 1).isdigit():
-                    continue
-                porcentaje_pendiente = float(fila[23].strip())
-                if porcentaje_pendiente > 0:
-                    nombre = fila[1] if fila[1] else "No especificado"
-                    cedula = fila[14] if fila[14] else "No especificado"
-                    codigo = fila[15] if fila[15] else "No especificado"
-                    ciudad = fila[4] if fila[4] else "No especificado"
-                    monto_total = fila[22] if fila[22] else "0"
-                    fecha_inicio = fila[20] if fila[20] else "No registrada"
-                    fecha_pago = fila[21] if fila[21] else "No registrada"
-
-                    pdf.cell(0, 8, f"Nombre: {nombre} | Cédula: {cedula} | Código: {codigo}", ln=True)
-                    pdf.cell(0, 8, f"Ciudad: {ciudad} | Monto Total: {monto_total} | Pendiente: {porcentaje_pendiente}", ln=True)
-                    pdf.cell(0, 8, f"Inicio: {fecha_inicio} | Pago: {fecha_pago}", ln=True)
-                    pdf.ln(5)
-            except Exception as e:
-                logging.error(f"Error procesando fila para PDF: {fila} - {e}", exc_info=True)
-                continue
-
-        # Generar PDF en memoria (BytesIO) sin intentar codificar si ya es bytearray
-        pdf_output = pdf.output(dest='S')
-        if isinstance(pdf_output, str):
-            pdf_bytes = pdf_output.encode('latin1')
-        else:
-            pdf_bytes = pdf_output
-        pdf_buffer = io.BytesIO(pdf_bytes)
-        pdf_buffer.seek(0)
-        return send_file(pdf_buffer, as_attachment=True, download_name="reporte_pagos.pdf", mimetype="application/pdf")
-
-    except Exception as e:
-        mensaje = f"❌ Error al generar PDF: {str(e)}"
-        logging.error(mensaje, exc_info=True)
-        return mensaje
-
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
     flash
 )
-from werkzeug.utils import secure_filename
+from decorators import roles_required
 from models import Candidata, db
 
 subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
@@ -969,10 +955,9 @@ subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
 def subir_fotos():
     accion = request.args.get('accion', 'buscar')
     fila_id = request.args.get('fila', type=int)
-    mensaje = None
     resultados = []
 
-    # 1) BUSCAR: mostrar formulario y procesar búsqueda en la BD
+    # 1) BUSCAR
     if accion == 'buscar':
         if request.method == 'POST':
             q = request.form.get('busqueda', '').strip()
@@ -980,7 +965,6 @@ def subir_fotos():
                 flash("⚠️ Ingresa algo para buscar.", "warning")
                 return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-            # Busca en nombre, cédula o teléfono
             like = f"%{q}%"
             filas = Candidata.query.filter(
                 (Candidata.nombre_completo.ilike(like)) |
@@ -1004,10 +988,8 @@ def subir_fotos():
             resultados=resultados
         )
 
-    # 2) SUBIR: mostrar formulario de subida o procesarlo
+    # 2) SUBIR
     if accion == 'subir':
-        # Validamos que exista fila_id y la candidata
-        candidata = None
         if not fila_id:
             flash("❌ Debes seleccionar primero una candidata.", "danger")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
@@ -1017,55 +999,37 @@ def subir_fotos():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-        # GET: muestro el formulario
         if request.method == 'GET':
-            return render_template(
-                'subir_fotos.html',
-                accion='subir',
-                fila=fila_id
-            )
+            return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
-        # POST: recibo los archivos y los guardo en la BD
+        # Solo dos archivos ahora
         files = {
             'depuracion': request.files.get('depuracion'),
             'perfil':     request.files.get('perfil'),
-            'cedula1':    request.files.get('cedula1'),
-            'cedula2':    request.files.get('cedula2'),
         }
 
-        # Validación básica
         for campo, archivo in files.items():
             if not archivo or archivo.filename == '':
                 flash(f"❌ Falta el archivo para {campo}.", "danger")
-                return render_template(
-                    'subir_fotos.html',
-                    accion='subir',
-                    fila=fila_id
-                )
+                return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
         try:
-            # Leo cada archivo como bytes y lo asigno al modelo
             candidata.depuracion = files['depuracion'].read()
             candidata.perfil     = files['perfil'].read()
-            candidata.cedula1    = files['cedula1'].read()
-            candidata.cedula2    = files['cedula2'].read()
-
             db.session.commit()
             flash("✅ Imágenes subidas y guardadas en la base de datos.", "success")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
-
         except Exception as e:
             db.session.rollback()
             flash(f"❌ Error guardando en la BD: {e}", "danger")
-            return render_template(
-                'subir_fotos.html',
-                accion='subir',
-                fila=fila_id
-            )
+            return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
-    # Cualquier otro caso, vuelvo a buscar
+    # DEFAULT
     return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
+# Registro del blueprint
 app.register_blueprint(subir_bp)
+
 
 @app.route('/descargar_documentos', methods=["GET"])
 @roles_required('admin', 'secretaria')
@@ -1523,449 +1487,6 @@ def referencias():
         mensaje=mensaje
     )
 
-
-
-
-from flask import render_template, redirect, url_for, session, request
-from datetime import datetime, timedelta
-import calendar, difflib, logging
-
-def flexible_match(search_term, text, threshold=0.6):
-    st = search_term.lower()
-    t = text.lower()
-    if st in t:
-        return True
-    ratio = difflib.SequenceMatcher(None, st, t).ratio()
-    return ratio >= threshold
-
-from flask import Flask, render_template, request, redirect, url_for, session
-import logging
-from datetime import datetime, timedelta
-import calendar
-
-@app.route('/solicitudes', methods=['GET', 'POST'])
-@roles_required('admin', 'secretaria')
-def solicitudes():
-    # Verifica la sesión
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
-    
-    # Determina la acción (si no viene, usa "buscar" o "ver")
-    accion = request.args.get('accion', None)
-    if not accion or accion.strip() == "":
-        accion = "buscar" if request.args.get("codigo") else "ver"
-    else:
-        accion = accion.strip()
-    
-    mensaje = None
-
-    # ---------------- REGISTRO: Crear nueva orden ----------------
-    if accion == 'registro':
-        if request.method == 'GET':
-            return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
-        elif request.method == 'POST':
-            # Datos originales (Columnas A a I)
-            codigo = request.form.get("codigo", "").strip()
-            if not codigo:
-                mensaje = "El Código de la Orden es obligatorio."
-                return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
-            descripcion = request.form.get("descripcion", "").strip()
-            if not descripcion:
-                mensaje = "La descripción es obligatoria."
-                return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
-            fecha_solicitud = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            empleado_orden = session.get('usuario', 'desconocido')
-            estado = "En proceso"
-            empleado_asignado = ""
-            fecha_actualizacion = ""
-            notas_inicial = ""
-            historial_inicial = ""
-            # Datos del cliente (Columnas J a M)
-            nombre_cliente = request.form.get("nombre_cliente", "").strip()
-            ciudad_cliente = request.form.get("ciudad_cliente", "").strip()
-            sector = request.form.get("sector", "").strip()
-            telefono_cliente = request.form.get("telefono_cliente", "").strip()
-            extra_original = [nombre_cliente, ciudad_cliente, sector, telefono_cliente]
-            
-            datos_originales = [
-                codigo, fecha_solicitud, empleado_orden, descripcion,
-                estado, empleado_asignado, fecha_actualizacion, notas_inicial,
-                historial_inicial
-            ] + extra_original
-            
-            # Datos adicionales (Columnas N a Z o AB)
-            direccion = request.form.get("direccion", "").strip()
-            ruta = request.form.get("ruta", "").strip()
-            modalidad_trabajo = request.form.get("modalidad_trabajo", "").strip()
-            edad = request.form.get("edad", "").strip()
-            nacionalidad = request.form.get("nacionalidad", "Dominicana").strip()
-            alfabetizacion = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"
-            experiencia = request.form.get("experiencia", "").strip()
-            horario = request.form.get("horario", "").strip()
-            funciones = request.form.get("funciones", "").strip()
-            descripcion_casa = request.form.get("descripcion_casa", "").strip()
-            adultos = request.form.get("adultos", "").strip()
-            sueldo = request.form.get("sueldo", "").strip()
-            notas_solicitud = request.form.get("notas", "").strip()
-            
-            datos_nuevos = [
-                direccion, ruta, modalidad_trabajo, edad, nacionalidad,
-                alfabetizacion, experiencia, horario, funciones, descripcion_casa,
-                adultos, sueldo, notas_solicitud
-            ]
-            
-            # Nota: Ajusta el rango según la estructura de tu hoja (si es A:Z o A:AB)
-            nueva_fila = datos_originales + datos_nuevos
-            
-            try:
-                service.spreadsheets().values().append(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range="Solicitudes!A1:Z",  # Modifica a "A1:AB" si la hoja contiene columnas hasta AB
-                    valueInputOption="RAW",
-                    body={"values": [nueva_fila]}
-                ).execute()
-                mensaje = "Orden registrada con éxito."
-            except Exception as e:
-                logging.error("Error al registrar orden: " + str(e), exc_info=True)
-                mensaje = "Error al registrar la orden."
-            return render_template('solicitudes_registro.html', accion=accion, mensaje=mensaje)
-    
-    # ---------------- VER: Listado completo --------------
-    elif accion == 'ver':
-        solicitudes_data = []
-        try:
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:Z"
-            ).execute()
-            solicitudes_data = result.get("values", [])
-        except Exception as e:
-            logging.error("Error al obtener listado: " + str(e), exc_info=True)
-            mensaje = "Error al cargar el listado de órdenes."
-        return render_template('solicitudes_ver.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
-    
-    # ---------------- BUSCAR: Buscar por código --------------
-    elif accion == 'buscar':
-        codigo = request.args.get("codigo", "").strip()
-        try:
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:Z"
-            ).execute()
-            data = result.get("values", [])
-            if not data:
-                mensaje = "No se encontraron datos en la hoja."
-                return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
-            header = data[0]
-            matches = [row for row in data[1:] if row and row[0].strip() == codigo]
-            if matches:
-                found_order = matches[0]
-                mensaje = f"Orden encontrada con el código {codigo}."
-                search_result = [header, found_order]
-                return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=search_result)
-            else:
-                mensaje = "No se encontró ninguna orden con el código proporcionado."
-                return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[header])
-        except Exception as e:
-            logging.error("Error al buscar la orden: " + str(e), exc_info=True)
-            mensaje = "Error al buscar la orden."
-            return render_template('solicitudes_busqueda.html', accion='buscar', mensaje=mensaje, solicitudes=[])
-    
-    # ---------------- REPORTES: Filtrado flexible y por fechas --------------
-    elif accion == 'reportes':
-        try:
-            result = service.spreadsheets().values().get(
-                spreadsheetId=SPREADSHEET_ID,
-                range="Solicitudes!A1:Z"
-            ).execute()
-            data = result.get("values", [])
-        except Exception as e:
-            logging.error("Error al obtener datos para reportes: " + str(e), exc_info=True)
-            mensaje = "Error al obtener datos para reportes."
-            return render_template('solicitudes_reportes.html', accion=accion, mensaje=mensaje, solicitudes_reporte=[])
-        
-        filtered = data[1:] if len(data) > 1 else []
-        # (Filtrado por fechas y otros criterios se omiten aquí por brevedad)
-        header = data[0] if data else []
-        solicitudes_reporte = [header] + filtered if filtered else [header]
-        return render_template('solicitudes_reportes.html',
-                               accion=accion,
-                               mensaje=f"Total órdenes: {len(data)-1 if len(data)>1 else 0}",
-                               solicitudes_reporte=solicitudes_reporte)
-    
-    # ---------------- ACCIÓN "actualizar" (PARCIAL): Actualiza solo rangos específicos --------------
-    elif accion == 'actualizar':
-        fila_str = request.args.get("fila", "").strip()
-        if not fila_str.isdigit():
-            mensaje = "Fila inválida para actualizar."
-            return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
-        fila_index = int(fila_str)
-        
-        if request.method == 'GET':
-            try:
-                rango = f"Solicitudes!A{fila_index}:AB{fila_index}"
-                result = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango
-                ).execute()
-                solicitud_fila = result.get("values", [])
-                solicitud_fila = solicitud_fila[0] if solicitud_fila else []
-            except Exception as e:
-                logging.error("Error al cargar la orden para actualizar: " + str(e), exc_info=True)
-                mensaje = "Error al cargar la orden."
-                solicitud_fila = []
-            return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje, solicitud=solicitud_fila, fila=fila_index)
-        
-        elif request.method == 'POST':
-            # Leer la fila original completa (A–AB)
-            try:
-                original_range = f"Solicitudes!A{fila_index}:AB{fila_index}"
-                result = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=original_range
-                ).execute()
-                original_row = result.get("values", [])[0]
-                if len(original_row) < 28:
-                    original_row.extend([""] * (28 - len(original_row)))
-            except Exception as e:
-                logging.error("Error al obtener la fila original: " + str(e), exc_info=True)
-                mensaje = "Error al cargar los datos originales."
-                return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
-            
-            # Para el segmento 1 (Columnas D a I: índices 3 a 8)
-            # Si el campo del formulario es vacío, se conserva el valor original.
-            new_desc = request.form.get("descripcion", "").strip() or original_row[3]
-            new_estado = request.form.get("estado", "").strip() or original_row[4]
-            new_empleado = request.form.get("empleado_asignado", "").strip() or original_row[5]
-            new_fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # Para "notas" (columna H, índice 7): si vacía, se conserva el valor original.
-            new_notas = request.form.get("notas", "").strip()
-            if new_notas == "":
-                new_notas = original_row[7]
-            # Para el historial (columna I, índice 8): se añade un registro nuevo al final.
-            original_historial = original_row[8]
-            new_historial = f"{new_fecha} - {session.get('usuario','desconocido')}: Cambió estado a {new_estado}"
-            if new_notas:
-                new_historial += f" Notas: {new_notas}"
-            if original_historial:
-                new_historial = original_historial + "\n" + new_historial
-            update_data_1 = [new_desc, new_estado, new_empleado, new_fecha, new_notas, new_historial]
-            update_range_1 = f"Solicitudes!D{fila_index}:I{fila_index}"
-            
-            # Para el segmento 2 (Columnas N a AB: índices 13 a 27)
-            # Se aplicará la misma lógica: conservar el dato original si el formulario entrega cadena vacía.
-            new_direccion = request.form.get("direccion", "").strip() or original_row[13]
-            new_ruta = request.form.get("ruta", "").strip() or original_row[14]
-            new_modalidad = request.form.get("modalidad_trabajo", "").strip() or original_row[15]
-            new_edad = request.form.get("edad", "").strip() or original_row[16]
-            new_nacionalidad = request.form.get("nacionalidad", "").strip() or original_row[17]
-            # Para alfabetización, si no se marca, usamos "No" a menos que original tenga otro valor.
-            new_alfabetizacion = "Sí" if request.form.get("habilidades_alfabetizacion") else (original_row[18] or "No")
-            new_experiencia = request.form.get("experiencia", "").strip() or original_row[19]
-            new_horario = request.form.get("horario", "").strip() or original_row[20]
-            new_funciones = request.form.get("funciones", "").strip() or original_row[21]
-            new_desc_casa = request.form.get("descripcion_casa", "").strip() or original_row[22]
-            new_adultos = request.form.get("adultos", "").strip() or original_row[23]
-            new_sueldo = request.form.get("sueldo", "").strip() or original_row[24]
-            new_notas_solicitud = request.form.get("notas_solicitud", "").strip() or original_row[25]
-            new_pago = request.form.get("pago", "").strip() or original_row[26]
-            if request.form.get("pago", "").strip() != "":
-                new_pago_fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                new_pago_fecha = original_row[27]
-            update_data_2 = [
-                new_direccion, new_ruta, new_modalidad, new_edad, new_nacionalidad,
-                new_alfabetizacion, new_experiencia, new_horario, new_funciones,
-                new_desc_casa, new_adultos, new_sueldo, new_notas_solicitud,
-                new_pago, new_pago_fecha
-            ]
-            update_range_2 = f"Solicitudes!N{fila_index}:AB{fila_index}"
-            
-            try:
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=update_range_1,
-                    valueInputOption="RAW",
-                    body={"values": [update_data_1]}
-                ).execute()
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=update_range_2,
-                    valueInputOption="RAW",
-                    body={"values": [update_data_2]}
-                ).execute()
-                mensaje = "Orden actualizada correctamente."
-            except Exception as e:
-                logging.error("Error al actualizar la orden: " + str(e), exc_info=True)
-                mensaje = "Error al actualizar la orden."
-            return render_template('solicitudes_actualizar.html', accion=accion, mensaje=mensaje)
-    
-    # ---------------- EDITAR: Actualización completa --------------
-    elif accion == 'editar':
-        if request.method == 'GET':
-            codigo = request.args.get("codigo", "").strip()
-            if not codigo:
-                mensaje = "Debe proporcionar el código de la orden a editar."
-                return render_template('solicitudes_editar_buscar.html', accion=accion, mensaje=mensaje)
-            try:
-                result = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range="Solicitudes!A1:AB"
-                ).execute()
-                data = result.get("values", [])
-                orden_encontrada = None
-                fila_index = None
-                for idx, row in enumerate(data[1:], start=2):
-                    if row and row[0] == codigo:
-                        orden_encontrada = row
-                        fila_index = idx
-                        break
-                if orden_encontrada:
-                    mensaje = f"Orden encontrada en la fila {fila_index}."
-                    return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=orden_encontrada, fila=fila_index)
-                else:
-                    mensaje = "No se encontró ninguna orden con el código proporcionado."
-                    return render_template('solicitudes_editar_buscar.html', accion=accion, mensaje=mensaje)
-            except Exception as e:
-                logging.error("Error al buscar la orden para editar: " + str(e), exc_info=True)
-                mensaje = "Error al cargar la orden para editar."
-                return render_template('solicitudes_editar_buscar.html', accion=accion, mensaje=mensaje)
-        
-        elif request.method == 'POST':
-            fila_str = request.form.get("fila", "").strip()
-            if not fila_str.isdigit():
-                mensaje = "Fila inválida para editar."
-                return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
-            fila_index = int(fila_str)
-            try:
-                rango_completo = f"Solicitudes!A{fila_index}:AB{fila_index}"
-                result = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango_completo
-                ).execute()
-                fila_original = result.get("values", [])[0]
-                if len(fila_original) < 28:
-                    fila_original.extend([""] * (28 - len(fila_original)))
-            except Exception as e:
-                logging.error("Error al obtener datos originales para edición: " + str(e), exc_info=True)
-                mensaje = "Error al cargar la fila original."
-                return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje)
-            
-            descripcion = request.form.get("descripcion", "").strip()
-            if not descripcion:
-                mensaje = "La descripción es obligatoria."
-                return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=fila_original, fila=fila_index)
-            estado = request.form.get("estado", "").strip()
-            empleado_asignado = request.form.get("empleado_asignado", "").strip()
-            notas_actuales = request.form.get("notas", "").strip()
-            fecha_actualizacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            try:
-                rango_historial = f"Solicitudes!I{fila_index}"
-                respuesta_hist = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango_historial
-                ).execute()
-                historial_actual = respuesta_hist.get("values", [])
-                historial_texto = historial_actual[0][0] if historial_actual and historial_actual[0] else ""
-            except Exception as e:
-                logging.error("Error al leer historial: " + str(e), exc_info=True)
-                historial_texto = ""
-            nuevo_registro = f"{fecha_actualizacion} - {session.get('usuario','desconocido')}: Edición completa."
-            if notas_actuales:
-                nuevo_registro += f" Notas: {notas_actuales}"
-            historial_texto = (historial_texto + "\n" + nuevo_registro) if historial_texto else nuevo_registro
-            
-            nueva_fila = fila_original.copy()
-            nueva_fila[3] = descripcion            # Columna D
-            nueva_fila[4] = estado                 # Columna E
-            nueva_fila[5] = empleado_asignado      # Columna F
-            nueva_fila[6] = fecha_actualizacion    # Columna G
-            nueva_fila[7] = ""                     # Columna H
-            nueva_fila[8] = historial_texto        # Columna I
-            # Actualiza el resto de las columnas con los valores recibidos (N a AB)
-            nueva_fila[13] = request.form.get("direccion", "").strip()    
-            nueva_fila[14] = request.form.get("ruta", "").strip()         
-            nueva_fila[15] = request.form.get("modalidad_trabajo", "").strip()  
-            nueva_fila[16] = request.form.get("edad", "").strip()         
-            nueva_fila[17] = request.form.get("nacionalidad", "Dominicana").strip()  
-            nueva_fila[18] = "Sí" if request.form.get("habilidades_alfabetizacion") else "No"  
-            nueva_fila[19] = request.form.get("experiencia", "").strip()    
-            nueva_fila[20] = request.form.get("horario", "").strip()        
-            nueva_fila[21] = request.form.get("funciones", "").strip()      
-            nueva_fila[22] = request.form.get("descripcion_casa", "").strip()  
-            nueva_fila[23] = request.form.get("adultos", "").strip()        
-            nueva_fila[24] = request.form.get("sueldo", "").strip()         
-            nueva_fila[25] = request.form.get("notas_solicitud", "").strip() 
-            
-            try:
-                service.spreadsheets().values().update(
-                    spreadsheetId=SPREADSHEET_ID,
-                    range=rango_completo,
-                    valueInputOption="RAW",
-                    body={"values": [nueva_fila]}
-                ).execute()
-                mensaje = "Orden editada correctamente."
-            except Exception as e:
-                logging.error("Error al editar la orden: " + str(e), exc_info=True)
-                mensaje = "Error al editar la orden."
-            return render_template('solicitudes_editar.html', accion=accion, mensaje=mensaje, orden=nueva_fila, fila=fila_index)
-    
-    elif accion == 'disponibles':
-         solicitudes_data = {}
-         try:
-             result = service.spreadsheets().values().get(
-                   spreadsheetId=SPREADSHEET_ID,
-                   range="Solicitudes!A1:AC"
-             ).execute()
-             data = result.get("values", [])
-             disponibles = []
-             today_str = datetime.today().strftime("%Y-%m-%d")
-             if len(data) > 1:
-                 header = data[0]
-                 for i, sol in enumerate(data[1:], start=2):
-                     if len(sol) < 5:
-                         continue
-                     estado_sol = sol[4].strip().lower() if sol[4] else ""
-                     if estado_sol in ["disponible", "reemplazo"]:
-                         if len(sol) >= 29:
-                             fecha_copia = sol[28].strip()
-                             if fecha_copia == today_str:
-                                 continue
-                         disponibles.append({"datos": sol, "fila": i})
-             else:
-                 header = []
-             solicitudes_data = {"header": header, "ordenes": disponibles}
-         except Exception as e:
-             logging.error("Error al cargar órdenes disponibles: " + str(e), exc_info=True)
-             mensaje = "Error al cargar órdenes disponibles."
-             solicitudes_data = {"header": [], "ordenes": []}
-         return render_template('solicitudes_disponibles.html', accion=accion, mensaje=mensaje, solicitudes=solicitudes_data)
-    
-    else:
-         mensaje = "Acción no reconocida."
-         return render_template('solicitudes_base.html', accion=accion, mensaje=mensaje)
-
-@app.route('/marcar_copiada', methods=['POST'])
-@roles_required('admin', 'secretaria')
-def marcar_copiada():
-    fila_str = request.form.get("fila", "").strip()
-    if not fila_str.isdigit():
-         return "Error: Fila inválida", 400
-    fila_index = int(fila_str)
-    today_str = datetime.today().strftime("%Y-%m-%d")
-    try:
-         update_range = f"Solicitudes!AC{fila_index}:AC{fila_index}"
-         service.spreadsheets().values().update(
-               spreadsheetId=SPREADSHEET_ID,
-               range=update_range,
-               valueInputOption="RAW",
-               body={"values": [[today_str]]}
-         ).execute()
-         return "OK", 200
-    except Exception as e:
-         logging.error("Error al marcar orden como copiada: " + str(e), exc_info=True)
-         return "Error", 500
-
 # ─────────────────────────────────────────────────────────────
 # Ruta: Registro/Inscripción de Otros Empleos
 # ─────────────────────────────────────────────────────────────
@@ -2212,15 +1733,14 @@ def registro_publico():
         # — Ajuste para áreas de experiencia múltiples —
         areas_list = request.form.getlist('areas_experiencia')
         if areas_list:
-            # Unir en un solo string: "Limpieza, Cocina, Niñera"
             areas_exp = ', '.join(a.strip() for a in areas_list if a.strip())
         else:
             areas_exp = None
 
-        plancha     = True if request.form.get('sabe_planchar') == 'si' else False
+        plancha     = request.form.get('sabe_planchar') == 'si'
         ref_laboral = request.form.get('contactos_referencias_laborales', '').strip() or None
         ref_familia = request.form.get('referencias_familiares_detalle', '').strip() or None
-        acepta_pct  = True if request.form.get('acepta_porcentaje_sueldo') == '1' else False
+        acepta_pct  = request.form.get('acepta_porcentaje_sueldo') == '1'
 
         # 2) Normalizamos y validamos
         nombre = normalize_nombre(nombre_raw)
@@ -2250,7 +1770,11 @@ def registro_publico():
             sabe_planchar                   = plancha,
             contactos_referencias_laborales = ref_laboral,
             referencias_familiares_detalle  = ref_familia,
-            acepta_porcentaje_sueldo        = acepta_pct
+            acepta_porcentaje_sueldo        = acepta_pct,
+            # auditoría inicial
+            estado                          = 'en_proceso',
+            fecha_cambio_estado             = datetime.utcnow(),
+            usuario_cambio_estado           = session.get('usuario', 'public')
         )
         try:
             db.session.add(nueva)
@@ -2264,7 +1788,6 @@ def registro_publico():
 
     # GET → mostramos el formulario
     return render_template('registro_publico.html')
-
 
 @app.route('/register', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
@@ -2281,31 +1804,26 @@ def register():
         empleo_ant    = request.form.get('empleo_anterior', '').strip() or None
         anos_exp      = request.form.get('anos_experiencia', '').strip() or None
         areas_exp     = request.form.get('areas_experiencia', '').strip() or None
-        plancha       = True if request.form.get('sabe_planchar') == 'si' else False
+        plancha       = request.form.get('sabe_planchar') == 'si'
         ref_laboral   = request.form.get('contactos_referencias_laborales', '').strip() or None
         ref_familia   = request.form.get('referencias_familiares_detalle', '').strip() or None
-        raw_pct = request.form.get('acepta_porcentaje_sueldo')
-        pct_acepta = True if raw_pct == 'si' else False
+        raw_pct       = request.form.get('acepta_porcentaje_sueldo')
+        pct_acepta    = raw_pct == 'si'
 
-
-        # 2) Normalizamos algunos
+        # 2) Normalizamos y validamos
         nombre = normalize_nombre(nombre_raw)
         cedula = normalize_cedula(cedula_raw)
         if not cedula:
-            flash('Cédula inválida. Debe tener 11 dígitos.', 'danger')
+            flash('❌ Cédula inválida. Debe tener 11 dígitos.', 'danger')
             return redirect(url_for('register'))
-
-        # 3) Validaciones mínimas
         if not nombre:
-            flash('El nombre es obligatorio.', 'danger')
+            flash('❌ El nombre es obligatorio.', 'danger')
             return redirect(url_for('register'))
-
-        # 4) Chequear duplicados
         if Candidata.query.filter_by(cedula=cedula).first():
-            flash('Ya existe una candidata con esa cédula.', 'danger')
+            flash('❌ Ya existe una candidata con esa cédula.', 'danger')
             return redirect(url_for('register'))
 
-        # 5) Crear objeto
+        # 3) Crear objeto con auditoría
         nueva = Candidata(
             nombre_completo                = nombre,
             cedula                         = cedula,
@@ -2320,28 +1838,357 @@ def register():
             sabe_planchar                  = plancha,
             contactos_referencias_laborales= ref_laboral,
             referencias_familiares_detalle = ref_familia,
-            acepta_porcentaje_sueldo       = pct_acepta
+            acepta_porcentaje_sueldo       = pct_acepta,
+            # auditoría inicial
+            estado                          = 'en_proceso',
+            fecha_cambio_estado             = datetime.utcnow(),
+            usuario_cambio_estado           = session.get('usuario', 'public')
         )
 
-        # 6) Guardar en la base
+        # 4) Guardar en la base
         try:
             db.session.add(nueva)
             db.session.commit()
-            flash('Candidata registrada ✅', 'success')
+            flash('✅ Candidata registrada.', 'success')
             return redirect(url_for('register'))
         except Exception as e:
             db.session.rollback()
-            flash(f'Error al guardar: {e}', 'danger')
+            flash(f'❌ Error al guardar: {e}', 'danger')
             return redirect(url_for('register'))
 
     # GET → mostramos el formulario
     return render_template('register.html')
 
-from flask import send_from_directory
 
-@app.route('/iw4sjki37enb1kv6qkrxb1tms5l9gl.html')
-def facebook_verification():
-    return send_from_directory('static', 'iw4sjki37enb1kv6qkrxb1tms5l9gl.html')
+@app.route('/finalizar_proceso', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def finalizar_proceso():
+    # 1) Parámetro fila
+    fila = request.values.get('fila', type=int)
+    if not fila:
+        flash("⚠️ Debes especificar la candidata (fila).", "warning")
+        return redirect(url_for('list_candidatas'))
+
+    # 2) Cargar la candidata
+    candidata = Candidata.query.get(fila)
+    if not candidata:
+        flash("⚠️ Candidata no encontrada.", "warning")
+        return redirect(url_for('list_candidatas'))
+
+    # 3) POST: procesar formulario
+    if request.method == 'POST':
+        # — Archivos —
+        foto = request.files.get('foto_perfil')
+        ced1 = request.files.get('cedula1')
+        ced2 = request.files.get('cedula2')
+        if foto and foto.filename:
+            candidata.foto_perfil = foto.read()
+        if ced1 and ced1.filename:
+            candidata.cedula1 = ced1.read()
+        if ced2 and ced2.filename:
+            candidata.cedula2 = ced2.read()
+
+        # — Grupos seleccionados (multi‑checkbox) —
+        seleccion = request.form.getlist('grupos_empleo')
+        candidata.grupos_empleo = seleccion
+
+        # — Marcar fin de proceso y cambiar estado —
+        candidata.fecha_finalizacion_proceso = datetime.utcnow()
+        candidata.estado = 'proceso_inscripcion'
+        candidata.fecha_cambio_estado = datetime.utcnow()
+        candidata.usuario_cambio_estado = session.get('usuario', 'desconocido')
+
+        try:
+            db.session.commit()
+            flash("✅ Proceso finalizado: archivos subidos y grupos asignados.", "success")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"❌ Error al guardar: {e}", "danger")
+
+        # 4) Redirigir al listado de candidatas
+        return redirect(url_for('list_candidatas'))
+
+    # 5) GET: mostrar formulario de finalización
+    return render_template(
+        'finalizar_proceso.html',
+        candidata=candidata,
+        grupos=[
+            'Santiago salida diaria',
+            'Santiago con dormida',
+            'Sto Dgo',
+            'La Vega',
+            'San Francisco',
+            'Cotui',
+            'Moca',
+            'Pto Pta',
+            'Fin de semana',
+            'San Cristobal'
+        ],
+    )
+
+# Desactiva CSRF solo para esta vista
+csrf.exempt(finalizar_proceso)
+
+from io import BytesIO
+from flask import (
+    render_template, request, redirect, url_for,
+    send_file, abort, flash
+)
+from sqlalchemy import or_
+from config_app import csrf
+from models import Candidata
+from decorators import roles_required
+
+# Ruta que sirve la imagen binaria de la foto de perfil
+@app.route('/perfil_candidata', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def perfil_candidata():
+    # Permite usar ?fila=123 o ?q=texto
+    fila = request.args.get('fila', type=int)
+    q    = request.args.get('q', '').strip()
+
+    if not fila and not q:
+        abort(400, "Debes pasar ?fila=ID o ?q=texto")
+    if q:
+        # Intentar buscar por cédula exacta o nombre parecido
+        c = Candidata.query.filter(
+            or_(
+                Candidata.cedula == q,
+                Candidata.nombre_completo.ilike(f"%{q}%")
+            )
+        ).first()
+        if not c:
+            abort(404, f"No se encontró candidata para '{q}'")
+    else:
+        c = Candidata.query.get(fila)
+        if not c:
+            abort(404, f"No existe la candidata con fila={fila}")
+
+    if not c.foto_perfil:
+        abort(404, "Esta candidata no tiene foto de perfil cargada")
+
+    return send_file(
+        BytesIO(c.foto_perfil),
+        mimetype='image/png',
+        as_attachment=False,
+        download_name=f"perfil_{c.fila}.png"
+    )
+
+# Página para ver el perfil (imagen) y datos mínimos
+@app.route('/ver_perfil', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def ver_perfil():
+    # Soporta ?fila=ID o ?q=texto
+    fila = request.args.get('fila', type=int)
+    q    = request.args.get('q', '').strip()
+
+    if not fila and not q:
+        flash("Debes especificar candidata con ?fila=ID o buscar con ?q=texto", "warning")
+        return redirect(url_for('list_candidatas'))
+
+    if q:
+        # Buscar todas las potenciales coincidencias
+        like = f"%{q}%"
+        matches = Candidata.query.filter(
+            or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like)
+            )
+        ).order_by(Candidata.nombre_completo).all()
+        if not matches:
+            flash(f"No se encontraron candidatas para '{q}'", "warning")
+            return redirect(url_for('list_candidatas'))
+        if len(matches) > 1:
+            # Muestra lista de coincidencias
+            return render_template('ver_perfil_list.html', matches=matches, query=q)
+        # Si solo hay una, la mostramos
+        candidata = matches[0]
+    else:
+        candidata = Candidata.query.get(fila)
+        if not candidata:
+            flash(f"No existe la candidata con fila={fila}", "warning")
+            return redirect(url_for('list_candidatas'))
+
+    return render_template('ver_perfil.html', candidata=candidata)
+
+# Eximir esta ruta de CSRF (si tu app lo requiere)
+csrf.exempt(perfil_candidata)
+csrf.exempt(ver_perfil)
+
+from datetime import date, datetime
+from sqlalchemy import func, cast, Date
+from flask import request, render_template
+from decorators import roles_required   # ajústalo si tu decorador está en otro módulo
+from models import Candidata, db
+
+@app.route('/dashboard_procesos', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def dashboard_procesos():
+    # 1) Leer filtros
+    estado_filtro = request.args.get('estado', '').strip()       # valor del enum
+    desde_str     = request.args.get('desde', '').strip()        # YYYY-MM-DD
+    hasta_str     = request.args.get('hasta', '').strip()        # YYYY-MM-DD
+
+    # 2) Parsear fechas
+    desde = None
+    hasta = None
+    try:
+        if desde_str:
+            desde = datetime.strptime(desde_str, '%Y-%m-%d').date()
+        if hasta_str:
+            hasta = datetime.strptime(hasta_str, '%Y-%m-%d').date()
+    except ValueError:
+        # Ignorar formato inválido; podrías flash un warning aquí
+        pass
+
+    # 3) Stats globales
+    total           = Candidata.query.count()
+    hoy             = date.today()
+    entradas_hoy    = Candidata.query.filter(
+                          cast(Candidata.fecha_cambio_estado, Date) == hoy
+                      ).count()
+    counts_por_estado = dict(
+        db.session.query(
+            Candidata.estado,
+            func.count(Candidata.estado)
+        ).group_by(Candidata.estado).all()
+    )
+
+    # 4) Consulta filtrada
+    q = Candidata.query
+    if estado_filtro:
+        q = q.filter(Candidata.estado == estado_filtro)
+    if desde:
+        q = q.filter(cast(Candidata.fecha_cambio_estado, Date) >= desde)
+    if hasta:
+        q = q.filter(cast(Candidata.fecha_cambio_estado, Date) <= hasta)
+    candidatas = q.order_by(Candidata.fecha_cambio_estado.desc()).all()
+
+    # 5) Lista de estados para el <select>
+    estados = [
+        'en_proceso',
+        'proceso_inscripcion',
+        'inscrita',
+        'inscrita_incompleta',
+        'lista_para_trabajar',
+        'trabajando',
+        'descalificada'
+    ]
+
+    return render_template(
+        'dashboard_procesos.html',
+        total=total,
+        entradas_hoy=entradas_hoy,
+        counts_por_estado=counts_por_estado,
+        estados=estados,
+        estado_filtro=estado_filtro,
+        desde_str=desde_str,
+        hasta_str=hasta_str,
+        candidatas=candidatas
+    )
+
+from flask import jsonify
+from datetime import datetime
+from models import Candidata, db
+
+@app.route('/auto_actualizar_estados', methods=['GET'])
+def auto_actualizar_estados():
+    """
+    Escanea todas las candidatas con estado 'inscrita_incompleta' y,
+    si ya tienen:
+      • código único (obj.codigo)
+      • entrevista (obj.entrevista)
+      • referencias laborales y familiares (obj.referencias_laboral, obj.referencias_familiares)
+      • todas las imágenes cargadas (obj.perfil, obj.cedula1, obj.cedula2, obj.depuracion)
+    las marca automáticamente con estado 'lista_para_trabajar'.
+    Devuelve JSON con el listado de filas actualizadas.
+    """
+    pendientes = Candidata.query.filter_by(estado='inscrita_incompleta').all()
+    actualizadas = []
+
+    for c in pendientes:
+        if (c.codigo
+            and c.entrevista
+            and c.referencias_laboral
+            and c.referencias_familiares
+            and c.perfil
+            and c.cedula1
+            and c.cedula2
+            and c.depuracion):
+            
+            c.estado = 'lista_para_trabajar'
+            c.fecha_cambio_estado = datetime.utcnow()
+            c.usuario_cambio_estado = 'sistema'
+            actualizadas.append(c.fila)
+
+    if actualizadas:
+        db.session.commit()
+
+    return jsonify({
+        'conteo_actualizadas': len(actualizadas),
+        'filas_actualizadas': actualizadas
+    })
+
+
+# ─── Listado de candidatas a llamar ────────────────────────────────
+@app.route('/candidatas/llamadas')
+@roles_required('admin', 'secretaria')
+def listado_llamadas_candidatas():
+    hoy = date.today()
+    hace_una_semana = hoy - timedelta(days=7)
+
+    en_proceso = (
+        Candidata.query
+        .filter(Candidata.estado == 'en_proceso')
+        .filter(func.date(Candidata.marca_temporal) <= hace_una_semana)
+        .all()
+    )
+
+    en_inscripcion = (
+        Candidata.query
+        .filter(Candidata.estado == 'proceso_inscripcion')
+        .filter(func.date(Candidata.marca_temporal) <= hace_una_semana)
+        .all()
+    )
+
+    lista_trabajar = (
+        Candidata.query
+        .filter(Candidata.estado == 'lista_para_trabajar')
+        .all()
+    )
+
+    return render_template(
+        'llamadas_candidatas.html',
+        en_proceso=en_proceso,
+        en_inscripcion=en_inscripcion,
+        lista_trabajar=lista_trabajar,
+        hoy=hoy
+    )
+
+# ─── Formulario para registrar una llamada ──────────────────────────
+@app.route('/candidatas/<int:fila>/llamar', methods=['GET','POST'])
+@roles_required('admin', 'secretaria')
+def registrar_llamada_candidata(fila):
+    candidata = Candidata.query.get_or_404(fila)
+    form      = LlamadaCandidataForm()
+    if form.validate_on_submit():
+        llamada = LlamadaCandidata(
+            candidata_id  = candidata.fila,
+            fecha_llamada = func.now(),
+            resultado     = form.resultado.data,
+            notas         = form.notas.data
+        )
+        db.session.add(llamada)
+        db.session.commit()
+        flash(f'Llamada registrada para {candidata.nombre_completo}.', 'success')
+        return redirect(url_for('listado_llamadas_candidatas'))
+
+    return render_template(
+        'registrar_llamada_candidata.html',
+        form=form,
+        candidata=candidata
+    )
+
 
 
 if __name__ == '__main__':

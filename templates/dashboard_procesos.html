@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container my-5">
+  <h1 class="mb-4">📊 Dashboard de Procesos</h1>
+
+  <!-- Estadísticas -->
+  <div class="row g-4 mb-5">
+    <div class="col-sm-4">
+      <div class="card text-center shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Total de Candidatas</h5>
+          <p class="display-5">{{ total }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="card text-center shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Entradas Hoy</h5>
+          <p class="display-5">{{ entradas_hoy }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="card text-center shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Por Estado</h5>
+          {% for estado, cnt in counts_por_estado.items() %}
+            <div>{{ estado.replace('_',' ').capitalize() }}: <strong>{{ cnt }}</strong></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Formulario de filtro -->
+  <div class="card mb-5 shadow-sm">
+    <div class="card-header">Filtrar Resultados</div>
+    <div class="card-body">
+      <form method="get" action="{{ url_for('dashboard_procesos') }}" class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Estado</label>
+          <select class="form-select" name="estado">
+            <option value="">(Todos)</option>
+            {% for est in estados %}
+              <option value="{{ est }}" {% if estado_filtro==est %}selected{% endif %}>
+                {{ est.replace('_',' ').capitalize() }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Desde</label>
+          <input type="date" name="desde" class="form-control" value="{{ desde_str }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Hasta</label>
+          <input type="date" name="hasta" class="form-control" value="{{ hasta_str }}">
+        </div>
+        <div class="col-md-3 align-self-end text-end">
+          <button type="submit" class="btn btn-primary">Aplicar Filtro</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Tabla de resultados filtrados -->
+  <div class="card shadow-sm">
+    <div class="card-header">
+      Candidatas Filtradas ({{ candidatas|length }})
+    </div>
+    <div class="card-body table-responsive">
+      <table class="table table-striped">
+        <thead class="table-light">
+          <tr>
+            <th>Fila</th>
+            <th>Nombre</th>
+            <th>Estado</th>
+            <th>Fecha Cambio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in candidatas %}
+          <tr>
+            <td>{{ c.fila }}</td>
+            <td>{{ c.nombre_completo }}</td>
+            <td>{{ c.estado.replace('_',' ').capitalize() }}</td>
+            <td>{{ c.fecha_cambio_estado.strftime('%Y-%m-%d %H:%M') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

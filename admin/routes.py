@@ -173,7 +173,7 @@ AREAS_COMUNES_CHOICES = [
 @login_required
 @admin_required
 def nueva_solicitud_admin(cliente_id):
-    c = Cliente.query.get_or_404(cliente_id)
+    c    = Cliente.query.get_or_404(cliente_id)
     form = AdminSolicitudForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
@@ -184,9 +184,11 @@ def nueva_solicitud_admin(cliente_id):
         form.edad_otro.data     = ''
 
     if form.validate_on_submit():
-        count       = Solicitud.query.filter_by(cliente_id=c.id).count()
+        # ➤ Código único
+        count        = Solicitud.query.filter_by(cliente_id=c.id).count()
         nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
 
+        # ➤ Instanciar y poblar modelo
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
@@ -194,18 +196,24 @@ def nueva_solicitud_admin(cliente_id):
         )
         form.populate_obj(s)
 
-        # 🌟 Guardar la edad como STRING, no como LISTA
+        # ➤ Edad: guardamos el LABEL del choice
+        choices_age = dict(form.edad_requerida.choices)
         if form.edad_requerida.data == 'otra':
             valor_edad = form.edad_otro.data.strip()
         else:
-            valor_edad = form.edad_requerida.data
+            valor_edad = choices_age.get(form.edad_requerida.data,
+                                         form.edad_requerida.data)
         s.edad_requerida = valor_edad
 
-        s.funciones       = form.funciones.data
-        s.areas_comunes   = form.areas_comunes.data
-        s.area_otro       = form.area_otro.data
-        s.pasaje_aporte   = form.pasaje_aporte.data
+        # ➤ Funciones: GUARDAMOS los valores limpios (['cuidar_ninos',…])
+        s.funciones = form.funciones.data
 
+        # ➤ Áreas comunes y resto de campos
+        s.areas_comunes = form.areas_comunes.data
+        s.area_otro     = form.area_otro.data
+        s.pasaje_aporte = form.pasaje_aporte.data
+
+        # ➤ Guardar en BD
         db.session.add(s)
         c.total_solicitudes      += 1
         c.fecha_ultima_solicitud  = datetime.utcnow()
@@ -223,16 +231,16 @@ def nueva_solicitud_admin(cliente_id):
     )
 
 
-@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar',
-                methods=['GET','POST'])
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar', methods=['GET','POST'])
 @login_required
 @admin_required
 def editar_solicitud_admin(cliente_id, id):
-    s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+    s    = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminSolicitudForm(obj=s)
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
+        # ➤ Edad: pre-seleccionar o texto libre
         guardada = s.edad_requerida or ''
         opciones = {v for v,_ in form.edad_requerida.choices}
         if guardada in opciones:
@@ -242,6 +250,7 @@ def editar_solicitud_admin(cliente_id, id):
             form.edad_requerida.data = 'otra'
             form.edad_otro.data      = guardada
 
+        # ➤ Cargar valores de funciones y áreas
         form.funciones.data     = s.funciones or []
         form.areas_comunes.data = s.areas_comunes or []
         form.area_otro.data     = s.area_otro or ''
@@ -250,14 +259,19 @@ def editar_solicitud_admin(cliente_id, id):
     if form.validate_on_submit():
         form.populate_obj(s)
 
-        # 🌟 Misma corrección aquí
+        # ➤ Edad: mismo mapeo
+        choices_age = dict(form.edad_requerida.choices)
         if form.edad_requerida.data == 'otra':
             valor_edad = form.edad_otro.data.strip()
         else:
-            valor_edad = form.edad_requerida.data
+            valor_edad = choices_age.get(form.edad_requerida.data,
+                                         form.edad_requerida.data)
         s.edad_requerida = valor_edad
 
-        s.funciones                = form.funciones.data
+        # ➤ Funciones: de nuevo solo valores
+        s.funciones = form.funciones.data
+
+        # ➤ Áreas comunes y resto
         s.areas_comunes            = form.areas_comunes.data
         s.area_otro                = form.area_otro.data
         s.pasaje_aporte            = form.pasaje_aporte.data
@@ -679,9 +693,6 @@ def resumen_solicitudes():
     )
 
 
-
-
-
 @admin_bp.route('/solicitudes/copiar')
 @login_required
 @admin_required
@@ -705,11 +716,15 @@ def copiar_solicitudes():
         .all()
     solicitudes = con_reemp + sin_reemp
 
+    # ➤ Aquí añadimos FUNCIONES_CHOICES
+    form = AdminSolicitudForm()
     return render_template(
         'admin/solicitudes_copiar.html',
         solicitudes=solicitudes,
-        AREAS_COMUNES_CHOICES=AREAS_COMUNES_CHOICES
+        AREAS_COMUNES_CHOICES=AREAS_COMUNES_CHOICES,
+        FUNCIONES_CHOICES=form.funciones.choices
     )
+
 
 @admin_bp.route('/solicitudes/<int:id>/copiar', methods=['POST'])
 @login_required

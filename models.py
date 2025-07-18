@@ -20,9 +20,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 from config_app import db
 
+
 class Candidata(db.Model):
     __tablename__ = 'candidatas'
 
+    # Campos existentes
     fila                            = db.Column(db.Integer, primary_key=True)
     marca_temporal                  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     nombre_completo                 = db.Column(db.String(200), nullable=False)
@@ -55,6 +57,7 @@ class Candidata(db.Model):
     porciento                       = db.Column(db.Numeric(8, 2))
     calificacion                    = db.Column(db.String(100))
     entrevista                      = db.Column(db.Text)
+    foto_perfil                     = db.Column(LargeBinary, nullable=True, comment="Foto de la candidata para su perfil")
     depuracion                      = db.Column(LargeBinary)
     perfil                          = db.Column(LargeBinary)
     cedula1                         = db.Column(LargeBinary)
@@ -62,11 +65,64 @@ class Candidata(db.Model):
     referencias_laboral             = db.Column(db.Text)
     referencias_familiares          = db.Column(db.Text)
 
+    # Nuevos campos para estado, auditoría y descalificación
+    estado = db.Column(
+        SAEnum(
+            'en_proceso',
+            'proceso_inscripcion',
+            'inscrita',
+            'inscrita_incompleta',
+            'lista_para_trabajar',
+            'trabajando',
+            'descalificada',
+            name='estado_candidata_enum'
+        ),
+        nullable=False,
+        server_default=text("'en_proceso'"),
+        comment="Estado actual de la candidata"
+    )
+    fecha_cambio_estado = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        comment="Fecha de la última actualización de estado"
+    )
+    usuario_cambio_estado = db.Column(
+        db.String(100),
+        nullable=True,
+        comment="Usuario (nombre o ID) que cambió el estado"
+    )
+    nota_descalificacion = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Motivo o nota de por qué la candidata fue descalificada"
+    )
+
+    # Nuevas columnas para finalización del proceso y grupos de empleo
+    fecha_finalizacion_proceso = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Fecha en que la candidata completa el cuestionario de finalización de proceso"
+    )
+    grupos_empleo = db.Column(
+        ARRAY(db.String(100)),
+        nullable=True,
+        server_default=text("ARRAY[]::VARCHAR[]"),
+        comment="Lista de grupos de empleo asignados a la candidata"
+    )
+
+    # Relaciones
     solicitudes = db.relationship(
         'Solicitud',
         back_populates='candidata',
         cascade='all, delete-orphan'
     )
+
+    llamadas                        = db.relationship(
+                                         'LlamadaCandidata',
+                                         back_populates='candidata',
+                                         cascade='all, delete-orphan'
+                                      )
 
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
@@ -227,3 +283,19 @@ class Reemplazo(db.Model):
     solicitud              = db.relationship('Solicitud', back_populates='reemplazos')
     candidata_old          = db.relationship('Candidata', foreign_keys=[candidata_old_id])
     candidata_new          = db.relationship('Candidata', foreign_keys=[candidata_new_id])
+
+
+class LlamadaCandidata(db.Model):
+    __tablename__ = 'llamadas_candidatas'
+    id             = db.Column(db.Integer, primary_key=True)
+    candidata_id   = db.Column(db.Integer,
+                               db.ForeignKey('candidatas.fila'),
+                               nullable=False)
+    fecha_llamada  = db.Column(db.DateTime,
+                               nullable=False,
+                               default=datetime.utcnow)
+    resultado      = db.Column(db.String(100), nullable=False)
+    notas          = db.Column(db.Text, nullable=True)
+
+    candidata      = db.relationship('Candidata',
+                                     back_populates='llamadas')
