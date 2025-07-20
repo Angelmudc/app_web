@@ -10,6 +10,7 @@ from flask_caching import Cache
 from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix  # ← agregado para HTTPS en Render
 import cloudinary
 from flask_wtf import CSRFProtect
 
@@ -47,6 +48,9 @@ def create_app():
     app.config['WTF_CSRF_ENABLED'] = True
     # ── Inicializar CSRF antes de registrar blueprints ───────────
     csrf.init_app(app)
+
+    # ── CORRECCIÓN: habilitar ProxyFix para HTTPS detrás de Render ──
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     # ——— Registro de blueprints ————————————————————————
     from admin.routes import admin_bp
