@@ -58,128 +58,84 @@ class AdminClienteForm(FlaskForm):
     )
     submit = SubmitField('Guardar cliente')
 
+from .fields import MultiCheckboxField
+
+from flask_wtf import FlaskForm
+from wtforms import (
+    StringField, RadioField, TextAreaField, SelectField,
+    IntegerField, DecimalField, BooleanField, SubmitField
+)
+from wtforms.validators import DataRequired, Optional, Length, NumberRange, InputRequired
+from .fields import MultiCheckboxField
+
 class AdminSolicitudForm(FlaskForm):
-    ciudad_sector     = StringField(
-        'Ciudad / Sector',
-        validators=[DataRequired(), Length(max=200)]
-    )
-    rutas_cercanas    = StringField(
-        'Rutas cercanas',
-        validators=[Optional(), Length(max=200)]
-    )
-    modalidad_trabajo = StringField(
-        'Modalidad trabajo',
-        validators=[DataRequired(), Length(max=100)]
-    )
+    ciudad_sector     = StringField('Ciudad / Sector', validators=[DataRequired(), Length(max=200)])
+    rutas_cercanas    = StringField('Rutas cercanas',   validators=[Optional(), Length(max=200)])
+    modalidad_trabajo = StringField('Modalidad trabajo', validators=[DataRequired(), Length(max=100)])
 
     edad_requerida = RadioField(
         'Edad requerida',
-        choices=[
-            ('18-25', '18–25 años'),
-            ('26-35', '26–35 años'),
-            ('36-45', '36–45 años'),
-            ('mayor45',   'Mayor de 45'),   # <— cambiamos el value
-            ('otra',  'Otra...')
-        ],
-        validators=[InputRequired()],
-        coerce=str
+        choices=[('18-25','18–25 años'),('26-35','26–35 años'),
+                 ('36-45','36–45 años'),('mayor45','Mayor de 45'),
+                 ('otra','Otra...')],
+        validators=[InputRequired()], coerce=str
     )
-    edad_otro = StringField(
-        'Otra edad',
-        validators=[Optional(), Length(max=50)],
-        render_kw={"placeholder": "Especifique otra edad"}
-    )
+    edad_otro = StringField('Otra edad', validators=[Optional(), Length(max=50)],
+                            render_kw={"placeholder":"Especifique otra edad"})
 
-    experiencia = TextAreaField(
-        'Experiencia',
-        validators=[DataRequired()]
-    )
-    horario = StringField(
-        'Horario',
-        validators=[DataRequired(), Length(max=100)]
-    )
+    experiencia = TextAreaField('Experiencia', validators=[DataRequired()])
+    horario     = StringField('Horario',      validators=[DataRequired(), Length(max=100)])
 
     funciones = MultiCheckboxField(
         'Funciones a realizar al personal',
-        choices=[
-            ('limpieza',     'Limpieza General'),
-            ('cocinar',      'Cocinar'),
-            ('lavar',        'Lavar'),
-            ('ninos',        'Cuidar Niños'),
-            ('envejeciente', 'Cuidar Envejecientes'),
-            ('otro',         'Otro'),
-        ],
+        choices=[('limpieza','Limpieza General'),('cocinar','Cocinar'),
+                 ('lavar','Lavar'),('ninos','Cuidar Niños'),
+                 ('envejeciente','Cuidar Envejecientes'),('otro','Otro')],
         validators=[DataRequired()]
     )
-
-    tipo_lugar = SelectField(
-        'Tipo de lugar',
-        choices=[
-            ('casa',    'Casa'),
-            ('oficina', 'Oficina'),
-            ('apto',    'Apto'),
-            ('otro',    'Otro')
-        ],
-        validators=[DataRequired()]
-    )
-    habitaciones = IntegerField(
-        'Habitaciones',
-        validators=[DataRequired(), NumberRange(min=0)]
-    )
-    banos = DecimalField(
-        'Baños',
-        places=1,
-        validators=[DataRequired(), NumberRange(min=0)],
-        render_kw={"step": "0.5", "min": "0"}
-    )
-    dos_pisos = BooleanField('¿Tiene dos pisos?')
-
-    areas_comunes = MultiCheckboxField(
-        'Áreas comunes',
-        choices=[],  # rellenas en la vista con AREAS_COMUNES_CHOICES
-        default=[],
-        validators=[Optional()]
-    )
-    area_otro = StringField(
-        'Otra área',
-        validators=[Optional(), Length(max=200)]
+    funciones_otro = StringField(
+        'Otras funciones',
+        validators=[Optional(), Length(max=200)],
+        render_kw={"placeholder": "Describe otras funciones…"}
     )
 
-    adultos = IntegerField(
-        'Adultos',
-        validators=[DataRequired(), NumberRange(min=0)]
-    )
-    ninos = IntegerField(
-        'Niños',
-        validators=[Optional(), NumberRange(min=0)],
-        render_kw={"min": "0"}
-    )
-    edades_ninos = StringField(
-        'Edades niños',
-        validators=[Optional(), Length(max=100)]
-    )
+    tipo_lugar       = SelectField('Tipo de lugar',
+                           choices=[('casa','Casa'),('oficina','Oficina'),
+                                    ('apto','Apto'),('otro','Otro')],
+                           validators=[DataRequired()])
+    tipo_lugar_otro  = StringField('Especifique otro tipo de lugar',
+                           validators=[Optional(), Length(max=100)],
+                           render_kw={"placeholder":"Ej. Gimnasio, Taller…"})
 
-    sueldo = StringField(
-        'Sueldo',
-        validators=[DataRequired(), Length(max=50)],
-        render_kw={"placeholder": "Ej. 23,000 mensual"}
-    )
+    habitaciones = IntegerField('Habitaciones', validators=[DataRequired(), NumberRange(min=0)])
+    banos        = DecimalField('Baños', places=1, validators=[DataRequired(), NumberRange(min=0)],
+                                render_kw={"step":"0.5","min":"0"})
+    dos_pisos    = BooleanField('¿Tiene dos pisos?')
 
+    areas_comunes = MultiCheckboxField('Áreas comunes', choices=[], default=[], validators=[Optional()])
+    area_otro     = StringField('Otra área', validators=[Optional(), Length(max=200)])
+
+    adultos      = IntegerField('Adultos', validators=[DataRequired(), NumberRange(min=0)])
+    ninos        = IntegerField('Niños',   validators=[Optional(), NumberRange(min=0)], render_kw={"min":"0"})
+    edades_ninos = StringField('Edades niños', validators=[Optional(), Length(max=100)])
+
+    # → Nuevo campo Mascota
+    mascota      = StringField('Mascota', validators=[Optional(), Length(max=100)],
+                               render_kw={"placeholder":"Ej. Perro, Gato…"})
+
+    sueldo        = StringField('Sueldo',       validators=[DataRequired(), Length(max=50)],
+                                render_kw={"placeholder":"Ej. 23,000 mensual"})
     pasaje_aporte = RadioField(
         '¿Aporta pasaje?',
-        choices=[
-            ('1', 'Sí, aporta pasaje'),
-            ('0', 'No aporta pasaje')
-        ],
-        validators=[InputRequired()],
-        coerce=lambda v: v == '1'
+        choices=[('1','Sí, aporta pasaje'),('0','No aporta pasaje')],
+        validators=[InputRequired()], coerce=lambda v: v=='1'
     )
 
-    nota_cliente = TextAreaField(
-        'Nota adicional',
-        validators=[Optional()]
-    )
+    nota_cliente = TextAreaField('Nota adicional', validators=[Optional()])
+
     submit = SubmitField('Guardar solicitud')
+
+
 
 class AdminGestionPlanForm(FlaskForm):
     tipo_plan = StringField(

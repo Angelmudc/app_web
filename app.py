@@ -4,7 +4,7 @@ load_dotenv()
 from decorators import roles_required, admin_required
 
 import os, re, unicodedata, io, json, zipfile, logging, calendar
-from datetime import datetime, timedelta
+from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 
 from flask import (
@@ -16,19 +16,24 @@ from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-from sqlalchemy import or_, cast, String
+from sqlalchemy import or_, cast, String, func
+from sqlalchemy.orm import subqueryload
 
 import requests
 from fpdf import FPDF
-from models import Candidata
+
+from models import Candidata, LlamadaCandidata
 from config_app import create_app, db
 
 from flask_wtf.csrf import CSRFProtect
-
 from config_app import csrf
 
-from models import LlamadaCandidata       # el modelo de llamadas
-from forms  import LlamadaCandidataForm   # el WTForm de llamadas
+from forms import LlamadaCandidataForm
+
+
+
+from sqlalchemy import cast, Date
+
 
 
 # —————— Normaliza cédula ——————
@@ -2130,66 +2135,270 @@ def auto_actualizar_estados():
     })
 
 
-# ─── Listado de candidatas a llamar ────────────────────────────────
-@app.route('/candidatas/llamadas')
-@roles_required('admin', 'secretaria')
-def listado_llamadas_candidatas():
+# app.py
+
+from flask import request, render_template
+from datetime import date, timedelta
+from sqlalchemy import func, cast, Date, or_
+from models import Candidata, LlamadaCandidata
+from config_app import db
+from decorators import roles_required
+
+# ────────────────────────────────────────────────────────────────────────
+def get_date_bounds(period, date_str=None):
+    """
+    Devuelve (start_dt, end_dt) para filtrar Candidata.marca_temporal:
+      - 'day'   → desde hace 1 día hasta hoy
+      - 'week'  → desde hace 7 días hasta hoy
+      - 'month' → desde hace 30 días hasta hoy
+      - 'date'  → solo la fecha exacta (date_str en 'YYYY-MM-DD')
+      - otro    → (None, None) = sin filtro
+    """
     hoy = date.today()
-    hace_una_semana = hoy - timedelta(days=7)
+    if period == 'day':
+        return hoy - timedelta(days=1), hoy
+    if period == 'week':
+        return hoy - timedelta(days=7), hoy
+    if period == 'month':
+        return hoy - timedelta(days=30), hoy
+    if period == 'date' and date_str:
+        d = date.fromisoformat(date_str)
+        return d, d
+    return None, None
+# ────────────────────────────────────────────────────────────────────────
 
-    en_proceso = (
-        Candidata.query
-        .filter(Candidata.estado == 'en_proceso')
-        .filter(func.date(Candidata.marca_temporal) <= hace_una_semana)
-        .all()
+@app.route('/candidatas/llamadas')
+@roles_required('admin','secretaria')
+def listado_llamadas_candidatas():
+    # Parámetros
+    q               = request.args.get('q', '', type=str)
+    period          = request.args.get('period', 'all')
+    start_date_str  = request.args.get('start_date', None)
+    page            = request.args.get('page', 1, type=int)
+
+    # Obtiene límites de filtro sobre marca_temporal
+    start_dt, end_dt = get_date_bounds(period, start_date_str)
+
+    # Subconsulta: num_calls + última llamada por candidata
+    calls_subq = (
+        db.session.query(
+            LlamadaCandidata.candidata_id.label('cid'),
+            func.count(LlamadaCandidata.id).label('num_calls'),
+            func.max(LlamadaCandidata.fecha_llamada).label('last_call')
+        )
+        .group_by(LlamadaCandidata.candidata_id)
+        .subquery()
     )
 
-    en_inscripcion = (
-        Candidata.query
-        .filter(Candidata.estado == 'proceso_inscripcion')
-        .filter(func.date(Candidata.marca_temporal) <= hace_una_semana)
-        .all()
+    # Query base: candidatas + stats
+    base_q = (
+        db.session.query(
+            Candidata.fila,
+            Candidata.nombre_completo,
+            Candidata.codigo,
+            Candidata.numero_telefono,
+            Candidata.marca_temporal,
+            calls_subq.c.num_calls,
+            calls_subq.c.last_call
+        )
+        .outerjoin(calls_subq, Candidata.fila == calls_subq.c.cid)
     )
 
-    lista_trabajar = (
-        Candidata.query
-        .filter(Candidata.estado == 'lista_para_trabajar')
-        .all()
-    )
+    # Filtro de búsqueda por texto
+    if q:
+        il = f'%{q}%'
+        base_q = base_q.filter(
+            or_(
+                Candidata.codigo.ilike(il),
+                Candidata.nombre_completo.ilike(il),
+                Candidata.numero_telefono.ilike(il),
+                Candidata.cedula.ilike(il),
+            )
+        )
+
+    # Helper para cada sección con paginación
+    def section(estado):
+        qsec = base_q.filter(Candidata.estado == estado)
+        if start_dt and end_dt:
+            qsec = qsec.filter(
+                cast(Candidata.marca_temporal, Date) >= start_dt,
+                cast(Candidata.marca_temporal, Date) <= end_dt
+            )
+        # Primero candidatas sin llamadas (NULL), luego llamadas antiguas primero
+        return qsec.order_by(
+            calls_subq.c.last_call.asc().nullsfirst()
+        ).paginate(page=page, per_page=10, error_out=False)
+
+    en_proceso     = section('en_proceso')
+    en_inscripcion = section('proceso_inscripcion')
+    lista_trabajar = section('lista_para_trabajar')
 
     return render_template(
         'llamadas_candidatas.html',
-        en_proceso=en_proceso,
-        en_inscripcion=en_inscripcion,
-        lista_trabajar=lista_trabajar,
-        hoy=hoy
+        q               = q,
+        period          = period,
+        start_date      = start_date_str,
+        en_proceso      = en_proceso,
+        en_inscripcion  = en_inscripcion,
+        lista_trabajar  = lista_trabajar
     )
 
-# ─── Formulario para registrar una llamada ──────────────────────────
-@app.route('/candidatas/<int:fila>/llamar', methods=['GET','POST'])
+
+@app.route('/candidatas/<int:fila>/llamar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def registrar_llamada_candidata(fila):
     candidata = Candidata.query.get_or_404(fila)
     form      = LlamadaCandidataForm()
+
     if form.validate_on_submit():
+        # Convertimos minutos a segundos para el modelo
+        minutos = form.duracion_minutos.data
+        segundos = minutos * 60 if minutos is not None else None
+
         llamada = LlamadaCandidata(
-            candidata_id  = candidata.fila,
-            fecha_llamada = func.now(),
-            resultado     = form.resultado.data,
-            notas         = form.notas.data
+            candidata_id      = candidata.fila,
+            fecha_llamada     = func.now(),
+            agente            = session.get('usuario', 'desconocido'),
+            resultado         = form.resultado.data,
+            duracion_segundos = segundos,
+            notas             = form.notas.data,
+            created_at        = datetime.utcnow()
         )
         db.session.add(llamada)
         db.session.commit()
+
         flash(f'Llamada registrada para {candidata.nombre_completo}.', 'success')
         return redirect(url_for('listado_llamadas_candidatas'))
 
     return render_template(
         'registrar_llamada_candidata.html',
-        form=form,
-        candidata=candidata
+        form      = form,
+        candidata = candidata
     )
 
+@app.route('/candidatas/llamadas/reporte')
+@roles_required('admin')
+def reporte_llamadas_candidatas():
+    # --- Parámetros y cálculo de rango ---
+    period         = request.args.get('period', 'week')
+    start_date_str = request.args.get('start_date', None)
+    start_dt       = get_start_date(period, start_date_str)
+    hoy            = date.today()
+    page           = request.args.get('page', 1, type=int)
 
+    # --- 1) Subquery: num_calls + last_call por candidata ---
+    stats_subq = (
+        db.session.query(
+            LlamadaCandidata.candidata_id.label('cid'),
+            func.count(LlamadaCandidata.id).label('num_calls'),
+            func.max(LlamadaCandidata.fecha_llamada).label('last_call')
+        )
+        .group_by(LlamadaCandidata.candidata_id)
+        .subquery()
+    )
+
+    # --- 2) Base query con todos los campos necesarios ---
+    base_q = (
+        db.session.query(
+            Candidata.fila,
+            Candidata.nombre_completo,
+            Candidata.codigo,
+            Candidata.numero_telefono,
+            Candidata.marca_temporal,
+            stats_subq.c.num_calls,
+            stats_subq.c.last_call
+        )
+        .outerjoin(stats_subq, Candidata.fila == stats_subq.c.cid)
+    )
+
+    # --- Helper para paginar cada estado (estancadas) ---
+    def paginate_estado(estado):
+        q = base_q.filter(Candidata.estado == estado)
+        if start_dt:
+            # estancadas: última llamada NULL o anterior al corte
+            q = q.filter(
+                or_(
+                    stats_subq.c.last_call == None,
+                    cast(stats_subq.c.last_call, Date) < start_dt
+                )
+            )
+        return q.order_by(
+            cast(stats_subq.c.last_call, Date).desc().nullsfirst()
+        ).paginate(page=page, per_page=10, error_out=False)
+
+    estancadas_en_proceso  = paginate_estado('en_proceso')
+    estancadas_inscripcion = paginate_estado('proceso_inscripcion')
+    estancadas_lista       = paginate_estado('lista_para_trabajar')
+
+    # --- 3) Promedio general de llamadas ---
+    calls_query    = db.session.query(
+                         LlamadaCandidata.candidata_id,
+                         func.count().label('cnt')
+                     ).group_by(LlamadaCandidata.candidata_id).all()
+    total_calls    = sum(c.cnt for c in calls_query)
+    num_with_calls = len(calls_query)
+    promedio       = round(total_calls / num_with_calls, 1) if num_with_calls else 0
+
+    # --- 4) Todas las llamadas en el período ---
+    calls_q = db.session.query(LlamadaCandidata) \
+                        .order_by(LlamadaCandidata.fecha_llamada.desc())
+    if start_dt:
+        # convertir fecha → datetime a medianoche para incluir todo el día
+        start_dt_dt = datetime.combine(start_dt, datetime.min.time())
+        calls_q = calls_q.filter(LlamadaCandidata.fecha_llamada >= start_dt_dt)
+    calls_period = calls_q.all()
+
+    # --- 5) Métricas agrupadas por día/semana/mes ---
+    filtros = []
+    if start_dt:
+        filtros.append(LlamadaCandidata.fecha_llamada >= start_dt_dt)
+
+    calls_by_day = (
+        db.session.query(
+            func.date_trunc('day', LlamadaCandidata.fecha_llamada).label('periodo'),
+            func.count().label('cnt')
+        )
+        .filter(*filtros)
+        .group_by('periodo')
+        .order_by('periodo')
+        .all()
+    )
+    calls_by_week = (
+        db.session.query(
+            func.date_trunc('week', LlamadaCandidata.fecha_llamada).label('periodo'),
+            func.count().label('cnt')
+        )
+        .filter(*filtros)
+        .group_by('periodo')
+        .order_by('periodo')
+        .all()
+    )
+    calls_by_month = (
+        db.session.query(
+            func.date_trunc('month', LlamadaCandidata.fecha_llamada).label('periodo'),
+            func.count().label('cnt')
+        )
+        .filter(*filtros)
+        .group_by('periodo')
+        .order_by('periodo')
+        .all()
+    )
+
+    # --- Renderizar plantilla con todos los datos ---
+    return render_template(
+        'reporte_llamadas.html',
+        period                    = period,
+        start_date                = start_date_str,
+        hoy                       = hoy,
+        estancadas_en_proceso     = estancadas_en_proceso,
+        estancadas_inscripcion    = estancadas_inscripcion,
+        estancadas_lista          = estancadas_lista,
+        promedio                  = promedio,
+        calls_period              = calls_period,
+        calls_by_day              = calls_by_day,
+        calls_by_week             = calls_by_week,
+        calls_by_month            = calls_by_month
+    )
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)

@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+
+{# Macro reutilizable para tablas de reporte con paginación #}
+{% macro render_report_table(pagination, title, table_id) %}
+  <h3 class="mt-5">{{ title }}</h3>
+  {% if pagination.items %}
+    <table id="{{ table_id }}" class="table table-bordered">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Código</th>
+          <th>Teléfono</th>
+          <th>Última actualización</th>
+          <th># Llamadas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in pagination.items %}
+          <tr>
+            <td>{{ c.nombre_completo }}</td>
+            <td>{{ c.codigo or '—' }}</td>
+            <td>{{ c.numero_telefono or '—' }}</td>
+            <td>{{ c.marca_temporal.strftime('%Y-%m-%d') }}</td>
+            <td>{{ c.num_calls or 0 }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {# Paginación #}
+    <nav aria-label="Page navigation">
+      <ul class="pagination">
+        {% if pagination.has_prev %}
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for(request.endpoint, period=period, page=pagination.prev_num) }}">
+              « Anterior
+            </a>
+          </li>
+        {% endif %}
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+          {% if p %}
+            <li class="page-item {{ 'active' if p==pagination.page }}">
+              <a class="page-link"
+                 href="{{ url_for(request.endpoint, period=period, page=p) }}">
+                {{ p }}
+              </a>
+            </li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for(request.endpoint, period=period, page=pagination.next_num) }}">
+              Siguiente »
+            </a>
+          </li>
+        {% endif %}
+      </ul>
+    </nav>
+  {% else %}
+    <div class="alert alert-info">No hay candidatas en esta categoría.</div>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="mb-4">📊 Reporte de Llamadas</h1>
+
+  {# Botón para volver al listado de llamadas #}
+  <a href="{{ url_for('listado_llamadas_candidatas') }}"
+     class="btn btn-secondary mb-4">
+    ← Volver a Llamadas
+  </a>
+
+  {# Filtro por período #}
+  <form method="get" class="mb-4">
+    <div class="input-group w-auto">
+      <select name="period" class="form-select">
+        <option value="day"   {% if period=='day'   %}selected{% endif %}>Hoy</option>
+        <option value="week"  {% if period=='week'  %}selected{% endif %}>Última semana</option>
+        <option value="month" {% if period=='month' %}selected{% endif %}>Último mes</option>
+        <option value="all"   {% if period=='all' or not period %}selected{% endif %}>Todo</option>
+      </select>
+      <button class="btn btn-outline-secondary" type="submit">
+        Filtrar
+      </button>
+    </div>
+  </form>
+
+  <div class="row mb-4">
+    {# Tarjetas resumen #}
+    <div class="col-md-4">
+      <div class="card text-white bg-danger mb-3">
+        <div class="card-body">
+          <h5 class="card-title">
+            En Proceso (&gt; {{
+              period=='day'   and '1 día' or
+              period=='week'  and '7 días' or
+              period=='month' and '30 días' or
+              'tiempo'
+            }})
+          </h5>
+          <p class="card-text display-6">
+            {{ estancadas_en_proceso.total if estancadas_en_proceso else 0 }}
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-white bg-warning mb-3">
+        <div class="card-body">
+          <h5 class="card-title">Esperando Inscripción (&gt;7 días)</h5>
+          <p class="card-text display-6">
+            {{ estancadas_inscripcion.total if estancadas_inscripcion else 0 }}
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-white bg-info mb-3">
+        <div class="card-body">
+          <h5 class="card-title">Lista para Trabajar</h5>
+          <p class="card-text display-6">
+            {{ estancadas_lista.total if estancadas_lista else 0 }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Promedio de llamadas #}
+  <div class="mb-4">
+    <h4>📞 Promedio de llamadas por candidata: <strong>{{ promedio }}</strong></h4>
+  </div>
+
+  {# Todas las llamadas en el período filtrado #}
+  <h3>
+    Llamadas registradas
+    {% if period=='day' %}
+      hoy
+    {% elif period=='week' %}
+      en la última semana
+    {% elif period=='month' %}
+      en el último mes
+    {% else %}
+      en todo el historial
+    {% endif %}
+  </h3>
+  {% if calls_period %}
+    <table class="table table-sm table-hover mb-5">
+      <thead>
+        <tr>
+          <th>Candidata</th>
+          <th>Fecha / Hora</th>
+          <th>Resultado</th>
+          <th>Notas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ll in calls_period %}
+          <tr>
+            <td>{{ ll.candidata.nombre_completo }}</td>
+            <td>{{ ll.fecha_llamada.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ ll.resultado.replace('_',' ').title() }}</td>
+            <td>{{ ll.notas or '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="alert alert-info mb-5">
+      No hay llamadas registradas en este período.
+    </div>
+  {% endif %}
+
+  {# Listado paginado de candidatas estancadas #}
+  {{ render_report_table(estancadas_en_proceso,   'En Proceso',          'rep-en-proceso') }}
+  {{ render_report_table(estancadas_inscripcion,'Esperando Inscripción','rep-inscripcion') }}
+  {{ render_report_table(estancadas_lista,      'Lista para Trabajar', 'rep-lista-trabajar') }}
+</div>
+{% endblock %}

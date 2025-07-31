@@ -1,7 +1,15 @@
 # forms.py
 
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, SelectField, TextAreaField
+from wtforms import (
+    StringField,
+    PasswordField,
+    SelectField,
+    IntegerField,
+    DateField,
+    TextAreaField,
+    SubmitField
+)
 from wtforms.validators import DataRequired, Optional
 
 class LoginForm(FlaskForm):
@@ -9,16 +17,22 @@ class LoginForm(FlaskForm):
     clave   = PasswordField("Contraseña", validators=[DataRequired()])
     submit  = SubmitField("Entrar")
 
+
+
 class LlamadaCandidataForm(FlaskForm):
     resultado = SelectField(
         'Resultado de la llamada',
         choices=[
-            ('no_contesta', 'No contesta'),
+            ('no_contesta', 'No contestó'),
             ('inscripcion', 'Se inscribió'),
             ('rechaza',     'Rechaza'),
-            ('otro',        'Otro')
+            ('voicemail',   'Buzón de voz'),
+            ('informada',   'Información proporcionada'),
+            ('exitosa',     'Llamada exitosa'),
+            ('otro',        'Otro (especificar en notas)')
         ],
         validators=[DataRequired()]
     )
-    notas  = TextAreaField('Notas', validators=[Optional()])
-    submit = SubmitField('Registrar llamada')
+    duracion_minutos = IntegerField('Duración (minutos)', validators=[Optional()])
+    notas            = TextAreaField('Notas', validators=[Optional()])
+    submit           = SubmitField('Registrar llamada')

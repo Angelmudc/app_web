@@ -1,28 +1,120 @@
 {% extends 'base.html' %}
 
-{% block title %}Llamadas a Candidatas{% endblock %}
+{% macro render_table(pagination, title, table_id) %}
+  <h2 class="mt-4">{{ title }}</h2>
+  {% if pagination.items %}
+    <table id="{{ table_id }}" class="table table-striped">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Código</th>
+          <th>Teléfono</th>
+          <th>Ingresó</th>
+          <th># Llamadas</th>
+          <th>Última llamada</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila, nombre, codigo, telefono, marca, num_calls, last_call in pagination.items %}
+          <tr>
+            <td>{{ nombre }}</td>
+            <td>{{ codigo or '—' }}</td>
+            <td>{{ telefono or '—' }}</td>
+            <td>{{ marca.strftime('%Y-%m-%d') }}</td>
+            <td>{{ num_calls or 0 }}</td>
+            <td>{{ last_call.strftime('%Y-%m-%d %H:%M') if last_call else 'Nunca' }}</td>
+            <td>
+              <a href="{{ url_for('registrar_llamada_candidata', fila=fila) }}"
+                 class="btn btn-sm btn-primary">Llamar</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Paginación -->
+    <nav aria-label="Page navigation">
+      <ul class="pagination">
+        {% if pagination.has_prev %}
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for(request.endpoint,
+                                q=q,
+                                period=period,
+                                start_date=start_date,
+                                page=pagination.prev_num) }}">
+              « Anterior
+            </a>
+          </li>
+        {% endif %}
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1,
+                                          left_current=2, right_current=2) %}
+          {% if p %}
+            <li class="page-item {{ 'active' if p==pagination.page }}">
+              <a class="page-link"
+                 href="{{ url_for(request.endpoint,
+                                  q=q,
+                                  period=period,
+                                  start_date=start_date,
+                                  page=p) }}">
+                {{ p }}
+              </a>
+            </li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for(request.endpoint,
+                                q=q,
+                                period=period,
+                                start_date=start_date,
+                                page=pagination.next_num) }}">
+              Siguiente »
+            </a>
+          </li>
+        {% endif %}
+      </ul>
+    </nav>
+  {% else %}
+    <div class="alert alert-info">No hay candidatas en esta sección.</div>
+  {% endif %}
+{% endmacro %}
 
 {% block content %}
 <div class="container py-4">
-  <!-- Barra de navegación -->
-  <nav class="mb-4">
-    <a href="{{ url_for('home') }}">Inicio</a> |
-    <a href="{{ url_for('list_candidatas') }}">Listado de Candidatas</a> |
-    <strong>Llamadas</strong>
-  </nav>
+  <h1 class="mb-4">Listado de Llamadas</h1>
 
-  <h1 class="mb-4">Registro de Llamadas a Candidatas</h1>
+  <!-- Filtros -->
+  <form method="get" class="mb-4">
+    <div class="input-group g-2">
+      <input type="text" name="q" class="form-control" placeholder="Buscar..." value="{{ q }}">
+      <select name="period" class="form-select">
+        <option value="all"   {% if period=='all'   %}selected{% endif %}>Todas</option>
+        <option value="day"   {% if period=='day'   %}selected{% endif %}>Últimas 24 hs</option>
+        <option value="week"  {% if period=='week'  %}selected{% endif %}>Última semana</option>
+        <option value="month" {% if period=='month' %}selected{% endif %}>Último mes</option>
+        <option value="date"  {% if period=='date'  %}selected{% endif %}>Fecha exacta</option>
+      </select>
+      {% if period=='date' %}
+        <input type="date" name="start_date" class="form-control" value="{{ start_date }}" required>
+      {% endif %}
+      <button class="btn btn-outline-secondary" type="submit">Filtrar</button>
+    </div>
+  </form>
 
-  <h3>En proceso > 7 días</h3>
-  {% set candidatas = en_proceso %}
-  {% include '_tabla_llamadas_candidatas.html' %}
+  <!-- Secciones -->
+  {{ render_table(en_proceso,     'En Proceso',          'tbl-en-proceso') }}
+  {{ render_table(en_inscripcion, 'En Inscripción',      'tbl-en-inscripcion') }}
+  {{ render_table(lista_trabajar, 'Lista para Trabajar', 'tbl-lista-trabajar') }}
 
-  <h3>Inscripción > 7 días</h3>
-  {% set candidatas = en_inscripcion %}
-  {% include '_tabla_llamadas_candidatas.html' %}
-
-  <h3>Lista para trabajar</h3>
-  {% set candidatas = lista_trabajar %}
-  {% include '_tabla_llamadas_candidatas.html' %}
+  <div class="mt-4 text-end">
+    <a href="{{ url_for('reporte_llamadas_candidatas') }}" class="btn btn-info">
+      Ver reporte completo
+    </a>
+  </div>
 </div>
 {% endblock %}

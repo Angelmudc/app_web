@@ -1,12 +1,8 @@
-{# templates/admin/solicitud_form.html #}
+<!-- templates/admin/solicitud_form.html -->
 {% extends 'base.html' %}
 
 {% block title %}
-  {% if nuevo %}
-    Nueva Solicitud
-  {% else %}
-    Detalle Solicitud {{ solicitud.codigo_solicitud }}
-  {% endif %}
+  {% if nuevo %}Nueva Solicitud{% else %}Detalle Solicitud {{ solicitud.codigo_solicitud }}{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -46,7 +42,7 @@
         {{ form.rutas_cercanas(class="form-control") }}
       </div>
 
-      <!-- Detalles de la oferta -->
+      <!-- Modalidad -->
       <div class="col-md-6">
         {{ form.modalidad_trabajo.label(class="form-label") }}
         {{ form.modalidad_trabajo(class="form-control") }}
@@ -56,16 +52,14 @@
       <div class="col-md-6">
         <label class="form-label">{{ form.edad_requerida.label.text }}</label>
         <div>
-          {% for subfield in form.edad_requerida %}
+          {% for sub in form.edad_requerida %}
             <div class="form-check form-check-inline">
-              {{ subfield(class="form-check-input") }}
-              {{ subfield.label(class="form-check-label") }}
+              {{ sub(class="form-check-input") }}
+              {{ sub.label(class="form-check-label") }}
             </div>
           {% endfor %}
         </div>
       </div>
-
-      <!-- “Otra edad” input, inicialmente oculto salvo que venga seleccionado -->
       <div class="col-md-6 mt-2 {% if form.edad_requerida.data != 'otra' %}d-none{% endif %}"
            id="edad-otro-container">
         {{ form.edad_otro.label(class="form-label") }}
@@ -88,27 +82,53 @@
       <div class="col-12">
         <label class="form-label">{{ form.funciones.label.text }}</label>
         <div>
-          {% for subfield in form.funciones %}
+          {% for sub in form.funciones %}
             <div class="form-check form-check-inline">
-              {{ subfield(class="form-check-input") }}
-              {{ subfield.label(class="form-check-label") }}
+              {{ sub(class="form-check-input") }}
+              {{ sub.label(class="form-check-label") }}
             </div>
           {% endfor %}
         </div>
       </div>
+      <!-- Otras funciones -->
+      <div class="col-md-12 mt-2 d-none" id="funciones-otro-container">
+        {{ form.funciones_otro.label(class="form-label") }}
+        {{ form.funciones_otro(class="form-control") }}
+      </div>
 
-      <!-- Hogar -->
+      <!-- Tipo de lugar -->
       <div class="col-md-6">
         {{ form.tipo_lugar.label(class="form-label") }}
         {{ form.tipo_lugar(class="form-select") }}
       </div>
+      <div class="col-md-6 mt-2 {% if form.tipo_lugar.data != 'otro' %}d-none{% endif %}"
+           id="tipo-lugar-otro-container">
+        {{ form.tipo_lugar_otro.label(class="form-label") }}
+        {{ form.tipo_lugar_otro(class="form-control") }}
+      </div>
+
+      <!-- Habitaciones y Baños -->
       <div class="col-md-3">
         {{ form.habitaciones.label(class="form-label") }}
         {{ form.habitaciones(class="form-control") }}
       </div>
       <div class="col-md-3">
-        {{ form.banos.label(class="form-label") }}
-        {{ form.banos(class="form-control") }}
+        {% set raw = form.banos.data|string %}
+        {% if raw.endswith('.0') %}
+          {% set baños_val = raw[:-2] %}
+        {% else %}
+          {% set baños_val = raw %}
+        {% endif %}
+        <label for="{{ form.banos.id }}" class="form-label">{{ form.banos.label.text }}</label>
+        <input
+          type="number"
+          name="{{ form.banos.name }}"
+          id="{{ form.banos.id }}"
+          class="form-control"
+          step="0.5"
+          min="0"
+          value="{{ baños_val }}"
+        >
       </div>
       <div class="col-md-6">
         <div class="form-check">
@@ -116,6 +136,25 @@
           {{ form.dos_pisos.label(class="form-check-label") }}
         </div>
       </div>
+
+      <!-- Áreas comunes -->
+      <div class="col-12">
+        <label class="form-label">{{ form.areas_comunes.label.text }}</label>
+        <div>
+          {% for sub in form.areas_comunes %}
+            <div class="form-check form-check-inline">
+              {{ sub(class="form-check-input") }}
+              {{ sub.label(class="form-check-label") }}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-md-6">
+        {{ form.area_otro.label(class="form-label") }}
+        {{ form.area_otro(class="form-control") }}
+      </div>
+
+      <!-- Ocupantes -->
       <div class="col-md-4">
         {{ form.adultos.label(class="form-label") }}
         {{ form.adultos(class="form-control") }}
@@ -129,21 +168,10 @@
         {{ form.edades_ninos(class="form-control") }}
       </div>
 
-      <!-- Áreas comunes -->
-      <div class="col-12">
-        <label class="form-label">{{ form.areas_comunes.label.text }}</label>
-        <div>
-          {% for subfield in form.areas_comunes %}
-            <div class="form-check form-check-inline">
-              {{ subfield(class="form-check-input") }}
-              {{ subfield.label(class="form-check-label") }}
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-      <div class="col-md-6">
-        {{ form.area_otro.label(class="form-label") }}
-        {{ form.area_otro(class="form-control") }}
+      <!-- Mascota -->
+      <div class="col-md-4">
+        {{ form.mascota.label(class="form-label") }}
+        {{ form.mascota(class="form-control") }}
       </div>
 
       <!-- Compensación -->
@@ -154,10 +182,10 @@
       <div class="col-md-6">
         <label class="form-label">{{ form.pasaje_aporte.label.text }}</label>
         <div>
-          {% for subfield in form.pasaje_aporte %}
+          {% for sub in form.pasaje_aporte %}
             <div class="form-check form-check-inline">
-              {{ subfield(class="form-check-input") }}
-              {{ subfield.label(class="form-check-label") }}
+              {{ sub(class="form-check-input") }}
+              {{ sub.label(class="form-check-label") }}
             </div>
           {% endfor %}
         </div>
@@ -188,29 +216,46 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  const radios = document.querySelectorAll(
-    'input[name="{{ form.edad_requerida.name }}"]'
-  );
-  const container = document.getElementById('edad-otro-container');
-
-  function toggleEdadOtro() {
-    const otra = document.querySelector(
-      'input[name="{{ form.edad_requerida.name }}"][value="otra"]'
-    );
-    if (otra && otra.checked) {
-      container.classList.remove('d-none');
-    } else {
-      container.classList.add('d-none');
-      // limpiar valor si se oculta
-      const input = document.querySelector(
-        'input[name="{{ form.edad_otro.name }}"]'
-      );
-      if (input) input.value = '';
+  // Edad “Otra…”
+  const radiosEdad = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
+  const contEdad = document.getElementById('edad-otro-container');
+  function toggleEdad() {
+    const sel = document.querySelector('input[name="{{ form.edad_requerida.name }}"][value="otra"]');
+    if (sel && sel.checked) contEdad.classList.remove('d-none');
+    else {
+      contEdad.classList.add('d-none');
+      document.getElementById('{{ form.edad_otro.id }}').value = '';
     }
   }
+  radiosEdad.forEach(r => r.addEventListener('change', toggleEdad));
+  toggleEdad();
 
-  radios.forEach(r => r.addEventListener('change', toggleEdadOtro));
-  toggleEdadOtro();
+  // Funciones “Otro…”
+  const chkFuncs = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
+  const contFuncs = document.getElementById('funciones-otro-container');
+  function toggleFuncsOtro() {
+    const sel = document.querySelector('input[name="{{ form.funciones.name }}"][value="otro"]');
+    if (sel && sel.checked) contFuncs.classList.remove('d-none');
+    else {
+      contFuncs.classList.add('d-none');
+      document.getElementById('{{ form.funciones_otro.id }}').value = '';
+    }
+  }
+  chkFuncs.forEach(c => c.addEventListener('change', toggleFuncsOtro));
+  toggleFuncsOtro();
+
+  // Tipo de lugar “Otro…”
+  const selLugar = document.getElementById('{{ form.tipo_lugar.id }}');
+  const contLugar = document.getElementById('tipo-lugar-otro-container');
+  function toggleLugar() {
+    if (selLugar.value === 'otro') contLugar.classList.remove('d-none');
+    else {
+      contLugar.classList.add('d-none');
+      document.getElementById('{{ form.tipo_lugar_otro.id }}').value = '';
+    }
+  }
+  selLugar.addEventListener('change', toggleLugar);
+  toggleLugar();
 });
 </script>
 {% endblock %}

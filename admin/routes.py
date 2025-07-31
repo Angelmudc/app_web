@@ -169,6 +169,8 @@ AREAS_COMUNES_CHOICES = [
 
 
 
+# Rutas en tu blueprint admin (reemplaza las funciones existentes)
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET','POST'])
 @login_required
 @admin_required
@@ -178,10 +180,13 @@ def nueva_solicitud_admin(cliente_id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        form.funciones.data     = []
-        form.areas_comunes.data = []
-        form.area_otro.data     = ''
-        form.edad_otro.data     = ''
+        form.funciones.data        = []
+        form.funciones_otro.data   = ''
+        form.areas_comunes.data    = []
+        form.area_otro.data        = ''
+        form.edad_otro.data        = ''
+        form.tipo_lugar_otro.data  = ''
+        form.mascota.data          = ''
 
     if form.validate_on_submit():
         # ➤ Código único
@@ -196,24 +201,37 @@ def nueva_solicitud_admin(cliente_id):
         )
         form.populate_obj(s)
 
-        # ➤ Edad: guardamos el LABEL del choice
+        # ➤ Tipo de lugar
+        if form.tipo_lugar.data == 'otro':
+            s.tipo_lugar = form.tipo_lugar_otro.data.strip()
+        else:
+            s.tipo_lugar = form.tipo_lugar.data
+
+        # ➤ Edad requerida
         choices_age = dict(form.edad_requerida.choices)
         if form.edad_requerida.data == 'otra':
-            valor_edad = form.edad_otro.data.strip()
+            s.edad_requerida = form.edad_otro.data.strip()
         else:
-            valor_edad = choices_age.get(form.edad_requerida.data,
-                                         form.edad_requerida.data)
-        s.edad_requerida = valor_edad
+            s.edad_requerida = choices_age.get(form.edad_requerida.data,
+                                              form.edad_requerida.data)
 
-        # ➤ Funciones: GUARDAMOS los valores limpios (['cuidar_ninos',…])
+        # ➤ Mascota
+        s.mascota = form.mascota.data.strip() if form.mascota.data else None
+
+        # ➤ Funciones
         s.funciones = form.funciones.data
+        if form.funciones_otro.data:
+            s.funciones.append(form.funciones_otro.data.strip())
+            s.funciones_otro = form.funciones_otro.data.strip()
+        else:
+            s.funciones_otro = None
 
-        # ➤ Áreas comunes y resto de campos
+        # ➤ Áreas comunes y pasaje
         s.areas_comunes = form.areas_comunes.data
         s.area_otro     = form.area_otro.data
         s.pasaje_aporte = form.pasaje_aporte.data
 
-        # ➤ Guardar en BD
+        # ➤ Guardar en la base de datos
         db.session.add(s)
         c.total_solicitudes      += 1
         c.fecha_ultima_solicitud  = datetime.utcnow()
@@ -240,18 +258,34 @@ def editar_solicitud_admin(cliente_id, id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        # ➤ Edad: pre-seleccionar o texto libre
-        guardada = s.edad_requerida or ''
-        opciones = {v for v,_ in form.edad_requerida.choices}
-        if guardada in opciones:
-            form.edad_requerida.data = guardada
+        # ➤ Tipo de lugar
+        guard_lugar = s.tipo_lugar or ''
+        opts_lugar  = {v for v,_ in form.tipo_lugar.choices}
+        if guard_lugar in opts_lugar:
+            form.tipo_lugar.data      = guard_lugar
+            form.tipo_lugar_otro.data = ''
+        else:
+            form.tipo_lugar.data      = 'otro'
+            form.tipo_lugar_otro.data = guard_lugar
+
+        # ➤ Edad requerida
+        guard_edad = s.edad_requerida or ''
+        opts_edad  = {v for v,_ in form.edad_requerida.choices}
+        if guard_edad in opts_edad:
+            form.edad_requerida.data = guard_edad
             form.edad_otro.data      = ''
         else:
             form.edad_requerida.data = 'otra'
-            form.edad_otro.data      = guardada
+            form.edad_otro.data      = guard_edad
 
-        # ➤ Cargar valores de funciones y áreas
-        form.funciones.data     = s.funciones or []
+        # ➤ Funciones
+        form.funciones.data      = s.funciones or []
+        form.funciones_otro.data = s.funciones_otro or ''
+
+        # ➤ Mascota
+        form.mascota.data        = s.mascota or ''
+
+        # ➤ Áreas comunes y pasaje
         form.areas_comunes.data = s.areas_comunes or []
         form.area_otro.data     = s.area_otro or ''
         form.pasaje_aporte.data = s.pasaje_aporte
@@ -259,22 +293,35 @@ def editar_solicitud_admin(cliente_id, id):
     if form.validate_on_submit():
         form.populate_obj(s)
 
-        # ➤ Edad: mismo mapeo
+        # ➤ Tipo de lugar
+        if form.tipo_lugar.data == 'otro':
+            s.tipo_lugar = form.tipo_lugar_otro.data.strip()
+        else:
+            s.tipo_lugar = form.tipo_lugar.data
+
+        # ➤ Edad requerida
         choices_age = dict(form.edad_requerida.choices)
         if form.edad_requerida.data == 'otra':
-            valor_edad = form.edad_otro.data.strip()
+            s.edad_requerida = form.edad_otro.data.strip()
         else:
-            valor_edad = choices_age.get(form.edad_requerida.data,
-                                         form.edad_requerida.data)
-        s.edad_requerida = valor_edad
+            s.edad_requerida = choices_age.get(form.edad_requerida.data,
+                                              form.edad_requerida.data)
 
-        # ➤ Funciones: de nuevo solo valores
+        # ➤ Mascota
+        s.mascota = form.mascota.data.strip() if form.mascota.data else None
+
+        # ➤ Funciones
         s.funciones = form.funciones.data
+        if form.funciones_otro.data:
+            s.funciones.append(form.funciones_otro.data.strip())
+            s.funciones_otro = form.funciones_otro.data.strip()
+        else:
+            s.funciones_otro = None
 
-        # ➤ Áreas comunes y resto
-        s.areas_comunes            = form.areas_comunes.data
-        s.area_otro                = form.area_otro.data
-        s.pasaje_aporte            = form.pasaje_aporte.data
+        # ➤ Áreas comunes y pasaje
+        s.areas_comunes             = form.areas_comunes.data
+        s.area_otro                 = form.area_otro.data
+        s.pasaje_aporte             = form.pasaje_aporte.data
         s.fecha_ultima_modificacion = datetime.utcnow()
 
         db.session.commit()
@@ -288,8 +335,6 @@ def editar_solicitud_admin(cliente_id, id):
         solicitud=s,
         nuevo=False
     )
-
-
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
 @login_required
@@ -698,32 +743,105 @@ def resumen_solicitudes():
 @admin_required
 def copiar_solicitudes():
     hoy = date.today()
-    base = Solicitud.query\
-        .filter(Solicitud.estado.in_(['activa','reemplazo']))\
+    base_q = (
+        Solicitud.query
+        .filter(Solicitud.estado.in_(['activa', 'reemplazo']))
         .filter(
             or_(
                 Solicitud.last_copiado_at.is_(None),
                 func.date(Solicitud.last_copiado_at) < hoy
             )
         )
-    con_reemp = base\
-        .filter(Solicitud.estado=='reemplazo')\
-        .order_by(Solicitud.fecha_solicitud.desc())\
-        .all()
-    sin_reemp = base\
-        .filter(Solicitud.estado=='activa')\
-        .order_by(Solicitud.fecha_solicitud.desc())\
-        .all()
-    solicitudes = con_reemp + sin_reemp
-
-    # ➤ Aquí añadimos FUNCIONES_CHOICES
-    form = AdminSolicitudForm()
-    return render_template(
-        'admin/solicitudes_copiar.html',
-        solicitudes=solicitudes,
-        AREAS_COMUNES_CHOICES=AREAS_COMUNES_CHOICES,
-        FUNCIONES_CHOICES=form.funciones.choices
     )
+
+    con_reemp = (
+        base_q
+        .filter(Solicitud.estado == 'reemplazo')
+        .order_by(Solicitud.fecha_solicitud.desc())
+        .all()
+    )
+    sin_reemp = (
+        base_q
+        .filter(Solicitud.estado == 'activa')
+        .order_by(Solicitud.fecha_solicitud.desc())
+        .all()
+    )
+    raw_sols = con_reemp + sin_reemp
+
+    form = AdminSolicitudForm()
+    FUNCIONES_CHOICES = form.funciones.choices
+
+    solicitudes = []
+    for s in raw_sols:
+        # 1) Reemplazos
+        reems = s.reemplazos if s.estado == 'reemplazo' else [r for r in s.reemplazos if r.oportunidad_nueva]
+
+        # 2) Funciones en texto (sin el genérico 'Otro')
+        funcs = [label for code, label in FUNCIONES_CHOICES if code in s.funciones and code != 'otro']
+        if getattr(s, 'funciones_otro', None):
+            funcs.append(s.funciones_otro)
+
+        # 3) Áreas comunes en texto
+        areas = [label for code, label in AREAS_COMUNES_CHOICES if code in s.areas_comunes]
+        if getattr(s, 'area_otro', None):
+            areas.append(s.area_otro)
+
+        # 4) Baños como entero
+        banos_int = int(s.banos)
+
+        # 5) Línea combinada: tipo, habitaciones, baños y áreas
+        tipo = s.tipo_lugar_otro if s.tipo_lugar == 'otro' and getattr(s, 'tipo_lugar_otro', None) else s.tipo_lugar
+        hab = s.habitaciones
+        hab_label = 'habitación' if hab == 1 else 'habitaciones'
+        ban_label = 'baño' if banos_int == 1 else 'baños'
+        if areas:
+            if len(areas) > 1:
+                area_text = ', '.join(areas[:-1]) + ' y ' + areas[-1]
+            else:
+                area_text = areas[0]
+            combined_line = f"{tipo}, {hab} {hab_label}, {banos_int} {ban_label}, {area_text}"
+        else:
+            combined_line = f"{tipo}, {hab} {hab_label}, {banos_int} {ban_label}"
+
+        # 6) Construir el texto a copiar
+        order_text = f"""Disponible ( {s.codigo_solicitud} )
+📍 {s.ciudad_sector}
+Ruta más cercana: {s.rutas_cercanas}
+
+Modalidad: {s.modalidad_trabajo}
+
+Edad: {s.edad_requerida or ''}
+Dominicana
+Que sepa leer y escribir
+Experiencia en: {s.experiencia}
+Horario: {s.horario}
+
+Funciones: {', '.join(funcs)}
+
+{combined_line}
+
+Adultos: {s.adultos}{f', Niños: {s.ninos}{f' ({s.edades_ninos})' if s.edades_ninos else ""}' if s.ninos else ''}
+Mascota: {s.mascota or ''}
+
+Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ', pasaje incluido'}
+
+{f'Nota: {s.nota_cliente}' if s.nota_cliente else ''}"""
+
+        solicitudes.append({
+            'id': s.id,
+            'codigo_solicitud': s.codigo_solicitud,
+            'ciudad_sector': s.ciudad_sector,
+            'reemplazos': reems,
+            'funcs': funcs,
+            'areas': areas,
+            'habitaciones': s.habitaciones,
+            'banos_int': banos_int,
+            'tipo_lugar': s.tipo_lugar,
+            'tipo_lugar_otro': getattr(s, 'tipo_lugar_otro', None),
+            'order_text': order_text
+        })
+
+    return render_template('admin/solicitudes_copiar.html', solicitudes=solicitudes)
 
 
 @admin_bp.route('/solicitudes/<int:id>/copiar', methods=['POST'])
@@ -733,7 +851,10 @@ def copiar_solicitud(id):
     s = Solicitud.query.get_or_404(id)
     s.last_copiado_at = func.now()
     db.session.commit()
-    flash(f'Solicitud {s.codigo_solicitud} copiada. Ya no se mostrará hasta mañana.', 'success')
+    flash(
+        f'Solicitud {s.codigo_solicitud} copiada. Ya no se mostrará hasta mañana.',
+        'success'
+    )
     return redirect(url_for('admin.copiar_solicitudes'))
 
 @admin_bp.route(
@@ -743,22 +864,23 @@ def copiar_solicitud(id):
 @login_required
 @admin_required
 def cancelar_solicitud(cliente_id, id):
-    # Cargamos solo la solicitud de ese cliente
-    s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+    s = Solicitud.query.filter_by(
+        id=id, cliente_id=cliente_id
+    ).first_or_404()
 
     if request.method == 'POST':
         motivo = request.form.get('motivo', '').strip()
         if not motivo:
             flash('Debes indicar un motivo de cancelación.', 'warning')
         else:
-            # Marcamos cancelada sin borrar nada más
             s.estado = 'cancelada'
             s.fecha_cancelacion = datetime.utcnow()
             s.motivo_cancelacion = motivo
             db.session.commit()
             flash('Solicitud cancelada con éxito.', 'success')
-            # Volvemos al detalle de cliente
-            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+            return redirect(
+                url_for('admin.detalle_cliente', cliente_id=cliente_id)
+            )
 
     return render_template(
         'admin/cancelar_solicitud.html',

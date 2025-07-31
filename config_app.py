@@ -44,22 +44,20 @@ def create_app():
 
     # ── Clave secreta para CSRF y sesiones ───────────────────────
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'cambia_esta_clave_a_una_muy_segura')
-
     app.config['WTF_CSRF_ENABLED'] = True
-    # ── Inicializar CSRF antes de registrar blueprints ───────────
     csrf.init_app(app)
 
-    # ── CORRECCIÓN: habilitar ProxyFix para HTTPS detrás de Render ──
+    # ── ProxyFix para HTTPS detrás de Render ────────────────────
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
-    # ——— Registro de blueprints ————————————————————————
+    # ── Registro de blueprints ─────────────────────────────────
     from admin.routes import admin_bp
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
     from clientes.routes import clientes_bp
     app.register_blueprint(clientes_bp)
 
-    # — Configuración de base de datos y cache —————————————
+    # ── Configuración de base de datos y cache ────────────────
     db_url = os.getenv('DATABASE_URL', '').strip()
     if not db_url:
         raise RuntimeError("❌ Debes definir DATABASE_URL")
@@ -68,8 +66,9 @@ def create_app():
         'SQLALCHEMY_TRACK_MODIFICATIONS': False,
         'CACHE_TYPE':                 'simple',
         'CACHE_DEFAULT_TIMEOUT':      120,
-        # Para conexión SSL en Render Postgres:
+        # ← Aquí activamos pool_pre_ping y forzamos SSL
         'SQLALCHEMY_ENGINE_OPTIONS': {
+            'pool_pre_ping': True,
             'connect_args': {
                 'sslmode': 'require'
             }
@@ -81,22 +80,19 @@ def create_app():
     cache.init_app(app)
     migrate.init_app(app, db)
 
-    # — Helpers globales para plantillas —
+    # ── Helpers globales para plantillas ──────────────────────
     from datetime import datetime as _dt
     app.jinja_env.globals['now'] = _dt.utcnow
     app.jinja_env.globals['current_year'] = _dt.utcnow().year
 
-    # — Flask-Login ————————————————————————————————
+    # ── Flask-Login ─────────────────────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
-    # ya no usamos login_view, manejamos redirecciones manualmente
 
     @login_manager.unauthorized_handler
     def unauthorized_callback():
-        # si accediendo a /clientes → su login
         if request.path.startswith('/clientes'):
             return redirect(url_for('clientes.login', next=request.url))
-        # en otro caso → admin login
         return redirect(url_for('admin.login', next=request.url))
 
     class User(UserMixin):
@@ -109,18 +105,16 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
-        # intenta admin primero
         data = USUARIOS.get(user_id)
         if data:
             return User(user_id, data['role'])
-        # si no, carga Cliente
         try:
             from models import Cliente
             return Cliente.query.get(int(user_id))
         except:
             return None
 
-    # — Carga config entrevistas (opcional) —————————————
+    # ── Carga config entrevistas (opcional) ───────────────────
     try:
         cfg_path = Path(app.root_path) / 'config' / 'config_entrevistas.json'
         with open(cfg_path, encoding='utf-8') as f:
@@ -131,7 +125,7 @@ def create_app():
 
     return app
 
-# 6) Configuración de Cloudinary (se puede dejar igual)
+# 6) Configuración de Cloudinary (puede quedar al final)
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
     api_key=os.getenv("CLOUDINARY_API_KEY", ""),

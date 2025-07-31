@@ -1,23 +1,12 @@
-﻿from config_app import db
-from datetime import datetime
-
-# Para server_default=text(...)
-from sqlalchemy import text, LargeBinary
-
-# Alias para no confundir con flask_wtf.Enum
-from sqlalchemy import Enum as SAEnum
-
-# ARRAY nativo de Postgres
+﻿from datetime import datetime, date
+from sqlalchemy import (
+    Column, Integer, String, DateTime, Text, Date,
+    Enum as SAEnum, Float, text, LargeBinary
+)
 from sqlalchemy.dialects.postgresql import ARRAY
-
-# Si tienes modelos que heredan de UserMixin:
+from sqlalchemy.orm import relationship
 from flask_login import UserMixin
-
-from sqlalchemy import Float
-
-from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin
 from config_app import db
 
 
@@ -207,11 +196,16 @@ class Solicitud(db.Model):
                                 server_default=text("ARRAY[]::VARCHAR[]")
                              )
 
-    # Tipo de lugar
-    tipo_lugar             = db.Column(
-                                SAEnum('casa','oficina','apto','otro', name='tipo_lugar_enum'),
+    funciones_otro         = db.Column(
+                                String(200),
                                 nullable=True
                              )
+
+    # Tipo de lugar
+    tipo_lugar = db.Column(
+        db.String(200),
+        nullable=True
+    )
 
     # Habitaciones y baños
     habitaciones           = db.Column(db.Integer, nullable=True)
@@ -222,6 +216,7 @@ class Solicitud(db.Model):
     adultos                = db.Column(db.Integer, nullable=True)
     ninos                  = db.Column(db.Integer, nullable=True)
     edades_ninos           = db.Column(db.String(100), nullable=True)
+    mascota      = db.Column(db.String(100), nullable=True)
 
     # Compensación
     sueldo                 = db.Column(db.String(100), nullable=True)
@@ -285,17 +280,31 @@ class Reemplazo(db.Model):
     candidata_new          = db.relationship('Candidata', foreign_keys=[candidata_new_id])
 
 
+
 class LlamadaCandidata(db.Model):
     __tablename__ = 'llamadas_candidatas'
-    id             = db.Column(db.Integer, primary_key=True)
-    candidata_id   = db.Column(db.Integer,
-                               db.ForeignKey('candidatas.fila'),
-                               nullable=False)
-    fecha_llamada  = db.Column(db.DateTime,
-                               nullable=False,
-                               default=datetime.utcnow)
-    resultado      = db.Column(db.String(100), nullable=False)
-    notas          = db.Column(db.Text, nullable=True)
 
-    candidata      = db.relationship('Candidata',
-                                     back_populates='llamadas')
+    id                = Column(Integer, primary_key=True)
+    candidata_id      = Column(Integer, db.ForeignKey('candidatas.fila'), nullable=False, index=True)
+    agente            = Column(String(100), nullable=False, index=True)      # quién hace la llamada
+    fecha_llamada     = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    duracion_segundos = Column(Integer, nullable=True)                       # duración real
+    resultado = Column(
+        SAEnum(
+            'no_contesta',
+            'inscripcion',
+            'rechaza',
+            'voicemail',
+            'informada',   # nueva opción
+            'exitosa',     # nueva opción
+            'otro',
+            name='resultado_enum'
+        ),
+        nullable=False,
+        index=True
+    )
+    notas             = Column(Text, nullable=True)
+    proxima_llamada   = Column(Date, nullable=True, index=True)             # siguiente llamada sugerida
+    created_at        = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    candidata         = relationship('Candidata', back_populates='llamadas')

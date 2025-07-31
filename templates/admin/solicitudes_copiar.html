@@ -1,4 +1,4 @@
-{# templates/admin/solicitudes_copiar.html #}
+<!-- templates/admin/solicitudes_copiar.html -->
 {% extends 'base.html' %}
 
 {% block title %}Copiar Solicitudes{% endblock %}
@@ -10,54 +10,49 @@
   {% if solicitudes %}
     <ul class="list-group mb-4">
       {% for s in solicitudes %}
-        {% if s.estado == 'reemplazo' %}
-          {% set reems = s.reemplazos %}
-        {% else %}
-          {% set reems = s.reemplazos | selectattr('oportunidad_nueva') | list %}
-        {% endif %}
-
         <li class="list-group-item position-relative">
-          <div class="d-flex justify-content-between align-items-center">
+          <div class="d-flex justify-content-between align-items-start">
             <div>
-              <strong>{{ s.codigo_solicitud }}</strong> —
-              {{ s.ciudad_sector }} —
-              {{ s.modalidad_trabajo }} —
-              {% set edad = s.edad_requerida or '' %}
-              Edad: {{ edad }}
+              <strong>{{ s.codigo_solicitud }}</strong> — {{ s.ciudad_sector }}
+
+              {# Línea combinada: tipo de lugar, habitaciones, baños y áreas #}
+              {% set tipo = s.tipo_lugar_otro if s.tipo_lugar == 'otro' and s.tipo_lugar_otro else s.tipo_lugar %}
+              {% set hab = s.habitaciones %}
+              {% set ban = s.banos_int %}
+              {% set hab_label = 'habitación' if hab == 1 else 'habitaciones' %}
+              {% set ban_label = 'baño' if ban == 1 else 'baños' %}
+              {% if s.areas %}
+                {% if s.areas|length > 1 %}
+                  {% set area_text = s.areas[:-1] | join(', ') ~ ' y ' ~ s.areas[-1] %}
+                {% else %}
+                  {% set area_text = s.areas[0] %}
+                {% endif %}
+              {% else %}
+                {% set area_text = '' %}
+              {% endif %}
+              <div class="mt-1">
+                <small>{{ tipo }}, {{ hab }} {{ hab_label }}, {{ ban }} {{ ban_label }}{% if area_text %}, {{ area_text }}{% endif %}</small>
+              </div>
+
+              {# Funciones en línea, si existen #}
+              {% if s.funcs %}
+                <div><small>{{ s.funcs | join(', ') }}</small></div>
+              {% endif %}
             </div>
+
             <button
               type="button"
               class="btn btn-sm btn-primary copy-btn"
-              data-order-text="
-Disponible ( {{ s.codigo_solicitud }} )
-📍 {{ s.ciudad_sector }}
-Ruta más cercana ( {{ s.rutas_cercanas }} )
-
-Modalidad: {{ s.modalidad_trabajo }}
-
-Edad: {{ edad }}
-Dominicana
-Que sepa leer y escribir
-Experiencia en: {{ s.experiencia }}
-Horario: {{ s.horario }}
-
-Funciones: {% for cv, cl in FUNCIONES_CHOICES if cv in s.funciones %}{{ cl }}{% if not loop.last %}, {% endif %}{% endfor %}
-
-{{ s.tipo_lugar.title() }} {{ s.habitaciones }} habitaciones, {{ s.banos }} baños{% if s.areas_comunes %}, {% for val in s.areas_comunes %}{% for cv_ac, cl_ac in AREAS_COMUNES_CHOICES %}{% if cv_ac == val %}{{ cl_ac }}{% endif %}{% endfor %}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}.
-
-{% if s.adultos %}{{ s.adultos }} Adultos{% endif %}{% if s.ninos %} y {{ s.ninos }} {% if s.ninos == 1 %}niño{% else %}niños{% endif %}{% if s.edades_ninos %} de {{ s.edades_ninos }}{% endif %}.{% endif %}
-
-Sueldo: ${{ s.sueldo }} mensual{% if s.pasaje_aporte %} más ayuda del pasaje{% else %} pasaje incluido{% endif %}
-">
+              data-order-text="{{ s.order_text|e }}">
               Copiar
             </button>
           </div>
 
-          {% if reems %}
+          {% if s.reemplazos %}
             <div class="mt-2">
               <small class="text-warning">
-                Reemplazos pendientes ({{ reems|length }}):
-                {{ reems | map(attribute='candidata_new.nombre_completo') | join(', ') }}
+                Reemplazos pendientes ({{ s.reemplazos|length }}):
+                {{ s.reemplazos | map(attribute='candidata_new.nombre_completo') | join(', ') }}
               </small>
             </div>
           {% endif %}
@@ -85,17 +80,13 @@ Sueldo: ${{ s.sueldo }} mensual{% if s.pasaje_aporte %} más ayuda del pasaje{% 
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.copy-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const text = btn.getAttribute('data-order-text').trim();
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const text = btn.dataset.orderText;
       navigator.clipboard.writeText(text)
-        .then(function() {
-          btn.closest('li').querySelector('.copy-form').submit();
-        })
-        .catch(function(err) {
-          alert('Error al copiar al portapapeles: ' + err);
-        });
+        .then(() => btn.closest('li').querySelector('.copy-form').submit())
+        .catch(err => alert('Error al copiar: ' + err));
     });
   });
 });
