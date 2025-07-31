@@ -754,6 +754,7 @@ def copiar_solicitudes():
         )
     )
 
+    # Primero reemplazos, luego activas
     con_reemp = (
         base_q
         .filter(Solicitud.estado == 'reemplazo')
@@ -773,37 +774,40 @@ def copiar_solicitudes():
 
     solicitudes = []
     for s in raw_sols:
-        # 1) Reemplazos
+        # Reemplazos
         reems = s.reemplazos if s.estado == 'reemplazo' else [r for r in s.reemplazos if r.oportunidad_nueva]
 
-        # 2) Funciones en texto (sin el genérico 'Otro')
-        funcs = [label for code, label in FUNCIONES_CHOICES if code in s.funciones and code != 'otro']
+        # Funciones (sin la opción genérica 'otro')
+        funcs = [lbl for code, lbl in FUNCIONES_CHOICES if code in s.funciones and code != 'otro']
         if getattr(s, 'funciones_otro', None):
             funcs.append(s.funciones_otro)
 
-        # 3) Áreas comunes en texto
-        areas = [label for code, label in AREAS_COMUNES_CHOICES if code in s.areas_comunes]
+        # Áreas comunes
+        areas = [lbl for code, lbl in AREAS_COMUNES_CHOICES if code in s.areas_comunes]
         if getattr(s, 'area_otro', None):
             areas.append(s.area_otro)
 
-        # 4) Baños como entero
+        # Baños entero
         banos_int = int(s.banos)
 
-        # 5) Línea combinada: tipo, habitaciones, baños y áreas
+        # Línea combinada tipo/habs/baños/áreas
         tipo = s.tipo_lugar_otro if s.tipo_lugar == 'otro' and getattr(s, 'tipo_lugar_otro', None) else s.tipo_lugar
-        hab = s.habitaciones
-        hab_label = 'habitación' if hab == 1 else 'habitaciones'
+        hab_label = 'habitación' if s.habitaciones == 1 else 'habitaciones'
         ban_label = 'baño' if banos_int == 1 else 'baños'
         if areas:
-            if len(areas) > 1:
-                area_text = ', '.join(areas[:-1]) + ' y ' + areas[-1]
-            else:
-                area_text = areas[0]
-            combined_line = f"{tipo}, {hab} {hab_label}, {banos_int} {ban_label}, {area_text}"
+            area_text = (', '.join(areas[:-1]) + ' y ' + areas[-1]) if len(areas) > 1 else areas[0]
+            combined_line = f"{tipo}, {s.habitaciones} {hab_label}, {banos_int} {ban_label}, {area_text}"
         else:
-            combined_line = f"{tipo}, {hab} {hab_label}, {banos_int} {ban_label}"
+            combined_line = f"{tipo}, {s.habitaciones} {hab_label}, {banos_int} {ban_label}"
 
-        # 6) Construir el texto a copiar
+        # Niños (si aplica)
+        ninos_text = ""
+        if s.ninos:
+            ninos_text = f", Niños: {s.ninos}"
+            if s.edades_ninos:
+                ninos_text += f" ({s.edades_ninos})"
+
+        # Texto final a copiar
         order_text = f"""Disponible ( {s.codigo_solicitud} )
 📍 {s.ciudad_sector}
 Ruta más cercana: {s.rutas_cercanas}
@@ -820,7 +824,7 @@ Funciones: {', '.join(funcs)}
 
 {combined_line}
 
-Adultos: {s.adultos}{f', Niños: {s.ninos}{f' ({s.edades_ninos})' if s.edades_ninos else ""}' if s.ninos else ''}
+Adultos: {s.adultos}{ninos_text}
 Mascota: {s.mascota or ''}
 
 Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ', pasaje incluido'}
@@ -851,10 +855,7 @@ def copiar_solicitud(id):
     s = Solicitud.query.get_or_404(id)
     s.last_copiado_at = func.now()
     db.session.commit()
-    flash(
-        f'Solicitud {s.codigo_solicitud} copiada. Ya no se mostrará hasta mañana.',
-        'success'
-    )
+    flash(f'Solicitud {s.codigo_solicitud} copiada. Ya no se mostrará hasta mañana.', 'success')
     return redirect(url_for('admin.copiar_solicitudes'))
 
 @admin_bp.route(
