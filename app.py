@@ -80,10 +80,10 @@ cloudinary.config(
 )
 
 USUARIOS = {
-    "angel":    {"pwd": generate_password_hash("12345"), "role": "admin"},
+    "angel":    {"pwd": generate_password_hash("0000"), "role": "admin"},
     "divina":   {"pwd": generate_password_hash("67890"), "role": "admin"},
-    "kathy":     {"pwd": generate_password_hash("11111"), "role": "secretaria"},
-    "darielis": {"pwd": generate_password_hash("22222"), "role": "secretaria"},
+    "xcvcbx":     {"pwd": generate_password_hash("9999"), "role": "secretaria"},
+    "darielis": {"pwd": generate_password_hash("3333"), "role": "secretaria"},
 }
 
 # ─── 5) Carga de configuración de entrevistas ─────────────────────────
