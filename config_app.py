@@ -26,10 +26,9 @@ csrf    = CSRFProtect()     # instancia global de CSRF
 
 # 3) Usuarios en memoria (ejemplo)
 USUARIOS = {
-    "angel":    {"pwd_hash": generate_password_hash("12345"), "role": "admin"},
+    "angel":    {"pwd_hash": generate_password_hash("0000"), "role": "admin"},
     "divina":   {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
-    "kathy":    {"pwd_hash": generate_password_hash("11111"), "role": "secretaria"},
-    "darielis": {"pwd_hash": generate_password_hash("22222"), "role": "secretaria"},
+    "darielis": {"pwd_hash": generate_password_hash("3333"), "role": "secretaria"},
 }
 
 # 4) Normalización de cédula
