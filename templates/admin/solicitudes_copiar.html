@@ -5,88 +5,139 @@
 
 {% block content %}
 <div class="container py-4">
-  <h1 class="mb-4">Copiar Solicitudes Disponibles</h1>
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 m-0">Copiar Solicitudes Disponibles</h1>
+    <div>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary me-2">← Volver al Listado</a>
+      <a href="{{ url_for('admin.resumen_solicitudes') }}" class="btn btn-link">Resumen de Solicitudes →</a>
+    </div>
+  </div>
 
-  {% if solicitudes %}
-    <ul class="list-group mb-4">
+  {% if solicitudes and solicitudes|length > 0 %}
+    <ul class="list-group shadow-sm">
       {% for s in solicitudes %}
-        <li class="list-group-item position-relative">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <strong>{{ s.codigo_solicitud }}</strong> — {{ s.ciudad_sector }}
-
-              {# Línea combinada: tipo de lugar, habitaciones, baños y áreas #}
-              {% set tipo = s.tipo_lugar_otro if s.tipo_lugar == 'otro' and s.tipo_lugar_otro else s.tipo_lugar %}
-              {% set hab = s.habitaciones %}
-              {% set ban = s.banos_int %}
-              {% set hab_label = 'habitación' if hab == 1 else 'habitaciones' %}
-              {% set ban_label = 'baño' if ban == 1 else 'baños' %}
-              {% if s.areas %}
-                {% if s.areas|length > 1 %}
-                  {% set area_text = s.areas[:-1] | join(', ') ~ ' y ' ~ s.areas[-1] %}
-                {% else %}
-                  {% set area_text = s.areas[0] %}
-                {% endif %}
-              {% else %}
-                {% set area_text = '' %}
-              {% endif %}
-              <div class="mt-1">
-                <small>{{ tipo }}, {{ hab }} {{ hab_label }}, {{ ban }} {{ ban_label }}{% if area_text %}, {{ area_text }}{% endif %}</small>
+        <li class="list-group-item">
+          <div class="d-flex justify-content-between align-items-start gap-3">
+            <div class="flex-grow-1">
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <span class="fw-semibold">{{ s.codigo_solicitud }}</span>
+                <span class="text-muted">—</span>
+                <span>{{ s.ciudad_sector }}</span>
               </div>
 
-              {# Funciones en línea, si existen #}
-              {% if s.funcs %}
-                <div><small>{{ s.funcs | join(', ') }}</small></div>
+              <!-- NUEVA LÍNEA: Modalidad y Dirección -->
+              <div class="mt-1">
+                <small class="text-muted">
+                  <span class="me-2"><span class="fw-semibold">Modalidad:</span> {{ s.modalidad if s.modalidad else '—' }}</span>
+                  {% if s.direccion %}<span class="me-2">— <span class="fw-semibold">Dirección:</span> {{ s.direccion }}</span>{% endif %}
+                </small>
+              </div>
+
+              <!-- Funciones en línea, si existen -->
+              {% if s.funcs and s.funcs|length > 0 %}
+                <div class="mt-1">
+                  <small><span class="fw-semibold">Funciones:</span> {{ s.funcs | join(', ') }}</small>
+                </div>
+              {% endif %}
+
+              <!-- Reemplazos pendientes -->
+              {% if s.reemplazos and s.reemplazos|length > 0 %}
+                <div class="mt-2">
+                  <small class="text-warning">
+                    Reemplazos pendientes ({{ s.reemplazos|length }}):
+                    {{ s.reemplazos | map(attribute='candidata_new.nombre_completo') | join(', ') }}
+                  </small>
+                </div>
               {% endif %}
             </div>
 
-            <button
-              type="button"
-              class="btn btn-sm btn-primary copy-btn"
-              data-order-text="{{ s.order_text|e }}">
-              Copiar
-            </button>
-          </div>
+            <div class="text-end">
+              <button
+                type="button"
+                class="btn btn-sm btn-primary copy-btn"
+                data-order-text="{{ s.order_text|e }}">
+                Copiar
+              </button>
 
-          {% if s.reemplazos %}
-            <div class="mt-2">
-              <small class="text-warning">
-                Reemplazos pendientes ({{ s.reemplazos|length }}):
-                {{ s.reemplazos | map(attribute='candidata_new.nombre_completo') | join(', ') }}
-              </small>
+              <!-- Formulario oculto para registrar la copia -->
+              <form method="post"
+                    action="{{ url_for('admin.copiar_solicitud', id=s.id) }}"
+                    class="d-none copy-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              </form>
             </div>
-          {% endif %}
-
-          <form method="post"
-                action="{{ url_for('admin.copiar_solicitud', id=s.id) }}"
-                class="d-none copy-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          </form>
+          </div>
         </li>
       {% endfor %}
     </ul>
   {% else %}
-    <div class="alert alert-info">No hay solicitudes pendientes de copia.</div>
+    <div class="alert alert-info d-flex align-items-center" role="alert">
+      <div>No hay solicitudes pendientes de copia.</div>
+    </div>
   {% endif %}
-
-  <div class="mt-3">
-    <a href="{{ url_for('admin.listar_solicitudes') }}"
-       class="btn btn-outline-secondary me-2">← Volver al Listado</a>
-    <a href="{{ url_for('admin.resumen_solicitudes') }}"
-       class="btn btn-link">Resumen de Solicitudes →</a>
-  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.copy-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const text = btn.dataset.orderText;
-      navigator.clipboard.writeText(text)
-        .then(() => btn.closest('li').querySelector('.copy-form').submit())
-        .catch(err => alert('Error al copiar: ' + err));
+  const fallbackCopy = (text) => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'absolute';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  document.querySelectorAll('.copy-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.orderText || '';
+      let copied = false;
+
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (e) {
+          copied = fallbackCopy(text);
+        }
+      } else {
+        copied = fallbackCopy(text);
+      }
+
+      if (copied) {
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = 'Copiado ✓';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-success');
+        btn.disabled = true;
+
+        // Enviar formulario para marcar como copiada
+        const form = btn.closest('.text-end').querySelector('.copy-form');
+        if (form) {
+          // Pequeño delay para que el usuario perciba el cambio visual
+          setTimeout(() => form.submit(), 200);
+        } else {
+          // Revertir si no hay form (no debería pasar)
+          setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+            btn.disabled = false;
+          }, 1200);
+        }
+      } else {
+        alert('No se pudo copiar. Intenta de nuevo.');
+      }
     });
   });
 });

@@ -5,9 +5,9 @@ from flask import Blueprint
 admin_bp = Blueprint(
     'admin',
     __name__,
-    url_prefix='/admin',           # ← esto
+    url_prefix='/admin',
     template_folder='templates/admin',
     static_folder='static/admin'
 )
 
-from . import routes
+__all__ = ["admin_bp"]

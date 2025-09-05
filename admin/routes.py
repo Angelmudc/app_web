@@ -17,6 +17,10 @@ from admin.forms import (
 )
 from utils import letra_por_indice
 
+from . import admin_bp
+from .decorators import admin_required
+
+
 admin_bp = Blueprint(
     'admin',
     __name__,
@@ -738,6 +742,8 @@ def resumen_solicitudes():
     )
 
 
+# routes/admin/solicitudes.py  (o donde tengas estas rutas)
+
 @admin_bp.route('/solicitudes/copiar')
 @login_required
 @admin_required
@@ -774,31 +780,13 @@ def copiar_solicitudes():
 
     solicitudes = []
     for s in raw_sols:
-        # Reemplazos
+        # Reemplazos (si es estado reemplazo, todos; si no, solo los nuevos)
         reems = s.reemplazos if s.estado == 'reemplazo' else [r for r in s.reemplazos if r.oportunidad_nueva]
 
         # Funciones (sin la opción genérica 'otro')
         funcs = [lbl for code, lbl in FUNCIONES_CHOICES if code in s.funciones and code != 'otro']
         if getattr(s, 'funciones_otro', None):
             funcs.append(s.funciones_otro)
-
-        # Áreas comunes
-        areas = [lbl for code, lbl in AREAS_COMUNES_CHOICES if code in s.areas_comunes]
-        if getattr(s, 'area_otro', None):
-            areas.append(s.area_otro)
-
-        # Baños entero
-        banos_int = int(s.banos)
-
-        # Línea combinada tipo/habs/baños/áreas
-        tipo = s.tipo_lugar_otro if s.tipo_lugar == 'otro' and getattr(s, 'tipo_lugar_otro', None) else s.tipo_lugar
-        hab_label = 'habitación' if s.habitaciones == 1 else 'habitaciones'
-        ban_label = 'baño' if banos_int == 1 else 'baños'
-        if areas:
-            area_text = (', '.join(areas[:-1]) + ' y ' + areas[-1]) if len(areas) > 1 else areas[0]
-            combined_line = f"{tipo}, {s.habitaciones} {hab_label}, {banos_int} {ban_label}, {area_text}"
-        else:
-            combined_line = f"{tipo}, {s.habitaciones} {hab_label}, {banos_int} {ban_label}"
 
         # Niños (si aplica)
         ninos_text = ""
@@ -807,12 +795,27 @@ def copiar_solicitudes():
             if s.edades_ninos:
                 ninos_text += f" ({s.edades_ninos})"
 
-        # Texto final a copiar
+        # Modalidad y Dirección (con fallback robusto)
+        modalidad = getattr(s, 'modalidad_trabajo', None) or getattr(s, 'modalidad', None) or getattr(s, 'tipo_modalidad', None) or ''
+        direccion = (
+            getattr(s, 'direccion', None)
+            or getattr(s, 'direccion_completa', None)
+            or getattr(s, 'direccion_exacta', None)
+            or getattr(s, 'direccion_referencia', None)
+            or s.ciudad_sector  # último recurso
+        )
+
+        # Mascota: solo imprimimos la línea si trae contenido real
+        mascota_val = (getattr(s, 'mascota', None) or '').strip()
+        mascota_line = f"\nMascota: {mascota_val}" if mascota_val else ""
+
+        # Texto final a copiar (sin tamaño/áreas de la casa)
         order_text = f"""Disponible ( {s.codigo_solicitud} )
 📍 {s.ciudad_sector}
 Ruta más cercana: {s.rutas_cercanas}
 
-Modalidad: {s.modalidad_trabajo}
+Modalidad: {modalidad}
+Dirección: {direccion}
 
 Edad: {s.edad_requerida or ''}
 Dominicana
@@ -822,10 +825,7 @@ Horario: {s.horario}
 
 Funciones: {', '.join(funcs)}
 
-{combined_line}
-
-Adultos: {s.adultos}{ninos_text}
-Mascota: {s.mascota or ''}
+Adultos: {s.adultos}{ninos_text}""" + f"""{mascota_line}
 
 Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ', pasaje incluido'}
 
@@ -837,11 +837,10 @@ Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ',
             'ciudad_sector': s.ciudad_sector,
             'reemplazos': reems,
             'funcs': funcs,
-            'areas': areas,
-            'habitaciones': s.habitaciones,
-            'banos_int': banos_int,
-            'tipo_lugar': s.tipo_lugar,
-            'tipo_lugar_otro': getattr(s, 'tipo_lugar_otro', None),
+            # Enviamos modalidad y dirección al template por si se muestran allí
+            'modalidad': modalidad,
+            'direccion': direccion,
+            # Para el botón de copia
             'order_text': order_text
         })
 
@@ -857,6 +856,7 @@ def copiar_solicitud(id):
     db.session.commit()
     flash(f'Solicitud {s.codigo_solicitud} copiada. Ya no se mostrará hasta mañana.', 'success')
     return redirect(url_for('admin.copiar_solicitudes'))
+
 
 @admin_bp.route(
     '/clientes/<int:cliente_id>/solicitudes/<int:id>/cancelar',
