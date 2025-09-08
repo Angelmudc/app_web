@@ -1,3 +1,5 @@
+import re
+
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, abort
 from flask_login import login_user, logout_user, login_required, UserMixin, current_user
 from werkzeug.security import check_password_hash
@@ -19,7 +21,6 @@ from utils import letra_por_indice
 
 from . import admin_bp
 from .decorators import admin_required
-
 
 admin_bp = Blueprint(
     'admin',
@@ -744,6 +745,16 @@ def resumen_solicitudes():
 
 # routes/admin/solicitudes.py  (o donde tengas estas rutas)
 
+def _norm_area(text: str) -> str:
+    """Reemplaza guiones bajos por espacios y colapsa espacios múltiples."""
+    if not text:
+        return ""
+    s = str(text)
+    s = s.replace("_", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 @admin_bp.route('/solicitudes/copiar')
 @login_required
 @admin_required
@@ -795,27 +806,66 @@ def copiar_solicitudes():
             if s.edades_ninos:
                 ninos_text += f" ({s.edades_ninos})"
 
-        # Modalidad y Dirección (con fallback robusto)
-        modalidad = getattr(s, 'modalidad_trabajo', None) or getattr(s, 'modalidad', None) or getattr(s, 'tipo_modalidad', None) or ''
-        direccion = (
-            getattr(s, 'direccion', None)
-            or getattr(s, 'direccion_completa', None)
-            or getattr(s, 'direccion_exacta', None)
-            or getattr(s, 'direccion_referencia', None)
-            or s.ciudad_sector  # último recurso
+        # Modalidad (sin Dirección)
+        modalidad = (
+            getattr(s, 'modalidad_trabajo', None)
+            or getattr(s, 'modalidad', None)
+            or getattr(s, 'tipo_modalidad', None)
+            or ''
         )
 
-        # Mascota: solo imprimimos la línea si trae contenido real
+        # ===== Hogar (debajo de Funciones, como pediste) =====
+        hogar_partes_detalle = []
+
+        # Habitaciones
+        if s.habitaciones:
+            hogar_partes_detalle.append(f"{s.habitaciones} habitaciones")
+
+        # Baños (entero sin .0, decimal si aplica)
+        if s.banos is not None:
+            try:
+                f = float(s.banos)
+                banos_txt = str(int(f)) if f.is_integer() else str(f)
+            except Exception:
+                banos_txt = str(s.banos)
+            hogar_partes_detalle.append(f"{banos_txt} baños")
+
+        # Dos pisos
+        if getattr(s, 'dos_pisos', False):
+            hogar_partes_detalle.append("2 pisos")
+
+        # Áreas comunes + otro (NORMALIZADAS: "_" -> " ")
+        areas = []
+        if getattr(s, 'areas_comunes', None):
+            areas.extend([_norm_area(a) for a in s.areas_comunes if str(a).strip()])
+        if getattr(s, 'area_otro', None) and s.area_otro.strip():
+            areas.append(_norm_area(s.area_otro))
+
+        # Tipo de lugar al inicio con guion si hay detalles
+        tipo_lugar = (getattr(s, 'tipo_lugar', None) or "").strip()
+        if areas:
+            hogar_partes_detalle.append(", ".join(areas))
+
+        if tipo_lugar and hogar_partes_detalle:
+            hogar_line = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}"
+        elif tipo_lugar:
+            hogar_line = tipo_lugar
+        else:
+            hogar_line = ", ".join(hogar_partes_detalle)
+
+        hogar_line = f"\n{hogar_line}" if hogar_line else ""
+        # ======================================================
+
+        # Mascota SOLO si trae texto real
         mascota_val = (getattr(s, 'mascota', None) or '').strip()
         mascota_line = f"\nMascota: {mascota_val}" if mascota_val else ""
 
-        # Texto final a copiar (sin tamaño/áreas de la casa)
+        # ===== Texto final a copiar (mismo orden que tenías) =====
         order_text = f"""Disponible ( {s.codigo_solicitud} )
 📍 {s.ciudad_sector}
 Ruta más cercana: {s.rutas_cercanas}
 
 Modalidad: {modalidad}
-Dirección: {direccion}
 
 Edad: {s.edad_requerida or ''}
 Dominicana
@@ -823,13 +873,14 @@ Que sepa leer y escribir
 Experiencia en: {s.experiencia}
 Horario: {s.horario}
 
-Funciones: {', '.join(funcs)}
+Funciones: {', '.join(funcs)}{hogar_line}
 
 Adultos: {s.adultos}{ninos_text}""" + f"""{mascota_line}
 
 Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ', pasaje incluido'}
 
 {f'Nota: {s.nota_cliente}' if s.nota_cliente else ''}"""
+        # ========================================================
 
         solicitudes.append({
             'id': s.id,
@@ -837,10 +888,7 @@ Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ',
             'ciudad_sector': s.ciudad_sector,
             'reemplazos': reems,
             'funcs': funcs,
-            # Enviamos modalidad y dirección al template por si se muestran allí
             'modalidad': modalidad,
-            'direccion': direccion,
-            # Para el botón de copia
             'order_text': order_text
         })
 
