@@ -2,7 +2,6 @@
 {% extends 'base.html' %}
 
 {% block head %}
-  <!-- DataTables CSS opcional -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
   <style>
     :root {
@@ -16,13 +15,13 @@
     body { background: var(--bg); color: var(--text); }
     .card { background: var(--card-bg); border: none; border-radius: .75rem; box-shadow: 0 4px 12px var(--shadow); }
     .card-header { background: var(--primary); color: #fff; font-weight: 500; }
-    .form-control:focus { border-color: var(--accent); box-shadow: none; }
+    .form-control:focus, .form-select:focus { border-color: var(--accent); box-shadow: none; }
     .btn-primary { background: var(--accent); border: none; }
     .btn-primary:hover { background: #009bbd; }
-    .table-container { overflow-x: auto; }
-    #resultados-table th { background: var(--primary); color: #fff; }
     .volver { background: var(--primary); color: #fff; text-decoration: none; }
     .volver:hover { background: #153d5e; color: #fff; }
+    .table-container { overflow-x: auto; }
+    table.dataTable thead th { background: var(--primary); color: #fff; }
   </style>
 {% endblock %}
 
@@ -32,6 +31,7 @@
   <!-- Título -->
   <div class="text-center mb-4">
     <h2 class="fw-bold" style="color: var(--primary)">🔍 Filtrar Candidatas</h2>
+    <p class="text-muted">Aplica los filtros que quieras y encuentra la candidata adecuada</p>
   </div>
 
   <!-- Sección de filtros -->
@@ -42,18 +42,16 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="row g-3">
-          <!-- Ciudad -->
           <div class="col-md-6">
             <label class="form-label">Ciudad / Dirección</label>
             <input type="text" class="form-control" name="ciudad"
-                   placeholder="Escribe ciudad o parte de la dirección"
+                   placeholder="Ej. Santiago, Puerto Plata..."
                    value="{{ form_data.ciudad }}">
           </div>
-          <!-- Rutas -->
           <div class="col-md-6">
             <label class="form-label">Rutas Cercanas</label>
             <input type="text" class="form-control" name="rutas"
-                   placeholder="Escribe rutas separadas por comas"
+                   placeholder="Ej. Ruta A, Ruta B..."
                    value="{{ form_data.rutas }}">
           </div>
         </div>
@@ -61,7 +59,6 @@
         <hr>
 
         <div class="row g-3">
-          <!-- Modalidad -->
           <div class="col-md-4">
             <label class="form-label">Modalidad</label>
             {% for val,label in [
@@ -78,7 +75,6 @@
             {% endfor %}
           </div>
 
-          <!-- Años de experiencia -->
           <div class="col-md-4">
             <label class="form-label">Años de Experiencia</label>
             {% for val,label in [
@@ -98,7 +94,6 @@
             {% endfor %}
           </div>
 
-          <!-- Áreas de experiencia -->
           <div class="col-md-4">
             <label class="form-label">Áreas de Experiencia</label>
             {% for val,label in [
@@ -123,7 +118,6 @@
 
         <hr>
 
-        <!-- Filtro por Estado -->
         <div class="row g-3 mb-4">
           <div class="col-md-4">
             <label class="form-label">Estado</label>
@@ -146,13 +140,17 @@
     </div>
   </section>
 
-  <!-- Sección de resultados -->
+  <!-- Resultados -->
+  {% if mensaje %}
+    <div class="alert alert-warning text-center">{{ mensaje }}</div>
+  {% endif %}
+
   {% if resultados %}
   <section class="results-section card">
     <div class="card-header">Resultados ({{ resultados|length }})</div>
     <div class="card-body">
       <div class="table-container">
-        <table id="resultados-table" class="table table-striped table-hover">
+        <table id="resultados-table" class="table table-striped table-hover align-middle">
           <thead>
             <tr>
               <th>Nombre</th>
@@ -185,32 +183,29 @@
       </div>
     </div>
   </section>
-  {% else %}
-    <p class="text-center text-danger mt-4">No se encontraron candidatas con los filtros aplicados.</p>
   {% endif %}
 
-  <!-- Botón volver -->
   <div class="text-center mt-5">
-    <a href="{{ url_for('home') }}" class="btn btn-outline-primary px-4 py-2 volver">
-      🏠 Volver al Inicio
-    </a>
+    <a href="{{ url_for('home') }}" class="btn volver px-4 py-2">🏠 Volver al Inicio</a>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-  <!-- DataTables JS -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script>
     $(function(){
       $('#resultados-table').DataTable({
         paging: true,
-        searching: false,
-        info: false,
-        lengthChange: false,
+        searching: true,
+        info: true,
+        lengthChange: true,
         pageLength: 10,
-        columnDefs: [{ orderable: false, targets: [4] }]
+        language: {
+          url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json"
+        },
+        columnDefs: [{ orderable: false, targets: [3,4] }]
       });
     });
   </script>

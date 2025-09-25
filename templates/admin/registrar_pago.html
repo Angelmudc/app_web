@@ -2,25 +2,115 @@
 {% block title %}Registrar Pago{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <h1>Registrar Pago para {{ solicitud.codigo_solicitud }}</h1>
-
-  <form method="POST">
-    {{ form.hidden_tag() }}
-
-    <div class="mb-3">
-      {{ form.candidata_id.label(class="form-label") }}
-      {{ form.candidata_id(class="form-select") }}
+<div class="container py-4 py-md-5" style="max-width: 780px;">
+  <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h4 mb-1">Registrar Pago</h1>
+      <div class="text-muted small">Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong></div>
     </div>
+    <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-light">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver
+    </a>
+  </div>
 
-    <div class="mb-3">
-      {{ form.monto_pagado.label(class="form-label") }}
-      {{ form.monto_pagado(class="form-control") }}
+  <div class="card shadow-sm border-0 rounded-4">
+    <div class="card-body p-3 p-md-4">
+      <form method="POST" id="pago-form" novalidate>
+        {{ form.hidden_tag() }}
+
+        {% if form.errors %}
+          <div class="alert alert-danger border-0">
+            <div class="d-flex">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              <div>
+                <strong>Revisa los campos marcados.</strong>
+                <ul class="mb-0 mt-1">
+                  {% for field_name, errs in form.errors.items() %}
+                    {% for e in errs %}
+                      <li><strong>{{ getattr(form, field_name).label.text }}:</strong> {{ e }}</li>
+                    {% endfor %}
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="mb-3">
+          <label class="form-label">{{ form.candidata_id.label.text }} <span class="text-danger">*</span></label>
+          {# Select2 Ajax: no precargamos la lista completa #}
+          {{ form.candidata_id(class="form-select", id="candidata-select") }}
+          <div class="form-text">Escribe para buscar y seleccionar una candidata.</div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">{{ form.monto_pagado.label.text }} <span class="text-danger">*</span></label>
+          {{ form.monto_pagado(class="form-control", id="monto-pagado", placeholder="Ej. 10,000") }}
+          <div class="form-text">Solo números. Se formatea automáticamente.</div>
+        </div>
+
+        <div class="d-flex gap-2 justify-content-end">
+          <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-outline-secondary">
+            Cancelar
+          </a>
+          <button type="submit" class="btn btn-success">
+            {{ form.submit.label.text }}
+          </button>
+        </div>
+      </form>
     </div>
-
-    <button type="submit" class="btn btn-success">{{ form.submit.label.text }}</button>
-    <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}"
-       class="btn btn-secondary">Cancelar</a>
-  </form>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+  {# Select2 desde CDN #}
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+  <script>
+  (function(){
+    // Select2 AJAX para candidatas
+    const $cand = $('#candidata-select');
+    $cand.select2({
+      width: '100%',
+      placeholder: 'Buscar candidata…',
+      allowClear: true,
+      minimumInputLength: 1,
+      ajax: {
+        delay: 200,
+        url: "{{ url_for('admin.api_candidatas') }}",
+        dataType: 'json',
+        data: function (params) {
+          return { q: params.term || '' };
+        },
+        processResults: function (data) {
+          // data.results = [{id, text}]
+          return { results: data.results || [] };
+        }
+      }
+    });
+
+    // Si ya hay candidata seleccionada, asegúrate que Select2 la muestre
+    {% if form.candidata_id.data %}
+      const preId = "{{ form.candidata_id.data }}";
+      const preText = $("#candidata-select option:selected").text() || "Seleccionada";
+      if (preId) {
+        const option = new Option(preText, preId, true, true);
+        $cand.append(option).trigger('change');
+      }
+    {% endif %}
+
+    // Formateo suave del monto mientras se escribe (solo dígitos y coma millares)
+    const monto = document.getElementById('monto-pagado');
+    if (monto) {
+      monto.addEventListener('input', () => {
+        let v = monto.value.replace(/[^\d]/g, '');
+        if (!v) { monto.value = ''; return; }
+        // agrega separadores de miles
+        monto.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      }, { passive: true });
+    }
+  })();
+  </script>
 {% endblock %}

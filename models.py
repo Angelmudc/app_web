@@ -113,52 +113,81 @@ class Candidata(db.Model):
                                          cascade='all, delete-orphan'
                                       )
 
+from datetime import datetime
+from flask_login import UserMixin
+from sqlalchemy.orm import synonym as orm_synonym
+from config_app import db
+
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 
-    id                       = db.Column(db.Integer, primary_key=True)
-    codigo                   = db.Column(db.String(20), unique=True, nullable=False)
+    id                         = db.Column(db.Integer, primary_key=True)
 
-    # Nuevo campo para distinguir administradores
-    role                     = db.Column(
-                                  db.String(20),
-                                  nullable=False,
-                                  default='cliente',
-                                  comment="Valores: 'cliente' o 'admin'"
-                              )
+    # ----- Credenciales / Login -----
+    username                   = db.Column(db.String(64), unique=True, index=True, nullable=False)
+    password_hash              = db.Column(db.String(256), nullable=False)
 
-    nombre_completo          = db.Column(db.String(200), nullable=False)
-    created_at               = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    # Activo / tracking
+    is_active                  = db.Column(db.Boolean, nullable=False, default=True)
+    created_at                 = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at                 = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    email                    = db.Column(db.String(100), nullable=False)
-    telefono                 = db.Column(db.String(20),  nullable=False)
+    # ----- Identificación del cliente -----
+    codigo                     = db.Column(db.String(20), unique=True, nullable=False, index=True)
 
-    porcentaje_deposito      = db.Column(db.Numeric(5,2), nullable=False, default=0.00)
-    monto_deposito_requerido = db.Column(db.Numeric(10,2))
-    monto_deposito_pagado    = db.Column(db.Numeric(10,2))
-    estado_deposito          = db.Column(
-                                  db.Enum('pendiente','confirmado', name='estado_deposito_enum'),
-                                  nullable=False,
-                                  default='pendiente'
-                              )
-    notas_admin              = db.Column(db.Text)
+    # Rol: 'cliente' o 'admin'
+    role                       = db.Column(
+                                    db.String(20),
+                                    nullable=False,
+                                    default='cliente',
+                                    comment="Valores: 'cliente' o 'admin'"
+                                )
 
-    # Ubicación simplificada
-    ciudad                   = db.Column(db.String(100))
-    sector                   = db.Column(db.String(100))
+    # Nombre (principal) y alias compatible
+    nombre_completo            = db.Column(db.String(200), nullable=False)
+    # Alias para compatibilidad: permite usar 'nombre=' al crear o leer
+    nombre                     = orm_synonym('nombre_completo')
 
-    # Métricas de solicitudes
-    total_solicitudes        = db.Column(db.Integer,  nullable=False, default=0)
-    fecha_ultima_solicitud   = db.Column(db.DateTime, nullable=True)
-    fecha_registro           = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    fecha_ultima_actividad   = db.Column(db.DateTime, nullable=True)
+    # Contacto
+    email                      = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    telefono                   = db.Column(db.String(20),  nullable=False)
 
+    # ----- Depósitos / estados financieros -----
+    porcentaje_deposito        = db.Column(db.Numeric(5, 2),  nullable=False, default=0.00)
+    monto_deposito_requerido   = db.Column(db.Numeric(10, 2))
+    monto_deposito_pagado      = db.Column(db.Numeric(10, 2))
+    estado_deposito            = db.Column(
+                                    db.Enum('pendiente', 'confirmado', name='estado_deposito_enum'),
+                                    nullable=False,
+                                    default='pendiente'
+                                )
+    notas_admin                = db.Column(db.Text)
+
+    # ----- Ubicación -----
+    ciudad                     = db.Column(db.String(100))
+    sector                     = db.Column(db.String(100))
+
+    # ----- Métricas de solicitudes -----
+    total_solicitudes          = db.Column(db.Integer,  nullable=False, default=0)
+    fecha_ultima_solicitud     = db.Column(db.DateTime, nullable=True)
+    fecha_registro             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    fecha_ultima_actividad     = db.Column(db.DateTime, nullable=True)
+
+    # ----- Relaciones -----
     solicitudes = db.relationship(
         'Solicitud',
         back_populates='cliente',
         order_by='Solicitud.fecha_solicitud.desc()',
         cascade='all, delete-orphan'
     )
+
+    # ----- Métodos útiles -----
+    def get_id(self):
+        return str(self.id)
+
+    def __repr__(self):
+        return f"<Cliente {self.username} ({self.codigo})>"
+
         
 class Solicitud(db.Model):
     __tablename__ = 'solicitudes'
@@ -186,7 +215,12 @@ class Solicitud(db.Model):
 
     # Detalles de la oferta de trabajo
     modalidad_trabajo      = db.Column(db.String(100), nullable=True)
-    edad_requerida         = db.Column(db.String(200), nullable=True)
+    edad_requerida = db.Column(
+        ARRAY(db.Text),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::TEXT[]")
+    )
     experiencia            = db.Column(db.Text, nullable=True)
     horario                = db.Column(db.String(100), nullable=True)
     funciones              = db.Column(

@@ -25,7 +25,7 @@
                 <span>{{ s.ciudad_sector }}</span>
               </div>
 
-              <!-- NUEVA LÍNEA: Modalidad y Dirección -->
+              <!-- Modalidad y Dirección (dirección será opcional) -->
               <div class="mt-1">
                 <small class="text-muted">
                   <span class="me-2"><span class="fw-semibold">Modalidad:</span> {{ s.modalidad if s.modalidad else '—' }}</span>
@@ -124,10 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Enviar formulario para marcar como copiada
         const form = btn.closest('.text-end').querySelector('.copy-form');
         if (form) {
-          // Pequeño delay para que el usuario perciba el cambio visual
           setTimeout(() => form.submit(), 200);
         } else {
-          // Revertir si no hay form (no debería pasar)
           setTimeout(() => {
             btn.innerHTML = originalHtml;
             btn.classList.remove('btn-success');

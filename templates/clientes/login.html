@@ -1,16 +1,185 @@
 {% extends "clientes/base.html" %}
+{% block title %}Ingresar – Área de Clientes{% endblock %}
+
 {% block content %}
-  <h2>Ingreso de Clientes</h2>
-  <form method="post">
-    {{ form.hidden_tag() }}
-    <div>
-      {{ form.username.label }}<br>
-      {{ form.username(size=32) }}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-12 col-sm-10 col-md-8 col-lg-5">
+
+      <div class="card shadow border-0 rounded-4">
+        <div class="card-body p-4 p-md-5">
+
+          <div class="text-center mb-4">
+            <h1 class="h4 mb-1">Ingreso de Clientes</h1>
+            <p class="text-muted mb-0">Accede para gestionar tus solicitudes</p>
+          </div>
+
+          {# Mensajes flash (éxito/error) #}
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              {% for category, text in messages %}
+                <div class="alert alert-{{ 'warning' if category == 'message' else category }} alert-dismissible fade show" role="alert">
+                  {{ text }}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+              {% endfor %}
+            {% endif %}
+          {% endwith %}
+
+          <form method="post" novalidate id="loginForm">
+            {{ form.hidden_tag() }}
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ form.username.id }}">Usuario o Email</label>
+              {{ form.username(class="form-control form-control-lg", placeholder="Tu usuario o email", autocomplete="username", autofocus=True, spellcheck="false", inputmode="email") }}
+              <div class="form-text">Puedes escribir tu <strong>usuario</strong> o tu <strong>correo</strong>.</div>
+              {% if form.username.errors %}
+                <div class="form-text text-danger">
+                  {% for e in form.username.errors %}{{ e }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="mb-2">
+              <label class="form-label" for="{{ form.password.id }}">Contraseña</label>
+              <div class="input-group input-group-lg">
+                {{ form.password(class="form-control", placeholder="Tu contraseña", autocomplete="current-password", aria_describedby="capsHelp") }}
+                <button class="btn btn-outline-secondary" type="button" id="togglePass" aria-label="Mostrar/ocultar contraseña">
+                  <i class="bi bi-eye"></i>
+                </button>
+              </div>
+              <div id="capsHelp" class="form-text text-warning d-none">
+                <i class="bi bi-exclamation-triangle me-1"></i> Mayúsculas activadas (Caps Lock).
+              </div>
+              {% if form.password.errors %}
+                <div class="form-text text-danger">
+                  {% for e in form.password.errors %}{{ e }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-2 mb-4">
+              {% if form.remember_me is defined %}
+                <div class="form-check">
+                  {{ form.remember_me(class="form-check-input", id="rememberMe") }}
+                  <label class="form-check-label" for="rememberMe">Recordarme</label>
+                </div>
+              {% else %}
+                <div></div>
+              {% endif %}
+
+              <a class="small text-decoration-none" href="#" data-bs-toggle="modal" data-bs-target="#resetModal">¿Olvidaste tu contraseña?</a>
+            </div>
+
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                <span class="btn-text">Ingresar</span>
+                <span class="spinner-border spinner-border-sm align-text-bottom ms-2 d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+          </form>
+
+          <hr class="my-4">
+          <p class="text-center mb-0 small text-muted">
+            ¿Necesitas ayuda? <a href="{{ url_for('clientes.ayuda') }}" class="text-decoration-none">Contacta soporte</a>
+          </p>
+        </div>
+      </div>
+
+      <div class="text-center mt-4">
+        <a href="{{ url_for('home') }}" class="text-decoration-none">
+          ← Volver al inicio
+        </a>
+      </div>
+
     </div>
-    <div>
-      {{ form.password.label }}<br>
-      {{ form.password(size=32) }}
+  </div>
+</div>
+
+{# Modal para resetear contraseña por código de cliente #}
+<div class="modal fade" id="resetModal" tabindex="-1" aria-labelledby="resetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title" id="resetModalLabel">Restablecer contraseña</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3">Ingresa tu <strong>código de cliente</strong> para continuar (ej.: <code>CLI-001</code>).</p>
+        <div class="input-group">
+          <span class="input-group-text">Código</span>
+          <input type="text" class="form-control" id="codigoReset" placeholder="CLI-001" maxlength="20" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="form-text">Si no recuerdas tu código, escríbenos por soporte.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+        <a id="goReset" class="btn btn-primary" href="#" role="button">Continuar</a>
+      </div>
     </div>
-    <button type="submit">Entrar</button>
-  </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  (function() {
+    const form = document.getElementById('loginForm');
+    const btn  = document.getElementById('submitBtn');
+    const spin = btn ? btn.querySelector('.spinner-border') : null;
+    const btnText = btn ? btn.querySelector('.btn-text') : null;
+    const passInput = document.getElementById('{{ form.password.id }}');
+    const capsHelp  = document.getElementById('capsHelp');
+    const toggleBtn = document.getElementById('togglePass');
+
+    // Mostrar/ocultar contraseña
+    if (toggleBtn && passInput) {
+      toggleBtn.addEventListener('click', function() {
+        const isPwd = passInput.getAttribute('type') === 'password';
+        passInput.setAttribute('type', isPwd ? 'text' : 'password');
+        this.innerHTML = isPwd ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+      });
+    }
+
+    // Aviso Caps Lock
+    if (passInput && capsHelp) {
+      passInput.addEventListener('keydown', function(e) {
+        const caps = e.getModifierState && e.getModifierState('CapsLock');
+        capsHelp.classList.toggle('d-none', !caps);
+      });
+      passInput.addEventListener('keyup', function(e) {
+        const caps = e.getModifierState && e.getModifierState('CapsLock');
+        capsHelp.classList.toggle('d-none', !caps);
+      });
+      passInput.addEventListener('blur', function() {
+        capsHelp.classList.add('d-none');
+      });
+    }
+
+    // Evitar doble submit + spinner
+    if (form && btn && spin && btnText) {
+      form.addEventListener('submit', function() {
+        btn.setAttribute('disabled', 'disabled');
+        spin.classList.remove('d-none');
+        btnText.textContent = 'Ingresando...';
+      });
+    }
+
+    // Modal Reset: construir URL /clientes/reset/<codigo>
+    const goReset = document.getElementById('goReset');
+    const codigoReset = document.getElementById('codigoReset');
+    if (goReset && codigoReset) {
+      goReset.addEventListener('click', function(e) {
+        e.preventDefault();
+        const raw = (codigoReset.value || '').trim();
+        if (!raw) return;
+        // Limpieza básica: mayúsculas y quitar espacios
+        const code = raw.toUpperCase().replace(/\s+/g, '');
+        // Redirige
+        window.location.href = "{{ url_for('clientes.reset_password', codigo='__CODE__') }}".replace('__CODE__', encodeURIComponent(code));
+      });
+    }
+  })();
+</script>
 {% endblock %}

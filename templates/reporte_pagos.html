@@ -1,143 +1,95 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Reporte de Pagos Pendientes</title>
-  <meta name="csrf-token" content="{{ csrf_token() }}">
-  <style>
-    :root {
-      --primary-color: #1A5789;
-      --accent-color: #00AECF;
-      --secondary-color: #fff;
-      --background-color: #e8f6fa;
-      --text-color: #343a40;
-      --transition: 0.3s;
-      --radius: 8px;
-    }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family: Arial, sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      padding: 20px;
-    }
-    .container {
-      width: 100%;
-      max-width: 1200px;
-      margin: 0 auto;
-      background: var(--secondary-color);
-      padding: 30px;
-      border-radius: var(--radius);
-      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-    }
-    h2 {
-      text-align: center;
-      color: var(--primary-color);
-      margin-bottom: 20px;
-      position: relative;
-      font-size: 2.2rem;
-    }
-    h2::after {
-      content: "";
-      display: block;
-      width:50px; height:4px;
-      background: var(--accent-color);
-      margin:10px auto 0;
-      border-radius:2px;
-    }
-    .mensaje {
-      text-align:center;
-      color:#d9534f;
-      margin:20px 0;
-      font-weight:bold;
-      font-size: 1.1rem;
-    }
-    .table-container {
-      overflow-x:auto;
-      margin-top: 20px;
-    }
-    table {
-      width:100%;
-      border-collapse:collapse;
-      min-width: 800px;
-    }
-    th, td {
-      padding:14px 12px;
-      border:1px solid #ddd;
-      text-align:center;
-      transition: background var(--transition);
-    }
-    th {
-      background: var(--primary-color);
-      color: var(--secondary-color);
-      text-transform: uppercase;
-      letter-spacing: .05em;
-    }
-    tr:nth-child(even) { background: #f9f9f9; }
-    tr:hover { background:#f1f1f1; }
-    td { font-size: .95rem; }
-    .btn {
-      display:inline-block;
-      margin:30px 10px 0;
-      padding:14px 24px;
-      background: var(--accent-color);
-      color:var(--secondary-color);
-      text-decoration:none;
-      border-radius: var(--radius);
-      transition: background var(--transition), transform var(--transition);
-      font-weight: bold;
-    }
-    .btn:hover { background:#009bbd; transform: translateY(-2px); }
-    @media (max-width: 768px) {
-      h2 { font-size: 1.8rem; }
-      table { min-width: auto; }
-      th, td { padding:10px 8px; font-size:.85rem; }
-      .btn { width: 100%; text-align: center; margin:20px 0 0; }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Reporte de Pagos Pendientes</h2>
+{% extends "base.html" %}
+{% block title %}📄 Reporte de Pagos Pendientes{% endblock %}
 
-    {% if mensaje %}
-      <p class="mensaje">{{ mensaje }}</p>
-    {% else %}
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Cédula</th>
-              <th>Código</th>
-              <th>Ciudad</th>
-              <th>Monto Total</th>
-              <th>Pendiente</th>
-              <th>Inicio</th>
-              <th>Pago</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for pago in pagos_pendientes %}
-            <tr>
-              <td>{{ pago.nombre_completo }}</td>
-              <td>{{ pago.cedula }}</td>
-              <td>{{ pago.codigo }}</td>
-              <td>{{ pago.ciudad }}</td>
-              <td>{{ pago.monto_total }}</td>
-              <td>{{ pago.porcentaje_pendiente }}</td>
-              <td>{{ pago.fecha_inicio }}</td>
-              <td>{{ pago.fecha_pago }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+{% block content %}
+<div class="container py-5">
+  <h1 class="mb-4">📄 Reporte de Pagos Pendientes</h1>
+
+  {% if mensaje %}
+    <div class="alert alert-warning">{{ mensaje }}</div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Pagos pendientes</span>
+        <small class="text-muted">
+          Total registros: <strong>{{ pagos_pendientes|length }}</strong>
+        </small>
       </div>
-    {% endif %}
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Nombre</th>
+                <th>Cédula</th>
+                <th>Código</th>
+                <th>Ciudad</th>
+                <th class="text-end">Monto Total</th>
+                <th class="text-end">Pendiente (%)</th>
+                <th>Inicio</th>
+                <th>Pago</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in pagos_pendientes %}
+              <tr>
+                <td>{{ p.nombre }}</td>
+                <td>{{ p.cedula }}</td>
+                <td>{{ p.codigo }}</td>
+                <td>{{ p.ciudad }}</td>
+                <td class="text-end">
+                  {{ "{:,.2f}".format(p.monto_total|float) }}
+                </td>
+                <td class="text-end">
+                  {{ "{:,.1f}%".format(p.porcentaje_pendiente|float) }}
+                </td>
+                <td>{{ p.fecha_inicio }}</td>
+                <td>{{ p.fecha_pago }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="table-secondary">
+                <th colspan="4" class="text-end">Totales:</th>
+                <th class="text-end">
+                  {# suma de monto_total #}
+                  {% set total_montos = pagos_pendientes|sum(attribute='monto_total') %}
+                  {{ "{:,.2f}".format(total_montos|float) }}
+                </th>
+                <th class="text-end">
+                  {# promedio de porcentaje_pendiente #}
+                  {% set avg_pct = (pagos_pendientes|sum(attribute='porcentaje_pendiente')) / (pagos_pendientes|length if pagos_pendientes|length>0 else 1) %}
+                  {{ "{:,.1f}%".format(avg_pct|float) }}
+                </th>
+                <th colspan="2"></th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% endif %}
 
-    <a href="{{ url_for('reporte_pagos') }}" class="btn">🔄 Refrescar</a>
-    <a href="{{ url_for('home') }}" class="btn">🏠 Volver al Inicio</a>
+  <div class="d-flex gap-2 mt-3">
+    <a href="{{ url_for('reporte_pagos') }}" class="btn btn-outline-primary">
+      🔄 Refrescar
+    </a>
+    <a href="{{ url_for('home') }}" class="btn btn-secondary">
+      🏠 Volver al Inicio
+    </a>
   </div>
-</body>
-</html>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Evita dobles clics en "Refrescar"
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest('a.btn-outline-primary[href*="reporte_pagos"]');
+    if (btn) {
+      btn.classList.add('disabled');
+      btn.setAttribute('aria-disabled', 'true');
+    }
+  });
+</script>
+{% endblock %}

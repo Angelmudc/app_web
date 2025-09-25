@@ -1,19 +1,144 @@
+{# templates/clientes/solicitud_cancel.html #}
 {% extends "clientes/base.html" %}
-{% block title %}Cancelar {{ s.codigo_solicitud }}{% endblock %}
+{% block title %}Cancelar {{ s.codigo_solicitud }} | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<style>
+  .danger-card{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
+  .danger-card .hd{padding:1rem 1.25rem;border-bottom:1px solid rgba(0,0,0,.05)}
+  .danger-card .bd{padding:1.25rem}
+  .alert-soft{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}
+  .meta small{color:#475467}
+  .char-counter{font-size:.85rem}
+</style>
+{% endblock %}
 
 {% block content %}
-  <h2>Cancelar Solicitud {{ s.codigo_solicitud }}</h2>
-  <p>Por favor, indícanos el motivo de la cancelación:</p>
+<div class="container py-4">
 
-  <form method="post">
-    {{ form.hidden_tag() }}
-
-    <div class="mb-3">
-      {{ form.motivo.label(class="form-label") }}
-      {{ form.motivo(class="form-control", rows=4) }}
+  <!-- Encabezado -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h5 mb-1">Cancelar solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
+      <div class="meta small">
+        Fecha de creación: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
+        {% if s.estado != 'proceso' %}
+          · <span class="text-danger">Estado actual: {{ s.estado }}</span>
+        {% endif %}
+      </div>
     </div>
+    <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-light">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver
+    </a>
+  </div>
 
-    <button type="submit" class="btn btn-danger">Confirmar Cancelación</button>
-    <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-secondary ms-2">Volver</a>
-  </form>
+  <!-- Aviso -->
+  <div class="alert alert-soft rounded-3 p-3 mb-4">
+    <div class="d-flex">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>
+      <div>
+        <strong>Antes de continuar:</strong>
+        <div class="small">
+          Al cancelar esta solicitud, se detendrá el proceso de búsqueda y seguimiento asociado.
+          Si necesitas pausar temporalmente o realizar cambios, puedes <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}">editar</a> en lugar de cancelar.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Formulario -->
+  <div class="danger-card">
+    <div class="hd bg-light fw-semibold">
+      <i class="bi bi-x-octagon me-2 text-danger"></i> Confirmar cancelación
+    </div>
+    <div class="bd">
+      <form method="post" id="cancel-form" novalidate>
+        {{ form.hidden_tag() }}
+
+        {% if form.errors %}
+          <div class="alert alert-danger">
+            <ul class="mb-0">
+              {% for field, errs in form.errors.items() %}
+                {% for e in errs %}
+                  <li><strong>{{ form[field].label.text }}:</strong> {{ e }}</li>
+                {% endfor %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <div class="mb-3">
+          {{ form.motivo.label(class="form-label fw-semibold") }}
+          {{ form.motivo(class="form-control", rows=4, placeholder="Cuéntanos brevemente el motivo (p. ej., cambios en el requerimiento, encontrado por cuenta propia, etc.)", maxlength="500") }}
+          <div class="d-flex justify-content-between mt-1">
+            <small class="text-muted">Este motivo ayudará a mejorar nuestro servicio.</small>
+            <small class="char-counter text-muted"><span id="chars">0</span>/500</small>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmCancel">
+            <i class="bi bi-x-circle me-1"></i> Confirmar cancelación
+          </button>
+          <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-outline-secondary">
+            Mantener solicitud
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de confirmación -->
+  <div class="modal fade" id="confirmCancel" tabindex="-1" aria-labelledby="confirmCancelLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header border-0">
+          <h5 class="modal-title" id="confirmCancelLabel">
+            <i class="bi bi-exclamation-octagon text-danger me-2"></i> ¿Cancelar esta solicitud?
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          Esta acción marcará la solicitud <strong>{{ s.codigo_solicitud }}</strong> como <em>cancelada</em>.
+          Podrás crear una nueva solicitud cuando lo desees.
+          ¿Deseas continuar?
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Volver</button>
+          <button type="submit" form="cancel-form" class="btn btn-danger" id="confirm-submit">
+            Sí, cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Contador de caracteres
+  (function(){
+    const ta = document.getElementById('{{ form.motivo.id }}');
+    const out = document.getElementById('chars');
+    if(ta && out){
+      const upd = () => out.textContent = ta.value.length;
+      ta.addEventListener('input', upd);
+      upd();
+    }
+  })();
+
+  // Evitar doble envío
+  (function(){
+    const form = document.getElementById('cancel-form');
+    const btn  = document.getElementById('confirm-submit');
+    if(form && btn){
+      form.addEventListener('submit', () => {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Enviando...';
+      });
+    }
+  })();
+</script>
 {% endblock %}

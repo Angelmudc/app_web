@@ -1,195 +1,239 @@
+{# templates/clientes/planes.html #}
 {% extends "clientes/base.html" %}
-{% block title %}Planes{% endblock %}
+{% block title %}Planes | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+  .hero-plans{
+    background: linear-gradient(140deg,#f0f7ff 0%,#f7fbff 100%);
+    border: 1px solid #e6efff;
+    border-radius: 16px;
+  }
+  .plan-card{
+    border:0;border-radius:16px;
+    box-shadow:0 10px 30px rgba(16,24,40,.06);
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .plan-card:hover{ transform: translateY(-2px); box-shadow:0 14px 36px rgba(16,24,40,.10) }
+  .price{ font-size:2rem }
+  .badge-best{ background:#fff7e6; color:#a86b00; border:1px solid #ffe3a3 }
+  .feature i{ width:1.25rem }
+  .compare thead th{ background:#0ea5e9; color:#fff }
+  .compare td, .compare th{ vertical-align:middle }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container py-5">
-  <h2 class="text-center mb-5">Nuestros Planes</h2>
+<div class="container py-4">
 
+  <!-- HERO -->
+  <section class="hero-plans p-4 p-md-5 mb-4 text-center">
+    <h1 class="h3 mb-2">Elige el plan ideal para tu hogar</h1>
+    <p class="text-secondary mb-0">
+      Todos nuestros planes incluyen validación de referencias y acompañamiento.
+      Cambia de plan cuando quieras.
+    </p>
+  </section>
+
+  <!-- CARDS DE PLANES -->
   <div class="row g-4">
-    <!-- Plan Básico -->
+
+    <!-- Básico -->
     <div class="col-md-4">
-      <div class="card h-100 shadow-sm border-primary" style="background: #f0f8ff;">
-        <div class="card-header bg-primary text-white text-center">
-          <h3 class="h5 mb-0">Básico</h3>
+      <div class="plan-card h-100" style="background:#f0f8ff;">
+        <div class="p-3 border-bottom text-center">
+          <h3 class="h5 mb-0"><i class="bi bi-shield-check text-primary me-1"></i> Básico</h3>
         </div>
-        <div class="card-body">
-          <ul class="list-unstyled mb-4">
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Depuración policial</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Presentación de la candidata</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Garantía de 15 días</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>1 reemplazo gratuito</li>
-            <li><i class="bi bi-check-circle-fill text-primary me-2"></i>Entrevista inicial</li>
+        <div class="p-3">
+          <ul class="list-unstyled mb-3">
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Depuración policial</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Presentación de candidata</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Garantía 15 días</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>1 reemplazo sin costo</li>
+            <li class="feature"><i class="bi bi-check-circle-fill text-primary me-2"></i>Entrevista inicial</li>
           </ul>
           <div class="text-center">
-            <span class="display-5 fw-bold">RD$3,500</span>
-            <small class="d-block text-muted">Pago único</small>
+            <div class="price fw-bold">RD$3,500</div>
+            <small class="text-muted d-block">Pago único</small>
+            <a href="{{ url_for('clientes.nueva_solicitud') }}"
+               class="btn btn-outline-primary w-100 mt-3">Elegir Básico</a>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Plan Premium -->
+    <!-- Premium (destacado) -->
     <div class="col-md-4">
-      <div class="card h-100 shadow-sm border-warning" style="background: #fff8e1;">
-        <div class="card-header bg-warning text-dark text-center">
-          <h3 class="h5 mb-0">Premium</h3>
+      <div class="plan-card h-100 border border-warning-subtle" style="background:#fff8e1;">
+        <div class="p-3 border-bottom text-center">
+          <h3 class="h5 mb-1">
+            <i class="bi bi-stars text-warning me-1"></i> Premium
+          </h3>
+          <span class="badge badge-best">Más elegido</span>
         </div>
-        <div class="card-body">
-          <ul class="list-unstyled mb-4">
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Incluye todo lo del Básico</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Garantía de 1 mes</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>2 reemplazos sin costo</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Horario ajustable</li>
-            <li><i class="bi bi-check-circle-fill text-warning me-2"></i>Test de compatibilidad</li>
+        <div class="p-3">
+          <ul class="list-unstyled mb-3">
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Todo lo del Básico</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Garantía 1 mes</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>2 reemplazos sin costo</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Horario ajustable</li>
+            <li class="feature"><i class="bi bi-check-circle-fill text-warning me-2"></i>Test de compatibilidad</li>
           </ul>
           <div class="text-center">
-            <span class="display-5 fw-bold">RD$5,000</span>
-            <small class="d-block text-muted">Con asesoría personalizada</small>
+            <div class="price fw-bold">RD$5,000</div>
+            <small class="text-muted d-block">Asesoría personalizada</small>
+            <a href="{{ url_for('clientes.nueva_solicitud') }}"
+               class="btn btn-warning w-100 mt-3">Elegir Premium</a>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Plan VIP -->
+    <!-- VIP -->
     <div class="col-md-4">
-      <div class="card h-100 shadow-sm border-dark" style="background: #f5f5f5;">
-        <div class="card-header bg-dark text-white text-center">
-          <h3 class="h5 mb-0">VIP</h3>
+      <div class="plan-card h-100" style="background:#f5f5f5;">
+        <div class="p-3 border-bottom text-center">
+          <h3 class="h5 mb-0"><i class="bi bi-gem text-dark me-1"></i> VIP</h3>
         </div>
-        <div class="card-body">
-          <ul class="list-unstyled mb-4">
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Incluye Básico + Premium</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Garantía de 2 meses</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Reemplazos ilimitados</li>
-            <li class="mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Atención VIP preferente</li>
-            <li><i class="bi bi-check-circle-fill text-dark me-2"></i>Seguimiento continuo</li>
+        <div class="p-3">
+          <ul class="list-unstyled mb-3">
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Incluye Básico + Premium</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Garantía 2 meses</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Reemplazos ilimitados</li>
+            <li class="feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Atención preferente</li>
+            <li class="feature"><i class="bi bi-check-circle-fill text-dark me-2"></i>Seguimiento continuo</li>
           </ul>
           <div class="text-center">
-            <span class="display-5 fw-bold">RD$7,500</span>
-            <small class="d-block text-muted">Servicio de excelencia</small>
+            <div class="price fw-bold">RD$7,500</div>
+            <small class="text-muted d-block">Servicio de excelencia</small>
+            <a href="{{ url_for('clientes.nueva_solicitud') }}"
+               class="btn btn-dark w-100 mt-3">Elegir VIP</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- COMPARATIVA -->
+  <div class="card mt-5 plan-card">
+    <div class="card-header bg-light">
+      <h5 class="mb-0"><i class="bi bi-table me-2 text-primary"></i>Comparar características</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table compare mb-0">
+          <thead>
+            <tr>
+              <th>Característica</th>
+              <th class="text-center">Básico</th>
+              <th class="text-center">Premium</th>
+              <th class="text-center">VIP</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Depuración policial</td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+            </tr>
+            <tr>
+              <td>Presentación de candidata</td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+            </tr>
+            <tr>
+              <td>Garantía</td>
+              <td class="text-center">15 días</td>
+              <td class="text-center">1 mes</td>
+              <td class="text-center">2 meses</td>
+            </tr>
+            <tr>
+              <td>Reemplazos incluidos</td>
+              <td class="text-center">1</td>
+              <td class="text-center">2</td>
+              <td class="text-center">Ilimitados</td>
+            </tr>
+            <tr>
+              <td>Test de compatibilidad</td>
+              <td class="text-center"><i class="bi bi-dash-lg text-muted"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+            </tr>
+            <tr>
+              <td>Horario ajustable</td>
+              <td class="text-center"><i class="bi bi-dash-lg text-muted"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+            </tr>
+            <tr>
+              <td>Atención prioritaria</td>
+              <td class="text-center"><i class="bi bi-dash-lg text-muted"></i></td>
+              <td class="text-center"><i class="bi bi-dash-lg text-muted"></i></td>
+              <td class="text-center"><i class="bi bi-check2-circle text-success"></i></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREGUNTAS -->
+  <div class="row g-4 mt-4">
+    <div class="col-lg-6">
+      <div class="card plan-card h-100">
+        <div class="card-header bg-light"><strong><i class="bi bi-patch-question me-2 text-primary"></i>Preguntas frecuentes</strong></div>
+        <div class="card-body">
+          <div class="mb-3">
+            <div class="fw-semibold">¿Cómo pago el plan?</div>
+            <div class="text-secondary">Coordinamos por WhatsApp o transferencia. Recibirás tu factura.</div>
+          </div>
+          <div class="mb-3">
+            <div class="fw-semibold">¿Puedo cambiar de plan?</div>
+            <div class="text-secondary">Sí, puedes subir o bajar de plan en cualquier momento.</div>
+          </div>
+          <div>
+            <div class="fw-semibold">¿Qué pasa si la candidata no se adapta?</div>
+            <div class="text-secondary">Aplicamos la garantía y gestionamos el reemplazo según tu plan.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card plan-card h-100">
+        <div class="card-header bg-light"><strong><i class="bi bi-telephone-forward me-2 text-primary"></i>¿Necesitas ayuda?</strong></div>
+        <div class="card-body">
+          <p class="text-secondary">
+            Escríbenos y te orientamos para elegir el plan correcto según tus necesidades.
+          </p>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-success"
+               href="https://wa.me/18094296892?text=Hola%2C%20quiero%20ayuda%20para%20elegir%20un%20plan"
+               target="_blank" rel="noopener">
+              <i class="bi bi-whatsapp me-1"></i> WhatsApp
+            </a>
+            <a class="btn btn-outline-primary" href="{{ url_for('clientes.ayuda') }}">
+              <i class="bi bi-life-preserver me-1"></i> Centro de ayuda
+            </a>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Detalles de características ampliados -->
-  <div class="mt-5">
-    <h4 class="mb-4 text-center">¿Qué incluye cada característica?</h4>
-    <div class="row g-4">
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Depuración policial</h5>
-          <p>
-            Verificamos personalmente ante las autoridades el historial de antecedentes
-            penales de cada candidata. Garantizamos que no existan registros comprometidos,
-            protegiendo tu seguridad y la de tu hogar.
-          </p>
-          <small class="text-muted fst-italic">Disponible en todos los planes</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Presentación de la candidata</h5>
-          <p>
-            Organiza una breve reunión virtual o presencial para conocer a la candidata antes
-            de iniciar. Podrás evaluar su perfil y resolver dudas, asegurando una buena elección.
-          </p>
-          <small class="text-muted fst-italic">Disponible en todos los planes</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Garantía</h5>
-          <p>
-            Si la candidata no cumple tus expectativas, ofrecemos reemplazo gratuito dentro
-            del periodo: 15 días (Básico), 1 mes (Premium) o 2 meses (VIP). Sin letra pequeña.
-          </p>
-          <small class="text-muted fst-italic">Se ajusta a cada plan</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Reemplazos</h5>
-          <p>
-            Ofrecemos reemplazos gratuitos conforme a tu plan: 1 para Básico, 2 para Premium,
-            e ilimitados para VIP. Coordinamos el proceso de forma rápida y eficiente.
-          </p>
-          <small class="text-muted fst-italic">Según tu plan</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Entrevista</h5>
-          <p>
-            Sesión guiada por un coordinador: preguntas clave sobre tus necesidades en 
-            limpieza, cocina o cuidado. Disponible virtual o presencial.
-          </p>
-          <small class="text-muted fst-italic">Todos los planes</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Test de compatibilidad</h5>
-          <p>
-            Cuestionario detallado que empareja preferencias de horario, estilo de trabajo 
-            y personalidad para maximizar la satisfacción.
-          </p>
-          <small class="text-muted fst-italic">Premium y VIP</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Horario personalizado</h5>
-          <p>
-            Adaptamos los turnos según tu rutina: mañanas, noches, fines de semana o franjas mixtas.
-            Coordinación anticipada para tu comodidad.
-          </p>
-          <small class="text-muted fst-italic">Premium y VIP</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Atención VIP</h5>
-          <p>
-            Canal directo con nuestro equipo: tus solicitudes reciben prioridad frente a otros clientes,
-            asegurando respuestas y soluciones rápidas cuando lo necesites.
-          </p>
-          <small class="text-muted fst-italic">Plan VIP</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Seguimiento personalizado</h5>
-          <p>
-            Reportes quincenales con métricas de desempeño, cumplimiento de tareas y recomendaciones
-            para optimizar el servicio.
-          </p>
-          <small class="text-muted fst-italic">Plan VIP</small>
-        </div>
-      </div>
-
-      <div class="col-md-6">
-        <div class="p-4 bg-light rounded shadow-sm h-100">
-          <h5>Orientación al personal</h5>
-          <p>
-            Capacitación inicial sobre limpieza, cocina y cuidado de personas. Protocolos y mejores prácticas
-            para un servicio profesional desde el primer día.
-          </p>
-          <small class="text-muted fst-italic">Todos los planes</small>
-        </div>
-      </div>
-
-    </div>
+  <!-- CTA FINAL -->
+  <div class="text-center mt-5">
+    <p class="text-secondary mb-2">¿Listo para comenzar?</p>
+    <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary me-2">
+      <i class="bi bi-clipboard2-plus me-1"></i> Crear solicitud ahora
+    </a>
+    <a href="{{ url_for('clientes.dashboard') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-house-door me-1"></i> Ir a mi panel
+    </a>
   </div>
+
 </div>
 {% endblock %}

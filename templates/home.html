@@ -16,11 +16,12 @@
           </p>
         </div>
         <div>
-          <a href="{{ url_for('admin.login') }}"
-             class="btn btn-light"
-             style="font-weight: bold;">
+          {% set admin_login_url = url_for_safe('admin.login') %}
+          {% if admin_login_url %}
+          <a href="{{ admin_login_url }}" class="btn btn-light" style="font-weight: bold;">
             🔑 Ingresar Administrador
           </a>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -37,6 +38,8 @@
       <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-2">
 
         <!-- Buscar / Editar -->
+        {% set buscar_url = url_for_safe('buscar_candidata') %}
+        {% if buscar_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -45,14 +48,15 @@
               <p class="card-text flex-grow-1">
                 Busca cualquier candidata por nombre o cédula y edita sus datos inline.
               </p>
-              <a href="{{ url_for('buscar_candidata') }}" class="btn btn-primary mt-auto">
-                Ir a Buscar/Editar
-              </a>
+              <a href="{{ buscar_url }}" class="btn btn-primary mt-auto">Ir a Buscar/Editar</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Inscripción -->
+        {% set insc_url = url_for_safe('inscripcion') %}
+        {% if insc_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -61,14 +65,15 @@
               <p class="card-text flex-grow-1">
                 Registra la inscripción de candidatas, asigna código, monto y fecha.
               </p>
-              <a href="{{ url_for('inscripcion') }}" class="btn btn-primary mt-auto">
-                Ir a Inscripción
-              </a>
+              <a href="{{ insc_url }}" class="btn btn-primary mt-auto">Ir a Inscripción</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Porciento -->
+        {% set porc_url = url_for_safe('porciento') %}
+        {% if porc_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -77,14 +82,15 @@
               <p class="card-text flex-grow-1">
                 Calcula los porcentajes pendientes de las candidatas y marca estado.
               </p>
-              <a href="{{ url_for('porciento') }}" class="btn btn-primary mt-auto">
-                Ir a Porcentaje
-              </a>
+              <a href="{{ porc_url }}" class="btn btn-primary mt-auto">Ir a Porcentaje</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Pagos -->
+        {% set pagos_url = url_for_safe('pagos') %}
+        {% if pagos_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -93,14 +99,15 @@
               <p class="card-text flex-grow-1">
                 Gestiona pagos pendientes, registra abonos y calificaciones.
               </p>
-              <a href="{{ url_for('pagos') }}" class="btn btn-primary mt-auto">
-                Ir a Pagos
-              </a>
+              <a href="{{ pagos_url }}" class="btn btn-primary mt-auto">Ir a Pagos</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Filtrar General -->
+        {% set filtrar_url = url_for_safe('filtrar') %}
+        {% if filtrar_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -109,14 +116,15 @@
               <p class="card-text flex-grow-1">
                 Filtra por ciudad, rutas, modalidad, experiencia y áreas.
               </p>
-              <a href="{{ url_for('filtrar') }}" class="btn btn-primary mt-auto">
-                Ir a Filtrar
-              </a>
+              <a href="{{ filtrar_url }}" class="btn btn-primary mt-auto">Ir a Filtrar</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Estadísticas de Procesos -->
+        {% set dash_proc_url = url_for_safe('dashboard_procesos') %}
+        {% if dash_proc_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -125,14 +133,15 @@
               <p class="card-text flex-grow-1">
                 Totales, entradas diarias y desglose por estado.
               </p>
-              <a href="{{ url_for('dashboard_procesos') }}" class="btn btn-primary mt-auto">
-                Ver Dashboard
-              </a>
+              <a href="{{ dash_proc_url }}" class="btn btn-primary mt-auto">Ver Dashboard</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Finalizar Proceso -->
+        {% set finproc_url = url_for_safe('finalizar_proceso') %}
+        {% if finproc_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -141,12 +150,11 @@
               <p class="card-text flex-grow-1">
                 Completa el proceso de selección: sube fotos, asigna grupos y actualiza estado.
               </p>
-              <a href="{{ url_for('finalizar_proceso') }}" class="btn btn-primary mt-auto">
-                Ir a Finalizar
-              </a>
+              <a href="{{ finproc_url }}" class="btn btn-primary mt-auto">Ir a Finalizar</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
       </div>
     </div>
@@ -156,6 +164,8 @@
       <h2 class="h4">📊 Reportes</h2>
       <div class="row row-cols-1 row-cols-md-2 g-4 mt-2">
         <!-- Reporte de Inscripciones -->
+        {% set rep_insc_url = url_for_safe('reporte_inscripciones') %}
+        {% if rep_insc_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -164,13 +174,15 @@
               <p class="card-text flex-grow-1">
                 Filtra inscripciones por mes/año. Descarga en Excel o visualiza online.
               </p>
-              <a href="{{ url_for('reporte_inscripciones') }}" class="btn btn-secondary mt-auto">
-                Ver Reporte Inscripciones
-              </a>
+              <a href="{{ rep_insc_url }}" class="btn btn-secondary mt-auto">Ver Reporte Inscripciones</a>
             </div>
           </div>
         </div>
+        {% endif %}
+
         <!-- Reporte de Pagos -->
+        {% set rep_pagos_url = url_for_safe('reporte_pagos') %}
+        {% if rep_pagos_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -179,12 +191,11 @@
               <p class="card-text flex-grow-1">
                 Genera PDF con los pagos pendientes de todas las candidatas.
               </p>
-              <a href="{{ url_for('reporte_pagos') }}" class="btn btn-secondary mt-auto">
-                Ver Reporte Pagos
-              </a>
+              <a href="{{ rep_pagos_url }}" class="btn btn-secondary mt-auto">Ver Reporte Pagos</a>
             </div>
           </div>
         </div>
+        {% endif %}
       </div>
     </div>
 
@@ -193,21 +204,25 @@
       <h2 class="h4">📁 Documentos</h2>
       <div class="row row-cols-1 row-cols-md-2 g-4 mt-2">
         <!-- Subir Fotos -->
+        {% set subir_fotos_url = url_for_safe('subir_fotos.subir_fotos') %}
+        {% if subir_fotos_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
               <i class="fas fa-folder-plus fa-2x mb-3"></i>
               <h5 class="card-title">📤 Subir Fotos</h5>
               <p class="card-text flex-grow-1">
-                Sube imágenes de candidatas a Cloudinary y guarda URLs en la base.
+                Sube imágenes de candidatas y guarda en la base de datos.
               </p>
-              <a href="{{ url_for('subir_fotos.subir_fotos') }}" class="btn btn-info mt-auto">
-                Ir a Subir Fotos
-              </a>
+              <a href="{{ subir_fotos_url }}" class="btn btn-info mt-auto">Ir a Subir Fotos</a>
             </div>
           </div>
         </div>
+        {% endif %}
+
         <!-- Gestionar Archivos -->
+        {% set gest_arch_url = url_for_safe('gestionar_archivos') %}
+        {% if gest_arch_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -216,13 +231,15 @@
               <p class="card-text flex-grow-1">
                 Descarga o visualiza documentos y entrevistas de candidatas.
               </p>
-              <a href="{{ url_for('gestionar_archivos') }}" class="btn btn-info mt-auto">
-                Ir a Gestionar Archivos
-              </a>
+              <a href="{{ gest_arch_url }}" class="btn btn-info mt-auto">Ir a Gestionar Archivos</a>
             </div>
           </div>
         </div>
+        {% endif %}
+
         <!-- Referencias -->
+        {% set ref_url = url_for_safe('referencias') %}
+        {% if ref_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -231,13 +248,15 @@
               <p class="card-text flex-grow-1">
                 Busca y edita las referencias laborales y familiares de una candidata.
               </p>
-              <a href="{{ url_for('referencias') }}" class="btn btn-info mt-auto">
-                Ir a Referencias
-              </a>
+              <a href="{{ ref_url }}" class="btn btn-info mt-auto">Ir a Referencias</a>
             </div>
           </div>
         </div>
+        {% endif %}
+
         <!-- Entrevista -->
+        {% set entrevista_url = url_for_safe('entrevista') %}
+        {% if entrevista_url %}
         <div class="col">
           <div class="card h-100 shadow-sm">
             <div class="card-body d-flex flex-column">
@@ -246,12 +265,11 @@
               <p class="card-text flex-grow-1">
                 Realiza y guarda entrevistas dinámicas directamente en la base de datos.
               </p>
-              <a href="{{ url_for('entrevista') }}" class="btn btn-info mt-auto">
-                Ir a Entrevista
-              </a>
+              <a href="{{ entrevista_url }}" class="btn btn-info mt-auto">Ir a Entrevista</a>
             </div>
           </div>
         </div>
+        {% endif %}
 
       </div>
     </div>

@@ -3,42 +3,94 @@
 
 {% block content %}
 <div class="container py-5">
-  <h1>📋 Reporte de Inscripciones</h1>
+  <h1 class="mb-4">📋 Reporte de Inscripciones</h1>
 
-  <form method="get" action="{{ url_for('reporte_inscripciones') }}" class="row g-3 mb-4">
-    <!-- CSRF Token -->
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <form id="form-reporte-insc" method="get" action="{{ url_for('reporte_inscripciones') }}" class="row g-3 mb-4">
+    <!-- No se necesita CSRF en GET -->
 
     <div class="col-sm-6">
       <label for="mes" class="form-label">Mes (1–12)</label>
-      <input type="number" id="mes" name="mes" min="1" max="12" value="{{ mes }}" class="form-control" required />
+      <input
+        type="number"
+        id="mes"
+        name="mes"
+        min="1"
+        max="12"
+        step="1"
+        value="{{ mes }}"
+        class="form-control"
+        required
+      />
+      <div class="form-text">Ingresa un número entre 1 y 12.</div>
     </div>
+
     <div class="col-sm-6">
       <label for="anio" class="form-label">Año</label>
-      <input type="number" id="anio" name="anio" value="{{ anio }}" class="form-control" required />
+      <input
+        type="number"
+        id="anio"
+        name="anio"
+        min="2000"
+        step="1"
+        value="{{ anio }}"
+        class="form-control"
+        required
+      />
+      <div class="form-text">Ejemplo: 2025</div>
     </div>
-    <div class="col-12">
-      <button type="submit" class="btn btn-primary">Buscar</button>
+
+    <div class="col-12 d-flex gap-2">
+      <button type="submit" class="btn btn-primary" id="btn-buscar">
+        Buscar
+      </button>
+
+      {% if reporte_html %}
+      <a
+        id="btn-descargar"
+        href="{{ url_for('reporte_inscripciones', mes=mes, anio=anio, descargar='1') }}"
+        class="btn btn-outline-success"
+      >
+        📥 Descargar Excel
+      </a>
+      {% endif %}
+    </div>
+
+    <!-- Spinner de carga -->
+    <div id="loading" class="d-none">
+      <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+      Cargando…
     </div>
   </form>
 
   {% if reporte_html %}
-    <h2 class="mt-4">Resultados para {{ mes }}/{{ anio }}</h2>
+    <h2 class="mt-2">Resultados para {{ "%02d"|format(mes|int) }}/{{ anio }}</h2>
     <div class="table-responsive mb-3">
       {{ reporte_html | safe }}
     </div>
-    <a 
-      href="{{ url_for('reporte_inscripciones', mes=mes, anio=anio, descargar='1') }}"
-      class="btn btn-outline-success"
-    >
-      📥 Descargar Excel
-    </a>
   {% else %}
-    <p class="alert alert-warning mt-4">
+    <p class="alert alert-warning mt-4 mb-0">
       {{ mensaje or 'No se encontraron inscripciones en este período.' }}
     </p>
   {% endif %}
 
   <a href="{{ url_for('home') }}" class="btn btn-secondary mt-4">🏠 Volver al Inicio</a>
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function() {
+    const form = document.getElementById('form-reporte-insc');
+    const btnBuscar = document.getElementById('btn-buscar');
+    const loading = document.getElementById('loading');
+
+    if (form) {
+      form.addEventListener('submit', function() {
+        if (btnBuscar) btnBuscar.disabled = true;
+        if (loading) loading.classList.remove('d-none');
+      });
+    }
+  })();
+</script>
 {% endblock %}

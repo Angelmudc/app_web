@@ -1,98 +1,129 @@
+{# templates/clientes/dashboard.html #}
 {% extends "clientes/base.html" %}
-{% block title %}Inicio{% endblock %}
+{% block title %}Panel del Cliente{% endblock %}
 
 {% block content %}
-  <!-- ACCESOS RÁPIDOS -->
-  <div class="row g-4 mb-5">
-    <!-- Total de solicitudes -->
-    <div class="col-md-3">
-      <div class="card text-white bg-primary h-100 shadow-sm">
-        <div class="card-body d-flex flex-column justify-content-center align-items-center">
-          <h5 class="card-title">Total de Solicitudes</h5>
-          <p class="display-4 mb-0">{{ total_solicitudes }}</p>
+<div class="container py-4">
+
+  {# ===== Accesos rápidos ===== #}
+  <div class="row g-4 mb-4">
+    <div class="col-12 col-md-3">
+      <div class="card h-100 shadow-sm border-0">
+        <div class="card-body text-center">
+          <div class="display-5 fw-bold text-primary">{{ total_solicitudes }}</div>
+          <div class="text-muted">Total de solicitudes</div>
         </div>
       </div>
     </div>
 
-    <!-- Crear nueva solicitud -->
-    <div class="col-md-3">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body d-flex flex-column justify-content-center align-items-center">
-          <h5 class="card-title">Nueva Solicitud</h5>
-          <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success mt-2">
-            + Crear
+    <div class="col-12 col-md-3">
+      <div class="card h-100 shadow-sm border-0">
+        <div class="card-body d-flex flex-column align-items-center justify-content-center">
+          <div class="fw-semibold mb-2">Nueva Solicitud</div>
+          <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success w-100">
+            <i class="bi bi-plus-lg me-1"></i> Crear
           </a>
         </div>
       </div>
     </div>
 
-    <!-- Información de la empresa -->
-    <div class="col-md-3">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body d-flex flex-column justify-content-center align-items-center">
-          <h5 class="card-title">Información</h5>
-          <p class="text-center mb-2">Quiénes somos, cómo funciona el servicio, horarios de atención…</p>
-          <a href="{{ url_for('clientes.informacion') }}" class="btn btn-outline-primary">
-            Ver
+    <div class="col-12 col-md-3">
+      <div class="card h-100 shadow-sm border-0">
+        <div class="card-body d-flex flex-column align-items-center justify-content-center">
+          <div class="fw-semibold mb-2">Información</div>
+          <p class="small text-muted text-center mb-2">Quiénes somos, cómo funciona y horarios.</p>
+          <a href="{{ url_for('clientes.informacion') }}" class="btn btn-outline-primary w-100">
+            <i class="bi bi-info-circle me-1"></i> Ver
           </a>
         </div>
       </div>
     </div>
 
-    <!-- Conoce nuestros planes -->
-    <div class="col-md-3">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body d-flex flex-column justify-content-center align-items-center">
-          <h5 class="card-title">Planes</h5>
-          <p class="text-center mb-2">Básico, Premium y VIP con garantías y reemplazos.</p>
-          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary">
-            Ver
+    <div class="col-12 col-md-3">
+      <div class="card h-100 shadow-sm border-0">
+        <div class="card-body d-flex flex-column align-items-center justify-content-center">
+          <div class="fw-semibold mb-2">Planes</div>
+          <p class="small text-muted text-center mb-2">Básico, Premium y VIP.</p>
+          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary w-100">
+            <i class="bi bi-grid me-1"></i> Ver
           </a>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ÚLTIMAS SOLICITUDES -->
-  <div class="card shadow-sm">
-    <div class="card-header bg-light">
-      <h5 class="mb-0">Últimas Solicitudes</h5>
+  {# ===== Últimas solicitudes ===== #}
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-white">
+      <div class="d-flex align-items-center justify-content-between">
+        <h5 class="mb-0">Últimas solicitudes</h5>
+        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="small text-decoration-none">
+          Ver todas →
+        </a>
+      </div>
     </div>
-    <ul class="list-group list-group-flush">
-      {% if recientes %}
+
+    <div class="list-group list-group-flush">
+      {% if recientes and recientes|length > 0 %}
         {% for s in recientes %}
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-              <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}">
-                <strong>{{ s.codigo_solicitud }}</strong>
-              </a>
-              <br>
-              <small class="text-muted">
-                {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
-                {% if s.last_copiado_at and s.last_copiado_at.date() == now().date() %}
-                  <span class="badge bg-danger ms-2">Publicado hoy</span>
-                {% endif %}
-              </small>
+          <div class="list-group-item">
+            <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+              <div>
+                <a class="fw-semibold text-decoration-none" href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}">
+                  {{ s.codigo_solicitud }}
+                </a>
+                <div class="small text-muted mt-1">
+                  {{ (s.fecha_solicitud or now()).strftime('%d/%m/%Y') }}
+                  {% if s.last_copiado_at and s.last_copiado_at.date() == now().date() %}
+                    <span class="badge bg-danger ms-2">Publicado hoy</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              {# Mapeo visual de estado #}
+              {% set estado = (s.estado or 'proceso') %}
+              {% set badge_class =
+                  'bg-secondary' if estado=='proceso' else
+                  'bg-primary'   if estado=='activa'  else
+                  'bg-success'   if estado=='pagada'  else
+                  'bg-warning text-dark' if estado=='cancelada' else
+                  'bg-info'
+              %}
+              <span class="badge {{ badge_class }} align-self-center text-wrap">
+                {{ estado|capitalize }}
+              </span>
             </div>
-            <span class="badge 
-              {% if s.estado == 'proceso' %}bg-secondary
-              {% elif s.estado == 'activa' %}bg-primary
-              {% elif s.estado == 'pagada' %}bg-success
-              {% elif s.estado == 'cancelada' %}bg-warning text-dark
-              {% else %}bg-info{% endif %} 
-              text-white">
-              {{ s.estado }}
-            </span>
-          </li>
+          </div>
         {% endfor %}
       {% else %}
-        <li class="list-group-item text-center text-muted">
-          No tienes solicitudes recientes.
-        </li>
+        <div class="list-group-item text-center py-5">
+          <div class="mb-2"><i class="bi bi-inbox text-muted" style="font-size:2rem;"></i></div>
+          <p class="text-muted mb-3">Aún no tienes solicitudes recientes.</p>
+          <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i> Crear mi primera solicitud
+          </a>
+        </div>
       {% endif %}
-    </ul>
-    <div class="card-footer text-end">
-      <a href="{{ url_for('clientes.listar_solicitudes') }}">Ver todas →</a>
     </div>
   </div>
+
+  {# ===== Soporte rápido ===== #}
+  <div class="card shadow-sm border-0 mt-4">
+    <div class="card-body d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
+      <div>
+        <h6 class="mb-1">¿Necesitas ayuda?</h6>
+        <p class="mb-0 text-muted small">Contáctanos por el Centro de Ayuda. Tiempo de respuesta promedio: &lt; 24 h.</p>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-chat-dots me-1"></i> Centro de ayuda
+        </a>
+        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-primary">
+          <i class="bi bi-card-checklist me-1"></i> Mis solicitudes
+        </a>
+      </div>
+    </div>
+  </div>
+
+</div>
 {% endblock %}

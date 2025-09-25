@@ -1,184 +1,230 @@
+{# templates/admin/cliente_detail.html #}
 {% extends 'base.html' %}
 {% block title %}Detalle Cliente{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <!-- Encabezado -->
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3">Cliente: {{ cliente.nombre_completo }}</h1>
-    <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
-      <i class="bi bi-pencil-fill"></i> Editar Cliente
-    </a>
+<div class="container py-4 py-md-5" style="max-width: 1200px;">
+
+  <!-- ===== Encabezado ===== -->
+  <div class="d-flex flex-wrap justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+    <div class="d-flex align-items-start gap-3">
+      <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
+           style="width:52px;height:52px; font-weight:700;">
+        {{ (cliente.nombre_completo or 'C').strip()[0]|upper }}
+      </div>
+      <div>
+        <h1 class="h3 mb-1">Cliente: {{ cliente.nombre_completo | default('—') }}</h1>
+        <div class="text-muted small">
+          <span class="me-2">Código: <span class="fw-semibold">{{ cliente.codigo | default('—') }}</span></span>
+          <span class="me-2">Registrado: {{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}</span>
+          <span>Solicitudes: <span class="fw-semibold">{{ cliente.total_solicitudes | default(0) }}</span></span>
+        </div>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
+        <i class="bi bi-pencil-fill me-1"></i> Editar Cliente
+      </a>
+      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-light">
+        <i class="bi bi-arrow-left-short me-1"></i> Volver
+      </a>
+    </div>
   </div>
 
-  <!-- Datos principales -->
+  <!-- ===== Tarjetas de info ===== -->
   <div class="row g-4">
-    <div class="col-md-6">
-      <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">
-          <i class="bi bi-person-circle"></i> Información General
+    <div class="col-lg-6">
+      <div class="card shadow-sm border-0 rounded-4 h-100">
+        <div class="card-header bg-primary text-white rounded-top-4 d-flex align-items-center gap-2">
+          <i class="bi bi-person-circle"></i>
+          <span>Información General</span>
         </div>
         <dl class="row card-body mb-0">
-          <dt class="col-sm-4">Código</dt>
-          <dd class="col-sm-8">{{ cliente.codigo }}</dd>
-
           <dt class="col-sm-4">Email</dt>
-          <dd class="col-sm-8">{{ cliente.email }}</dd>
+          <dd class="col-sm-8">{{ cliente.email | default('—') }}</dd>
 
           <dt class="col-sm-4">Teléfono</dt>
-          <dd class="col-sm-8">{{ cliente.telefono }}</dd>
+          <dd class="col-sm-8">{{ cliente.telefono | default('—') }}</dd>
 
           <dt class="col-sm-4">Ciudad</dt>
-          <dd class="col-sm-8">{{ cliente.ciudad or '—' }}</dd>
+          <dd class="col-sm-8">{{ cliente.ciudad | default('—') }}</dd>
 
           <dt class="col-sm-4">Sector</dt>
-          <dd class="col-sm-8">{{ cliente.sector or '—' }}</dd>
+          <dd class="col-sm-8">{{ cliente.sector | default('—') }}</dd>
         </dl>
       </div>
     </div>
 
-    <!-- Métricas y fechas -->
-    <div class="col-md-6">
-      <div class="card shadow-sm">
-        <div class="card-header bg-info text-white">
-          <i class="bi bi-bar-chart-fill"></i> Métricas
+    <div class="col-lg-6">
+      <div class="card shadow-sm border-0 rounded-4 h-100">
+        <div class="card-header bg-info text-white rounded-top-4 d-flex align-items-center gap-2">
+          <i class="bi bi-bar-chart-fill"></i>
+          <span>Métricas</span>
         </div>
         <dl class="row card-body mb-0">
-          <dt class="col-sm-5">Total de Solicitudes</dt>
-          <dd class="col-sm-7">{{ cliente.total_solicitudes }}</dd>
+          <dt class="col-sm-6">Total de Solicitudes</dt>
+          <dd class="col-sm-6">{{ cliente.total_solicitudes | default(0) }}</dd>
 
-          <dt class="col-sm-5">Última Solicitud</dt>
-          <dd class="col-sm-7">
-            {{ cliente.fecha_ultima_solicitud 
-               and cliente.fecha_ultima_solicitud.strftime('%Y-%m-%d') 
-               or '—' }}
+          <dt class="col-sm-6">Última Solicitud</dt>
+          <dd class="col-sm-6">
+            {{ cliente.fecha_ultima_solicitud and cliente.fecha_ultima_solicitud.strftime('%Y-%m-%d') or '—' }}
           </dd>
 
-          <dt class="col-sm-5">Registro</dt>
-          <dd class="col-sm-7">{{ cliente.fecha_registro.strftime('%Y-%m-%d') }}</dd>
+          <dt class="col-sm-6">Registro</dt>
+          <dd class="col-sm-6">
+            {{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}
+          </dd>
 
-          <dt class="col-sm-5">Última Actividad</dt>
-          <dd class="col-sm-7">
-            {{ cliente.fecha_ultima_actividad 
-               and cliente.fecha_ultima_actividad.strftime('%Y-%m-%d') 
-               or '—' }}
+          <dt class="col-sm-6">Última Actividad</dt>
+          <dd class="col-sm-6">
+            {{ cliente.fecha_ultima_actividad and cliente.fecha_ultima_actividad.strftime('%Y-%m-%d') or '—' }}
           </dd>
         </dl>
       </div>
     </div>
   </div>
 
-  <!-- Notas administrativas -->
-  <div class="card mt-4 shadow-sm">
-    <div class="card-header bg-secondary text-white">
-      <i class="bi bi-sticky-fill"></i> Notas Administrativas
+  <!-- ===== Notas ===== -->
+  <div class="card mt-4 shadow-sm border-0 rounded-4">
+    <div class="card-header bg-secondary text-white rounded-top-4 d-flex align-items-center gap-2">
+      <i class="bi bi-sticky-fill"></i>
+      <span>Notas Administrativas</span>
     </div>
     <div class="card-body">
       {% if cliente.notas_admin %}
-        <p>{{ cliente.notas_admin }}</p>
+        <p class="mb-0" style="white-space: pre-wrap;">{{ cliente.notas_admin }}</p>
       {% else %}
         <p class="text-muted mb-0">No hay notas registradas.</p>
       {% endif %}
     </div>
   </div>
 
-  <!-- Solicitudes del cliente -->
+  <!-- ===== Solicitudes ===== -->
   <div class="mt-5">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h2 class="h4">Solicitudes</h2>
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">Solicitudes</h2>
       <a href="{{ url_for('admin.nueva_solicitud_admin', cliente_id=cliente.id) }}" class="btn btn-success">
-        <i class="bi bi-plus-lg"></i> Nueva Solicitud
+        <i class="bi bi-plus-lg me-1"></i> Nueva Solicitud
       </a>
     </div>
 
-    <table class="table table-hover table-bordered align-middle shadow-sm">
-      <thead class="table-light">
-        <tr>
-          <th>Código</th>
-          <th>Fecha</th>
-          <th>Ciudad/Sector</th>
-          <th>Modalidad</th>
-          <th>Plan</th>
-          <th>Estado</th>
-          <th class="text-center">Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for s in cliente.solicitudes %}
-        <tr>
-          <td>{{ s.codigo_solicitud }}</td>
-          <td>{{ s.fecha_solicitud.strftime('%Y-%m-%d') }}</td>
-          <td>{{ s.ciudad_sector or '—' }}</td>
-          <td>{{ s.modalidad_trabajo or '—' }}</td>
-          <td>{{ s.tipo_plan or '—' }}</td>
-          <td>
-            <span class="badge
-              {% if s.estado == 'proceso' %}bg-secondary
-              {% elif s.estado == 'activa' %}bg-primary
-              {% elif s.estado == 'pagada' %}bg-success
-              {% elif s.estado == 'cancelada' %}bg-warning text-dark
-              {% elif s.estado == 'reemplazo' %}bg-info
-              {% else %}bg-light text-dark{% endif %}">
-              {{ s.estado }}
-            </span>
-          </td>
-          <td class="text-nowrap text-center">
-            <!-- Ver -->
-            <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
-               class="btn btn-sm btn-outline-info me-1" title="Ver">
-              <i class="bi bi-eye-fill"></i>
-            </a>
-            <!-- Editar -->
-            <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
-               class="btn btn-sm btn-outline-warning me-1" title="Editar">
-              <i class="bi bi-pencil-fill"></i>
-            </a>
-            <!-- Gestionar Plan -->
-            <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
-               class="btn btn-sm btn-outline-primary me-1" title="Gestionar Plan">
-              <i class="bi bi-credit-card-fill"></i>
-            </a>
-            <!-- Registrar pago -->
-            {% if s.estado in ['activa','proceso'] %}
-            <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}"
-               class="btn btn-sm btn-outline-success me-1" title="Registrar Pago">
-              <i class="bi bi-cash-stack"></i>
-            </a>
-            {% endif %}
-            <!-- Reemplazo -->
-            <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
-               class="btn btn-sm btn-outline-secondary me-1" title="Reemplazo">
-              <i class="bi bi-arrow-repeat"></i>
-            </a>
-            <!-- Cancelar -->
-            {% if s.estado in ['activa','proceso','reemplazo'] %}
-            <form method="post"
-                  action="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id) }}"
-                  class="d-inline"
-                  onsubmit="return confirm('¿Cancelar solicitud {{ s.codigo_solicitud }}?')">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-sm btn-outline-danger" title="Cancelar">
-                <i class="bi bi-x-circle-fill"></i>
-              </button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="7" class="text-center py-4 text-muted">
-            Este cliente no tiene solicitudes aún.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% if cliente.solicitudes|length == 0 %}
+      <div class="border rounded-4 p-4 text-center text-muted">
+        <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+        Aún no hay solicitudes para este cliente.
+      </div>
+    {% else %}
+      <div class="table-responsive shadow-sm rounded-4 overflow-hidden">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:120px;">Código</th>
+              <th style="min-width:110px;">Fecha</th>
+              <th style="min-width:180px;">Ciudad/Sector</th>
+              <th style="min-width:140px;">Modalidad</th>
+              <th style="min-width:110px;">Plan</th>
+              <th style="min-width:140px;">Estado</th>
+              <th class="text-center" style="min-width:360px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in cliente.solicitudes %}
+            <tr>
+              <td class="fw-semibold">{{ s.codigo_solicitud | default('—') }}</td>
+              <td>{{ s.fecha_solicitud and s.fecha_solicitud.strftime('%Y-%m-%d') or '—' }}</td>
+              <td>{{ s.ciudad_sector | default('—') }}</td>
+              <td>{{ s.modalidad_trabajo | default('—') }}</td>
+              <td>{{ s.tipo_plan | default('—') }}</td>
+              <td>
+                {% set badge_class =
+                  'bg-secondary' if s.estado == 'proceso' else
+                  'bg-primary'   if s.estado == 'activa'  else
+                  'bg-success'   if s.estado == 'pagada'  else
+                  'bg-warning text-dark' if s.estado == 'cancelada' else
+                  'bg-info'      if s.estado == 'reemplazo' else
+                  'bg-light text-dark'
+                %}
+                <span class="badge {{ badge_class }}">{{ s.estado | default('—') }}</span>
+              </td>
+              <td class="text-nowrap text-center">
+                <div class="d-flex flex-wrap justify-content-center gap-1">
+                  <!-- Ver -->
+                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
+                     class="btn btn-sm btn-outline-info" data-bs-toggle="tooltip" title="Ver detalle">
+                    <i class="bi bi-eye-fill"></i>
+                  </a>
+
+                  <!-- Editar -->
+                  <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
+                     class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Editar solicitud">
+                    <i class="bi bi-pencil-fill"></i>
+                  </a>
+
+                  <!-- Gestionar Plan -->
+                  <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
+                     class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Plan / Abono">
+                    <i class="bi bi-credit-card-fill"></i>
+                  </a>
+
+                  <!-- Registrar pago -->
+                  {% if s.estado in ['activa','proceso'] %}
+                  <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}?next={{ request.full_path | urlencode }}"
+                     class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Registrar pago">
+                    <i class="bi bi-cash-stack"></i>
+                  </a>
+                  {% endif %}
+
+                  <!-- Reemplazo -->
+                  <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
+                     class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Activar reemplazo">
+                    <i class="bi bi-arrow-repeat"></i>
+                  </a>
+
+                  {% if s.estado in ['activa','proceso','reemplazo'] %}
+                    <!-- Cancelar DIRECTO (rápido, sin motivo) -->
+                    <form method="post"
+                          action="{{ url_for('admin.cancelar_solicitud_directa', id=s.id) }}?next={{ request.full_path | urlencode }}"
+                          class="d-inline"
+                          onsubmit="return confirm('¿Cancelar solicitud {{ s.codigo_solicitud }} sin motivo?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Cancelar rápido (sin motivo)">
+                        <i class="bi bi-x-circle-fill"></i>
+                      </button>
+                    </form>
+
+                    <!-- Cancelar con MOTIVO (formulario) -->
+                    <a class="btn btn-sm btn-danger"
+                       href="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id, next=request.full_path) }}"
+                       data-bs-toggle="tooltip" title="Cancelar con motivo">
+                      <i class="bi bi-x-octagon"></i>
+                    </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
   </div>
 
   <div class="mt-4">
     <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary">
-      <i class="bi bi-arrow-left-circle"></i> Volver a Clientes
+      <i class="bi bi-arrow-left-circle me-1"></i> Volver a Clientes
     </a>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Activar tooltips de Bootstrap
+  (function(){
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function (el) {
+      new bootstrap.Tooltip(el);
+    });
+  })();
+</script>
 {% endblock %}

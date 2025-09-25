@@ -1,125 +1,253 @@
+{# templates/clientes/solicitud_detail.html #}
 {% extends "clientes/base.html" %}
-{% block title %}Detalle {{ s.codigo_solicitud }}{% endblock %}
+{% block title %}Detalle {{ s.codigo_solicitud }} | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<style>
+  .kard{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
+  .kard .kard-h{border-bottom:1px solid rgba(0,0,0,.05);padding:.9rem 1.25rem}
+  .kard .kard-b{padding:1.25rem}
+  .chip{display:inline-flex;align-items:center;gap:.35rem;background:#eef2ff;color:#3730a3;border-radius:999px;padding:.25rem .6rem;font-size:.8rem}
+  .meta dt{color:#475467;width:42%;min-width:160px}
+  .meta dd{margin:0}
+  .timeline{position:relative}
+  .timeline::before{content:"";position:absolute;left:11px;top:0;bottom:0;width:2px;background:#e5e7eb}
+  .t-item{position:relative;padding-left:2.2rem;margin-bottom:1rem}
+  .t-item .dot{position:absolute;left:6px;top:2px;width:12px;height:12px;border-radius:50%;background:#6366f1}
+  .print-zone{page-break-inside:avoid}
+  .badge-state{text-transform:capitalize}
+  @media print{
+    .no-print{display:none!important}
+    .kard{box-shadow:none}
+    .container{max-width:100%}
+    body{background:#fff}
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container py-4">
-  <!-- Encabezado -->
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-      <h2>Solicitud {{ s.codigo_solicitud }}</h2>
-      <small class="text-muted">
+
+  <!-- Header -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+    <div class="me-3 mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <h1 class="h4 mb-0">Solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
+        <button class="btn btn-sm btn-outline-secondary no-print" id="copy-code" title="Copiar código" aria-label="Copiar código">
+          <i class="bi bi-clipboard"></i>
+        </button>
+      </div>
+      <div class="small text-muted mt-1">
         Enviada: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
         {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
           <span class="badge bg-danger ms-2">Publicado hoy</span>
         {% endif %}
-      </small>
+      </div>
     </div>
-    <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">
-      <i class="bi bi-arrow-left-circle"></i> Volver
-    </a>
-  </div>
-
-  <!-- Resumen de la solicitud -->
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header bg-primary text-white">
-      <i class="bi bi-info-circle"></i> Resumen
-    </div>
-    <ul class="list-group list-group-flush">
-      <li class="list-group-item">
-        <strong>Plan:</strong> {{ s.tipo_plan or '—' }}
-      </li>
-      <li class="list-group-item">
-        <strong>Abono:</strong> {{ s.abono or '—' }}
-      </li>
-      <li class="list-group-item">
-        <strong>Candidata asignada:</strong>
-        {{ s.candidata.nombre_completo if s.candidata else '—' }}
-      </li>
-      <li class="list-group-item">
-        <strong>Estado:</strong>
-        <span class="fw-bold">{{ s.estado }}</span>
-      </li>
-      {% if s.estado == 'cancelada' %}
-      <li class="list-group-item bg-warning">
-        <strong>Motivo de cancelación:</strong>
-        {{ s.motivo_cancelacion }}
-      </li>
+    <div class="d-flex gap-2 mb-2 no-print">
+      <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-light">
+        <i class="bi bi-arrow-left-short me-1"></i> Volver
+      </a>
+      <button class="btn btn-outline-secondary" onclick="window.print()">
+        <i class="bi bi-printer me-1"></i> Imprimir
+      </button>
+      {% if s.estado == 'proceso' %}
+        <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}" class="btn btn-primary">
+          <i class="bi bi-pencil-square me-1"></i> Editar
+        </a>
+        <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}" class="btn btn-outline-danger">
+          <i class="bi bi-x-circle me-1"></i> Cancelar
+        </a>
       {% endif %}
-      <li class="list-group-item">
-        <strong>Nota:</strong> {{ s.nota_cliente or '—' }}
-      </li>
-    </ul>
+    </div>
   </div>
 
-  <!-- Información completa (solo si está activa) -->
+  <!-- Resumen -->
+  <div class="kard mb-4 print-zone">
+    <div class="kard-h bg-light d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-info-circle me-2"></i>Resumen</div>
+      <span
+        class="badge badge-state
+          {% if s.estado == 'proceso' %} bg-secondary
+          {% elif s.estado == 'activa' %} bg-primary
+          {% elif s.estado == 'pagada' %} bg-success
+          {% elif s.estado == 'cancelada' %} bg-warning text-dark
+          {% else %} bg-info text-dark {% endif %}">
+        {{ s.estado }}
+      </span>
+    </div>
+    <div class="kard-b">
+      <dl class="row meta">
+        <dt class="col-sm-4">Plan</dt>
+        <dd class="col-sm-8">{{ s.tipo_plan or '—' }}</dd>
+
+        <dt class="col-sm-4">Abono</dt>
+        <dd class="col-sm-8">{{ s.abono or '—' }}</dd>
+
+        <dt class="col-sm-4">Candidata asignada</dt>
+        <dd class="col-sm-8">{{ s.candidata.nombre_completo if s.candidata else '—' }}</dd>
+
+        {% if s.estado == 'cancelada' %}
+          <dt class="col-sm-4 text-danger">Motivo cancelación</dt>
+          <dd class="col-sm-8"><span class="text-danger">{{ s.motivo_cancelacion or '—' }}</span></dd>
+        {% endif %}
+
+        <dt class="col-sm-4">Nota de cliente</dt>
+        <dd class="col-sm-8">{{ s.nota_cliente or '—' }}</dd>
+      </dl>
+      <div class="mt-2">
+        <span class="chip"><i class="bi bi-shield-check"></i> Datos protegidos</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Información completa (solo si activa) -->
   {% if s.estado == 'activa' %}
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header bg-success text-white">
-      <i class="bi bi-list-ul"></i> Información completa
+  <div class="kard mb-4 print-zone">
+    <div class="kard-h bg-success bg-opacity-10 text-success fw-semibold">
+      <i class="bi bi-list-ul me-2"></i>Información completa
     </div>
-    <ul class="list-group list-group-flush">
-      <li class="list-group-item"><strong>Ciudad / Sector:</strong> {{ s.ciudad_sector or '—' }}</li>
-      <li class="list-group-item"><strong>Rutas cercanas:</strong> {{ s.rutas_cercanas or '—' }}</li>
-      <li class="list-group-item"><strong>Modalidad:</strong> {{ s.modalidad_trabajo or '—' }}</li>
-      <li class="list-group-item">
-        <strong>Edad requerida:</strong>
-        {{ s.edad_requerida|join(', ') }}
-      </li>
-      <li class="list-group-item"><strong>Experiencia:</strong> {{ s.experiencia or '—' }}</li>
-      <li class="list-group-item"><strong>Horario:</strong> {{ s.horario or '—' }}</li>
-      <li class="list-group-item"><strong>Funciones:</strong> {{ s.funciones|join(', ') or '—' }}</li>
-      <li class="list-group-item"><strong>Tipo de lugar:</strong> {{ s.tipo_lugar or '—' }}</li>
-      <li class="list-group-item"><strong>Habitaciones:</strong> {{ s.habitaciones or '—' }}</li>
-      <li class="list-group-item"><strong>Baños:</strong> {{ s.banos or '—' }}</li>
-      <li class="list-group-item"><strong>Dos pisos:</strong> {{ 'Sí' if s.dos_pisos else 'No' }}</li>
-      <li class="list-group-item"><strong>Adultos:</strong> {{ s.adultos or '—' }}</li>
-      <li class="list-group-item"><strong>Niños:</strong> {{ s.ninos or '—' }}</li>
-      <li class="list-group-item"><strong>Edades niños:</strong> {{ s.edades_ninos or '—' }}</li>
-      <li class="list-group-item"><strong>Sueldo:</strong> {{ s.sueldo or '—' }}</li>
-      <li class="list-group-item"><strong>Pasaje aporta:</strong> {{ 'Sí' if s.pasaje_aporte else 'No' }}</li>
-      <li class="list-group-item"><strong>Áreas comunes:</strong> {{ s.areas_comunes|join(', ') }}</li>
-      {% if s.area_otro %}
-      <li class="list-group-item"><strong>Otra área:</strong> {{ s.area_otro }}</li>
-      {% endif %}
-    </ul>
+    <div class="kard-b">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <dl class="row meta">
+            <dt class="col-5">Ciudad / Sector</dt><dd class="col-7">{{ s.ciudad_sector or '—' }}</dd>
+            <dt class="col-5">Rutas cercanas</dt><dd class="col-7">{{ s.rutas_cercanas or '—' }}</dd>
+            <dt class="col-5">Modalidad</dt><dd class="col-7">{{ s.modalidad_trabajo or '—' }}</dd>
+            <dt class="col-5">Horario</dt><dd class="col-7">{{ s.horario or '—' }}</dd>
+            <dt class="col-5">Tipo de lugar</dt><dd class="col-7">{{ s.tipo_lugar or '—' }}</dd>
+          </dl>
+        </div>
+        <div class="col-md-6">
+          <dl class="row meta">
+            <dt class="col-5">Edad requerida</dt>
+            <dd class="col-7">{{ (s.edad_requerida or [])|join(', ') or '—' }}</dd>
+
+            <dt class="col-5">Funciones</dt>
+            <dd class="col-7">{{ (s.funciones or [])|join(', ') or '—' }}</dd>
+
+            <dt class="col-5">Experiencia</dt><dd class="col-7">{{ s.experiencia or '—' }}</dd>
+
+            <dt class="col-5">Habitaciones / Baños</dt>
+            <dd class="col-7">
+              {{ s.habitaciones or 0 }} hab · {{ s.banos or 0 }} baños
+            </dd>
+
+            <dt class="col-5">Dos pisos</dt><dd class="col-7">{{ 'Sí' if s.dos_pisos else 'No' }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <dl class="row meta">
+            <dt class="col-5">Adultos</dt><dd class="col-7">{{ s.adultos or 0 }}</dd>
+            <dt class="col-5">Niños</dt><dd class="col-7">{{ s.ninos or 0 }}</dd>
+            <dt class="col-5">Edades niños</dt><dd class="col-7">{{ s.edades_ninos or '—' }}</dd>
+          </dl>
+        </div>
+        <div class="col-md-6">
+          <dl class="row meta">
+            <dt class="col-5">Sueldo</dt><dd class="col-7">{{ s.sueldo or '—' }}</dd>
+            <dt class="col-5">Pasaje aporta</dt><dd class="col-7">{{ 'Sí' if s.pasaje_aporte else 'No' }}</dd>
+            <dt class="col-5">Áreas comunes</dt>
+            <dd class="col-7">{{ (s.areas_comunes or [])|join(', ') or '—' }}</dd>
+            {% if s.area_otro %}
+              <dt class="col-5">Otra área</dt><dd class="col-7">{{ s.area_otro }}</dd>
+            {% endif %}
+          </dl>
+        </div>
+      </div>
+    </div>
   </div>
   {% endif %}
 
   <!-- Seguimiento -->
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header bg-light">
-      <i class="bi bi-clock-history"></i> Seguimiento
+  <div class="kard mb-4 print-zone">
+    <div class="kard-h">
+      <span class="fw-semibold"><i class="bi bi-clock-history me-2"></i>Seguimiento</span>
     </div>
-    <ul class="list-group list-group-flush">
-      {% for e in envios %}
-      <li class="list-group-item">
-        <strong>{{ e.tipo }}:</strong> {{ e.candidata }} — {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
-      </li>
-      {% endfor %}
-      {% if cancelaciones %}
-      <li class="list-group-item bg-warning">
-        <strong>Cancelada:</strong> {{ cancelaciones[0].fecha.strftime('%d/%m/%Y %H:%M') }} — {{ cancelaciones[0].motivo }}
-      </li>
+    <div class="kard-b">
+      {% set hay_mov = (envios and envios|length) or (cancelaciones and cancelaciones|length) %}
+      {% if hay_mov %}
+        <div class="timeline">
+          {% for e in envios %}
+            <div class="t-item">
+              <span class="dot"></span>
+              <div class="fw-semibold">{{ e.tipo }}</div>
+              <div class="text-muted small">
+                {{ e.candidata }} — {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
+              </div>
+            </div>
+          {% endfor %}
+          {% if cancelaciones %}
+            <div class="t-item">
+              <span class="dot" style="background:#f59e0b"></span>
+              <div class="fw-semibold text-warning">Cancelada</div>
+              <div class="text-muted small">
+                {{ cancelaciones[0].fecha.strftime('%d/%m/%Y %H:%M') }} — {{ cancelaciones[0].motivo }}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="text-muted">Sin movimientos aún.</div>
       {% endif %}
-      {% if not envios and not cancelaciones %}
-      <li class="list-group-item text-muted">Sin movimientos aún.</li>
-      {% endif %}
-    </ul>
+    </div>
   </div>
 
-  <!-- Acciones -->
-  <div class="d-flex">
+  <!-- Ayuda y contacto -->
+  <div class="kard mb-4 no-print">
+    <div class="kard-b d-flex flex-wrap align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-life-preserver fs-4 text-primary"></i>
+        <div>
+          <div class="fw-semibold">¿Necesitas ayuda con tu solicitud?</div>
+          <div class="text-muted small">Nuestro equipo de servicio al cliente está disponible en horario laboral.</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-primary">
+          <i class="bi bi-question-circle me-1"></i> Centro de ayuda
+        </a>
+        <a href="{{ url_for('clientes.informacion') }}" class="btn btn-light">
+          <i class="bi bi-info-circle me-1"></i> Información de la agencia
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Acciones inferiores -->
+  <div class="d-flex gap-2 no-print">
     {% if s.estado == 'proceso' %}
-    <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}" class="btn btn-outline-primary me-2">
-      <i class="bi bi-pencil-square"></i> Editar
-    </a>
-    <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}" class="btn btn-outline-danger me-2">
-      <i class="bi bi-x-circle"></i> Cancelar
-    </a>
+      <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}" class="btn btn-primary">
+        <i class="bi bi-pencil-square me-1"></i> Editar
+      </a>
+      <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}" class="btn btn-outline-danger">
+        <i class="bi bi-x-circle me-1"></i> Cancelar
+      </a>
     {% endif %}
-    <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary ms-auto">
-      <i class="bi bi-arrow-left-circle"></i> Volver
+    <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-light ms-auto">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver
     </a>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Copiar código
+  document.getElementById('copy-code')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText('{{ s.codigo_solicitud }}');
+      const btn = document.getElementById('copy-code');
+      btn.innerHTML = '<i class="bi bi-clipboard-check"></i>';
+      btn.classList.add('btn-success','text-white');
+      setTimeout(() => {
+        btn.innerHTML = '<i class="bi bi-clipboard"></i>';
+        btn.classList.remove('btn-success','text-white');
+      }, 1200);
+    } catch(e) {}
+  });
+</script>
 {% endblock %}

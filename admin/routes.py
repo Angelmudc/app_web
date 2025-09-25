@@ -1,12 +1,17 @@
+# -*- coding: utf-8 -*-
 import re
-
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, abort
-from flask_login import login_user, logout_user, login_required, UserMixin, current_user
-from werkzeug.security import check_password_hash
 from datetime import datetime, date, timedelta
+
+from flask import render_template, redirect, url_for, flash, request, jsonify, abort
+from flask_login import login_user, logout_user, login_required, UserMixin, current_user
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from sqlalchemy import or_, func, cast, desc
 from sqlalchemy.types import Numeric
-from functools import wraps
+from sqlalchemy.orm import joinedload  # ➜ para evitar N+1 en copiar_solicitudes
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from functools import wraps  # si otros decoradores locales lo usan
 
 from config_app import db, USUARIOS
 from models import Cliente, Solicitud, Candidata, Reemplazo
@@ -22,30 +27,12 @@ from utils import letra_por_indice
 from . import admin_bp
 from .decorators import admin_required
 
-admin_bp = Blueprint(
-    'admin',
-    __name__,
-    template_folder='../templates/admin'
-)
 
-
-# ——— Decorador para restringir sólo a admins ———
-from functools import wraps
-from flask import abort
-from flask_login import current_user
-
-def admin_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'admin':
-            abort(403)
-        return f(*args, **kwargs)
-    return decorated
-# ———————————————————————————————
-
-
+# =============================================================================
+#                                AUTH
+# =============================================================================
 class AdminUser(UserMixin):
-    def __init__(self, username):
+    def __init__(self, username: str):
         self.id = username
         self.role = USUARIOS[username]['role']
 
@@ -73,6 +60,9 @@ def logout():
     return redirect(url_for('admin.login'))
 
 
+# =============================================================================
+#                            CLIENTES (CRUD BÁSICO)
+# =============================================================================
 @admin_bp.route('/clientes')
 @login_required
 @admin_required
@@ -92,6 +82,94 @@ def listar_clientes():
     return render_template('admin/clientes_list.html', clientes=clientes, q=q)
 
 
+# ─────────────────────────────────────────────────────────────
+# Helpers de limpieza
+# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Helpers locales
+# ─────────────────────────────────────────────────────────────
+def _only_digits(text: str) -> str:
+    return re.sub(r"\D+", "", text or "")
+
+def _norm_cliente_form(form: AdminClienteForm) -> None:
+    """
+    Normaliza/limpia entradas de texto del formulario de cliente.
+    """
+    def _strip(x):
+        return x.strip() if isinstance(x, str) else x
+
+    if hasattr(form, 'codigo') and form.codigo.data:
+        form.codigo.data = _strip(form.codigo.data)
+
+    if hasattr(form, 'nombre_completo') and form.nombre_completo.data:
+        form.nombre_completo.data = _strip(form.nombre_completo.data)
+
+    if hasattr(form, 'email') and form.email.data:
+        # email siempre minúsculas y sin espacios
+        form.email.data = _strip(form.email.data).lower()
+
+    if hasattr(form, 'telefono') and form.telefono.data:
+        # quita espacios extra; respeta guiones si los usas en la UI,
+        # pero además guarda un formato limpio si quisieras
+        form.telefono.data = _strip(form.telefono.data)
+
+    if hasattr(form, 'ciudad') and form.ciudad.data:
+        form.ciudad.data = _strip(form.ciudad.data)
+
+    if hasattr(form, 'sector') and form.sector.data:
+        form.sector.data = _strip(form.sector.data)
+
+    if hasattr(form, 'notas_admin') and form.notas_admin.data:
+        form.notas_admin.data = _strip(form.notas_admin.data)
+
+
+def parse_integrity_error(err: IntegrityError) -> str:
+    """
+    Intenta detectar qué constraint única falló.
+    Retorna 'codigo', 'email' o '' si no se pudo identificar.
+    Funciona para SQLite, MySQL y PostgreSQL en la mayoría de casos.
+    """
+    # MySQL: (1062, "Duplicate entry 'x' for key 'clientes.email'") o ... for key 'email'
+    # SQLite: UNIQUE constraint failed: clientes.email
+    # Postgres: err.orig.diag.constraint_name ej. clientes_email_key
+    msg = ""
+    try:
+        msg = str(getattr(err, "orig", err))
+    except Exception:
+        msg = str(err)
+
+    m = msg.lower()
+
+    # PostgreSQL: usa nombre del constraint
+    try:
+        cstr = getattr(getattr(err, "orig", None), "diag", None)
+        if cstr and getattr(cstr, "constraint_name", None):
+            cname = cstr.constraint_name.lower()
+            if "codigo" in cname:
+                return "codigo"
+            if "email" in cname or "correo" in cname:
+                return "email"
+    except Exception:
+        pass
+
+    # MySQL/SQLite heurística por mensaje
+    if "codigo" in m:
+        return "codigo"
+    if "email" in m or "correo" in m:
+        return "email"
+
+    # MySQL 'for key ...'
+    if "for key" in m and "email" in m:
+        return "email"
+    if "for key" in m and "codigo" in m:
+        return "codigo"
+
+    return ""
+
+
+# ─────────────────────────────────────────────────────────────
+# Crear cliente
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/nuevo', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -99,28 +177,78 @@ def nuevo_cliente():
     form = AdminClienteForm()
 
     if form.validate_on_submit():
-        # 1) Validar unicidad de código
-        existe_codigo = Cliente.query.filter_by(codigo=form.codigo.data).first()
-        if existe_codigo:
-            flash(f"El código «{form.codigo.data}» ya está en uso.", "danger")
-        else:
-            # 2) Crear instancia y poblar campos
+        _norm_cliente_form(form)
+
+        # Unicidad de código (case-sensitive tal como lo tengas en la BD)
+        if Cliente.query.filter(Cliente.codigo == form.codigo.data).first():
+            form.codigo.errors.append("Este código ya está en uso.")
+            flash("El código ya está en uso.", "danger")
+            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+
+        # Unicidad de email, de forma case-insensitive
+        email_norm = (form.email.data or "").lower().strip()
+        if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
+            form.email.errors.append("Este email ya está registrado.")
+            flash("El email ya está registrado.", "danger")
+            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+
+        # Contraseña requerida + confirmación
+        pwd  = (form.password_new.data or '').strip()
+        pwd2 = (form.password_confirm.data or '').strip()
+        if not pwd:
+            form.password_new.errors.append("Debes establecer una contraseña.")
+            flash("Debes establecer una contraseña.", "danger")
+            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+        if pwd != pwd2:
+            form.password_confirm.errors.append("La confirmación de contraseña no coincide.")
+            flash("La confirmación de contraseña no coincide.", "danger")
+            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+
+        try:
             c = Cliente()
             form.populate_obj(c)
-            # 3) Fecha de registro y guardado
+            # Asegura que email quede normalizado
+            c.email = email_norm
+            # Genera hash
+            c.password_hash = generate_password_hash(pwd)
             c.fecha_registro = datetime.utcnow()
+
             db.session.add(c)
+            # fuerza verificación de constraints aquí para capturar el error arriba
+            db.session.flush()
             db.session.commit()
+
             flash('Cliente creado correctamente.', 'success')
             return redirect(url_for('admin.listar_clientes'))
 
-    return render_template(
-        'admin/cliente_form.html',
-        cliente_form=form,
-        nuevo=True
-    )
+        except IntegrityError as e:
+            db.session.rollback()
+            which = parse_integrity_error(e)
+            if which == "codigo":
+                form.codigo.errors.append("Este código ya está en uso.")
+                flash("El código ya está en uso.", "danger")
+            elif which == "email":
+                form.email.errors.append("Este email ya está registrado.")
+                flash("Este email ya está registrado.", "danger")
+            else:
+                flash("Conflicto con datos únicos. Verifica código y/o email.", "danger")
+            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+
+        except Exception:
+            db.session.rollback()
+            flash('Ocurrió un error al crear el cliente. Intenta de nuevo.', 'danger')
+            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+
+    # GET o POST inválido
+    if request.method == 'POST':
+        flash('Revisa los campos marcados en rojo.', 'danger')
+
+    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
 
 
+# ─────────────────────────────────────────────────────────────
+# Editar cliente
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>/editar', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -129,20 +257,61 @@ def editar_cliente(cliente_id):
     form = AdminClienteForm(obj=c)
 
     if form.validate_on_submit():
-        # Actualizar datos básicos
-        form.populate_obj(c)
-        c.fecha_ultima_actividad = datetime.utcnow()
-        db.session.commit()
+        _norm_cliente_form(form)
 
-        flash('Cliente actualizado correctamente.', 'success')
-        return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+        # Si (en el futuro) permites editar código en UI, valida unicidad
+        if form.codigo.data != c.codigo:
+            if Cliente.query.filter(Cliente.codigo == form.codigo.data).first():
+                form.codigo.errors.append("Este código ya está en uso.")
+                flash("El código ya está en uso.", "danger")
+                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
 
-    return render_template(
-        'admin/cliente_form.html',
-        cliente_form=form,
-        nuevo=False
-    )
+        # Validar email (case-insensitive) si cambió
+        email_norm = (form.email.data or "").lower().strip()
+        if email_norm != (c.email or "").lower().strip():
+            if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
+                form.email.errors.append("Este email ya está registrado.")
+                flash("Este email ya está registrado.", "danger")
+                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
 
+        try:
+            form.populate_obj(c)
+            c.email = email_norm
+            # Cambio de contraseña solo si viene y coincide
+            pwd  = (form.password_new.data or '').strip()
+            pwd2 = (form.password_confirm.data or '').strip()
+            if pwd:
+                if pwd != pwd2:
+                    form.password_confirm.errors.append("La confirmación de contraseña no coincide.")
+                    flash("La confirmación de contraseña no coincide.", "danger")
+                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+                c.password_hash = generate_password_hash(pwd)
+
+            c.fecha_ultima_actividad = datetime.utcnow()
+
+            db.session.flush()
+            db.session.commit()
+            flash('Cliente actualizado correctamente.', 'success')
+            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
+        except IntegrityError as e:
+            db.session.rollback()
+            which = parse_integrity_error(e)
+            if which == "codigo":
+                form.codigo.errors.append("Este código ya está en uso.")
+                flash("El código ya está en uso.", "danger")
+            elif which == "email":
+                form.email.errors.append("Este email ya está registrado.")
+                flash("Este email ya está registrado.", "danger")
+            else:
+                flash('No se pudo actualizar: conflicto con datos únicos (p. ej., código o email).', 'danger')
+        except Exception:
+            db.session.rollback()
+            flash('Ocurrió un error al actualizar el cliente. Intenta de nuevo.', 'danger')
+
+    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+
+    
 
 @admin_bp.route('/clientes/<int:cliente_id>/eliminar', methods=['POST'])
 @login_required
@@ -154,6 +323,7 @@ def eliminar_cliente(cliente_id):
     flash('Cliente eliminado.', 'success')
     return redirect(url_for('admin.listar_clientes'))
 
+
 @admin_bp.route('/clientes/<int:cliente_id>')
 @login_required
 @admin_required
@@ -161,8 +331,10 @@ def detalle_cliente(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     return render_template('admin/cliente_detail.html', cliente=c)
 
-# ——— Rutas de Solicitudes y Reemplazos ———
 
+# =============================================================================
+#                      CONSTANTES / CHOICES PARA FORMULARIOS
+# =============================================================================
 AREAS_COMUNES_CHOICES = [
     ('sala', 'Sala'), ('comedor', 'Comedor'),
     ('cocina','Cocina'), ('salon_juegos','Salón de juegos'),
@@ -173,9 +345,111 @@ AREAS_COMUNES_CHOICES = [
 ]
 
 
+# =============================================================================
+#                              HELPERS NUEVOS
+# =============================================================================
+def _norm_area(text: str) -> str:
+    """Reemplaza guiones bajos por espacios y colapsa espacios múltiples."""
+    if not text:
+        return ""
+    s = str(text)
+    s = s.replace("_", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
-# Rutas en tu blueprint admin (reemplaza las funciones existentes)
+def _fmt_banos(value) -> str:
+    """Devuelve baños sin .0 si es entero; si no, muestra el decimal tal cual."""
+    if value is None or value == "":
+        return ""
+    try:
+        f = float(value)
+        return str(int(f)) if f.is_integer() else str(f)
+    except Exception:
+        return str(value)
 
+def _as_list(value):
+    """Devuelve siempre una lista (acepta None, str o list/tuple/set)."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.split(',') if p.strip()]
+        return parts if parts else ([value.strip()] if value.strip() else [])
+    return [value]
+
+def _map_edad_choices(codes_selected, edad_choices, otro_text):
+    """
+    Recibe lista de selecciones (códigos o textos), choices [(code,label), ...],
+    y el texto de 'otro'. Devuelve una lista final de textos legibles.
+    """
+    codes_selected = _as_list(codes_selected)
+    code_to_label = dict(edad_choices)
+    label_to_code = {lbl: code for code, lbl in edad_choices}
+
+    result = []
+    for item in codes_selected:
+        if not item:
+            continue
+        # a) Código conocido -> guardar label
+        if item in code_to_label:
+            result.append(code_to_label[item])
+            continue
+        # b) Ya venía como label conocido -> dejarlo
+        if item in label_to_code:
+            result.append(item)
+            continue
+        # c) Palabra 'otro' -> se maneja luego con otro_text
+        if str(item).lower() == 'otro':
+            continue
+        # d) Cualquier otro texto -> guardarlo tal cual
+        result.append(item)
+
+    otro_text = (otro_text or '').strip()
+    if any(str(x).lower() == 'otro' for x in codes_selected) and otro_text:
+        result.append(otro_text)
+
+    # quitar duplicados conservando orden
+    dedup, seen = [], set()
+    for x in result:
+        if x not in seen:
+            dedup.append(x); seen.add(x)
+    return dedup
+
+def _split_edad_for_form(stored_list, edad_choices):
+    """
+    Prepara datos para el FORM (GET):
+    - stored_list: lista de textos guardados (labels/otros)
+    - edad_choices: [(code,label), ...]
+    Devuelve (selected_codes, otro_text)
+    """
+    stored = _as_list(stored_list)
+    if not stored:
+        return [], ""
+
+    code_by_label = {lbl: code for code, lbl in edad_choices}
+    valid_codes = set(code for code, _ in edad_choices)
+    selected_codes = []
+    otros = []
+
+    for item in stored:
+        if item in code_by_label:
+            selected_codes.append(code_by_label[item])
+        elif item in valid_codes:
+            # por si se guardó el code literal por error en algún momento
+            selected_codes.append(item)
+        else:
+            otros.append(item)
+
+    otro_text = ", ".join(otros) if otros else ""
+    if otro_text and 'otro' not in selected_codes:
+        selected_codes.append('otro')
+    return selected_codes, otro_text
+
+
+# =============================================================================
+#                             SOLICITUDES (CRUD)
+# =============================================================================
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET','POST'])
 @login_required
 @admin_required
@@ -185,10 +459,12 @@ def nueva_solicitud_admin(cliente_id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
+        # Valores iniciales seguros
         form.funciones.data        = []
         form.funciones_otro.data   = ''
         form.areas_comunes.data    = []
         form.area_otro.data        = ''
+        form.edad_requerida.data   = []   # ahora lista en Admin
         form.edad_otro.data        = ''
         form.tipo_lugar_otro.data  = ''
         form.mascota.data          = ''
@@ -208,37 +484,36 @@ def nueva_solicitud_admin(cliente_id):
 
         # ➤ Tipo de lugar
         if form.tipo_lugar.data == 'otro':
-            s.tipo_lugar = form.tipo_lugar_otro.data.strip()
+            s.tipo_lugar = (form.tipo_lugar_otro.data or '').strip()
         else:
             s.tipo_lugar = form.tipo_lugar.data
 
-        # ➤ Edad requerida
-        choices_age = dict(form.edad_requerida.choices)
-        if form.edad_requerida.data == 'otra':
-            s.edad_requerida = form.edad_otro.data.strip()
-        else:
-            s.edad_requerida = choices_age.get(form.edad_requerida.data,
-                                              form.edad_requerida.data)
+        # ➤ Edad requerida (lista final de textos legibles)
+        s.edad_requerida = _map_edad_choices(
+            codes_selected=form.edad_requerida.data,
+            edad_choices=form.edad_requerida.choices,
+            otro_text=form.edad_otro.data
+        )
 
         # ➤ Mascota
-        s.mascota = form.mascota.data.strip() if form.mascota.data else None
+        s.mascota = (form.mascota.data or '').strip() or None
 
         # ➤ Funciones
-        s.funciones = form.funciones.data
-        if form.funciones_otro.data:
-            s.funciones.append(form.funciones_otro.data.strip())
-            s.funciones_otro = form.funciones_otro.data.strip()
-        else:
-            s.funciones_otro = None
+        s.funciones = _as_list(form.funciones.data)
+        extra_fun = (form.funciones_otro.data or '').strip()
+        s.funciones_otro = extra_fun or None
+        if extra_fun:
+            # No mezcles code 'otro' en la lista final
+            s.funciones = [f for f in s.funciones if f != 'otro']
 
         # ➤ Áreas comunes y pasaje
-        s.areas_comunes = form.areas_comunes.data
-        s.area_otro     = form.area_otro.data
-        s.pasaje_aporte = form.pasaje_aporte.data
+        s.areas_comunes = _as_list(form.areas_comunes.data)
+        s.area_otro     = (form.area_otro.data or '').strip()
+        s.pasaje_aporte = bool(form.pasaje_aporte.data)
 
-        # ➤ Guardar en la base de datos
+        # ➤ Métricas de cliente
         db.session.add(s)
-        c.total_solicitudes      += 1
+        c.total_solicitudes       = (c.total_solicitudes or 0) + 1
         c.fecha_ultima_solicitud  = datetime.utcnow()
         c.fecha_ultima_actividad  = datetime.utcnow()
         db.session.commit()
@@ -264,7 +539,7 @@ def editar_solicitud_admin(cliente_id, id):
 
     if request.method == 'GET':
         # ➤ Tipo de lugar
-        guard_lugar = s.tipo_lugar or ''
+        guard_lugar = (s.tipo_lugar or '').strip()
         opts_lugar  = {v for v,_ in form.tipo_lugar.choices}
         if guard_lugar in opts_lugar:
             form.tipo_lugar.data      = guard_lugar
@@ -273,60 +548,61 @@ def editar_solicitud_admin(cliente_id, id):
             form.tipo_lugar.data      = 'otro'
             form.tipo_lugar_otro.data = guard_lugar
 
-        # ➤ Edad requerida
-        guard_edad = s.edad_requerida or ''
-        opts_edad  = {v for v,_ in form.edad_requerida.choices}
-        if guard_edad in opts_edad:
-            form.edad_requerida.data = guard_edad
-            form.edad_otro.data      = ''
-        else:
-            form.edad_requerida.data = 'otra'
-            form.edad_otro.data      = guard_edad
+        # ➤ Edad requerida (s.edad_requerida ahora es lista)
+        selected_codes, otro_text = _split_edad_for_form(
+            stored_list=s.edad_requerida,
+            edad_choices=form.edad_requerida.choices
+        )
+        form.edad_requerida.data = selected_codes
+        form.edad_otro.data      = otro_text
 
         # ➤ Funciones
-        form.funciones.data      = s.funciones or []
-        form.funciones_otro.data = s.funciones_otro or ''
+        allowed_fun_codes = {v for v, _ in form.funciones.choices}
+        funs_guardadas = _as_list(s.funciones)
+        form.funciones.data = [f for f in funs_guardadas if f in allowed_fun_codes]
+        # Empujar cualquier custom a funciones_otro (si existiera)
+        extras = [f for f in funs_guardadas if f not in allowed_fun_codes and f != 'otro']
+        base_otro = (s.funciones_otro or '').strip()
+        form.funciones_otro.data = (", ".join(extras) if extras else base_otro)
 
         # ➤ Mascota
-        form.mascota.data        = s.mascota or ''
+        form.mascota.data = (s.mascota or '')
 
         # ➤ Áreas comunes y pasaje
-        form.areas_comunes.data = s.areas_comunes or []
-        form.area_otro.data     = s.area_otro or ''
-        form.pasaje_aporte.data = s.pasaje_aporte
+        form.areas_comunes.data = _as_list(s.areas_comunes)
+        form.area_otro.data     = (s.area_otro or '')
+        form.pasaje_aporte.data = bool(s.pasaje_aporte)
 
     if form.validate_on_submit():
         form.populate_obj(s)
 
         # ➤ Tipo de lugar
         if form.tipo_lugar.data == 'otro':
-            s.tipo_lugar = form.tipo_lugar_otro.data.strip()
+            s.tipo_lugar = (form.tipo_lugar_otro.data or '').strip()
         else:
             s.tipo_lugar = form.tipo_lugar.data
 
-        # ➤ Edad requerida
-        choices_age = dict(form.edad_requerida.choices)
-        if form.edad_requerida.data == 'otra':
-            s.edad_requerida = form.edad_otro.data.strip()
-        else:
-            s.edad_requerida = choices_age.get(form.edad_requerida.data,
-                                              form.edad_requerida.data)
+        # ➤ Edad requerida (lista final de textos legibles)
+        s.edad_requerida = _map_edad_choices(
+            codes_selected=form.edad_requerida.data,
+            edad_choices=form.edad_requerida.choices,
+            otro_text=form.edad_otro.data
+        )
 
         # ➤ Mascota
-        s.mascota = form.mascota.data.strip() if form.mascota.data else None
+        s.mascota = (form.mascota.data or '').strip() or None
 
         # ➤ Funciones
-        s.funciones = form.funciones.data
-        if form.funciones_otro.data:
-            s.funciones.append(form.funciones_otro.data.strip())
-            s.funciones_otro = form.funciones_otro.data.strip()
-        else:
-            s.funciones_otro = None
+        s.funciones = _as_list(form.funciones.data)
+        extra_fun = (form.funciones_otro.data or '').strip()
+        s.funciones_otro = extra_fun or None
+        if extra_fun:
+            s.funciones = [f for f in s.funciones if f != 'otro']
 
         # ➤ Áreas comunes y pasaje
-        s.areas_comunes             = form.areas_comunes.data
-        s.area_otro                 = form.area_otro.data
-        s.pasaje_aporte             = form.pasaje_aporte.data
+        s.areas_comunes             = _as_list(form.areas_comunes.data)
+        s.area_otro                 = (form.area_otro.data or '').strip()
+        s.pasaje_aporte             = bool(form.pasaje_aporte.data)
         s.fecha_ultima_modificacion = datetime.utcnow()
 
         db.session.commit()
@@ -340,6 +616,7 @@ def editar_solicitud_admin(cliente_id, id):
         solicitud=s,
         nuevo=False
     )
+
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
 @login_required
@@ -377,27 +654,61 @@ def gestionar_plan(cliente_id, id):
     )
 
 
-@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/pago', methods=['GET','POST'])
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/pago', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def registrar_pago(cliente_id, id):
+    from sqlalchemy.exc import SQLAlchemyError
+
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminPagoForm()
-    form.candidata_id.choices = [
-        (c.fila, c.nombre_completo) for c in Candidata.query.all()
-    ]
-    if form.validate_on_submit():
-        # 1) Registramos los datos del pago
-        s.candidata_id             = form.candidata_id.data
-        s.monto_pagado             = form.monto_pagado.data
-        s.estado                   = 'pagada'
-        # 2) Actualizamos los timestamps
-        s.fecha_ultima_actividad   = datetime.utcnow()
-        s.fecha_ultima_modificacion = datetime.utcnow()
-        db.session.commit()
 
-        flash('Pago registrado y solicitud marcada como pagada.', 'success')
-        return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+    # ⚡️ No cargues todo: en GET solo carga la seleccionada (si existe)
+    if request.method == 'GET':
+        if s.candidata_id:
+            cand = Candidata.query.get(s.candidata_id)
+            if cand:
+                form.candidata_id.choices = [(cand.fila, cand.nombre_completo)]
+                form.candidata_id.data = cand.fila
+            else:
+                form.candidata_id.choices = []
+        else:
+            form.candidata_id.choices = []
+
+    # En POST, añade dinámicamente la candidata seleccionada para validar
+    if request.method == 'POST':
+        raw_id = request.form.get('candidata_id', type=int)
+        if raw_id:
+            cand = Candidata.query.get(raw_id)
+            if cand:
+                form.candidata_id.choices = [(cand.fila, cand.nombre_completo)]
+            else:
+                form.candidata_id.choices = []
+        else:
+            form.candidata_id.choices = []
+
+    if form.validate_on_submit():
+        try:
+            # 1) Datos de pago
+            s.candidata_id = form.candidata_id.data
+
+            # Limpieza suave del monto (quita separadores)
+            raw = (form.monto_pagado.data or "").strip()
+            limpio = raw.replace('$', '').replace('RD$', '').replace(' ', '').replace('.', '').replace(',', '')
+            s.monto_pagado = raw if not limpio.isdigit() else "{:,}".format(int(limpio)).replace(',', ',')
+
+            s.estado = 'pagada'
+
+            # 2) Timestamps
+            s.fecha_ultima_actividad = datetime.utcnow()
+            s.fecha_ultima_modificacion = datetime.utcnow()
+
+            db.session.commit()
+            flash('Pago registrado y solicitud marcada como pagada.', 'success')
+            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('No se pudo registrar el pago. Intenta nuevamente.', 'danger')
 
     return render_template(
         'admin/registrar_pago.html',
@@ -408,6 +719,9 @@ def registrar_pago(cliente_id, id):
 
 
 
+# =============================================================================
+#                               REEMPLAZOS
+# =============================================================================
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET','POST'])
 @login_required
 @admin_required
@@ -476,6 +790,10 @@ def detalle_solicitud(cliente_id, id):
         reemplazos     = reemplazos
     )
 
+
+# =============================================================================
+#                                  API
+# =============================================================================
 @admin_bp.route('/api/candidatas')
 @login_required
 @admin_required
@@ -488,6 +806,9 @@ def api_candidatas():
     return jsonify(results=[{'id':c.fila,'text':c.nombre_completo} for c in resultados])
 
 
+# =============================================================================
+#                           LISTADO / CONTADORES
+# =============================================================================
 @admin_bp.route('/solicitudes')
 @login_required
 @admin_required
@@ -513,9 +834,9 @@ def listar_solicitudes():
     )
 
 
-# En admin/routes.py, asegúrate de tener estos imports:
-
-
+# =============================================================================
+#                               RESUMEN KPI
+# =============================================================================
 @admin_bp.route('/solicitudes/resumen')
 @login_required
 @admin_required
@@ -532,10 +853,10 @@ def resumen_solicitudes():
     cancel_count = Solicitud.query.filter_by(estado='cancelada').count()
     repl_count   = Solicitud.query.filter_by(estado='reemplazo').count()
 
-    # — Tasas de conversión, reemplazo y abandono —
-    conversion_rate  = (pag_count   / total_sol * 100) if total_sol else 0
-    replacement_rate = (repl_count  / total_sol * 100) if total_sol else 0
-    abandon_rate     = (cancel_count/ total_sol * 100) if total_sol else 0
+    # — Tasas —
+    conversion_rate  = (pag_count    / total_sol * 100) if total_sol else 0
+    replacement_rate = (repl_count   / total_sol * 100) if total_sol else 0
+    abandon_rate     = (cancel_count / total_sol * 100) if total_sol else 0
 
     # — Promedios de tiempo (en días) —
     avg_pub_secs = db.session.query(
@@ -743,26 +1064,26 @@ def resumen_solicitudes():
     )
 
 
-# routes/admin/solicitudes.py  (o donde tengas estas rutas)
-
-def _norm_area(text: str) -> str:
-    """Reemplaza guiones bajos por espacios y colapsa espacios múltiples."""
-    if not text:
-        return ""
-    s = str(text)
-    s = s.replace("_", " ")
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-
+# =============================================================================
+#                     COPIAR SOLICITUDES (LISTA + POST)
+# =============================================================================
 @admin_bp.route('/solicitudes/copiar')
 @login_required
 @admin_required
 def copiar_solicitudes():
+    """
+    Lista solicitudes copiables y arma el texto:
+    - 'Funciones' separado de 'Hogar'
+    - 'Adultos' en una línea, luego 'Niños' (si aplica) y luego 'Mascota' (si aplica)
+    """
     hoy = date.today()
+
     base_q = (
         Solicitud.query
-        .filter(Solicitud.estado.in_(['activa', 'reemplazo']))
+        .options(
+            joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new)
+        )
+        .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
         .filter(
             or_(
                 Solicitud.last_copiado_at.is_(None),
@@ -771,121 +1092,164 @@ def copiar_solicitudes():
         )
     )
 
-    # Primero reemplazos, luego activas
     con_reemp = (
-        base_q
-        .filter(Solicitud.estado == 'reemplazo')
-        .order_by(Solicitud.fecha_solicitud.desc())
-        .all()
+        base_q.filter(Solicitud.estado == 'reemplazo')
+              .order_by(Solicitud.fecha_solicitud.desc())
+              .all()
     )
     sin_reemp = (
-        base_q
-        .filter(Solicitud.estado == 'activa')
-        .order_by(Solicitud.fecha_solicitud.desc())
-        .all()
+        base_q.filter(Solicitud.estado == 'activa')
+              .order_by(Solicitud.fecha_solicitud.desc())
+              .all()
     )
     raw_sols = con_reemp + sin_reemp
 
     form = AdminSolicitudForm()
-    FUNCIONES_CHOICES = form.funciones.choices
+    FUNCIONES_CHOICES = dict(form.funciones.choices)  # code -> label
 
     solicitudes = []
     for s in raw_sols:
-        # Reemplazos (si es estado reemplazo, todos; si no, solo los nuevos)
-        reems = s.reemplazos if s.estado == 'reemplazo' else [r for r in s.reemplazos if r.oportunidad_nueva]
+        # Reemplazos
+        reems = list(s.reemplazos or []) if s.estado == 'reemplazo' \
+            else [r for r in (s.reemplazos or []) if getattr(r, 'oportunidad_nueva', False)]
 
-        # Funciones (sin la opción genérica 'otro')
-        funcs = [lbl for code, lbl in FUNCIONES_CHOICES if code in s.funciones and code != 'otro']
+        # Funciones (labels + otro)
+        funcs = []
+        try:
+            seleccion = set(_as_list(s.funciones))
+        except Exception:
+            seleccion = set()
+        for code in seleccion:
+            if code == 'otro':
+                continue
+            label = FUNCIONES_CHOICES.get(code)
+            if label:
+                funcs.append(label)
         if getattr(s, 'funciones_otro', None):
-            funcs.append(s.funciones_otro)
+            custom = str(s.funciones_otro).strip()
+            if custom:
+                funcs.append(custom)
 
-        # Niños (si aplica)
-        ninos_text = ""
-        if s.ninos:
-            ninos_text = f", Niños: {s.ninos}"
-            if s.edades_ninos:
-                ninos_text += f" ({s.edades_ninos})"
+        # Adultos / Niños (separados)
+        adultos = s.adultos or ""
+        ninos_line = ""
+        if getattr(s, 'ninos', None):
+            ninos_line = f"Niños: {s.ninos}"
+            if getattr(s, 'edades_ninos', None):
+                ninos_line += f" ({s.edades_ninos})"
 
-        # Modalidad (sin Dirección)
+        # Modalidad
         modalidad = (
             getattr(s, 'modalidad_trabajo', None)
             or getattr(s, 'modalidad', None)
             or getattr(s, 'tipo_modalidad', None)
             or ''
-        )
+        ).strip()
 
-        # ===== Hogar (debajo de Funciones, como pediste) =====
+        # ===== Hogar (SECCIÓN INDEPENDIENTE) =====
         hogar_partes_detalle = []
 
-        # Habitaciones
-        if s.habitaciones:
+        if getattr(s, 'habitaciones', None):
             hogar_partes_detalle.append(f"{s.habitaciones} habitaciones")
 
-        # Baños (entero sin .0, decimal si aplica)
-        if s.banos is not None:
-            try:
-                f = float(s.banos)
-                banos_txt = str(int(f)) if f.is_integer() else str(f)
-            except Exception:
-                banos_txt = str(s.banos)
+        banos_txt = _fmt_banos(getattr(s, 'banos', None))
+        if banos_txt:
             hogar_partes_detalle.append(f"{banos_txt} baños")
 
-        # Dos pisos
-        if getattr(s, 'dos_pisos', False):
+        if bool(getattr(s, 'dos_pisos', False)):
             hogar_partes_detalle.append("2 pisos")
 
-        # Áreas comunes + otro (NORMALIZADAS: "_" -> " ")
         areas = []
         if getattr(s, 'areas_comunes', None):
-            areas.extend([_norm_area(a) for a in s.areas_comunes if str(a).strip()])
-        if getattr(s, 'area_otro', None) and s.area_otro.strip():
-            areas.append(_norm_area(s.area_otro))
+            try:
+                for a in s.areas_comunes:
+                    a = str(a).strip()
+                    if a:
+                        areas.append(_norm_area(a))
+            except Exception:
+                pass
+        area_otro = (getattr(s, 'area_otro', None) or "").strip()
+        if area_otro:
+            areas.append(_norm_area(area_otro))
 
-        # Tipo de lugar al inicio con guion si hay detalles
-        tipo_lugar = (getattr(s, 'tipo_lugar', None) or "").strip()
         if areas:
             hogar_partes_detalle.append(", ".join(areas))
 
+        tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
         if tipo_lugar and hogar_partes_detalle:
-            hogar_line = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}"
+            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}"
         elif tipo_lugar:
-            hogar_line = tipo_lugar
+            hogar_descr = tipo_lugar
         else:
-            hogar_line = ", ".join(hogar_partes_detalle)
+            hogar_descr = ", ".join(hogar_partes_detalle)
+        hogar_section = f"Hogar: {hogar_descr}" if hogar_descr else ""
 
-        hogar_line = f"\n{hogar_line}" if hogar_line else ""
-        # ======================================================
-
-        # Mascota SOLO si trae texto real
+        # Mascota (debajo de Niños, si aplica)
         mascota_val = (getattr(s, 'mascota', None) or '').strip()
-        mascota_line = f"\nMascota: {mascota_val}" if mascota_val else ""
+        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
 
-        # ===== Texto final a copiar (mismo orden que tenías) =====
-        order_text = f"""Disponible ( {s.codigo_solicitud} )
-📍 {s.ciudad_sector}
-Ruta más cercana: {s.rutas_cercanas}
+        # Campos base
+        codigo         = s.codigo_solicitud or ""
+        ciudad_sector  = s.ciudad_sector or ""
+        rutas_cercanas = s.rutas_cercanas or ""
+        # Edad: ahora es lista → texto legible
+        if isinstance(s.edad_requerida, (list, tuple, set)):
+            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
+        else:
+            edad_req = s.edad_requerida or ""
 
-Modalidad: {modalidad}
+        experiencia    = s.experiencia or ""
+        horario        = s.horario or ""
+        sueldo         = s.sueldo or ""
+        pasaje_aporte  = bool(getattr(s, 'pasaje_aporte', False))
+        nota_cli       = (s.nota_cliente or "").strip()
+        nota_line      = f"Nota: {nota_cli}" if nota_cli else ""
+        funciones_line = f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: "
 
-Edad: {s.edad_requerida or ''}
-Dominicana
-Que sepa leer y escribir
-Experiencia en: {s.experiencia}
-Horario: {s.horario}
+        # ===== Texto final (nuevo orden) =====
+        # Funciones -> Hogar (separado)
+        # Adultos -> Niños (si hay) -> Mascota (si hay)
+        lines = [
+            f"Disponible ( {codigo} )",
+            f"📍 {ciudad_sector}",
+            f"Ruta más cercana: {rutas_cercanas}",
+            "",
+            f"Modalidad: {modalidad}",
+            "",
+            f"Edad: {edad_req}",
+            "Dominicana",
+            "Que sepa leer y escribir",
+            f"Experiencia en: {experiencia}",
+            f"Horario: {horario}",
+            "",
+            funciones_line,
+        ]
+        if hogar_section:
+            lines += ["", hogar_section]  # ← espacio extra intencional
 
-Funciones: {', '.join(funcs)}{hogar_line}
+        lines += [
+            "",
+            f"Adultos: {adultos}"
+        ]
+        if ninos_line:
+            lines.append(ninos_line)
+        if mascota_line:
+            lines.append(mascota_line)
 
-Adultos: {s.adultos}{ninos_text}""" + f"""{mascota_line}
+        lines += [
+            "",
+            f"Sueldo: ${sueldo} mensual{', más ayuda del pasaje' if pasaje_aporte else ', pasaje incluido'}",
+        ]
+        if nota_line:
+            lines += ["", nota_line]
 
-Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ', pasaje incluido'}
-
-{f'Nota: {s.nota_cliente}' if s.nota_cliente else ''}"""
-        # ========================================================
+        order_text = "\n".join(lines).strip()
 
         solicitudes.append({
             'id': s.id,
-            'codigo_solicitud': s.codigo_solicitud,
-            'ciudad_sector': s.ciudad_sector,
+            'codigo_solicitud': codigo,
+            'ciudad_sector': ciudad_sector,
+            'direccion': getattr(s, 'direccion', None),
             'reemplazos': reems,
             'funcs': funcs,
             'modalidad': modalidad,
@@ -899,6 +1263,10 @@ Sueldo: ${s.sueldo} mensual{', más ayuda del pasaje' if s.pasaje_aporte else ',
 @login_required
 @admin_required
 def copiar_solicitud(id):
+    """
+    Marca una solicitud como copiada hoy para esconderla hasta mañana.
+    Usa func.now() (tiempo DB) para evitar desajustes de TZ del servidor.
+    """
     s = Solicitud.query.get_or_404(id)
     s.last_copiado_at = func.now()
     db.session.commit()
@@ -906,40 +1274,9 @@ def copiar_solicitud(id):
     return redirect(url_for('admin.copiar_solicitudes'))
 
 
-@admin_bp.route(
-    '/clientes/<int:cliente_id>/solicitudes/<int:id>/cancelar',
-    methods=['GET', 'POST']
-)
-@login_required
-@admin_required
-def cancelar_solicitud(cliente_id, id):
-    s = Solicitud.query.filter_by(
-        id=id, cliente_id=cliente_id
-    ).first_or_404()
-
-    if request.method == 'POST':
-        motivo = request.form.get('motivo', '').strip()
-        if not motivo:
-            flash('Debes indicar un motivo de cancelación.', 'warning')
-        else:
-            s.estado = 'cancelada'
-            s.fecha_cancelacion = datetime.utcnow()
-            s.motivo_cancelacion = motivo
-            db.session.commit()
-            flash('Solicitud cancelada con éxito.', 'success')
-            return redirect(
-                url_for('admin.detalle_cliente', cliente_id=cliente_id)
-            )
-
-    return render_template(
-        'admin/cancelar_solicitud.html',
-        solicitud=s
-    )
-
-from sqlalchemy import func  # si no está ya importado
-from config_app import db    # si no está ya importado
-
-# 1) Clientes con solicitudes en proceso
+# =============================================================================
+#                       VISTAS "EN PROCESO" Y RESUMEN DIARIO
+# =============================================================================
 @admin_bp.route('/solicitudes/proceso/clients')
 @login_required
 @admin_required
@@ -958,7 +1295,6 @@ def listar_clientes_con_proceso():
     )
 
 
-# 2) Listar solicitudes en proceso de un cliente
 @admin_bp.route('/solicitudes/proceso/<int:cliente_id>')
 @login_required
 @admin_required
@@ -976,7 +1312,6 @@ def listar_solicitudes_de_cliente_proceso(cliente_id):
     )
 
 
-# 3) Editar/Finalizar una solicitud en proceso
 @admin_bp.route('/solicitudes/proceso/acciones')
 @login_required
 @admin_required
@@ -990,6 +1325,7 @@ def acciones_solicitudes_proceso():
         solicitudes=solicitudes
     )
 
+
 @admin_bp.route('/solicitudes/<int:id>/activar', methods=['POST'])
 @login_required
 @admin_required
@@ -1002,22 +1338,111 @@ def activar_solicitud_directa(id):
         flash(f'Solicitud {s.codigo_solicitud} marcada como activa.', 'success')
     return redirect(url_for('admin.acciones_solicitudes_proceso'))
 
+
+# ─────────────────────────────────────────────────────────────
+# Cancelación con confirmación (GET muestra formulario, POST ejecuta)
+# URL: /admin/clientes/<cliente_id>/solicitudes/<id>/cancelar
+# Endpoint: admin.cancelar_solicitud
+# ─────────────────────────────────────────────────────────────
+from urllib.parse import urlparse, urljoin
+
+def _is_safe_redirect_url(target: str) -> bool:
+    if not target:
+        return False
+    ref = urlparse(request.host_url)
+    test = urlparse(urljoin(request.host_url, target))
+    return (test.scheme in ('http', 'https')) and (ref.netloc == test.netloc)
+
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/cancelar', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def cancelar_solicitud(cliente_id, id):
+    s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+
+    # Destino preferido de regreso
+    next_url = request.args.get('next') or request.form.get('next') or request.referrer
+    fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id)
+
+    if request.method == 'GET':
+        # No dejes cancelar si ya está cancelada o pagada
+        if s.estado == 'cancelada':
+            flash(f'La solicitud {s.codigo_solicitud} ya estaba cancelada.', 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        if s.estado == 'pagada':
+            flash(f'La solicitud {s.codigo_solicitud} está pagada y no puede cancelarse.', 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+        # Render de confirmación
+        return render_template(
+            'admin/cancelar_solicitud.html',
+            solicitud=s,
+            next_url=next_url
+        )
+
+    # POST (confirma cancelación)
+    motivo = (request.form.get('motivo') or '').strip()
+    if len(motivo) < 5:
+        flash('Indica un motivo de cancelación (mínimo 5 caracteres).', 'danger')
+        # Volvemos a mostrar el formulario con el texto que puso el usuario
+        return render_template(
+            'admin/cancelar_solicitud.html',
+            solicitud=s,
+            next_url=next_url,
+            # Para que el textarea conserve lo que escribió
+            form={'motivo': {'errors': ['Indica un motivo válido.']}}
+        )
+
+    # Estados cancelables: proceso, activa, reemplazo (evita re-cancelar/pagada)
+    if s.estado in ('proceso', 'activa', 'reemplazo'):
+        s.estado = 'cancelada'
+        s.motivo_cancelacion = motivo
+        s.fecha_cancelacion = datetime.utcnow()
+        s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        flash(f'Solicitud {s.codigo_solicitud} cancelada.', 'success')
+    else:
+        flash(f'No se puede cancelar la solicitud en estado «{s.estado}».', 'warning')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+# ─────────────────────────────────────────────────────────────
+# Atajo “directo” (botón en listas) sin formulario
+# URL: /admin/solicitudes/<id>/cancelar_directo  (POST)
+# Endpoint: admin.cancelar_solicitud_directa
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route('/solicitudes/<int:id>/cancelar_directo', methods=['POST'])
 @login_required
 @admin_required
 def cancelar_solicitud_directa(id):
     s = Solicitud.query.get_or_404(id)
-    if s.estado == 'proceso':
+
+    # Destino preferido de regreso
+    next_url = request.args.get('next') or request.form.get('next') or request.referrer
+    # Por compatibilidad con tu flujo actual, lo dejamos en la pantalla de “proceso” como fallback
+    fallback = url_for('admin.acciones_solicitudes_proceso')
+
+    if s.estado == 'cancelada':
+        flash(f'La solicitud {s.codigo_solicitud} ya estaba cancelada.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    if s.estado == 'pagada':
+        flash(f'La solicitud {s.codigo_solicitud} está pagada y no puede cancelarse.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    if s.estado in ('proceso', 'activa', 'reemplazo'):
         s.estado = 'cancelada'
         s.fecha_cancelacion = datetime.utcnow()
         s.fecha_ultima_modificacion = datetime.utcnow()
+        # Si quieres registrar un motivo por defecto en el directo:
+        s.motivo_cancelacion = (request.form.get('motivo') or '').strip() or 'Cancelación directa (sin motivo)'
         db.session.commit()
         flash(f'Solicitud {s.codigo_solicitud} cancelada.', 'success')
-    return redirect(url_for('admin.acciones_solicitudes_proceso'))
+    else:
+        flash(f'No se puede cancelar la solicitud en estado «{s.estado}».', 'warning')
 
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
-from datetime import date
-from sqlalchemy import func
 
 @admin_bp.route('/clientes/resumen_diario')
 @login_required

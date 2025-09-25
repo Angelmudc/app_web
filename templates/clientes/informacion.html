@@ -1,41 +1,228 @@
+{# templates/clientes/informacion.html #}
 {% extends "clientes/base.html" %}
-{% block title %}Información{% endblock %}
+{% block title %}Información | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+  .hero-info{
+    background: linear-gradient(135deg,#F0F7FF,#F8FDFF);
+    border: 1px solid #e6efff;
+    border-radius: 16px;
+  }
+  .card-soft{border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.06)}
+  .check{color:#0ea5e9}
+  .step-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#0ea5e9;color:#fff;font-weight:600}
+  .kpi{
+    background:#0ea5e910;border:1px solid #bae6fd;border-radius:12px
+  }
+  .badge-trust{background:#e8fff3;color:#0a7a3e;border:1px solid #a7efc3}
+</style>
+{% endblock %}
 
 {% block content %}
-  <div class="py-4">
-    <h1 class="mb-3">¿Quiénes Somos?</h1>
-    <p>
-      En <strong>Mi Empresa</strong> llevamos más de 10 años ofreciendo servicios de limpieza y
-      mantenimiento del hogar con los más altos estándares de calidad. Nuestro equipo está
-      formado por profesionales certificados y te garantiza:
-    </p>
-    <ul>
-      <li>Personal seleccionado y capacitado.</li>
-      <li>Uso de productos ecológicos y seguros.</li>
-      <li>Garantía de satisfacción y reemplazo si algo no queda perfecto.</li>
-    </ul>
-  </div>
+<div class="container py-4">
 
-  <div class="py-4">
-    <h2 class="mb-2">Cómo Funciona</h2>
-    <ol>
-      <li>Eliges tu plan en la sección <em>Planes</em>.</li>
-      <li>Creas tu solicitud desde tu panel.</li>
-      <li>Nosotros revisamos y activamos tu servicio.</li>
-      <li>Coordinas el pago vía WhatsApp.</li>
-      <li>Recibes el servicio y disfrutas de nuestra garantía.</li>
-    </ol>
-  </div>
+  <!-- HERO -->
+  <section class="hero-info p-4 p-md-5 mb-4">
+    <div class="row align-items-center g-4">
+      <div class="col-lg-8">
+        <h1 class="h3 mb-2">Sobre Doméstica del Cibao A&amp;D</h1>
+        <p class="text-secondary mb-3">
+          Más de una década conectando familias con personal doméstico confiable.
+          Combinamos verificación rigurosa, acompañamiento y transparencia para que tengas
+          la mejor experiencia.
+        </p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i> Crear nueva solicitud
+          </a>
+          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary">
+            <i class="bi bi-stars me-1"></i> Ver planes y garantías
+          </a>
+          <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-life-preserver me-1"></i> Ayuda & Contacto
+          </a>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="kpi p-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div>
+              <div class="fw-semibold small text-secondary">Tiempo de selección</div>
+              <div class="h4 mb-0">24–144 h</div>
+            </div>
+            <i class="bi bi-stopwatch fs-3 text-info"></i>
+          </div>
+          <hr class="my-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div>
+              <div class="fw-semibold small text-secondary">Clientes satisfechos</div>
+              <div class="h4 mb-0">+1,200</div>
+            </div>
+            <i class="bi bi-emoji-smile fs-3 text-info"></i>
+          </div>
+          <div class="mt-3"><span class="badge badge-trust">Garantía de reemplazo según plan</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-  <div class="py-4">
-    <h2 class="mb-2">Contacto</h2>
-    <p>
-      <strong>Email:</strong> soporte@miempresa.com<br>
-      <strong>WhatsApp:</strong> +1 (809) 123-4567<br>
-      <strong>Teléfono:</strong> (809) 765-4321
-    </p>
-    <p>
-      Nuestro centro de atención está disponible de lunes a viernes de 8 am a 6 pm.
-    </p>
-  </div>
+  <!-- QUÉ NOS DIFERENCIA -->
+  <section class="mb-4">
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="card card-soft h-100">
+          <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-shield-check me-2 text-primary"></i> Selección segura</h5>
+            <ul class="mb-0 ps-3">
+              <li class="mb-1"><span class="check me-1">●</span> Entrevista y validación documental</li>
+              <li class="mb-1"><span class="check me-1">●</span> Referencias verificadas</li>
+              <li class="mb-1"><span class="check me-1">●</span> Perfil por habilidades y experiencia</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card card-soft h-100">
+          <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-people me-2 text-primary"></i> Acompañamiento</h5>
+            <p class="text-secondary mb-0">
+              Te guiamos desde la solicitud hasta el seguimiento post-envío. Comunicación
+              constante vía WhatsApp, email o teléfono.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card card-soft h-100">
+          <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-file-earmark-text me-2 text-primary"></i> Transparencia</h5>
+            <p class="text-secondary mb-0">
+              En tu panel encontrarás el estado, movimientos y notas de cada solicitud.
+              Todo en un solo lugar.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CÓMO FUNCIONA -->
+  <section class="card card-soft mb-4">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="bi bi-diagram-3 me-2 text-primary"></i> ¿Cómo funciona?</h5>
+      <div class="row g-3 align-items-start">
+        <div class="col-md-6">
+          <ol class="list-unstyled mb-0">
+            <li class="d-flex gap-3 mb-3">
+              <div class="step-dot">1</div>
+              <div>
+                <div class="fw-semibold">Elige tu plan</div>
+                <div class="text-secondary small">Básico, Premium o VIP según cobertura y garantías.</div>
+              </div>
+            </li>
+            <li class="d-flex gap-3 mb-3">
+              <div class="step-dot">2</div>
+              <div>
+                <div class="fw-semibold">Crea tu solicitud</div>
+                <div class="text-secondary small">Desde tu panel, completa ubicación y requerimientos.</div>
+              </div>
+            </li>
+            <li class="d-flex gap-3 mb-3">
+              <div class="step-dot">3</div>
+              <div>
+                <div class="fw-semibold">Validación y activación</div>
+                <div class="text-secondary small">Revisamos datos y activamos la búsqueda.</div>
+              </div>
+            </li>
+            <li class="d-flex gap-3 mb-3">
+              <div class="step-dot">4</div>
+              <div>
+                <div class="fw-semibold">Coordinación y envío</div>
+                <div class="text-secondary small">Te presentamos la candidata y coordinamos inicio.</div>
+              </div>
+            </li>
+            <li class="d-flex gap-3">
+              <div class="step-dot">5</div>
+              <div>
+                <div class="fw-semibold">Seguimiento y garantía</div>
+                <div class="text-secondary small">Acompañamiento y reemplazo según tu plan.</div>
+              </div>
+            </li>
+          </ol>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 bg-light rounded-3">
+            <div class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i> Recomendaciones</div>
+            <ul class="mb-0 ps-3 text-secondary">
+              <li>Describe con claridad horario, funciones y experiencia deseada.</li>
+              <li>Indica si hay niños, adultos mayores o mascotas.</li>
+              <li>Asegura un canal de contacto activo para respuestas rápidas.</li>
+            </ul>
+          </div>
+          <div class="mt-3 d-flex gap-2">
+            <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
+              <i class="bi bi-plus-circle me-1"></i> Crear solicitud
+            </a>
+            <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary">
+              <i class="bi bi-stars me-1"></i> Ver planes
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACTO -->
+  <section class="card card-soft mb-4">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="bi bi-telephone-forward me-2 text-primary"></i> Contacto</h5>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="p-3 bg-light rounded-3 h-100">
+            <div class="fw-semibold mb-1"><i class="bi bi-whatsapp text-success me-1"></i> WhatsApp</div>
+            <div class="mb-2">+1 809 429 6892</div>
+            <a class="btn btn-success btn-sm"
+               href="https://wa.me/18094296892?text=Hola%20equipo%2C%20necesito%20informaci%C3%B3n."
+               target="_blank" rel="noopener">
+              Escribir por WhatsApp
+            </a>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 bg-light rounded-3 h-100">
+            <div class="fw-semibold mb-1"><i class="bi bi-envelope-paper text-primary me-1"></i> Email</div>
+            <div class="mb-2">soporte.domesticacibao@gmail.com</div>
+            <a class="btn btn-primary btn-sm"
+               href="mailto:soporte.domesticacibao@gmail.com?subject=Consulta&body=Hola%2C%20quisiera%20saber%20m%C3%A1s%20sobre..."
+               rel="noopener">
+              Enviar correo
+            </a>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 bg-light rounded-3 h-100">
+            <div class="fw-semibold mb-1"><i class="bi bi-telephone text-info me-1"></i> Teléfono</div>
+            <div class="mb-2">(809) 429-6892</div>
+            <div class="small text-secondary mb-2">Lun–Vie 8:00–17:00</div>
+            <a class="btn btn-outline-secondary btn-sm" href="tel:+18094296892">Llamar</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="text-center">
+    <p class="text-secondary mb-3">¿Listo para comenzar?</p>
+    <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary me-2">
+      <i class="bi bi-clipboard2-plus me-1"></i> Crear solicitud ahora
+    </a>
+    <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-life-preserver me-1"></i> Necesito ayuda
+    </a>
+  </section>
+
+</div>
 {% endblock %}

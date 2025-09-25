@@ -3,56 +3,399 @@
 {% block title %}{{ 'Nuevo Cliente' if nuevo else 'Editar Cliente' }}{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <h1>{{ 'Nuevo Cliente' if nuevo else 'Editar Cliente' }}</h1>
-  <form method="POST">
-    {{ cliente_form.hidden_tag() }}
+<div class="container py-4 py-md-5" style="max-width: 960px;">
 
-    <div class="mb-3">
-      {{ cliente_form.codigo.label(class="form-label") }}
-      {% if not nuevo %}
-        {{ cliente_form.codigo(class="form-control", readonly=true) }}
-      {% else %}
-        {{ cliente_form.codigo(class="form-control") }}
-      {% endif %}
+  <!-- Encabezado -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h3 mb-1">
+        {{ 'Nuevo Cliente' if nuevo else 'Editar Cliente' }}
+      </h1>
+      <div class="text-muted small">
+        Completa los campos requeridos (<span class="text-danger">*</span>) y guarda los cambios.
+      </div>
     </div>
-
-    <div class="mb-3">
-      {{ cliente_form.nombre_completo.label(class="form-label") }}
-      {{ cliente_form.nombre_completo(class="form-control") }}
-    </div>
-
-    <div class="mb-3">
-      {{ cliente_form.email.label(class="form-label") }}
-      {{ cliente_form.email(class="form-control") }}
-    </div>
-
-    <div class="mb-3">
-      {{ cliente_form.telefono.label(class="form-label") }}
-      {{ cliente_form.telefono(class="form-control") }}
-    </div>
-
-    <div class="mb-3">
-      {{ cliente_form.ciudad.label(class="form-label") }}
-      {{ cliente_form.ciudad(class="form-control") }}
-    </div>
-
-    <div class="mb-3">
-      {{ cliente_form.sector.label(class="form-label") }}
-      {{ cliente_form.sector(class="form-control") }}
-    </div>
-
-    <div class="mb-3">
-      {{ cliente_form.notas_admin.label(class="form-label") }}
-      {{ cliente_form.notas_admin(class="form-control", rows=3) }}
-    </div>
-
-    <button type="submit" class="btn btn-primary">
-      {{ 'Crear Cliente' if nuevo else 'Guardar Cambios' }}
-    </button>
-    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary ms-2">
-      Cancelar
+    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-light">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver
     </a>
-  </form>
+  </div>
+
+  <!-- Contenedor principal -->
+  <div class="card shadow-sm border-0 rounded-4">
+    <div class="card-body p-3 p-md-4 p-lg-5">
+
+      <form id="cliente-form" method="POST" novalidate>
+        {{ cliente_form.hidden_tag() }}
+
+        {# Alert general con lista de errores #}
+        {% if cliente_form.errors %}
+          <div class="alert alert-danger border-0 mb-4" role="alert" aria-live="polite">
+            <div class="d-flex">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              <div>
+                <strong>Revisa los campos marcados.</strong>
+                <ul class="mb-0 mt-1">
+                  {% for field_name, errs in cliente_form.errors.items() %}
+                    {% set field = cliente_form._fields.get(field_name) %}
+                    {% for e in errs %}
+                      <li>
+                        <strong>{{ field.label.text if field else field_name }}:</strong> {{ e }}
+                      </li>
+                    {% endfor %}
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        <!-- Sección: Identificación -->
+        <div class="mb-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+              <i class="bi bi-person-badge-fill me-1"></i> Identificación
+            </span>
+          </div>
+
+          <div class="row g-3">
+            <!-- Código -->
+            <div class="col-md-4">
+              <label class="form-label">Código <span class="text-danger">*</span></label>
+              {% set has_err = cliente_form.codigo.errors %}
+              {% if not nuevo %}
+                {{ cliente_form.codigo(
+                  class="form-control" + (" is-invalid" if has_err else ""),
+                  readonly=true,
+                  autocomplete="off",
+                  placeholder="Ej. CLI-001",
+                  **{'aria-describedby': 'codigoHelp'}
+                ) }}
+              {% else %}
+                {{ cliente_form.codigo(
+                  class="form-control" + (" is-invalid" if has_err else ""),
+                  autocomplete="off",
+                  placeholder="Ej. CLI-001",
+                  **{'aria-describedby': 'codigoHelp'}
+                ) }}
+              {% endif %}
+              {% if has_err %}
+                <div class="invalid-feedback">{{ cliente_form.codigo.errors[0] }}</div>
+              {% endif %}
+              <div id="codigoHelp" class="form-text">Debe ser único. Evita espacios y caracteres especiales.</div>
+            </div>
+
+            <!-- Usuario -->
+            <div class="col-md-4">
+              <label class="form-label">Usuario <span class="text-danger">*</span></label>
+              {% set has_err = cliente_form.username.errors %}
+              {{ cliente_form.username(
+                class="form-control" + (" is-invalid" if has_err else ""),
+                placeholder="Ej. juan_perez",
+                autocomplete="username",
+                **{'aria-describedby': 'userHelp'}
+              ) }}
+              {% if has_err %}
+                <div class="invalid-feedback">{{ cliente_form.username.errors[0] }}</div>
+              {% endif %}
+              <div id="userHelp" class="form-text">
+                Solo letras, números, punto, guion y guion bajo. Sin espacios. Debe ser único.
+              </div>
+            </div>
+
+            <!-- Nombre completo -->
+            <div class="col-md-4">
+              <label class="form-label">Nombre completo <span class="text-danger">*</span></label>
+              {% set has_err = cliente_form.nombre_completo.errors %}
+              {{ cliente_form.nombre_completo(
+                class="form-control" + (" is-invalid" if has_err else ""),
+                placeholder="Ej. Juan Pérez",
+                autocomplete="name",
+                **{'aria-describedby': 'nombreHelp'}
+              ) }}
+              {% if has_err %}
+                <div class="invalid-feedback">{{ cliente_form.nombre_completo.errors[0] }}</div>
+              {% endif %}
+              <div id="nombreHelp" class="form-text">Tal como aparecerá en la ficha.</div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="text-body-secondary-subtle my-4">
+
+        <!-- Sección: Contacto -->
+        <div class="mb-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+              <i class="bi bi-envelope-paper-heart-fill me-1"></i> Contacto
+            </span>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Email <span class="text-danger">*</span></label>
+              {% set has_err = cliente_form.email.errors %}
+              {{ cliente_form.email(
+                class="form-control" + (" is-invalid" if has_err else ""),
+                placeholder="correo@dominio.com",
+                autocomplete="email",
+                inputmode="email",
+                **{'aria-describedby': 'emailHelp'}
+              ) }}
+              {% if has_err %}
+                <div class="invalid-feedback">{{ cliente_form.email.errors[0] }}</div>
+              {% endif %}
+              <div id="emailHelp" class="form-text">Usaremos este correo para notificaciones.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Teléfono <span class="text-danger">*</span></label>
+              {% set has_err = cliente_form.telefono.errors %}
+              <div class="input-group">
+                <span class="input-group-text" id="telPrefix">
+                  <i class="bi bi-telephone"></i>
+                </span>
+                {{ cliente_form.telefono(
+                  class="form-control" + (" is-invalid" if has_err else ""),
+                  placeholder="809-123-4567",
+                  autocomplete="tel",
+                  inputmode="tel",
+                  **{'aria-describedby': 'telHelp telPrefix'}
+                ) }}
+              </div>
+              {% if has_err %}
+                <div class="invalid-feedback d-block">{{ cliente_form.telefono.errors[0] }}</div>
+              {% endif %}
+              <div id="telHelp" class="form-text">Incluye código de área. Ej: 809-000-0000.</div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="text-body-secondary-subtle my-4">
+
+        <!-- Sección: Ubicación -->
+        <div class="mb-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+              <i class="bi bi-geo-alt-fill me-1"></i> Ubicación
+            </span>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Ciudad</label>
+              {% set has_err = cliente_form.ciudad.errors %}
+              {{ cliente_form.ciudad(
+                class="form-control" + (" is-invalid" if has_err else ""),
+                placeholder="Ej. Santiago",
+                autocomplete="address-level2"
+              ) }}
+              {% if has_err %}
+                <div class="invalid-feedback">{{ cliente_form.ciudad.errors[0] }}</div>
+              {% else %}
+                <div class="form-text">Ciudad principal de residencia.</div>
+              {% endif %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Sector</label>
+              {% set has_err = cliente_form.sector.errors %}
+              {{ cliente_form.sector(
+                class="form-control" + (" is-invalid" if has_err else ""),
+                placeholder="Ej. Los Jardines",
+                autocomplete="address-line2"
+              ) }}
+              {% if has_err %}
+                <div class="invalid-feedback">{{ cliente_form.sector.errors[0] }}</div>
+              {% else %}
+                <div class="form-text">Barrio o sector (opcional).</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <hr class="text-body-secondary-subtle my-4">
+
+        <!-- Sección: Contraseña -->
+        <div class="mb-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+              <i class="bi bi-shield-lock-fill me-1"></i> Contraseña
+            </span>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">
+                {{ 'Contraseña inicial' if nuevo else 'Nueva contraseña' }}
+                {% if nuevo %}<span class="text-danger">*</span>{% endif %}
+              </label>
+              {% set has_err = cliente_form.password_new.errors %}
+              <div class="input-group">
+                {{ cliente_form.password_new(
+                  class="form-control" + (" is-invalid" if has_err else ""),
+                  placeholder=("Crea una contraseña" if nuevo else "Dejar en blanco para no cambiar"),
+                  autocomplete="new-password",
+                  id=cliente_form.password_new.id
+                ) }}
+                <button class="btn btn-outline-secondary" type="button" id="toggle-pass-new">
+                  <i class="bi bi-eye"></i>
+                </button>
+              </div>
+              {% if has_err %}
+                <div class="invalid-feedback d-block">{{ cliente_form.password_new.errors[0] }}</div>
+              {% else %}
+                <div class="form-text">
+                  Mínimo 6 caracteres. {% if not nuevo %}Si no deseas cambiarla, deja este campo vacío.{% endif %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Confirmar contraseña{% if nuevo %} <span class="text-danger">*</span>{% endif %}</label>
+              {% set has_err = cliente_form.password_confirm.errors %}
+              <div class="input-group">
+                {{ cliente_form.password_confirm(
+                  class="form-control" + (" is-invalid" if has_err else ""),
+                  placeholder="Repite la contraseña",
+                  autocomplete="new-password",
+                  id=cliente_form.password_confirm.id
+                ) }}
+                <button class="btn btn-outline-secondary" type="button" id="toggle-pass-confirm">
+                  <i class="bi bi-eye"></i>
+                </button>
+              </div>
+              {% if has_err %}
+                <div class="invalid-feedback d-block">{{ cliente_form.password_confirm.errors[0] }}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <hr class="text-body-secondary-subtle my-4">
+
+        <!-- Sección: Notas -->
+        <div class="mb-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+              <i class="bi bi-journal-text me-1"></i> Notas administrativas
+            </span>
+          </div>
+
+          <label class="form-label">Notas</label>
+          {% set has_err = cliente_form.notas_admin.errors %}
+          {{ cliente_form.notas_admin(
+            class="form-control" + (" is-invalid" if has_err else ""),
+            rows=3,
+            placeholder="Observaciones internas (no visibles para el cliente).",
+            maxlength="1000",
+            **{'aria-describedby': 'notesHelp notesCounter'}
+          ) }}
+          {% if has_err %}
+            <div class="invalid-feedback">{{ cliente_form.notas_admin.errors[0] }}</div>
+          {% endif %}
+          <div class="d-flex justify-content-between mt-1">
+            <div id="notesHelp" class="form-text">Máximo 1000 caracteres.</div>
+            <div id="notesCounter" class="form-text"><span id="notes-count">0</span>/1000</div>
+          </div>
+        </div>
+
+        <!-- Acciones -->
+        <div class="pt-3 mt-4"
+             style="position: sticky; bottom: 0; background: linear-gradient(180deg, rgba(255,255,255,0) 0, #fff 24px);">
+          <div class="d-flex gap-2 justify-content-end">
+            <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary">
+              Cancelar
+            </a>
+            <button id="btn-submit" type="submit" class="btn btn-primary px-4">
+              {{ 'Crear Cliente' if nuevo else 'Guardar Cambios' }}
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  // Conteo de caracteres en notas
+  const notes = document.getElementById("{{ cliente_form.notas_admin.id }}");
+  const out   = document.getElementById("notes-count");
+  if (notes && out) {
+    const upd = () => { out.textContent = notes.value.length; };
+    notes.addEventListener('input', upd); upd();
+  }
+
+  // Enfoque al primer campo con error o (nombre → usuario → código) si no hay errores
+  {% if cliente_form.errors %}
+    const firstInvalid = document.querySelector('.is-invalid');
+    if (firstInvalid) firstInvalid.focus({preventScroll:false});
+  {% else %}
+    const prefer = document.getElementById("{{ cliente_form.nombre_completo.id }}")
+                 || document.getElementById("{{ cliente_form.username.id }}")
+                 || document.getElementById("{{ cliente_form.codigo.id }}");
+    if (prefer) prefer.focus({preventScroll:false});
+  {% endif %}
+
+  // Formateo suave de teléfono (no bloqueante)
+  const tel = document.getElementById("{{ cliente_form.telefono.id }}");
+  if (tel) {
+    tel.addEventListener('input', () => {
+      let v = tel.value.replace(/[^\d]/g, '').slice(0, 10); // 10 dígitos
+      // Formato 809-123-4567
+      if (v.length > 6) v = v.replace(/^(\d{3})(\d{3})(\d{0,4}).*/, '$1-$2-$3');
+      else if (v.length > 3) v = v.replace(/^(\d{3})(\d{0,3}).*/, '$1-$2');
+      tel.value = v.replace(/-$/, '');
+    });
+  }
+
+  // Normalización leve del username en el cliente (sin romper validaciones del servidor)
+  const user = document.getElementById("{{ cliente_form.username.id }}");
+  if (user) {
+    user.addEventListener('blur', () => {
+      let v = user.value || '';
+      v = v.trim().toLowerCase().replace(/\s+/g, '_');
+      user.value = v.replace(/[^a-z0-9_.-]/g, '');
+    });
+  }
+
+  // Mostrar/ocultar contraseña
+  function bindToggle(btnId, inputId){
+    const btn = document.getElementById(btnId);
+    const input = document.getElementById(inputId);
+    if(!btn || !input) return;
+    btn.addEventListener('click', () => {
+      const isPwd = input.getAttribute('type') === 'password';
+      input.setAttribute('type', isPwd ? 'text' : 'password');
+      const icon = btn.querySelector('i');
+      if (icon) icon.className = isPwd ? 'bi bi-eye-slash' : 'bi bi-eye';
+      input.focus();
+    });
+  }
+  bindToggle('toggle-pass-new', '{{ cliente_form.password_new.id }}');
+  bindToggle('toggle-pass-confirm', '{{ cliente_form.password_confirm.id }}');
+
+  // Evita doble envío y muestra estado "Guardando…"
+  const form = document.getElementById('cliente-form');
+  const btn  = document.getElementById('btn-submit');
+  if (form && btn) {
+    form.addEventListener('submit', () => {
+      btn.disabled = true;
+      const original = btn.innerHTML;
+      btn.dataset.originalText = original;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Guardando…';
+      // Rehabilitar si el servidor devuelve errores y no hay redirect (10s safety)
+      setTimeout(() => {
+        if (btn.disabled) {
+          btn.disabled = false;
+          btn.innerHTML = btn.dataset.originalText || 'Guardar';
+        }
+      }, 10000);
+    }, {once:false});
+  }
+})();
+</script>
 {% endblock %}

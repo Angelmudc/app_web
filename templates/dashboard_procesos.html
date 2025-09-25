@@ -67,8 +67,20 @@
 
   <!-- Tabla de resultados filtrados -->
   <div class="card shadow-sm">
-    <div class="card-header">
-      Candidatas Filtradas ({{ candidatas|length }})
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>Candidatas Filtradas ({{ candidatas.total }})</span>
+      <form method="get" class="d-flex align-items-center">
+        <!-- Mantener filtros -->
+        <input type="hidden" name="estado" value="{{ estado_filtro }}">
+        <input type="hidden" name="desde" value="{{ desde_str }}">
+        <input type="hidden" name="hasta" value="{{ hasta_str }}">
+        <label class="me-2 mb-0">Por página</label>
+        <select name="per_page" class="form-select form-select-sm me-2" onchange="this.form.submit()">
+          {% for n in [10,25,50,100,200] %}
+            <option value="{{n}}" {% if candidatas.per_page == n %}selected{% endif %}>{{n}}</option>
+          {% endfor %}
+        </select>
+      </form>
     </div>
     <div class="card-body table-responsive">
       <table class="table table-striped">
@@ -81,16 +93,37 @@
           </tr>
         </thead>
         <tbody>
-          {% for c in candidatas %}
+          {% for c in candidatas.items %}
           <tr>
             <td>{{ c.fila }}</td>
             <td>{{ c.nombre_completo }}</td>
             <td>{{ c.estado.replace('_',' ').capitalize() }}</td>
-            <td>{{ c.fecha_cambio_estado.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ c.fecha_cambio_estado.strftime('%Y-%m-%d %H:%M') if c.fecha_cambio_estado else '' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+    </div>
+
+    <!-- Paginación -->
+    <div class="card-footer d-flex justify-content-center">
+      <ul class="pagination mb-0">
+        <li class="page-item {% if not candidatas.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('dashboard_procesos', page=candidatas.prev_num, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}">«</a>
+        </li>
+        {% for p in candidatas.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+          {% if p %}
+            <li class="page-item {% if p == candidatas.page %}active{% endif %}">
+              <a class="page-link" href="{{ url_for('dashboard_procesos', page=p, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}">{{ p }}</a>
+            </li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        <li class="page-item {% if not candidatas.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('dashboard_procesos', page=candidatas.next_num, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}">»</a>
+        </li>
+      </ul>
     </div>
   </div>
 </div>
