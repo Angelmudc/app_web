@@ -19,6 +19,7 @@ from flask_migrate import Migrate
 
 from sqlalchemy import or_, cast, String, func
 from sqlalchemy.orm import subqueryload
+from models import Candidata, LlamadaCandidata, Solicitud, Reemplazo
 
 import pandas as pd
 from fpdf import FPDF
@@ -1739,6 +1740,381 @@ def reporte_llamadas_candidatas():
                            calls_by_day=calls_by_day,
                            calls_by_week=calls_by_week,
                            calls_by_month=calls_by_month)
+
+
+from datetime import date, datetime, time, timedelta
+from sqlalchemy import or_, func
+from sqlalchemy.orm import load_only
+from flask import render_template, abort, flash, redirect, url_for, request
+
+def _s(v):  # string seguro
+    return "" if v is None else str(v).strip()
+
+def _fmt_int(v):  # enteros: 0 válido, None vacío
+    return "" if v is None else str(int(v))
+
+def _corte_ciclo_1am():
+    """
+    01:00 AM hora local. Si ahora < 01:00 => corte es ayer 01:00; si no, hoy 01:00.
+    """
+    now = datetime.now()
+    hoy_1am = datetime.combine(date.today(), time(1, 0))
+    return (hoy_1am - timedelta(days=1)) if now < hoy_1am else hoy_1am
+
+def _build_texto_solicitud(s):
+    # Edad requerida
+    if isinstance(s.edad_requerida, (list, tuple)):
+        edad_req = ", ".join([_s(x) for x in s.edad_requerida if _s(x)])
+    else:
+        edad_req = _s(s.edad_requerida)
+
+    # Funciones (ARRAY + otro)
+    funcs = []
+    if isinstance(s.funciones, (list, tuple)):
+        funcs = [t for t in (_s(x) for x in s.funciones) if t]
+    if _s(s.funciones_otro):
+        funcs.append(_s(s.funciones_otro))
+    funciones_line = f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: "
+
+    # Adultos / Niños
+    adultos_txt = _fmt_int(s.adultos)
+    ninos_txt   = _fmt_int(s.ninos)
+    ninos_line  = f"Niños: {ninos_txt}" if ninos_txt != "" else ""
+    if ninos_line and _s(s.edades_ninos):
+        ninos_line += f" ({_s(s.edades_ninos)})"
+
+    modalidad_txt = _s(s.modalidad_trabajo)
+
+    lines = [
+        f"Disponible ( {_s(s.codigo_solicitud)} )",
+        f"📍 {_s(s.ciudad_sector)}",
+        f"Ruta más cercana: {_s(s.rutas_cercanas)}",
+        "",
+        modalidad_txt,  # sin prefijo
+        "",
+        f"Edad: {edad_req or 'A convenir'}",
+        "Dominicana",
+        "Que sepa leer y escribir",
+        f"Experiencia en: {_s(s.experiencia)}",
+        f"Horario: {_s(s.horario)}",
+        "",
+        funciones_line,
+        "",
+        f"Adultos: {adultos_txt if adultos_txt != '' else '—'}",
+    ]
+    if ninos_line:
+        lines.append(ninos_line)
+    if _s(s.mascota):
+        lines.append(f"Mascota: {_s(s.mascota)}")
+
+    pasaje = ", más ayuda del pasaje" if bool(s.pasaje_aporte) else ", pasaje incluido"
+    lines += ["", f"Sueldo: ${_s(s.sueldo)} mensual{pasaje}"]
+
+    if _s(s.nota_cliente):
+        lines += ["", f"Nota: {_s(s.nota_cliente)}"]
+
+    return "\n".join(lines).strip()
+
+@app.route('/secretarias/solicitudes/copiar', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def secretarias_copiar_solicitudes():
+    """
+    PUBLICAR HOY: sólo muestra 'activa'/'reemplazo' que NO han sido copiadas
+    desde el corte vigente (1:00 AM local). Al copiar, desaparecen de inmediato.
+    """
+    corte = _corte_ciclo_1am()
+
+    cols = (
+        Solicitud.id,
+        Solicitud.fecha_solicitud,
+        Solicitud.codigo_solicitud,
+        Solicitud.ciudad_sector,
+        Solicitud.rutas_cercanas,
+        Solicitud.modalidad_trabajo,
+        Solicitud.edad_requerida,
+        Solicitud.experiencia,
+        Solicitud.horario,
+        Solicitud.funciones,
+        Solicitud.funciones_otro,
+        Solicitud.adultos,
+        Solicitud.ninos,
+        Solicitud.edades_ninos,
+        Solicitud.mascota,
+        Solicitud.sueldo,
+        Solicitud.pasaje_aporte,
+        Solicitud.nota_cliente,
+        Solicitud.last_copiado_at,
+        Solicitud.estado,
+    )
+
+    base_q = (
+        db.session.query(Solicitud)
+        .options(load_only(*cols))
+        .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
+        .filter(
+            or_(
+                Solicitud.last_copiado_at.is_(None),
+                Solicitud.last_copiado_at < corte   # ocultas las que ya se copiaron en este ciclo
+            )
+        )
+        .execution_options(stream_results=True)
+    )
+
+    order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
+    query = base_q.order_by(order_col.desc()).yield_per(1000)
+
+    solicitudes = [{
+        "id": s.id,
+        "codigo_solicitud": _s(s.codigo_solicitud),
+        "ciudad_sector": _s(s.ciudad_sector),
+        "modalidad": _s(s.modalidad_trabajo),
+        "copiada_hoy": False,  # acá nunca se listan copiadas
+        "order_text": _build_texto_solicitud(s),
+    } for s in query]
+
+    return render_template(
+        'secretarias_solicitudes_copiar.html',
+        solicitudes=solicitudes,
+        q="", q_enabled=False,
+        endpoint='secretarias_copiar_solicitudes'
+    )
+
+
+@app.route('/secretarias/solicitudes/buscar', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def secretarias_buscar_solicitudes():
+    """
+    BÚSQUEDA: lista todas las 'activa'/'reemplazo' con buscador.
+    No oculta por ciclo; sólo marca el badge (Copiable / Copiada en el ciclo).
+    """
+    corte = _corte_ciclo_1am()
+    q = _s(request.args.get('q'))
+
+    cols = (
+        Solicitud.id,
+        Solicitud.fecha_solicitud,
+        Solicitud.codigo_solicitud,
+        Solicitud.ciudad_sector,
+        Solicitud.rutas_cercanas,
+        Solicitud.modalidad_trabajo,
+        Solicitud.edad_requerida,
+        Solicitud.experiencia,
+        Solicitud.horario,
+        Solicitud.funciones,
+        Solicitud.funciones_otro,
+        Solicitud.adultos,
+        Solicitud.ninos,
+        Solicitud.edades_ninos,
+        Solicitud.mascota,
+        Solicitud.sueldo,
+        Solicitud.pasaje_aporte,
+        Solicitud.nota_cliente,
+        Solicitud.last_copiado_at,
+        Solicitud.estado,
+    )
+
+    base_q = (
+        db.session.query(Solicitud)
+        .options(load_only(*cols))
+        .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
+        .execution_options(stream_results=True)
+    )
+
+    if q:
+        like = f"%{q}%"
+        base_q = base_q.filter(or_(
+            Solicitud.codigo_solicitud.ilike(like),
+            Solicitud.ciudad_sector.ilike(like)
+        ))
+
+    order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
+    query = base_q.order_by(order_col.desc()).yield_per(1000)
+
+    solicitudes = []
+    for s in query:
+        copiable = (s.last_copiado_at is None) or (s.last_copiado_at < corte)
+        solicitudes.append({
+            "id": s.id,
+            "codigo_solicitud": _s(s.codigo_solicitud),
+            "ciudad_sector": _s(s.ciudad_sector),
+            "modalidad": _s(s.modalidad_trabajo),
+            "copiada_hoy": (not copiable),  # solo para el badge
+            "order_text": _build_texto_solicitud(s),
+        })
+
+    return render_template(
+        'secretarias_solicitudes_copiar.html',
+        solicitudes=solicitudes,
+        q=q, q_enabled=True,
+        endpoint='secretarias_buscar_solicitudes'
+    )
+
+
+@app.route('/secretarias/solicitudes/<int:id>/copiar', methods=['POST'])
+@roles_required('admin', 'secretaria')
+def secretarias_copiar_solicitud(id):
+    s = db.session.query(Solicitud).get(id)
+    if not s:
+        abort(404)
+
+    # Marca con hora de la DB
+    s.last_copiado_at = func.now()
+    db.session.commit()
+
+    flash(f'Solicitud {getattr(s, "codigo_solicitud", "")} copiada. Volverá a mostrarse después de la 1:00 AM.', 'success')
+    # Clave: siempre regreso a la lista que oculta por ciclo
+    return redirect(url_for('secretarias_copiar_solicitudes'))
+
+# --- Registro público de candidatas -----------------------------------------
+from datetime import datetime
+from flask import render_template, request, redirect, url_for, flash
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+
+from config_app import db, csrf, normalize_cedula
+from models import Candidata
+
+
+def _safe_dispose_pool():
+    """Libera conexiones del pool por si hubo un corte SSL."""
+    try:
+        engine = db.get_engine()
+        engine.dispose()
+    except Exception:
+        pass
+
+
+@app.route('/registro', methods=['GET', 'POST'])
+@app.route('/registro_publico', methods=['GET', 'POST'])
+def registro_publico():
+    """
+    Formulario público de registro de candidatas.
+    - GET  -> muestra el formulario
+    - POST -> valida y guarda en la tabla `candidatas`
+    """
+    if request.method == 'GET':
+        return render_template('registro_publico.html')
+
+    # --- POST: recoger datos del formulario ---
+    nombre       = (request.form.get('nombre_completo') or '').strip()
+    edad_raw     = (request.form.get('edad') or '').strip()
+    telefono     = (request.form.get('numero_telefono') or '').strip()
+    direccion    = (request.form.get('direccion_completa') or '').strip()
+    modalidad    = (request.form.get('modalidad_trabajo_preferida') or '').strip()
+    rutas        = (request.form.get('rutas_cercanas') or '').strip()
+    empleo_prev  = (request.form.get('empleo_anterior') or '').strip()
+    anos_exp     = (request.form.get('anos_experiencia') or '').strip()
+    areas_list   = request.form.getlist('areas_experiencia')  # checkboxes
+    planchar_raw = (request.form.get('sabe_planchar') or '').strip().lower()
+    ref_lab      = (request.form.get('contactos_referencias_laborales') or '').strip()
+    ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()
+    acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()
+    cedula_raw   = (request.form.get('cedula') or '').strip()
+
+    # --- Validaciones mínimas y mensajes claros ---
+    faltantes = []
+    for campo, valor in [
+        ("Nombre completo", nombre),
+        ("Edad", edad_raw),
+        ("Número de teléfono", telefono),
+        ("Dirección completa", direccion),
+        ("Modalidad de trabajo", modalidad),
+        ("Rutas cercanas", rutas),
+        ("Empleo anterior", empleo_prev),
+        ("Años de experiencia", anos_exp),
+        ("Referencias laborales", ref_lab),
+        ("Referencias familiares", ref_fam),
+        ("Cédula", cedula_raw),
+    ]:
+        if not valor:
+            faltantes.append(campo)
+
+    if not planchar_raw in ('si', 'no'):
+        faltantes.append("Sabe planchar (sí/no)")
+
+    if not acepta_raw in ('1', '0'):
+        faltantes.append("Acepta % de sueldo (sí/no)")
+
+    # Edad razonable (no forzamos entero en DB, pero validamos)
+    try:
+        edad_num = int(''.join(ch for ch in edad_raw if ch.isdigit()))
+        if edad_num < 16 or edad_num > 75:
+            flash("📛 La edad debe estar entre 16 y 75 años.", "warning")
+            return render_template('registro_publico.html'), 400
+    except ValueError:
+        faltantes.append("Edad (número)")
+
+    cedula_norm = normalize_cedula(cedula_raw)
+    if not cedula_norm:
+        flash("📛 Cédula inválida. Debe contener 11 dígitos.", "warning")
+        return render_template('registro_publico.html'), 400
+
+    if faltantes:
+        flash("Por favor completa: " + ", ".join(faltantes), "warning")
+        return render_template('registro_publico.html'), 400
+
+    # Convertir/normalizar algunos valores
+    areas_str     = ', '.join(areas_list) if areas_list else ''
+    sabe_planchar = True if planchar_raw == 'si' else False
+    acepta_pct    = True if acepta_raw == '1' else False
+
+    # --- Comprobación de duplicado por cédula ---
+    try:
+        dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
+    except OperationalError:
+        # Posible "SSL bad record mac"; limpiamos pool y reintentamos una vez
+        _safe_dispose_pool()
+        db.session.rollback()
+        dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
+
+    if dup:
+        flash("⚠️ Ya existe una candidata registrada con esta cédula.", "warning")
+        return render_template('registro_publico.html'), 400
+
+    # --- Crear objeto y guardar ---
+    nueva = Candidata(
+        marca_temporal            = datetime.utcnow(),
+        nombre_completo           = nombre,
+        edad                      = str(edad_num),
+        numero_telefono           = telefono,
+        direccion_completa        = direccion,
+        modalidad_trabajo_preferida = modalidad,
+        rutas_cercanas            = rutas,
+        empleo_anterior           = empleo_prev,
+        anos_experiencia          = anos_exp,
+        areas_experiencia         = areas_str,
+        sabe_planchar             = sabe_planchar,
+        contactos_referencias_laborales = ref_lab,
+        referencias_familiares_detalle  = ref_fam,
+        acepta_porcentaje_sueldo  = acepta_pct,
+        cedula                    = cedula_norm,
+        medio_inscripcion         = "Web",
+        estado                    = "en_proceso",
+        fecha_cambio_estado       = datetime.utcnow(),
+        usuario_cambio_estado     = "registro_publico",
+    )
+
+    try:
+        db.session.add(nueva)
+        db.session.commit()
+    except OperationalError as e:
+        # reconectar y reintentar una vez
+        _safe_dispose_pool()
+        db.session.rollback()
+        try:
+            db.session.add(nueva)
+            db.session.commit()
+        except Exception as e2:
+            db.session.rollback()
+            flash("❌ Problema momentáneo con la conexión. Intenta de nuevo en unos segundos.", "danger")
+            return render_template('registro_publico.html'), 503
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        flash(f"❌ No se pudo guardar el registro: {e.__class__.__name__}", "danger")
+        return render_template('registro_publico.html'), 500
+
+    flash("✅ ¡Registro enviado! Te contactaremos por WhatsApp en breve.", "success")
+    return redirect(url_for('registro_publico'))
+# --- Fin registro público ----------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # MAIN
