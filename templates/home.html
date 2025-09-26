@@ -16,12 +16,19 @@
           </p>
         </div>
         <div>
+          {# ---------- MEJORA: botón de ingreso con fallback ---------- #}
           {% set admin_login_url = url_for_safe('admin.login') %}
+          {% set fallback_login_url = url_for_safe('login') %}
           {% if admin_login_url %}
-          <a href="{{ admin_login_url }}" class="btn btn-light" style="font-weight: bold;">
-            🔑 Ingresar Administrador
-          </a>
+            <a href="{{ admin_login_url }}" class="btn btn-light" style="font-weight: bold;">
+              🔑 Ingresar Administrador
+            </a>
+          {% elif fallback_login_url %}
+            <a href="{{ fallback_login_url }}" class="btn btn-light" style="font-weight: bold;">
+              🔑 Ingresar
+            </a>
           {% endif %}
+          {# ----------------------------------------------------------- #}
         </div>
       </div>
     </div>
@@ -150,7 +157,61 @@
               <p class="card-text flex-grow-1">
                 Completa el proceso de selección: sube fotos, asigna grupos y actualiza estado.
               </p>
-              <a href="{{ finproc_url }}" class="btn btn-primary mt-auto">Ir a Finalizar</a>
+              <a href="{{ finproc_url }}" class="btn btn-primary">Ir a Finalizar</a>
+
+              {# --------- NUEVO: accesos rápidos para organizar el flujo --------- #}
+              <div class="mt-3">
+                {% set fin_buscar_url = url_for_safe('finalizar_proceso_buscar') %}
+                {% set ver_perfil_url = url_for_safe('candidata_ver_perfil') %}
+                <div class="d-grid gap-2">
+                  {% if fin_buscar_url %}
+                    <a href="{{ fin_buscar_url }}" class="btn btn-outline-secondary btn-sm">🔎 Buscar candidata para finalizar</a>
+                  {% endif %}
+                </div>
+              </div>
+              {# ------------------------------------------------------------------- #}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
+    <!-- NUEVA Sección: Solicitudes (Secretarias) -->
+    <div class="mb-5">
+      <h2 class="h4">🧾 Solicitudes</h2>
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-2">
+
+        <!-- Publicar hoy: marca al copiar y oculta hasta 1:00 AM -->
+        {% set copiar_hoy_url = url_for_safe('secretarias_copiar_solicitudes') %}
+        {% if copiar_hoy_url %}
+        <div class="col">
+          <div class="card h-100 shadow-sm border-success">
+            <div class="card-body d-flex flex-column">
+              <i class="fas fa-bullhorn fa-2x mb-3"></i>
+              <h5 class="card-title">📢 Publicar hoy</h5>
+              <p class="card-text flex-grow-1">
+                Lista de solicitudes activas del ciclo. Al <strong>copiar</strong> se marcan y se ocultan hasta la <strong>1:00 AM</strong> del siguiente día.
+              </p>
+              <a href="{{ copiar_hoy_url }}" class="btn btn-success mt-auto">Ir a Publicar</a>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Buscar: copiar SIN marcar -->
+        {% set buscar_sols_url = url_for_safe('secretarias_buscar_solicitudes') %}
+        {% if buscar_sols_url %}
+        <div class="col">
+          <div class="card h-100 shadow-sm border-primary">
+            <div class="card-body d-flex flex-column">
+              <i class="fas fa-search-plus fa-2x mb-3"></i>
+              <h5 class="card-title">🔎 Buscar solicitudes</h5>
+              <p class="card-text flex-grow-1">
+                Búsqueda con filtros y detalle expandible. El botón <strong>Copiar</strong> no marca ni oculta.
+              </p>
+              <a href="{{ buscar_sols_url }}" class="btn btn-primary mt-auto">Ir a Buscar</a>
             </div>
           </div>
         </div>
@@ -192,6 +253,28 @@
                 Genera PDF con los pagos pendientes de todas las candidatas.
               </p>
               <a href="{{ rep_pagos_url }}" class="btn btn-secondary mt-auto">Ver Reporte Pagos</a>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- NUEVA Sección: Sitio Público -->
+    <div class="mb-5">
+      <h2 class="h4">🌐 Sitio Público</h2>
+      <div class="row row-cols-1 row-cols-md-2 g-4 mt-2">
+        {% set registro_publico_url = url_for_safe('registro_publico') %}
+        {% if registro_publico_url %}
+        <div class="col">
+          <div class="card h-100 shadow-sm border-info">
+            <div class="card-body d-flex flex-column">
+              <i class="fas fa-user-edit fa-2x mb-3"></i>
+              <h5 class="card-title">🗳️ Registro Público</h5>
+              <p class="card-text flex-grow-1">
+                Formulario público de registro/solicitud para clientes o candidatas (según tu implementación).
+              </p>
+              <a href="{{ registro_publico_url }}" class="btn btn-info mt-auto">Ir a Registro Público</a>
             </div>
           </div>
         </div>

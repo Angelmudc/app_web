@@ -2,96 +2,295 @@
 {% block title %}Finalizar Proceso – {{ candidata.nombre_completo }}{% endblock %}
 
 {% block content %}
-  <div class="container my-4">
-    <!-- El bloque de flash está en base.html y mostrará errores/éxitos -->
-    <div class="card shadow-sm">
-      <div class="card-header bg-primary text-white">
-        <h2 class="h5 mb-0">Finalizar Proceso: {{ candidata.nombre_completo }}</h2>
+<div class="container my-4">
+
+  <!-- Encabezado -->
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h5 mb-1">Finalizar Proceso</h1>
+      <div class="text-muted small">
+        Última actualización:
+        {% if candidata.fecha_cambio_estado %}
+          {{ candidata.fecha_cambio_estado.strftime("%Y-%m-%d %H:%M") }}
+        {% else %}—{% endif %}
       </div>
-      <div class="card-body">
-        <form
-          method="post"
-          action="{{ url_for('finalizar_proceso', fila=candidata.fila) }}"
-          enctype="multipart/form-data"
-        >
-          <!-- CSRF token -->
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </div>
+    <div class="d-flex gap-2">
+      <!-- Volver al BUSCADOR (no al listado) -->
+      <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-link">← Volver a buscar</a>
+      <!-- Ver perfil en otra pestaña -->
+      <a href="{{ url_for('candidata_ver_perfil', fila=candidata.fila) }}" class="btn btn-outline-secondary" target="_blank" rel="noopener">
+        Ver perfil
+      </a>
+    </div>
+  </div>
 
-          <div class="row">
-            <!-- Foto de perfil -->
-            <div class="col-md-4 mb-3">
-              <label for="foto_perfil" class="form-label">Foto de perfil</label>
-              <input
-                class="form-control"
-                type="file"
-                id="foto_perfil"
-                name="foto_perfil"
-                accept="image/*"
-                required
-              >
-            </div>
-            <!-- Cédula frontal -->
-            <div class="col-md-4 mb-3">
-              <label for="cedula1" class="form-label">Cédula (frontal)</label>
-              <input
-                class="form-control"
-                type="file"
-                id="cedula1"
-                name="cedula1"
-                accept="image/*"
-                required
-              >
-            </div>
-            <!-- Cédula reverso -->
-            <div class="col-md-4 mb-3">
-              <label for="cedula2" class="form-label">Cédula (reverso)</label>
-              <input
-                class="form-control"
-                type="file"
-                id="cedula2"
-                name="cedula2"
-                accept="image/*"
-                required
-              >
-            </div>
+  <!-- Resumen de la candidata -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body d-flex flex-wrap align-items-center gap-4">
+      <div class="rounded border p-1" style="width:100px;height:100px;overflow:hidden;background:#f8f9fa;">
+        {% if candidata.foto_perfil or candidata.perfil %}
+          <img src="{{ url_for('perfil_candidata', fila=candidata.fila) }}"
+               alt="Foto de {{ candidata.nombre_completo }}"
+               class="w-100 h-100" style="object-fit:cover;">
+        {% else %}
+          <div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted small">
+            Sin foto
           </div>
+        {% endif %}
+      </div>
 
-          <!-- Grupos de empleo -->
-          <fieldset class="mb-3">
-            <legend class="col-form-label pt-0">Selecciona los grupos de empleo</legend>
-            <div class="row">
-              {% for grupo in grupos %}
-                <div class="col-sm-6 col-lg-4">
-                  <div class="form-check">
-                    <input
-                      class="form-check-input"
-                      type="checkbox"
-                      name="grupos_empleo"
-                      id="grupo_{{ loop.index }}"
-                      value="{{ grupo }}"
-                      {% if candidata.grupos_empleo and (grupo in candidata.grupos_empleo) %}checked{% endif %}
-                    >
-                    <label class="form-check-label" for="grupo_{{ loop.index }}">
-                      {{ grupo }}
-                    </label>
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          </fieldset>
-
-          <div class="text-end">
-            <button type="submit" class="btn btn-success">Guardar y Finalizar</button>
-          </div>
-        </form>
-
-        <!-- Botón para volver atrás -->
-        <div class="mt-3">
-          <a href="{{ url_for('list_candidatas') }}" class="btn btn-link">
-            ← Volver al listado de candidatas
-          </a>
+      <div class="flex-grow-1">
+        <div class="fw-semibold d-flex align-items-center flex-wrap gap-2">
+          <span>{{ candidata.nombre_completo }}</span>
+          <span class="text-muted">#{{ candidata.fila }}</span>
+          <button type="button" class="btn btn-link btn-sm p-0" data-copy="{{ candidata.fila }}" title="Copiar fila">📋</button>
         </div>
+
+        <div class="small text-muted mt-1 d-flex flex-wrap gap-3">
+          {% if candidata.cedula %}
+            <span>Cédula: <strong>{{ candidata.cedula }}</strong></span>
+            <button type="button" class="btn btn-link btn-sm p-0" data-copy="{{ candidata.cedula }}" title="Copiar cédula">📋</button>
+          {% endif %}
+          {% if candidata.codigo %}
+            <span>Código: <strong>{{ candidata.codigo }}</strong></span>
+            <button type="button" class="btn btn-link btn-sm p-0" data-copy="{{ candidata.codigo }}" title="Copiar código">📋</button>
+          {% endif %}
+          {% if candidata.direccion_completa %}
+            <span>Ciudad/Sector: <strong>{{ candidata.direccion_completa }}</strong></span>
+          {% endif %}
+        </div>
+
+        <div class="mt-2 d-flex align-items-center flex-wrap gap-2">
+          {% if candidata.estado %}
+            <span class="badge bg-primary-subtle text-primary border">
+              {{ candidata.estado|replace("_"," ") }}
+            </span>
+          {% endif %}
+          <!-- Estado de documentos actuales -->
+          <span class="badge {{ (candidata.foto_perfil or candidata.perfil) and 'bg-success' or 'bg-secondary' }}">
+            Foto {{ (candidata.foto_perfil or candidata.perfil) and 'cargada' or 'pendiente' }}
+          </span>
+          <span class="badge {{ candidata.cedula1 and 'bg-success' or 'bg-secondary' }}">
+            Cédula frente {{ candidata.cedula1 and 'cargada' or 'pendiente' }}
+          </span>
+          <span class="badge {{ candidata.cedula2 and 'bg-success' or 'bg-secondary' }}">
+            Cédula reverso {{ candidata.cedula2 and 'cargada' or 'pendiente' }}
+          </span>
+        </div>
+      </div>
+
+      <div class="text-end">
+        {% if candidata.anos_experiencia or candidata.areas_experiencia %}
+        <div class="small">
+          {% if candidata.anos_experiencia %}
+            Años exp.: <strong>{{ candidata.anos_experiencia }}</strong>
+          {% endif %}
+          {% if candidata.areas_experiencia %}
+            <span class="ms-3">Áreas: <strong>{{ candidata.areas_experiencia }}</strong></span>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
+
+  <!-- Formulario principal -->
+  <form method="post"
+        action="{{ url_for('finalizar_proceso', fila=candidata.fila) }}"
+        enctype="multipart/form-data"
+        id="finalizar-form"
+        novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <h2 class="h6 mb-0">Documentos obligatorios</h2>
+      </div>
+      <div class="card-body">
+
+        <div class="row gy-4">
+          <!-- Foto de perfil -->
+          <div class="col-md-4">
+            <label for="foto_perfil" class="form-label">Foto de perfil <span class="text-danger">*</span></label>
+            <input class="form-control" type="file" id="foto_perfil" name="foto_perfil" accept="image/*" required>
+            <div class="form-text">JPG/PNG. Recomendado ≤ 1.5&nbsp;MB.</div>
+            <div class="ratio ratio-1x1 border rounded mt-2" id="preview_foto" style="background:#f8f9fa;">
+              {% if candidata.foto_perfil or candidata.perfil %}
+                <img src="{{ url_for('perfil_candidata', fila=candidata.fila) }}"
+                     class="w-100 h-100" style="object-fit:cover;">
+              {% endif %}
+            </div>
+            <div class="invalid-feedback">Sube la foto de perfil.</div>
+          </div>
+
+          <!-- Cédula frontal -->
+          <div class="col-md-4">
+            <label for="cedula1" class="form-label">Cédula (frontal) <span class="text-danger">*</span></label>
+            <input class="form-control" type="file" id="cedula1" name="cedula1" accept="image/*" required>
+            <div class="form-text">JPG/PNG claros y legibles. Recomendado ≤ 1.5&nbsp;MB.</div>
+            <div class="ratio ratio-1x1 border rounded mt-2" id="preview_ced1" style="background:#f8f9fa;"></div>
+            <div class="invalid-feedback">Sube la cédula frontal.</div>
+          </div>
+
+          <!-- Cédula reverso -->
+          <div class="col-md-4">
+            <label for="cedula2" class="form-label">Cédula (reverso) <span class="text-danger">*</span></label>
+            <input class="form-control" type="file" id="cedula2" name="cedula2" accept="image/*" required>
+            <div class="form-text">JPG/PNG claros y legibles. Recomendado ≤ 1.5&nbsp;MB.</div>
+            <div class="ratio ratio-1x1 border rounded mt-2" id="preview_ced2" style="background:#f8f9fa;"></div>
+            <div class="invalid-feedback">Sube la cédula reverso.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grupos de empleo -->
+    <div class="card shadow-sm mt-4">
+      <div class="card-header bg-light">
+        <div class="d-flex align-items-center justify-content-between">
+          <h2 class="h6 mb-0">Grupos de empleo</h2>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-check-all">Seleccionar todo</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-all">Limpiar</button>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if grupos and grupos|length %}
+          <div class="row">
+            {% for grupo in grupos %}
+              <div class="col-sm-6 col-lg-4 mb-2">
+                <div class="form-check">
+                  <input
+                    class="form-check-input grupo-item"
+                    type="checkbox"
+                    name="grupos_empleo"
+                    id="grupo_{{ loop.index }}"
+                    value="{{ grupo }}"
+                    {% if candidata.grupos_empleo and (grupo in candidata.grupos_empleo) %}checked{% endif %}>
+                  <label class="form-check-label" for="grupo_{{ loop.index }}">{{ grupo }}</label>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">No hay grupos configurados.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Barra de acciones -->
+    <div class="d-flex align-items-center justify-content-between mt-4 flex-wrap gap-2">
+      <div class="small text-muted">
+        Al guardar, se validan los tres archivos obligatorios. Si todo está correcto, la candidata pasa a <strong>lista_para_trabajar</strong>.
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-success" id="btn-submit">
+          <span class="spinner-border spinner-border-sm me-1 d-none" id="btn-spinner" role="status" aria-hidden="true"></span>
+          Guardar y Finalizar
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- JS: previews, validar, seleccionar/limpiar grupos, copiar, tamaño máximo y spinner -->
+<script>
+(function() {
+  // --- Helpers ---
+  function bindPreview(inputId, previewId) {
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    if (!input || !preview) return;
+    input.addEventListener('change', function(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        preview.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = ev.target.result;
+        img.className = 'w-100 h-100';
+        img.style.objectFit = 'cover';
+        preview.appendChild(img);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function copyToClipboard(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(String(text)).catch(()=>{});
+    } else {
+      const tmp = document.createElement('textarea');
+      tmp.value = String(text);
+      document.body.appendChild(tmp);
+      tmp.select();
+      try { document.execCommand('copy'); } catch(e) {}
+      document.body.removeChild(tmp);
+    }
+  }
+
+  // --- Previews ---
+  bindPreview('foto_perfil', 'preview_foto');
+  bindPreview('cedula1', 'preview_ced1');
+  bindPreview('cedula2', 'preview_ced2');
+
+  // --- Select all / clear all ---
+  const btnAll = document.getElementById('btn-check-all');
+  const btnClear = document.getElementById('btn-clear-all');
+  function setAll(val) {
+    document.querySelectorAll('.grupo-item').forEach(cb => { cb.checked = val; });
+  }
+  if (btnAll) btnAll.addEventListener('click', () => setAll(true));
+  if (btnClear) btnClear.addEventListener('click', () => setAll(false));
+
+  // --- Copiar fila/cedula/codigo ---
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-copy]');
+    if (!btn) return;
+    const val = btn.getAttribute('data-copy');
+    copyToClipboard(val);
+    const old = btn.textContent;
+    btn.textContent = '✔';
+    setTimeout(() => { btn.textContent = old; }, 900);
+  });
+
+  // --- Validación & spinner ---
+  const form = document.getElementById('finalizar-form');
+  const btn  = document.getElementById('btn-submit');
+  const spn  = document.getElementById('btn-spinner');
+
+  // Tamaño máximo en el cliente (opcional, 3 MB)
+  const MAX_BYTES = 3 * 1024 * 1024;
+
+  if (form && btn && spn) {
+    form.addEventListener('submit', function(e) {
+      // Validación HTML5
+      if (!form.checkValidity()) {
+        e.preventDefault();
+        e.stopPropagation();
+        form.classList.add('was-validated');
+        return;
+      }
+      // Chequeo de tamaño (cliente)
+      const f1 = document.getElementById('foto_perfil')?.files?.[0];
+      const f2 = document.getElementById('cedula1')?.files?.[0];
+      const f3 = document.getElementById('cedula2')?.files?.[0];
+      if ((f1 && f1.size > MAX_BYTES) || (f2 && f2.size > MAX_BYTES) || (f3 && f3.size > MAX_BYTES)) {
+        e.preventDefault();
+        e.stopPropagation();
+        alert('Algún archivo supera los 3 MB. Por favor, reduce el tamaño e inténtalo de nuevo.');
+        return;
+      }
+      // UX
+      spn.classList.remove('d-none');
+      btn.setAttribute('disabled', 'disabled');
+    });
+  }
+})();
+</script>
 {% endblock %}

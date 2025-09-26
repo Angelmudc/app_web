@@ -15,6 +15,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf import CSRFProtect
 import cloudinary
 
+from sqlalchemy import text
+from sqlalchemy.pool import NullPool
+
 # ─────────────────────────────────────────────────────────────
 # Carga .env (siempre desde la raíz del proyecto)
 # ─────────────────────────────────────────────────────────────
@@ -32,10 +35,11 @@ csrf    = CSRFProtect()
 # ─────────────────────────────────────────────────────────────
 # Usuarios en memoria (para login admin/secretaria)
 # ─────────────────────────────────────────────────────────────
+from werkzeug.security import generate_password_hash, check_password_hash
 USUARIOS = {
-    "angel":    {"pwd_hash": generate_password_hash("0000"), "role": "admin"},
-    "divina":   {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
-    "darielis": {"pwd_hash": generate_password_hash("3333"), "role": "secretaria"},
+    "angel":    {"pwd_hash": generate_password_hash("0000"),  "role": "admin"},
+    "divina":   {"pwd_hash": generate_password_hash("67890"),  "role": "admin"},
+    "darielis": {"pwd_hash": generate_password_hash("3333"),   "role": "secretaria"},
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -55,23 +59,17 @@ def _normalize_db_url(url: str) -> str:
     - Asegura 'sslmode=require' en la querystring.
     """
     if not url:
-        raise RuntimeError("❌ Debes definir DATABASE_URL en tu .env (URL REMOTA Render).")
+        raise RuntimeError("❌ Debes definir DATABASE_URL en tu .env (URL REMOTA).")
 
     url = url.strip()
-
-    # 1) Reemplazar esquema deprecated
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
-
-    # 2) Si no especifica dialecto, forzamos psycopg2
     elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-    # 3) Asegurar sslmode=require
     if "sslmode=" not in url:
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}sslmode=require"
-
     return url
 
 # ─────────────────────────────────────────────────────────────
@@ -85,40 +83,54 @@ def create_app():
     app.config['WTF_CSRF_ENABLED'] = True
     csrf.init_app(app)
 
-    # Si deployas detrás de proxy (Render), conserva esquema y host correctos
+    # Si deployas detrás de proxy (Render, etc.)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     # Blueprints
     from admin.routes import admin_bp
     app.register_blueprint(admin_bp, url_prefix='/admin')
-
     from clientes.routes import clientes_bp
     app.register_blueprint(clientes_bp)
 
-    # ── Base de datos: SIEMPRE remota (sin BD local)
+    # ── Base de datos remota (sin BD local)
     raw_db_url = os.getenv('DATABASE_URL', '')
     db_url = _normalize_db_url(raw_db_url)
 
-    # Opciones de engine enfocadas a conexión remota estable
-    engine_opts = {
-        "pool_pre_ping": True,         # detecta conexiones muertas y reabre
-        "pool_recycle": 1800,          # recicla cada 30 min
-        "pool_size": 5,
-        "max_overflow": 5,
-        "pool_timeout": 30,
-        "pool_reset_on_return": "rollback",  # evita conexiones "sucias" al volver al pool
-        "connect_args": {
-            # SSL ya se asegura por querystring, pero reforzamos:
-            "sslmode": "require",
-            # timeouts y keepalives (evita errores por idles prolongados)
-            "connect_timeout": 8,
-            "keepalives": 1,
-            "keepalives_idle": 30,
-            "keepalives_interval": 10,
-            "keepalives_count": 3,
-            # Nota: estas opciones son soportadas por psycopg2 en la mayoría de entornos
-        },
+    # ¿Usas PgBouncer (transaction pooling)? → usa NullPool para evitar reciclar SSL roto
+    # Define en .env: DB_POOL_MODE=pgbouncer   (o déjalo vacío para pool normal)
+    pool_mode = os.getenv("DB_POOL_MODE", "").lower()  # "", "pgbouncer"
+    use_null_pool = pool_mode in ("pgbouncer", "nullpool", "off")
+
+    # Engine options
+    connect_args = {
+        # SSL ya va en la URL; esto refuerza en psycopg2
+        "sslmode": "require",
+        "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "8")),
+        # keepalives para evitar “decryption failed or bad record mac” por sesiones viejas
+        "keepalives": int(os.getenv("DB_KEEPALIVES", "1")),
+        "keepalives_idle": int(os.getenv("DB_KEEPALIVES_IDLE", "30")),
+        "keepalives_interval": int(os.getenv("DB_KEEPALIVES_INTERVAL", "10")),
+        "keepalives_count": int(os.getenv("DB_KEEPALIVES_COUNT", "3")),
+        "application_name": os.getenv("DB_APPNAME", "app_web"),
     }
+
+    engine_opts = {
+        "pool_pre_ping": True,          # verifica conexión antes de usarla
+        "pool_reset_on_return": "rollback",
+        "connect_args": connect_args,
+    }
+
+    if use_null_pool:
+        # Un socket por operación, sin reusar → adiós sockets “viejos” con SSL roto
+        engine_opts["poolclass"] = NullPool
+    else:
+        # Pool normal, pero reciclando a menudo para evitar sesiones envejecidas
+        engine_opts.update({
+            "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5 minutos
+            "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
+            "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "5")),
+            "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
+        })
 
     app.config.update({
         "SQLALCHEMY_DATABASE_URI": db_url,
@@ -138,40 +150,37 @@ def create_app():
     app.jinja_env.globals['now'] = _dt.utcnow
     app.jinja_env.globals['current_year'] = _dt.utcnow().year
 
-    # ── Login manager (convive user en memoria y cliente DB)
+    # ── Login manager (usuarios en memoria + clientes)
+    from flask_login import LoginManager
     login_manager = LoginManager()
     login_manager.init_app(app)
 
     @login_manager.unauthorized_handler
     def unauthorized_callback():
-        # Si intentan /clientes* sin login → login de clientes
         if request.path.startswith('/clientes'):
             return redirect(url_for('clientes.login', next=request.url))
-        # Si no, login admin
         return redirect(url_for('admin.login', next=request.url))
 
+    from werkzeug.security import check_password_hash
     class User(UserMixin):
         def __init__(self, username, role):
             self.id   = username
             self.role = role
-
         def check_password(self, password):
             return check_password_hash(USUARIOS[self.id]['pwd_hash'], password)
 
     @login_manager.user_loader
     def load_user(user_id):
-        # Primero, usuarios en memoria
         data = USUARIOS.get(user_id)
         if data:
             return User(user_id, data['role'])
-        # Luego, intenta cargar un Cliente (si tu app lo usa)
         try:
             from models import Cliente
             return Cliente.query.get(int(user_id))
         except Exception:
             return None
 
-    # ── Config de entrevistas (si existe el JSON, lo carga; si no, deja {})
+    # Config de entrevistas (si existe)
     try:
         cfg_path = Path(app.root_path) / 'config' / 'config_entrevistas.json'
         with open(cfg_path, encoding='utf-8') as f:
@@ -180,17 +189,14 @@ def create_app():
         entrevistas_cfg = {}
     app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
 
-    # ── Hook opcional: en cada request, asegura que la conexión esté viva
+    # ── Ping preventivo por request (SQLAlchemy 2.x requiere text())
     @app.before_request
     def _ensure_db_connection():
-        # pool_pre_ping ya lo hace, pero este "touch" garantiza latencia mínima
         try:
-            db.session.execute("SELECT 1")
+            db.session.execute(text("SELECT 1"))
         except Exception:
-            # Si falla, cierra y deja que SQLAlchemy reabra limpio
             db.session.remove()
 
-    # ── Limpieza al terminar el request
     @app.teardown_appcontext
     def _shutdown_session(exception=None):
         db.session.remove()
@@ -198,7 +204,7 @@ def create_app():
     return app
 
 # ─────────────────────────────────────────────────────────────
-# Cloudinary (si lo usas para imágenes; si no, deja variables vacías)
+# Cloudinary (si lo usas para imágenes; si no, quedan vacíos)
 # ─────────────────────────────────────────────────────────────
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),

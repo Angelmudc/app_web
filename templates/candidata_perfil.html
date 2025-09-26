@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Perfil – {{ candidata.nombre_completo }}{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <h1 class="h5 mb-0">Perfil de {{ candidata.nombre_completo }} <span class="text-muted">#{{ candidata.fila }}</span></h1>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary btn-sm">← Volver a buscar</a>
+      <a href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}" class="btn btn-success btn-sm">Editar / Finalizar</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body d-flex flex-wrap align-items-start gap-4">
+      <div class="rounded border p-1" style="width:140px;height:140px;overflow:hidden;background:#f8f9fa;">
+        {% if candidata.foto_perfil or candidata.perfil %}
+          <img src="{{ url_for('perfil_candidata', fila=candidata.fila) }}" alt="Foto" class="w-100 h-100" style="object-fit:cover;">
+        {% else %}
+          <div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted small">Sin foto</div>
+        {% endif %}
+      </div>
+
+      <div class="flex-grow-1">
+        <div class="mb-2">
+          {% if candidata.estado %}
+            <span class="badge bg-primary-subtle text-primary border">{{ candidata.estado|replace('_',' ') }}</span>
+          {% endif %}
+          {% if tiene_ced1 %}<span class="badge bg-success-subtle text-success border ms-1">Cédula (frente)</span>{% else %}<span class="badge bg-light text-muted border ms-1">Cédula (frente)</span>{% endif %}
+          {% if tiene_ced2 %}<span class="badge bg-success-subtle text-success border ms-1">Cédula (reverso)</span>{% else %}<span class="badge bg-light text-muted border ms-1">Cédula (reverso)</span>{% endif %}
+          {% if tiene_foto %}<span class="badge bg-success-subtle text-success border ms-1">Foto</span>{% else %}<span class="badge bg-light text-muted border ms-1">Foto</span>{% endif %}
+        </div>
+
+        <div class="row g-2">
+          <div class="col-md-6">
+            <div class="small text-muted">Cédula</div>
+            <div class="fw-semibold">{{ candidata.cedula or '—' }}</div>
+          </div>
+          <div class="col-md-6">
+            <div class="small text-muted">Código</div>
+            <div class="fw-semibold">{{ candidata.codigo or '—' }}</div>
+          </div>
+          <div class="col-md-12">
+            <div class="small text-muted">Ciudad / Sector</div>
+            <div class="fw-semibold">{{ candidata.direccion_completa or '—' }}</div>
+          </div>
+        </div>
+
+        {% if grupos and grupos|length %}
+        <div class="mt-3">
+          <div class="small text-muted mb-1">Grupos de empleo</div>
+          {% for g in grupos %}
+            <span class="badge bg-secondary-subtle text-secondary border me-1 mb-1">{{ g }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="mt-3">
+          <a href="{{ url_for('perfil_candidata', fila=candidata.fila) }}" class="btn btn-sm btn-outline-primary" download="perfil_{{ candidata.fila }}.png">
+            Descargar foto
+          </a>
+          <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-sm btn-link">Volver a buscar</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,23 +1,192 @@
 {% extends "base.html" %}
+{% block title %}Perfil – {{ candidata.nombre_completo }}{% endblock %}
+
 {% block content %}
-  <h2>Perfil de {{ candidata.nombre_completo }}</h2>
-  {% if candidata.foto_perfil %}
-    <img 
-      src="{{ url_for('perfil_candidata', fila=candidata.fila) }}" 
-      alt="Foto de perfil de {{ candidata.nombre_completo }}"
-      class="img-fluid rounded mb-3"
-    >
-    <p>
-      <a 
-        href="{{ url_for('perfil_candidata', fila=candidata.fila) }}" 
-        download="perfil_{{ candidata.fila }}.png" 
-        class="btn btn-secondary"
-      >Descargar foto</a>
-    </p>
-  {% else %}
-    <p class="text-warning">No hay foto de perfil cargada.</p>
-  {% endif %}
-  <p><strong>Cédula:</strong> {{ candidata.cedula }}</p>
-  <p><strong>Estado:</strong> {{ candidata.estado.replace('_',' ') | capitalize }}</p>
-  <p><a href="{{ url_for('list_candidatas') }}" class="btn btn-link">← Volver al listado</a></p>
+<div class="container my-4">
+
+  <!-- Encabezado y acciones -->
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h5 mb-1">{{ candidata.nombre_completo }}</h1>
+      <div class="small text-muted">
+        {% if candidata.fila %}ID: #{{ candidata.fila }} · {% endif %}
+        {% if candidata.fecha_cambio_estado %}Actualizado: {{ candidata.fecha_cambio_estado.strftime("%Y-%m-%d %H:%M") }}{% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      {% if candidata.fila %}
+      <a class="btn btn-success" href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}">Finalizar proceso</a>
+      {% endif %}
+      <a class="btn btn-outline-secondary" href="{{ url_for('finalizar_proceso_buscar') }}">Buscar otra</a>
+      <a class="btn btn-link" href="{{ url_for('list_candidatas') }}">Volver al listado</a>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Columna izquierda: Foto -->
+    <div class="col-12 col-md-4">
+      <div class="card shadow-sm">
+        <div class="card-header bg-light py-2">
+          <strong>Foto de perfil</strong>
+        </div>
+        <div class="card-body">
+          <div class="ratio ratio-1x1 border rounded overflow-hidden bg-light mb-3">
+            {% if candidata.foto_perfil or candidata.perfil %}
+              <img
+                src="{{ url_for('perfil_candidata', fila=candidata.fila) }}"
+                alt="Foto de {{ candidata.nombre_completo }}"
+                class="w-100 h-100"
+                style="object-fit: cover;"
+              >
+            {% else %}
+              <div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted">
+                Sin foto
+              </div>
+            {% endif %}
+          </div>
+
+          {% if candidata.foto_perfil or candidata.perfil %}
+          <div class="d-grid gap-2">
+            <a
+              class="btn btn-secondary"
+              href="{{ url_for('perfil_candidata', fila=candidata.fila) }}"
+              download="perfil_{{ candidata.fila or 'candidata' }}.png"
+            >
+              Descargar foto
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna derecha: Datos -->
+    <div class="col-12 col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-header bg-light py-2 d-flex align-items-center justify-content-between">
+          <strong>Información general</strong>
+          {% if candidata.estado %}
+            <span class="badge bg-primary-subtle text-primary border">
+              {{ candidata.estado.replace('_',' ') }}
+            </span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+
+          <!-- Datos principales -->
+          <div class="row g-3">
+            {% if candidata.cedula %}
+            <div class="col-sm-6">
+              <div class="small text-muted mb-1">Cédula</div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="fw-semibold">{{ candidata.cedula }}</span>
+                <button type="button" class="btn btn-xs btn-outline-secondary"
+                        onclick="navigator.clipboard?.writeText('{{ candidata.cedula }}')">Copiar</button>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if candidata.codigo %}
+            <div class="col-sm-6">
+              <div class="small text-muted mb-1">Código</div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="fw-semibold">{{ candidata.codigo }}</span>
+                <button type="button" class="btn btn-xs btn-outline-secondary"
+                        onclick="navigator.clipboard?.writeText('{{ candidata.codigo }}')">Copiar</button>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if candidata.direccion_completa %}
+            <div class="col-12">
+              <div class="small text-muted mb-1">Ciudad / Sector</div>
+              <div class="fw-semibold">{{ candidata.direccion_completa }}</div>
+            </div>
+            {% endif %}
+
+            {% if candidata.numero_telefono %}
+            <div class="col-sm-6">
+              <div class="small text-muted mb-1">Teléfono</div>
+              <div class="fw-semibold">{{ candidata.numero_telefono }}</div>
+            </div>
+            {% endif %}
+
+            {% if candidata.modalidad_trabajo_preferida %}
+            <div class="col-sm-6">
+              <div class="small text-muted mb-1">Modalidad preferida</div>
+              <div class="fw-semibold">{{ candidata.modalidad_trabajo_preferida }}</div>
+            </div>
+            {% endif %}
+          </div>
+
+          <hr class="my-3">
+
+          <!-- Experiencia -->
+          {% if candidata.anos_experiencia or candidata.areas_experiencia or candidata.empleo_anterior %}
+          <div class="row g-3">
+            {% if candidata.anos_experiencia %}
+            <div class="col-sm-4">
+              <div class="small text-muted mb-1">Años experiencia</div>
+              <div class="fw-semibold">{{ candidata.anos_experiencia }}</div>
+            </div>
+            {% endif %}
+            {% if candidata.areas_experiencia %}
+            <div class="col-sm-8">
+              <div class="small text-muted mb-1">Áreas de experiencia</div>
+              <div class="fw-semibold">{{ candidata.areas_experiencia }}</div>
+            </div>
+            {% endif %}
+            {% if candidata.empleo_anterior %}
+            <div class="col-12">
+              <div class="small text-muted mb-1">Empleo anterior</div>
+              <div class="fw-semibold">{{ candidata.empleo_anterior }}</div>
+            </div>
+            {% endif %}
+          </div>
+          <hr class="my-3">
+          {% endif %}
+
+          <!-- Grupos de empleo -->
+          {% set grupos = candidata.grupos_empleo
+                          if candidata.grupos_empleo is not none
+                          else (candidata.grupos if hasattr(candidata, 'grupos') else []) %}
+          {% if grupos %}
+          <div class="mb-3">
+            <div class="small text-muted mb-1">Grupos de empleo</div>
+            <div class="d-flex flex-wrap gap-2">
+              {% for g in grupos %}
+                <span class="badge bg-secondary-subtle text-secondary border">{{ g }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Acciones -->
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            {% if candidata.fila %}
+            <a class="btn btn-primary" href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}">
+              Completar / Editar documentos
+            </a>
+            {% endif %}
+            <a class="btn btn-outline-secondary" href="{{ url_for('finalizar_proceso_buscar') }}">
+              Buscar otra candidata
+            </a>
+            <a class="btn btn-link" href="{{ url_for('list_candidatas') }}">
+              ← Volver al listado
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .btn-xs {
+    --bs-btn-padding-y: .125rem;
+    --bs-btn-padding-x: .35rem;
+    --bs-btn-font-size: .75rem;
+  }
+</style>
 {% endblock %}

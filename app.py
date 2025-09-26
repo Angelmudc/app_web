@@ -45,6 +45,8 @@ import requests  # ← agregado
 # Carga ansiosa opcional si la usas en alguna vista
 from sqlalchemy.orm import joinedload  # ← agregado (complemento de subqueryload)
 
+from sqlalchemy.exc import OperationalError, DBAPIError
+from sqlalchemy.sql import text
 
 # -----------------------------------------------------------------------------
 # APP BOOT
@@ -55,6 +57,15 @@ migrate = Migrate(app, db)
 # Helper para verificar si un endpoint existe (usable desde Jinja)
 # helpers para plantillas
 app.jinja_env.globals['has_endpoint'] = lambda name: name in app.view_functions
+
+@app.teardown_appcontext
+def _shutdown_session(exception=None):
+    # Cerrar/limpiar la sesión SIEMPRE al final del request
+    try:
+        db.session.remove()
+    except Exception:
+        pass
+
 
 def url_for_safe(endpoint, **values):
     from flask import url_for
@@ -77,6 +88,74 @@ USUARIOS = {
 # -----------------------------------------------------------------------------
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 
+
+from sqlalchemy.exc import OperationalError
+
+@app.errorhandler(OperationalError)
+def _handle_operational_error(e):
+    # Conexión rota (SSL/bad record mac). Limpia y devuelve 503 legible.
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
+    try:
+        db.get_engine().dispose()
+    except Exception:
+        pass
+    return ("⚠️ Conexión a la base de datos no disponible momentáneamente. "
+            "Intenta nuevamente."), 503
+
+
+def _db_retry(fn, *args, **kwargs):
+    """
+    Ejecuta fn y, si la conexión está rota (SSL / bad record mac / connection reset),
+    hace remove() y reintenta UNA vez.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except (OperationalError, DBAPIError) as e:
+        # Mensajes típicos de socket/SSL roto
+        msg = str(e).lower()
+        transient = any(
+            s in msg for s in [
+                "ssl error", "bad record mac", "connection reset",
+                "server closed the connection", "terminating connection",
+                "could not receive data from server"
+            ]
+        )
+        if transient:
+            try:
+                db.session.remove()
+            except Exception:
+                pass
+            # segundo intento
+            return fn(*args, **kwargs)
+        raise
+
+def _get_candidata_safe_by_pk(fila: int):
+    """Carga Candidata por PK con un retry si la conexión está rota."""
+    def _load():
+        return Candidata.query.get(fila)
+    return _db_retry(_load)
+
+def _fetch_image_bytes_safe(fila: int):
+    """
+    Saca los bytes de imagen directamente con conexión cruda (más tolerante),
+    probando primero foto_perfil y luego perfil.
+    """
+    engine = db.get_engine()
+    def _load():
+        with engine.connect() as conn:
+            # 1) foto_perfil
+            r = conn.execute(text("SELECT foto_perfil FROM candidatas WHERE fila=:f"), {"f": fila}).fetchone()
+            if r and r[0]:
+                return bytes(r[0])
+            # 2) perfil (fallback)
+            r2 = conn.execute(text("SELECT perfil FROM candidatas WHERE fila=:f"), {"f": fila}).fetchone()
+            if r2 and r2[0]:
+                return bytes(r2[0])
+            return None
+    return _db_retry(_load)
 
 def run_db_safely(fn, *, retry_once=True, fallback=None):
     """
@@ -219,15 +298,16 @@ def logout():
 @roles_required('admin', 'secretaria')
 def list_candidatas():
     q = request.args.get('q', '').strip()
+
+    base = Candidata.query.order_by(Candidata.nombre_completo.asc())
     if q:
         like = f"%{q}%"
-        candidatas = Candidata.query.filter(
-            (Candidata.nombre_completo.ilike(like)) |
-            (Candidata.cedula.ilike(like))
-        ).order_by(Candidata.nombre_completo).all()
-    else:
-        candidatas = Candidata.query.order_by(Candidata.nombre_completo).all()
+        base = base.filter(or_(
+            Candidata.nombre_completo.ilike(like),
+            Candidata.cedula.ilike(like),
+        ))
 
+    candidatas = safe_all(base)
     return render_template('candidatas.html', candidatas=candidatas, query=q)
 
 @app.route('/candidatas_db')
@@ -1245,20 +1325,49 @@ def generar_pdf_entrevista():
 @roles_required('admin', 'secretaria')
 def descargar_uno_db():
     cid = request.args.get("id", type=int)
-    doc = request.args.get("doc", "").strip()
+    doc = (request.args.get("doc") or "").strip()
     if not cid or doc not in ("depuracion","perfil","cedula1","cedula2"):
         return "Error: parámetros inválidos", 400
-    candidata = Candidata.query.get(cid)
+
+    # Cargar con reintento y API moderna
+    def _load():
+        return db.session.get(Candidata, cid)
+    candidata = _retry_query(_load, retries=1, swallow=False)
     if not candidata:
         return "Candidata no encontrada", 404
-    data = getattr(candidata, doc)
+
+    data = getattr(candidata, doc, None)
     if not data:
         return f"No hay archivo para {doc}", 404
 
-    return send_file(io.BytesIO(data),
-                     mimetype="image/png",
-                     as_attachment=True,
-                     download_name=f"{doc}.png")
+    # Detectar mimetype por cabecera
+    b = data[:8] if isinstance(data, (bytes, bytearray)) else b""
+    if b.startswith(b"\x89PNG"):
+        mt = "image/png"
+        ext = "png"
+    elif b.startswith(b"\xFF\xD8\xFF"):
+        mt = "image/jpeg"
+        ext = "jpg"
+    elif b[:4] == b"GIF8":
+        mt = "image/gif"
+        ext = "gif"
+    elif b[:4] == b"%PDF":
+        mt = "application/pdf"
+        ext = "pdf"
+    else:
+        mt = "application/octet-stream"
+        ext = "bin"
+
+    bio = io.BytesIO(data); bio.seek(0)
+    # No fuerces descarga si quieres previsualizar; aquí lo dejo como adjunto (seguro)
+    return send_file(
+        bio,
+        mimetype=mt,
+        as_attachment=True,
+        download_name=f"{doc}.{ext}",
+        max_age=0
+    )
+
 
 # -----------------------------------------------------------------------------
 # REFERENCIAS (laborales / familiares)
@@ -1333,76 +1442,6 @@ def referencias():
                            accion='buscar',
                            resultados=[],
                            mensaje=mensaje)
-
-# -----------------------------------------------------------------------------
-# FOTO PERFIL / VISTAS
-# -----------------------------------------------------------------------------
-from io import BytesIO
-
-@app.route('/perfil_candidata', methods=['GET'])
-@roles_required('admin', 'secretaria')
-def perfil_candidata():
-    fila = request.args.get('fila', type=int)
-    q    = request.args.get('q', '').strip()
-
-    if not fila and not q:
-        abort(400, "Debes pasar ?fila=ID o ?q=texto")
-    if q:
-        c = Candidata.query.filter(
-            or_(
-                Candidata.cedula == q,
-                Candidata.nombre_completo.ilike(f"%{q}%")
-            )
-        ).first()
-        if not c:
-            abort(404, f"No se encontró candidata para '{q}'")
-    else:
-        c = Candidata.query.get(fila)
-        if not c:
-            abort(404, f"No existe la candidata con fila={fila}")
-
-    if not c.foto_perfil:
-        abort(404, "Esta candidata no tiene foto de perfil cargada")
-
-    return send_file(BytesIO(c.foto_perfil),
-                     mimetype='image/png',
-                     as_attachment=False,
-                     download_name=f"perfil_{c.fila}.png")
-
-@app.route('/ver_perfil', methods=['GET'])
-@roles_required('admin', 'secretaria')
-def ver_perfil():
-    fila = request.args.get('fila', type=int)
-    q    = request.args.get('q', '').strip()
-
-    if not fila and not q:
-        flash("Debes especificar candidata con ?fila=ID o buscar con ?q=texto", "warning")
-        return redirect(url_for('list_candidatas'))
-
-    if q:
-        like = f"%{q}%"
-        matches = Candidata.query.filter(
-            or_(
-                Candidata.nombre_completo.ilike(like),
-                Candidata.cedula.ilike(like)
-            )
-        ).order_by(Candidata.nombre_completo).all()
-        if not matches:
-            flash(f"No se encontraron candidatas para '{q}'", "warning")
-            return redirect(url_for('list_candidatas'))
-        if len(matches) > 1:
-            return render_template('ver_perfil_list.html', matches=matches, query=q)
-        candidata = matches[0]
-    else:
-        candidata = Candidata.query.get(fila)
-        if not candidata:
-            flash(f"No existe la candidata con fila={fila}", "warning")
-            return redirect(url_for('list_candidatas'))
-
-    return render_template('ver_perfil.html', candidata=candidata)
-
-csrf.exempt(perfil_candidata)
-csrf.exempt(ver_perfil)
 
 # -----------------------------------------------------------------------------
 # DASHBOARD / AUTOMATIONS
@@ -1742,10 +1781,18 @@ def reporte_llamadas_candidatas():
                            calls_by_month=calls_by_month)
 
 
+# ==== SECRETARIAS → PUBLICAR / BUSCAR SOLICITUDES (corte 1:00 AM, rápido) ====
 from datetime import date, datetime, time, timedelta
-from sqlalchemy import or_, func
-from sqlalchemy.orm import load_only
 from flask import render_template, abort, flash, redirect, url_for, request
+from sqlalchemy import or_, func, case, text
+from sqlalchemy.orm import load_only
+
+# Requiere que ya tengas importado:
+# from config_app import db
+# from decorators import roles_required
+# from models import Solicitud
+
+_TZ = 'America/Santo_Domingo'  # zona horaria local
 
 def _s(v):  # string seguro
     return "" if v is None else str(v).strip()
@@ -1753,13 +1800,23 @@ def _s(v):  # string seguro
 def _fmt_int(v):  # enteros: 0 válido, None vacío
     return "" if v is None else str(int(v))
 
-def _corte_ciclo_1am():
+def _cutoff_expr_db():
     """
-    01:00 AM hora local. Si ahora < 01:00 => corte es ayer 01:00; si no, hoy 01:00.
+    Corte de ciclo calculado DENTRO de la BD con TZ local (PostgreSQL).
+    Lógica:
+      now_local = timezone('America/Santo_Domingo', now())
+      if hour(now_local) < 1:
+          cutoff = date_trunc('day', now_local) - interval '23 hours'   # ayer 01:00
+      else:
+          cutoff = date_trunc('day', now_local) + interval '1 hour'     # hoy  01:00
     """
-    now = datetime.now()
-    hoy_1am = datetime.combine(date.today(), time(1, 0))
-    return (hoy_1am - timedelta(days=1)) if now < hoy_1am else hoy_1am
+    now_local = func.timezone(_TZ, func.now())
+    cutoff_today     = func.date_trunc('day', now_local) + text("interval '1 hour'")
+    cutoff_yesterday = func.date_trunc('day', now_local) - text("interval '23 hours'")
+    return case(
+        (func.date_part('hour', now_local) < 1, cutoff_yesterday),
+        else_=cutoff_today
+    )
 
 def _build_texto_solicitud(s):
     # Edad requerida
@@ -1815,14 +1872,17 @@ def _build_texto_solicitud(s):
 
     return "\n".join(lines).strip()
 
+
 @app.route('/secretarias/solicitudes/copiar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def secretarias_copiar_solicitudes():
     """
-    PUBLICAR HOY: sólo muestra 'activa'/'reemplazo' que NO han sido copiadas
-    desde el corte vigente (1:00 AM local). Al copiar, desaparecen de inmediato.
+    PUBLICAR HOY:
+    - Muestra SOLO las 'activa'/'reemplazo' que NO han sido copiadas desde el corte vigente (1:00 AM local).
+    - Al marcar “Marcar hoy”, desaparecen de inmediato y volverán a salir después de la 1:00 AM.
+    - SIN buscador aquí (flujo limpio para publicar).
     """
-    corte = _corte_ciclo_1am()
+    cutoff = _cutoff_expr_db()  # corte en la BD (TZ local)
 
     cols = (
         Solicitud.id,
@@ -1854,7 +1914,7 @@ def secretarias_copiar_solicitudes():
         .filter(
             or_(
                 Solicitud.last_copiado_at.is_(None),
-                Solicitud.last_copiado_at < corte   # ocultas las que ya se copiaron en este ciclo
+                func.timezone(_TZ, Solicitud.last_copiado_at) < cutoff  # clave: ocultar copiadas del ciclo
             )
         )
         .execution_options(stream_results=True)
@@ -1868,7 +1928,7 @@ def secretarias_copiar_solicitudes():
         "codigo_solicitud": _s(s.codigo_solicitud),
         "ciudad_sector": _s(s.ciudad_sector),
         "modalidad": _s(s.modalidad_trabajo),
-        "copiada_hoy": False,  # acá nunca se listan copiadas
+        "copiada_hoy": False,
         "order_text": _build_texto_solicitud(s),
     } for s in query]
 
@@ -1880,16 +1940,36 @@ def secretarias_copiar_solicitudes():
     )
 
 
+# ==== SECRETARIAS → BUSCAR SOLICITUDES (paginado, filtros, copia sin marcar) ====
+from sqlalchemy import and_
+from sqlalchemy.orm import load_only
+
 @app.route('/secretarias/solicitudes/buscar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def secretarias_buscar_solicitudes():
     """
-    BÚSQUEDA: lista todas las 'activa'/'reemplazo' con buscador.
-    No oculta por ciclo; sólo marca el badge (Copiable / Copiada en el ciclo).
+    BÚSQUEDA ROBUSTA:
+      - Texto libre: código o ciudad/sector.
+      - Filtros: estado, fecha (desde/hasta), modalidad, mascota (sí/no), con niños (sí/no).
+      - Paginación server-side.
+      - Copiar NO marca; solo copia al portapapeles.
+      - Badge de estado real + badge (informativo) de ciclo (1:00 AM local).
     """
-    corte = _corte_ciclo_1am()
-    q = _s(request.args.get('q'))
+    # ----- Parámetros -----
+    q           = (request.args.get('q') or '').strip()
+    estado      = (request.args.get('estado') or '').strip()      # '' = todos
+    desde_str   = (request.args.get('desde') or '').strip()
+    hasta_str   = (request.args.get('hasta') or '').strip()
+    modalidad   = (request.args.get('modalidad') or '').strip()
+    mascota     = (request.args.get('mascota') or '').strip()     # '', 'si', 'no'
+    con_ninos   = (request.args.get('con_ninos') or '').strip()   # '', 'si', 'no'
+    page        = max(1, request.args.get('page', type=int, default=1))
+    per_page    = min(100, max(10, request.args.get('per_page', type=int, default=20)))
 
+    # ----- (Sólo para badge informativo) corte de ciclo en DB -----
+    cutoff = _cutoff_expr_db()
+
+    # ----- Columnas mínimas -----
     cols = (
         Solicitud.id,
         Solicitud.fecha_solicitud,
@@ -1913,42 +1993,127 @@ def secretarias_buscar_solicitudes():
         Solicitud.estado,
     )
 
-    base_q = (
+    # ----- Base query -----
+    qy = (
         db.session.query(Solicitud)
         .options(load_only(*cols))
-        .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
         .execution_options(stream_results=True)
     )
 
+    # ----- Texto libre -----
     if q:
         like = f"%{q}%"
-        base_q = base_q.filter(or_(
+        qy = qy.filter(or_(
             Solicitud.codigo_solicitud.ilike(like),
             Solicitud.ciudad_sector.ilike(like)
         ))
 
-    order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
-    query = base_q.order_by(order_col.desc()).yield_per(1000)
+    # ----- Filtros exactos -----
+    if estado:
+        qy = qy.filter(Solicitud.estado == estado)
 
-    solicitudes = []
-    for s in query:
-        copiable = (s.last_copiado_at is None) or (s.last_copiado_at < corte)
-        solicitudes.append({
+    if modalidad:
+        qy = qy.filter(Solicitud.modalidad_trabajo.ilike(f"%{modalidad}%"))
+
+    # mascota: 'si' => not null/ni vacío; 'no' => null o vacío
+    if mascota == 'si':
+        qy = qy.filter(Solicitud.mascota.isnot(None), func.length(func.trim(Solicitud.mascota)) > 0)
+    elif mascota == 'no':
+        qy = qy.filter(or_(Solicitud.mascota.is_(None), func.length(func.trim(Solicitud.mascota)) == 0))
+
+    # con_ninos: 'si' => ninos > 0; 'no' => ninos is null o 0
+    if con_ninos == 'si':
+        qy = qy.filter(Solicitud.ninos.isnot(None), Solicitud.ninos > 0)
+    elif con_ninos == 'no':
+        qy = qy.filter(or_(Solicitud.ninos.is_(None), Solicitud.ninos == 0))
+
+    # rango de fechas (fecha_solicitud)
+    def _parse_date(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except Exception:
+            return None
+
+    desde_dt = _parse_date(desde_str)
+    hasta_dt = _parse_date(hasta_str)
+    if desde_dt and hasta_dt:
+        # incluye todo el día "hasta"
+        hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        qy = qy.filter(and_(Solicitud.fecha_solicitud >= desde_dt,
+                            Solicitud.fecha_solicitud <= hasta_end))
+    elif desde_dt:
+        qy = qy.filter(Solicitud.fecha_solicitud >= desde_dt)
+    elif hasta_dt:
+        hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        qy = qy.filter(Solicitud.fecha_solicitud <= hasta_end)
+
+    # ----- Orden y paginación -----
+    order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
+    qy = qy.order_by(order_col.desc())
+
+    # Paginado compatible (Flask-SQLAlchemy 3.x / SQLAlchemy 1.4+)
+    try:
+        paginado = qy.paginate(page=page, per_page=per_page, error_out=False)
+    except AttributeError:
+        paginado = db.paginate(qy, page=page, per_page=per_page, error_out=False)
+
+    # ----- Construcción de filas -----
+    def build_texto(s):
+        return _build_texto_solicitud(s)  # mismo formato que en “publicar hoy”
+
+    items = []
+    for s in paginado.items:
+        # Badge de ciclo (informativo). No evaluamos timezone() en Python;
+        # si existe last_copiado_at, lo mostramos como “Copiada (ciclo)”.
+        copiada_ciclo = s.last_copiado_at is not None
+
+        items.append({
             "id": s.id,
             "codigo_solicitud": _s(s.codigo_solicitud),
             "ciudad_sector": _s(s.ciudad_sector),
             "modalidad": _s(s.modalidad_trabajo),
-            "copiada_hoy": (not copiable),  # solo para el badge
-            "order_text": _build_texto_solicitud(s),
+            "estado": _s(s.estado),
+            "fecha_solicitud": s.fecha_solicitud.strftime("%Y-%m-%d %H:%M") if s.fecha_solicitud else "",
+            "copiada_ciclo": copiada_ciclo,
+            "order_text": build_texto(s),
         })
 
-    return render_template(
-        'secretarias_solicitudes_copiar.html',
-        solicitudes=solicitudes,
-        q=q, q_enabled=True,
-        endpoint='secretarias_buscar_solicitudes'
-    )
+    # Estados para filtro
+    estados_opts = ['proceso','activa','pagada','cancelada','reemplazo']
 
+    # ----- Paginación: construir URLs en Python (Jinja NO soporta **kwargs en url_for) -----
+    from urllib.parse import urlencode
+    current_params = request.args.to_dict(flat=True)
+
+    def page_url(p):
+        d = current_params.copy()
+        d['page'] = p
+        return url_for('secretarias_buscar_solicitudes') + ('?' + urlencode(d) if d else '')
+
+    total_pages = paginado.pages or 1
+    page_links = [{"n": p, "url": page_url(p), "active": (p == paginado.page)} for p in range(1, total_pages + 1)]
+    prev_url = page_url(paginado.page - 1) if paginado.page > 1 else None
+    next_url = page_url(paginado.page + 1) if paginado.page < total_pages else None
+
+    return render_template(
+        'secretarias_solicitudes_buscar.html',
+        items=items,
+        page=paginado.page,
+        pages=total_pages,
+        total=paginado.total,
+        per_page=per_page,
+        q=q,
+        estado=estado,
+        estados_opts=estados_opts,
+        desde=desde_str,
+        hasta=hasta_str,
+        modalidad=modalidad,
+        mascota=mascota,
+        con_ninos=con_ninos,
+        page_links=page_links,
+        prev_url=prev_url,
+        next_url=next_url
+    )
 
 @app.route('/secretarias/solicitudes/<int:id>/copiar', methods=['POST'])
 @roles_required('admin', 'secretaria')
@@ -1957,13 +2122,19 @@ def secretarias_copiar_solicitud(id):
     if not s:
         abort(404)
 
-    # Marca con hora de la DB
+    # Marca con hora de la DB (comparación del ciclo se hace en la BD con TZ local)
     s.last_copiado_at = func.now()
     db.session.commit()
 
+    # Si es AJAX, responde JSON para que el front oculte la fila al instante
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({"ok": True, "id": id, "codigo": getattr(s, "codigo_solicitud", "")}), 200
+
+    # Fallback (no-AJAX): vuelve a la vista de publicar hoy
     flash(f'Solicitud {getattr(s, "codigo_solicitud", "")} copiada. Volverá a mostrarse después de la 1:00 AM.', 'success')
-    # Clave: siempre regreso a la lista que oculta por ciclo
     return redirect(url_for('secretarias_copiar_solicitudes'))
+
+
 
 # --- Registro público de candidatas -----------------------------------------
 from datetime import datetime
@@ -2116,6 +2287,262 @@ def registro_publico():
     return redirect(url_for('registro_publico'))
 # --- Fin registro público ----------------------------------------------------
 
+# ==== FINALIZAR PROCESO + PERFIL (con vuelta SIEMPRE al BUSCADOR) ====
+from flask import (
+    request, render_template, redirect, url_for, flash, abort,
+    current_app, session, send_file
+)
+from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import load_only
+from datetime import datetime
+from io import BytesIO
+import json
+
+# from config_app import db
+# from decorators import roles_required
+# from models import Candidata
+
+
+def _cfg_grupos_empleo():
+    default = [
+        "Interna", "Dormir Adentro", "Dormir Afuera",
+        "Niñera", "Cuidadora", "Limpieza", "Cocinera",
+        "Por Días", "Tiempo Completo", "Medio Tiempo"
+    ]
+    try:
+        return current_app.config.get('GRUPOS_EMPLEO', default)
+    except Exception:
+        return default
+
+def _set_bytes_attr_safe(obj, attr_name, data):
+    if hasattr(obj, attr_name):
+        setattr(obj, attr_name, data)
+        return True
+    return False
+
+def _save_grupos_empleo_safe(candidata, grupos_list):
+    saved = False
+    if hasattr(candidata, 'grupos_empleo'):
+        try:
+            candidata.grupos_empleo = grupos_list
+            saved = True
+        except Exception:
+            pass
+    if not saved and hasattr(candidata, 'grupos'):
+        try:
+            candidata.grupos = grupos_list
+            saved = True
+        except Exception:
+            pass
+    if not saved and hasattr(candidata, 'grupos_empleo_json'):
+        try:
+            candidata.grupos_empleo_json = json.dumps(grupos_list, ensure_ascii=False)
+            saved = True
+        except Exception:
+            pass
+    return saved
+
+
+# ---------- BUSCADOR (punto central de ida y vuelta) ----------
+@app.route('/finalizar_proceso/buscar', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def finalizar_proceso_buscar():
+    q = (request.args.get('q') or '').strip()
+    resultados = []
+    if q:
+        like = f"%{q}%"
+        resultados = (
+            Candidata.query
+            .options(load_only(
+                Candidata.fila, Candidata.nombre_completo, Candidata.cedula,
+                Candidata.estado, Candidata.codigo
+            ))
+            .filter(or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+            ))
+            .order_by(Candidata.nombre_completo.asc())
+            .limit(300)
+            .all()
+        )
+    return render_template('finalizar_proceso_buscar.html', q=q, resultados=resultados)
+
+
+# ---------- FORMULARIO FINALIZAR ----------
+@app.route('/finalizar_proceso', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def finalizar_proceso():
+    fila = request.values.get('fila', type=int)
+    if not fila:
+        flash("Falta el parámetro ?fila=<id>.", "warning")
+        return redirect(url_for('finalizar_proceso_buscar'))
+
+    candidata = Candidata.query.get(fila)
+    if not candidata:
+        abort(404, description=f"No existe la candidata con fila={fila}")
+
+    grupos = _cfg_grupos_empleo()
+
+    if request.method == 'GET':
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    # POST: validar archivos obligatorios
+    foto_perfil_file = request.files.get('foto_perfil')
+    cedula1_file     = request.files.get('cedula1')
+    cedula2_file     = request.files.get('cedula2')
+
+    faltan = []
+    if not foto_perfil_file or foto_perfil_file.filename == '':
+        faltan.append("Foto de perfil")
+    if not cedula1_file or cedula1_file.filename == '':
+        faltan.append("Cédula (frontal)")
+    if not cedula2_file or cedula2_file.filename == '':
+        faltan.append("Cédula (reverso)")
+
+    if faltan:
+        flash("Faltan archivos: " + ", ".join(faltan) + ".", "danger")
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    # Leer bytes
+    try:
+        foto_perfil_bytes = foto_perfil_file.read()
+        cedula1_bytes     = cedula1_file.read()
+        cedula2_bytes     = cedula2_file.read()
+    except Exception as e:
+        flash(f"Error leyendo archivos: {e}", "danger")
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    # Guardar bytes
+    ok_foto = _set_bytes_attr_safe(candidata, 'foto_perfil', foto_perfil_bytes) or \
+              _set_bytes_attr_safe(candidata, 'perfil', foto_perfil_bytes)
+    ok_ced1 = _set_bytes_attr_safe(candidata, 'cedula1', cedula1_bytes)
+    ok_ced2 = _set_bytes_attr_safe(candidata, 'cedula2', cedula2_bytes)
+
+    if not (ok_foto and ok_ced1 and ok_ced2):
+        detalles = []
+        if not ok_foto: detalles.append("foto_perfil (o perfil) no existe en el modelo")
+        if not ok_ced1: detalles.append("cedula1 no existe en el modelo")
+        if not ok_ced2: detalles.append("cedula2 no existe en el modelo")
+        flash("No se pudieron guardar algunos campos binarios: " + "; ".join(detalles), "warning")
+
+    # Grupos (opcional)
+    grupos_sel = request.form.getlist('grupos_empleo')
+    if grupos_sel:
+        if not _save_grupos_empleo_safe(candidata, grupos_sel):
+            flash("No se encontró columna para guardar los grupos (grupos_empleo / grupos / grupos_empleo_json).", "warning")
+
+    # Estado si están los 3 archivos
+    try:
+        tiene_foto = bool(getattr(candidata, 'foto_perfil', None) or getattr(candidata, 'perfil', None))
+        tiene_ced1 = bool(getattr(candidata, 'cedula1', None))
+        tiene_ced2 = bool(getattr(candidata, 'cedula2', None))
+        if tiene_foto and tiene_ced1 and tiene_ced2 and hasattr(candidata, 'estado'):
+            candidata.estado = 'lista_para_trabajar'
+            if hasattr(candidata, 'fecha_cambio_estado'):
+                candidata.fecha_cambio_estado = datetime.utcnow()
+            if hasattr(candidata, 'usuario_cambio_estado'):
+                candidata.usuario_cambio_estado = session.get('usuario', 'sistema')
+    except Exception:
+        pass
+
+    try:
+        db.session.commit()
+        flash("✅ Proceso finalizado y datos guardados correctamente.", "success")
+        # Al terminar, te llevo al PERFIL mejorado (con botón 'Volver a buscar')
+        return redirect(url_for('candidata_ver_perfil', fila=candidata.fila))
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        flash(f"❌ Error guardando en la base de datos: {e}", "danger")
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+
+# ---------- PERFIL (HTML) ----------
+
+@app.route('/candidata/perfil', methods=['GET'], endpoint='candidata_ver_perfil')
+@roles_required('admin', 'secretaria')
+def ver_perfil():
+    """
+    Perfil detallado de candidata. Usa carga con retry para evitar caídas por SSL.
+    """
+    fila = request.args.get('fila', type=int)
+    if fila is None:
+        abort(400, description="Falta el parámetro ?fila=<id>.")
+
+    try:
+        candidata = _get_candidata_safe_by_pk(fila)
+    except Exception:
+        current_app.logger.exception("Error consultando Candidata.fila=%s", fila)
+        abort(500, description="Error consultando la base de datos.")
+
+    if not candidata:
+        abort(404, description=f"No existe la candidata con fila={fila}")
+
+    # Normaliza grupos (por si vienen como string/JSON)
+    grupos = getattr(candidata, 'grupos_empleo', None)
+    if isinstance(grupos, str):
+        try:
+            parsed = json.loads(grupos)
+            grupos = parsed if isinstance(parsed, list) else [str(parsed)]
+        except Exception:
+            grupos = [g.strip() for g in grupos.split(',') if g.strip()] if grupos else []
+    elif grupos is None:
+        alt = getattr(candidata, 'grupos', None) or getattr(candidata, 'grupos_empleo_json', None)
+        if isinstance(alt, str):
+            try:
+                parsed = json.loads(alt)
+                grupos = parsed if isinstance(parsed, list) else [str(parsed)]
+            except Exception:
+                grupos = [g.strip() for g in alt.split(',') if g.strip()] if alt else []
+        else:
+            grupos = alt or []
+
+    tiene_foto = bool(getattr(candidata, 'foto_perfil', None) or getattr(candidata, 'perfil', None))
+    tiene_ced1 = bool(getattr(candidata, 'cedula1', None))
+    tiene_ced2 = bool(getattr(candidata, 'cedula2', None))
+
+    return render_template(
+        'candidata_perfil.html',
+        candidata=candidata,
+        tiene_foto=tiene_foto,
+        tiene_ced1=tiene_ced1,
+        tiene_ced2=tiene_ced2,
+        grupos=grupos
+    )
+
+@app.route('/perfil_candidata', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def perfil_candidata():
+    """
+    Sirve la imagen de perfil (bytes) con ruta más robusta:
+    - Lee directo con engine.connect() y text(), con retry.
+    - Si no hay imagen, 404.
+    """
+    fila = request.args.get('fila', type=int)
+    if not fila:
+        abort(400, description="Falta el parámetro ?fila=<id>.")
+
+    try:
+        img_bytes = _fetch_image_bytes_safe(fila)
+    except Exception:
+        current_app.logger.exception("Error leyendo imagen de Candidata.fila=%s", fila)
+        abort(500, description="No se pudo leer la imagen.")
+
+    if not img_bytes:
+        abort(404, description="La candidata no tiene foto almacenada.")
+
+    bio = BytesIO(img_bytes)
+    bio.seek(0)
+    # No forzamos PNG; el navegador lo abre igual, pero dejamos mimetype 'image/jpeg' por defecto
+    # Si sabes el formato, cámbialo. Si no, usa 'application/octet-stream'.
+    return send_file(
+        bio,
+        mimetype='image/jpeg',
+        as_attachment=False,
+        download_name=f"perfil_{fila}.jpg",
+        max_age=0
+    )
 # -----------------------------------------------------------------------------
 # MAIN
 # -----------------------------------------------------------------------------
