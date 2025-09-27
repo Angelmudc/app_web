@@ -8,10 +8,6 @@ Incluye:
 - Gestión de Plan
 - Pago
 - Reemplazo
-
-Notas:
-- MultiCheckboxField: checkbox múltiple para WTForms
-- AREAS_COMUNES_CHOICES: intenta importarlo desde admin.routes; si falla usa fallback local
 """
 
 from flask_wtf import FlaskForm
@@ -39,7 +35,6 @@ class MultiCheckboxField(SelectMultipleField):
 # AREAS_COMUNES_CHOICES centralizado (con fallback)
 # ──────────────────────────────────────────────────────────────────────────────
 try:
-    # Si ya las declaras en admin.routes, se aprovechan para no duplicar
     from .routes import AREAS_COMUNES_CHOICES  # type: ignore
 except Exception:
     AREAS_COMUNES_CHOICES = [
@@ -72,12 +67,10 @@ class AdminLoginForm(FlaskForm):
 #                                  CLIENTE
 # =============================================================================
 class AdminClienteForm(FlaskForm):
-    # Filtros de normalización
     _strip = lambda v: v.strip() if isinstance(v, str) else v
     _lower = lambda v: v.lower() if isinstance(v, str) else v
     _strip_lower = lambda v: v.strip().lower() if isinstance(v, str) else v
 
-    # ── Credenciales / login ──────────────────────────────────────────────────
     username = StringField(
         'Usuario (login)',
         validators=[
@@ -89,7 +82,6 @@ class AdminClienteForm(FlaskForm):
         render_kw={"placeholder": "ej. juan.perez", "autocomplete": "username"}
     )
 
-    # ── Identificación ────────────────────────────────────────────────────────
     codigo = StringField(
         'Código cliente',
         validators=[DataRequired("Ingresa el código."), Length(max=20)],
@@ -103,7 +95,6 @@ class AdminClienteForm(FlaskForm):
         render_kw={"placeholder": "Ej. Juan Pérez", "autocomplete": "name"}
     )
 
-    # ── Contacto ──────────────────────────────────────────────────────────────
     email = StringField(
         'Email',
         validators=[DataRequired("Ingresa el correo."), Email("Correo inválido."), Length(max=100)],
@@ -129,7 +120,6 @@ class AdminClienteForm(FlaskForm):
         render_kw={"placeholder": "Ej. Los Jardines"}
     )
 
-    # ── Contraseña (opcional en edición; requerida en creación desde la ruta) ─
     password_new = PasswordField(
         'Nueva contraseña',
         validators=[Optional(), Length(min=6, max=128, message="La contraseña debe tener entre 6 y 128 caracteres.")],
@@ -141,7 +131,6 @@ class AdminClienteForm(FlaskForm):
         render_kw={"placeholder": "Repite la contraseña", "autocomplete": "new-password"}
     )
 
-    # ── Notas ─────────────────────────────────────────────────────────────────
     notas_admin = TextAreaField(
         'Notas administrativas',
         validators=[Optional(), Length(max=1000)],
@@ -151,7 +140,6 @@ class AdminClienteForm(FlaskForm):
 
     submit = SubmitField('Guardar cliente')
 
-    # Si rellenan password_new, exigir confirmación.
     def validate_password_confirm(self, field):
         if self.password_new.data and not (field.data or "").strip():
             raise ValidationError("Confirma la contraseña.")
@@ -180,20 +168,20 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Dormida / Salida diaria"}
     )
 
-    # Admin: Radio (una sola opción) + campo "Otro"
-    # Incluye "25 en adelante" como solicitaste.
-    edad_requerida = RadioField(
+    # ✅ Edad requerida como CHECKBOX múltiple (sincronizado con cliente y template)
+    edad_requerida = MultiCheckboxField(
         'Edad requerida',
         choices=[
             ('18-25', '18–25'),
             ('26-35', '26–35'),
             ('36-45', '36–45'),
-            ('25 en adelante', '25 en adelante'),
-            ('mayor45', 'Mayor de 45'),
-            ('otra', 'Otro…'),
+            ('25+',   '25 en adelante'),
+            ('45+',   'Mayor de 45'),
+            ('otro',  'Otro…'),
         ],
-        validators=[InputRequired("Selecciona la edad requerida.")],
-        coerce=str
+        validators=[Optional()],
+        coerce=str,
+        default=[]
     )
     edad_otro = StringField(
         'Especifica la edad (si marcaste Otro)',
@@ -224,7 +212,9 @@ class AdminSolicitudForm(FlaskForm):
             ('envejeciente', 'Cuidar envejecientes'),
             ('otro', 'Otro'),
         ],
-        validators=[DataRequired("Selecciona al menos una función.")]
+        validators=[Optional()],
+        coerce=str,
+        default=[]
     )
     funciones_otro = StringField(
         'Otra función (si marcaste Otro)',
@@ -236,7 +226,8 @@ class AdminSolicitudForm(FlaskForm):
     tipo_lugar = SelectField(
         'Tipo de lugar',
         choices=[('casa', 'Casa'), ('oficina', 'Oficina'), ('apto', 'Apartamento'), ('otro', 'Otro')],
-        validators=[DataRequired("Selecciona el tipo de lugar.")]
+        validators=[DataRequired("Selecciona el tipo de lugar.")],
+        coerce=str
     )
     tipo_lugar_otro = StringField(
         'Especifica el tipo de lugar (si marcaste Otro)',
@@ -262,8 +253,9 @@ class AdminSolicitudForm(FlaskForm):
     areas_comunes = MultiCheckboxField(
         'Áreas comunes',
         choices=AREAS_COMUNES_CHOICES,
-        default=[],
-        validators=[Optional()]
+        validators=[Optional()],
+        coerce=str,
+        default=[]
     )
     area_otro = StringField(
         'Otra área',
@@ -298,14 +290,13 @@ class AdminSolicitudForm(FlaskForm):
     # Compensación
     sueldo = StringField(
         'Sueldo',
-        validators=[DataRequired("Indica el sueldo."), Length(max=50)],
+        validators=[DataRequired("Indica el sueldo.")],  # longitud libre por si lleva formato
         render_kw={"placeholder": "Ej. 23,000 mensual"}
     )
     pasaje_aporte = RadioField(
         '¿Aporta pasaje?',
         choices=[('1', 'Sí, aporta pasaje'), ('0', 'No aporta pasaje')],
         validators=[InputRequired("Indica si se aporta pasaje.")],
-        # convierte a bool: '1' -> True, '0' -> False
         coerce=lambda v: v == '1'
     )
 

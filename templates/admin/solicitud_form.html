@@ -1,261 +1,305 @@
 <!-- templates/admin/solicitud_form.html -->
 {% extends 'base.html' %}
 
-{% block title %}
-  {% if nuevo %}Nueva Solicitud{% else %}Detalle Solicitud {{ solicitud.codigo_solicitud }}{% endif %}
+{% block title %}{{ 'Nueva Solicitud' if nuevo else ('Solicitud ' ~ solicitud.codigo_solicitud) }} | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+  .page-wrap{background:#f5f7fb}
+  .form-card{background:#fff;border:0;border-radius:14px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
+  .section-title{font-weight:700;color:#0f3c7a}
+  .hint{font-size:.90rem;color:#667085}
+  .required::after{content:" *";color:#dc3545}
+  .chip{display:inline-flex;align-items:center;gap:.35rem;background:#eef2ff;color:#3730a3;border-radius:999px;padding:.25rem .6rem;font-size:.825rem}
+  .divider{height:1px;background:rgba(99,102,241,.15);margin:1.5rem 0}
+  .form-control, .form-select, textarea{border-radius:10px}
+  .sticky-actions{position:sticky;bottom:0;z-index:5;background:linear-gradient(180deg,rgba(255,255,255,0) 0,#fff 24px);padding-top:16px}
+  .field-spacer{margin-top:.35rem}
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3">
-      {% if nuevo %}Nueva Solicitud{% else %}Solicitud {{ solicitud.codigo_solicitud }}{% endif %}
-    </h1>
-    <a href="{{ url_for('admin.detalle_cliente',
-             cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
-       class="btn btn-secondary">← Volver</a>
-  </div>
+<div class="page-wrap py-4 py-md-5">
+  <div class="container" style="max-width: 1040px;">
+    <div class="form-card p-3 p-md-4 p-lg-5">
 
-  <form method="post" novalidate>
-    {{ form.hidden_tag() }}
-
-    {% if form.errors %}
-      <div class="alert alert-danger">
-        <ul>
-          {% for errs in form.errors.values() %}
-            {% for err in errs %}
-              <li>{{ err }}</li>
-            {% endfor %}
-          {% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-
-    <div class="row g-3">
-      <!-- Ubicación y rutas -->
-      <div class="col-md-6">
-        {{ form.ciudad_sector.label(class="form-label") }}
-        {{ form.ciudad_sector(class="form-control") }}
-      </div>
-      <div class="col-md-6">
-        {{ form.rutas_cercanas.label(class="form-label") }}
-        {{ form.rutas_cercanas(class="form-control") }}
-      </div>
-
-      <!-- Modalidad -->
-      <div class="col-md-6">
-        {{ form.modalidad_trabajo.label(class="form-label") }}
-        {{ form.modalidad_trabajo(class="form-control") }}
-      </div>
-
-      <!-- Edad requerida -->
-      <div class="col-md-6">
-        <label class="form-label">{{ form.edad_requerida.label.text }}</label>
+      <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
         <div>
-          {% for sub in form.edad_requerida %}
-            <div class="form-check form-check-inline">
-              {{ sub(class="form-check-input") }}
-              {{ sub.label(class="form-check-label") }}
-            </div>
-          {% endfor %}
+          <h1 class="h3 mb-1">{{ 'Nueva Solicitud' if nuevo else ('Solicitud ' ~ solicitud.codigo_solicitud) }}</h1>
+          <div class="text-muted small">
+            Completa los campos y guarda. <span class="chip"><i class="bi bi-shield-check"></i> Datos cifrados</span>
+          </div>
         </div>
-      </div>
-      <div class="col-md-6 mt-2 {% if form.edad_requerida.data != 'otra' %}d-none{% endif %}"
-           id="edad-otro-container">
-        {{ form.edad_otro.label(class="form-label") }}
-        {{ form.edad_otro(class="form-control") }}
-      </div>
-
-      <!-- Experiencia -->
-      <div class="col-12">
-        {{ form.experiencia.label(class="form-label") }}
-        {{ form.experiencia(class="form-control", rows=3) }}
-      </div>
-
-      <!-- Horario -->
-      <div class="col-md-6">
-        {{ form.horario.label(class="form-label") }}
-        {{ form.horario(class="form-control") }}
-      </div>
-
-      <!-- Funciones -->
-      <div class="col-12">
-        <label class="form-label">{{ form.funciones.label.text }}</label>
-        <div>
-          {% for sub in form.funciones %}
-            <div class="form-check form-check-inline">
-              {{ sub(class="form-check-input") }}
-              {{ sub.label(class="form-check-label") }}
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-      <!-- Otras funciones -->
-      <div class="col-md-12 mt-2 d-none" id="funciones-otro-container">
-        {{ form.funciones_otro.label(class="form-label") }}
-        {{ form.funciones_otro(class="form-control") }}
-      </div>
-
-      <!-- Tipo de lugar -->
-      <div class="col-md-6">
-        {{ form.tipo_lugar.label(class="form-label") }}
-        {{ form.tipo_lugar(class="form-select") }}
-      </div>
-      <div class="col-md-6 mt-2 {% if form.tipo_lugar.data != 'otro' %}d-none{% endif %}"
-           id="tipo-lugar-otro-container">
-        {{ form.tipo_lugar_otro.label(class="form-label") }}
-        {{ form.tipo_lugar_otro(class="form-control") }}
-      </div>
-
-      <!-- Habitaciones y Baños -->
-      <div class="col-md-3">
-        {{ form.habitaciones.label(class="form-label") }}
-        {{ form.habitaciones(class="form-control") }}
-      </div>
-      <div class="col-md-3">
-        {% set raw = form.banos.data|string %}
-        {% if raw.endswith('.0') %}
-          {% set baños_val = raw[:-2] %}
-        {% else %}
-          {% set baños_val = raw %}
-        {% endif %}
-        <label for="{{ form.banos.id }}" class="form-label">{{ form.banos.label.text }}</label>
-        <input
-          type="number"
-          name="{{ form.banos.name }}"
-          id="{{ form.banos.id }}"
-          class="form-control"
-          step="0.5"
-          min="0"
-          value="{{ baños_val }}"
-        >
-      </div>
-      <div class="col-md-6">
-        <div class="form-check">
-          {{ form.dos_pisos(class="form-check-input") }}
-          {{ form.dos_pisos.label(class="form-check-label") }}
-        </div>
-      </div>
-
-      <!-- Áreas comunes -->
-      <div class="col-12">
-        <label class="form-label">{{ form.areas_comunes.label.text }}</label>
-        <div>
-          {% for sub in form.areas_comunes %}
-            <div class="form-check form-check-inline">
-              {{ sub(class="form-check-input") }}
-              {{ sub.label(class="form-check-label") }}
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-      <div class="col-md-6">
-        {{ form.area_otro.label(class="form-label") }}
-        {{ form.area_otro(class="form-control") }}
-      </div>
-
-      <!-- Ocupantes -->
-      <div class="col-md-4">
-        {{ form.adultos.label(class="form-label") }}
-        {{ form.adultos(class="form-control") }}
-      </div>
-      <div class="col-md-4">
-        {{ form.ninos.label(class="form-label") }}
-        {{ form.ninos(class="form-control") }}
-      </div>
-      <div class="col-md-4">
-        {{ form.edades_ninos.label(class="form-label") }}
-        {{ form.edades_ninos(class="form-control") }}
-      </div>
-
-      <!-- Mascota -->
-      <div class="col-md-4">
-        {{ form.mascota.label(class="form-label") }}
-        {{ form.mascota(class="form-control") }}
-      </div>
-
-      <!-- Compensación -->
-      <div class="col-md-6">
-        {{ form.sueldo.label(class="form-label") }}
-        {{ form.sueldo(class="form-control") }}
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">{{ form.pasaje_aporte.label.text }}</label>
-        <div>
-          {% for sub in form.pasaje_aporte %}
-            <div class="form-check form-check-inline">
-              {{ sub(class="form-check-input") }}
-              {{ sub.label(class="form-check-label") }}
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      <!-- Nota adicional -->
-      <div class="col-12">
-        {{ form.nota_cliente.label(class="form-label") }}
-        {{ form.nota_cliente(class="form-control", rows=3) }}
-      </div>
-
-      <!-- Botones -->
-      <div class="col-12">
-        <button type="submit" class="btn btn-primary">
-          {% if nuevo %}Crear{% else %}Actualizar{% endif %}
-        </button>
-        <a href="{{ url_for('admin.detalle_cliente',
-               cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}"
-           class="btn btn-secondary">
-          Cancelar
+        <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-light">
+          <i class="bi bi-arrow-left-short me-1"></i> Volver
         </a>
       </div>
+
+      <form id="solicitud-form" method="post" novalidate>
+        {{ form.hidden_tag() }}
+
+        {% if form.errors %}
+          <div class="alert alert-danger border-0">
+            <div class="d-flex">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              <div>
+                <strong>Revisa los campos marcados.</strong>
+                <ul class="mb-0 mt-1">
+                  {% for field, errs in form.errors.items() %}
+                    {% for e in errs %}
+                      <li><strong>{{ form[field].label.text if form[field] else field }}:</strong> {{ e }}</li>
+                    {% endfor %}
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        {# ===================== Sección 1: Ubicación ===================== #}
+        <h2 class="section-title h5 mb-3"><i class="bi bi-geo-alt-fill me-2"></i>Ubicación y rutas</h2>
+        <div class="row g-4">
+          <div class="col-md-7">
+            <label class="form-label required">{{ form.ciudad_sector.label.text }}</label>
+            {{ form.ciudad_sector(class="form-control", aria_required="true") }}
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">{{ form.rutas_cercanas.label.text }}</label>
+            {{ form.rutas_cercanas(class="form-control") }}
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        {# ===================== Sección 2: Detalles ===================== #}
+        <h2 class="section-title h5 mb-3"><i class="bi bi-card-checklist me-2"></i>Detalles de la oferta</h2>
+        <div class="row g-4">
+          <div class="col-md-6">
+            <label class="form-label required">{{ form.modalidad_trabajo.label.text }}</label>
+            {{ form.modalidad_trabajo(class="form-control", aria_required="true") }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ form.horario.label.text }}</label>
+            {{ form.horario(class="form-control") }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">{{ form.experiencia.label.text }}</label>
+            {{ form.experiencia(rows=3, class="form-control", maxlength="500") }}
+            <div class="d-flex justify-content-between mt-1">
+              <span class="hint">Hasta 500 caracteres.</span>
+              <span class="hint"><span id="exp-count">0</span>/500</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">{{ form.funciones.label.text }}</label>
+          <div class="row g-2">
+            {% for sub in form.funciones %}
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="form-check mb-1">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div id="wrap-funciones-otro" class="mt-2" style="{% if form.funciones.data and ('otro' in form.funciones.data) %}{% else %}display:none{% endif %};">
+            <label class="form-label">{{ form.funciones_otro.label.text }}</label>
+            {{ form.funciones_otro(class="form-control", placeholder="Puedes separar varias por coma") }}
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">{{ form.edad_requerida.label.text }}</label>
+          <div class="d-flex flex-wrap gap-3">
+            {% for sub in form.edad_requerida %}
+              <div class="form-check">
+                {{ sub(class="form-check-input", id=sub.id) }}
+                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div id="wrap-edad-otro" class="mt-2" style="{% if form.edad_requerida.data and ('otro' in form.edad_requerida.data) %}{% else %}display:none{% endif %};">
+            <label class="form-label">{{ form.edad_otro.label.text }}</label>
+            {{ form.edad_otro(class="form-control", placeholder="Ej. 30 a 40, 20-30…") }}
+            <div class="hint field-spacer">Si elegiste “Otro”, especifica aquí el rango/criterio.</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        {# ===================== Sección 3: Tipo de lugar ===================== #}
+        <h2 class="section-title h5 mb-3"><i class="bi bi-building me-2"></i>Tipo de lugar</h2>
+        <div class="row g-4">
+          <div class="col-md-6">
+            <label class="form-label required">{{ form.tipo_lugar.label.text }}</label>
+            {{ form.tipo_lugar(class="form-select", aria_required="true", id=form.tipo_lugar.id) }}
+            <div id="wrap-tipo-lugar-otro" class="mt-2" style="{% if form.tipo_lugar.data == 'otro' %}{% else %}display:none{% endif %};">
+              <label class="form-label">{{ form.tipo_lugar_otro.label.text }}</label>
+              {{ form.tipo_lugar_otro(class="form-control", placeholder="Ej. Local comercial, villa, etc.") }}
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">{{ form.habitaciones.label.text }}</label>
+            {{ form.habitaciones(class="form-control", type="number", min="0", step="1") }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">{{ form.banos.label.text }}</label>
+            {{ form.banos(class="form-control", type="number", min="0", step="0.5") }}
+          </div>
+        </div>
+
+        <div class="mt-2">
+          <div class="form-check">
+            {{ form.dos_pisos(class="form-check-input", id=form.dos_pisos.id) }}
+            <label class="form-check-label" for="{{ form.dos_pisos.id }}">La vivienda tiene dos pisos</label>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">{{ form.areas_comunes.label.text }}</label>
+          <div class="d-flex flex-wrap gap-3">
+            {% for sub in form.areas_comunes %}
+              <div class="form-check">
+                {{ sub(class="form-check-input", id=sub.id) }}
+                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="mt-2">
+            <label class="form-label">{{ form.area_otro.label.text }}</label>
+            {{ form.area_otro(class="form-control", placeholder="Otra área (opcional)") }}
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        {# ===================== Sección 4: Ocupantes ===================== #}
+        <h2 class="section-title h5 mb-3"><i class="bi bi-people-fill me-2"></i>Ocupantes</h2>
+        <div class="row g-4">
+          <div class="col-md-3">
+            <label class="form-label">{{ form.adultos.label.text }}</label>
+            {{ form.adultos(class="form-control", type="number", min="0", step="1", placeholder="0") }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">{{ form.ninos.label.text }}</label>
+            {{ form.ninos(class="form-control", type="number", min="0", step="1", placeholder="0") }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">{{ form.edades_ninos.label.text }}</label>
+            {{ form.edades_ninos(class="form-control", placeholder="Ej. 2 y 6 años") }}
+          </div>
+          {% if form.mascota is defined %}
+          <div class="col-md-3">
+            <label class="form-label">{{ form.mascota.label.text }}</label>
+            {{ form.mascota(class="form-control", placeholder="Ej. Perro, Gato (opcional)") }}
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="divider"></div>
+
+        {# ===================== Sección 5: Compensación ===================== #}
+        <h2 class="section-title h5 mb-3"><i class="bi bi-currency-dollar me-2"></i>Compensación</h2>
+        <div class="row g-4">
+          <div class="col-md-6">
+            <label class="form-label required">{{ form.sueldo.label.text }}</label>
+            <div class="input-group">
+              <span class="input-group-text">RD$</span>
+              {{ form.sueldo(class="form-control", aria_required="true") }}
+            </div>
+            <div class="hint field-spacer">Monto mensual estimado.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">{{ form.pasaje_aporte.label.text }}</label>
+            <div>
+              {% for sub in form.pasaje_aporte %}
+                <div class="form-check form-check-inline">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        {# ===================== Sección 6: Nota adicional ===================== #}
+        <h2 class="section-title h5 mb-3"><i class="bi bi-chat-text-fill me-2"></i>Nota adicional</h2>
+        <div class="mb-3">
+          <label class="form-label">{{ form.nota_cliente.label.text }}</label>
+          {{ form.nota_cliente(rows=3, class="form-control", maxlength="1000") }}
+          <div class="d-flex justify-content-end mt-1">
+            <span class="hint"><span id="nota-count">0</span>/1000</span>
+          </div>
+        </div>
+
+        <div class="sticky-actions mt-4 pt-2">
+          <div class="d-flex gap-2 justify-content-end">
+            <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
+              Cancelar
+            </a>
+            <button type="submit" class="btn btn-primary px-4">{{ 'Crear' if nuevo else 'Actualizar' }}</button>
+          </div>
+        </div>
+      </form>
+
     </div>
-  </form>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  // Edad “Otra…”
-  const radiosEdad = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
-  const contEdad = document.getElementById('edad-otro-container');
-  function toggleEdad() {
-    const sel = document.querySelector('input[name="{{ form.edad_requerida.name }}"][value="otra"]');
-    if (sel && sel.checked) contEdad.classList.remove('d-none');
-    else {
-      contEdad.classList.add('d-none');
-      document.getElementById('{{ form.edad_otro.id }}').value = '';
-    }
+(function(){
+  // Contadores
+  const exp = document.getElementById("{{ form.experiencia.id }}");
+  const nota = document.getElementById("{{ form.nota_cliente.id }}");
+  function bindCount(el, outId){
+    if(!el) return;
+    const out = document.getElementById(outId);
+    const upd = () => { if(out) out.textContent = el.value.length; };
+    el.addEventListener('input', upd); upd();
   }
-  radiosEdad.forEach(r => r.addEventListener('change', toggleEdad));
-  toggleEdad();
+  bindCount(exp, 'exp-count');
+  bindCount(nota, 'nota-count');
 
-  // Funciones “Otro…”
-  const chkFuncs = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
-  const contFuncs = document.getElementById('funciones-otro-container');
-  function toggleFuncsOtro() {
-    const sel = document.querySelector('input[name="{{ form.funciones.name }}"][value="otro"]');
-    if (sel && sel.checked) contFuncs.classList.remove('d-none');
-    else {
-      contFuncs.classList.add('d-none');
-      document.getElementById('{{ form.funciones_otro.id }}').value = '';
-    }
+  // Toggle “Otro” - Funciones (checkbox múltiple con valor 'otro')
+  const funcWrap = document.getElementById('wrap-funciones-otro');
+  const funcChecks = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
+  function updateFuncionesOtro(){
+    let on = false;
+    funcChecks.forEach(ch => { if (ch.value === 'otro' && ch.checked) on = true; });
+    if (funcWrap) funcWrap.style.display = on ? '' : 'none';
   }
-  chkFuncs.forEach(c => c.addEventListener('change', toggleFuncsOtro));
-  toggleFuncsOtro();
+  funcChecks.forEach(ch => ch.addEventListener('change', updateFuncionesOtro));
+  updateFuncionesOtro();
 
-  // Tipo de lugar “Otro…”
-  const selLugar = document.getElementById('{{ form.tipo_lugar.id }}');
-  const contLugar = document.getElementById('tipo-lugar-otro-container');
-  function toggleLugar() {
-    if (selLugar.value === 'otro') contLugar.classList.remove('d-none');
-    else {
-      contLugar.classList.add('d-none');
-      document.getElementById('{{ form.tipo_lugar_otro.id }}').value = '';
-    }
+  // Toggle “Otro” - Edad (checkbox múltiple con valor 'otro')
+  const edadWrap = document.getElementById('wrap-edad-otro');
+  const edadChecks = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
+  function updateEdadOtro(){
+    let on = false;
+    edadChecks.forEach(ch => { if (ch.value === 'otro' && ch.checked) on = true; });
+    if (edadWrap) edadWrap.style.display = on ? '' : 'none';
   }
-  selLugar.addEventListener('change', toggleLugar);
-  toggleLugar();
-});
+  edadChecks.forEach(ch => ch.addEventListener('change', updateEdadOtro));
+  updateEdadOtro();
+
+  // Toggle “Otro” - Tipo de lugar (select con opción 'otro')
+  const tipoSel = document.getElementById('{{ form.tipo_lugar.id }}');
+  const tipoWrap = document.getElementById('wrap-tipo-lugar-otro');
+  function updateTipoLugarOtro(){
+    if (!tipoSel || !tipoWrap) return;
+    tipoWrap.style.display = (tipoSel.value === 'otro') ? '' : 'none';
+  }
+  if (tipoSel) tipoSel.addEventListener('change', updateTipoLugarOtro);
+  updateTipoLugarOtro();
+})();
 </script>
 {% endblock %}

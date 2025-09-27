@@ -1,0 +1,125 @@
+{# templates/clientes/_modal_politicas.html #}
+{% if current_user.is_authenticated and not (current_user.acepto_politicas or False) %}
+<div class="modal fade" id="politicasModal" tabindex="-1" aria-labelledby="politicasLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border-0" style="border-radius:16px; overflow:hidden;">
+      <!-- Header -->
+      <div class="modal-header border-0" style="background:linear-gradient(135deg,#1A5789 0%,#00AECF 100%); color:#fff;">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-shield-lock-fill fs-5"></i>
+          <h5 class="modal-title mb-0" id="politicasLabel">Políticas y condiciones de uso</h5>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+
+      <!-- Body -->
+      <div class="modal-body p-0">
+        <!-- Intro / resumen -->
+        <div class="p-3 p-md-4">
+          <p class="mb-3">
+            Para seguir usando el portal, revisa y acepta nuestras políticas. Hemos resumido lo esencial aquí;
+            puedes leer el documento completo en <a href="{{ url_for('clientes.politicas') }}" class="link-primary">Políticas y Reglas</a>.
+          </p>
+
+          <!-- Tarjetas-resumen -->
+          <div class="row g-3">
+            <div class="col-12 col-md-4">
+              <div class="p-3 border rounded-3 h-100">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="bi bi-arrow-repeat"></i>
+                  <strong>Garantía de reemplazo</strong>
+                </div>
+                <div class="text-muted small">
+                  Si el desempeño no es el esperado durante el periodo de garantía del plan, realizamos el cambio sin costo. No hay devoluciones por desempeño.
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-md-4">
+              <div class="p-3 border rounded-3 h-100">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="bi bi-calendar-check"></i>
+                  <strong>Plazos por plan</strong>
+                </div>
+                <div class="text-muted small">
+                  Básico: 15 días · Premium: 30 días · VIP: 60 días.
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-md-4">
+              <div class="p-3 border rounded-3 h-100">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="bi bi-cash-coin"></i>
+                  <strong>Abono inicial 35%</strong>
+                </div>
+                <div class="text-muted small">
+                  Requerido para iniciar la búsqueda y presentación de candidatas.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lista de puntos clave -->
+        <div class="px-3 px-md-4 pb-3 pb-md-4">
+          <div class="border rounded-3 bg-light p-3">
+            <h6 class="fw-bold mb-2 d-flex align-items-center gap-2">
+              <i class="bi bi-list-check"></i> Puntos clave
+            </h6>
+            <ul class="mb-0 small">
+              <li class="mb-1">
+                La agencia <strong>no se hace responsable</strong> por robos, pérdidas u otros incidentes en el hogar.
+              </li>
+              <li class="mb-1">
+                Cancelación voluntaria del cliente: no hay devolución; el monto queda como <strong>abono disponible</strong> para una futura búsqueda.
+                Habrá devolución solo si en <strong>2 semanas</strong> no se presenta ninguna candidata.
+              </li>
+              <li class="mb-1">
+                El cliente <strong>paga a la agencia</strong> el porcentaje correspondiente, que se <strong>descuenta del sueldo</strong> de la doméstica
+                (la trabajadora está informada y de acuerdo). Puede realizarse en <strong>1 o 2 pagos</strong> según acuerdo.
+              </li>
+              <li class="mb-1">
+                El cliente define y comunica sus reglas internas del hogar desde el inicio. Reportar de inmediato faltas o comportamientos inadecuados.
+              </li>
+              <li class="mb-0">
+                La información proporcionada debe ser real y verificable. Tiempos de presentación sujetos a disponibilidad y filtros de seguridad.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="modal-footer border-0 d-flex flex-wrap gap-2 justify-content-between p-3 p-md-4">
+        <a href="{{ url_for('clientes.politicas') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-file-text me-1"></i> Ver documento completo
+        </a>
+
+        <div class="d-flex gap-2">
+          <a href="{{ url_for('clientes.rechazar_politicas') }}" class="btn btn-outline-danger">
+            <i class="bi bi-box-arrow-left me-1"></i> No acepto
+          </a>
+
+          <form method="post"
+                action="{{ url_for('clientes.aceptar_politicas', next=request.url) }}"
+                class="d-inline-block m-0 p-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-shield-check me-1"></i> Acepto las políticas
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var el = document.getElementById('politicasModal');
+  if (!el) return;
+  // Bloquea cierre accidental: solo cierra con los botones del footer o la X
+  var modal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+  modal.show();
+});
+</script>
+{% endif %}

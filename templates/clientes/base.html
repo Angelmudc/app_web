@@ -265,6 +265,9 @@
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/js/select2.min.js"></script>
 
+  {# ← Incluimos el modal de políticas AQUÍ (Bootstrap ya cargado) #}
+  {% include 'clientes/_modal_politicas.html' %}
+
   <script>
     // Auto-init toasts desde los flash messages
     document.querySelectorAll('.toast').forEach((t) => new bootstrap.Toast(t, { delay: 4000 }).show());

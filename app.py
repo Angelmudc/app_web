@@ -48,6 +48,23 @@ from sqlalchemy.orm import joinedload  # ← agregado (complemento de subquerylo
 from sqlalchemy.exc import OperationalError, DBAPIError
 from sqlalchemy.sql import text
 
+# IMPORTS
+from datetime import date, datetime
+from flask import request, render_template, url_for, jsonify, flash, redirect
+from sqlalchemy import func, or_, and_
+from sqlalchemy.orm import joinedload, load_only
+
+# Asegúrate de tener estos import reales según tu proyecto:
+# from app import app, db
+# from models import Solicitud, Reemplazo
+# from decorators import roles_required
+
+# ← ESTE TRY/EXCEPT EVITA ROMPER SI CAMBIA LA RUTA DEL FORM
+try:
+    from admin.forms import AdminSolicitudForm
+except Exception:
+    AdminSolicitudForm = None
+
 # -----------------------------------------------------------------------------
 # APP BOOT
 # -----------------------------------------------------------------------------
@@ -1780,157 +1797,190 @@ def reporte_llamadas_candidatas():
                            calls_by_week=calls_by_week,
                            calls_by_month=calls_by_month)
 
+# ─────────────────────────────────────────────────────────────
+# SECRETARÍAS – mismas plantillas con GUION BAJO (sin textos fijos Modalidad:/Hogar:)
+# ─────────────────────────────────────────────────────────────
+from datetime import date, datetime
+from flask import request, render_template, url_for, jsonify, flash, redirect
+from sqlalchemy import func, or_, and_
+from sqlalchemy.orm import joinedload, load_only
 
-# ==== SECRETARIAS → PUBLICAR / BUSCAR SOLICITUDES (corte 1:00 AM, rápido) ====
-from datetime import date, datetime, time, timedelta
-from flask import render_template, abort, flash, redirect, url_for, request
-from sqlalchemy import or_, func, case, text
-from sqlalchemy.orm import load_only
-
-# Requiere que ya tengas importado:
-# from config_app import db
+# from app import app, db
+# from models import Solicitud, Reemplazo
+# from admin.forms import AdminSolicitudForm
 # from decorators import roles_required
-# from models import Solicitud
 
-_TZ = 'America/Santo_Domingo'  # zona horaria local
+# ── Helpers (una sola vez) ───────────────────────────────────
+def _as_list(val):
+    if val is None:
+        return []
+    if isinstance(val, (list, tuple, set)):
+        return list(val)
+    try:
+        return [x.strip() for x in str(val).split(',') if x.strip()]
+    except Exception:
+        return []
 
-def _s(v):  # string seguro
+def _fmt_banos(v):
+    if v is None or v == "":
+        return ""
+    return str(v).rstrip('0').rstrip('.') if isinstance(v, float) else str(v)
+
+def _norm_area(s):
+    return (s or "").strip()
+
+def _s(v):
     return "" if v is None else str(v).strip()
 
-def _fmt_int(v):  # enteros: 0 válido, None vacío
-    return "" if v is None else str(int(v))
-
-def _cutoff_expr_db():
-    """
-    Corte de ciclo calculado DENTRO de la BD con TZ local (PostgreSQL).
-    Lógica:
-      now_local = timezone('America/Santo_Domingo', now())
-      if hour(now_local) < 1:
-          cutoff = date_trunc('day', now_local) - interval '23 hours'   # ayer 01:00
-      else:
-          cutoff = date_trunc('day', now_local) + interval '1 hour'     # hoy  01:00
-    """
-    now_local = func.timezone(_TZ, func.now())
-    cutoff_today     = func.date_trunc('day', now_local) + text("interval '1 hour'")
-    cutoff_yesterday = func.date_trunc('day', now_local) - text("interval '23 hours'")
-    return case(
-        (func.date_part('hour', now_local) < 1, cutoff_yesterday),
-        else_=cutoff_today
-    )
-
-def _build_texto_solicitud(s):
-    # Edad requerida
-    if isinstance(s.edad_requerida, (list, tuple)):
-        edad_req = ", ".join([_s(x) for x in s.edad_requerida if _s(x)])
-    else:
-        edad_req = _s(s.edad_requerida)
-
-    # Funciones (ARRAY + otro)
-    funcs = []
-    if isinstance(s.funciones, (list, tuple)):
-        funcs = [t for t in (_s(x) for x in s.funciones) if t]
-    if _s(s.funciones_otro):
-        funcs.append(_s(s.funciones_otro))
-    funciones_line = f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: "
-
-    # Adultos / Niños
-    adultos_txt = _fmt_int(s.adultos)
-    ninos_txt   = _fmt_int(s.ninos)
-    ninos_line  = f"Niños: {ninos_txt}" if ninos_txt != "" else ""
-    if ninos_line and _s(s.edades_ninos):
-        ninos_line += f" ({_s(s.edades_ninos)})"
-
-    modalidad_txt = _s(s.modalidad_trabajo)
-
-    lines = [
-        f"Disponible ( {_s(s.codigo_solicitud)} )",
-        f"📍 {_s(s.ciudad_sector)}",
-        f"Ruta más cercana: {_s(s.rutas_cercanas)}",
-        "",
-        modalidad_txt,  # sin prefijo
-        "",
-        f"Edad: {edad_req or 'A convenir'}",
-        "Dominicana",
-        "Que sepa leer y escribir",
-        f"Experiencia en: {_s(s.experiencia)}",
-        f"Horario: {_s(s.horario)}",
-        "",
-        funciones_line,
-        "",
-        f"Adultos: {adultos_txt if adultos_txt != '' else '—'}",
-    ]
-    if ninos_line:
-        lines.append(ninos_line)
-    if _s(s.mascota):
-        lines.append(f"Mascota: {_s(s.mascota)}")
-
-    pasaje = ", más ayuda del pasaje" if bool(s.pasaje_aporte) else ", pasaje incluido"
-    lines += ["", f"Sueldo: ${_s(s.sueldo)} mensual{pasaje}"]
-
-    if _s(s.nota_cliente):
-        lines += ["", f"Nota: {_s(s.nota_cliente)}"]
-
-    return "\n".join(lines).strip()
-
-
+# ─────────────────────────────────────────────────────────────
+# PUBLICAR HOY (listado para copiar+marcar) – usa template: secretarias_solicitudes_copiar.html
+# ─────────────────────────────────────────────────────────────
 @app.route('/secretarias/solicitudes/copiar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def secretarias_copiar_solicitudes():
     """
-    PUBLICAR HOY:
-    - Muestra SOLO las 'activa'/'reemplazo' que NO han sido copiadas desde el corte vigente (1:00 AM local).
-    - Al marcar “Marcar hoy”, desaparecen de inmediato y volverán a salir después de la 1:00 AM.
-    - SIN buscador aquí (flujo limpio para publicar).
+    Lista solicitudes copiables. En el texto:
+    - NO imprime 'Modalidad:' ni 'Hogar:' como etiqueta.
+    - Si hay modalidad, imprime SOLO el valor en una línea.
+    - Si hay descripción de hogar, imprime SOLO la descripción (sin prefijo).
     """
-    cutoff = _cutoff_expr_db()  # corte en la BD (TZ local)
-
-    cols = (
-        Solicitud.id,
-        Solicitud.fecha_solicitud,
-        Solicitud.codigo_solicitud,
-        Solicitud.ciudad_sector,
-        Solicitud.rutas_cercanas,
-        Solicitud.modalidad_trabajo,
-        Solicitud.edad_requerida,
-        Solicitud.experiencia,
-        Solicitud.horario,
-        Solicitud.funciones,
-        Solicitud.funciones_otro,
-        Solicitud.adultos,
-        Solicitud.ninos,
-        Solicitud.edades_ninos,
-        Solicitud.mascota,
-        Solicitud.sueldo,
-        Solicitud.pasaje_aporte,
-        Solicitud.nota_cliente,
-        Solicitud.last_copiado_at,
-        Solicitud.estado,
-    )
+    hoy = date.today()
 
     base_q = (
-        db.session.query(Solicitud)
-        .options(load_only(*cols))
+        Solicitud.query
+        .options(joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new))
         .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
-        .filter(
-            or_(
-                Solicitud.last_copiado_at.is_(None),
-                func.timezone(_TZ, Solicitud.last_copiado_at) < cutoff  # clave: ocultar copiadas del ciclo
-            )
-        )
-        .execution_options(stream_results=True)
+        .filter(or_(Solicitud.last_copiado_at.is_(None),
+                    func.date(Solicitud.last_copiado_at) < hoy))
+        .order_by(Solicitud.fecha_solicitud.desc())
     )
 
-    order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
-    query = base_q.order_by(order_col.desc()).yield_per(1000)
+    raw_sols = base_q.all()
 
-    solicitudes = [{
-        "id": s.id,
-        "codigo_solicitud": _s(s.codigo_solicitud),
-        "ciudad_sector": _s(s.ciudad_sector),
-        "modalidad": _s(s.modalidad_trabajo),
-        "copiada_hoy": False,
-        "order_text": _build_texto_solicitud(s),
-    } for s in query]
+    # Mapear funciones code->label (igual que admin)
+    form = AdminSolicitudForm()
+    FUNCIONES_CHOICES = dict(form.funciones.choices)
+
+    solicitudes = []
+    for s in raw_sols:
+        # Funciones (labels + otro)
+        funcs = []
+        try:
+            seleccion = set(_as_list(s.funciones))
+        except Exception:
+            seleccion = set()
+        for code in seleccion:
+            if code == 'otro':
+                continue
+            label = FUNCIONES_CHOICES.get(code)
+            if label:
+                funcs.append(label)
+        if getattr(s, 'funciones_otro', None):
+            custom = str(s.funciones_otro).strip()
+            if custom:
+                funcs.append(custom)
+
+        # Adultos / Niños / Mascota
+        adultos = s.adultos or ""
+        ninos_line = ""
+        if getattr(s, 'ninos', None):
+            ninos_line = f"Niños: {s.ninos}"
+            if getattr(s, 'edades_ninos', None):
+                ninos_line += f" ({s.edades_ninos})"
+        mascota_val = (getattr(s, 'mascota', None) or '').strip()
+        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
+
+        # Modalidad (solo valor)
+        modalidad_val = (
+            getattr(s, 'modalidad_trabajo', None)
+            or getattr(s, 'modalidad', None)
+            or getattr(s, 'tipo_modalidad', None)
+            or ''
+        ).strip()
+
+        # Hogar (armar descripción; sin prefijo)
+        hogar_partes = []
+        if getattr(s, 'habitaciones', None):
+            hogar_partes.append(f"{s.habitaciones} habitaciones")
+        banos_txt = _fmt_banos(getattr(s, 'banos', None))
+        if banos_txt:
+            hogar_partes.append(f"{banos_txt} baños")
+        if bool(getattr(s, 'dos_pisos', False)):
+            hogar_partes.append("2 pisos")
+        areas = []
+        if getattr(s, 'areas_comunes', None):
+            try:
+                for a in s.areas_comunes:
+                    a = str(a).strip()
+                    if a:
+                        areas.append(_norm_area(a))
+            except Exception:
+                pass
+        area_otro = (getattr(s, 'area_otro', None) or "").strip()
+        if area_otro:
+            areas.append(_norm_area(area_otro))
+        if areas:
+            hogar_partes.append(", ".join(areas))
+        tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
+        if tipo_lugar and hogar_partes:
+            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
+        elif tipo_lugar:
+            hogar_descr = tipo_lugar
+        else:
+            hogar_descr = ", ".join(hogar_partes)
+        hogar_val = hogar_descr.strip() if hogar_descr else ""
+
+        # Edad requerida
+        if isinstance(s.edad_requerida, (list, tuple, set)):
+            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
+        else:
+            edad_req = s.edad_requerida or ""
+
+        nota_cli  = (s.nota_cliente or "").strip()
+        nota_line = f"Nota: {nota_cli}" if nota_cli else ""
+        sueldo_txt = f"Sueldo: ${_s(s.sueldo)} mensual{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
+
+        # ===== Texto final (sin etiquetas fijas) =====
+        lines = [
+            f"Disponible ( {s.codigo_solicitud or ''} )",
+            f"📍 {s.ciudad_sector or ''}",
+            f"Ruta más cercana: {s.rutas_cercanas or ''}",
+            "",
+        ]
+        if modalidad_val:
+            lines += [modalidad_val, ""]   # ← solo el valor, sin "Modalidad:"
+
+        lines += [
+            f"Edad: {edad_req}",
+            "Dominicana",
+            "Que sepa leer y escribir",
+            f"Experiencia en: {s.experiencia or ''}",
+            f"Horario: {s.horario or ''}",
+            "",
+            f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
+        ]
+        if hogar_val:
+            lines += ["", hogar_val]       # ← solo la descripción, sin "Hogar:"
+
+        lines += ["", f"Adultos: {adultos}"]
+        if ninos_line:
+            lines.append(ninos_line)
+        if mascota_line:
+            lines.append(mascota_line)
+        lines += ["", sueldo_txt]
+        if nota_line:
+            lines += ["", nota_line]
+
+        order_text = "\n".join(lines).strip()
+
+        solicitudes.append({
+            "id": s.id,
+            "codigo_solicitud": _s(s.codigo_solicitud),
+            "ciudad_sector": _s(s.ciudad_sector),
+            "modalidad": modalidad_val,          # se muestra en la tabla
+            "copiada_hoy": False,
+            "order_text": order_text,            # sin etiquetas fijas
+        })
 
     return render_template(
         'secretarias_solicitudes_copiar.html',
@@ -1939,37 +1989,38 @@ def secretarias_copiar_solicitudes():
         endpoint='secretarias_copiar_solicitudes'
     )
 
+# ─────────────────────────────────────────────────────────────
+# COPIAR Y MARCAR (POST)
+# ─────────────────────────────────────────────────────────────
+@app.route('/secretarias/solicitudes/<int:id>/copiar', methods=['POST'])
+@roles_required('admin', 'secretaria')
+def secretarias_copiar_solicitud(id):
+    s = Solicitud.query.get_or_404(id)
+    s.last_copiado_at = func.now()
+    db.session.commit()
 
-# ==== SECRETARIAS → BUSCAR SOLICITUDES (paginado, filtros, copia sin marcar) ====
-from sqlalchemy import and_
-from sqlalchemy.orm import load_only
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({"ok": True, "id": id, "codigo": _s(s.codigo_solicitud)}), 200
 
+    flash(f'Solicitud { _s(s.codigo_solicitud) } copiada. Ya no se mostrará hasta mañana.', 'success')
+    return redirect(url_for('secretarias_copiar_solicitudes'))
+
+# ─────────────────────────────────────────────────────────────
+# BUSCAR (paginado + filtros) – usa template: secretarias_solicitudes_buscar.html
+# ─────────────────────────────────────────────────────────────
 @app.route('/secretarias/solicitudes/buscar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def secretarias_buscar_solicitudes():
-    """
-    BÚSQUEDA ROBUSTA:
-      - Texto libre: código o ciudad/sector.
-      - Filtros: estado, fecha (desde/hasta), modalidad, mascota (sí/no), con niños (sí/no).
-      - Paginación server-side.
-      - Copiar NO marca; solo copia al portapapeles.
-      - Badge de estado real + badge (informativo) de ciclo (1:00 AM local).
-    """
-    # ----- Parámetros -----
     q           = (request.args.get('q') or '').strip()
-    estado      = (request.args.get('estado') or '').strip()      # '' = todos
+    estado      = (request.args.get('estado') or '').strip()
     desde_str   = (request.args.get('desde') or '').strip()
     hasta_str   = (request.args.get('hasta') or '').strip()
     modalidad   = (request.args.get('modalidad') or '').strip()
-    mascota     = (request.args.get('mascota') or '').strip()     # '', 'si', 'no'
-    con_ninos   = (request.args.get('con_ninos') or '').strip()   # '', 'si', 'no'
+    mascota     = (request.args.get('mascota') or '').strip()      # '', 'si', 'no'
+    con_ninos   = (request.args.get('con_ninos') or '').strip()    # '', 'si', 'no'
     page        = max(1, request.args.get('page', type=int, default=1))
     per_page    = min(100, max(10, request.args.get('per_page', type=int, default=20)))
 
-    # ----- (Sólo para badge informativo) corte de ciclo en DB -----
-    cutoff = _cutoff_expr_db()
-
-    # ----- Columnas mínimas -----
     cols = (
         Solicitud.id,
         Solicitud.fecha_solicitud,
@@ -1977,6 +2028,8 @@ def secretarias_buscar_solicitudes():
         Solicitud.ciudad_sector,
         Solicitud.rutas_cercanas,
         Solicitud.modalidad_trabajo,
+        Solicitud.modalidad,
+        Solicitud.tipo_modalidad,
         Solicitud.edad_requerida,
         Solicitud.experiencia,
         Solicitud.horario,
@@ -1986,6 +2039,13 @@ def secretarias_buscar_solicitudes():
         Solicitud.ninos,
         Solicitud.edades_ninos,
         Solicitud.mascota,
+        Solicitud.tipo_lugar,
+        Solicitud.habitaciones,
+        Solicitud.banos,
+        Solicitud.dos_pisos,
+        Solicitud.areas_comunes,
+        Solicitud.area_otro,
+        Solicitud.direccion,
         Solicitud.sueldo,
         Solicitud.pasaje_aporte,
         Solicitud.nota_cliente,
@@ -1993,14 +2053,12 @@ def secretarias_buscar_solicitudes():
         Solicitud.estado,
     )
 
-    # ----- Base query -----
     qy = (
         db.session.query(Solicitud)
         .options(load_only(*cols))
         .execution_options(stream_results=True)
     )
 
-    # ----- Texto libre -----
     if q:
         like = f"%{q}%"
         qy = qy.filter(or_(
@@ -2008,26 +2066,25 @@ def secretarias_buscar_solicitudes():
             Solicitud.ciudad_sector.ilike(like)
         ))
 
-    # ----- Filtros exactos -----
     if estado:
         qy = qy.filter(Solicitud.estado == estado)
-
     if modalidad:
-        qy = qy.filter(Solicitud.modalidad_trabajo.ilike(f"%{modalidad}%"))
+        qy = qy.filter(or_(
+            Solicitud.modalidad_trabajo.ilike(f"%{modalidad}%"),
+            Solicitud.modalidad.ilike(f"%{modalidad}%"),
+            Solicitud.tipo_modalidad.ilike(f"%{modalidad}%"),
+        ))
 
-    # mascota: 'si' => not null/ni vacío; 'no' => null o vacío
     if mascota == 'si':
         qy = qy.filter(Solicitud.mascota.isnot(None), func.length(func.trim(Solicitud.mascota)) > 0)
     elif mascota == 'no':
         qy = qy.filter(or_(Solicitud.mascota.is_(None), func.length(func.trim(Solicitud.mascota)) == 0))
 
-    # con_ninos: 'si' => ninos > 0; 'no' => ninos is null o 0
     if con_ninos == 'si':
         qy = qy.filter(Solicitud.ninos.isnot(None), Solicitud.ninos > 0)
     elif con_ninos == 'no':
         qy = qy.filter(or_(Solicitud.ninos.is_(None), Solicitud.ninos == 0))
 
-    # rango de fechas (fecha_solicitud)
     def _parse_date(s):
         try:
             return datetime.strptime(s, "%Y-%m-%d")
@@ -2037,7 +2094,6 @@ def secretarias_buscar_solicitudes():
     desde_dt = _parse_date(desde_str)
     hasta_dt = _parse_date(hasta_str)
     if desde_dt and hasta_dt:
-        # incluye todo el día "hasta"
         hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
         qy = qy.filter(and_(Solicitud.fecha_solicitud >= desde_dt,
                             Solicitud.fecha_solicitud <= hasta_end))
@@ -2047,44 +2103,133 @@ def secretarias_buscar_solicitudes():
         hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
         qy = qy.filter(Solicitud.fecha_solicitud <= hasta_end)
 
-    # ----- Orden y paginación -----
     order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
     qy = qy.order_by(order_col.desc())
 
-    # Paginado compatible (Flask-SQLAlchemy 3.x / SQLAlchemy 1.4+)
     try:
         paginado = qy.paginate(page=page, per_page=per_page, error_out=False)
     except AttributeError:
         paginado = db.paginate(qy, page=page, per_page=per_page, error_out=False)
 
-    # ----- Construcción de filas -----
-    def build_texto(s):
-        return _build_texto_solicitud(s)  # mismo formato que en “publicar hoy”
+    # Mapear funciones code->label (como admin)
+    form = AdminSolicitudForm()
+    FUNCIONES_CHOICES = dict(form.funciones.choices)
 
     items = []
     for s in paginado.items:
-        # Badge de ciclo (informativo). No evaluamos timezone() en Python;
-        # si existe last_copiado_at, lo mostramos como “Copiada (ciclo)”.
-        copiada_ciclo = s.last_copiado_at is not None
+        modalidad_val = ((s.modalidad_trabajo or s.modalidad or s.tipo_modalidad or '')).strip()
+
+        funcs = []
+        try:
+            seleccion = set(_as_list(s.funciones))
+        except Exception:
+            seleccion = set()
+        for code in seleccion:
+            if code == 'otro':
+                continue
+            label = FUNCIONES_CHOICES.get(code)
+            if label:
+                funcs.append(label)
+        if getattr(s, 'funciones_otro', None):
+            custom = str(s.funciones_otro).strip()
+            if custom:
+                funcs.append(custom)
+
+        adultos = s.adultos or ""
+        ninos_line = ""
+        if getattr(s, 'ninos', None):
+            ninos_line = f"Niños: {s.ninos}"
+            if getattr(s, 'edades_ninos', None):
+                ninos_line += f" ({s.edades_ninos})"
+        mascota_val = (getattr(s, 'mascota', None) or '').strip()
+        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
+
+        # Hogar (armado; solo valor)
+        hogar_partes = []
+        if getattr(s, 'habitaciones', None):
+            hogar_partes.append(f"{s.habitaciones} habitaciones")
+        banos_txt = _fmt_banos(getattr(s, 'banos', None))
+        if banos_txt:
+            hogar_partes.append(f"{banos_txt} baños")
+        if bool(getattr(s, 'dos_pisos', False)):
+            hogar_partes.append("2 pisos")
+        areas = []
+        if getattr(s, 'areas_comunes', None):
+            try:
+                for a in s.areas_comunes:
+                    a = str(a).strip()
+                    if a:
+                        areas.append(_norm_area(a))
+            except Exception:
+                pass
+        area_otro = (getattr(s, 'area_otro', None) or "").strip()
+        if area_otro:
+            areas.append(_norm_area(area_otro))
+        if areas:
+            hogar_partes.append(", ".join(areas))
+        tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
+        if tipo_lugar and hogar_partes:
+            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
+        elif tipo_lugar:
+            hogar_descr = tipo_lugar
+        else:
+            hogar_descr = ", ".join(hogar_partes)
+        hogar_val = hogar_descr.strip() if hogar_descr else ""
+
+        if isinstance(s.edad_requerida, (list, tuple, set)):
+            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
+        else:
+            edad_req = s.edad_requerida or ""
+
+        nota_cli  = (s.nota_cliente or "").strip()
+        nota_line = f"Nota: {nota_cli}" if nota_cli else ""
+        sueldo_txt = f"Sueldo: ${_s(s.sueldo)} mensual{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
+
+        # ===== Texto final (sin etiquetas fijas) =====
+        lines = [
+            f"Disponible ( {s.codigo_solicitud or ''} )",
+            f"📍 {s.ciudad_sector or ''}",
+            f"Ruta más cercana: {s.rutas_cercanas or ''}",
+            "",
+        ]
+        if modalidad_val:
+            lines += [modalidad_val, ""]   # ← solo valor, sin "Modalidad:"
+
+        lines += [
+            f"Edad: {edad_req}",
+            "Dominicana",
+            "Que sepa leer y escribir",
+            f"Experiencia en: {s.experiencia or ''}",
+            f"Horario: {s.horario or ''}",
+            "",
+            f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
+        ]
+        if hogar_val:
+            lines += ["", hogar_val]       # ← solo descripción, sin "Hogar:"
+
+        lines += ["", f"Adultos: {adultos}"]
+        if ninos_line:
+            lines.append(ninos_line)
+        if mascota_line:
+            lines.append(mascota_line)
+        lines += ["", sueldo_txt]
+        if nota_line:
+            lines += ["", nota_line]
+
+        order_text = "\n".join(lines).strip()
 
         items.append({
             "id": s.id,
             "codigo_solicitud": _s(s.codigo_solicitud),
             "ciudad_sector": _s(s.ciudad_sector),
-            "modalidad": _s(s.modalidad_trabajo),
+            "modalidad": modalidad_val,   # se muestra en la tabla
             "estado": _s(s.estado),
             "fecha_solicitud": s.fecha_solicitud.strftime("%Y-%m-%d %H:%M") if s.fecha_solicitud else "",
-            "copiada_ciclo": copiada_ciclo,
-            "order_text": build_texto(s),
+            "copiada_ciclo": (s.last_copiado_at is not None),
+            "order_text": order_text,     # sin etiquetas fijas
         })
 
-    # Estados para filtro
-    estados_opts = ['proceso','activa','pagada','cancelada','reemplazo']
-
-    # ----- Paginación: construir URLs en Python (Jinja NO soporta **kwargs en url_for) -----
-    from urllib.parse import urlencode
     current_params = request.args.to_dict(flat=True)
-
     def page_url(p):
         d = current_params.copy()
         d['page'] = p
@@ -2104,7 +2249,7 @@ def secretarias_buscar_solicitudes():
         per_page=per_page,
         q=q,
         estado=estado,
-        estados_opts=estados_opts,
+        estados_opts=['proceso','activa','pagada','cancelada','reemplazo'],
         desde=desde_str,
         hasta=hasta_str,
         modalidad=modalidad,
@@ -2114,27 +2259,6 @@ def secretarias_buscar_solicitudes():
         prev_url=prev_url,
         next_url=next_url
     )
-
-@app.route('/secretarias/solicitudes/<int:id>/copiar', methods=['POST'])
-@roles_required('admin', 'secretaria')
-def secretarias_copiar_solicitud(id):
-    s = db.session.query(Solicitud).get(id)
-    if not s:
-        abort(404)
-
-    # Marca con hora de la DB (comparación del ciclo se hace en la BD con TZ local)
-    s.last_copiado_at = func.now()
-    db.session.commit()
-
-    # Si es AJAX, responde JSON para que el front oculte la fila al instante
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify({"ok": True, "id": id, "codigo": getattr(s, "codigo_solicitud", "")}), 200
-
-    # Fallback (no-AJAX): vuelve a la vista de publicar hoy
-    flash(f'Solicitud {getattr(s, "codigo_solicitud", "")} copiada. Volverá a mostrarse después de la 1:00 AM.', 'success')
-    return redirect(url_for('secretarias_copiar_solicitudes'))
-
-
 
 # --- Registro público de candidatas -----------------------------------------
 from datetime import datetime

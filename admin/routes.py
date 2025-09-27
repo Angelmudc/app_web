@@ -450,31 +450,115 @@ def _split_edad_for_form(stored_list, edad_choices):
 # =============================================================================
 #                             SOLICITUDES (CRUD)
 # =============================================================================
+# ==== HELPERS CONSISTENTES PARA EDAD Y LISTAS (ADMIN) ====
+
+# ─────────────────────────────────────────────────────────────
+# ADMIN: Helpers compartidos (listas y edad)
+# ─────────────────────────────────────────────────────────────
+def _clean_list(seq):
+    bad = {"-", "–", "—"}
+    out, seen = [], set()
+    for v in (seq or []):
+        s = str(v).strip()
+        if not s or s in bad:
+            continue
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+def _choices_maps(choices):
+    code_to_label, label_to_code = {}, {}
+    for code, label in (choices or []):
+        c = str(code).strip()
+        l = str(label).strip()
+        if not c or not l:
+            continue
+        code_to_label[c] = l
+        label_to_code[l] = c
+    return code_to_label, label_to_code
+
+def _map_edad_choices(codes_selected, edad_choices, otro_text):
+    # codes_selected = lista de códigos (strings) marcados en el form
+    codes_selected = _clean_list([str(x) for x in (codes_selected or [])])
+    code_to_label, _ = _choices_maps(edad_choices)
+
+    result = []
+    for code in codes_selected:
+        if code == "otro":
+            continue
+        label = code_to_label.get(code)
+        if label:
+            result.append(label)
+
+    if "otro" in codes_selected:
+        extra = (otro_text or "").strip()
+        if extra:
+            result.append(extra)
+
+    return _clean_list(result)
+
+def _split_edad_for_form(stored_list, edad_choices):
+    # stored_list = lista de labels guardados en BD (Texto legible)
+    stored_list = _clean_list(stored_list)
+    code_to_label, label_to_code = _choices_maps(edad_choices)
+
+    selected_codes, otros = [], []
+    for label in stored_list:
+        code = label_to_code.get(label)
+        if code:
+            selected_codes.append(code)
+        else:
+            otros.append(label)
+
+    otro_text = ", ".join(otros) if otros else ""
+    if otros:
+        selected_codes = _clean_list(selected_codes + ["otro"])
+    return selected_codes, otro_text
+
+def _map_funciones(vals, extra_text):
+    vals = _clean_list(vals)
+    if 'otro' in vals:
+        vals = [v for v in vals if v != 'otro']
+        extra = (extra_text or '').strip()
+        if extra:
+            vals.extend([x.strip() for x in extra.split(',') if x.strip()])
+    return _clean_list(vals)
+
+def _map_tipo_lugar(value, extra):
+    value = (value or '').strip()
+    if value == 'otro':
+        return (extra or '').strip() or value
+    return value
+
+# ─────────────────────────────────────────────────────────────
+# ADMIN: Nueva solicitud
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET','POST'])
 @login_required
 @admin_required
 def nueva_solicitud_admin(cliente_id):
     c    = Cliente.query.get_or_404(cliente_id)
     form = AdminSolicitudForm()
-    form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+    form.areas_comunes.choices = AREAS_COMUNES_CHOICES  # mantener en sync
 
     if request.method == 'GET':
         # Valores iniciales seguros
         form.funciones.data        = []
-        form.funciones_otro.data   = ''
+        if hasattr(form, 'funciones_otro'): form.funciones_otro.data = ''
         form.areas_comunes.data    = []
-        form.area_otro.data        = ''
-        form.edad_requerida.data   = []   # ahora lista en Admin
-        form.edad_otro.data        = ''
-        form.tipo_lugar_otro.data  = ''
-        form.mascota.data          = ''
+        if hasattr(form, 'area_otro'): form.area_otro.data = ''
+        form.edad_requerida.data   = []   # ahora lista (códigos)
+        if hasattr(form, 'edad_otro'): form.edad_otro.data = ''
+        if hasattr(form, 'tipo_lugar_otro'): form.tipo_lugar_otro.data  = ''
+        if hasattr(form, 'mascota'): form.mascota.data = ''
 
     if form.validate_on_submit():
-        # ➤ Código único
+        # Código único
         count        = Solicitud.query.filter_by(cliente_id=c.id).count()
         nuevo_codigo = f"{c.codigo}-{letra_por_indice(count)}"
 
-        # ➤ Instanciar y poblar modelo
+        # Instanciar y poblar modelo
         s = Solicitud(
             cliente_id       = c.id,
             fecha_solicitud  = datetime.utcnow(),
@@ -482,36 +566,36 @@ def nueva_solicitud_admin(cliente_id):
         )
         form.populate_obj(s)
 
-        # ➤ Tipo de lugar
-        if form.tipo_lugar.data == 'otro':
-            s.tipo_lugar = (form.tipo_lugar_otro.data or '').strip()
-        else:
-            s.tipo_lugar = form.tipo_lugar.data
+        # Tipo de lugar
+        s.tipo_lugar = _map_tipo_lugar(
+            getattr(s, 'tipo_lugar', ''),
+            getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
+        )
 
-        # ➤ Edad requerida (lista final de textos legibles)
+        # Edad requerida -> guardar LABELS legibles (como en Cliente)
         s.edad_requerida = _map_edad_choices(
             codes_selected=form.edad_requerida.data,
             edad_choices=form.edad_requerida.choices,
-            otro_text=form.edad_otro.data
+            otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
         )
 
-        # ➤ Mascota
-        s.mascota = (form.mascota.data or '').strip() or None
+        # Mascota
+        if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
+            s.mascota = (form.mascota.data or '').strip() or None
 
-        # ➤ Funciones
-        s.funciones = _as_list(form.funciones.data)
-        extra_fun = (form.funciones_otro.data or '').strip()
-        s.funciones_otro = extra_fun or None
-        if extra_fun:
-            # No mezcles code 'otro' en la lista final
-            s.funciones = [f for f in s.funciones if f != 'otro']
+        # Funciones
+        s.funciones = _map_funciones(
+            vals=form.funciones.data,
+            extra_text=(form.funciones_otro.data if hasattr(form, 'funciones_otro') else '')
+        )
 
-        # ➤ Áreas comunes y pasaje
-        s.areas_comunes = _as_list(form.areas_comunes.data)
-        s.area_otro     = (form.area_otro.data or '').strip()
-        s.pasaje_aporte = bool(form.pasaje_aporte.data)
+        # Áreas comunes y pasaje
+        s.areas_comunes = _clean_list(form.areas_comunes.data)
+        if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
+            s.area_otro     = (form.area_otro.data or '').strip()
+        s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', None).data) if hasattr(form, 'pasaje_aporte') else False
 
-        # ➤ Métricas de cliente
+        # Métricas de cliente
         db.session.add(s)
         c.total_solicitudes       = (c.total_solicitudes or 0) + 1
         c.fecha_ultima_solicitud  = datetime.utcnow()
@@ -528,7 +612,9 @@ def nueva_solicitud_admin(cliente_id):
         nuevo=True
     )
 
-
+# ─────────────────────────────────────────────────────────────
+# ADMIN: Editar solicitud
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar', methods=['GET','POST'])
 @login_required
 @admin_required
@@ -538,71 +624,79 @@ def editar_solicitud_admin(cliente_id, id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        # ➤ Tipo de lugar
-        guard_lugar = (s.tipo_lugar or '').strip()
-        opts_lugar  = {v for v,_ in form.tipo_lugar.choices}
-        if guard_lugar in opts_lugar:
-            form.tipo_lugar.data      = guard_lugar
-            form.tipo_lugar_otro.data = ''
-        else:
-            form.tipo_lugar.data      = 'otro'
-            form.tipo_lugar_otro.data = guard_lugar
+        # Tipo de lugar
+        try:
+            allowed_tl = {str(v) for v, _ in form.tipo_lugar.choices}
+            if s.tipo_lugar and s.tipo_lugar in allowed_tl:
+                form.tipo_lugar.data      = s.tipo_lugar
+                if hasattr(form, 'tipo_lugar_otro'): form.tipo_lugar_otro.data = ''
+            else:
+                form.tipo_lugar.data      = 'otro'
+                if hasattr(form, 'tipo_lugar_otro'): form.tipo_lugar_otro.data = (s.tipo_lugar or '').strip()
+        except Exception:
+            pass
 
-        # ➤ Edad requerida (s.edad_requerida ahora es lista)
+        # Edad requerida: LABELS (BD) → CÓDIGOS (form) + texto “otro”
         selected_codes, otro_text = _split_edad_for_form(
             stored_list=s.edad_requerida,
             edad_choices=form.edad_requerida.choices
         )
         form.edad_requerida.data = selected_codes
-        form.edad_otro.data      = otro_text
+        if hasattr(form, 'edad_otro'):
+            form.edad_otro.data      = otro_text
 
-        # ➤ Funciones
-        allowed_fun_codes = {v for v, _ in form.funciones.choices}
-        funs_guardadas = _as_list(s.funciones)
+        # Funciones
+        allowed_fun_codes = {str(v) for v, _ in form.funciones.choices}
+        funs_guardadas = _clean_list(s.funciones)
         form.funciones.data = [f for f in funs_guardadas if f in allowed_fun_codes]
-        # Empujar cualquier custom a funciones_otro (si existiera)
         extras = [f for f in funs_guardadas if f not in allowed_fun_codes and f != 'otro']
-        base_otro = (s.funciones_otro or '').strip()
-        form.funciones_otro.data = (", ".join(extras) if extras else base_otro)
+        if hasattr(form, 'funciones_otro'):
+            base_otro = (getattr(s, 'funciones_otro', '') or '').strip()
+            form.funciones_otro.data = (", ".join(extras) if extras else base_otro)
 
-        # ➤ Mascota
-        form.mascota.data = (s.mascota or '')
+        # Mascota
+        if hasattr(form, 'mascota'):
+            form.mascota.data = (getattr(s, 'mascota', '') or '')
 
-        # ➤ Áreas comunes y pasaje
-        form.areas_comunes.data = _as_list(s.areas_comunes)
-        form.area_otro.data     = (s.area_otro or '')
-        form.pasaje_aporte.data = bool(s.pasaje_aporte)
+        # Áreas comunes y pasaje
+        form.areas_comunes.data = _clean_list(s.areas_comunes)
+        if hasattr(form, 'area_otro'):
+            form.area_otro.data     = (getattr(s, 'area_otro', '') or '')
+        if hasattr(form, 'pasaje_aporte'):
+            form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
 
     if form.validate_on_submit():
         form.populate_obj(s)
 
-        # ➤ Tipo de lugar
-        if form.tipo_lugar.data == 'otro':
-            s.tipo_lugar = (form.tipo_lugar_otro.data or '').strip()
-        else:
-            s.tipo_lugar = form.tipo_lugar.data
+        # Tipo de lugar
+        s.tipo_lugar = _map_tipo_lugar(
+            getattr(s, 'tipo_lugar', ''),
+            getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
+        )
 
-        # ➤ Edad requerida (lista final de textos legibles)
+        # Edad requerida (guardar LABELS)
         s.edad_requerida = _map_edad_choices(
             codes_selected=form.edad_requerida.data,
             edad_choices=form.edad_requerida.choices,
-            otro_text=form.edad_otro.data
+            otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
         )
 
-        # ➤ Mascota
-        s.mascota = (form.mascota.data or '').strip() or None
+        # Mascota
+        if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
+            s.mascota = (form.mascota.data or '').strip() or None
 
-        # ➤ Funciones
-        s.funciones = _as_list(form.funciones.data)
-        extra_fun = (form.funciones_otro.data or '').strip()
-        s.funciones_otro = extra_fun or None
-        if extra_fun:
-            s.funciones = [f for f in s.funciones if f != 'otro']
+        # Funciones
+        s.funciones = _map_funciones(
+            vals=form.funciones.data,
+            extra_text=(form.funciones_otro.data if hasattr(form, 'funciones_otro') else '')
+        )
 
-        # ➤ Áreas comunes y pasaje
-        s.areas_comunes             = _as_list(form.areas_comunes.data)
-        s.area_otro                 = (form.area_otro.data or '').strip()
-        s.pasaje_aporte             = bool(form.pasaje_aporte.data)
+        # Áreas comunes y pasaje
+        s.areas_comunes             = _clean_list(form.areas_comunes.data)
+        if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
+            s.area_otro                 = (form.area_otro.data or '').strip()
+        if hasattr(form, 'pasaje_aporte'):
+            s.pasaje_aporte             = bool(form.pasaje_aporte.data)
         s.fecha_ultima_modificacion = datetime.utcnow()
 
         db.session.commit()

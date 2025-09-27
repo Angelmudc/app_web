@@ -1,32 +1,40 @@
-from flask import (
-    Blueprint, render_template, redirect,
-    url_for, flash, request, abort
-)
-from flask_login import login_required, current_user, login_user, logout_user
-from werkzeug.security import check_password_hash, generate_password_hash
+# -*- coding: utf-8 -*-
 from datetime import datetime, date
 from functools import wraps
 
+from flask import (
+    render_template, redirect, url_for, flash,
+    request, abort, g, session
+)
+from flask_login import (
+    login_required, current_user, login_user, logout_user
+)
+from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy.exc import SQLAlchemyError
+
+from config_app import db
+from models import Cliente, Solicitud
+from utils import letra_por_indice
 from .forms import (
     ClienteLoginForm,
     ClienteCancelForm,
     SolicitudForm,
-    ClienteSolicitudForm  # si no lo usas aquí, puedes dejarlo importado por compatibilidad
+    ClienteSolicitudForm  # puedes dejarlo por compatibilidad si no se usa aquí
 )
-from models import Cliente, Solicitud
-from config_app import db
-from utils import letra_por_indice
+
+# 🔹 Usa SIEMPRE el blueprint único definido en clientes/__init__.py
+from . import clientes_bp
+
 
 # ─────────────────────────────────────────────────────────────
-# Helper para validar el parámetro next (evitar open redirect)
+# Helpers básicos
 # ─────────────────────────────────────────────────────────────
 def _is_safe_next(next_url: str) -> bool:
     return bool(next_url) and next_url.startswith('/')
 
-# ─────────────────────────────────────────────────────────────
-# Decorador para asegurar que el usuario logueado es un Cliente
-# ─────────────────────────────────────────────────────────────
+
 def cliente_required(f):
+    """Asegura que el usuario autenticado es un Cliente (modelo Cliente)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not current_user.is_authenticated or not isinstance(current_user, Cliente):
@@ -34,15 +42,34 @@ def cliente_required(f):
         return f(*args, **kwargs)
     return decorated
 
+
+def politicas_requeridas(f):
+    """Bloquea acceso si el cliente no ha aceptado las políticas."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not getattr(current_user, 'acepto_politicas', False):
+            dest = url_for('clientes.politicas', next=request.url)
+            return redirect(dest)
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ─────────────────────────────────────────────────────────────
-# Blueprint
+# Configuración de opciones UI (listas y radios)
 # ─────────────────────────────────────────────────────────────
-clientes_bp = Blueprint(
-    'clientes',
-    __name__,
-    url_prefix='/clientes',
-    template_folder='../templates/clientes'
-)
+try:
+    # Si ya las declaras en admin.routes, se aprovechan para no duplicar
+    from admin.routes import AREAS_COMUNES_CHOICES  # type: ignore
+except Exception:
+    AREAS_COMUNES_CHOICES = [
+        ('sala', 'Sala'), ('comedor', 'Comedor'),
+        ('cocina', 'Cocina'), ('salon_juegos', 'Salón de juegos'),
+        ('terraza', 'Terraza'), ('jardin', 'Jardín'),
+        ('estudio', 'Estudio'), ('patio', 'Patio'),
+        ('piscina', 'Piscina'), ('marquesina', 'Marquesina'),
+        ('todas_anteriores', 'Todas las anteriores'), ('otro', 'Otro'),
+    ]
+
 
 # ─────────────────────────────────────────────────────────────
 # Login / Logout
@@ -90,6 +117,7 @@ def login():
     # GET
     return render_template('clientes/login.html', form=form)
 
+
 @clientes_bp.route('/logout')
 @login_required
 @cliente_required
@@ -97,6 +125,7 @@ def logout():
     logout_user()
     flash('Has cerrado sesión correctamente.', 'success')
     return redirect(url_for('clientes.login'))
+
 
 # ─────────────────────────────────────────────────────────────
 # Reset de contraseña (por código del cliente)
@@ -127,6 +156,7 @@ def reset_password(codigo):
 
     return render_template('clientes/reset_password.html', user=user)
 
+
 # ─────────────────────────────────────────────────────────────
 # Dashboard del cliente
 # ─────────────────────────────────────────────────────────────
@@ -134,7 +164,6 @@ def reset_password(codigo):
 @login_required
 @cliente_required
 def dashboard():
-    # Totales por estado (rápido y útil para KPIs)
     total = Solicitud.query.filter_by(cliente_id=current_user.id).count()
     por_estado = (
         db.session.query(Solicitud.estado, db.func.count(Solicitud.id))
@@ -160,6 +189,7 @@ def dashboard():
         hoy=date.today()
     )
 
+
 # ─────────────────────────────────────────────────────────────
 # Páginas informativas
 # ─────────────────────────────────────────────────────────────
@@ -167,36 +197,23 @@ def dashboard():
 @login_required
 @cliente_required
 def informacion():
-    # Aquí puedes mostrar datos de la agencia, cobertura, horarios, etc.
     return render_template('clientes/informacion.html')
+
 
 @clientes_bp.route('/planes')
 @login_required
 @cliente_required
 def planes():
-    # Planes/servicios de la agencia
     return render_template('clientes/planes.html')
+
 
 @clientes_bp.route('/ayuda')
 @login_required
 @cliente_required
 def ayuda():
-    # Página de ayuda con FAQ + enlaces a WhatsApp/soporte
-    # Puedes usar variables en el template para el número de WhatsApp
-    whatsapp = "+1 809 000 0000"  # reemplaza por el real si quieres
+    whatsapp = "+1 809 429 6892"  # reemplaza por el real
     return render_template('clientes/ayuda.html', whatsapp=whatsapp)
 
-# ─────────────────────────────────────────────────────────────
-# Configuración de opciones UI (listas y radios)
-# ─────────────────────────────────────────────────────────────
-AREAS_COMUNES_CHOICES = [
-    ('sala', 'Sala'), ('comedor', 'Comedor'),
-    ('cocina','Cocina'), ('salon_juegos','Salón de juegos'),
-    ('terraza','Terraza'), ('jardin','Jardín'),
-    ('estudio','Estudio'), ('patio','Patio'),
-    ('piscina','Piscina'), ('marquesina','Marquesina'),
-    ('todas_anteriores','Todas las anteriores'),
-]
 
 # ─────────────────────────────────────────────────────────────
 # Listado de solicitudes (búsqueda + filtro + paginación)
@@ -220,123 +237,142 @@ def listar_solicitudes():
         query = query.filter(
             db.or_(
                 Solicitud.codigo_solicitud.ilike(like),
-                Solicitud.ciudad.ilike(like),
-                Solicitud.descripcion.ilike(like)  # si existe el campo
+                getattr(Solicitud, 'ciudad', db.literal('')).ilike(like),
+                getattr(Solicitud, 'descripcion', db.literal('')).ilike(like)
             )
         )
 
     query = query.order_by(Solicitud.fecha_solicitud.desc())
     paginado = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    # Para filtros en la UI
     estados_disponibles = [e[0] for e in db.session.query(Solicitud.estado).distinct().all() if e[0]]
 
     return render_template(
         'clientes/solicitudes_list.html',
         solicitudes=paginado.items,
         hoy=date.today(),
-        # paginación
-        page=page,
-        per_page=per_page,
-        total=paginado.total,
-        pages=paginado.pages,
-        has_prev=paginado.has_prev,
-        has_next=paginado.has_next,
-        prev_num=paginado.prev_num if hasattr(paginado, 'prev_num') else None,
-        next_num=paginado.next_num if hasattr(paginado, 'next_num') else None,
-        # filtros actuales
-        q=q, estado=estado,
-        estados_disponibles=estados_disponibles
+        page=page, per_page=per_page, total=paginado.total, pages=paginado.pages,
+        has_prev=paginado.has_prev, has_next=paginado.has_next,
+        prev_num=getattr(paginado, 'prev_num', None),
+        next_num=getattr(paginado, 'next_num', None),
+        q=q, estado=estado, estados_disponibles=estados_disponibles
     )
 
-# ─────────────────────────────────────────────────────────────
-# Nueva solicitud
-# ─────────────────────────────────────────────────────────────
-# clientes/routes_solicitudes.py (fragmento)
-# RUTAS: crear y editar solicitud (copia y pega sobre las tuyas)
 
+# ─────────────────────────────────────────────────────────────
+# Helpers para normalización de formularios de solicitud
+# ─────────────────────────────────────────────────────────────
+def _clean_list(seq):
+    bad = {"-", "–", "—"}
+    out, seen = [], set()
+    for v in (seq or []):
+        s = str(v).strip()
+        if not s or s in bad:
+            continue
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def _choices_maps(choices):
+    code_to_label, label_to_code = {}, {}
+    for code, label in (choices or []):
+        c = str(code).strip()
+        l = str(label).strip()
+        if not c or not l:
+            continue
+        code_to_label[c] = l
+        label_to_code[l] = c
+    return code_to_label, label_to_code
+
+
+def _map_edad_choices(codes_selected, edad_choices, otro_text):
+    codes_selected = _clean_list([str(x) for x in (codes_selected or [])])
+    code_to_label, _ = _choices_maps(edad_choices)
+
+    result = []
+    for code in codes_selected:
+        if code == "otro":
+            continue
+        label = code_to_label.get(code)
+        if label:
+            result.append(label)
+
+    if "otro" in codes_selected:
+        extra = (otro_text or "").strip()
+        if extra:
+            result.append(extra)
+
+    return _clean_list(result)
+
+
+def _split_edad_for_form(stored_list, edad_choices):
+    stored_list = _clean_list(stored_list)
+    _, label_to_code = _choices_maps(edad_choices)
+
+    selected_codes, otros = [], []
+    for label in stored_list:
+        code = label_to_code.get(label)
+        if code:
+            selected_codes.append(code)
+        else:
+            otros.append(label)
+
+    otro_text = ", ".join(otros) if otros else ""
+    if otros:
+        selected_codes = _clean_list(selected_codes + ["otro"])
+    return selected_codes, otro_text
+
+
+def _map_funciones(vals, extra_text):
+    vals = _clean_list(vals)
+    if 'otro' in vals:
+        vals = [v for v in vals if v != 'otro']
+        extra = (extra_text or '').strip()
+        if extra:
+            vals.extend([x.strip() for x in extra.split(',') if x.strip()])
+    return _clean_list(vals)
+
+
+def _map_tipo_lugar(value, extra):
+    value = (value or '').strip()
+    if value == 'otro':
+        return (extra or '').strip() or value
+    return value
+
+
+def _money_sanitize(raw):
+    if raw is None:
+        return None
+    s = str(raw)
+    limpio = s.replace('RD$', '').replace('$', '').replace('.', '').replace(',', '').strip()
+    return limpio or s.strip()
+
+
+# ─────────────────────────────────────────────────────────────
+# NUEVA SOLICITUD (CLIENTE) — requiere aceptar políticas
+# ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/solicitudes/nueva', methods=['GET', 'POST'])
 @login_required
 @cliente_required
+@politicas_requeridas
 def nueva_solicitud():
-    from sqlalchemy.exc import SQLAlchemyError
-
     form = SolicitudForm()
-    # Mantén sincronizadas las opciones de áreas comunes con las del admin
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
-    # Helpers internos ---------------------------------------------------------
-    def _clean_list(seq):
-        """Convierte a lista, quita None, espacios y duplicados respetando orden."""
-        seen = set()
-        out = []
-        for v in (seq or []):
-            if v is None:
-                continue
-            v = str(v).strip()
-            if not v:
-                continue
-            if v not in seen:
-                seen.add(v)
-                out.append(v)
-        return out
-
-    def _map_edad(vals):
-        """Normaliza edad: '25+' -> '25 en adelante'. Maneja 'otro'."""
-        vals = _clean_list(vals)
-        mapped = [('25 en adelante' if v == '25+' else v) for v in vals]
-        # Si eligieron "otro", sustituir por lo escrito
-        if 'otro' in mapped:
-            mapped = [v for v in mapped if v != 'otro']  # quita marcador
-            extra = (form.edad_otro.data or '').strip() if hasattr(form, 'edad_otro') else ''
-            if extra:
-                mapped.append(extra)
-        return _clean_list(mapped)
-
-    def _map_funciones(vals):
-        """Normaliza funciones: reemplaza 'otro' por lo escrito (una o varias, separadas por coma)."""
-        vals = _clean_list(vals)
-        if 'otro' in vals:
-            vals = [v for v in vals if v != 'otro']
-            extra = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
-            if extra:
-                # Permite varias separadas por coma
-                extras = [x.strip() for x in extra.split(',') if x.strip()]
-                vals.extend(extras or [extra])
-        return _clean_list(vals)
-
-    def _map_tipo_lugar(value):
-        """Si seleccionaron 'otro', usa el texto proporcionado."""
-        value = (value or '').strip()
-        if value == 'otro':
-            extra = (form.tipo_lugar_otro.data or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
-            return extra or value  # si no escriben nada, se queda en 'otro'
-        return value
-
-    def _money_sanitize(raw):
-        """Remueve RD$, $, puntos y comas; deja sólo dígitos (o string original si queda vacío)."""
-        if raw is None:
-            return None
-        s = str(raw)
-        limpio = s.replace('RD$', '').replace('$', '').replace('.', '').replace(',', '').strip()
-        return limpio or s.strip()
-
-    # GET ----------------------------------------------------------------------
     if request.method == 'GET':
-        # Inicializa listas/booleanos para que el template no truene
-        form.funciones.data = form.funciones.data or []
-        form.areas_comunes.data = form.areas_comunes.data or []
-        form.edad_requerida.data = form.edad_requerida.data or []
+        form.funciones.data       = form.funciones.data or []
+        form.areas_comunes.data   = form.areas_comunes.data or []
+        form.edad_requerida.data  = form.edad_requerida.data or []
         if form.dos_pisos.data is None:
             form.dos_pisos.data = False
         if form.pasaje_aporte.data is None:
             form.pasaje_aporte.data = False
 
-    # POST ---------------------------------------------------------------------
     if form.validate_on_submit():
         try:
-            # Código consecutivo por cliente (CLI-001-A, CLI-001-B, ...)
-            count = Solicitud.query.filter_by(cliente_id=current_user.id).count()
+            count  = Solicitud.query.filter_by(cliente_id=current_user.id).count()
             codigo = f"{current_user.codigo}-{letra_por_indice(count)}"
 
             s = Solicitud(
@@ -344,39 +380,26 @@ def nueva_solicitud():
                 fecha_solicitud=datetime.utcnow(),
                 codigo_solicitud=codigo
             )
-
-            # Vuelca campos simples
             form.populate_obj(s)
 
-            # Normaliza listas
-            s.funciones      = _map_funciones(form.funciones.data)
+            # Normalizaciones
+            s.funciones      = _map_funciones(form.funciones.data, getattr(form, 'funciones_otro', None).data if hasattr(form, 'funciones_otro') else '')
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
-            s.edad_requerida = _map_edad(form.edad_requerida.data)
+            s.edad_requerida = _map_edad_choices(form.edad_requerida.data, form.edad_requerida.choices, getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else '')
+            s.tipo_lugar     = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''), getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else '')
 
-            # Tipo de lugar (maneja 'otro')
-            s.tipo_lugar = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''))
-
-            # Mascota (si existe en el form y en el modelo)
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
-
-            # Area "otro" y nota
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                 s.area_otro = (form.area_otro.data or '').strip()
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = (form.nota_cliente.data or '').strip()
-
-            # Sueldo
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
-
-            # Marca de última modificación si existe el campo
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = datetime.utcnow()
 
             db.session.add(s)
-
-            # Métricas rápidas del cliente (si existen)
             try:
                 current_user.total_solicitudes = (current_user.total_solicitudes or 0) + 1
                 current_user.fecha_ultima_solicitud = datetime.utcnow()
@@ -392,94 +415,40 @@ def nueva_solicitud():
             db.session.rollback()
             flash('No se pudo crear la solicitud. Intenta de nuevo.', 'danger')
 
-    # Render por defecto
     return render_template('clientes/solicitud_form.html', form=form, nuevo=True)
 
 
 # ─────────────────────────────────────────────────────────────
-# Editar solicitud
+# EDITAR SOLICITUD (CLIENTE) — requiere aceptar políticas
 # ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/solicitudes/<int:id>/editar', methods=['GET','POST'])
 @login_required
 @cliente_required
+@politicas_requeridas
 def editar_solicitud(id):
-    from sqlalchemy.exc import SQLAlchemyError
-
     s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
     form = SolicitudForm(obj=s)
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
-    # Helpers (mismos que arriba) ----------------------------------------------
-    def _clean_list(seq):
-        seen, out = set(), []
-        for v in (seq or []):
-            if v is None:
-                continue
-            v = str(v).strip()
-            if not v:
-                continue
-            if v not in seen:
-                seen.add(v)
-                out.append(v)
-        return out
-
-    def _map_edad(vals):
-        vals = _clean_list(vals)
-        mapped = [('25 en adelante' if v == '25+' else v) for v in vals]
-        if 'otro' in mapped:
-            mapped = [v for v in mapped if v != 'otro']
-            extra = (form.edad_otro.data or '').strip() if hasattr(form, 'edad_otro') else ''
-            if extra:
-                mapped.append(extra)
-        return _clean_list(mapped)
-
-    def _map_funciones(vals):
-        vals = _clean_list(vals)
-        if 'otro' in vals:
-            vals = [v for v in vals if v != 'otro']
-            extra = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
-            if extra:
-                extras = [x.strip() for x in extra.split(',') if x.strip()]
-                vals.extend(extras or [extra])
-        return _clean_list(vals)
-
-    def _map_tipo_lugar(value):
-        value = (value or '').strip()
-        if value == 'otro':
-            extra = (form.tipo_lugar_otro.data or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
-            return extra or value
-        return value
-
-    def _money_sanitize(raw):
-        if raw is None:
-            return None
-        s = str(raw)
-        limpio = s.replace('RD$', '').replace('$', '').replace('.', '').replace(',', '').strip()
-        return limpio or s.strip()
-
-    # GET ----------------------------------------------------------------------
     if request.method == 'GET':
         # Precargar listas
         form.funciones.data      = _clean_list(s.funciones)
         form.areas_comunes.data  = _clean_list(s.areas_comunes)
-        form.edad_requerida.data = _clean_list(s.edad_requerida)
 
-        # Si hay valores personalizados, marca “otro” y precarga el input
-        try:
-            allowed_edad = {v for v, _ in form.edad_requerida.choices}
-            custom_edad = [v for v in (s.edad_requerida or []) if v and v not in allowed_edad]
-            if custom_edad:
-                data = set(form.edad_requerida.data or [])
-                data.add('otro')
-                form.edad_requerida.data = list(data)
-                form.edad_otro.data = ', '.join(custom_edad)
-        except Exception:
-            pass
+        # Edad: LABELS (BD) → códigos (form) + texto otro
+        selected_codes, otro_text = _split_edad_for_form(
+            stored_list=s.edad_requerida,
+            edad_choices=form.edad_requerida.choices
+        )
+        form.edad_requerida.data = selected_codes
+        if hasattr(form, 'edad_otro'):
+            form.edad_otro.data = otro_text
 
+        # Funciones personalizadas → “otro”
         try:
-            allowed_fun = {v for v, _ in form.funciones.choices}
+            allowed_fun = {str(v) for v, _ in form.funciones.choices}
             custom_fun = [v for v in (s.funciones or []) if v and v not in allowed_fun]
-            if custom_fun:
+            if custom_fun and hasattr(form, 'funciones_otro'):
                 data = set(form.funciones.data or [])
                 data.add('otro')
                 form.funciones.data = list(data)
@@ -487,9 +456,10 @@ def editar_solicitud(id):
         except Exception:
             pass
 
+        # Tipo de lugar
         try:
-            allowed_tl = {v for v, _ in form.tipo_lugar.choices}
-            if s.tipo_lugar and s.tipo_lugar not in allowed_tl:
+            allowed_tl = {str(v) for v, _ in form.tipo_lugar.choices}
+            if s.tipo_lugar and s.tipo_lugar not in allowed_tl and hasattr(form, 'tipo_lugar_otro'):
                 form.tipo_lugar.data = 'otro'
                 form.tipo_lugar_otro.data = s.tipo_lugar
         except Exception:
@@ -500,31 +470,23 @@ def editar_solicitud(id):
         if form.pasaje_aporte.data is None:
             form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
 
-        # Mascota: ya viene precargada por WTForms (obj=s). Nada extra.
-
-    # POST ---------------------------------------------------------------------
     if form.validate_on_submit():
         try:
             form.populate_obj(s)
 
-            s.funciones      = _map_funciones(form.funciones.data)
+            s.funciones      = _map_funciones(form.funciones.data, getattr(form, 'funciones_otro', None).data if hasattr(form, 'funciones_otro') else '')
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
-            s.edad_requerida = _map_edad(form.edad_requerida.data)
+            s.edad_requerida = _map_edad_choices(form.edad_requerida.data, form.edad_requerida.choices, getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else '')
+            s.tipo_lugar     = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''), getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else '')
 
-            s.tipo_lugar = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''))
-
-            # Mascota (si existe en form/modelo)
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
-
-            if hasattr(s, 'area_otro'):
+            if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                 s.area_otro = (form.area_otro.data or '').strip()
-            if hasattr(s, 'nota_cliente'):
+            if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = (form.nota_cliente.data or '').strip()
-
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
-
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = datetime.utcnow()
 
@@ -538,8 +500,9 @@ def editar_solicitud(id):
 
     return render_template('clientes/solicitud_form.html', form=form, editar=True, solicitud=s)
 
+
 # ─────────────────────────────────────────────────────────────
-# Detalle de solicitud (con timeline de envíos y cancelaciones)
+# Detalle de solicitud
 # ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/solicitudes/<int:id>')
 @login_required
@@ -579,8 +542,9 @@ def detalle_solicitud(id):
         hoy=date.today()
     )
 
+
 # ─────────────────────────────────────────────────────────────
-# Seguimiento (vista centrada en la línea de tiempo)
+# Seguimiento (línea de tiempo)
 # ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/solicitudes/<int:id>/seguimiento')
 @login_required
@@ -589,15 +553,12 @@ def seguimiento_solicitud(id):
     s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
 
     timeline = []
-
-    # Creación
     timeline.append({
         'titulo': 'Solicitud creada',
         'detalle': f'Código {s.codigo_solicitud}',
         'fecha': s.fecha_solicitud
     })
 
-    # Envíos (inicial + reemplazos)
     if getattr(s, 'candidata', None):
         timeline.append({
             'titulo': 'Candidata enviada',
@@ -605,7 +566,6 @@ def seguimiento_solicitud(id):
             'fecha': s.fecha_solicitud
         })
 
-    # Reemplazos (usa "or" en vez de "o" y asegura created_at si falta)
     for idx, r in enumerate(getattr(s, 'reemplazos', []) or [], start=1):
         if getattr(r, 'candidata_new', None):
             timeline.append({
@@ -614,7 +574,6 @@ def seguimiento_solicitud(id):
                 'fecha': (getattr(r, 'fecha_inicio_reemplazo', None) or getattr(r, 'created_at', None))
             })
 
-    # Cancelación (si aplica)
     if s.estado == 'cancelada' and getattr(s, 'fecha_cancelacion', None):
         timeline.append({
             'titulo': 'Solicitud cancelada',
@@ -622,7 +581,6 @@ def seguimiento_solicitud(id):
             'fecha': s.fecha_cancelacion
         })
 
-    # Última modificación
     if getattr(s, 'fecha_ultima_modificacion', None):
         timeline.append({
             'titulo': 'Actualizada',
@@ -630,17 +588,13 @@ def seguimiento_solicitud(id):
             'fecha': s.fecha_ultima_modificacion
         })
 
-    # Ordenar por fecha ascendente (si alguna fecha es None, cae a datetime.min)
     timeline.sort(key=lambda x: x.get('fecha') or datetime.min)
 
-    return render_template(
-        'clientes/solicitud_seguimiento.html',
-        s=s,
-        timeline=timeline
-    )
+    return render_template('clientes/solicitud_seguimiento.html', s=s, timeline=timeline)
+
 
 # ─────────────────────────────────────────────────────────────
-# Cancelar solicitud (queda “pendiente de aprobación”)
+# Cancelar solicitud
 # ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/solicitudes/<int:id>/cancelar', methods=['GET','POST'])
 @login_required
@@ -656,8 +610,83 @@ def cancelar_solicitud(id):
         flash('Solicitud marcada como cancelada (pendiente aprobación).', 'warning')
         return redirect(url_for('clientes.listar_solicitudes'))
 
-    return render_template(
-        'clientes/solicitud_cancel.html',
-        s=s,
-        form=form
-    )
+    return render_template('clientes/solicitud_cancel.html', s=s, form=form)
+
+
+# ─────────────────────────────────────────────────────────────
+# MIDDLEWARE: mostrar modal si no ha aceptado políticas
+# ─────────────────────────────────────────────────────────────
+@clientes_bp.before_app_request
+def _show_policies_modal_once():
+    """
+    Si el usuario (cliente) NO ha aceptado todavía:
+    - Mostrar un modal solo 1 vez por sesión (flag en session).
+    - Bloquear POSTs a cualquier ruta excepto aceptar_politicas.
+    - Permitir acceder a la página de políticas.
+    """
+    WHITELIST = {
+        'clientes.politicas',
+        'clientes.aceptar_politicas',
+        'clientes.rechazar_politicas',
+        'clientes.login',
+        'clientes.logout',
+        'static'
+    }
+
+    if not current_user.is_authenticated:
+        return None
+
+    # Solo aplica a ROLE cliente
+    if getattr(current_user, 'role', 'cliente') != 'cliente':
+        return None
+
+    # Ya aceptó
+    if getattr(current_user, 'acepto_politicas', False):
+        return None
+
+    # Mostrar modal una sola vez en la sesión
+    g.show_policies_modal = False
+    if not session.get('policies_modal_shown', False):
+        g.show_policies_modal = True
+        session['policies_modal_shown'] = True
+
+    # Evitar POSTs a otras rutas sin aceptar antes
+    if request.method == 'POST' and request.endpoint not in WHITELIST:
+        return redirect(url_for('clientes.politicas', next=request.url))
+
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
+# PÁGINA: Políticas (acceso manual desde menú)
+# ─────────────────────────────────────────────────────────────
+@clientes_bp.route('/politicas', methods=['GET'])
+@login_required
+def politicas():
+    # Solo clientes
+    if getattr(current_user, 'role', 'cliente') != 'cliente':
+        flash('Acceso no permitido.', 'warning')
+        return redirect(url_for('clientes.dashboard'))
+    return render_template('clientes/politicas.html')
+
+
+# ─────────────────────────────────────────────────────────────
+# ACCIONES: aceptar / rechazar políticas
+# ─────────────────────────────────────────────────────────────
+@clientes_bp.route('/politicas/aceptar', methods=['POST'])
+@login_required
+def aceptar_politicas():
+    next_url = request.args.get('next') or url_for('clientes.dashboard')
+    current_user.acepto_politicas = True
+    current_user.fecha_acepto_politicas = datetime.utcnow()
+    db.session.commit()
+    flash('Gracias por aceptar nuestras políticas.', 'success')
+    return redirect(next_url if _is_safe_next(next_url) else url_for('clientes.dashboard'))
+
+
+@clientes_bp.route('/politicas/rechazar', methods=['GET'])
+@login_required
+def rechazar_politicas():
+    logout_user()
+    flash('Debes aceptar las políticas para usar el portal.', 'warning')
+    return redirect(url_for('clientes.login'))

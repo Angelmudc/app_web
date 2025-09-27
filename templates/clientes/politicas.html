@@ -1,0 +1,169 @@
+{# templates/clientes/politicas.html #}
+{% extends 'clientes/base.html' %}
+
+{% block title %}Políticas y Reglas | Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<div class="container py-4 py-md-5" style="max-width: 980px;">
+
+  <div class="card shadow-sm border-0" style="border-radius:14px;">
+    <div class="card-body p-4 p-md-5">
+
+      <!-- Encabezado -->
+      <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+        <div class="me-3">
+          <h1 class="h4 mb-1">Políticas y reglas importantes</h1>
+          <p class="text-muted mb-0">Por favor, léelas con atención antes de continuar.</p>
+        </div>
+
+        {% if current_user.acepto_politicas %}
+          <span class="badge rounded-pill text-bg-success d-inline-flex align-items-center gap-2 px-3 py-2">
+            <i class="bi bi-shield-check"></i> Aceptadas
+          </span>
+        {% endif %}
+      </div>
+
+      <hr class="my-4">
+
+      <!-- Resumen visual -->
+      <div class="row g-3 mb-4">
+        <div class="col-12 col-md-4">
+          <div class="p-3 border rounded-3 h-100">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-arrow-repeat"></i>
+              <strong>Garantía de reemplazo</strong>
+            </div>
+            <div class="text-muted small">
+              Cambiamos a la doméstica si no cumple el desempeño durante el periodo de garantía según tu plan.
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="p-3 border rounded-3 h-100">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-calendar-check"></i>
+              <strong>Plazos por plan</strong>
+            </div>
+            <div class="text-muted small">
+              Básico: 15 días · Premium: 30 días · VIP: 60 días.
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="p-3 border rounded-3 h-100">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-cash-coin"></i>
+              <strong>Abono inicial 35%</strong>
+            </div>
+            <div class="text-muted small">
+              Requerido para iniciar la búsqueda y presentación de candidatas.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cuerpo de políticas -->
+      <div class="mb-4">
+        <ol class="mb-0 ps-3" style="line-height:1.6;">
+          <li class="mb-3">
+            <strong>Garantía de reemplazo.</strong>
+            La agencia <u>no se hace responsable por robos, pérdidas u otros incidentes en el hogar</u>.
+            Si la doméstica no cumple con el desempeño esperado durante el periodo de garantía, la agencia
+            realizará el <strong>cambio sin costo adicional</strong>. No se realizan devoluciones de dinero por desempeño.
+          </li>
+
+          <li class="mb-3">
+            <strong>Plazos de garantía según el plan.</strong>
+            <div class="mt-1">
+              <span class="badge text-bg-secondary me-1 mb-1">Básico: 15 días</span>
+              <span class="badge text-bg-secondary me-1 mb-1">Premium: 30 días</span>
+              <span class="badge text-bg-secondary me-1 mb-1">VIP: 60 días</span>
+            </div>
+          </li>
+
+          <li class="mb-3">
+            <strong>Cancelaciones y devoluciones.</strong>
+            Si el cliente <u>cancela voluntariamente</u>, no hay devolución; el monto queda como
+            <strong>abono disponible</strong> para una búsqueda futura (sin vencimiento).
+            Solo hay devolución si <u>en 2 semanas</u> la agencia no logra presentar ninguna candidata.
+          </li>
+
+          <li class="mb-3">
+            <strong>Reglas internas del hogar.</strong>
+            La agencia no impone reglas internas adicionales.
+            El cliente debe comunicar sus normas de convivencia y trabajo de forma clara desde el inicio.
+          </li>
+
+          <li class="mb-3">
+            <strong>Comportamientos inapropiados.</strong>
+            Si la doméstica incurre en faltas (incumplimientos, faltas de respeto, etc.),
+            el cliente debe informar <strong>de inmediato</strong> a la agencia para orientar a la trabajadora o realizar un cambio según corresponda.
+          </li>
+
+          <li class="mb-3">
+            <strong>Porcentaje de la doméstica (pago a la agencia).</strong>
+            El cliente se compromete a <u>realizar el pago del porcentaje correspondiente directamente a la agencia</u>.
+            Este porcentaje se <strong>descuenta del sueldo de la doméstica</strong> para facilitar el proceso.
+            <em>La doméstica está informada y de acuerdo con este procedimiento.</em>
+            El pago se completa en <strong>uno o dos plazos</strong> según lo acordado y dentro del tiempo establecido.
+          </li>
+
+          <li class="mb-3">
+            <strong>Abono inicial para iniciar el proceso.</strong>
+            Para comenzar la búsqueda y selección, se requiere un <strong>abono del 35&nbsp;%</strong> del plan elegido.
+            Sin este abono, el proceso no se activa.
+          </li>
+
+          <li class="mb-3">
+            <strong>Veracidad de la información.</strong>
+            Es importante que los datos ingresados sean reales y precisos para que el proceso sea más rápido y evitar inconvenientes más adelante.
+          </li>
+
+          <li class="mb-0">
+            <strong>Comunicación y tiempos.</strong>
+            La evaluación y presentación de personal dependen de la disponibilidad y filtros de seguridad.
+            Cualquier novedad relevante se comunicará por canales oficiales.
+          </li>
+        </ol>
+      </div>
+
+      <hr class="my-4">
+
+      <!-- Acciones -->
+      {% if not current_user.acepto_politicas %}
+        <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
+          <i class="bi bi-info-circle-fill mt-1"></i>
+          <div>
+            Al aceptar, confirmas que has leído y estás de acuerdo con estas políticas para continuar utilizando el servicio.
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+          <form method="post"
+                action="{{ url_for('clientes.aceptar_politicas', next=request.args.get('next') or url_for('clientes.dashboard')) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-primary">
+              <i class="bi bi-shield-check me-1"></i> Acepto las políticas
+            </button>
+          </form>
+
+          <a class="btn btn-outline-secondary" href="{{ url_for('clientes.rechazar_politicas') }}">
+            <i class="bi bi-box-arrow-left me-1"></i> No acepto
+          </a>
+        </div>
+      {% else %}
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-light" href="{{ url_for('clientes.dashboard') }}">
+            <i class="bi bi-house me-1"></i> Volver al inicio
+          </a>
+          <a class="btn btn-outline-primary" href="{{ url_for('clientes.listar_solicitudes') }}">
+            <i class="bi bi-card-checklist me-1"></i> Ver mis solicitudes
+          </a>
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

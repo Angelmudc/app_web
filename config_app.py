@@ -35,11 +35,10 @@ csrf    = CSRFProtect()
 # ─────────────────────────────────────────────────────────────
 # Usuarios en memoria (para login admin/secretaria)
 # ─────────────────────────────────────────────────────────────
-from werkzeug.security import generate_password_hash, check_password_hash
 USUARIOS = {
     "angel":    {"pwd_hash": generate_password_hash("0000"),  "role": "admin"},
-    "divina":   {"pwd_hash": generate_password_hash("67890"),  "role": "admin"},
-    "darielis": {"pwd_hash": generate_password_hash("3333"),   "role": "secretaria"},
+    "divina":   {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
+    "darielis": {"pwd_hash": generate_password_hash("3333"),  "role": "secretaria"},
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -86,27 +85,18 @@ def create_app():
     # Si deployas detrás de proxy (Render, etc.)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
-    # Blueprints
-    from admin.routes import admin_bp
-    app.register_blueprint(admin_bp, url_prefix='/admin')
-    from clientes.routes import clientes_bp
-    app.register_blueprint(clientes_bp)
-
     # ── Base de datos remota (sin BD local)
     raw_db_url = os.getenv('DATABASE_URL', '')
     db_url = _normalize_db_url(raw_db_url)
 
     # ¿Usas PgBouncer (transaction pooling)? → usa NullPool para evitar reciclar SSL roto
-    # Define en .env: DB_POOL_MODE=pgbouncer   (o déjalo vacío para pool normal)
     pool_mode = os.getenv("DB_POOL_MODE", "").lower()  # "", "pgbouncer"
     use_null_pool = pool_mode in ("pgbouncer", "nullpool", "off")
 
     # Engine options
     connect_args = {
-        # SSL ya va en la URL; esto refuerza en psycopg2
         "sslmode": "require",
         "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "8")),
-        # keepalives para evitar “decryption failed or bad record mac” por sesiones viejas
         "keepalives": int(os.getenv("DB_KEEPALIVES", "1")),
         "keepalives_idle": int(os.getenv("DB_KEEPALIVES_IDLE", "30")),
         "keepalives_interval": int(os.getenv("DB_KEEPALIVES_INTERVAL", "10")),
@@ -115,18 +105,16 @@ def create_app():
     }
 
     engine_opts = {
-        "pool_pre_ping": True,          # verifica conexión antes de usarla
+        "pool_pre_ping": True,
         "pool_reset_on_return": "rollback",
         "connect_args": connect_args,
     }
 
     if use_null_pool:
-        # Un socket por operación, sin reusar → adiós sockets “viejos” con SSL roto
         engine_opts["poolclass"] = NullPool
     else:
-        # Pool normal, pero reciclando a menudo para evitar sesiones envejecidas
         engine_opts.update({
-            "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5 minutos
+            "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "300")),
             "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
             "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "5")),
             "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
@@ -151,7 +139,6 @@ def create_app():
     app.jinja_env.globals['current_year'] = _dt.utcnow().year
 
     # ── Login manager (usuarios en memoria + clientes)
-    from flask_login import LoginManager
     login_manager = LoginManager()
     login_manager.init_app(app)
 
@@ -161,7 +148,6 @@ def create_app():
             return redirect(url_for('clientes.login', next=request.url))
         return redirect(url_for('admin.login', next=request.url))
 
-    from werkzeug.security import check_password_hash
     class User(UserMixin):
         def __init__(self, username, role):
             self.id   = username
@@ -171,14 +157,24 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
+        # Admin/secretaria en memoria
         data = USUARIOS.get(user_id)
         if data:
             return User(user_id, data['role'])
+        # Clientes en DB
         try:
             from models import Cliente
             return Cliente.query.get(int(user_id))
         except Exception:
             return None
+
+    # Blueprints (después de configurar login/CSRF/DB)
+    from admin.routes import admin_bp
+    app.register_blueprint(admin_bp, url_prefix='/admin')
+
+    # 🚩 IMPORTANTE: importar el blueprint del paquete, no del módulo
+    from clientes import clientes_bp
+    app.register_blueprint(clientes_bp)
 
     # Config de entrevistas (si existe)
     try:

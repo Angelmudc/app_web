@@ -145,7 +145,6 @@ class Cliente(UserMixin, db.Model):
 
     # Nombre (principal) y alias compatible
     nombre_completo            = db.Column(db.String(200), nullable=False)
-    # Alias para compatibilidad: permite usar 'nombre=' al crear o leer
     nombre                     = orm_synonym('nombre_completo')
 
     # Contacto
@@ -173,6 +172,19 @@ class Cliente(UserMixin, db.Model):
     fecha_registro             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     fecha_ultima_actividad     = db.Column(db.DateTime, nullable=True)
 
+    # ----- Políticas y avisos -----
+    acepto_politicas           = db.Column(
+                                    db.Boolean,
+                                    nullable=False,
+                                    default=False,
+                                    comment="True si el cliente ya aceptó las políticas al ingresar por primera vez."
+                                )
+    fecha_acepto_politicas     = db.Column(
+                                    db.DateTime,
+                                    nullable=True,
+                                    comment="Fecha y hora en que aceptó las políticas."
+                                )
+
     # ----- Relaciones -----
     solicitudes = db.relationship(
         'Solicitud',
@@ -187,6 +199,7 @@ class Cliente(UserMixin, db.Model):
 
     def __repr__(self):
         return f"<Cliente {self.username} ({self.codigo})>"
+
 
         
 class Solicitud(db.Model):
