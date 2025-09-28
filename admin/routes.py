@@ -1564,3 +1564,245 @@ def resumen_diario_clientes():
         resumen=resumen,
         hoy=hoy
     )
+
+
+# ============================
+# COMPATIBILIDAD (ADMIN)
+# ============================
+from datetime import datetime
+from flask import Response, request, render_template, redirect, url_for, flash
+from flask_login import login_required
+from .decorators import admin_required
+from . import admin_bp
+from models import Cliente, Solicitud, Candidata
+
+# ---------- Helpers robustos ----------
+def _as_iter(val):
+    if val is None:
+        return []
+    if isinstance(val, (list, tuple, set)):
+        return list(val)
+    s = str(val)
+    parts = [p.strip() for p in s.split(',') if p.strip()]
+    return parts if parts else ([s.strip()] if s.strip() else [])
+
+def _as_set(val):
+    return {str(x).strip().lower() for x in _as_iter(val)}
+
+def _first_nonempty(obj, aliases, default=None):
+    for name in aliases:
+        if hasattr(obj, name):
+            v = getattr(obj, name)
+            if v not in (None, '', [], {}, ()):
+                return v
+    return default
+
+def _first_text(obj, aliases, default=''):
+    v = _first_nonempty(obj, aliases, default=None)
+    if v is None:
+        return default
+    try:
+        return str(v).strip()
+    except Exception:
+        return default
+
+def _first_int(obj, aliases, default=0):
+    v = _first_nonempty(obj, aliases, default=None)
+    if v is None:
+        return default
+    try:
+        return int(v)
+    except Exception:
+        try:
+            return int(float(str(v).strip()))
+        except Exception:
+            return default
+
+def _match_text(haystack: str, needle: str) -> bool:
+    return (needle or "").lower() in (haystack or "").lower()
+
+# -------------------------
+# Cálculo de compatibilidad
+# -------------------------
+def calc_score_compat(solicitud: Solicitud, candidata: Candidata):
+    """
+    Devuelve dict con breakdown y score final (0-100).
+    Alineado a los campos que existen en tus modelos.
+    """
+    total = 0
+    breakdown = []
+
+    # === Alias según tus modelos ===
+    # Solicitud
+    CLI_NINOS_ALIASES   = ['ninos']                   # int
+    CLI_MASCOTA_ALIASES = ['mascota']                 # str
+    CLI_FUNC_ALIASES    = ['funciones']               # ARRAY(VARCHAR)
+    CLI_HORARIO_ALIASES = ['horario']                 # str
+    CLI_EXPERI_ALIASES  = ['experiencia']             # str (solo para mostrar en resumen)
+
+    # Candidata
+    CAND_RITMO_ALIASES     = ['compat_ritmo_preferido']              # enum
+    CAND_ESTILO_ALIASES    = ['compat_estilo_trabajo']               # enum
+    CAND_NINOS_ALIASES     = ['compat_relacion_ninos']               # enum: comoda|neutral|prefiere_evitar
+    CAND_ANOS_EXP_ALIASES  = ['anos_experiencia']                    # años (string/num)
+    CAND_CALIF_ALIASES     = ['calificacion']                        # 1–5 si la usas
+    CAND_FORTS_ALIASES     = ['compat_fortalezas']                   # ARRAY(VARCHAR)
+    CAND_DISP_HOR_ALIASES  = ['compat_disponibilidad_horario']       # String (ej. "mañana, tarde, interna")
+    CAND_DISP_DIAS_ALIASES = ['compat_disponibilidad_dias']          # ARRAY (no se usa en el score actual)
+    CAND_LIMITES_ALIASES   = ['compat_limites_no_negociables']       # ARRAY; puede contener 'no_mascotas'
+
+    # 1) Ritmo (10) — cliente no tiene campo -> solo mostrar “sin dato”
+    cand_ritmo = _first_text(candidata, CAND_RITMO_ALIASES, default='')
+    breakdown.append(("Ritmo (sin dato para comparar)", +0))
+
+    # 2) Estilo (10) — cliente no tiene campo -> solo mostrar “sin dato”
+    cand_estilo = _first_text(candidata, CAND_ESTILO_ALIASES, default='')
+    breakdown.append(("Estilo (sin dato para comparar)", +0))
+
+    # 3) Niños (±15/−20)
+    cant_ninos = _first_int(solicitud, CLI_NINOS_ALIASES, default=0)
+    hay_ninos  = cant_ninos > 0
+    rel_ninos  = _first_text(candidata, CAND_NINOS_ALIASES, default='').lower()
+    if hay_ninos:
+        if rel_ninos == 'comoda':
+            total += 15; breakdown.append(("Cómoda con niños (solicitud con niños)", +15))
+        elif rel_ninos == 'neutral':
+            total += 7;  breakdown.append(("Neutral con niños (solicitud con niños)", +7))
+        elif rel_ninos == 'prefiere_evitar':
+            total -= 20; breakdown.append(("Prefiere evitar niños (solicitud con niños)", -20))
+        else:
+            breakdown.append(("Relación con niños (sin dato)", +0))
+    else:
+        breakdown.append(("Sin niños en la solicitud", +0))
+
+    # 4) Mascotas (±20)
+    sol_mascota_txt = _first_text(solicitud, CLI_MASCOTA_ALIASES, default='')
+    hay_mascota     = bool(sol_mascota_txt)
+    cand_limites    = _as_set(_first_nonempty(candidata, CAND_LIMITES_ALIASES, default=[]))
+    cand_evita_masc = 'no_mascotas' in cand_limites
+    if hay_mascota:
+        if cand_evita_masc:
+            total -= 20; breakdown.append((f"No apta con mascota ({sol_mascota_txt})", -20))
+        else:
+            total += 15; breakdown.append((f"Apta con mascota ({sol_mascota_txt})", +15))
+    else:
+        breakdown.append(("Solicitud sin mascotas", +0))
+
+    # 5) Experiencia por años (0/5/10)
+    anos_exp = _first_int(candidata, CAND_ANOS_EXP_ALIASES, default=0)
+    # regla simple: 0 años→0, 1–2→5, 3+→10
+    if anos_exp >= 3:
+        exp_pts = 10
+    elif anos_exp >= 1:
+        exp_pts = 5
+    else:
+        exp_pts = 0
+    total += exp_pts
+    breakdown.append(("Experiencia (años)", exp_pts))
+
+    # 6) Puntualidad (0–5) usando calificación si es convertible
+    punt_raw = _first_nonempty(candidata, CAND_CALIF_ALIASES, default=0) or 0
+    try:
+        punt = int(float(str(punt_raw).strip()))
+        punt_pts = max(0, min(5, punt))
+    except Exception:
+        punt_pts = 0
+    total += punt_pts
+    breakdown.append(("Puntualidad / calificación", punt_pts))
+
+    # 7) Fortalezas vs funciones requeridas (hasta 20)
+    fun_req   = _as_set(_first_nonempty(solicitud, CLI_FUNC_ALIASES, default=[]))
+    fort_cand = _as_set(_first_nonempty(candidata, CAND_FORTS_ALIASES, default=[]))
+    overlap   = len(fun_req & fort_cand)
+    fortalezas_pts = min(20, overlap * 4)   # 5 matches → 20
+    total += fortalezas_pts
+    breakdown.append((f"Coincidencias en funciones/fortalezas ({overlap})", fortalezas_pts))
+
+    # 8) Disponibilidad (hasta 10): horario (sol) vs compat_disponibilidad_horario (cand)
+    sol_hor_str = _first_text(solicitud, CLI_HORARIO_ALIASES, default='').lower()
+    cand_disp_h = _first_text(candidata, CAND_DISP_HOR_ALIASES, default='').lower()
+    disp_tokens = _as_set(cand_disp_h)  # admite "mañana, tarde, interna"
+    disp_pts = 0
+    if 'interna' in sol_hor_str and ('interna' in disp_tokens or 'interna' in cand_disp_h):
+        disp_pts = 10
+    elif any(t in sol_hor_str for t in ('mañana', 'manana', 'tarde', 'noche')) and disp_tokens:
+        if any(t in sol_hor_str for t in disp_tokens):
+            disp_pts = 8
+        else:
+            disp_pts = 3
+    total += disp_pts
+    breakdown.append(("Disponibilidad/horario", disp_pts))
+
+    # Normaliza 0–100
+    score_final = max(0, min(100, int(round(total))))
+    return {"score": score_final, "breakdown": breakdown}
+
+# ---------------------------------
+# VISTA: resumen HTML de compatibilidad
+# URL: /admin/compatibilidad/<int:cliente_id>/<int:candidata_id>
+# ---------------------------------
+@admin_bp.route('/compatibilidad/<int:cliente_id>/<int:candidata_id>')
+@login_required
+@admin_required
+def ver_compatibilidad(cliente_id, candidata_id):
+    cliente = Cliente.query.get_or_404(cliente_id)
+    solicitud = (Solicitud.query
+                 .filter_by(cliente_id=cliente_id)
+                 .order_by(Solicitud.fecha_solicitud.desc())
+                 .first())
+    if not solicitud:
+        flash("Este cliente aún no tiene solicitudes para calcular compatibilidad.", "warning")
+        return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
+    candidata = Candidata.query.get_or_404(candidata_id)
+    res = calc_score_compat(solicitud, candidata)
+
+    return render_template(
+        'admin/compat_resumen.html',
+        cliente=cliente,
+        solicitud=solicitud,
+        candidata=candidata,
+        compat=res
+    )
+
+# ---------------------------------
+# VISTA: PDF de compatibilidad (WeasyPrint)
+# URL: /admin/compatibilidad/<int:cliente_id>/<int:candidata_id>/pdf
+# ---------------------------------
+@admin_bp.route('/compatibilidad/<int:cliente_id>/<int:candidata_id>/pdf')
+@login_required
+@admin_required
+def pdf_compatibilidad(cliente_id, candidata_id):
+    cliente = Cliente.query.get_or_404(cliente_id)
+    solicitud = (Solicitud.query
+                 .filter_by(cliente_id=cliente_id)
+                 .order_by(Solicitud.fecha_solicitud.desc())
+                 .first())
+    if not solicitud:
+        flash("Este cliente aún no tiene solicitudes para PDF de compatibilidad.", "warning")
+        return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
+    candidata = Candidata.query.get_or_404(candidata_id)
+    res = calc_score_compat(solicitud, candidata)
+
+    html_str = render_template(
+        'admin/compat_pdf.html',
+        cliente=cliente,
+        solicitud=solicitud,
+        candidata=candidata,
+        compat=res,
+        generado_en=datetime.utcnow()
+    )
+
+    try:
+        from weasyprint import HTML
+        pdf_bytes = HTML(string=html_str, base_url=request.host_url).write_pdf()
+        filename = f"compat_{cliente.codigo or cliente.id}_{candidata.fila}.pdf"
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': f'inline; filename={filename}'}
+        )
+    except Exception:
+        flash("WeasyPrint no está disponible. Mostrando versión HTML del reporte.", "warning")
+        return html_str

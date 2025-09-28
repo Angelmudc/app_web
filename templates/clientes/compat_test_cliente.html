@@ -1,0 +1,176 @@
+{# templates/clientes/compat_test_cliente.html #}
+{% extends "clientes/base.html" %}
+{% block title %}Test de compatibilidad | {{ s.codigo_solicitud }}{% endblock %}
+
+{% block head %}
+<style>
+  .kard{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
+  .kard .kard-h{border-bottom:1px solid rgba(0,0,0,.05);padding:.9rem 1.25rem}
+  .kard .kard-b{padding:1.25rem}
+  .form-helper{font-size:.85rem;color:#6b7280}
+  .check-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem .75rem}
+  .badge-soft{background:#eef2ff;color:#3730a3;border-radius:999px;padding:.2rem .55rem;font-size:.8rem}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 880px;">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h5 mb-0">Test de compatibilidad — <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
+    <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-light no-print">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver
+    </a>
+  </div>
+
+  <form method="post" class="kard">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="kard-h bg-light fw-semibold">
+      Datos del hogar
+    </div>
+    <div class="kard-b">
+      <div class="mb-3">
+        <label class="form-label">Ciudad / Sector</label>
+        <input type="text" name="ciudad_sector" class="form-control"
+               value="{{ initial.ciudad_sector or s.ciudad_sector or '' }}">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Composición del hogar</label>
+        <input type="text" name="composicion_hogar" class="form-control"
+               placeholder="Ej.: 2 adultos, 2 niños"
+               value="{{ initial.composicion_hogar or '' }}">
+        <div class="form-helper">Solo para entender el contexto del hogar.</div>
+      </div>
+    </div>
+
+    <div class="kard-h bg-light fw-semibold">
+      Preferencias y estilo
+    </div>
+    <div class="kard-b">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Ritmo del hogar</label>
+          {% set rh = (initial.ritmo_hogar or '')|lower %}
+          <select class="form-select" name="ritmo_hogar">
+            <option value="">—</option>
+            <option value="Tranquilo"  {{ 'selected' if rh=='tranquilo' else '' }}>Tranquilo</option>
+            <option value="Activo"     {{ 'selected' if rh=='activo' else '' }}>Activo</option>
+            <option value="Muy activo" {{ 'selected' if rh in ['muy activo','muyactivo','muy_activo'] else '' }}>Muy activo</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Puntualidad (1 a 5)</label>
+          <input type="range" min="1" max="5" step="1" name="puntualidad_1a5" class="form-range"
+                 value="{{ initial.puntualidad_1a5 or 3 }}"
+                 oninput="document.getElementById('puntualidad_val').innerText=this.value">
+          <div>Valor: <span id="puntualidad_val">{{ initial.puntualidad_1a5 or 3 }}</span></div>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label">Comunicación preferida</label>
+          {% set cm = (initial.comunicacion or '')|lower %}
+          <select class="form-select" name="comunicacion">
+            <option value="">—</option>
+            <option value="Breve y directa" {{ 'selected' if cm.startswith('breve') else '' }}>Breve y directa</option>
+            <option value="Detallada"       {{ 'selected' if cm=='detallada' else '' }}>Detallada</option>
+            <option value="Mixta"           {{ 'selected' if cm=='mixta' else '' }}>Mixta</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Dirección de trabajo</label>
+          {% set dt = (initial.direccion_trabajo or '')|lower %}
+          <select class="form-select" name="direccion_trabajo">
+            <option value="">—</option>
+            <option value="Paso a paso"         {{ 'selected' if 'paso' in dt else '' }}>Paso a paso</option>
+            <option value="Prefiere iniciativa" {{ 'selected' if 'iniciativa' in dt else '' }}>Prefiere iniciativa</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label">Experiencia deseada</label>
+          {% set ex = (initial.experiencia_deseada or '')|lower %}
+          <select class="form-select" name="experiencia_deseada">
+            <option value="">—</option>
+            <option value="Básica"     {{ 'selected' if ex in ['básica','basica'] else '' }}>Básica</option>
+            <option value="Intermedia" {{ 'selected' if ex=='intermedia' else '' }}>Intermedia</option>
+            <option value="Alta"       {{ 'selected' if ex=='alta' else '' }}>Alta</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Horario preferido</label>
+          {# puedes adaptar a tus franjas reales #}
+          {% set hp = (initial.horario_preferido or s.horario or '') %}
+          <select class="form-select" name="horario_preferido">
+            <option value="">—</option>
+            <option value="8:00 a.m. - 5:00 p.m."  {{ 'selected' if '8' in hp and '5' in hp else '' }}>8:00 a.m. - 5:00 p.m.</option>
+            <option value="9:00 a.m. - 6:00 p.m."  {{ 'selected' if '9' in hp and '6' in hp else '' }}>9:00 a.m. - 6:00 p.m.</option>
+            <option value="10:00 a.m. - 7:00 p.m." {{ 'selected' if '10' in hp and '7' in hp else '' }}>10:00 a.m. - 7:00 p.m.</option>
+            <option value="Otro"                   {{ 'selected' if hp and 'otro' in hp|lower else '' }}>Otro</option>
+          </select>
+          <div class="form-helper">Los días ya están definidos en tu solicitud/plan.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kard-h bg-light fw-semibold">
+      Prioridades del hogar (selección múltiple)
+    </div>
+    <div class="kard-b">
+      {% set pr = (initial.prioridades or []) | map('lower') | list %}
+      <div class="check-grid">
+        {% for opt in ['Limpieza','Cocina','Lavado y planchado','Cuidado de niños','Organización','Compras y mandados','Mascotas'] %}
+          {% set key = opt|lower %}
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="prioridades[]" value="{{ opt }}"
+                   {% if key in pr %}checked{% endif %}>
+            <span class="form-check-label">{{ opt }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="form-helper mt-2">Marca todas las que realmente son prioridad.</div>
+    </div>
+
+    <div class="kard-h bg-light fw-semibold">
+      No negociables (selección múltiple)
+    </div>
+    <div class="kard-b">
+      {% set nn = (initial.no_negociables or []) | map('lower') | list %}
+      <div class="check-grid">
+        {% for opt in ['No mascotas','No cocinar','No dormir fuera','No planchar','No trabajar fines de semana','No usar celular en horario'] %}
+          {% set key = opt|lower %}
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="no_negociables[]" value="{{ opt }}"
+                   {% if key in nn %}checked{% endif %}>
+            <span class="form-check-label">{{ opt }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="form-helper mt-2">Esto se cruza con los límites de la candidata.</div>
+    </div>
+
+    <div class="kard-h bg-light fw-semibold">
+      Notas adicionales
+    </div>
+    <div class="kard-b">
+      <div class="mb-3">
+        <textarea name="nota_cliente_test" rows="3" class="form-control"
+                  placeholder="Detalles que debamos saber">{{ initial.nota_cliente_test or '' }}</textarea>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check2-circle me-1"></i> Guardar test
+        </button>
+        <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-light">Cancelar</a>
+      </div>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

@@ -1,13 +1,11 @@
 # admin/__init__.py
-
 from flask import Blueprint
 
 admin_bp = Blueprint(
     'admin',
     __name__,
-    url_prefix='/admin',
-    template_folder='templates/admin',
-    static_folder='static/admin'
+    url_prefix='/admin'
 )
 
-__all__ = ["admin_bp"]
+# registra las rutas del blueprint
+from . import routes

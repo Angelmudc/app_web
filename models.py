@@ -3,7 +3,7 @@ from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Date,
     Enum as SAEnum, Float, text, LargeBinary
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -100,18 +100,77 @@ class Candidata(db.Model):
         comment="Lista de grupos de empleo asignados a la candidata"
     )
 
+    # ─────────────────────────────────────────────────────────
+    # COMPATIBILIDAD – Perfil/Test de la CANDIDATA
+    # ─────────────────────────────────────────────────────────
+    compat_test_candidata_json = db.Column(
+        JSONB,
+        nullable=True,
+        comment="Respuestas completas del test/entrevista de la candidata (estructura JSON)."
+    )
+    compat_test_candidata_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Fecha/hora de la última actualización del test de la candidata."
+    )
+
+    # Campos estructurados para acelerar filtros y cálculo de match
+    compat_fortalezas = db.Column(
+        ARRAY(db.String(50)),
+        nullable=True,
+        server_default=text("ARRAY[]::VARCHAR[]"),
+        comment="Top fortalezas (ej.: limpieza, cocina, lavado, niños)."
+    )
+    compat_ritmo_preferido = db.Column(
+        SAEnum('tranquilo', 'activo', 'muy_activo', name='compat_ritmo_enum'),
+        nullable=True,
+        comment="Ritmo de trabajo preferido."
+    )
+    compat_estilo_trabajo = db.Column(
+        SAEnum('necesita_instrucciones', 'toma_iniciativa', name='compat_estilo_enum'),
+        nullable=True,
+        comment="Prefiere instrucciones o tomar iniciativa."
+    )
+    compat_orden_detalle_nivel = db.Column(
+        db.SmallInteger,
+        nullable=True,
+        comment="Nivel 1–5 en orden/detalle."
+    )
+    compat_relacion_ninos = db.Column(
+        SAEnum('comoda', 'neutral', 'prefiere_evitar', name='compat_ninos_enum'),
+        nullable=True,
+        comment="Comodidad trabajando con niños."
+    )
+    compat_limites_no_negociables = db.Column(
+        ARRAY(db.String(100)),
+        nullable=True,
+        server_default=text("ARRAY[]::VARCHAR[]"),
+        comment="Límites declarados (p. ej.: no mascotas, no cocinar, no dormir fuera)."
+    )
+    compat_disponibilidad_dias = db.Column(
+        ARRAY(db.String(20)),
+        nullable=True,
+        server_default=text("ARRAY[]::VARCHAR[]"),
+        comment="Días disponibles (Lun, Mar, Mie, Jue, Vie, Sab, Dom)."
+    )
+    compat_disponibilidad_horario = db.Column(
+        db.String(100),
+        nullable=True,
+        comment="Franja horaria preferida (ej.: 8am–5pm)."
+    )
+
     # Relaciones
     solicitudes = db.relationship(
         'Solicitud',
         back_populates='candidata',
         cascade='all, delete-orphan'
     )
+    llamadas = db.relationship(
+        'LlamadaCandidata',
+        back_populates='candidata',
+        cascade='all, delete-orphan'
+    )
 
-    llamadas                        = db.relationship(
-                                         'LlamadaCandidata',
-                                         back_populates='candidata',
-                                         cascade='all, delete-orphan'
-                                      )
 
 from datetime import datetime
 from flask_login import UserMixin
@@ -228,12 +287,12 @@ class Solicitud(db.Model):
 
     # Detalles de la oferta de trabajo
     modalidad_trabajo      = db.Column(db.String(100), nullable=True)
-    edad_requerida = db.Column(
-        ARRAY(db.Text),
-        nullable=False,
-        default=list,
-        server_default=text("ARRAY[]::TEXT[]")
-    )
+    edad_requerida         = db.Column(
+                                ARRAY(db.Text),
+                                nullable=False,
+                                default=list,
+                                server_default=text("ARRAY[]::TEXT[]")
+                             )
     experiencia            = db.Column(db.Text, nullable=True)
     horario                = db.Column(db.String(100), nullable=True)
     funciones              = db.Column(
@@ -249,10 +308,10 @@ class Solicitud(db.Model):
                              )
 
     # Tipo de lugar
-    tipo_lugar = db.Column(
-        db.String(200),
-        nullable=True
-    )
+    tipo_lugar             = db.Column(
+                                db.String(200),
+                                nullable=True
+                             )
 
     # Habitaciones y baños
     habitaciones           = db.Column(db.Integer, nullable=True)
@@ -263,7 +322,7 @@ class Solicitud(db.Model):
     adultos                = db.Column(db.Integer, nullable=True)
     ninos                  = db.Column(db.Integer, nullable=True)
     edades_ninos           = db.Column(db.String(100), nullable=True)
-    mascota      = db.Column(db.String(100), nullable=True)
+    mascota                = db.Column(db.String(100), nullable=True)
 
     # Compensación
     sueldo                 = db.Column(db.String(100), nullable=True)
@@ -306,6 +365,59 @@ class Solicitud(db.Model):
     # Cancelación
     fecha_cancelacion      = db.Column(db.DateTime, nullable=True)
     motivo_cancelacion     = db.Column(db.String(255), nullable=True)
+
+    # ─────────────────────────────────────────────────────────
+    # COMPATIBILIDAD – Test del CLIENTE (por solicitud)
+    # ─────────────────────────────────────────────────────────
+    compat_test_cliente_json = db.Column(
+        JSONB,
+        nullable=True,
+        comment="Respuestas del test del CLIENTE (estructura JSON) para esta solicitud."
+    )
+    compat_test_cliente_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Fecha/hora en que el cliente guardó su test."
+    )
+    compat_test_cliente_version = db.Column(
+        db.String(20),
+        nullable=True,
+        comment="Versión del cuestionario del cliente (para futuras migraciones)."
+    )
+
+    # ─────────────────────────────────────────────────────────
+    # COMPATIBILIDAD – Resultado de cálculo (cliente ↔ candidata asignada)
+    # ─────────────────────────────────────────────────────────
+    compat_calc_score = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Porcentaje 0–100 del match cliente↔candidata (último cálculo)."
+    )
+    compat_calc_level = db.Column(
+        SAEnum('alta', 'media', 'baja', name='compat_level_enum'),
+        nullable=True,
+        comment="Nivel del match según el score."
+    )
+    compat_calc_summary = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Coincidencias clave y explicación breve del resultado."
+    )
+    compat_calc_risks = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Riesgos/alertas detectados (no negociables, horarios, etc.)."
+    )
+    compat_calc_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        comment="Fecha/hora del último cálculo de compatibilidad."
+    )
+    compat_pdf_path = db.Column(
+        db.String(255),
+        nullable=True,
+        comment="Ruta/filename del PDF generado con el informe de compatibilidad."
+    )
 
 
 class Reemplazo(db.Model):

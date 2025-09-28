@@ -95,8 +95,25 @@
         <dt class="col-sm-4">Nota de cliente</dt>
         <dd class="col-sm-8">{{ s.nota_cliente or '—' }}</dd>
       </dl>
-      <div class="mt-2">
+      <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
         <span class="chip"><i class="bi bi-shield-check"></i> Datos protegidos</span>
+
+        {# ── BOTÓN: Test de compatibilidad (solo Premium/VIP por solicitud) ── #}
+        {% set _plan = (s.tipo_plan or '')|lower|trim %}
+        {% if _plan in ['premium','vip'] %}
+          <a
+            href="{{ url_for('clientes.compat_test_cliente', solicitud_id=s.id) }}"
+            class="btn btn-outline-primary no-print"
+            title="Completar test de compatibilidad del hogar"
+          >
+            <i class="bi bi-ui-checks-grid me-1"></i> Llenar test de compatibilidad
+          </a>
+
+          {# Feedback si ya existe test guardado en esta solicitud #}
+          {% if s.compat_test_cliente_json or s.compat_test_cliente %}
+            <span class="chip"><i class="bi bi-check2-circle"></i> Test guardado</span>
+          {% endif %}
+        {% endif %}
       </div>
     </div>
   </div>

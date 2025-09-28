@@ -690,3 +690,330 @@ def rechazar_politicas():
     logout_user()
     flash('Debes aceptar las políticas para usar el portal.', 'warning')
     return redirect(url_for('clientes.login'))
+
+# ─────────────────────────────────────────────────────────────
+# COMPATIBILIDAD – TEST DEL CLIENTE (por SOLICITUD)
+# Solo Premium/VIP. Persistencia en DB (JSONB) con versión y timestamp.
+# Incluye recálculo básico de score si hay candidata asignada.
+# ─────────────────────────────────────────────────────────────
+from datetime import datetime
+from json import dumps, loads
+from flask import request, session, flash, redirect, url_for, render_template
+from flask_login import login_required, current_user
+
+from config_app import db
+from models import Solicitud
+from . import clientes_bp
+# Usa tus decoradores existentes:
+#   - cliente_required
+#   - politicas_requeridas
+
+# Planes habilitados
+PLANES_COMPATIBLES = {'premium', 'vip'}
+COMPAT_TEST_VERSION = 'v1.0'
+
+# Catálogos/normalización (alineados a enums que agregamos a models)
+_RITMOS = {'tranquilo', 'activo', 'muy_activo'}
+_ESTILOS = {
+    'paso_a_paso': 'necesita_instrucciones',
+    'prefiere_iniciativa': 'toma_iniciativa',
+    'necesita_instrucciones': 'necesita_instrucciones',
+    'toma_iniciativa': 'toma_iniciativa',
+}
+_LEVELS = {'baja', 'media', 'alta'}  # experiencia deseada del cliente / nivel de match
+
+
+# ─────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────
+def _plan_permite_compat(solicitud: Solicitud) -> bool:
+    plan = (getattr(solicitud, 'tipo_plan', '') or '').strip().lower()
+    return plan in PLANES_COMPATIBLES
+
+def _get_solicitud_cliente_or_404(solicitud_id: int) -> Solicitud:
+    return Solicitud.query.filter_by(id=solicitud_id, cliente_id=current_user.id).first_or_404()
+
+def _list_from_form(name: str):
+    """Lee listas de checkboxes/multiselect (name="foo[]")."""
+    vals = request.form.getlist(name)
+    return [v.strip() for v in vals if v and v.strip()]
+
+def _norm_ritmo(v: str | None):
+    v = (v or '').strip().lower().replace(' ', '_')
+    v = v.replace('muyactivo', 'muy_activo')
+    return v if v in _RITMOS else None
+
+def _norm_estilo(v: str | None):
+    v = (v or '').strip().lower().replace(' ', '_')
+    return _ESTILOS.get(v)
+
+def _norm_level(v: str | None):
+    v = (v or '').strip().lower()
+    return v if v in _LEVELS else None
+
+def _parse_int_1a5(v: str | None):
+    try:
+        n = int(str(v).strip())
+        return n if 1 <= n <= 5 else None
+    except Exception:
+        return None
+
+def _save_compat_cliente(s: Solicitud, payload_dict: dict) -> str:
+    """
+    Guarda en columnas nativas de la Solicitud si existen:
+      - compat_test_cliente_json (JSONB)
+      - compat_test_cliente_at (timestamp)
+      - compat_test_cliente_version (str)
+    Fallback: compat_test_cliente (TEXT) o session.
+    """
+    payload_dict = payload_dict or {}
+
+    # 1) Persistencia nativa (JSONB)
+    if hasattr(s, 'compat_test_cliente_json'):
+        try:
+            s.compat_test_cliente_json = payload_dict
+            if hasattr(s, 'compat_test_cliente_at'):
+                s.compat_test_cliente_at = datetime.utcnow()
+            if hasattr(s, 'compat_test_cliente_version'):
+                s.compat_test_cliente_version = COMPAT_TEST_VERSION
+            if hasattr(s, 'fecha_ultima_modificacion'):
+                s.fecha_ultima_modificacion = datetime.utcnow()
+            db.session.commit()
+            return 'db_json'
+        except Exception:
+            db.session.rollback()
+
+    # 2) Texto legacy
+    if hasattr(s, 'compat_test_cliente'):
+        try:
+            s.compat_test_cliente = dumps(payload_dict, ensure_ascii=False)
+            if hasattr(s, 'compat_test_cliente_at'):
+                s.compat_test_cliente_at = datetime.utcnow()
+            if hasattr(s, 'compat_test_cliente_version'):
+                s.compat_test_cliente_version = COMPAT_TEST_VERSION
+            if hasattr(s, 'fecha_ultima_modificacion'):
+                s.fecha_ultima_modificacion = datetime.utcnow()
+            db.session.commit()
+            return 'db_text'
+        except Exception:
+            db.session.rollback()
+
+    # 3) Session fallback
+    session.setdefault('compat_tests_cliente', {})
+    session['compat_tests_cliente'][f"{current_user.id}:{s.id}"] = payload_dict
+    return 'session'
+
+def _load_compat_cliente(s: Solicitud) -> dict | None:
+    # 1) JSON nativo
+    if hasattr(s, 'compat_test_cliente_json') and getattr(s, 'compat_test_cliente_json', None):
+        return getattr(s, 'compat_test_cliente_json')
+    # 2) Texto legacy
+    if hasattr(s, 'compat_test_cliente') and getattr(s, 'compat_test_cliente', None):
+        try:
+            return loads(getattr(s, 'compat_test_cliente'))
+        except Exception:
+            return {"__raw__": str(getattr(s, 'compat_test_cliente'))}
+    # 3) Session
+    by_cliente = session.get('compat_tests_cliente', {})
+    return by_cliente.get(f"{current_user.id}:{s.id}")
+
+def _normalize_payload_from_form(s: Solicitud) -> dict:
+    """
+    Normaliza datos del formulario a un dict estable para cálculo/almacenamiento.
+    Elimina "días preferidos": los días se definen por el plan/solicitud.
+    """
+    cliente_nombre = (getattr(current_user, 'nombre_completo', None) or getattr(current_user, 'username', '')).strip()
+    cliente_codigo = (getattr(current_user, 'codigo', '') or '').strip()
+
+    ritmo = _norm_ritmo(request.form.get('ritmo_hogar'))
+    estilo = _norm_estilo(request.form.get('direccion_trabajo'))
+    exp = _norm_level(request.form.get('experiencia_deseada'))
+    puntualidad = _parse_int_1a5(request.form.get('puntualidad_1a5'))
+
+    payload = {
+        "cliente_nombre": cliente_nombre,
+        "cliente_codigo": cliente_codigo,
+        "solicitud_codigo": s.codigo_solicitud,
+        "ciudad_sector": (request.form.get('ciudad_sector') or s.ciudad_sector or '').strip(),
+        "composicion_hogar": (request.form.get('composicion_hogar') or '').strip(),
+        "prioridades": _list_from_form('prioridades[]'),            # ← checkboxes
+        "ritmo_hogar": ritmo,                                       # enum
+        "puntualidad_1a5": puntualidad,                             # 1..5
+        "comunicacion": (request.form.get('comunicacion') or '').strip(),
+        "direccion_trabajo": estilo,                                # enum
+        "experiencia_deseada": exp,                                 # 'baja'|'media'|'alta'
+        "horario_preferido": (request.form.get('horario_preferido') or s.horario or '').strip(),
+        "no_negociables": _list_from_form('no_negociables[]'),      # ← checkboxes
+        "nota_cliente_test": (request.form.get('nota_cliente_test') or '').strip(),
+        "version": COMPAT_TEST_VERSION,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    return payload
+
+
+# ─────────────────────────────────────────────────────────────
+# Scoring básico – cliente vs candidata asignada
+# ─────────────────────────────────────────────────────────────
+def _calc_score_basico(s: Solicitud, payload: dict):
+    """
+    Devuelve (score:int 0..100, level:str, resumen:str, riesgos:str) si hay candidata.
+    Pondera: ritmo, estilo, niños, no-negociables, prioridades↔fortalezas.
+    """
+    c = s.candidata
+    if not c:
+        return None, None, "Aún no hay candidata asignada para calcular compatibilidad.", None
+
+    puntos = 0
+    total = 0
+    detalles = []
+    riesgos = []
+
+    # Ritmo
+    total += 1
+    if payload.get('ritmo_hogar') and getattr(c, 'compat_ritmo_preferido', None):
+        if payload['ritmo_hogar'] == c.compat_ritmo_preferido:
+            puntos += 1
+            detalles.append("Ritmo compatible")
+        else:
+            riesgos.append(f"Ritmo distinto (cliente: {payload['ritmo_hogar']}, candidata: {c.compat_ritmo_preferido})")
+    else:
+        detalles.append("Ritmo: sin datos completos")
+
+    # Estilo (dirección de trabajo)
+    total += 1
+    if payload.get('direccion_trabajo') and getattr(c, 'compat_estilo_trabajo', None):
+        if payload['direccion_trabajo'] == c.compat_estilo_trabajo:
+            puntos += 1
+            detalles.append("Estilo compatible")
+        else:
+            riesgos.append("Preferencia diferente en instrucciones/iniciativa")
+    else:
+        detalles.append("Estilo: sin datos completos")
+
+    # Niños (según solicitud)
+    total += 1
+    relacion_c = getattr(c, 'compat_relacion_ninos', None)  # 'comoda'|'neutral'|'prefiere_evitar'
+    tiene_ninos = (s.ninos or 0) > 0
+    if tiene_ninos and relacion_c:
+        if relacion_c == 'prefiere_evitar':
+            riesgos.append("La candidata prefiere evitar trabajar con niños")
+        else:
+            puntos += 1
+            detalles.append("Candidata apta con niños")
+    else:
+        puntos += 1
+        detalles.append("Sin niños o sin restricciones")
+
+    # No negociables (choques)
+    total += 1
+    no_neg = set([x.lower() for x in (payload.get('no_negociables') or [])])
+    limites = set([x.lower() for x in (getattr(c, 'compat_limites_no_negociables', []) or [])])
+    if no_neg and limites and (no_neg & limites):
+        riesgos.append(f"Choque en no negociables: {', '.join(sorted(no_neg & limites))}")
+    else:
+        puntos += 1
+        detalles.append("No hay choques en no-negociables")
+
+    # Prioridades del hogar vs fortalezas de la candidata
+    total += 1
+    prios = set([x.lower() for x in (payload.get('prioridades') or [])])
+    forts = set([x.lower() for x in (getattr(c, 'compat_fortalezas', []) or [])])
+    if prios and forts and prios & forts:
+        puntos += 1
+        detalles.append(f"Prioridades alineadas ({', '.join(sorted(prios & forts))})")
+    else:
+        riesgos.append("La candidata no destaca en las prioridades clave del hogar")
+
+    # Score final
+    score = int(round((puntos / max(total, 1)) * 100))
+    if score >= 80:
+        level = 'alta'
+    elif score >= 60:
+        level = 'media'
+    else:
+        level = 'baja'
+
+    resumen = "; ".join(detalles) if detalles else "Sin detalles."
+    riesgos_txt = "; ".join(riesgos) if riesgos else None
+    return score, level, resumen, riesgos_txt
+
+def _guardar_resultado_calculo(s: Solicitud, score, level, resumen, riesgos) -> bool:
+    try:
+        s.compat_calc_score = score
+        s.compat_calc_level = level
+        s.compat_calc_summary = resumen
+        s.compat_calc_risks = riesgos
+        s.compat_calc_at = datetime.utcnow()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        return False
+
+
+# ─────────────────────────────────────────────────────────────
+# Rutas
+# ─────────────────────────────────────────────────────────────
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/compat/test', methods=['GET', 'POST'])
+@login_required
+@cliente_required
+@politicas_requeridas
+def compat_test_cliente(solicitud_id):
+    s = _get_solicitud_cliente_or_404(solicitud_id)
+
+    if not _plan_permite_compat(s):
+        flash('Esta funcionalidad es exclusiva para planes Premium o VIP de esta solicitud.', 'warning')
+        return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
+
+    if request.method == 'POST':
+        payload = _normalize_payload_from_form(s)
+        destino = _save_compat_cliente(s, payload)
+
+        # Recalcular score si ya hay candidata
+        score, level, resumen, riesgos = _calc_score_basico(s, payload)
+        if score is not None:
+            ok = _guardar_resultado_calculo(s, score, level, resumen, riesgos)
+            if ok:
+                flash(f'Test guardado y compatibilidad recalculada ({score}%).', 'success')
+            else:
+                flash('Test guardado, pero no se pudo persistir el resultado de compatibilidad.', 'warning')
+        else:
+            flash('Test guardado correctamente.', 'success' if destino.startswith('db') else 'info')
+
+        return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
+
+    # GET – precarga con datos existentes
+    initial = _load_compat_cliente(s) or {}
+    return render_template('clientes/compat_test_cliente.html', s=s, initial=initial)
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/compat/recalcular', methods=['POST'])
+@login_required
+@cliente_required
+@politicas_requeridas
+def compat_recalcular(solicitud_id):
+    """Forzar recálculo si se asignó candidata después del test."""
+    s = _get_solicitud_cliente_or_404(solicitud_id)
+
+    if not _plan_permite_compat(s):
+        flash('Funcionalidad exclusiva para planes Premium o VIP.', 'warning')
+        return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
+
+    payload = _load_compat_cliente(s)
+    if not payload:
+        flash('Aún no hay un test de cliente para recalcular.', 'warning')
+        return redirect(url_for('clientes.compat_test_cliente', solicitud_id=solicitud_id))
+
+    score, level, resumen, riesgos = _calc_score_basico(s, payload)
+    if score is None:
+        flash('No hay candidata asignada todavía. No se puede calcular el match.', 'info')
+        return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
+
+    ok = _guardar_resultado_calculo(s, score, level, resumen, riesgos)
+    if ok:
+        flash(f'Compatibilidad recalculada: {score}%.', 'success')
+    else:
+        flash('No se pudo guardar el resultado del cálculo.', 'danger')
+
+    return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))

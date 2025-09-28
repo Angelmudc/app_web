@@ -2667,6 +2667,324 @@ def perfil_candidata():
         download_name=f"perfil_{fila}.jpg",
         max_age=0
     )
+
+# ─────────────────────────────────────────────────────────────
+# SECRETARÍAS – TEST DE COMPATIBILIDAD PARA CANDIDATA
+# Buscar candidata y completar test (selección múltiple).
+# Guarda en columnas dedicadas de Candidata + JSONB con versión/fecha.
+# Soporta nombres alternos de columnas (backwards/forwards compatible).
+# ─────────────────────────────────────────────────────────────
+from datetime import datetime
+from flask import request, render_template, redirect, url_for, flash
+from sqlalchemy import or_
+
+from config_app import db
+from models import Candidata
+from decorators import roles_required
+
+COMPAT_TEST_CANDIDATA_VERSION = "v1.0"
+
+# Catálogos (alineados con models.py)
+COMPAT_RITMOS = [
+    ('tranquilo',   'Tranquilo'),
+    ('activo',      'Activo'),
+    ('muy_activo',  'Muy activo'),
+]
+COMPAT_ESTILOS = [
+    ('necesita_instrucciones', 'Paso a paso'),
+    ('toma_iniciativa',        'Prefiere iniciativa'),
+]
+COMPAT_COMUNICACION = [
+    ('breve',     'Breve y directa'),
+    ('detallada', 'Detallada'),
+    ('mixta',     'Mixta'),
+]
+COMPAT_RELACION_NINOS = [
+    ('comoda',         'Cómoda con niños'),
+    ('neutral',        'Neutral'),
+    ('prefiere_evitar','Prefiere evitar niños'),
+]
+COMPAT_EXPERIENCIA_NIVEL = [
+    ('baja',  'Básica'),
+    ('media', 'Intermedia'),
+    ('alta',  'Alta'),
+]
+COMPAT_MASCOTAS = [
+    ('si', 'Sí, sin problema'),
+    ('no', 'No, prefiero evitarlo'),
+]
+
+# Checklists (guardamos el "code")
+FORTALEZAS = [
+    ('limpieza_general',   'Limpieza general'),
+    ('limpieza_profunda',  'Limpieza profunda'),
+    ('cocina_basica',      'Cocina básica'),
+    ('cocina_avanzada',    'Cocina avanzada'),
+    ('lavado',             'Lavado'),
+    ('planchado',          'Planchado'),
+    ('cuidado_ninos',      'Cuidado de niños'),
+    ('cuidado_mayores',    'Cuidado de personas mayores'),
+    ('compras',            'Compras / mandados'),
+    ('inventario',         'Orden / inventario'),
+    ('electrodomesticos',  'Manejo de electrodomésticos'),
+]
+TAREAS_EVITAR = [
+    ('cocinar',          'Cocinar'),
+    ('planchar',         'Planchar'),
+    ('animales_grandes', 'Mascotas grandes'),
+    ('subir_escaleras',  'Subir muchas escaleras'),
+    ('nocturno',         'Trabajar de noche'),
+    ('dormir_fuera',     'Dormir fuera de casa'),
+    ('altas_exigencias', 'Hogares de alta exigencia'),
+]
+LIMITES_NO_NEG = [
+    ('no_cocinar',       'No cocinar'),
+    ('no_planchar',      'No planchar'),
+    ('no_cuidar_ninos',  'No cuidado de niños'),
+    ('no_mascotas',      'No mascotas'),
+    ('no_fines_semana',  'No fines de semana'),
+    ('no_nocturno',      'No horario nocturno'),
+]
+DIAS_SEMANA = [
+    ('lun','Lunes'), ('mar','Martes'), ('mie','Miércoles'),
+    ('jue','Jueves'), ('vie','Viernes'), ('sab','Sábado'), ('dom','Domingo')
+]
+HORARIOS = [
+    ('manana','Mañana'),
+    ('tarde','Tarde'),
+    ('noche','Noche'),
+    ('interna','Interna'),
+    ('flexible','Flexible'),
+]
+
+# ── Helpers de normalización ─────────────────────────────────
+def _getlist_clean(name: str):
+    return [x.strip() for x in request.form.getlist(name) if x and x.strip()]
+
+def _int_1a5(name: str):
+    try:
+        v = int((request.form.get(name) or '').strip())
+        return v if 1 <= v <= 5 else None
+    except Exception:
+        return None
+
+def _norm_choice(v: str, allowed: set):
+    v = (v or '').strip().lower()
+    return v if v in allowed else None
+
+def _filter_allowed(items, allowed: set):
+    out = []
+    for it in items or []:
+        key = (it or '').strip().lower()
+        if key in allowed:
+            out.append(key)
+    return out
+
+CHOICES_DICT = {
+    "RITMOS": COMPAT_RITMOS,
+    "ESTILOS": COMPAT_ESTILOS,
+    "COMUNICACION": COMPAT_COMUNICACION,
+    "REL_NINOS": COMPAT_RELACION_NINOS,
+    "EXP_NIVEL": COMPAT_EXPERIENCIA_NIVEL,
+    "FORTALEZAS": FORTALEZAS,
+    "TAREAS_EVITAR": TAREAS_EVITAR,
+    "LIMITES": LIMITES_NO_NEG,
+    "DIAS": DIAS_SEMANA,
+    "HORARIOS": HORARIOS,
+    "MASCOTAS": COMPAT_MASCOTAS,
+}
+
+# ─────────────────────────────────────────────────────────────
+# RUTA PRINCIPAL
+# ─────────────────────────────────────────────────────────────
+@app.route('/secretarias/compat/candidata', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def compat_candidata():
+    """
+    - GET  sin ?fila  → buscador (acepta ?q= en GET).
+    - GET  con ?fila   → muestra formulario del test.
+    - POST (accion=guardar & fila) → guarda el test y redirige:
+        * si next=home  → home
+        * si no         → buscador del test (no al perfil/fotos)
+    """
+    fila = request.values.get('fila', type=int)
+
+    # ── 1) GUARDAR (POST) ────────────────────────────────────
+    if request.method == 'POST' and request.form.get('accion') == 'guardar' and fila:
+        c = Candidata.query.get_or_404(fila)
+
+        # Normalizaciones de selects/radios
+        ritmo     = _norm_choice(request.form.get('ritmo'),               {k for k, _ in COMPAT_RITMOS})
+        estilo    = _norm_choice(request.form.get('estilo'),              {k for k, _ in COMPAT_ESTILOS})
+        comun     = _norm_choice(request.form.get('comunicacion'),        {k for k, _ in COMPAT_COMUNICACION})
+        rel_n     = _norm_choice(request.form.get('relacion_ninos'),      {k for k, _ in COMPAT_RELACION_NINOS})
+        exp_niv   = _norm_choice(request.form.get('experiencia_nivel'),   {k for k, _ in COMPAT_EXPERIENCIA_NIVEL})
+        mascotas  = _norm_choice(request.form.get('mascotas'),            {k for k, _ in COMPAT_MASCOTAS})
+        puntual   = _int_1a5('puntualidad_1a5')
+
+        # Checkboxes (filtramos a los permitidos)
+        fortalezas = _filter_allowed(_getlist_clean('fortalezas'),              {k for k, _ in FORTALEZAS})
+        evitar     = _filter_allowed(_getlist_clean('tareas_evitar'),           {k for k, _ in TAREAS_EVITAR})
+        limites    = _filter_allowed(_getlist_clean('limites_no_negociables'),  {k for k, _ in LIMITES_NO_NEG})
+        dias       = _filter_allowed(_getlist_clean('disponibilidad_dias'),     {k for k, _ in DIAS_SEMANA})
+        horarios   = _filter_allowed(_getlist_clean('disponibilidad_horarios'), {k for k, _ in HORARIOS})
+
+        notas = (request.form.get('nota') or '').strip()
+
+        # Validaciones mínimas
+        err = []
+        if not ritmo:         err.append("Ritmo de hogar")
+        if not estilo:        err.append("Estilo de trabajo")
+        if not comun:         err.append("Comunicación preferida")
+        if not rel_n:         err.append("Relación con niños")
+        if puntual is None:   err.append("Puntualidad (1 a 5)")
+        if not mascotas:      err.append("Compatibilidad con mascotas")
+        if not fortalezas:    err.append("Fortalezas (al menos una)")
+        if not dias:          err.append("Disponibilidad en días")
+        if not horarios:      err.append("Disponibilidad en horarios")
+
+        if err:
+            flash("Completa: " + ", ".join(err), "warning")
+            data = {
+                "ritmo": ritmo, "estilo": estilo, "comunicacion": comun,
+                "relacion_ninos": rel_n, "experiencia_nivel": exp_niv,
+                "puntualidad_1a5": puntual, "fortalezas": fortalezas,
+                "tareas_evitar": evitar, "limites_no_negociables": limites,
+                "disponibilidad_dias": dias, "disponibilidad_horarios": horarios,
+                "mascotas": mascotas, "nota": notas
+            }
+            return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
+
+        # Persistir en columnas dedicadas (soporta alias alternos)
+        try:
+            # enums/valores únicos
+            if hasattr(c, 'compat_ritmo_preferido'):   c.compat_ritmo_preferido = ritmo
+            if hasattr(c, 'compat_estilo_trabajo'):    c.compat_estilo_trabajo = estilo
+            if hasattr(c, 'compat_comunicacion'):      c.compat_comunicacion = comun
+            if hasattr(c, 'compat_relacion_ninos'):    c.compat_relacion_ninos = rel_n
+            if hasattr(c, 'compat_experiencia_nivel'): c.compat_experiencia_nivel = exp_niv
+            if hasattr(c, 'compat_puntualidad_1a5'):   c.compat_puntualidad_1a5 = puntual
+
+            # mascotas: enum 'si'|'no' o booleano compat_mascotas_ok
+            if hasattr(c, 'compat_mascotas'):
+                c.compat_mascotas = mascotas
+            if hasattr(c, 'compat_mascotas_ok'):
+                c.compat_mascotas_ok = (mascotas == 'si')
+
+            # listas
+            if hasattr(c, 'compat_habilidades_fuertes'):
+                c.compat_habilidades_fuertes = fortalezas
+            elif hasattr(c, 'compat_fortalezas'):
+                c.compat_fortalezas = fortalezas
+
+            if hasattr(c, 'compat_habilidades_evitar'):
+                c.compat_habilidades_evitar = evitar
+            elif hasattr(c, 'compat_tareas_evitar'):
+                c.compat_tareas_evitar = evitar
+
+            if hasattr(c, 'compat_limites_no_negociables'):  c.compat_limites_no_negociables = limites
+            if hasattr(c, 'compat_disponibilidad_dias'):     c.compat_disponibilidad_dias = dias
+            if hasattr(c, 'compat_disponibilidad_horarios'): c.compat_disponibilidad_horarios = horarios
+
+            # notas/observaciones
+            if hasattr(c, 'compat_observaciones'):           c.compat_observaciones = notas
+
+            # JSONB compacto (histórico/portátil)
+            payload = {
+                "version": COMPAT_TEST_CANDIDATA_VERSION,
+                "timestamp": datetime.utcnow().isoformat(),
+                "ritmo": ritmo,
+                "estilo": estilo,
+                "comunicacion": comun,
+                "relacion_ninos": rel_n,
+                "experiencia_nivel": exp_niv,
+                "puntualidad_1a5": puntual,
+                "fortalezas": fortalezas,
+                "tareas_evitar": evitar,
+                "limites_no_negociables": limites,
+                "disponibilidad_dias": dias,
+                "disponibilidad_horarios": horarios,
+                "mascotas": mascotas,
+                "nota": notas,
+            }
+            if hasattr(c, 'compat_test_candidata_json'):     c.compat_test_candidata_json = payload
+            if hasattr(c, 'compat_test_candidata_version'):  c.compat_test_candidata_version = COMPAT_TEST_CANDIDATA_VERSION
+            if hasattr(c, 'compat_test_candidata_at'):       c.compat_test_candidata_at = datetime.utcnow()
+
+            db.session.commit()
+            flash("✅ Test de compatibilidad guardado correctamente.", "success")
+
+            # Redirección: respeta ?next=home para ir al Home; sino vuelve al buscador del test
+            next_url = request.values.get('next')
+            if next_url == 'home':
+                return redirect(url_for('home'))
+            return redirect(url_for('compat_candidata'))  # ← buscador (sin fila)
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f"❌ No se pudo guardar: {e}", "danger")
+            return redirect(url_for('compat_candidata', fila=fila))
+
+    # ── 2) FORMULARIO (GET con fila) ──────────────────────────
+    if request.method == 'GET' and fila:
+        c = Candidata.query.get_or_404(fila)
+
+        # Precarga
+        data = {
+            "ritmo":                   getattr(c, 'compat_ritmo_preferido', None),
+            "estilo":                  getattr(c, 'compat_estilo_trabajo', None),
+            "comunicacion":            getattr(c, 'compat_comunicacion', None),
+            "relacion_ninos":          getattr(c, 'compat_relacion_ninos', None),
+            "experiencia_nivel":       getattr(c, 'compat_experiencia_nivel', None),
+            "puntualidad_1a5":         getattr(c, 'compat_puntualidad_1a5', None),
+            "fortalezas":              getattr(c, 'compat_habilidades_fuertes', None)
+                                       or getattr(c, 'compat_fortalezas', []) or [],
+            "tareas_evitar":           getattr(c, 'compat_habilidades_evitar', None)
+                                       or getattr(c, 'compat_tareas_evitar', []) or [],
+            "limites_no_negociables":  getattr(c, 'compat_limites_no_negociables', []) or [],
+            "disponibilidad_dias":     getattr(c, 'compat_disponibilidad_dias', []) or [],
+            "disponibilidad_horarios": getattr(c, 'compat_disponibilidad_horarios', []) or [],
+            "mascotas":                (getattr(c, 'compat_mascotas', None)
+                                        if hasattr(c, 'compat_mascotas')
+                                        else ('si' if getattr(c, 'compat_mascotas_ok', False) else 'no')
+                                        if hasattr(c, 'compat_mascotas_ok') else None),
+            "nota":                    getattr(c, 'compat_observaciones', '') or '',
+        }
+
+        return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
+
+    # ── 3) BUSCADOR (GET/POST sin fila) ───────────────────────
+    # Soporta GET ?q= y POST accion=buscar
+    q = (request.values.get('q') or '').strip()
+    resultados = []
+    mensaje = None
+
+    if request.method == 'POST' and request.form.get('accion') == 'buscar':
+        q = (request.form.get('q') or '').strip()
+
+    if q:
+        like = f"%{q}%"
+        resultados = (
+            Candidata.query
+            .filter(or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+            ))
+            .order_by(Candidata.nombre_completo.asc())
+            .limit(200)
+            .all()
+        )
+        if not resultados:
+            mensaje = "⚠️ No se encontraron coincidencias."
+
+    return render_template('compat_candidata_buscar.html',
+                           resultados=resultados,
+                           mensaje=mensaje,
+                           q=q)
+
+
+
 # -----------------------------------------------------------------------------
 # MAIN
 # -----------------------------------------------------------------------------

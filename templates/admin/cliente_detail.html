@@ -124,7 +124,7 @@
               <th style="min-width:140px;">Modalidad</th>
               <th style="min-width:110px;">Plan</th>
               <th style="min-width:140px;">Estado</th>
-              <th class="text-center" style="min-width:360px;">Acciones</th>
+              <th class="text-center" style="min-width:520px;">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -179,6 +179,25 @@
                      class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Activar reemplazo">
                     <i class="bi bi-arrow-repeat"></i>
                   </a>
+
+                  {# ==== Compatibilidad ==== #}
+                  {% if s.candidata_id %}
+                    <!-- Ver compatibilidad (ADMIN) -->
+                    <a href="{{ url_for('admin.ver_compatibilidad', cliente_id=cliente.id, candidata_id=s.candidata_id) }}"
+                       class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" title="Ver compatibilidad (admin)">
+                      <i class="bi bi-people-fill"></i>
+                    </a>
+                    <!-- Llenar/editar test (Secretarías) -->
+                    <a href="{{ url_for('compat_candidata', fila=s.candidata_id) }}"
+                       class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" title="Llenar/editar test (Secretarías)">
+                      <i class="bi bi-ui-checks-grid"></i>
+                    </a>
+                  {% else %}
+                    <button class="btn btn-sm btn-outline-dark" disabled
+                            data-bs-toggle="tooltip" title="Asigna una candidata a la solicitud para evaluar compatibilidad">
+                      <i class="bi bi-people-fill"></i>
+                    </button>
+                  {% endif %}
 
                   {% if s.estado in ['activa','proceso','reemplazo'] %}
                     <!-- Cancelar DIRECTO (rápido, sin motivo) -->

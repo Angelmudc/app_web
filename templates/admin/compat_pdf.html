@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Compatibilidad – {{ cliente.nombre_completo }} / {{ candidata.nombre_completo }}</title>
+  <style>
+    @page { size: A4; margin: 20mm; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 12px; color: #111; }
+    h1 { font-size: 20px; margin: 0 0 6px 0; }
+    h2 { font-size: 16px; margin: 16px 0 8px 0; }
+    .muted { color: #666; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
+    .row { display: grid; grid-template-columns: 38% 62%; margin-bottom: 4px; }
+    .label { font-weight: 600; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #f0f0f0; font-size: 11px; }
+    .breakdown { border-collapse: collapse; width: 100%; }
+    .breakdown th, .breakdown td { border: 1px solid #ddd; padding: 6px; }
+    .breakdown th { background: #f7f7f7; text-align: left; }
+    .right { text-align: right; }
+    .score { font-size: 26px; font-weight: 800; }
+  </style>
+</head>
+<body>
+
+  <table style="width:100%; margin-bottom: 10px;">
+    <tr>
+      <td>
+        <h1>Reporte de Compatibilidad</h1>
+        <div class="muted">
+          Cliente: <strong>{{ cliente.nombre_completo or '—' }}</strong> ·
+          Candidata: <strong>{{ candidata.nombre_completo or '—' }}</strong> ·
+          Solicitud: <strong>{{ solicitud.codigo_solicitud or '—' }}</strong>
+        </div>
+      </td>
+      <td class="right">
+        <div class="score">{{ compat.score }}/100</div>
+        <div class="muted">Generado: {{ generado_en.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Detalle del cálculo</h2>
+      <table class="breakdown">
+        <thead>
+          <tr><th>Factor</th><th class="right">Pts</th></tr>
+        </thead>
+        <tbody>
+          {% for label, pts in compat.breakdown %}
+          <tr>
+            <td>{{ label }}</td>
+            <td class="right">{{ pts if pts >= 0 else ('−' ~ (pts|abs)) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Solicitud</h2>
+      <div class="row"><div class="label">Código</div><div>{{ solicitud.codigo_solicitud or '—' }}</div></div>
+      <div class="row"><div class="label">Ciudad/Sector</div><div>{{ solicitud.ciudad_sector or '—' }}</div></div>
+      <div class="row"><div class="label">Modalidad</div><div>{{ solicitud.modalidad_trabajo or solicitud.modalidad or '—' }}</div></div>
+      <div class="row"><div class="label">Horario</div><div>{{ solicitud.horario or '—' }}</div></div>
+      <div class="row"><div class="label">Funciones</div>
+        <div>{% if solicitud.funciones %}{{ solicitud.funciones | join(', ') }}{% else %}—{% endif %}</div>
+      </div>
+      <div class="row"><div class="label">Niños</div>
+        <div>{% set n = solicitud.ninos or solicitud.cantidad_ninos %}{{ n if n is not none else '—' }}</div>
+      </div>
+      <div class="row"><div class="label">Mascota</div><div>{{ solicitud.mascota or '—' }}</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 10px;">
+    <h2>Candidata</h2>
+    <div class="row"><div class="label">Ritmo</div><div>{{ candidata.compat_ritmo_preferido or '—' }}</div></div>
+    <div class="row"><div class="label">Estilo</div><div>{{ candidata.compat_estilo_trabajo or '—' }}</div></div>
+    <div class="row"><div class="label">Niños</div><div>{{ candidata.compat_relacion_ninos or '—' }}</div></div>
+    <div class="row"><div class="label">Mascotas</div>
+      <div>
+        {% if candidata.compat_mascotas %}{{ candidata.compat_mascotas|title }}
+        {% elif candidata.compat_mascotas_ok is not none %}{{ 'Sí' if candidata.compat_mascotas_ok else 'No' }}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="row"><div class="label">Experiencia</div><div>{{ candidata.compat_experiencia_nivel or '—' }}</div></div>
+    <div class="row"><div class="label">Puntualidad</div><div>{{ candidata.compat_puntualidad_1a5 or '—' }}</div></div>
+    <div class="row"><div class="label">Fortalezas</div>
+      <div>
+        {% set forts = candidata.compat_habilidades_fuertes or candidata.compat_fortalezas %}
+        {% if forts %}{{ forts | join(', ') }}{% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="row"><div class="label">Disponibilidad</div>
+      <div>
+        {% if candidata.compat_disponibilidad_horarios %}
+          {{ candidata.compat_disponibilidad_horarios | join(', ') }}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

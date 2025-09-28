@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Test de compatibilidad – {{ candidata.nombre_completo }}{% endblock %}
+
+{% block head %}
+<style>
+  .kard{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
+  .kard .kard-h{border-bottom:1px solid rgba(0,0,0,.06);padding:.9rem 1.1rem}
+  .kard .kard-b{padding:1.1rem}
+  .muted{color:#6b7280;font-size:.9rem}
+  .chips{display:flex;flex-wrap:wrap}
+  .chips label{display:inline-flex;align-items:center;gap:.45rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:999px;padding:.35rem .65rem;margin:.25rem .35rem;cursor:pointer;user-select:none}
+  .chips input[type="checkbox"], .chips input[type="radio"]{transform:scale(1.05)}
+  .section-gap{margin-top:1.15rem}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 980px;">
+  <div class="d-flex align-items-center justify-content-between mt-3 mb-3">
+    <h1 class="h5 mb-0">Test de compatibilidad — <span class="text-primary">{{ candidata.nombre_completo }}</span></h1>
+    <a class="btn btn-light" href="{{ url_for('compat_candidata') }}">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver a buscar
+    </a>
+  </div>
+
+  <form method="post" class="kard" action="{{ url_for('compat_candidata', fila=candidata.fila) }}" novalidate>
+    <div class="kard-h bg-light fw-semibold">
+      Preferencias de trabajo
+    </div>
+    <div class="kard-b">
+      <!-- CSRF y control de flujo -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="accion" value="guardar">
+      <input type="hidden" name="fila" value="{{ candidata.fila }}">
+      <!-- Si quieres volver al home en lugar del buscador, descomenta esta línea -->
+      {# <input type="hidden" name="next" value="home"> #}
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label for="ritmo" class="form-label">Ritmo preferido</label>
+          <select class="form-select" id="ritmo" name="ritmo" autocomplete="off">
+            <option value="">—</option>
+            {% for code, label in CHOICES.RITMOS %}
+              <option value="{{ code }}" {{ 'selected' if data.ritmo == code else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="muted mt-1">¿Prefieres hogares tranquilos, activos o muy activos?</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="estilo" class="form-label">Estilo de trabajo</label>
+          <select class="form-select" id="estilo" name="estilo" autocomplete="off">
+            <option value="">—</option>
+            {% for code, label in CHOICES.ESTILOS %}
+              <option value="{{ code }}" {{ 'selected' if data.estilo == code else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="muted mt-1">¿Prefieres instrucciones paso a paso o tomar iniciativa?</div>
+        </div>
+      </div>
+
+      <div class="row g-3 section-gap">
+        <div class="col-md-6">
+          <label for="relacion_ninos" class="form-label">Relación con niños</label>
+          <select class="form-select" id="relacion_ninos" name="relacion_ninos" autocomplete="off">
+            <option value="">—</option>
+            {% for code, label in CHOICES.REL_NINOS %}
+              <option value="{{ code }}" {{ 'selected' if data.relacion_ninos == code else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label for="comunicacion" class="form-label">Comunicación preferida</label>
+          <select class="form-select" id="comunicacion" name="comunicacion" autocomplete="off">
+            <option value="">—</option>
+            {% for code, label in CHOICES.COMUNICACION %}
+              <option value="{{ code }}" {{ 'selected' if data.comunicacion == code else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="row g-3 section-gap">
+        <div class="col-md-6">
+          <label for="experiencia_nivel" class="form-label">Nivel general de experiencia</label>
+          <select class="form-select" id="experiencia_nivel" name="experiencia_nivel" autocomplete="off">
+            <option value="">—</option>
+            {% for code, label in CHOICES.EXP_NIVEL %}
+              <option value="{{ code }}" {{ 'selected' if data.experiencia_nivel == code else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label for="puntualidad_1a5" class="form-label">Puntualidad (1 a 5)</label>
+          <input id="puntualidad_1a5" class="form-control" type="number" min="1" max="5" name="puntualidad_1a5" value="{{ data.puntualidad_1a5 or '' }}" inputmode="numeric">
+        </div>
+      </div>
+    </div>
+
+    <div class="kard-h bg-light fw-semibold">
+      Habilidades y límites
+    </div>
+    <div class="kard-b">
+      <div class="section-gap">
+        <label class="form-label">Fortalezas (elige varias)</label>
+        <div class="chips" role="group" aria-label="Fortalezas">
+          {% for code, label in CHOICES.FORTALEZAS %}
+            <label>
+              <input type="checkbox" name="fortalezas" value="{{ code }}" {% if code in data.fortalezas %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="section-gap">
+        <label class="form-label">Tareas que prefieres evitar</label>
+        <div class="chips" role="group" aria-label="Tareas a evitar">
+          {% for code, label in CHOICES.TAREAS_EVITAR %}
+            <label>
+              <input type="checkbox" name="tareas_evitar" value="{{ code }}" {% if code in data.tareas_evitar %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="section-gap">
+        <label class="form-label">Límites / No negociables</label>
+        <div class="chips" role="group" aria-label="Límites / No negociables">
+          {% for code, label in CHOICES.LIMITES %}
+            <label>
+              <input type="checkbox" name="limites_no_negociables" value="{{ code }}" {% if code in data.limites_no_negociables %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="kard-h bg-light fw-semibold">
+      Disponibilidad y condiciones
+    </div>
+    <div class="kard-b">
+      <div class="row">
+        <div class="col-md-6">
+          <label class="form-label">Días disponibles</label>
+          <div class="chips" role="group" aria-label="Días disponibles">
+            {% for code, label in CHOICES.DIAS %}
+              <label>
+                <input type="checkbox" name="disponibilidad_dias" value="{{ code }}" {% if code in data.disponibilidad_dias %}checked{% endif %}>
+                <span>{{ label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Horarios</label>
+          <div class="chips" role="group" aria-label="Horarios disponibles">
+            {% for code, label in CHOICES.HORARIOS %}
+              <label>
+                <input type="checkbox" name="disponibilidad_horarios" value="{{ code }}" {% if code in data.disponibilidad_horarios %}checked{% endif %}>
+                <span>{{ label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="section-gap">
+        <label class="form-label d-block mb-2">¿Trabajar con mascotas?</label>
+        <div class="chips" role="radiogroup" aria-label="Mascotas">
+          {% for code, label in CHOICES.MASCOTAS %}
+            <label>
+              <input type="radio" name="mascotas" value="{{ code }}" {% if data.mascotas == code %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="kard-h bg-light fw-semibold">
+      Observaciones
+    </div>
+    <div class="kard-b">
+      <div class="row g-3">
+        <div class="col-12">
+          <label for="nota" class="form-label">Nota interna</label>
+          <textarea id="nota" class="form-control" rows="3" name="nota" placeholder="Algo más que debamos saber">{{ data.nota }}</textarea>
+          <div class="muted mt-1">Esta nota es solo para uso interno de la agencia.</div>
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex gap-2">
+        <a href="{{ url_for('compat_candidata') }}" class="btn btn-light">Volver a buscar</a>
+        <button class="btn btn-primary" type="submit" name="accion" value="guardar">
+          <i class="bi bi-check2-circle me-1"></i> Guardar test
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

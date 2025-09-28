@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Compatibilidad – {{ cliente.nombre_completo }} / {{ candidata.nombre_completo }}{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 1000px;">
+
+  <!-- Encabezado -->
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+    <div>
+      <h1 class="h4 mb-1">Compatibilidad</h1>
+      <div class="text-muted small">
+        Cliente: <strong>{{ cliente.nombre_completo or '—' }}</strong> ·
+        Candidata: <strong>{{ candidata.nombre_completo or '—' }}</strong> ·
+        Solicitud: <strong>{{ solicitud.codigo_solicitud or '—' }}</strong>
+      </div>
+    </div>
+    <div class="text-end">
+      <div class="display-6 fw-bold">{{ compat.score }}<span class="fs-5">/100</span></div>
+      <div class="text-muted small">puntaje total</div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Detalle del cálculo -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-header bg-light rounded-top-4 fw-semibold">
+          Detalle del cálculo
+        </div>
+        <div class="card-body">
+          {% if compat.breakdown and compat.breakdown|length %}
+            <ul class="list-group list-group-flush">
+              {% for label, pts in compat.breakdown %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <span>{{ label }}</span>
+                  <span class="badge {{ 'bg-success' if pts > 0 else ('bg-danger' if pts < 0 else 'bg-secondary') }}">
+                    {{ pts if pts >= 0 else ('−' ~ (pts|abs)) }}
+                  </span>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">No hay detalle disponible.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Resumenes -->
+    <div class="col-lg-5">
+
+      <!-- Resumen solicitud -->
+      <div class="card border-0 shadow-sm rounded-4 mb-3">
+        <div class="card-header bg-light rounded-top-4 fw-semibold">
+          Resumen de la solicitud
+        </div>
+        <div class="card-body small">
+          <dl class="row mb-0">
+            <dt class="col-5">Código</dt>
+            <dd class="col-7">{{ solicitud.codigo_solicitud or '—' }}</dd>
+
+            <dt class="col-5">Ciudad/Sector</dt>
+            <dd class="col-7">{{ solicitud.ciudad_sector or '—' }}</dd>
+
+            <dt class="col-5">Modalidad</dt>
+            <dd class="col-7">{{ solicitud.modalidad_trabajo or solicitud.modalidad or '—' }}</dd>
+
+            <dt class="col-5">Horario</dt>
+            <dd class="col-7">{{ solicitud.horario or '—' }}</dd>
+
+            <dt class="col-5">Funciones</dt>
+            <dd class="col-7">
+              {% if solicitud.funciones %}{{ solicitud.funciones | join(', ') }}{% else %}—{% endif %}
+            </dd>
+
+            <dt class="col-5">Niños</dt>
+            <dd class="col-7">
+              {% set n = solicitud.ninos or solicitud.cantidad_ninos %}
+              {{ n if n is not none else '—' }}
+            </dd>
+
+            <dt class="col-5">Mascota</dt>
+            <dd class="col-7">{{ solicitud.mascota or '—' }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      <!-- Resumen candidata -->
+      <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-header bg-light rounded-top-4 fw-semibold">
+          Resumen de la candidata
+        </div>
+        <div class="card-body small">
+          <dl class="row mb-0">
+            <dt class="col-5">Ritmo</dt>
+            <dd class="col-7">{{ candidata.compat_ritmo_preferido or '—' }}</dd>
+
+            <dt class="col-5">Estilo</dt>
+            <dd class="col-7">{{ candidata.compat_estilo_trabajo or '—' }}</dd>
+
+            <dt class="col-5">Niños</dt>
+            <dd class="col-7">
+              {% set NINOS_LABELS = {'comoda':'cómoda','neutral':'neutral','prefiere_evitar':'prefiere evitar'} %}
+              {{ NINOS_LABELS.get(candidata.compat_relacion_ninos, '—') }}
+            </dd>
+
+            <dt class="col-5">Mascotas</dt>
+            <dd class="col-7">
+              {% set limites = (candidata.compat_limites_no_negociables or []) %}
+              {% if 'no_mascotas' in limites %}No{% else %}Sí{% endif %}
+            </dd>
+
+            <dt class="col-5">Experiencia</dt>
+            <dd class="col-7">
+              {% if candidata.anos_experiencia %}
+                {{ candidata.anos_experiencia }} años{% if candidata.areas_experiencia %} — {{ candidata.areas_experiencia }}{% endif %}
+              {% elif candidata.areas_experiencia %}
+                {{ candidata.areas_experiencia }}
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+
+            <dt class="col-5">Puntualidad</dt>
+            <dd class="col-7">
+              {% if candidata.calificacion %}{{ candidata.calificacion }}{% else %}—{% endif %}
+            </dd>
+
+            <dt class="col-5">Fortalezas</dt>
+            <dd class="col-7">
+              {% set forts = candidata.compat_fortalezas or [] %}
+              {% if forts|length %}{{ forts|join(', ') }}{% else %}—{% endif %}
+            </dd>
+
+            <dt class="col-5">Disponibilidad</dt>
+            <dd class="col-7">
+              {% set hor = candidata.compat_disponibilidad_horario %}
+              {% set dias = candidata.compat_disponibilidad_dias or [] %}
+              {% if hor %}
+                {{ hor }}
+              {% elif dias|length %}
+                {{ dias|join(', ') }}
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Acciones -->
+  <div class="d-flex flex-wrap gap-2 mt-4">
+    <a class="btn btn-primary"
+       href="{{ url_for('admin.pdf_compatibilidad', cliente_id=cliente.id, candidata_id=candidata.fila) }}"
+       target="_blank">
+      <i class="bi bi-filetype-pdf me-1"></i> Ver PDF
+    </a>
+    <a class="btn btn-light"
+       href="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver al cliente
+    </a>
+  </div>
+
+</div>
+{% endblock %}

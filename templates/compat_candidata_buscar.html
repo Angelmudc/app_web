@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Test de compatibilidad – Buscar candidata</h3>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input class="form-control" name="q" placeholder="Nombre, cédula o código">
+  <button class="btn btn-primary mt-2" name="accion" value="buscar">Buscar</button>
+</form>
+
+{% if mensaje %}<div class="alert alert-info mt-3">{{ mensaje }}</div>{% endif %}
+
+{% if resultados %}
+<table class="table table-hover mt-3">
+  <thead><tr><th>Nombre</th><th>Cédula</th><th>Código</th><th></th></tr></thead>
+  <tbody>
+  {% for c in resultados %}
+    <tr>
+      <td>{{ c.nombre_completo }}</td>
+      <td>{{ c.cedula }}</td>
+      <td>{{ c.codigo or '—' }}</td>
+      <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('compat_candidata', fila=c.fila) }}">Abrir test</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
