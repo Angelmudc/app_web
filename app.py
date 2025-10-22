@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 from dotenv import load_dotenv
 load_dotenv()
+import io
 
-import os, re, io, json, zipfile, logging, unicodedata
+import os
+import re
+import json
+import logging
+import unicodedata
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 
@@ -12,58 +17,36 @@ from flask import (
     current_app, abort
 )
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename  # ← agregado (lo usas en subidas de archivos)
+from werkzeug.utils import secure_filename
 
 from flask_caching import Cache
 from flask_migrate import Migrate
 
-from sqlalchemy import or_, cast, String, func
-from sqlalchemy.orm import subqueryload
+# SQLAlchemy
+from sqlalchemy import or_, cast, String, func, and_
+from sqlalchemy.orm import subqueryload, joinedload, load_only
+from sqlalchemy.exc import OperationalError, IntegrityError, DBAPIError
+from sqlalchemy.sql import text
+
+# Modelos / Forms (usa los que realmente llamas en este archivo)
 from models import Candidata, LlamadaCandidata, Solicitud, Reemplazo
+from forms import LlamadaCandidataForm
 
-import pandas as pd
-from fpdf import FPDF
+# Login
+from flask_login import login_user, logout_user, login_required, current_user
 
-# (ya los tenías, pero los consolidamos aquí; no quitamos los de arriba)
-from sqlalchemy import func, cast, Date
-
-# ---- App/DB/config ----
+# App factory / DB / CSRF / Decorators
 from config_app import create_app, db, csrf
 from decorators import roles_required, admin_required
 
-from sqlalchemy.exc import OperationalError, IntegrityError, DBAPIError  # ← agregado IntegrityError por si lo usas en commits
-# Modelos / Forms
-from models import Candidata, LlamadaCandidata
-from forms import LlamadaCandidataForm
+# HTTP externo (si lo usas en otras partes)
+import requests  # mantener por ahora; si no se usa en el resto, luego lo quitamos
 
-# Login (varias rutas tuyas usan esto)
-from flask_login import login_user, logout_user, login_required, current_user  # ← agregado
-
-# Peticiones HTTP externas (lo utilizas en descargas/ZIP u otras utilidades)
-import requests  # ← agregado
-
-# Carga ansiosa opcional si la usas en alguna vista
-from sqlalchemy.orm import joinedload  # ← agregado (complemento de subqueryload)
-
-from sqlalchemy.exc import OperationalError, DBAPIError
-from sqlalchemy.sql import text
-
-# IMPORTS
-from datetime import date, datetime
-from flask import request, render_template, url_for, jsonify, flash, redirect
-from sqlalchemy import func, or_, and_
-from sqlalchemy.orm import joinedload, load_only
-
-# Asegúrate de tener estos import reales según tu proyecto:
-# from app import app, db
-# from models import Solicitud, Reemplazo
-# from decorators import roles_required
-
-# ← ESTE TRY/EXCEPT EVITA ROMPER SI CAMBIA LA RUTA DEL FORM
+# PDF (fpdf2)
 try:
-    from admin.forms import AdminSolicitudForm
+    from fpdf import FPDF  # fpdf2
 except Exception:
-    AdminSolicitudForm = None
+    FPDF = None
 
 # -----------------------------------------------------------------------------
 # APP BOOT
@@ -71,27 +54,27 @@ except Exception:
 app = create_app()
 cache = Cache(app)
 migrate = Migrate(app, db)
+
 # Helper para verificar si un endpoint existe (usable desde Jinja)
-# helpers para plantillas
 app.jinja_env.globals['has_endpoint'] = lambda name: name in app.view_functions
+
+def url_for_safe(endpoint: str, **values):
+    """url_for que no rompe si el endpoint no existe."""
+    return url_for(endpoint, **values) if endpoint in app.view_functions else None
+
+app.jinja_env.globals['url_for_safe'] = url_for_safe
 
 @app.teardown_appcontext
 def _shutdown_session(exception=None):
-    # Cerrar/limpiar la sesión SIEMPRE al final del request
+    """Cierra/limpia la sesión SIEMPRE al final del request."""
     try:
         db.session.remove()
     except Exception:
         pass
 
-
-def url_for_safe(endpoint, **values):
-    from flask import url_for
-    return url_for(endpoint, **values) if endpoint in app.view_functions else None
-
-app.jinja_env.globals['url_for_safe'] = url_for_safe
-
 # -----------------------------------------------------------------------------
 # USUARIOS DE SESIÓN SENCILLA (panel interno)
+#  Nota: idealmente migrar a tabla/ORM + passwords via gestión real de usuarios.
 # -----------------------------------------------------------------------------
 USUARIOS = {
     "angel":    {"pwd": generate_password_hash("0000"), "role": "admin"},
@@ -106,21 +89,32 @@ USUARIOS = {
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 
 
-from sqlalchemy.exc import OperationalError
+def _get_engine():
+    """Compatibilidad: usa db.engine (v3) o db.get_engine() (v2)."""
+    try:
+        return db.engine
+    except Exception:
+        return db.get_engine()
+
 
 @app.errorhandler(OperationalError)
 def _handle_operational_error(e):
-    # Conexión rota (SSL/bad record mac). Limpia y devuelve 503 legible.
+    """
+    Conexión rota (SSL/bad record mac). Limpia y devuelve 503 legible.
+    No expone detalles internos.
+    """
     try:
         db.session.rollback()
     except Exception:
         pass
     try:
-        db.get_engine().dispose()
+        # cierra conexiones del pool para forzar reconexión limpia
+        _get_engine().dispose()
     except Exception:
         pass
-    return ("⚠️ Conexión a la base de datos no disponible momentáneamente. "
-            "Intenta nuevamente."), 503
+    return (
+        "⚠️ Conexión a la base de datos no disponible momentáneamente. Intenta nuevamente."
+    ), 503
 
 
 def _db_retry(fn, *args, **kwargs):
@@ -131,23 +125,26 @@ def _db_retry(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except (OperationalError, DBAPIError) as e:
-        # Mensajes típicos de socket/SSL roto
         msg = str(e).lower()
         transient = any(
-            s in msg for s in [
-                "ssl error", "bad record mac", "connection reset",
-                "server closed the connection", "terminating connection",
-                "could not receive data from server"
-            ]
+            s in msg
+            for s in (
+                "ssl error",
+                "bad record mac",
+                "connection reset",
+                "server closed the connection",
+                "terminating connection",
+                "could not receive data from server",
+            )
         )
         if transient:
             try:
                 db.session.remove()
             except Exception:
                 pass
-            # segundo intento
-            return fn(*args, **kwargs)
+            return fn(*args, **kwargs)  # segundo intento
         raise
+
 
 def _get_candidata_safe_by_pk(fila: int):
     """Carga Candidata por PK con un retry si la conexión está rota."""
@@ -155,34 +152,43 @@ def _get_candidata_safe_by_pk(fila: int):
         return Candidata.query.get(fila)
     return _db_retry(_load)
 
+
 def _fetch_image_bytes_safe(fila: int):
     """
     Saca los bytes de imagen directamente con conexión cruda (más tolerante),
     probando primero foto_perfil y luego perfil.
     """
-    engine = db.get_engine()
+    engine = _get_engine()
+
     def _load():
         with engine.connect() as conn:
-            # 1) foto_perfil
-            r = conn.execute(text("SELECT foto_perfil FROM candidatas WHERE fila=:f"), {"f": fila}).fetchone()
+            r = conn.execute(
+                text("SELECT foto_perfil FROM candidatas WHERE fila=:f"),
+                {"f": fila},
+            ).fetchone()
             if r and r[0]:
                 return bytes(r[0])
-            # 2) perfil (fallback)
-            r2 = conn.execute(text("SELECT perfil FROM candidatas WHERE fila=:f"), {"f": fila}).fetchone()
+
+            r2 = conn.execute(
+                text("SELECT perfil FROM candidatas WHERE fila=:f"),
+                {"f": fila},
+            ).fetchone()
             if r2 and r2[0]:
                 return bytes(r2[0])
+
             return None
+
     return _db_retry(_load)
 
-def run_db_safely(fn, *, retry_once=True, fallback=None):
+
+def run_db_safely(fn, *, retry_once: bool = True, fallback=None):
     """
     Ejecuta una función que toca la DB. Si hay OperationalError (conexión rota),
     hace rollback/cierra y reintenta UNA vez.
     """
     try:
         return fn()
-    except OperationalError as e:
-        # Conexión del pool rota → limpia y reintenta
+    except OperationalError:
         db.session.rollback()
         db.session.close()
         if retry_once:
@@ -191,42 +197,47 @@ def run_db_safely(fn, *, retry_once=True, fallback=None):
             except OperationalError:
                 db.session.rollback()
                 db.session.close()
-                if fallback is not None:
-                    return fallback
-                raise
-        if fallback is not None:
-            return fallback
-        raise
+                return fallback
+        return fallback
+
 
 def normalize_cedula(raw: str):
+    """Normaliza cédula a 11 dígitos con guiones. Devuelve None si no es válida."""
     digits = re.sub(r'\D', '', raw or '')
     if not CEDULA_PATTERN.fullmatch(digits):
         return None
     return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
 
+
 def normalize_nombre(raw: str) -> str:
+    """Quita acentos y caracteres raros; deja letras, espacios y guiones."""
     if not raw:
         return ''
     nfkd = unicodedata.normalize('NFKD', raw)
     no_accents = ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
     return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
 
+
 def parse_date(s: str):
+    """YYYY-MM-DD → date | None."""
     try:
         return datetime.strptime(s or "", "%Y-%m-%d").date()
     except Exception:
         return None
 
+
 def parse_decimal(s: str):
+    """Convierte string a Decimal (admite coma). Devuelve None si falla."""
     try:
         return Decimal((s or "").replace(',', '.'))
     except Exception:
         return None
 
-def get_date_bounds(period, date_str=None):
+
+def get_date_bounds(period: str, date_str: str | None = None):
     """
     Devuelve (start_dt, end_dt):
-      - 'day'   → última 24h
+      - 'day'   → últimas 24h
       - 'week'  → 7 días
       - 'month' → 30 días
       - 'date'  → fecha exacta (YYYY-MM-DD)
@@ -244,7 +255,8 @@ def get_date_bounds(period, date_str=None):
         return d, d
     return None, None
 
-def get_start_date(period, date_str=None):
+
+def get_start_date(period: str, date_str: str | None = None):
     start, _ = get_date_bounds(period, date_str)
     return start
 
@@ -252,6 +264,7 @@ def get_start_date(period, date_str=None):
 # CARGA CONFIG DE ENTREVISTAS (JSON local)
 # -----------------------------------------------------------------------------
 def load_entrevistas_config():
+    """Carga config JSON local para entrevistas."""
     try:
         cfg_path = os.path.join(app.root_path, 'config', 'config_entrevistas.json')
         with open(cfg_path, encoding='utf-8') as f:
@@ -262,6 +275,7 @@ def load_entrevistas_config():
 
 app.config['ENTREVISTAS_CONFIG'] = load_entrevistas_config()
 
+
 # -----------------------------------------------------------------------------
 # ERRORES / STATIC
 # -----------------------------------------------------------------------------
@@ -271,42 +285,62 @@ def forbidden(e):
 
 @app.route('/static/<path:filename>')
 def static_files(filename):
+    """Sirve archivos estáticos desde /static (controlado)."""
     return send_from_directory(os.path.join(app.root_path, 'static'), filename)
 
 @app.route('/robots.txt')
 def robots_txt():
+    """Archivo robots.txt (si no existe, devolvería 404 estándar)."""
     return send_from_directory(app.static_folder, "robots.txt")
+
 
 # -----------------------------------------------------------------------------
 # AUTH (panel interno por sesión simple)
+#  Nota de seguridad:
+#  - Mantengo el esquema actual (USUARIOS en memoria) para no romper nada.
+#  - Endurecí el login: limpio inputs, corto longitud, y roto sesión al autenticar.
+#  - Si usas CSRF con Flask-WTF, asegúrate de incluir {{ csrf_token() }} en login.html.
 # -----------------------------------------------------------------------------
 @app.route('/')
 def home():
     if 'usuario' not in session:
         return redirect(url_for('login'))
-    return render_template('home.html', usuario=session['usuario'], current_year=datetime.utcnow().year)
+    # Evita UTC si tu app es local/DR; suficiente con fecha local del servidor
+    return render_template('home.html', usuario=session['usuario'], current_year=date.today().year)
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
     if request.method == 'POST':
-        usuario = request.form.get('usuario', '').strip()
-        clave   = request.form.get('clave',   '').strip()
-        user    = USUARIOS.get(usuario)
+        # Higiene de entrada: limitar tamaño para evitar abusos
+        usuario = (request.form.get('usuario') or '').strip()[:64]
+        clave   = (request.form.get('clave')   or '').strip()[:128]
+
+        user = USUARIOS.get(usuario)
 
         if user and check_password_hash(user['pwd'], clave):
+            # Rotar la sesión para evitar fijación
+            session.clear()
             session['usuario'] = usuario
             session['role']    = user['role']
+            # (Opcional) marca de tiempo de login
+            session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
             return redirect(url_for('home'))
 
         mensaje = "Usuario o clave incorrectos."
+        # (Opcional) podrías registrar intentos fallidos aquí con app.logger.warning
+
     return render_template('login.html', mensaje=mensaje)
 
+
 @app.route('/logout')
-@roles_required('admin','secretaria')
+@roles_required('admin', 'secretaria')
 def logout():
-    session.pop('usuario', None)
+    # Limpia toda la sesión
+    session.clear()
     return redirect(url_for('login'))
+
 
 # -----------------------------------------------------------------------------
 # CANDIDATAS
@@ -314,29 +348,50 @@ def logout():
 @app.route('/candidatas', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def list_candidatas():
-    q = request.args.get('q', '').strip()
+    # Sanitiza búsqueda y evita querys enormes
+    q = (request.args.get('q') or '').strip()[:128]
 
-    base = Candidata.query.order_by(Candidata.nombre_completo.asc())
-    if q:
-        like = f"%{q}%"
-        base = base.filter(or_(
-            Candidata.nombre_completo.ilike(like),
-            Candidata.cedula.ilike(like),
-        ))
+    try:
+        base = Candidata.query.order_by(Candidata.nombre_completo.asc())
+        if q:
+            like = f"%{q}%"
+            base = base.filter(or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+            ))
 
-    candidatas = safe_all(base)
-    return render_template('candidatas.html', candidatas=candidatas, query=q)
+        candidatas = safe_all(base)  # respeta tu helper actual
+        return render_template('candidatas.html', candidatas=candidatas, query=q)
+    except Exception:
+        app.logger.exception("❌ Error listando candidatas")
+        flash("Ocurrió un error al listar candidatas. Intenta de nuevo.", "danger")
+        return render_template('candidatas.html', candidatas=[], query=q), 500
+
 
 @app.route('/candidatas_db')
-@roles_required('admin','secretaria')
+@roles_required('admin', 'secretaria')
 def list_candidatas_db():
     try:
-        candidatas = Candidata.query.all()
+        # Cargamos solo columnas necesarias para bajar peso/riesgo
+        candidatas = (Candidata.query
+                      .options(load_only(
+                          Candidata.fila,
+                          Candidata.marca_temporal,
+                          Candidata.nombre_completo,
+                          Candidata.edad,
+                          Candidata.numero_telefono,
+                          Candidata.direccion_completa,
+                          Candidata.modalidad_trabajo_preferida,
+                          Candidata.cedula,
+                          Candidata.codigo,
+                      ))
+                      .all())
+
         resultado = []
         for c in candidatas:
             resultado.append({
                 "fila": c.fila,
-                "marca_temporal": c.marca_temporal.isoformat() if c.marca_temporal else None,
+                "marca_temporal": c.marca_temporal.isoformat() if getattr(c, "marca_temporal", None) else None,
                 "nombre_completo": c.nombre_completo,
                 "edad": c.edad,
                 "numero_telefono": c.numero_telefono,
@@ -346,9 +401,12 @@ def list_candidatas_db():
                 "codigo": c.codigo,
             })
         return jsonify({"candidatas": resultado}), 200
-    except Exception as e:
-        app.logger.exception("Error leyendo desde la DB")
-        return jsonify({"error": str(e)}), 500
+
+    except Exception:
+        app.logger.exception("❌ Error leyendo candidatas desde la DB")
+        # No exponemos el error real al cliente
+        return jsonify({"error": "Error al consultar la base de datos."}), 500
+
 
 # -----------------------------------------------------------------------------
 # ENTREVISTA (usa JSON local de config)
@@ -356,74 +414,120 @@ def list_candidatas_db():
 @app.route('/entrevista', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def entrevista():
-    tipo    = request.values.get('tipo', '').strip().lower()
-    fila    = request.values.get('fila', type=int)
-    config  = current_app.config['ENTREVISTAS_CONFIG']
+    # Sanitiza y normaliza parámetros
+    tipo = (request.values.get('tipo') or '').strip().lower()[:64]
+    fila = request.values.get('fila', type=int)
+    config = current_app.config.get('ENTREVISTAS_CONFIG') or {}
 
     # Guardar respuestas
     if request.method == 'POST' and tipo and fila:
-        preguntas  = config.get(tipo, {}).get('preguntas', [])
+        cfg_tipo = config.get(tipo) or {}
+        preguntas = cfg_tipo.get('preguntas') or []
+
+        if not isinstance(preguntas, list) or not preguntas:
+            flash("Configuración de entrevista inválida.", "danger")
+            return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
+
+        # Acumular respuestas; limitar tamaño para evitar payloads gigantes
         respuestas = []
-        faltan     = []
+        faltan = []
         for p in preguntas:
-            v = request.form.get(p['id'], '').strip()
-            if not v:
-                faltan.append(p['id'])
-            respuestas.append(f"{p['enunciado']}: {v}")
+            pid = (p.get('id') or '').strip()
+            enunciado = (p.get('enunciado') or '').strip()
+            if not pid:
+                continue  # pregunta mal definida en JSON
+
+            valor = (request.form.get(pid) or '').strip()
+            if not valor:
+                faltan.append(pid)
+
+            # Limita cada respuesta a 1000 chars por seguridad
+            valor = valor[:1000]
+            respuestas.append(f"{enunciado}: {valor}")
+
         if faltan:
             flash("Por favor completa todos los campos.", "warning")
-        else:
-            c = Candidata.query.get(fila)
-            c.entrevista = "\n".join(respuestas)
-            try:
-                db.session.commit()
-                flash("✅ Entrevista guardada.", "success")
-            except:
-                db.session.rollback()
-                flash("❌ Error al guardar.", "danger")
-        return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
+            return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
 
-    # Buscar candidata
-    if not fila:
-        resultados = []
-        if request.method == 'POST':
-            q = request.form.get('busqueda','').strip()
-            if q:
-                like = f"%{q}%"
-                resultados = Candidata.query.filter(
-                    (Candidata.nombre_completo.ilike(like)) |
-                    (Candidata.cedula.ilike(like))
-                ).all()
-                if not resultados:
-                    flash("⚠️ No se encontraron candidatas.", "info")
-            else:
-                flash("⚠️ Ingresa un término de búsqueda.", "warning")
-        return render_template('entrevista.html', etapa='buscar', resultados=resultados)
-
-    # Elegir tipo
-    if fila and not tipo:
-        candidata = Candidata.query.get(fila)
+        # Guardar en la fila correspondiente
+        candidata = _get_candidata_safe_by_pk(fila)
         if not candidata:
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('entrevista'))
-        tipos = [(k, cfg.get('titulo', k)) for k, cfg in config.items()]
-        return render_template('entrevista.html', etapa='elegir_tipo', candidata=candidata, tipos=tipos)
 
-    # Form dinámico
+        candidata.entrevista = "\n".join(respuestas)
+
+        try:
+            db.session.commit()
+            flash("✅ Entrevista guardada.", "success")
+        except (IntegrityError, OperationalError, DBAPIError):
+            app.logger.exception("❌ Error al guardar entrevista")
+            db.session.rollback()
+            flash("❌ Error al guardar.", "danger")
+
+        return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
+
+    # Buscar candidata (sin fila)
+    if not fila:
+        resultados = []
+        if request.method == 'POST':
+            q = (request.form.get('busqueda') or '').strip()[:128]
+            if q:
+                like = f"%{q}%"
+                try:
+                    resultados = (Candidata.query
+                                  .filter(or_(
+                                      Candidata.nombre_completo.ilike(like),
+                                      Candidata.cedula.ilike(like)
+                                  ))
+                                  .order_by(Candidata.nombre_completo.asc())
+                                  .all())
+                    if not resultados:
+                        flash("⚠️ No se encontraron candidatas.", "info")
+                except Exception:
+                    app.logger.exception("❌ Error buscando candidatas para entrevista")
+                    flash("Ocurrió un error al buscar candidatas.", "danger")
+            else:
+                flash("⚠️ Ingresa un término de búsqueda.", "warning")
+
+        return render_template('entrevista.html', etapa='buscar', resultados=resultados)
+
+    # Elegir tipo (con fila, sin tipo)
+    if fila and not tipo:
+        candidata = _get_candidata_safe_by_pk(fila)
+        if not candidata:
+            flash("⚠️ Candidata no encontrada.", "warning")
+            return redirect(url_for('entrevista'))
+
+        # Lista de tipos disponibles a partir del JSON
+        tipos = [(k, (v or {}).get('titulo', k)) for k, v in (config.items() if isinstance(config, dict) else [])]
+        return render_template('entrevista.html',
+                               etapa='elegir_tipo',
+                               candidata=candidata,
+                               tipos=tipos)
+
+    # Form dinámico (con fila y tipo)
     if fila and tipo:
-        candidata  = Candidata.query.get(fila)
-        cfg        = config.get(tipo)
+        candidata = _get_candidata_safe_by_pk(fila)
+        cfg = config.get(tipo) if isinstance(config, dict) else None
+
         if not cfg or not candidata:
             flash("⚠️ Parámetros inválidos.", "danger")
             return redirect(url_for('entrevista'))
-        return render_template('entrevista.html',
-                               etapa='formulario',
-                               candidata=candidata,
-                               tipo=tipo,
-                               preguntas=cfg.get('preguntas', []),
-                               titulo=cfg.get('titulo'),
-                               datos={}, mensaje=None, focus_field=None)
 
+        return render_template(
+            'entrevista.html',
+            etapa='formulario',
+            candidata=candidata,
+            tipo=tipo,
+            preguntas=(cfg.get('preguntas') or []),
+            titulo=cfg.get('titulo'),
+            datos={},
+            mensaje=None,
+            focus_field=None
+        )
+
+    # Fallback
     return redirect(url_for('entrevista'))
 
 # -----------------------------------------------------------------------------
@@ -432,43 +536,51 @@ def entrevista():
 @app.route('/buscar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def buscar_candidata():
-    busqueda = (request.form.get('busqueda', '') if request.method == 'POST'
-                else request.args.get('busqueda', '')).strip()
+    # Sanitiza entrada y limita tamaño
+    busqueda = (
+        (request.form.get('busqueda') if request.method == 'POST'
+         else request.args.get('busqueda')) or ''
+    ).strip()[:128]
+
     resultados, candidata, mensaje = [], None, None
 
     # Guardar edición
     if request.method == 'POST' and request.form.get('guardar_edicion'):
-        cid = request.form.get('candidata_id','').strip()
+        cid = (request.form.get('candidata_id') or '').strip()
         if cid.isdigit():
             obj = Candidata.query.get(int(cid))
             if obj:
-                obj.nombre_completo             = request.form.get('nombre','').strip() or obj.nombre_completo
-                obj.edad                        = request.form.get('edad','').strip() or obj.edad
-                obj.numero_telefono             = request.form.get('telefono','').strip() or obj.numero_telefono
-                obj.direccion_completa          = request.form.get('direccion','').strip() or obj.direccion_completa
-                obj.modalidad_trabajo_preferida = request.form.get('modalidad','').strip() or obj.modalidad_trabajo_preferida
-                obj.rutas_cercanas              = request.form.get('rutas','').strip() or obj.rutas_cercanas
-                obj.empleo_anterior             = request.form.get('empleo_anterior','').strip() or obj.empleo_anterior
-                obj.anos_experiencia            = request.form.get('anos_experiencia','').strip() or obj.anos_experiencia
-                obj.areas_experiencia           = request.form.get('areas_experiencia','').strip() or obj.areas_experiencia
-                obj.sabe_planchar               = request.form.get('sabe_planchar') == 'si'
-                obj.contactos_referencias_laborales = request.form.get('contactos_referencias_laborales','').strip() or obj.contactos_referencias_laborales
-                obj.referencias_familiares_detalle  = request.form.get('referencias_familiares_detalle','').strip() or obj.referencias_familiares_detalle
-                obj.cedula                      = request.form.get('cedula','').strip() or obj.cedula
-                obj.acepta_porcentaje_sueldo    = 1 if request.form.get('acepta_porcentaje') else 0
+                # Limites razonables por campo para evitar payloads enormes
+                obj.nombre_completo                  = (request.form.get('nombre') or '').strip()[:150] or obj.nombre_completo
+                obj.edad                             = (request.form.get('edad') or '').strip()[:10] or obj.edad
+                obj.numero_telefono                  = (request.form.get('telefono') or '').strip()[:30] or obj.numero_telefono
+                obj.direccion_completa               = (request.form.get('direccion') or '').strip()[:250] or obj.direccion_completa
+                obj.modalidad_trabajo_preferida      = (request.form.get('modalidad') or '').strip()[:100] or obj.modalidad_trabajo_preferida
+                obj.rutas_cercanas                   = (request.form.get('rutas') or '').strip()[:150] or obj.rutas_cercanas
+                obj.empleo_anterior                  = (request.form.get('empleo_anterior') or '').strip()[:150] or obj.empleo_anterior
+                obj.anos_experiencia                 = (request.form.get('anos_experiencia') or '').strip()[:50] or obj.anos_experiencia
+                obj.areas_experiencia                = (request.form.get('areas_experiencia') or '').strip()[:200] or obj.areas_experiencia
+                obj.sabe_planchar                    = (request.form.get('sabe_planchar') == 'si')
+                obj.contactos_referencias_laborales  = (request.form.get('contactos_referencias_laborales') or '').strip()[:250] or obj.contactos_referencias_laborales
+                obj.referencias_familiares_detalle   = (request.form.get('referencias_familiares_detalle') or '').strip()[:250] or obj.referencias_familiares_detalle
+                obj.cedula                           = (request.form.get('cedula') or '').strip()[:20] or obj.cedula
+                obj.acepta_porcentaje_sueldo         = 1 if request.form.get('acepta_porcentaje') else 0
 
                 try:
                     db.session.commit()
                     flash("✅ Datos actualizados correctamente.", "success")
                     return redirect(url_for('buscar_candidata', candidata_id=cid))
-                except Exception as e:
+                except Exception:
                     db.session.rollback()
-                    mensaje = f"❌ Error al guardar: {e}"
+                    app.logger.exception("❌ Error al guardar edición de candidata")
+                    mensaje = "❌ Error al guardar. Intenta de nuevo."
+            else:
+                mensaje = "⚠️ Candidata no encontrada."
         else:
             mensaje = "❌ ID de candidata inválido."
 
     # Carga detalles (GET ?candidata_id=)
-    cid = request.args.get('candidata_id','').strip()
+    cid = (request.args.get('candidata_id') or '').strip()
     if cid.isdigit():
         candidata = Candidata.query.get(int(cid))
         if not candidata:
@@ -476,29 +588,37 @@ def buscar_candidata():
 
     # Búsqueda
     if busqueda and not candidata:
-        filtros = [
-            Candidata.nombre_completo.ilike(f"%{busqueda}%"),
-            cast(Candidata.edad, String).ilike(f"%{busqueda}%"),
-            Candidata.numero_telefono.ilike(f"%{busqueda}%"),
-            Candidata.direccion_completa.ilike(f"%{busqueda}%"),
-            Candidata.modalidad_trabajo_preferida.ilike(f"%{busqueda}%"),
-            Candidata.rutas_cercanas.ilike(f"%{busqueda}%"),
-            Candidata.empleo_anterior.ilike(f"%{busqueda}%"),
-            Candidata.anos_experiencia.ilike(f"%{busqueda}%"),
-            Candidata.areas_experiencia.ilike(f"%{busqueda}%"),
-            Candidata.contactos_referencias_laborales.ilike(f"%{busqueda}%"),
-            Candidata.referencias_familiares_detalle.ilike(f"%{busqueda}%"),
-            Candidata.cedula.ilike(f"%{busqueda}%"),
-        ]
-        resultados = Candidata.query.filter(or_(*filtros)).all()
-        if not resultados:
-            mensaje = "⚠️ No se encontraron coincidencias."
+        like = f"%{busqueda}%"
+        try:
+            filtros = [
+                Candidata.nombre_completo.ilike(like),
+                cast(Candidata.edad, String).ilike(like),
+                Candidata.numero_telefono.ilike(like),
+                Candidata.direccion_completa.ilike(like),
+                Candidata.modalidad_trabajo_preferida.ilike(like),
+                Candidata.rutas_cercanas.ilike(like),
+                Candidata.empleo_anterior.ilike(like),
+                Candidata.anos_experiencia.ilike(like),
+                Candidata.areas_experiencia.ilike(like),
+                Candidata.contactos_referencias_laborales.ilike(like),
+                Candidata.referencias_familiares_detalle.ilike(like),
+                Candidata.cedula.ilike(like),
+            ]
+            resultados = Candidata.query.filter(or_(*filtros)).order_by(Candidata.nombre_completo.asc()).limit(300).all()
+            if not resultados:
+                mensaje = "⚠️ No se encontraron coincidencias."
+        except Exception:
+            app.logger.exception("❌ Error buscando candidatas")
+            mensaje = "❌ Ocurrió un error al buscar."
 
-    return render_template('buscar.html',
-                           busqueda=busqueda,
-                           resultados=resultados,
-                           candidata=candidata,
-                           mensaje=mensaje)
+    return render_template(
+        'buscar.html',
+        busqueda=busqueda,
+        resultados=resultados,
+        candidata=candidata,
+        mensaje=mensaje
+    )
+
 
 # -----------------------------------------------------------------------------
 # FILTRAR
@@ -506,35 +626,35 @@ def buscar_candidata():
 @app.route('/filtrar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def filtrar():
-    # --- Captura de filtros desde request ---
+    # Captura de filtros desde request (limitamos longitudes)
     form_data = {
-        'ciudad':            (request.values.get('ciudad') or "").strip(),
-        'rutas':             (request.values.get('rutas') or "").strip(),
-        'modalidad':         (request.values.get('modalidad') or "").strip(),
-        'experiencia_anos':  (request.values.get('experiencia_anos') or "").strip(),
-        'areas_experiencia': (request.values.get('areas_experiencia') or "").strip(),
-        'estado':            (request.values.get('estado') or "").strip(),
+        'ciudad':            (request.values.get('ciudad') or "").strip()[:120],
+        'rutas':             (request.values.get('rutas') or "").strip()[:120],
+        'modalidad':         (request.values.get('modalidad') or "").strip()[:60],
+        'experiencia_anos':  (request.values.get('experiencia_anos') or "").strip()[:30],
+        'areas_experiencia': (request.values.get('areas_experiencia') or "").strip()[:120],
+        'estado':            (request.values.get('estado') or "").strip()[:40],
     }
 
     filtros = []
 
-    # --- Ciudad ---
+    # Ciudad
     if form_data['ciudad']:
         ciudades = [p.strip() for p in re.split(r'[,\s]+', form_data['ciudad']) if p.strip()]
         if ciudades:
             filtros.extend([Candidata.direccion_completa.ilike(f"%{c}%") for c in ciudades])
 
-    # --- Rutas ---
+    # Rutas
     if form_data['rutas']:
         rutas = [r.strip() for r in re.split(r'[,\s]+', form_data['rutas']) if r.strip()]
         if rutas:
             filtros.extend([Candidata.rutas_cercanas.ilike(f"%{r}%") for r in rutas])
 
-    # --- Modalidad ---
+    # Modalidad
     if form_data['modalidad']:
         filtros.append(Candidata.modalidad_trabajo_preferida.ilike(f"%{form_data['modalidad']}%"))
 
-    # --- Experiencia en años ---
+    # Experiencia en años
     if form_data['experiencia_anos']:
         ea = form_data['experiencia_anos']
         if ea == '3 años o más':
@@ -546,16 +666,16 @@ def filtrar():
         else:
             filtros.append(Candidata.anos_experiencia == ea)
 
-    # --- Áreas de experiencia ---
+    # Áreas de experiencia
     if form_data['areas_experiencia']:
         filtros.append(Candidata.areas_experiencia.ilike(f"%{form_data['areas_experiencia']}%"))
 
-    # --- Estado ---
+    # Estado (mantengo tu normalización a underscores)
     if form_data['estado']:
         estado_norm = form_data['estado'].replace(" ", "_")
         filtros.append(Candidata.estado == estado_norm)
 
-    # --- Reglas fijas ---
+    # Reglas fijas
     filtros.append(Candidata.codigo.isnot(None))
     filtros.append(or_(Candidata.porciento == None, Candidata.porciento == 0))
 
@@ -563,8 +683,8 @@ def filtrar():
     resultados = []
 
     try:
-        query = Candidata.query.filter(*filtros).order_by(Candidata.nombre_completo)
-        candidatas = query.all()
+        query = Candidata.query.filter(*filtros).order_by(Candidata.nombre_completo.asc())
+        candidatas = query.limit(500).all()
 
         if candidatas:
             resultados = [{
@@ -579,12 +699,12 @@ def filtrar():
                 'estado':           c.estado
             } for c in candidatas]
         else:
-            if any(form_data.values()):
+            if any(v for v in form_data.values()):
                 mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
 
     except Exception as e:
-        current_app.logger.error(f"Error al filtrar candidatas: {e}", exc_info=True)
-        mensaje = f"❌ Error al filtrar los datos: {e}"
+        current_app.logger.error(f"❌ Error al filtrar candidatas: {e}", exc_info=True)
+        mensaje = "❌ Error al filtrar los datos."
 
     estados = [
         'en_proceso',
@@ -619,7 +739,7 @@ def inscripcion():
 
     if request.method == "POST":
         if request.form.get("guardar_inscripcion"):
-            cid = request.form.get("candidata_id", "").strip()
+            cid = (request.form.get("candidata_id") or "").strip()
             if not cid.isdigit():
                 flash("❌ ID inválido.", "error")
                 return redirect(url_for('inscripcion'))
@@ -629,14 +749,21 @@ def inscripcion():
                 flash("⚠️ Candidata no encontrada.", "error")
                 return redirect(url_for('inscripcion'))
 
+            # Genera código si falta
             if not obj.codigo:
-                obj.codigo = generar_codigo_unico()
+                try:
+                    obj.codigo = generar_codigo_unico()
+                except Exception:
+                    app.logger.exception("❌ Error generando código único")
+                    flash("❌ No se pudo generar el código.", "error")
+                    return redirect(url_for('inscripcion'))
 
-            obj.medio_inscripcion = request.form.get("medio", "").strip() or obj.medio_inscripcion
+            obj.medio_inscripcion = (request.form.get("medio") or "").strip()[:60] or obj.medio_inscripcion
             obj.inscripcion       = (request.form.get("estado") == "si")
-            obj.monto             = parse_decimal(request.form.get("monto", "")) or obj.monto
-            obj.fecha             = parse_date(request.form.get("fecha", "")) or obj.fecha
+            obj.monto             = parse_decimal(request.form.get("monto") or "") or obj.monto
+            obj.fecha             = parse_date(request.form.get("fecha") or "") or obj.fecha
 
+            # Estado
             if obj.inscripcion:
                 if obj.monto and obj.fecha:
                     obj.estado = 'inscrita'
@@ -645,55 +772,67 @@ def inscripcion():
             else:
                 obj.estado = 'proceso_inscripcion'
 
-            obj.fecha_cambio_estado   = datetime.utcnow()
-            obj.usuario_cambio_estado = session.get('usuario', 'desconocido')
+            obj.fecha_cambio_estado    = datetime.utcnow()
+            obj.usuario_cambio_estado  = session.get('usuario', 'desconocido')[:64]
 
             try:
                 db.session.commit()
                 flash(f"✅ Inscripción guardada. Código: {obj.codigo}", "success")
                 candidata = obj
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
-                flash(f"❌ Error al guardar inscripción: {e}", "error")
+                app.logger.exception("❌ Error al guardar inscripción")
+                flash("❌ Error al guardar inscripción.", "error")
                 return redirect(url_for('inscripcion'))
         else:
-            q = request.form.get("buscar", "").strip()
+            q = (request.form.get("buscar") or "").strip()[:128]
             if q:
                 like = f"%{q}%"
-                resultados = Candidata.query.filter(
+                try:
+                    resultados = (Candidata.query.filter(
+                        or_(
+                            Candidata.nombre_completo.ilike(like),
+                            Candidata.cedula.ilike(like),
+                            Candidata.numero_telefono.ilike(like)
+                        )
+                    ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                    if not resultados:
+                        flash("⚠️ No se encontraron coincidencias.", "error")
+                except Exception:
+                    app.logger.exception("❌ Error buscando en inscripción")
+                    flash("❌ Error al buscar.", "error")
+
+    else:
+        q = (request.args.get("buscar") or "").strip()[:128]
+        if q:
+            like = f"%{q}%"
+            try:
+                resultados = (Candidata.query.filter(
                     or_(
                         Candidata.nombre_completo.ilike(like),
                         Candidata.cedula.ilike(like),
                         Candidata.numero_telefono.ilike(like)
                     )
-                ).all()
+                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
                 if not resultados:
-                    flash("⚠️ No se encontraron coincidencias.", "error")
+                    mensaje = "⚠️ No se encontraron coincidencias."
+            except Exception:
+                app.logger.exception("❌ Error buscando candidatas (GET) en inscripción")
+                mensaje = "❌ Error al buscar."
 
-    else:
-        q = request.args.get("buscar", "").strip()
-        if q:
-            like = f"%{q}%"
-            resultados = Candidata.query.filter(
-                or_(
-                    Candidata.nombre_completo.ilike(like),
-                    Candidata.cedula.ilike(like),
-                    Candidata.numero_telefono.ilike(like)
-                )
-            ).all()
-            if not resultados:
-                mensaje = "⚠️ No se encontraron coincidencias."
-
-        sel = request.args.get("candidata_seleccionada", "").strip()
+        sel = (request.args.get("candidata_seleccionada") or "").strip()
         if not resultados and sel.isdigit():
             candidata = Candidata.query.get(int(sel))
             if not candidata:
                 mensaje = "⚠️ Candidata no encontrada."
 
-    return render_template("inscripcion.html",
-                           resultados=resultados,
-                           candidata=candidata,
-                           mensaje=mensaje)
+    return render_template(
+        "inscripcion.html",
+        resultados=resultados,
+        candidata=candidata,
+        mensaje=mensaje
+    )
+
 
 @app.route('/porciento', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
@@ -701,7 +840,7 @@ def porciento():
     resultados, candidata = [], None
 
     if request.method == "POST":
-        fila_id = request.form.get('fila_id', '').strip()
+        fila_id = (request.form.get('fila_id') or '').strip()
         if not fila_id.isdigit():
             flash("❌ Fila inválida.", "danger")
             return redirect(url_for('porciento'))
@@ -711,56 +850,64 @@ def porciento():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('porciento'))
 
-        fecha_pago   = parse_date(request.form.get("fecha_pago",""))
-        fecha_inicio = parse_date(request.form.get("fecha_inicio",""))
-        monto_total  = parse_decimal(request.form.get("monto_total",""))
+        fecha_pago   = parse_date(request.form.get("fecha_pago") or "")
+        fecha_inicio = parse_date(request.form.get("fecha_inicio") or "")
+        monto_total  = parse_decimal(request.form.get("monto_total") or "")
 
         if None in (fecha_pago, fecha_inicio, monto_total):
             flash("❌ Datos incompletos o inválidos.", "danger")
             return redirect(url_for('porciento', candidata=fila_id))
 
-        porcentaje = (monto_total * Decimal("0.25")).quantize(Decimal("0.01"))
+        try:
+            porcentaje = (monto_total * Decimal("0.25")).quantize(Decimal("0.01"))
+        except Exception:
+            flash("❌ Monto inválido.", "danger")
+            return redirect(url_for('porciento', candidata=fila_id))
 
-        obj.fecha_de_pago       = fecha_pago
-        obj.inicio              = fecha_inicio
-        obj.monto_total         = monto_total
-        obj.porciento           = porcentaje
-        obj.estado              = 'trabajando'
-        obj.fecha_cambio_estado = datetime.utcnow()
-        obj.usuario_cambio_estado = session.get('usuario', 'desconocido')
+        obj.fecha_de_pago         = fecha_pago
+        obj.inicio                = fecha_inicio
+        obj.monto_total           = monto_total
+        obj.porciento             = porcentaje
+        obj.estado                = 'trabajando'
+        obj.fecha_cambio_estado   = datetime.utcnow()
+        obj.usuario_cambio_estado = session.get('usuario', 'desconocido')[:64]
 
         try:
             db.session.commit()
             flash(f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}. Estado: Trabajando.", "success")
             candidata = obj
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f"❌ Error al actualizar: {e}", "danger")
+            app.logger.exception("❌ Error al actualizar porciento")
+            flash("❌ Error al actualizar.", "danger")
             return redirect(url_for('porciento', candidata=fila_id))
 
     else:
-        q = request.args.get('busqueda', '').strip()
+        q = (request.args.get('busqueda') or '').strip()[:128]
         if q:
             like = f"%{q}%"
-            resultados = Candidata.query.filter(
-                or_(
-                    Candidata.nombre_completo.ilike(like),
-                    Candidata.cedula.ilike(like),
-                    Candidata.numero_telefono.ilike(like)
-                )
-            ).all()
-            if not resultados:
-                flash("⚠️ No se encontraron coincidencias.", "warning")
+            try:
+                resultados = (Candidata.query.filter(
+                    or_(
+                        Candidata.nombre_completo.ilike(like),
+                        Candidata.cedula.ilike(like),
+                        Candidata.numero_telefono.ilike(like)
+                    )
+                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                if not resultados:
+                    flash("⚠️ No se encontraron coincidencias.", "warning")
+            except Exception:
+                app.logger.exception("❌ Error buscando (GET) en porciento")
+                flash("❌ Error al buscar.", "warning")
 
-        sel = request.args.get('candidata','').strip()
+        sel = (request.args.get('candidata') or '').strip()
         if sel.isdigit() and not resultados:
             candidata = Candidata.query.get(int(sel))
             if not candidata:
                 flash("⚠️ Candidata no encontrada.", "warning")
 
-    return render_template("porciento.html",
-                           resultados=resultados,
-                           candidata=candidata)
+    return render_template("porciento.html", resultados=resultados, candidata=candidata)
+
 
 @app.route('/pagos', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
@@ -769,16 +916,16 @@ def pagos():
 
     if request.method == 'POST':
         fila = request.form.get('fila', type=int)
-        monto_str = request.form.get('monto_pagado', '').strip()
-        calificacion = request.form.get('calificacion', '').strip()
+        monto_str = (request.form.get('monto_pagado') or '').strip()[:30]
+        calificacion = (request.form.get('calificacion') or '').strip()[:200]
 
         if not fila or not monto_str or not calificacion:
             flash("❌ Datos inválidos.", "danger")
             return redirect(url_for('pagos'))
 
         try:
-            monto_pagado = Decimal(monto_str)
-        except:
+            monto_pagado = Decimal(monto_str.replace(',', '.'))
+        except Exception:
             flash("❌ Monto inválido.", "danger")
             return redirect(url_for('pagos'))
 
@@ -787,42 +934,57 @@ def pagos():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('pagos'))
 
-        obj.porciento = max(obj.porciento - monto_pagado, Decimal('0'))
+        # Asegura Decimal y evita negativos
+        actual = obj.porciento if isinstance(obj.porciento, Decimal) else (parse_decimal(str(obj.porciento)) if obj.porciento is not None else Decimal('0'))
+        if actual is None:
+            actual = Decimal('0')
+
+        nuevo = actual - monto_pagado
+        if nuevo < Decimal('0'):
+            nuevo = Decimal('0')
+
+        obj.porciento = nuevo.quantize(Decimal('0.01'))
         obj.calificacion = calificacion
 
         try:
             db.session.commit()
             flash("✅ Pago guardado con éxito.", "success")
             candidata = obj
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f"❌ Error al guardar: {e}", "danger")
+            app.logger.exception("❌ Error al guardar pago")
+            flash("❌ Error al guardar.", "danger")
 
         return render_template('pagos.html', resultados=[], candidata=candidata)
 
-    q = request.args.get('busqueda', '').strip()
-    sel = request.args.get('candidata', '').strip()
+    # GET
+    q = (request.args.get('busqueda') or '').strip()[:128]
+    sel = (request.args.get('candidata') or '').strip()
 
     if q:
         like = f"%{q}%"
-        filas = Candidata.query.filter(
-            or_(
-                Candidata.nombre_completo.ilike(like),
-                Candidata.cedula.ilike(like),
-                Candidata.codigo.ilike(like),
-            )
-        ).all()
+        try:
+            filas = (Candidata.query.filter(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.codigo.ilike(like),
+                )
+            ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
 
-        for c in filas:
-            resultados.append({
-                'fila':     c.fila,
-                'nombre':   c.nombre_completo,
-                'cedula':   c.cedula,
-                'telefono': c.numero_telefono or 'No especificado',
-            })
+            for c in filas:
+                resultados.append({
+                    'fila':     c.fila,
+                    'nombre':   c.nombre_completo,
+                    'cedula':   c.cedula,
+                    'telefono': c.numero_telefono or 'No especificado',
+                })
 
-        if not resultados:
-            flash("⚠️ No se encontraron coincidencias.", "warning")
+            if not resultados:
+                flash("⚠️ No se encontraron coincidencias.", "warning")
+        except Exception:
+            app.logger.exception("❌ Error buscando en pagos")
+            flash("❌ Error al buscar.", "warning")
 
     if sel.isdigit() and not resultados:
         obj = Candidata.query.get(int(sel))
@@ -833,11 +995,7 @@ def pagos():
 
     return render_template('pagos.html', resultados=resultados, candidata=candidata)
 
-# ⬇️ Pega esto en tu app.py (reemplaza las dos rutas existentes)
-
-
-
-def _retry_query(callable_fn, retries=2, swallow=False):
+def _retry_query(callable_fn, retries: int = 2, swallow: bool = False):
     """
     Ejecuta una función que hace queries a la BD con reintentos básicos.
     - retries: número de reintentos adicionales.
@@ -849,7 +1007,10 @@ def _retry_query(callable_fn, retries=2, swallow=False):
             return callable_fn()
         except (OperationalError, DBAPIError) as e:
             # Limpia la sesión para no dejarla en estado inválido
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             last_err = e
             continue
     if swallow:
@@ -866,13 +1027,18 @@ def reporte_inscripciones():
     - Descarga Excel (descargar=1): trae todos los resultados del mes/año y genera XLSX.
     Robusto frente a caídas SSL/db con reintentos y rollback.
     """
-    # 1) Parámetros
+    # 1) Parámetros (acotamos rangos para evitar explosiones)
     try:
-        mes       = int(request.args.get('mes', datetime.today().month))
-        anio      = int(request.args.get('anio', datetime.today().year))
+        today = date.today()
+        mes       = int(request.args.get('mes', today.month))
+        anio      = int(request.args.get('anio', today.year))
         descargar = request.args.get('descargar', '0') == '1'
         page      = max(1, request.args.get('page', default=1, type=int))
         per_page  = min(200, max(1, request.args.get('per_page', default=20, type=int)))
+        if not (1 <= mes <= 12):
+            return "Parámetro 'mes' inválido.", 400
+        if anio < 2000 or anio > today.year + 1:
+            return "Parámetro 'anio' inválido.", 400
     except Exception as e:
         return f"Parámetros inválidos: {e}", 400
 
@@ -893,8 +1059,8 @@ def reporte_inscripciones():
             .filter(
                 Candidata.inscripcion.is_(True),
                 Candidata.fecha.isnot(None),
-                db.extract('month', Candidata.fecha) == mes,
-                db.extract('year',  Candidata.fecha) == anio
+                func.extract('month', Candidata.fecha) == mes,
+                func.extract('year',  Candidata.fecha) == anio
             )
         )
 
@@ -921,12 +1087,12 @@ def reporte_inscripciones():
                 mensaje=f"No se encontraron inscripciones para {mes}/{anio}."
             ), 200
 
-        # Construir DataFrame para Excel
+        # Construir DataFrame para Excel (con nulos seguros)
         df = pd.DataFrame([{
-            "Nombre":       r[0],
+            "Nombre":       r[0] or "",
             "Ciudad":       r[1] or "",
             "Teléfono":     r[2] or "",
-            "Cédula":       r[3],
+            "Cédula":       r[3] or "",
             "Código":       r[4] or "",
             "Medio":        r[5] or "",
             "Inscripción":  "Sí" if r[6] else "No",
@@ -935,9 +1101,19 @@ def reporte_inscripciones():
         } for r in rows])
 
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Reporte')
-        output.seek(0)
+        try:
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Reporte')
+            output.seek(0)
+        except Exception as e:
+            current_app.logger.exception("❌ Error generando Excel de inscripciones")
+            return render_template(
+                "reporte_inscripciones.html",
+                reporte_html="",
+                mes=mes, anio=anio,
+                mensaje=f"❌ Error generando el archivo: {e}"
+            ), 200
+
         filename = f"Reporte_Inscripciones_{anio}_{mes:02d}.xlsx"
         return send_file(
             output,
@@ -974,10 +1150,10 @@ def reporte_inscripciones():
 
     # Constrúyelo rápido con pandas → HTML
     df = pd.DataFrame([{
-        "Nombre":       r[0],
+        "Nombre":       r[0] or "",
         "Ciudad":       r[1] or "",
         "Teléfono":     r[2] or "",
-        "Cédula":       r[3],
+        "Cédula":       r[3] or "",
         "Código":       r[4] or "",
         "Medio":        r[5] or "",
         "Inscripción":  "Sí" if r[6] else "No",
@@ -986,9 +1162,6 @@ def reporte_inscripciones():
     } for r in items])
 
     reporte_html = df.to_html(classes="table table-striped", index=False, border=0)
-
-    # (Opcional) Si luego quieres renderizar paginación en HTML,
-    # aquí tienes los datos; tu template actual no los usa.
     total_pages = (total + per_page - 1) // per_page
 
     return render_template(
@@ -996,7 +1169,6 @@ def reporte_inscripciones():
         reporte_html=reporte_html,
         mes=mes, anio=anio,
         mensaje="",
-        # Datos útiles por si luego activas paginación visual:
         page=page, per_page=per_page, total=total, total_pages=total_pages
     )
 
@@ -1043,8 +1215,8 @@ def reporte_pagos():
     total, rows = fetched
 
     pagos_pendientes = [{
-        'nombre':               r[0],
-        'cedula':               r[1],
+        'nombre':               r[0] or "",
+        'cedula':               r[1] or "",
         'codigo':               r[2] or "No especificado",
         'ciudad':               r[3] or "No especificado",
         'monto_total':          float(r[4] or 0),
@@ -1054,8 +1226,6 @@ def reporte_pagos():
     } for r in rows]
 
     mensaje = None if pagos_pendientes else "⚠️ No se encontraron pagos pendientes."
-
-    # (Opcional) Datos de paginación por si luego quieres agregar controles en el template
     total_pages = (total + per_page - 1) // per_page
 
     return render_template(
@@ -1064,6 +1234,7 @@ def reporte_pagos():
         mensaje=mensaje,
         page=page, per_page=per_page, total=total, total_pages=total_pages
     )
+
 
 # -----------------------------------------------------------------------------
 # SUBIR FOTOS (BINARIOS EN DB)
@@ -1074,23 +1245,27 @@ subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
 @subir_bp.route('', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def subir_fotos():
-    accion = request.args.get('accion', 'buscar')
+    accion = (request.args.get('accion') or 'buscar').strip()
     fila_id = request.args.get('fila', type=int)
     resultados = []
 
     if accion == 'buscar':
         if request.method == 'POST':
-            q = request.form.get('busqueda', '').strip()
+            q = (request.form.get('busqueda') or '').strip()[:128]
             if not q:
                 flash("⚠️ Ingresa algo para buscar.", "warning")
                 return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
             like = f"%{q}%"
-            filas = Candidata.query.filter(
-                (Candidata.nombre_completo.ilike(like)) |
-                (Candidata.cedula.ilike(like)) |
-                (Candidata.numero_telefono.ilike(like))
-            ).all()
+            try:
+                filas = (Candidata.query.filter(
+                    (Candidata.nombre_completo.ilike(like)) |
+                    (Candidata.cedula.ilike(like)) |
+                    (Candidata.numero_telefono.ilike(like))
+                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+            except Exception:
+                app.logger.exception("❌ Error buscando en subir_fotos")
+                filas = []
 
             if not filas:
                 flash("⚠️ No se encontraron candidatas.", "warning")
@@ -1099,7 +1274,7 @@ def subir_fotos():
                     'fila': c.fila,
                     'nombre': c.nombre_completo,
                     'telefono': c.numero_telefono or 'No especificado',
-                    'cedula': c.cedula
+                    'cedula': c.cedula or 'No especificado',
                 } for c in filas]
 
         return render_template('subir_fotos.html', accion='buscar', resultados=resultados)
@@ -1128,19 +1303,22 @@ def subir_fotos():
                 return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
         try:
+            # Lee bytes (si el storage envía FileStorage/stream)
             candidata.depuracion = files['depuracion'].read()
             candidata.perfil     = files['perfil'].read()
             db.session.commit()
             flash("✅ Imágenes subidas y guardadas en la base de datos.", "success")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f"❌ Error guardando en la BD: {e}", "danger")
+            app.logger.exception("❌ Error guardando imágenes en la BD")
+            flash("❌ Error guardando en la BD.", "danger")
             return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
     return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
 app.register_blueprint(subir_bp)
+
 
 # -----------------------------------------------------------------------------
 # GESTIONAR ARCHIVOS / PDF (DB only)
@@ -1148,14 +1326,14 @@ app.register_blueprint(subir_bp)
 @app.route("/gestionar_archivos", methods=["GET", "POST"])
 @roles_required('admin', 'secretaria')
 def gestionar_archivos():
-    accion = request.args.get("accion", "buscar")
+    accion = (request.args.get("accion") or "buscar").strip()
     mensaje = None
     resultados = []
     docs = {}
-    fila = request.args.get("fila", "").strip()
+    fila = (request.args.get("fila") or "").strip()
 
     if accion == "descargar":
-        doc = request.args.get("doc", "").strip()
+        doc = (request.args.get("doc") or "").strip()
         if not fila.isdigit():
             return "Error: Fila inválida", 400
         idx = int(fila)
@@ -1165,20 +1343,26 @@ def gestionar_archivos():
 
     if accion == "buscar":
         if request.method == "POST":
-            q = request.form.get("busqueda", "").strip()
+            q = (request.form.get("busqueda") or "").strip()[:128]
             if q:
                 like = f"%{q}%"
-                filas = Candidata.query.filter(
-                    (Candidata.nombre_completo.ilike(like)) |
-                    (Candidata.cedula.ilike(like)) |
-                    (Candidata.numero_telefono.ilike(like))
-                ).all()
+                try:
+                    filas = (Candidata.query.filter(
+                        (Candidata.nombre_completo.ilike(like)) |
+                        (Candidata.cedula.ilike(like)) |
+                        (Candidata.numero_telefono.ilike(like))
+                    ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                except Exception:
+                    app.logger.exception("❌ Error buscando en gestionar_archivos")
+                    filas = []
+
                 resultados = [{
                     "fila": c.fila,
                     "nombre": c.nombre_completo,
                     "telefono": c.numero_telefono or "No especificado",
                     "cedula": c.cedula or "No especificado"
-                } for c in filas]
+                } for c in filas] if filas else []
+
                 if not resultados:
                     mensaje = "⚠️ No se encontraron candidatas."
         return render_template("gestionar_archivos.html",
@@ -1200,11 +1384,12 @@ def gestionar_archivos():
                                    accion="buscar",
                                    mensaje=mensaje)
 
-        docs["depuracion"] = c.depuracion
-        docs["perfil"]     = c.perfil
-        docs["cedula1"]    = c.cedula1
-        docs["cedula2"]    = c.cedula2
-        docs["entrevista"] = c.entrevista or ""
+        # Pasamos los binarios como están (tu template actual puede revisarlos)
+        docs["depuracion"] = getattr(c, "depuracion", None)
+        docs["perfil"]     = getattr(c, "perfil", None)
+        docs["cedula1"]    = getattr(c, "cedula1", None)
+        docs["cedula2"]    = getattr(c, "cedula2", None)
+        docs["entrevista"] = getattr(c, "entrevista", "") or ""
 
         return render_template("gestionar_archivos.html",
                                accion=accion,
@@ -1214,129 +1399,306 @@ def gestionar_archivos():
 
     return redirect(url_for("gestionar_archivos", accion="buscar"))
 
+
 @app.route('/generar_pdf_entrevista')
 @roles_required('admin', 'secretaria')
 def generar_pdf_entrevista():
+    # Asegura que usamos fpdf2
+    try:
+        from fpdf import FPDF as _FPDF
+        from fpdf.errors import FPDFException
+    except Exception:
+        return "❌ fpdf2 no está instalado. Ejecuta: pip uninstall -y fpdf && pip install -U fpdf2", 500
+
     fila_index = request.args.get('fila', type=int)
     if not fila_index:
         return "Error: falta parámetro fila", 400
 
     c = Candidata.query.get(fila_index)
-    if not c or not c.entrevista:
+    if not c or not getattr(c, "entrevista", None):
         return "No hay entrevista registrada para esa fila", 404
-    texto_entrevista = c.entrevista
 
-    ref_laborales  = c.referencias_laboral or ""
-    ref_familiares = c.referencias_familiares or ""
+    texto_entrevista = c.entrevista or ""
+    ref_laborales    = getattr(c, "referencias_laboral", "") or ""
+    ref_familiares   = getattr(c, "referencias_familiares", "") or ""
+
+    import os, io, re, unicodedata
+
+    BRAND  = (0, 102, 204)
+    FAINT  = (120, 120, 120)
+    GRID   = (210, 210, 210)
+
+    # ── Helpers robustos ─────────────────────────────────────
+    def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
+        if unicode_ok:
+            return s or ""
+        s = s or ""
+        nfkd = unicodedata.normalize("NFKD", s)
+        return "".join(ch for ch in nfkd if not unicodedata.combining(ch) and ord(ch) < 0x2500)
+
+    def _collapse_ws(s: str) -> str:
+        return re.sub(r"[ \t]+", " ", (s or "").strip())
+
+    def _wrap_unbreakables(s: str, chunk=60) -> str:
+        out = []
+        for w in (s or "").split(" "):
+            if len(w) > chunk:
+                out.extend([w[i:i+chunk] for i in range(0, len(w), chunk)])
+            else:
+                out.append(w)
+        return " ".join(out)
+
+    def safe_multicell(pdf, txt, font_name, font_style, font_size, color=None, align="J", line_space=1.2):
+        pdf.set_x(pdf.l_margin)
+        if color:
+            pdf.set_text_color(*color)
+        try:
+            pdf.set_font(font_name, font_style, font_size)
+        except Exception:
+            # fallback duro
+            try:
+                pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
+            except Exception:
+                pdf.set_font("Arial", "", 10)
+        try:
+            pdf.multi_cell(pdf.epw, 7, txt, align=align)
+            pdf.ln(line_space)
+        except FPDFException:
+            # Fuerza cortes en palabras enormes
+            txt2 = _wrap_unbreakables(txt, chunk=35)
+            pdf.set_font(font_name, "", 10)
+            pdf.multi_cell(pdf.epw, 7, txt2, align="L")
+            pdf.ln(line_space)
+
+    class InterviewPDF(_FPDF):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._logo_path   = None
+            self._base_font   = "Arial"
+            self._unicode_ok  = False
+            self._has_italic  = False  # para saber si podemos usar "I"
+            self._has_bold    = False
+            self._has_bi      = False
+
+        def header(self):
+            if self.page_no() == 1:
+                # Logo (solo primera página) + menos espacio
+                if self._logo_path and os.path.exists(self._logo_path):
+                    w = 92  # grande pero elegante
+                    x = (self.w - w) / 2.0
+                    self.image(self._logo_path, x=x, y=10, w=w)
+                    y_line = 10 + (w * 0.38)
+                    self.set_y(y_line)
+                else:
+                    self.set_y(18)
+                # línea delgada
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.6)
+                self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+                self.ln(3)  # menos separación
+
+                # Título
+                try:
+                    self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
+                except Exception:
+                    self.set_font("Arial", "B", 18)
+                self.set_fill_color(*BRAND)
+                self.set_text_color(255, 255, 255)
+                self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
+                self.set_text_color(0, 0, 0)
+                self.ln(4)
+            else:
+                # páginas siguientes: una línea fina arriba
+                self.set_y(14)
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.4)
+                self.line(self.l_margin, 14, self.w - self.r_margin, 14)
+                self.ln(7)
+
+        def footer(self):
+            self.set_y(-15)
+            # Intentar itálica; si no existe, caer a regular; si todo falla, Arial
+            try:
+                if self._has_italic or self._has_bi:
+                    self.set_font(self._base_font, "I", 9)
+                else:
+                    self.set_font(self._base_font, "", 9)
+            except Exception:
+                try:
+                    self.set_font("Arial", "I", 9)
+                except Exception:
+                    self.set_font("Arial", "", 9)
+            self.set_text_color(*FAINT)
+            self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
 
     try:
-        pdf = FPDF()
+        pdf = InterviewPDF(format="A4")
+        pdf.alias_nb_pages()
+        pdf.set_auto_page_break(auto=True, margin=16)
+        pdf.set_margins(16, 16, 16)
+        pdf._logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
+
+        # ── Registro de fuentes ──
+        base_font   = "Arial"
+        unicode_ok  = False
+        has_bold    = False
+        has_italic  = False
+        has_bi      = False
+
+        try:
+            font_dir = os.path.join(app.root_path, "static", "fonts")
+            reg   = os.path.join(font_dir, "DejaVuSans.ttf")
+            bold  = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+            it    = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")      # si existe
+            bi    = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")  # si existe
+
+            if os.path.exists(reg):
+                pdf.add_font("DejaVuSans", "", reg, uni=True)
+                base_font  = "DejaVuSans"
+                unicode_ok = True
+            if os.path.exists(bold):
+                pdf.add_font("DejaVuSans", "B", bold, uni=True)
+                has_bold = True
+            if os.path.exists(it):
+                pdf.add_font("DejaVuSans", "I", it, uni=True)
+                has_italic = True
+            if os.path.exists(bi):
+                pdf.add_font("DejaVuSans", "BI", bi, uni=True)
+                has_bi = True
+        except Exception:
+            # Si algo falla, Arial built-in
+            base_font  = "Arial"
+            unicode_ok = False
+            has_bold   = True  # Arial tiene B/I built-in
+            has_italic = True
+            has_bi     = True
+
+        pdf._base_font  = base_font
+        pdf._unicode_ok = unicode_ok
+        pdf._has_bold   = has_bold
+        pdf._has_italic = has_italic
+        pdf._has_bi     = has_bi
+
         pdf.add_page()
 
-        # Fuentes (fallback si no existen las DejaVu)
-        font_dir = os.path.join(app.root_path, "static", "fonts")
-        reg = os.path.join(font_dir, "DejaVuSans.ttf")
-        bold= os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+        bullet = "• " if unicode_ok else "- "
+
+        # ===== ENTREVISTA =====
         try:
-            pdf.add_font("DejaVuSans", "", reg, uni=True)
-            pdf.add_font("DejaVuSans", "B", bold, uni=True)
-            base_font = "DejaVuSans"
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
         except Exception:
-            base_font = "Arial"
-
-        # Logo opcional
-        logo = os.path.join(app.root_path, "static", "logo_nuevo.png")
-        if os.path.exists(logo):
-            w = 70
-            x = (pdf.w - w) / 2
-            pdf.image(logo, x=x, y=10, w=w)
-        pdf.set_line_width(0.5)
-        pdf.set_draw_color(0, 0, 0)
-        pdf.line(pdf.l_margin, 30, pdf.w - pdf.r_margin, 30)
-        pdf.set_y(40)
-
-        # Título
-        pdf.set_font(base_font, "B", 18)
-        pdf.set_fill_color(0, 102, 204)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(0, 10, "Entrevista de Candidata", ln=True, align="C", fill=True)
-        y = pdf.get_y()
-        pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
-        pdf.ln(10)
-
-        # Entrevista
-        pdf.set_font(base_font, "", 12)
+            pdf.set_font("Arial", "B", 13)
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
         pdf.set_text_color(0, 0, 0)
-        for line in texto_entrevista.split("\n"):
-            pdf.set_x(pdf.l_margin)
+        pdf.ln(2)
+
+        for raw in (texto_entrevista or "").splitlines():
+            line = _collapse_ws(_ascii_if_needed(raw, unicode_ok))
             if ":" in line:
                 q, a = line.split(":", 1)
-                pregunta  = q.strip() + ":"
-                respuesta = a.strip()
+                q = _collapse_ws(q)
+                a = _collapse_ws(a)
 
-                pdf.multi_cell(0, 8, pregunta)
-                pdf.ln(1)
-
-                bullet = "•"
-                try:
-                    pdf.set_font(base_font, "", 16)
-                except:
-                    pdf.set_font(base_font, "", 12)
-                bw = pdf.get_string_width(bullet + " ")
-                pdf.cell(bw, 8, bullet, ln=0)
-
-                pdf.set_font(base_font, "", 12)
-                pdf.set_text_color(0, 102, 204)
-                avail_w = pdf.w - pdf.r_margin - (pdf.l_margin + bw)
-                pdf.multi_cell(avail_w, 8, respuesta)
-                pdf.ln(4)
-
-                pdf.set_text_color(0, 0, 0)
-                pdf.set_font(base_font, "", 12)
+                # Pregunta en negro (bold)
+                safe_multicell(
+                    pdf,
+                    (q + ":").strip(),
+                    base_font,
+                    "B" if has_bold else "",
+                    12,
+                    color=(0, 0, 0),
+                    align="L",
+                    line_space=1
+                )
+                # Respuesta en azul + bullet
+                ans = _wrap_unbreakables(a, 60)
+                ans = (bullet + ans) if ans else ans
+                safe_multicell(
+                    pdf,
+                    ans,
+                    base_font,
+                    "",
+                    12,
+                    color=BRAND,
+                    align="J",
+                    line_space=2
+                )
             else:
-                pdf.multi_cell(0, 8, line)
-                pdf.ln(4)
-        pdf.ln(5)
+                # Línea suelta (negro)
+                safe_multicell(
+                    pdf,
+                    _wrap_unbreakables(line, 60),
+                    base_font,
+                    "",
+                    12,
+                    color=(0, 0, 0),
+                    align="J",
+                    line_space=1.5
+                )
 
-        # Referencias
-        pdf.set_font(base_font, "B", 14)
-        pdf.set_text_color(0, 102, 204)
-        pdf.cell(0, 10, "Referencias", ln=True)
         pdf.ln(3)
 
-        # Laborales
-        pdf.set_font(base_font, "B", 12)
+        # ===== REFERENCIAS =====
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
+        except Exception:
+            pdf.set_font("Arial", "B", 13)
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias", ln=True)
         pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 8, "Referencias Laborales:", ln=True)
-        pdf.set_font(base_font, "", 12)
-        if ref_laborales:
-            pdf.set_text_color(0, 102, 204)
-            pdf.multi_cell(0, 8, ref_laborales)
+        pdf.ln(2)
+
+        # Laborales
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 12)
+        except Exception:
+            pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 7, "Laborales:", ln=True)
+        if ref_laborales.strip():
+            safe_multicell(
+                pdf,
+                _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
+                base_font,
+                "",
+                12,
+                color=BRAND,
+                align="J"
+            )
         else:
-            pdf.cell(0, 8, "No hay referencias laborales.", ln=True)
-        pdf.ln(5)
+            safe_multicell(pdf, "No hay referencias laborales.", base_font, "", 12, color=FAINT, align="L")
 
         # Familiares
-        pdf.set_font(base_font, "B", 12)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 8, "Referencias Familiares:", ln=True)
-        pdf.set_font(base_font, "", 12)
-        if ref_familiares:
-            pdf.set_text_color(0, 102, 204)
-            pdf.multi_cell(0, 8, ref_familiares)
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 12)
+        except Exception:
+            pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 7, "Familiares:", ln=True)
+        if ref_familiares.strip():
+            safe_multicell(
+                pdf,
+                _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
+                base_font,
+                "",
+                12,
+                color=BRAND,
+                align="J"
+            )
         else:
-            pdf.cell(0, 8, "No hay referencias familiares.", ln=True)
-        pdf.ln(5)
+            safe_multicell(pdf, "No hay referencias familiares.", base_font, "", 12, color=FAINT, align="L")
 
-        output    = pdf.output(dest="S")
-        pdf_bytes = output if isinstance(output, (bytes, bytearray)) else output.encode("latin1")
-        buf       = io.BytesIO(pdf_bytes); buf.seek(0)
-        return send_file(buf,
-                         mimetype="application/pdf",
-                         as_attachment=True,
+        # ── Salida ──
+        raw = pdf.output(dest="S")
+        pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
+        buf = io.BytesIO(pdf_bytes); buf.seek(0)
+        return send_file(buf, mimetype="application/pdf", as_attachment=True,
                          download_name=f"entrevista_candidata_{fila_index}.pdf")
+
     except Exception as e:
+        current_app.logger.exception("❌ Error interno generando PDF")
         return f"Error interno generando PDF: {e}", 500
+
+
 
 @app.route("/gestionar_archivos/descargar_uno", methods=["GET"])
 @roles_required('admin', 'secretaria')
@@ -1357,33 +1719,36 @@ def descargar_uno_db():
     if not data:
         return f"No hay archivo para {doc}", 404
 
-    # Detectar mimetype por cabecera
-    b = data[:8] if isinstance(data, (bytes, bytearray)) else b""
-    if b.startswith(b"\x89PNG"):
-        mt = "image/png"
-        ext = "png"
-    elif b.startswith(b"\xFF\xD8\xFF"):
-        mt = "image/jpeg"
-        ext = "jpg"
-    elif b[:4] == b"GIF8":
-        mt = "image/gif"
-        ext = "gif"
-    elif b[:4] == b"%PDF":
-        mt = "application/pdf"
-        ext = "pdf"
+    # Asegura bytes (puede venir como memoryview en algunos backends)
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+    elif not isinstance(data, (bytes, bytearray)):
+        try:
+            data = bytes(data)
+        except Exception:
+            return "Formato de archivo inválido.", 400
+
+    # Detectar mimetype por encabezado
+    head = data[:8]
+    if head.startswith(b"\x89PNG"):
+        mt, ext = "image/png", "png"
+    elif head.startswith(b"\xFF\xD8\xFF"):
+        mt, ext = "image/jpeg", "jpg"
+    elif head[:4] == b"GIF8":
+        mt, ext = "image/gif", "gif"
+    elif head[:4] == b"%PDF":
+        mt, ext = "application/pdf", "pdf"
     else:
-        mt = "application/octet-stream"
-        ext = "bin"
+        mt, ext = "application/octet-stream", "bin"
 
     bio = io.BytesIO(data); bio.seek(0)
-    # No fuerces descarga si quieres previsualizar; aquí lo dejo como adjunto (seguro)
     return send_file(
         bio,
         mimetype=mt,
         as_attachment=True,
-        download_name=f"{doc}.{ext}",
-        max_age=0
+        download_name=f"{doc}.{ext}"
     )
+
 
 
 # -----------------------------------------------------------------------------
@@ -1393,35 +1758,46 @@ def descargar_uno_db():
 @roles_required('admin', 'secretaria')
 def referencias():
     mensaje = None
-    accion = request.args.get('accion', 'buscar')
+    accion = (request.args.get('accion') or 'buscar').strip()
     resultados = []
     candidata = None
 
+    # Buscar por término
     if request.method == 'POST' and 'busqueda' in request.form:
-        termino = request.form['busqueda'].strip()
+        termino = (request.form.get('busqueda') or '').strip()[:128]
         if termino:
             like = f"%{termino}%"
-            filas = Candidata.query.filter(
-                or_(
-                    Candidata.nombre_completo.ilike(like),
-                    Candidata.cedula.ilike(like),
-                    Candidata.numero_telefono.ilike(like)
-                )
-            ).all()
+            try:
+                filas = (Candidata.query.filter(
+                    or_(
+                        Candidata.nombre_completo.ilike(like),
+                        Candidata.cedula.ilike(like),
+                        Candidata.numero_telefono.ilike(like)
+                    )
+                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+            except Exception:
+                current_app.logger.exception("❌ Error buscando candidatas en /referencias")
+                filas = []
+
             resultados = [
-                {'id': c.fila, 'nombre': c.nombre_completo,
-                 'cedula': c.cedula, 'telefono': c.numero_telefono or 'No especificado'}
-                for c in filas
+                {
+                    'id': c.fila,
+                    'nombre': c.nombre_completo,
+                    'cedula': c.cedula,
+                    'telefono': c.numero_telefono or 'No especificado'
+                } for c in filas
             ]
             if not resultados:
                 mensaje = "⚠️ No se encontraron candidatas."
         else:
             mensaje = "⚠️ Ingresa un término de búsqueda."
+
         return render_template('referencias.html',
                                accion='buscar',
                                resultados=resultados,
                                mensaje=mensaje)
 
+    # Ver candidata seleccionada
     candidata_id = request.args.get('candidata', type=int)
     if request.method == 'GET' and candidata_id:
         candidata = Candidata.query.get(candidata_id)
@@ -1436,20 +1812,27 @@ def referencias():
                                candidata=candidata,
                                mensaje=mensaje)
 
+    # Guardar referencias
     if request.method == 'POST' and 'candidata_id' in request.form:
         cid = request.form.get('candidata_id', type=int)
         candidata = Candidata.query.get(cid)
         if not candidata:
             mensaje = "⚠️ Candidata no existe."
         else:
-            candidata.referencias_laboral    = request.form.get('referencias_laboral', '').strip()
-            candidata.referencias_familiares = request.form.get('referencias_familiares', '').strip()
+            # Limitar tamaño para evitar payloads enormes
+            cand_ref_lab = (request.form.get('referencias_laboral') or '').strip()[:5000]
+            cand_ref_fam = (request.form.get('referencias_familiares') or '').strip()[:5000]
+
+            candidata.referencias_laboral    = cand_ref_lab
+            candidata.referencias_familiares = cand_ref_fam
             try:
                 db.session.commit()
                 mensaje = "✅ Referencias actualizadas."
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
-                mensaje = f"❌ Error al guardar: {e}"
+                current_app.logger.exception("❌ Error al guardar referencias")
+                mensaje = "❌ Error al guardar."
+
         return render_template('referencias.html',
                                accion='ver',
                                candidata=candidata,
@@ -1460,26 +1843,18 @@ def referencias():
                            resultados=[],
                            mensaje=mensaje)
 
+
 # -----------------------------------------------------------------------------
 # DASHBOARD / AUTOMATIONS
 # -----------------------------------------------------------------------------
-# app.py (o donde tengas tus rutas principales)
-from datetime import date, datetime
-from sqlalchemy import func, cast, Date
-from sqlalchemy.exc import OperationalError
-from flask import request, render_template, flash
-from decorators import roles_required
-from models import Candidata
-from config_app import db
-
 @app.route('/dashboard_procesos', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def dashboard_procesos():
-    estado_filtro = request.args.get('estado', '').strip()
-    desde_str     = request.args.get('desde', '').strip()
-    hasta_str     = request.args.get('hasta', '').strip()
-    page          = request.args.get('page', 1, type=int)
-    per_page      = request.args.get('per_page', 20, type=int)
+    estado_filtro = (request.args.get('estado') or '').strip()[:40]
+    desde_str     = (request.args.get('desde') or '').strip()[:10]
+    hasta_str     = (request.args.get('hasta') or '').strip()[:10]
+    page          = max(1, request.args.get('page', 1, type=int))
+    per_page      = min(100, max(1, request.args.get('per_page', 20, type=int)))
 
     # Parseo de fechas
     desde = None
@@ -1541,8 +1916,8 @@ def dashboard_procesos():
             paginado = db.paginate(q, page=page, per_page=per_page, error_out=False)
 
     except OperationalError:
-        flash("⚠️ No se pudo conectar a la base de datos (conexión remota). Reintenta en unos segundos.", "warning")
-        # Paginado vacío para que el template no falle
+        flash("⚠️ No se pudo conectar a la base de datos. Reintenta en unos segundos.", "warning")
+
         class _EmptyPagination:
             def __init__(self):
                 self.items = []
@@ -1554,6 +1929,21 @@ def dashboard_procesos():
             def has_prev(self): return False
             def has_next(self): return False
             def iter_pages(self, left_edge=1, right_edge=1, left_current=2, right_current=2):
+                return iter([])
+
+        paginado = _EmptyPagination()
+    except Exception:
+        current_app.logger.exception("❌ Error construyendo dashboard")
+        class _EmptyPagination:
+            def __init__(self):
+                self.items = []
+                self.total = 0
+                self.pages = 0
+                self.page = page
+                self.prev_num = None
+            def has_prev(self): return False
+            def has_next(self): return False
+            def iter_pages(self, *args, **kwargs):
                 return iter([])
         paginado = _EmptyPagination()
 
@@ -1571,23 +1961,34 @@ def dashboard_procesos():
 
 
 @app.route('/auto_actualizar_estados', methods=['GET'])
+@roles_required('admin', 'secretaria')
 def auto_actualizar_estados():
-    pendientes = Candidata.query.filter_by(estado='inscrita_incompleta').all()
-    actualizadas = []
+    """
+    Revisa candidatas en 'inscrita_incompleta' y promueve a 'lista_para_trabajar'
+    si ya tienen todos los documentos/datos requeridos.
+    """
+    try:
+        pendientes = Candidata.query.filter_by(estado='inscrita_incompleta').all()
+        actualizadas = []
 
-    for c in pendientes:
-        if (c.codigo and c.entrevista and c.referencias_laboral and c.referencias_familiares
-            and c.perfil and c.cedula1 and c.cedula2 and c.depuracion):
-            c.estado = 'lista_para_trabajar'
-            c.fecha_cambio_estado = datetime.utcnow()
-            c.usuario_cambio_estado = 'sistema'
-            actualizadas.append(c.fila)
+        for c in pendientes:
+            if (c.codigo and c.entrevista and c.referencias_laboral and c.referencias_familiares
+                and c.perfil and c.cedula1 and c.cedula2 and c.depuracion):
+                c.estado = 'lista_para_trabajar'
+                c.fecha_cambio_estado = datetime.utcnow()
+                c.usuario_cambio_estado = 'sistema'
+                actualizadas.append(c.fila)
 
-    if actualizadas:
-        db.session.commit()
+        if actualizadas:
+            db.session.commit()
 
-    return jsonify({'conteo_actualizadas': len(actualizadas),
-                    'filas_actualizadas': actualizadas})
+        return jsonify({'conteo_actualizadas': len(actualizadas),
+                        'filas_actualizadas': actualizadas})
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("❌ Error auto_actualizando estados")
+        return jsonify({'error': 'No se pudo actualizar estados automáticamente'}), 500
+
 
 # -----------------------------------------------------------------------------
 # LLAMADAS CANDIDATAS
@@ -1595,13 +1996,14 @@ def auto_actualizar_estados():
 @app.route('/candidatas/llamadas')
 @roles_required('admin','secretaria')
 def listado_llamadas_candidatas():
-    q               = request.args.get('q', '', type=str)
-    period          = request.args.get('period', 'all')
+    q               = (request.args.get('q') or '').strip()[:128]
+    period          = (request.args.get('period') or 'all').strip()[:16]
     start_date_str  = request.args.get('start_date', None)
-    page            = request.args.get('page', 1, type=int)
+    page            = max(1, request.args.get('page', 1, type=int))
 
     start_dt, end_dt = get_date_bounds(period, start_date_str)
 
+    # Subconsulta de llamadas por candidata
     calls_subq = (
         db.session.query(
             LlamadaCandidata.candidata_id.label('cid'),
@@ -1636,15 +2038,20 @@ def listado_llamadas_candidatas():
             )
         )
 
-    def section(estado):
+    def section(estado: str):
         qsec = base_q.filter(Candidata.estado == estado)
         if start_dt and end_dt:
             qsec = qsec.filter(
-                cast(Candidata.marca_temporal, db.Date) >= start_dt,
-                cast(Candidata.marca_temporal, db.Date) <= end_dt
+                cast(Candidata.marca_temporal, Date) >= start_dt,
+                cast(Candidata.marca_temporal, Date) <= end_dt
             )
-        return qsec.order_by(calls_subq.c.last_call.asc().nullsfirst())\
-                   .paginate(page=page, per_page=10, error_out=False)
+        # Paginación segura (10 por sección)
+        try:
+            return qsec.order_by(calls_subq.c.last_call.asc().nullsfirst())\
+                       .paginate(page=page, per_page=10, error_out=False)
+        except AttributeError:
+            return db.paginate(qsec.order_by(calls_subq.c.last_call.asc().nullsfirst()),
+                               page=page, per_page=10, error_out=False)
 
     en_proceso     = section('en_proceso')
     en_inscripcion = section('proceso_inscripcion')
@@ -1658,6 +2065,7 @@ def listado_llamadas_candidatas():
                            en_inscripcion=en_inscripcion,
                            lista_trabajar=lista_trabajar)
 
+
 @app.route('/candidatas/<int:fila>/llamar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def registrar_llamada_candidata(fila):
@@ -1666,19 +2074,25 @@ def registrar_llamada_candidata(fila):
 
     if form.validate_on_submit():
         minutos  = form.duracion_minutos.data
-        segundos = minutos * 60 if minutos is not None else None
+        segundos = (minutos * 60) if (minutos is not None) else None
 
         llamada = LlamadaCandidata(
             candidata_id      = candidata.fila,
             fecha_llamada     = func.now(),
-            agente            = session.get('usuario', 'desconocido'),
-            resultado         = form.resultado.data,
+            agente            = session.get('usuario', 'desconocido')[:64],
+            resultado         = (form.resultado.data or '').strip()[:200],
             duracion_segundos = segundos,
-            notas             = form.notas.data,
+            notas             = (form.notas.data or '').strip()[:2000],
             created_at        = datetime.utcnow()
         )
         db.session.add(llamada)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("❌ Error guardando llamada de candidata")
+            flash('❌ Error al registrar la llamada.', 'danger')
+            return redirect(url_for('listado_llamadas_candidatas'))
 
         flash(f'Llamada registrada para {candidata.nombre_completo}.', 'success')
         return redirect(url_for('listado_llamadas_candidatas'))
@@ -1687,14 +2101,15 @@ def registrar_llamada_candidata(fila):
                            form=form,
                            candidata=candidata)
 
+
 @app.route('/candidatas/llamadas/reporte')
 @roles_required('admin')
 def reporte_llamadas_candidatas():
-    period         = request.args.get('period', 'week')
+    period         = (request.args.get('period') or 'week').strip()[:16]
     start_date_str = request.args.get('start_date', None)
     start_dt       = get_start_date(period, start_date_str)
     hoy            = date.today()
-    page           = request.args.get('page', 1, type=int)
+    page           = max(1, request.args.get('page', 1, type=int))
 
     stats_subq = (
         db.session.query(
@@ -1719,17 +2134,21 @@ def reporte_llamadas_candidatas():
         .outerjoin(stats_subq, Candidata.fila == stats_subq.c.cid)
     )
 
-    def paginate_estado(estado):
+    def paginate_estado(estado: str):
         qy = base_q.filter(Candidata.estado == estado)
         if start_dt:
             qy = qy.filter(
                 or_(
                     stats_subq.c.last_call == None,
-                    cast(stats_subq.c.last_call, db.Date) < start_dt
+                    cast(stats_subq.c.last_call, Date) < start_dt
                 )
             )
-        return qy.order_by(cast(stats_subq.c.last_call, db.Date).desc().nullsfirst())\
-                 .paginate(page=page, per_page=10, error_out=False)
+        try:
+            return qy.order_by(cast(stats_subq.c.last_call, Date).desc().nullsfirst())\
+                     .paginate(page=page, per_page=10, error_out=False)
+        except AttributeError:
+            return db.paginate(qy.order_by(cast(stats_subq.c.last_call, Date).desc().nullsfirst()),
+                               page=page, per_page=10, error_out=False)
 
     estancadas_en_proceso  = paginate_estado('en_proceso')
     estancadas_inscripcion = paginate_estado('proceso_inscripcion')
@@ -1797,18 +2216,13 @@ def reporte_llamadas_candidatas():
                            calls_by_week=calls_by_week,
                            calls_by_month=calls_by_month)
 
-# ─────────────────────────────────────────────────────────────
-# SECRETARÍAS – mismas plantillas con GUION BAJO (sin textos fijos Modalidad:/Hogar:)
+
 # ─────────────────────────────────────────────────────────────
 from datetime import date, datetime
 from flask import request, render_template, url_for, jsonify, flash, redirect
 from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import joinedload, load_only
-
-# from app import app, db
-# from models import Solicitud, Reemplazo
-# from admin.forms import AdminSolicitudForm
-# from decorators import roles_required
+from urllib.parse import urlencode  # ← lo usas más abajo
 
 # ── Helpers (una sola vez) ───────────────────────────────────
 def _as_list(val):
@@ -1832,8 +2246,9 @@ def _norm_area(s):
 def _s(v):
     return "" if v is None else str(v).strip()
 
+
 # ─────────────────────────────────────────────────────────────
-# PUBLICAR HOY (listado para copiar+marcar) – usa template: secretarias_solicitudes_copiar.html
+# PUBLICAR HOY (listado para copiar+marcar) – template: secretarias_solicitudes_copiar.html
 # ─────────────────────────────────────────────────────────────
 @app.route('/secretarias/solicitudes/copiar', methods=['GET'])
 @roles_required('admin', 'secretaria')
@@ -1855,18 +2270,27 @@ def secretarias_copiar_solicitudes():
         .order_by(Solicitud.fecha_solicitud.desc())
     )
 
-    raw_sols = base_q.all()
+    try:
+        raw_sols = base_q.limit(500).all()
+    except Exception:
+        current_app.logger.exception("❌ Error listando solicitudes copiables")
+        raw_sols = []
 
     # Mapear funciones code->label (igual que admin)
-    form = AdminSolicitudForm()
-    FUNCIONES_CHOICES = dict(form.funciones.choices)
+    FUNCIONES_CHOICES = {}
+    try:
+        form = AdminSolicitudForm() if AdminSolicitudForm else None
+        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
+            FUNCIONES_CHOICES = dict(form.funciones.choices)
+    except Exception:
+        FUNCIONES_CHOICES = {}
 
     solicitudes = []
     for s in raw_sols:
         # Funciones (labels + otro)
         funcs = []
         try:
-            seleccion = set(_as_list(s.funciones))
+            seleccion = set(_as_list(getattr(s, 'funciones', None)))
         except Exception:
             seleccion = set()
         for code in seleccion:
@@ -1875,10 +2299,9 @@ def secretarias_copiar_solicitudes():
             label = FUNCIONES_CHOICES.get(code)
             if label:
                 funcs.append(label)
-        if getattr(s, 'funciones_otro', None):
-            custom = str(s.funciones_otro).strip()
-            if custom:
-                funcs.append(custom)
+        custom_otro = (getattr(s, 'funciones_otro', None) or '').strip()
+        if custom_otro:
+            funcs.append(custom_otro)
 
         # Adultos / Niños / Mascota
         adultos = s.adultos or ""
@@ -1896,9 +2319,10 @@ def secretarias_copiar_solicitudes():
             or getattr(s, 'modalidad', None)
             or getattr(s, 'tipo_modalidad', None)
             or ''
-        ).strip()
+        )
+        modalidad_val = modalidad_val.strip()
 
-        # Hogar (armar descripción; sin prefijo)
+        # Hogar (solo descripción, sin prefijo)
         hogar_partes = []
         if getattr(s, 'habitaciones', None):
             hogar_partes.append(f"{s.habitaciones} habitaciones")
@@ -1907,6 +2331,7 @@ def secretarias_copiar_solicitudes():
             hogar_partes.append(f"{banos_txt} baños")
         if bool(getattr(s, 'dos_pisos', False)):
             hogar_partes.append("2 pisos")
+
         areas = []
         if getattr(s, 'areas_comunes', None):
             try:
@@ -1921,6 +2346,7 @@ def secretarias_copiar_solicitudes():
             areas.append(_norm_area(area_otro))
         if areas:
             hogar_partes.append(", ".join(areas))
+
         tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
         if tipo_lugar and hogar_partes:
             hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
@@ -1948,7 +2374,7 @@ def secretarias_copiar_solicitudes():
             "",
         ]
         if modalidad_val:
-            lines += [modalidad_val, ""]   # ← solo el valor, sin "Modalidad:"
+            lines += [modalidad_val, ""]
 
         lines += [
             f"Edad: {edad_req}",
@@ -1960,7 +2386,7 @@ def secretarias_copiar_solicitudes():
             f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
         ]
         if hogar_val:
-            lines += ["", hogar_val]       # ← solo la descripción, sin "Hogar:"
+            lines += ["", hogar_val]
 
         lines += ["", f"Adultos: {adultos}"]
         if ninos_line:
@@ -1971,15 +2397,15 @@ def secretarias_copiar_solicitudes():
         if nota_line:
             lines += ["", nota_line]
 
-        order_text = "\n".join(lines).strip()
+        order_text = "\n".join(lines).strip()[:4000]  # seguridad
 
         solicitudes.append({
             "id": s.id,
             "codigo_solicitud": _s(s.codigo_solicitud),
             "ciudad_sector": _s(s.ciudad_sector),
-            "modalidad": modalidad_val,          # se muestra en la tabla
+            "modalidad": modalidad_val,
             "copiada_hoy": False,
-            "order_text": order_text,            # sin etiquetas fijas
+            "order_text": order_text,
         })
 
     return render_template(
@@ -1989,6 +2415,7 @@ def secretarias_copiar_solicitudes():
         endpoint='secretarias_copiar_solicitudes'
     )
 
+
 # ─────────────────────────────────────────────────────────────
 # COPIAR Y MARCAR (POST)
 # ─────────────────────────────────────────────────────────────
@@ -1996,8 +2423,16 @@ def secretarias_copiar_solicitudes():
 @roles_required('admin', 'secretaria')
 def secretarias_copiar_solicitud(id):
     s = Solicitud.query.get_or_404(id)
-    s.last_copiado_at = func.now()
-    db.session.commit()
+    try:
+        s.last_copiado_at = func.now()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("❌ Error marcando solicitud copiada")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"ok": False, "error": "No se pudo marcar como copiada"}), 500
+        flash('❌ No se pudo marcar la solicitud como copiada.', 'danger')
+        return redirect(url_for('secretarias_copiar_solicitudes'))
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({"ok": True, "id": id, "codigo": _s(s.codigo_solicitud)}), 200
@@ -2005,19 +2440,20 @@ def secretarias_copiar_solicitud(id):
     flash(f'Solicitud { _s(s.codigo_solicitud) } copiada. Ya no se mostrará hasta mañana.', 'success')
     return redirect(url_for('secretarias_copiar_solicitudes'))
 
+
 # ─────────────────────────────────────────────────────────────
-# BUSCAR (paginado + filtros) – usa template: secretarias_solicitudes_buscar.html
+# BUSCAR (paginado + filtros) – template: secretarias_solicitudes_buscar.html
 # ─────────────────────────────────────────────────────────────
 @app.route('/secretarias/solicitudes/buscar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def secretarias_buscar_solicitudes():
-    q           = (request.args.get('q') or '').strip()
-    estado      = (request.args.get('estado') or '').strip()
-    desde_str   = (request.args.get('desde') or '').strip()
-    hasta_str   = (request.args.get('hasta') or '').strip()
-    modalidad   = (request.args.get('modalidad') or '').strip()
-    mascota     = (request.args.get('mascota') or '').strip()      # '', 'si', 'no'
-    con_ninos   = (request.args.get('con_ninos') or '').strip()    # '', 'si', 'no'
+    q           = (request.args.get('q') or '').strip()[:128]
+    estado      = (request.args.get('estado') or '').strip()[:20]
+    desde_str   = (request.args.get('desde') or '').strip()[:10]
+    hasta_str   = (request.args.get('hasta') or '').strip()[:10]
+    modalidad   = (request.args.get('modalidad') or '').strip()[:60]
+    mascota     = (request.args.get('mascota') or '').strip()[:3]      # '', 'si', 'no'
+    con_ninos   = (request.args.get('con_ninos') or '').strip()[:3]    # '', 'si', 'no'
     page        = max(1, request.args.get('page', type=int, default=1))
     per_page    = min(100, max(10, request.args.get('per_page', type=int, default=20)))
 
@@ -2112,8 +2548,13 @@ def secretarias_buscar_solicitudes():
         paginado = db.paginate(qy, page=page, per_page=per_page, error_out=False)
 
     # Mapear funciones code->label (como admin)
-    form = AdminSolicitudForm()
-    FUNCIONES_CHOICES = dict(form.funciones.choices)
+    FUNCIONES_CHOICES = {}
+    try:
+        form = AdminSolicitudForm() if AdminSolicitudForm else None
+        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
+            FUNCIONES_CHOICES = dict(form.funciones.choices)
+    except Exception:
+        FUNCIONES_CHOICES = {}
 
     items = []
     for s in paginado.items:
@@ -2121,7 +2562,7 @@ def secretarias_buscar_solicitudes():
 
         funcs = []
         try:
-            seleccion = set(_as_list(s.funciones))
+            seleccion = set(_as_list(getattr(s, 'funciones', None)))
         except Exception:
             seleccion = set()
         for code in seleccion:
@@ -2130,10 +2571,9 @@ def secretarias_buscar_solicitudes():
             label = FUNCIONES_CHOICES.get(code)
             if label:
                 funcs.append(label)
-        if getattr(s, 'funciones_otro', None):
-            custom = str(s.funciones_otro).strip()
-            if custom:
-                funcs.append(custom)
+        custom_otro = (getattr(s, 'funciones_otro', None) or '').strip()
+        if custom_otro:
+            funcs.append(custom_otro)
 
         adultos = s.adultos or ""
         ninos_line = ""
@@ -2193,7 +2633,7 @@ def secretarias_buscar_solicitudes():
             "",
         ]
         if modalidad_val:
-            lines += [modalidad_val, ""]   # ← solo valor, sin "Modalidad:"
+            lines += [modalidad_val, ""]
 
         lines += [
             f"Edad: {edad_req}",
@@ -2205,7 +2645,7 @@ def secretarias_buscar_solicitudes():
             f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
         ]
         if hogar_val:
-            lines += ["", hogar_val]       # ← solo descripción, sin "Hogar:"
+            lines += ["", hogar_val]
 
         lines += ["", f"Adultos: {adultos}"]
         if ninos_line:
@@ -2216,17 +2656,17 @@ def secretarias_buscar_solicitudes():
         if nota_line:
             lines += ["", nota_line]
 
-        order_text = "\n".join(lines).strip()
+        order_text = "\n".join(lines).strip()[:4000]
 
         items.append({
             "id": s.id,
             "codigo_solicitud": _s(s.codigo_solicitud),
             "ciudad_sector": _s(s.ciudad_sector),
-            "modalidad": modalidad_val,   # se muestra en la tabla
+            "modalidad": modalidad_val,
             "estado": _s(s.estado),
             "fecha_solicitud": s.fecha_solicitud.strftime("%Y-%m-%d %H:%M") if s.fecha_solicitud else "",
             "copiada_ciclo": (s.last_copiado_at is not None),
-            "order_text": order_text,     # sin etiquetas fijas
+            "order_text": order_text,
         })
 
     current_params = request.args.to_dict(flat=True)
@@ -2260,14 +2700,12 @@ def secretarias_buscar_solicitudes():
         next_url=next_url
     )
 
+
 # --- Registro público de candidatas -----------------------------------------
-from datetime import datetime
-from flask import render_template, request, redirect, url_for, flash
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from config_app import db, csrf, normalize_cedula
 from models import Candidata
-
 
 def _safe_dispose_pool():
     """Libera conexiones del pool por si hubo un corte SSL."""
@@ -2276,7 +2714,6 @@ def _safe_dispose_pool():
         engine.dispose()
     except Exception:
         pass
-
 
 @app.route('/registro', methods=['GET', 'POST'])
 @app.route('/registro_publico', methods=['GET', 'POST'])
@@ -2289,21 +2726,21 @@ def registro_publico():
     if request.method == 'GET':
         return render_template('registro_publico.html')
 
-    # --- POST: recoger datos del formulario ---
-    nombre       = (request.form.get('nombre_completo') or '').strip()
-    edad_raw     = (request.form.get('edad') or '').strip()
-    telefono     = (request.form.get('numero_telefono') or '').strip()
-    direccion    = (request.form.get('direccion_completa') or '').strip()
-    modalidad    = (request.form.get('modalidad_trabajo_preferida') or '').strip()
-    rutas        = (request.form.get('rutas_cercanas') or '').strip()
-    empleo_prev  = (request.form.get('empleo_anterior') or '').strip()
-    anos_exp     = (request.form.get('anos_experiencia') or '').strip()
+    # --- POST: recoger datos del formulario (limitando tamaños) ---
+    nombre       = (request.form.get('nombre_completo') or '').strip()[:150]
+    edad_raw     = (request.form.get('edad') or '').strip()[:10]
+    telefono     = (request.form.get('numero_telefono') or '').strip()[:30]
+    direccion    = (request.form.get('direccion_completa') or '').strip()[:250]
+    modalidad    = (request.form.get('modalidad_trabajo_preferida') or '').strip()[:100]
+    rutas        = (request.form.get('rutas_cercanas') or '').strip()[:150]
+    empleo_prev  = (request.form.get('empleo_anterior') or '').strip()[:150]
+    anos_exp     = (request.form.get('anos_experiencia') or '').strip()[:50]
     areas_list   = request.form.getlist('areas_experiencia')  # checkboxes
-    planchar_raw = (request.form.get('sabe_planchar') or '').strip().lower()
-    ref_lab      = (request.form.get('contactos_referencias_laborales') or '').strip()
-    ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()
-    acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()
-    cedula_raw   = (request.form.get('cedula') or '').strip()
+    planchar_raw = (request.form.get('sabe_planchar') or '').strip().lower()[:2]
+    ref_lab      = (request.form.get('contactos_referencias_laborales') or '').strip()[:500]
+    ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
+    acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
+    cedula_raw   = (request.form.get('cedula') or '').strip()[:20]
 
     # --- Validaciones mínimas y mensajes claros ---
     faltantes = []
@@ -2323,13 +2760,13 @@ def registro_publico():
         if not valor:
             faltantes.append(campo)
 
-    if not planchar_raw in ('si', 'no'):
+    if planchar_raw not in ('si', 'no'):
         faltantes.append("Sabe planchar (sí/no)")
 
-    if not acepta_raw in ('1', '0'):
+    if acepta_raw not in ('1', '0'):
         faltantes.append("Acepta % de sueldo (sí/no)")
 
-    # Edad razonable (no forzamos entero en DB, pero validamos)
+    # Edad razonable
     try:
         edad_num = int(''.join(ch for ch in edad_raw if ch.isdigit()))
         if edad_num < 16 or edad_num > 75:
@@ -2348,15 +2785,14 @@ def registro_publico():
         return render_template('registro_publico.html'), 400
 
     # Convertir/normalizar algunos valores
-    areas_str     = ', '.join(areas_list) if areas_list else ''
-    sabe_planchar = True if planchar_raw == 'si' else False
-    acepta_pct    = True if acepta_raw == '1' else False
+    areas_str     = ', '.join([s.strip() for s in areas_list if s.strip()]) if areas_list else ''
+    sabe_planchar = (planchar_raw == 'si')
+    acepta_pct    = (acepta_raw == '1')
 
     # --- Comprobación de duplicado por cédula ---
     try:
         dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
     except OperationalError:
-        # Posible "SSL bad record mac"; limpiamos pool y reintentamos una vez
         _safe_dispose_pool()
         db.session.rollback()
         dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
@@ -2367,38 +2803,37 @@ def registro_publico():
 
     # --- Crear objeto y guardar ---
     nueva = Candidata(
-        marca_temporal            = datetime.utcnow(),
-        nombre_completo           = nombre,
-        edad                      = str(edad_num),
-        numero_telefono           = telefono,
-        direccion_completa        = direccion,
-        modalidad_trabajo_preferida = modalidad,
-        rutas_cercanas            = rutas,
-        empleo_anterior           = empleo_prev,
-        anos_experiencia          = anos_exp,
-        areas_experiencia         = areas_str,
-        sabe_planchar             = sabe_planchar,
+        marca_temporal               = datetime.utcnow(),
+        nombre_completo              = nombre,
+        edad                         = str(edad_num),
+        numero_telefono              = telefono,
+        direccion_completa           = direccion,
+        modalidad_trabajo_preferida  = modalidad,
+        rutas_cercanas               = rutas,
+        empleo_anterior              = empleo_prev,
+        anos_experiencia             = anos_exp,
+        areas_experiencia            = areas_str,
+        sabe_planchar                = sabe_planchar,
         contactos_referencias_laborales = ref_lab,
         referencias_familiares_detalle  = ref_fam,
-        acepta_porcentaje_sueldo  = acepta_pct,
-        cedula                    = cedula_norm,
-        medio_inscripcion         = "Web",
-        estado                    = "en_proceso",
-        fecha_cambio_estado       = datetime.utcnow(),
-        usuario_cambio_estado     = "registro_publico",
+        acepta_porcentaje_sueldo     = acepta_pct,
+        cedula                       = cedula_norm,
+        medio_inscripcion            = "Web",
+        estado                       = "en_proceso",
+        fecha_cambio_estado          = datetime.utcnow(),
+        usuario_cambio_estado        = "registro_publico",
     )
 
     try:
         db.session.add(nueva)
         db.session.commit()
-    except OperationalError as e:
-        # reconectar y reintentar una vez
+    except OperationalError:
         _safe_dispose_pool()
         db.session.rollback()
         try:
             db.session.add(nueva)
             db.session.commit()
-        except Exception as e2:
+        except Exception:
             db.session.rollback()
             flash("❌ Problema momentáneo con la conexión. Intenta de nuevo en unos segundos.", "danger")
             return render_template('registro_publico.html'), 503
@@ -2409,7 +2844,7 @@ def registro_publico():
 
     flash("✅ ¡Registro enviado! Te contactaremos por WhatsApp en breve.", "success")
     return redirect(url_for('registro_publico'))
-# --- Fin registro público ----------------------------------------------------
+
 
 # ==== FINALIZAR PROCESO + PERFIL (con vuelta SIEMPRE al BUSCADOR) ====
 from flask import (
@@ -2422,11 +2857,6 @@ from sqlalchemy.orm import load_only
 from datetime import datetime
 from io import BytesIO
 import json
-
-# from config_app import db
-# from decorators import roles_required
-# from models import Candidata
-
 
 def _cfg_grupos_empleo():
     default = [
@@ -2472,25 +2902,29 @@ def _save_grupos_empleo_safe(candidata, grupos_list):
 @app.route('/finalizar_proceso/buscar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def finalizar_proceso_buscar():
-    q = (request.args.get('q') or '').strip()
+    q = (request.args.get('q') or '').strip()[:128]
     resultados = []
     if q:
         like = f"%{q}%"
-        resultados = (
-            Candidata.query
-            .options(load_only(
-                Candidata.fila, Candidata.nombre_completo, Candidata.cedula,
-                Candidata.estado, Candidata.codigo
-            ))
-            .filter(or_(
-                Candidata.nombre_completo.ilike(like),
-                Candidata.cedula.ilike(like),
-                Candidata.codigo.ilike(like),
-            ))
-            .order_by(Candidata.nombre_completo.asc())
-            .limit(300)
-            .all()
-        )
+        try:
+            resultados = (
+                Candidata.query
+                .options(load_only(
+                    Candidata.fila, Candidata.nombre_completo, Candidata.cedula,
+                    Candidata.estado, Candidata.codigo
+                ))
+                .filter(or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.codigo.ilike(like),
+                ))
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(300)
+                .all()
+            )
+        except Exception:
+            current_app.logger.exception("❌ Error buscando en finalizar_proceso_buscar")
+            resultados = []
     return render_template('finalizar_proceso_buscar.html', q=q, resultados=resultados)
 
 
@@ -2574,7 +3008,6 @@ def finalizar_proceso():
     try:
         db.session.commit()
         flash("✅ Proceso finalizado y datos guardados correctamente.", "success")
-        # Al terminar, te llevo al PERFIL mejorado (con botón 'Volver a buscar')
         return redirect(url_for('candidata_ver_perfil', fila=candidata.fila))
     except SQLAlchemyError as e:
         db.session.rollback()
@@ -2583,7 +3016,6 @@ def finalizar_proceso():
 
 
 # ---------- PERFIL (HTML) ----------
-
 @app.route('/candidata/perfil', methods=['GET'], endpoint='candidata_ver_perfil')
 @roles_required('admin', 'secretaria')
 def ver_perfil():
@@ -2656,10 +3088,7 @@ def perfil_candidata():
     if not img_bytes:
         abort(404, description="La candidata no tiene foto almacenada.")
 
-    bio = BytesIO(img_bytes)
-    bio.seek(0)
-    # No forzamos PNG; el navegador lo abre igual, pero dejamos mimetype 'image/jpeg' por defecto
-    # Si sabes el formato, cámbialo. Si no, usa 'application/octet-stream'.
+    bio = BytesIO(img_bytes); bio.seek(0)
     return send_file(
         bio,
         mimetype='image/jpeg',
@@ -2668,20 +3097,10 @@ def perfil_candidata():
         max_age=0
     )
 
+
 # ─────────────────────────────────────────────────────────────
 # SECRETARÍAS – TEST DE COMPATIBILIDAD PARA CANDIDATA
-# Buscar candidata y completar test (selección múltiple).
-# Guarda en columnas dedicadas de Candidata + JSONB con versión/fecha.
-# Soporta nombres alternos de columnas (backwards/forwards compatible).
 # ─────────────────────────────────────────────────────────────
-from datetime import datetime
-from flask import request, render_template, redirect, url_for, flash
-from sqlalchemy import or_
-
-from config_app import db
-from models import Candidata
-from decorators import roles_required
-
 COMPAT_TEST_CANDIDATA_VERSION = "v1.0"
 
 # Catálogos (alineados con models.py)
@@ -2829,7 +3248,7 @@ def compat_candidata():
         dias       = _filter_allowed(_getlist_clean('disponibilidad_dias'),     {k for k, _ in DIAS_SEMANA})
         horarios   = _filter_allowed(_getlist_clean('disponibilidad_horarios'), {k for k, _ in HORARIOS})
 
-        notas = (request.form.get('nota') or '').strip()
+        notas = (request.form.get('nota') or '').strip()[:2000]
 
         # Validaciones mínimas
         err = []
@@ -2857,7 +3276,6 @@ def compat_candidata():
 
         # Persistir en columnas dedicadas (soporta alias alternos)
         try:
-            # enums/valores únicos
             if hasattr(c, 'compat_ritmo_preferido'):   c.compat_ritmo_preferido = ritmo
             if hasattr(c, 'compat_estilo_trabajo'):    c.compat_estilo_trabajo = estilo
             if hasattr(c, 'compat_comunicacion'):      c.compat_comunicacion = comun
@@ -2865,13 +3283,11 @@ def compat_candidata():
             if hasattr(c, 'compat_experiencia_nivel'): c.compat_experiencia_nivel = exp_niv
             if hasattr(c, 'compat_puntualidad_1a5'):   c.compat_puntualidad_1a5 = puntual
 
-            # mascotas: enum 'si'|'no' o booleano compat_mascotas_ok
             if hasattr(c, 'compat_mascotas'):
                 c.compat_mascotas = mascotas
             if hasattr(c, 'compat_mascotas_ok'):
                 c.compat_mascotas_ok = (mascotas == 'si')
 
-            # listas
             if hasattr(c, 'compat_habilidades_fuertes'):
                 c.compat_habilidades_fuertes = fortalezas
             elif hasattr(c, 'compat_fortalezas'):
@@ -2886,10 +3302,8 @@ def compat_candidata():
             if hasattr(c, 'compat_disponibilidad_dias'):     c.compat_disponibilidad_dias = dias
             if hasattr(c, 'compat_disponibilidad_horarios'): c.compat_disponibilidad_horarios = horarios
 
-            # notas/observaciones
             if hasattr(c, 'compat_observaciones'):           c.compat_observaciones = notas
 
-            # JSONB compacto (histórico/portátil)
             payload = {
                 "version": COMPAT_TEST_CANDIDATA_VERSION,
                 "timestamp": datetime.utcnow().isoformat(),
@@ -2914,22 +3328,20 @@ def compat_candidata():
             db.session.commit()
             flash("✅ Test de compatibilidad guardado correctamente.", "success")
 
-            # Redirección: respeta ?next=home para ir al Home; sino vuelve al buscador del test
             next_url = request.values.get('next')
             if next_url == 'home':
                 return redirect(url_for('home'))
-            return redirect(url_for('compat_candidata'))  # ← buscador (sin fila)
+            return redirect(url_for('compat_candidata'))
 
         except Exception as e:
             db.session.rollback()
-            flash(f"❌ No se pudo guardar: {e}", "danger")
+            current_app.logger.exception("❌ Error guardando test de compatibilidad")
+            flash("❌ No se pudo guardar.", "danger")
             return redirect(url_for('compat_candidata', fila=fila))
 
     # ── 2) FORMULARIO (GET con fila) ──────────────────────────
     if request.method == 'GET' and fila:
         c = Candidata.query.get_or_404(fila)
-
-        # Precarga
         data = {
             "ritmo":                   getattr(c, 'compat_ritmo_preferido', None),
             "estilo":                  getattr(c, 'compat_estilo_trabajo', None),
@@ -2950,31 +3362,33 @@ def compat_candidata():
                                         if hasattr(c, 'compat_mascotas_ok') else None),
             "nota":                    getattr(c, 'compat_observaciones', '') or '',
         }
-
         return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
 
     # ── 3) BUSCADOR (GET/POST sin fila) ───────────────────────
-    # Soporta GET ?q= y POST accion=buscar
-    q = (request.values.get('q') or '').strip()
+    q = (request.values.get('q') or '').strip()[:128]
     resultados = []
     mensaje = None
 
     if request.method == 'POST' and request.form.get('accion') == 'buscar':
-        q = (request.form.get('q') or '').strip()
+        q = (request.form.get('q') or '').strip()[:128]
 
     if q:
         like = f"%{q}%"
-        resultados = (
-            Candidata.query
-            .filter(or_(
-                Candidata.nombre_completo.ilike(like),
-                Candidata.cedula.ilike(like),
-                Candidata.codigo.ilike(like),
-            ))
-            .order_by(Candidata.nombre_completo.asc())
-            .limit(200)
-            .all()
-        )
+        try:
+            resultados = (
+                Candidata.query
+                .filter(or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.codigo.ilike(like),
+                ))
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(200)
+                .all()
+            )
+        except Exception:
+            current_app.logger.exception("❌ Error buscando candidatas en compat_candidata")
+            resultados = []
         if not resultados:
             mensaje = "⚠️ No se encontraron coincidencias."
 
@@ -2982,7 +3396,6 @@ def compat_candidata():
                            resultados=resultados,
                            mensaje=mensaje,
                            q=q)
-
 
 
 # -----------------------------------------------------------------------------

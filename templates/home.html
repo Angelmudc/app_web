@@ -3,359 +3,231 @@
 {% block title %}Doméstica del Cibao A&D – Inicio{% endblock %}
 
 {% block hero %}
-  <section class="hero-section">
-    <div class="container">
-      <div class="d-flex justify-content-between align-items-center jumbotron text-center"
-           style="background-color: #4a69bd; border-radius: 10px; color: #fff; padding: 40px; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);">
-        <img src="{{ url_for('static', filename='logo_nuevo.png') }}"
-             alt="Doméstica del Cibao A&D"
-             style="max-width: 600px; border-radius: 10px; transition: transform 0.3s;">
-        <div>
-          <p class="mt-3" style="font-size: 1.1rem;">
-            Gestión profesional y confiable de empleadas domésticas.
-          </p>
-        </div>
-        <div>
-          {# ---------- MEJORA: botón de ingreso con fallback ---------- #}
-          {% set admin_login_url = url_for_safe('admin.login') %}
-          {% set fallback_login_url = url_for_safe('login') %}
-          {% if admin_login_url %}
-            <a href="{{ admin_login_url }}" class="btn btn-light" style="font-weight: bold;">
-              🔑 Ingresar Administrador
-            </a>
-          {% elif fallback_login_url %}
-            <a href="{{ fallback_login_url }}" class="btn btn-light" style="font-weight: bold;">
-              🔑 Ingresar
-            </a>
-          {% endif %}
-          {# ----------------------------------------------------------- #}
-        </div>
-      </div>
-    </div>
-  </section>
+<section class="hero-section text-center py-5"
+         style="background: linear-gradient(160deg, #e7ecfb 0%, #f4f7fc 50%, #ffffff 100%); border-bottom: 3px solid #dbe3f2; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+  <div class="container d-flex flex-column align-items-center justify-content-center position-relative">
+
+    <!-- Botón modo noche -->
+    <button id="themeToggle" class="btn btn-sm position-absolute top-0 end-0 mt-2 me-3 shadow-sm"
+            style="border:none; background:#fff; color:#333; border-radius:50%; width:40px; height:40px;">
+      <i class="fa-solid fa-moon"></i>
+    </button>
+
+    <!-- Logo Central -->
+    <img src="{{ url_for('static', filename='logo_nuevo.png') }}" 
+         alt="Doméstica del Cibao A&D"
+         class="img-fluid mb-4 animate-fade"
+         style="max-width: 640px; width: 90%; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15));">
+
+    <h1 class="fw-bold text-dark mb-2 animate-slide" style="font-size: 2rem;">
+      Doméstica del Cibao A&D
+    </h1>
+    <p class="lead text-muted mb-4 animate-fade" style="font-size: 1.1rem;">
+      Gestión profesional, moderna y confiable de empleadas domésticas.
+    </p>
+
+    <!-- Botón de Ingreso -->
+    {% set admin_login_url = url_for_safe('admin.login') %}
+    {% set fallback_login_url = url_for_safe('login') %}
+    {% if admin_login_url %}
+      <a href="{{ admin_login_url }}" class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
+        <i class="fa-solid fa-key me-2"></i> Ingresar Administrador
+      </a>
+    {% elif fallback_login_url %}
+      <a href="{{ fallback_login_url }}" class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
+        <i class="fa-solid fa-key me-2"></i> Ingresar
+      </a>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}
 
 {% block content %}
-  <div class="py-4">
-    <h1 class="mb-4 text-center">📋 Panel Principal</h1>
+<div class="container py-5">
 
-    <!-- Sección: Gestión de Candidatas -->
+  <h1 class="text-center mb-5 fw-bold text-dark animate-slide" style="font-size: 1.8rem;">
+    <i class="fa-solid fa-clipboard-list me-2 text-primary"></i> Panel Principal
+  </h1>
+
+  {% set sections = [
+    ('Gestión de Candidatas', 'fa-users', [
+      ('buscar_candidata', '🔍 Buscar / Editar', 'Busca cualquier candidata por nombre o cédula y edita sus datos inline.'),
+      ('inscripcion', '📝 Inscripción', 'Registra la inscripción de candidatas, asigna código, monto y fecha.'),
+      ('porciento', '💲 Porciento', 'Calcula los porcentajes pendientes de las candidatas y marca estado.'),
+      ('pagos', '💳 Pagos', 'Gestiona pagos pendientes, registra abonos y calificaciones.'),
+      ('filtrar', '🔎 Filtrar Candidatas', 'Filtra por ciudad, rutas, modalidad, experiencia y áreas.'),
+      ('dashboard_procesos', '📊 Dashboard Procesos', 'Totales, entradas diarias y desglose por estado.'),
+      ('finalizar_proceso', '✅ Finalizar Proceso', 'Completa el proceso: sube fotos, asigna grupos y actualiza estado.')
+    ]),
+    ('Solicitudes', 'fa-file-lines', [
+      ('secretarias_copiar_solicitudes', '📢 Publicar Hoy', 'Lista de solicitudes activas. Se ocultan hasta la 1:00 AM.'),
+      ('secretarias_buscar_solicitudes', '🔎 Buscar Solicitudes', 'Búsqueda con filtros y detalles expandibles.')
+    ]),
+    ('Reportes', 'fa-chart-line', [
+      ('reporte_inscripciones', '📈 Reporte Inscripciones', 'Filtra inscripciones por mes/año. Descarga o visualiza online.'),
+      ('reporte_pagos', '📄 Reporte Pagos', 'Genera PDF con los pagos pendientes de todas las candidatas.')
+    ]),
+    ('Sitio Público', 'fa-globe', [
+      ('registro_publico', '🗳️ Registro Público', 'Formulario público de registro/solicitud para clientes o candidatas.')
+    ]),
+    ('Documentos', 'fa-folder-open', [
+      ('subir_fotos.subir_fotos', '📤 Subir Fotos', 'Sube imágenes de candidatas y guarda en la base de datos.'),
+      ('gestionar_archivos', '📥 Gestionar Archivos', 'Descarga o visualiza documentos y entrevistas de candidatas.'),
+      ('referencias', '🗂️ Referencias', 'Busca y edita las referencias laborales y familiares de una candidata.'),
+      ('entrevista', '📝 Entrevista', 'Realiza y guarda entrevistas directamente en la base de datos.')
+    ])
+  ] %}
+
+  {% for section in sections %}
     <div class="mb-5">
-      <h2 class="h4">Gestión de Candidatas</h2>
-      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-2">
-
-        <!-- Buscar / Editar -->
-        {% set buscar_url = url_for_safe('buscar_candidata') %}
-        {% if buscar_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-search fa-2x mb-3"></i>
-              <h5 class="card-title">🔍 Buscar / Editar</h5>
-              <p class="card-text flex-grow-1">
-                Busca cualquier candidata por nombre o cédula y edita sus datos inline.
-              </p>
-              <a href="{{ buscar_url }}" class="btn btn-primary mt-auto">Ir a Buscar/Editar</a>
+      <h2 class="section-title">
+        <i class="fa-solid {{ section[1] }} me-2 text-primary"></i> {{ section[0] }}
+      </h2>
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for item in section[2] %}
+          {% set url = url_for_safe(item[0]) %}
+          {% if url %}
+          <div class="col">
+            <div class="dashboard-card">
+              <h5>{{ item[1] }}</h5>
+              <p>{{ item[2] }}</p>
+              <a href="{{ url }}" class="btn btn-outline-primary w-100">
+                Ir a {{ item[1].split(' ', 1)[-1] }}
+              </a>
             </div>
           </div>
-        </div>
-        {% endif %}
-
-        <!-- Inscripción -->
-        {% set insc_url = url_for_safe('inscripcion') %}
-        {% if insc_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-user-plus fa-2x mb-3"></i>
-              <h5 class="card-title">📝 Inscripción</h5>
-              <p class="card-text flex-grow-1">
-                Registra la inscripción de candidatas, asigna código, monto y fecha.
-              </p>
-              <a href="{{ insc_url }}" class="btn btn-primary mt-auto">Ir a Inscripción</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-
-        <!-- Porciento -->
-        {% set porc_url = url_for_safe('porciento') %}
-        {% if porc_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-percentage fa-2x mb-3"></i>
-              <h5 class="card-title">💲 Porciento</h5>
-              <p class="card-text flex-grow-1">
-                Calcula los porcentajes pendientes de las candidatas y marca estado.
-              </p>
-              <a href="{{ porc_url }}" class="btn btn-primary mt-auto">Ir a Porcentaje</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-
-        <!-- Pagos -->
-        {% set pagos_url = url_for_safe('pagos') %}
-        {% if pagos_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-file-invoice-dollar fa-2x mb-3"></i>
-              <h5 class="card-title">💳 Pagos</h5>
-              <p class="card-text flex-grow-1">
-                Gestiona pagos pendientes, registra abonos y calificaciones.
-              </p>
-              <a href="{{ pagos_url }}" class="btn btn-primary mt-auto">Ir a Pagos</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-
-        <!-- Filtrar General -->
-        {% set filtrar_url = url_for_safe('filtrar') %}
-        {% if filtrar_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-filter fa-2x mb-3"></i>
-              <h5 class="card-title">🔎 Filtrar Candidatas</h5>
-              <p class="card-text flex-grow-1">
-                Filtra por ciudad, rutas, modalidad, experiencia y áreas.
-              </p>
-              <a href="{{ filtrar_url }}" class="btn btn-primary mt-auto">Ir a Filtrar</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-
-        <!-- Estadísticas de Procesos -->
-        {% set dash_proc_url = url_for_safe('dashboard_procesos') %}
-        {% if dash_proc_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-chart-pie fa-2x mb-3"></i>
-              <h5 class="card-title">📊 Dashboard Procesos</h5>
-              <p class="card-text flex-grow-1">
-                Totales, entradas diarias y desglose por estado.
-              </p>
-              <a href="{{ dash_proc_url }}" class="btn btn-primary mt-auto">Ver Dashboard</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-
-        <!-- Finalizar Proceso -->
-        {% set finproc_url = url_for_safe('finalizar_proceso') %}
-        {% if finproc_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-clipboard-check fa-2x mb-3"></i>
-              <h5 class="card-title">✅ Finalizar Proceso</h5>
-              <p class="card-text flex-grow-1">
-                Completa el proceso de selección: sube fotos, asigna grupos y actualiza estado.
-              </p>
-              <a href="{{ finproc_url }}" class="btn btn-primary">Ir a Finalizar</a>
-
-              {# --------- NUEVO: accesos rápidos para organizar el flujo --------- #}
-              <div class="mt-3">
-                {% set fin_buscar_url = url_for_safe('finalizar_proceso_buscar') %}
-                {% set ver_perfil_url = url_for_safe('candidata_ver_perfil') %}
-                <div class="d-grid gap-2">
-                  {% if fin_buscar_url %}
-                    <a href="{{ fin_buscar_url }}" class="btn btn-outline-secondary btn-sm">🔎 Buscar candidata para finalizar</a>
-                  {% endif %}
-                </div>
-              </div>
-              {# ------------------------------------------------------------------- #}
-            </div>
-          </div>
-        </div>
-        {% endif %}
-
+          {% endif %}
+        {% endfor %}
       </div>
     </div>
+  {% endfor %}
+</div>
 
-    <!-- NUEVA Sección: Solicitudes (Secretarias) -->
-    <div class="mb-5">
-      <h2 class="h4">🧾 Solicitudes</h2>
-      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-2">
+<!-- Estilos -->
+<style>
+  body {
+    background-color: #f2f5fa;
+    transition: background-color 0.4s, color 0.4s;
+  }
 
-        <!-- Publicar hoy: marca al copiar y oculta hasta 1:00 AM -->
-        {% set copiar_hoy_url = url_for_safe('secretarias_copiar_solicitudes') %}
-        {% if copiar_hoy_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm border-success">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-bullhorn fa-2x mb-3"></i>
-              <h5 class="card-title">📢 Publicar hoy</h5>
-              <p class="card-text flex-grow-1">
-                Lista de solicitudes activas del ciclo. Al <strong>copiar</strong> se marcan y se ocultan hasta la <strong>1:00 AM</strong> del siguiente día.
-              </p>
-              <a href="{{ copiar_hoy_url }}" class="btn btn-success mt-auto">Ir a Publicar</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
+  .dark-mode {
+    background-color: #1f242b !important;
+    color: #e5e5e5 !important;
+  }
 
-        <!-- Buscar: copiar SIN marcar -->
-        {% set buscar_sols_url = url_for_safe('secretarias_buscar_solicitudes') %}
-        {% if buscar_sols_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm border-primary">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-search-plus fa-2x mb-3"></i>
-              <h5 class="card-title">🔎 Buscar solicitudes</h5>
-              <p class="card-text flex-grow-1">
-                Búsqueda con filtros y detalle expandible. El botón <strong>Copiar</strong> no marca ni oculta.
-              </p>
-              <a href="{{ buscar_sols_url }}" class="btn btn-primary mt-auto">Ir a Buscar</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
+  .dark-mode .section-title {
+    color: #f8f9fa !important;
+    border-left-color: #5a79ff !important;
+  }
 
-      </div>
-    </div>
+  .section-title {
+    font-weight: 600;
+    color: #2f3640;
+    border-left: 5px solid #4a69bd;
+    padding-left: 14px;
+    margin-bottom: 1.6rem;
+    transition: all 0.3s;
+  }
 
-    <!-- Sección: Reportes -->
-    <div class="mb-5">
-      <h2 class="h4">📊 Reportes</h2>
-      <div class="row row-cols-1 row-cols-md-2 g-4 mt-2">
-        <!-- Reporte de Inscripciones -->
-        {% set rep_insc_url = url_for_safe('reporte_inscripciones') %}
-        {% if rep_insc_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-list-alt fa-2x mb-3"></i>
-              <h5 class="card-title">📈 Reporte Inscripciones</h5>
-              <p class="card-text flex-grow-1">
-                Filtra inscripciones por mes/año. Descarga en Excel o visualiza online.
-              </p>
-              <a href="{{ rep_insc_url }}" class="btn btn-secondary mt-auto">Ver Reporte Inscripciones</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
+  .dashboard-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 2rem 1.7rem;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.07);
+    transition: all 0.35s ease;
+    position: relative;
+    overflow: hidden;
+  }
 
-        <!-- Reporte de Pagos -->
-        {% set rep_pagos_url = url_for_safe('reporte_pagos') %}
-        {% if rep_pagos_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-chart-bar fa-2x mb-3"></i>
-              <h5 class="card-title">📄 Reporte Pagos</h5>
-              <p class="card-text flex-grow-1">
-                Genera PDF con los pagos pendientes de todas las candidatas.
-              </p>
-              <a href="{{ rep_pagos_url }}" class="btn btn-secondary mt-auto">Ver Reporte Pagos</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-      </div>
-    </div>
+  .dashboard-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 8px 22px rgba(74,105,189,0.2);
+  }
 
-    <!-- NUEVA Sección: Sitio Público -->
-    <div class="mb-5">
-      <h2 class="h4">🌐 Sitio Público</h2>
-      <div class="row row-cols-1 row-cols-md-2 g-4 mt-2">
-        {% set registro_publico_url = url_for_safe('registro_publico') %}
-        {% if registro_publico_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm border-info">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-user-edit fa-2x mb-3"></i>
-              <h5 class="card-title">🗳️ Registro Público</h5>
-              <p class="card-text flex-grow-1">
-                Formulario público de registro/solicitud para clientes o candidatas (según tu implementación).
-              </p>
-              <a href="{{ registro_publico_url }}" class="btn btn-info mt-auto">Ir a Registro Público</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-      </div>
-    </div>
+  .dark-mode .dashboard-card {
+    background: #2a2f38;
+    color: #dcdcdc;
+    box-shadow: 0 4px 15px rgba(255,255,255,0.05);
+  }
 
-    <!-- Sección: Documentos -->
-    <div class="mb-5">
-      <h2 class="h4">📁 Documentos</h2>
-      <div class="row row-cols-1 row-cols-md-2 g-4 mt-2">
-        <!-- Subir Fotos -->
-        {% set subir_fotos_url = url_for_safe('subir_fotos.subir_fotos') %}
-        {% if subir_fotos_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-folder-plus fa-2x mb-3"></i>
-              <h5 class="card-title">📤 Subir Fotos</h5>
-              <p class="card-text flex-grow-1">
-                Sube imágenes de candidatas y guarda en la base de datos.
-              </p>
-              <a href="{{ subir_fotos_url }}" class="btn btn-info mt-auto">Ir a Subir Fotos</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
+  .dashboard-card h5 {
+    font-weight: 600;
+    margin-bottom: .7rem;
+    color: #1e293b;
+  }
 
-        <!-- Gestionar Archivos -->
-        {% set gest_arch_url = url_for_safe('gestionar_archivos') %}
-        {% if gest_arch_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-folder-open fa-2x mb-3"></i>
-              <h5 class="card-title">📥 Gestionar Archivos</h5>
-              <p class="card-text flex-grow-1">
-                Descarga o visualiza documentos y entrevistas de candidatas.
-              </p>
-              <a href="{{ gest_arch_url }}" class="btn btn-info mt-auto">Ir a Gestionar Archivos</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
+  .dark-mode .dashboard-card h5 {
+    color: #fff;
+  }
 
-        <!-- Referencias -->
-        {% set ref_url = url_for_safe('referencias') %}
-        {% if ref_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-address-book fa-2x mb-3"></i>
-              <h5 class="card-title">🗂️ Referencias</h5>
-              <p class="card-text flex-grow-1">
-                Busca y edita las referencias laborales y familiares de una candidata.
-              </p>
-              <a href="{{ ref_url }}" class="btn btn-info mt-auto">Ir a Referencias</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
+  .dashboard-card p {
+    color: #6b7280;
+    font-size: .96rem;
+    margin-bottom: 1.3rem;
+  }
 
-        <!-- Entrevista -->
-        {% set entrevista_url = url_for_safe('entrevista') %}
-        {% if entrevista_url %}
-        <div class="col">
-          <div class="card h-100 shadow-sm">
-            <div class="card-body d-flex flex-column">
-              <i class="fas fa-pencil-alt fa-2x mb-3"></i>
-              <h5 class="card-title">📝 Entrevista</h5>
-              <p class="card-text flex-grow-1">
-                Realiza y guarda entrevistas dinámicas directamente en la base de datos.
-              </p>
-              <a href="{{ entrevista_url }}" class="btn btn-info mt-auto">Ir a Entrevista</a>
-            </div>
-          </div>
-        </div>
-        {% endif %}
+  .dark-mode .dashboard-card p {
+    color: #b7bcc4;
+  }
 
-      </div>
-    </div>
+  .btn-outline-primary {
+    border: 1px solid #4a69bd;
+    color: #4a69bd;
+    transition: all .25s ease;
+    border-radius: 10px;
+    font-weight: 500;
+  }
 
-  </div>
+  .btn-outline-primary:hover {
+    background: #4a69bd;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(74,105,189,0.3);
+  }
+
+  .dark-mode .btn-outline-primary {
+    color: #5a79ff;
+    border-color: #5a79ff;
+  }
+
+  .dark-mode .btn-outline-primary:hover {
+    background: #5a79ff;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(90,121,255,0.4);
+  }
+
+  /* Animaciones suaves */
+  .animate-fade { animation: fadeIn 1.4s ease forwards; }
+  .animate-slide { animation: slideUp 1.2s ease forwards; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(25px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+
+<!-- Script Modo Noche -->
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const toggle = document.getElementById("themeToggle");
+    const icon = toggle.querySelector("i");
+    const body = document.body;
+
+    if (localStorage.getItem("theme") === "dark") {
+      body.classList.add("dark-mode");
+      icon.classList.replace("fa-moon", "fa-sun");
+    }
+
+    toggle.addEventListener("click", () => {
+      body.classList.toggle("dark-mode");
+      const dark = body.classList.contains("dark-mode");
+      icon.classList.replace(dark ? "fa-moon" : "fa-sun", dark ? "fa-sun" : "fa-moon");
+      localStorage.setItem("theme", dark ? "dark" : "light");
+    });
+  });
+</script>
 {% endblock %}

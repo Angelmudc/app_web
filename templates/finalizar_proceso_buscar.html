@@ -2,62 +2,65 @@
 {% block title %}Buscar candidata para finalizar proceso{% endblock %}
 
 {% block content %}
-<div class="container my-4">
+<div class="container py-4">
 
-  <!-- Encabezado -->
-  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <!-- ENCABEZADO -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
     <div>
-      <h1 class="h5 mb-1">Buscar candidata para finalizar proceso</h1>
-      <div class="small text-muted">
+      <h1 class="h4 mb-1 d-flex align-items-center gap-2">
+        <i class="fa-solid fa-user-check"></i> Buscar candidata para finalizar proceso
+      </h1>
+      <small class="text-muted">
         Escribe <strong>nombre</strong>, <strong>cédula</strong> o <strong>código</strong>. Máximo 300 resultados.
-      </div>
+      </small>
     </div>
-    <div class="d-flex gap-2">
-      <!-- Enlace de ayuda opcional -->
-      <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary btn-sm">
-        Reiniciar búsqueda
-      </a>
-    </div>
+    <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fa-solid fa-rotate-left me-1"></i> Reiniciar búsqueda
+    </a>
   </div>
 
-  <!-- Formulario de búsqueda -->
+  <!-- FORMULARIO -->
   <form class="row g-2 mb-3" method="get" action="{{ url_for('finalizar_proceso_buscar') }}" id="frm-buscar">
     <div class="col-sm-8 col-md-6">
-      <input
-        type="text"
-        class="form-control"
-        name="q"
-        placeholder="Ej.: María / 00112345678 / A-102"
-        value="{{ q or '' }}"
-        autocomplete="off"
-        autofocus
-      >
+      <div class="input-group input-group-lg">
+        <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+        <input type="text"
+               class="form-control"
+               name="q"
+               placeholder="Ej.: María / 00112345678 / A-102"
+               value="{{ q or '' }}"
+               autocomplete="off"
+               autofocus
+               required>
+      </div>
     </div>
     <div class="col-sm-4 col-md-3">
-      <button class="btn btn-primary w-100" type="submit">Buscar</button>
+      <button class="btn btn-primary w-100" type="submit">
+        <i class="fa-solid fa-search me-1"></i> Buscar
+      </button>
     </div>
     {% if q %}
     <div class="col-md-3">
-      <a class="btn btn-outline-secondary w-100" href="{{ url_for('finalizar_proceso_buscar') }}">Limpiar</a>
+      <a class="btn btn-outline-secondary w-100" href="{{ url_for('finalizar_proceso_buscar') }}">
+        <i class="fa-solid fa-eraser me-1"></i> Limpiar
+      </a>
     </div>
     {% endif %}
   </form>
 
-  <!-- Resultados -->
+  <!-- RESULTADOS -->
   {% if q is defined and q|length > 0 %}
     <div class="card shadow-sm">
       <div class="card-header bg-light d-flex justify-content-between align-items-center">
         <div>
           Resultados para: <strong>{{ q }}</strong>
-          <span class="badge bg-secondary ms-2">{{ resultados|length }}</span>
+          <span class="badge bg-primary-subtle text-primary border ms-2">{{ resultados|length }}</span>
         </div>
-        <div class="small text-muted">
-          Usa <kbd>CTRL</kbd>/<kbd>CMD</kbd> + <kbd>C</kbd> en los botones copiar.
-        </div>
+        <small class="text-muted">Usa <kbd>CTRL</kbd> + <kbd>C</kbd> en los botones copiar.</small>
       </div>
 
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
+        <table class="table table-hover align-middle mb-0">
           <thead class="table-light">
             <tr>
               <th style="width: 84px;">Fila</th>
@@ -65,7 +68,7 @@
               <th style="width: 150px;">Cédula</th>
               <th style="width: 120px;">Código</th>
               <th style="width: 160px;">Estado</th>
-              <th style="width: 260px;">Acciones</th>
+              <th style="width: 240px;" class="text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -74,58 +77,37 @@
               <tr>
                 <td class="text-muted">
                   #{{ c.fila }}
-                  <button
-                    type="button"
-                    class="btn btn-link btn-sm p-0 ms-1"
-                    data-copy="{{ c.fila }}"
-                    title="Copiar fila"
-                    aria-label="Copiar fila"
-                  >📋</button>
+                  <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary" data-copy="{{ c.fila }}" title="Copiar fila">📋</button>
                 </td>
-                <td class="fw-semibold">
-                  {{ c.nombre_completo }}
-                </td>
+                <td class="fw-semibold">{{ c.nombre_completo }}</td>
                 <td>
-                  <span>{{ c.cedula or '—' }}</span>
+                  {{ c.cedula or '—' }}
                   {% if c.cedula %}
-                  <button
-                    type="button"
-                    class="btn btn-link btn-sm p-0 ms-1"
-                    data-copy="{{ c.cedula }}"
-                    title="Copiar cédula"
-                    aria-label="Copiar cédula"
-                  >📋</button>
+                  <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary" data-copy="{{ c.cedula }}" title="Copiar cédula">📋</button>
                   {% endif %}
                 </td>
                 <td>
-                  <span>{{ c.codigo or '—' }}</span>
+                  {{ c.codigo or '—' }}
                   {% if c.codigo %}
-                  <button
-                    type="button"
-                    class="btn btn-link btn-sm p-0 ms-1"
-                    data-copy="{{ c.codigo }}"
-                    title="Copiar código"
-                    aria-label="Copiar código"
-                  >📋</button>
+                  <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary" data-copy="{{ c.codigo }}" title="Copiar código">📋</button>
                   {% endif %}
                 </td>
                 <td>
                   {% if c.estado %}
-                    <span class="badge bg-primary-subtle text-primary border">
-                      {{ c.estado|replace('_',' ') }}
-                    </span>
+                    <span class="badge bg-primary-subtle text-primary border">{{ c.estado|replace('_',' ') }}</span>
                   {% else %}
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
-                <td class="d-flex flex-wrap gap-2">
-                  <!-- Ver perfil (no cambia estado, sólo vista) -->
-                  <a class="btn btn-sm btn-outline-secondary"
-                     href="{{ url_for('candidata_ver_perfil', fila=c.fila) }}">Ver perfil</a>
-
-                  <!-- Ir al formulario de finalizar (subir documentos / asignar grupos / mover estado) -->
-                  <a class="btn btn-sm btn-success"
-                     href="{{ url_for('finalizar_proceso', fila=c.fila) }}">Finalizar proceso</a>
+                <td class="text-center">
+                  <div class="d-flex flex-wrap justify-content-center gap-2">
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('candidata_ver_perfil', fila=c.fila) }}">
+                      <i class="fa-regular fa-eye me-1"></i> Ver perfil
+                    </a>
+                    <a class="btn btn-sm btn-success" href="{{ url_for('finalizar_proceso', fila=c.fila) }}">
+                      <i class="fa-solid fa-check me-1"></i> Finalizar proceso
+                    </a>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
@@ -141,11 +123,12 @@
       </div>
 
       <div class="card-footer small text-muted">
-        Muestra hasta 300 filas como límite de seguridad.
+        Mostrando un máximo de 300 resultados para proteger el rendimiento.
       </div>
     </div>
   {% else %}
-    <div class="alert alert-info">
+    <div class="alert alert-info d-flex align-items-center gap-2">
+      <i class="fa-solid fa-circle-info"></i>
       Escribe un término y presiona <strong>Buscar</strong>.
     </div>
   {% endif %}
@@ -156,10 +139,9 @@
 (function () {
   function copy(text) {
     if (!text) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    if (navigator.clipboard) {
       navigator.clipboard.writeText(String(text)).catch(()=>{});
     } else {
-      // Fallback
       const tmp = document.createElement('textarea');
       tmp.value = String(text);
       document.body.appendChild(tmp);
@@ -174,21 +156,9 @@
     if (!btn) return;
     const val = btn.getAttribute('data-copy');
     copy(val);
-    // Feedback rápido
-    const old = btn.textContent;
     btn.textContent = '✔';
-    setTimeout(() => { btn.textContent = old; }, 900);
+    setTimeout(() => { btn.textContent = '📋'; }, 1000);
   });
-
-  // Enter envía el formulario (mejor UX)
-  const frm = document.getElementById('frm-buscar');
-  if (frm) {
-    frm.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        // permite Enter desde el input de texto
-      }
-    });
-  }
 })();
 </script>
 {% endblock %}

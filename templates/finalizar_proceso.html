@@ -2,47 +2,50 @@
 {% block title %}Finalizar Proceso – {{ candidata.nombre_completo }}{% endblock %}
 
 {% block content %}
-<div class="container my-4">
+<div class="container py-4">
 
-  <!-- Encabezado -->
-  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <!-- ENCABEZADO -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
     <div>
-      <h1 class="h5 mb-1">Finalizar Proceso</h1>
-      <div class="text-muted small">
+      <h1 class="h4 mb-1 d-flex align-items-center gap-2">
+        <i class="fa-solid fa-user-check"></i> Finalizar Proceso
+      </h1>
+      <small class="text-muted">
         Última actualización:
         {% if candidata.fecha_cambio_estado %}
           {{ candidata.fecha_cambio_estado.strftime("%Y-%m-%d %H:%M") }}
         {% else %}—{% endif %}
-      </div>
+      </small>
     </div>
     <div class="d-flex gap-2">
-      <!-- Volver al BUSCADOR (no al listado) -->
-      <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-link">← Volver a buscar</a>
-      <!-- Ver perfil en otra pestaña -->
-      <a href="{{ url_for('candidata_ver_perfil', fila=candidata.fila) }}" class="btn btn-outline-secondary" target="_blank" rel="noopener">
-        Ver perfil
+      <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="fa-solid fa-rotate-left me-1"></i> Volver a buscar
+      </a>
+      <a href="{{ url_for('candidata_ver_perfil', fila=candidata.fila) }}" class="btn btn-outline-primary btn-sm" target="_blank">
+        <i class="fa-regular fa-eye me-1"></i> Ver perfil
       </a>
     </div>
   </div>
 
-  <!-- Resumen de la candidata -->
+  <!-- INFO CANDIDATA -->
   <div class="card shadow-sm mb-4">
     <div class="card-body d-flex flex-wrap align-items-center gap-4">
+
+      <!-- Foto -->
       <div class="rounded border p-1" style="width:100px;height:100px;overflow:hidden;background:#f8f9fa;">
         {% if candidata.foto_perfil or candidata.perfil %}
           <img src="{{ url_for('perfil_candidata', fila=candidata.fila) }}"
                alt="Foto de {{ candidata.nombre_completo }}"
                class="w-100 h-100" style="object-fit:cover;">
         {% else %}
-          <div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted small">
-            Sin foto
-          </div>
+          <div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted small">Sin foto</div>
         {% endif %}
       </div>
 
+      <!-- Detalles -->
       <div class="flex-grow-1">
         <div class="fw-semibold d-flex align-items-center flex-wrap gap-2">
-          <span>{{ candidata.nombre_completo }}</span>
+          {{ candidata.nombre_completo }}
           <span class="text-muted">#{{ candidata.fila }}</span>
           <button type="button" class="btn btn-link btn-sm p-0" data-copy="{{ candidata.fila }}" title="Copiar fila">📋</button>
         </div>
@@ -61,13 +64,10 @@
           {% endif %}
         </div>
 
-        <div class="mt-2 d-flex align-items-center flex-wrap gap-2">
+        <div class="mt-2 d-flex flex-wrap gap-2">
           {% if candidata.estado %}
-            <span class="badge bg-primary-subtle text-primary border">
-              {{ candidata.estado|replace("_"," ") }}
-            </span>
+            <span class="badge bg-primary-subtle text-primary border">{{ candidata.estado|replace("_"," ") }}</span>
           {% endif %}
-          <!-- Estado de documentos actuales -->
           <span class="badge {{ (candidata.foto_perfil or candidata.perfil) and 'bg-success' or 'bg-secondary' }}">
             Foto {{ (candidata.foto_perfil or candidata.perfil) and 'cargada' or 'pendiente' }}
           </span>
@@ -80,135 +80,108 @@
         </div>
       </div>
 
-      <div class="text-end">
-        {% if candidata.anos_experiencia or candidata.areas_experiencia %}
-        <div class="small">
-          {% if candidata.anos_experiencia %}
-            Años exp.: <strong>{{ candidata.anos_experiencia }}</strong>
-          {% endif %}
-          {% if candidata.areas_experiencia %}
-            <span class="ms-3">Áreas: <strong>{{ candidata.areas_experiencia }}</strong></span>
-          {% endif %}
-        </div>
+      <!-- Experiencia -->
+      {% if candidata.anos_experiencia or candidata.areas_experiencia %}
+      <div class="text-end small">
+        {% if candidata.anos_experiencia %}
+          Años exp.: <strong>{{ candidata.anos_experiencia }}</strong>
+        {% endif %}
+        {% if candidata.areas_experiencia %}
+          <span class="ms-3">Áreas: <strong>{{ candidata.areas_experiencia }}</strong></span>
         {% endif %}
       </div>
+      {% endif %}
     </div>
   </div>
 
-  <!-- Formulario principal -->
-  <form method="post"
-        action="{{ url_for('finalizar_proceso', fila=candidata.fila) }}"
-        enctype="multipart/form-data"
-        id="finalizar-form"
-        novalidate>
+  <!-- FORMULARIO -->
+  <form method="post" action="{{ url_for('finalizar_proceso', fila=candidata.fila) }}" enctype="multipart/form-data" id="finalizar-form" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+    <!-- Documentos -->
     <div class="card shadow-sm">
       <div class="card-header bg-primary text-white">
-        <h2 class="h6 mb-0">Documentos obligatorios</h2>
+        <i class="fa-solid fa-folder-open me-2"></i> Documentos obligatorios
       </div>
       <div class="card-body">
-
         <div class="row gy-4">
-          <!-- Foto de perfil -->
+          {% for campo, label, preview in [
+            ('foto_perfil', 'Foto de perfil', 'preview_foto'),
+            ('cedula1', 'Cédula (frontal)', 'preview_ced1'),
+            ('cedula2', 'Cédula (reverso)', 'preview_ced2')
+          ] %}
           <div class="col-md-4">
-            <label for="foto_perfil" class="form-label">Foto de perfil <span class="text-danger">*</span></label>
-            <input class="form-control" type="file" id="foto_perfil" name="foto_perfil" accept="image/*" required>
-            <div class="form-text">JPG/PNG. Recomendado ≤ 1.5&nbsp;MB.</div>
-            <div class="ratio ratio-1x1 border rounded mt-2" id="preview_foto" style="background:#f8f9fa;">
-              {% if candidata.foto_perfil or candidata.perfil %}
-                <img src="{{ url_for('perfil_candidata', fila=candidata.fila) }}"
-                     class="w-100 h-100" style="object-fit:cover;">
-              {% endif %}
-            </div>
-            <div class="invalid-feedback">Sube la foto de perfil.</div>
+            <label for="{{ campo }}" class="form-label">{{ label }} <span class="text-danger">*</span></label>
+            <input class="form-control" type="file" id="{{ campo }}" name="{{ campo }}" accept="image/*" required>
+            <div class="form-text">Formatos JPG/PNG • Máx. 1.5 MB</div>
+            <div class="ratio ratio-1x1 border rounded mt-2" id="{{ preview }}" style="background:#f8f9fa;"></div>
+            <div class="invalid-feedback">Sube {{ label|lower }}.</div>
           </div>
-
-          <!-- Cédula frontal -->
-          <div class="col-md-4">
-            <label for="cedula1" class="form-label">Cédula (frontal) <span class="text-danger">*</span></label>
-            <input class="form-control" type="file" id="cedula1" name="cedula1" accept="image/*" required>
-            <div class="form-text">JPG/PNG claros y legibles. Recomendado ≤ 1.5&nbsp;MB.</div>
-            <div class="ratio ratio-1x1 border rounded mt-2" id="preview_ced1" style="background:#f8f9fa;"></div>
-            <div class="invalid-feedback">Sube la cédula frontal.</div>
-          </div>
-
-          <!-- Cédula reverso -->
-          <div class="col-md-4">
-            <label for="cedula2" class="form-label">Cédula (reverso) <span class="text-danger">*</span></label>
-            <input class="form-control" type="file" id="cedula2" name="cedula2" accept="image/*" required>
-            <div class="form-text">JPG/PNG claros y legibles. Recomendado ≤ 1.5&nbsp;MB.</div>
-            <div class="ratio ratio-1x1 border rounded mt-2" id="preview_ced2" style="background:#f8f9fa;"></div>
-            <div class="invalid-feedback">Sube la cédula reverso.</div>
-          </div>
+          {% endfor %}
         </div>
       </div>
     </div>
 
-    <!-- Grupos de empleo -->
+    <!-- Grupos -->
     <div class="card shadow-sm mt-4">
-      <div class="card-header bg-light">
-        <div class="d-flex align-items-center justify-content-between">
-          <h2 class="h6 mb-0">Grupos de empleo</h2>
-          <div class="d-flex gap-2">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-check-all">Seleccionar todo</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-all">Limpiar</button>
-          </div>
+      <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <span><i class="fa-solid fa-users me-2"></i> Grupos de empleo</span>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-check-all">Seleccionar todo</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-all">Limpiar</button>
         </div>
       </div>
       <div class="card-body">
-        {% if grupos and grupos|length %}
-          <div class="row">
-            {% for grupo in grupos %}
-              <div class="col-sm-6 col-lg-4 mb-2">
-                <div class="form-check">
-                  <input
-                    class="form-check-input grupo-item"
-                    type="checkbox"
-                    name="grupos_empleo"
-                    id="grupo_{{ loop.index }}"
-                    value="{{ grupo }}"
-                    {% if candidata.grupos_empleo and (grupo in candidata.grupos_empleo) %}checked{% endif %}>
-                  <label class="form-check-label" for="grupo_{{ loop.index }}">{{ grupo }}</label>
-                </div>
-              </div>
-            {% endfor %}
+        {% if grupos %}
+        <div class="row">
+          {% for grupo in grupos %}
+          <div class="col-sm-6 col-lg-4 mb-2">
+            <div class="form-check">
+              <input class="form-check-input grupo-item" type="checkbox" name="grupos_empleo"
+                     id="grupo_{{ loop.index }}" value="{{ grupo }}"
+                     {% if candidata.grupos_empleo and (grupo in candidata.grupos_empleo) %}checked{% endif %}>
+              <label class="form-check-label" for="grupo_{{ loop.index }}">{{ grupo }}</label>
+            </div>
           </div>
+          {% endfor %}
+        </div>
         {% else %}
           <div class="alert alert-info mb-0">No hay grupos configurados.</div>
         {% endif %}
       </div>
     </div>
 
-    <!-- Barra de acciones -->
+    <!-- BOTONES -->
     <div class="d-flex align-items-center justify-content-between mt-4 flex-wrap gap-2">
-      <div class="small text-muted">
-        Al guardar, se validan los tres archivos obligatorios. Si todo está correcto, la candidata pasa a <strong>lista_para_trabajar</strong>.
-      </div>
+      <small class="text-muted">
+        Al guardar, se validan los tres archivos obligatorios. Si todo está correcto, la candidata pasa a
+        <strong>lista_para_trabajar</strong>.
+      </small>
       <div class="d-flex gap-2">
-        <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary">Cancelar</a>
+        <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary">
+          <i class="fa-solid fa-xmark me-1"></i> Cancelar
+        </a>
         <button type="submit" class="btn btn-success" id="btn-submit">
-          <span class="spinner-border spinner-border-sm me-1 d-none" id="btn-spinner" role="status" aria-hidden="true"></span>
-          Guardar y Finalizar
+          <span class="spinner-border spinner-border-sm me-1 d-none" id="btn-spinner"></span>
+          <i class="fa-solid fa-check me-1"></i> Guardar y Finalizar
         </button>
       </div>
     </div>
   </form>
 </div>
 
-<!-- JS: previews, validar, seleccionar/limpiar grupos, copiar, tamaño máximo y spinner -->
+<!-- JS -->
 <script>
 (function() {
-  // --- Helpers ---
-  function bindPreview(inputId, previewId) {
-    const input = document.getElementById(inputId);
-    const preview = document.getElementById(previewId);
+  function bindPreview(idInput, idPreview) {
+    const input = document.getElementById(idInput);
+    const preview = document.getElementById(idPreview);
     if (!input || !preview) return;
-    input.addEventListener('change', function(e) {
-      const file = e.target.files && e.target.files[0];
+    input.addEventListener('change', e => {
+      const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(ev) {
+      reader.onload = ev => {
         preview.innerHTML = '';
         const img = document.createElement('img');
         img.src = ev.target.result;
@@ -220,77 +193,51 @@
     });
   }
 
-  function copyToClipboard(text) {
-    if (!text) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(String(text)).catch(()=>{});
-    } else {
-      const tmp = document.createElement('textarea');
-      tmp.value = String(text);
-      document.body.appendChild(tmp);
-      tmp.select();
-      try { document.execCommand('copy'); } catch(e) {}
-      document.body.removeChild(tmp);
-    }
-  }
+  ['foto_perfil','cedula1','cedula2'].forEach((id,i)=>{
+    bindPreview(id, ['preview_foto','preview_ced1','preview_ced2'][i]);
+  });
 
-  // --- Previews ---
-  bindPreview('foto_perfil', 'preview_foto');
-  bindPreview('cedula1', 'preview_ced1');
-  bindPreview('cedula2', 'preview_ced2');
+  // Seleccionar / Limpiar grupos
+  document.getElementById('btn-check-all')?.addEventListener('click', () => {
+    document.querySelectorAll('.grupo-item').forEach(cb => cb.checked = true);
+  });
+  document.getElementById('btn-clear-all')?.addEventListener('click', () => {
+    document.querySelectorAll('.grupo-item').forEach(cb => cb.checked = false);
+  });
 
-  // --- Select all / clear all ---
-  const btnAll = document.getElementById('btn-check-all');
-  const btnClear = document.getElementById('btn-clear-all');
-  function setAll(val) {
-    document.querySelectorAll('.grupo-item').forEach(cb => { cb.checked = val; });
-  }
-  if (btnAll) btnAll.addEventListener('click', () => setAll(true));
-  if (btnClear) btnClear.addEventListener('click', () => setAll(false));
-
-  // --- Copiar fila/cedula/codigo ---
-  document.addEventListener('click', function(e) {
+  // Copiar valores
+  document.addEventListener('click', e => {
     const btn = e.target.closest('[data-copy]');
     if (!btn) return;
     const val = btn.getAttribute('data-copy');
-    copyToClipboard(val);
-    const old = btn.textContent;
+    navigator.clipboard?.writeText(val);
     btn.textContent = '✔';
-    setTimeout(() => { btn.textContent = old; }, 900);
+    setTimeout(() => btn.textContent = '📋', 900);
   });
 
-  // --- Validación & spinner ---
+  // Validación + Spinner
   const form = document.getElementById('finalizar-form');
-  const btn  = document.getElementById('btn-submit');
-  const spn  = document.getElementById('btn-spinner');
-
-  // Tamaño máximo en el cliente (opcional, 3 MB)
+  const btn = document.getElementById('btn-submit');
+  const spinner = document.getElementById('btn-spinner');
   const MAX_BYTES = 3 * 1024 * 1024;
 
-  if (form && btn && spn) {
-    form.addEventListener('submit', function(e) {
-      // Validación HTML5
-      if (!form.checkValidity()) {
-        e.preventDefault();
-        e.stopPropagation();
-        form.classList.add('was-validated');
+  form?.addEventListener('submit', e => {
+    if (!form.checkValidity()) {
+      e.preventDefault(); e.stopPropagation();
+      form.classList.add('was-validated');
+      return;
+    }
+    for (const id of ['foto_perfil','cedula1','cedula2']) {
+      const f = document.getElementById(id)?.files?.[0];
+      if (f && f.size > MAX_BYTES) {
+        alert(`El archivo "${f.name}" supera los 3 MB. Reduce el tamaño.`);
+        e.preventDefault(); e.stopPropagation();
         return;
       }
-      // Chequeo de tamaño (cliente)
-      const f1 = document.getElementById('foto_perfil')?.files?.[0];
-      const f2 = document.getElementById('cedula1')?.files?.[0];
-      const f3 = document.getElementById('cedula2')?.files?.[0];
-      if ((f1 && f1.size > MAX_BYTES) || (f2 && f2.size > MAX_BYTES) || (f3 && f3.size > MAX_BYTES)) {
-        e.preventDefault();
-        e.stopPropagation();
-        alert('Algún archivo supera los 3 MB. Por favor, reduce el tamaño e inténtalo de nuevo.');
-        return;
-      }
-      // UX
-      spn.classList.remove('d-none');
-      btn.setAttribute('disabled', 'disabled');
-    });
-  }
+    }
+    spinner.classList.remove('d-none');
+    btn.disabled = true;
+  });
 })();
 </script>
 {% endblock %}

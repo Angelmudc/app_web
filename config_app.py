@@ -13,7 +13,6 @@ from flask_login import LoginManager, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf import CSRFProtect
-import cloudinary
 
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
@@ -42,7 +41,7 @@ USUARIOS = {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Utilidad: normalizar cédula (opcional)
+# Utilidad: normalizar cédula (devuelve 11 dígitos sin guiones)
 # ─────────────────────────────────────────────────────────────
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 def normalize_cedula(raw: str) -> str | None:
@@ -77,12 +76,30 @@ def _normalize_db_url(url: str) -> str:
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
 
-    # CSRF y sesiones
-    app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'cambia_esta_clave_a_una_muy_segura')
+    # ── Seguridad de sesión/cookies
+    env = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production")).lower()
+    default_secret = 'cambia_esta_clave_a_una_muy_segura'
+    app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', default_secret)
+    if app.config['SECRET_KEY'] == default_secret and env == "production":
+        # En producción, obliga a usar una clave real
+        raise RuntimeError("SECRET_KEY no configurada. Define FLASK_SECRET_KEY en .env")
+
+    # Cookies más seguras (en prod)
+    prod = env in ("prod", "production")
+    app.config.update({
+        "SESSION_COOKIE_HTTPONLY": True,
+        "SESSION_COOKIE_SAMESITE": "Lax",
+        "SESSION_COOKIE_SECURE": prod,  # True si usas HTTPS
+        "REMEMBER_COOKIE_HTTPONLY": True,
+        "REMEMBER_COOKIE_SECURE": prod,
+        "PERMANENT_SESSION_LIFETIME": int(os.getenv("SESSION_TTL_SECONDS", "2592000")),  # 30 días
+    })
+
+    # CSRF
     app.config['WTF_CSRF_ENABLED'] = True
     csrf.init_app(app)
 
-    # Si deployas detrás de proxy (Render, etc.)
+    # Si deployas detrás de proxy (Render, Fly, etc.)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     # ── Base de datos remota (sin BD local)
@@ -90,7 +107,7 @@ def create_app():
     db_url = _normalize_db_url(raw_db_url)
 
     # ¿Usas PgBouncer (transaction pooling)? → usa NullPool para evitar reciclar SSL roto
-    pool_mode = os.getenv("DB_POOL_MODE", "").lower()  # "", "pgbouncer"
+    pool_mode = os.getenv("DB_POOL_MODE", "").lower()  # "", "pgbouncer", "nullpool"
     use_null_pool = pool_mode in ("pgbouncer", "nullpool", "off")
 
     # Engine options
@@ -126,6 +143,9 @@ def create_app():
         "SQLALCHEMY_ENGINE_OPTIONS": engine_opts,
         "CACHE_TYPE": "simple",
         "CACHE_DEFAULT_TIMEOUT": 120,
+        # Menos info de errores de Jinja en prod
+        "TEMPLATES_AUTO_RELOAD": not prod,
+        "JSON_SORT_KEYS": False,
     })
 
     # Inicializar extensiones
@@ -144,6 +164,7 @@ def create_app():
 
     @login_manager.unauthorized_handler
     def unauthorized_callback():
+        # Rutas separadas para clientes vs admin
         if request.path.startswith('/clientes'):
             return redirect(url_for('clientes.login', next=request.url))
         return redirect(url_for('admin.login', next=request.url))
@@ -172,7 +193,7 @@ def create_app():
     from admin.routes import admin_bp
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
-    # 🚩 IMPORTANTE: importar el blueprint del paquete, no del módulo
+    # Importar el blueprint del paquete, no del módulo
     from clientes import clientes_bp
     app.register_blueprint(clientes_bp)
 
@@ -185,7 +206,7 @@ def create_app():
         entrevistas_cfg = {}
     app.config['ENTREVISTAS_CONFIG'] = entrevistas_cfg
 
-    # ── Ping preventivo por request (SQLAlchemy 2.x requiere text())
+    # ── Ping preventivo por request (evita conexiones muertas)
     @app.before_request
     def _ensure_db_connection():
         try:
@@ -199,11 +220,3 @@ def create_app():
 
     return app
 
-# ─────────────────────────────────────────────────────────────
-# Cloudinary (si lo usas para imágenes; si no, quedan vacíos)
-# ─────────────────────────────────────────────────────────────
-cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
-    api_key=os.getenv("CLOUDINARY_API_KEY", ""),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET", "")
-)

@@ -1,103 +1,252 @@
+{# templates/entrevista.html #}
 {% extends 'base.html' %}
-{% block title %}Entrevistas{% endblock %}
+{% block title %}📝 Entrevistas{% endblock %}
 
 {% block content %}
-<div class="container py-5">
-  <h1 class="text-center mb-4">Entrevistas</h1>
+<div class="container py-3">
+
+  {# ───────── Header ───────── #}
+  <section class="hero-section">
+    <h1 class="h3 mb-1">📝 Entrevistas</h1>
+    <p class="text-muted mb-0">
+      {% if etapa=='buscar' %}Busca la candidata y selecciona.
+      {% elif etapa=='elegir_tipo' %}Elige el tipo de entrevista para continuar.
+      {% elif etapa=='formulario' %}Completa todos los campos y guarda.
+      {% else %}Gestiona entrevistas de principio a fin.{% endif %}
+    </p>
+  </section>
+
+  {# ───────── Flashes (fallback a toasts globales) ───────── #}
   {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for cat,msg in messages %}
-      <div class="alert alert-{{ 'danger' if cat=='danger' else (cat=='warning' and 'warning' or 'info') }} alert-dismissible fade show">
-        {{ msg }}
-        <button class="btn-close" data-bs-dismiss="alert"></button>
+    {% if messages %}
+      <div class="mt-3">
+        {% for cat,msg in messages %}
+          <div class="alert alert-{{ 'danger' if cat in ['error','danger'] else (cat=='warning' and 'warning' or 'info') }} alert-dismissible fade show">
+            {{ msg }} <button class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
       </div>
-    {% endfor %}
+    {% endif %}
   {% endwith %}
 
-  {# ——— ETAPA BUSCAR ——— #}
+  {# ====================================================== #}
+  {# =================== ETAPA: BUSCAR ==================== #}
+  {# ====================================================== #}
   {% if etapa=='buscar' %}
-    <form method="post" class="d-flex mb-4">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="busqueda" class="form-control me-2" placeholder="Nombre o cédula" required>
-      <button class="btn btn-primary">Buscar</button>
-    </form>
-    {% if resultados %}
-      <ul class="list-group">
-        {% for c in resultados %}
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            {{ c.nombre_completo }} ({{ c.cedula }})
-            <a href="{{ url_for('entrevista') }}?fila={{ c.fila }}" class="btn btn-sm btn-outline-primary">
-              Seleccionar
-            </a>
-          </li>
-        {% endfor %}
-      </ul>
-    {% endif %}
+    <div class="card mt-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <span class="fw-semibold">Buscar Candidata</span>
+        <span class="ms-auto small text-muted d-none d-md-inline">Nombre o cédula</span>
+      </div>
+      <div class="card-body">
+        <form method="post" class="row g-2 align-items-end">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="col-12 col-md-8">
+            <label for="busqueda" class="form-label mb-1">Término</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+              <input type="text" id="busqueda" name="busqueda" class="form-control" placeholder="Ej: María Pérez o 001-0000000-1" required>
+            </div>
+            <div class="form-text">Pega el dato y presiona Enter.</div>
+          </div>
+          <div class="col-12 col-md-4 text-md-end">
+            <button class="btn btn-primary"><i class="fa-solid fa-search me-1"></i> Buscar</button>
+          </div>
+        </form>
+      </div>
+      {% if resultados %}
+      <div class="card-body pt-0">
+        <div class="table-responsive">
+          <table class="table table-hover m-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width:100px">Fila</th>
+                <th>Nombre</th>
+                <th style="width:200px">Cédula</th>
+                <th style="width:140px" class="text-end">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in resultados %}
+              <tr>
+                <td class="text-muted">{{ c.fila }}</td>
+                <td class="fw-semibold"><i class="fa-regular fa-id-badge me-1 text-muted"></i>{{ c.nombre_completo }}</td>
+                <td><span class="badge-soft">{{ c.cedula }}</span></td>
+                <td class="text-end">
+                  <a href="{{ url_for('entrevista') }}?fila={{ c.fila }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-check me-1"></i> Seleccionar
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+    </div>
   {% endif %}
 
-  {# ——— ETAPA ELEGIR TIPO ——— #}
+  {# ====================================================== #}
+  {# =============== ETAPA: ELEGIR TIPO =================== #}
+  {# ====================================================== #}
   {% if etapa=='elegir_tipo' %}
-    <h3>Selecciona tipo de entrevista para <strong>{{ candidata.nombre_completo }}</strong></h3>
-    <div class="list-group">
+    <div class="d-flex align-items-center gap-3 mt-3">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('entrevista') }}">
+        <i class="fa-solid fa-arrow-left-long me-1"></i> Volver
+      </a>
+      <div class="flex-grow-1">
+        <h3 class="h5 m-0">Selecciona tipo de entrevista</h3>
+        <div class="text-muted small">Candidata: <strong>{{ candidata.nombre_completo }}</strong></div>
+      </div>
+    </div>
+
+    <div class="row g-3 mt-2">
       {% for key, titulo in tipos %}
+      <div class="col-12 col-md-6 col-lg-4">
         <a href="{{ url_for('entrevista') }}?fila={{ candidata.fila }}&tipo={{ key }}"
-           class="list-group-item list-group-item-action">
-          {{ titulo }}
+           class="card text-decoration-none hover-lift">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+              <div class="kpi-icon kpi-accent"><i class="fa-regular fa-note-sticky"></i></div>
+              <div>
+                <div class="fw-semibold">{{ titulo }}</div>
+                <div class="text-muted small">Formulario dinámico</div>
+              </div>
+            </div>
+            <i class="fa-solid fa-chevron-right text-muted"></i>
+          </div>
         </a>
+      </div>
       {% endfor %}
     </div>
   {% endif %}
 
-  {# ——— ETAPA FORMULARIO ——— #}
+  {# ====================================================== #}
+  {# ================ ETAPA: FORMULARIO =================== #}
+  {# ====================================================== #}
   {% if etapa=='formulario' %}
-    <h3>{{ titulo }} — {{ candidata.nombre_completo }}</h3>
+    <div class="d-flex align-items-center justify-content-between mt-3">
+      <div class="d-flex align-items-center gap-3">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('entrevista') }}?fila={{ candidata.fila }}">
+          <i class="fa-solid fa-arrow-left-long me-1"></i> Volver
+        </a>
+        <div>
+          <h3 class="h5 m-0">{{ titulo }}</h3>
+          <div class="text-muted small">Candidata: <strong>{{ candidata.nombre_completo }}</strong></div>
+        </div>
+      </div>
+      <span class="badge-soft">Obligatorio completar todo</span>
+    </div>
+
     <form id="entrevistaForm"
+          class="mt-3"
           method="post"
           action="{{ url_for('entrevista') }}?fila={{ candidata.fila }}&tipo={{ tipo }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {% for p in preguntas %}
-        <div class="mb-3">
-          <label class="form-label">{{ p.enunciado }}</label>
-          {% if p.tipo=='radio' %}
-            <div>
-              {% for opt in p.opciones %}
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input"
-                         type="radio"
-                         name="{{ p.id }}"
-                         value="{{ opt }}"
-                         required>
-                  <label class="form-check-label">{{ opt }}</label>
-                </div>
-              {% endfor %}
-            </div>
-          {% elif p.tipo in ['texto_largo','textarea_grande'] %}
-            <textarea class="form-control"
-                      name="{{ p.id }}"
-                      rows="3"
-                      required></textarea>
-          {% else %}
-            <input type="text"
-                   class="form-control"
-                   name="{{ p.id }}"
-                   required>
-          {% endif %}
+
+      <div class="card">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="fa-solid fa-clipboard-list"></i>
+          <span class="fw-semibold">Cuestionario</span>
+          <span class="ms-auto small text-muted d-none d-md-inline">Marca o escribe según corresponda</span>
         </div>
-      {% endfor %}
-      <button id="submitBtn" class="btn btn-success">Guardar</button>
+        <div class="card-body">
+          {# Render dinámico de preguntas #}
+          {% for p in preguntas %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">{{ p.enunciado }}</label>
+
+            {% if p.tipo=='radio' %}
+              <div class="d-flex flex-wrap gap-3">
+                {% for opt in p.opciones %}
+                  <div class="form-check">
+                    <input class="form-check-input"
+                           type="radio"
+                           name="{{ p.id }}"
+                           value="{{ opt }}"
+                           required
+                           id="{{ p.id }}_{{ loop.index }}">
+                    <label class="form-check-label" for="{{ p.id }}_{{ loop.index }}">
+                      {{ opt }}
+                    </label>
+                  </div>
+                {% endfor %}
+              </div>
+
+            {% elif p.tipo in ['texto_largo','textarea_grande'] %}
+              <div class="position-relative">
+                <textarea class="form-control"
+                          name="{{ p.id }}"
+                          rows="3"
+                          data-counter="true"
+                          required></textarea>
+                <small class="text-muted position-absolute end-0 mt-1 me-1" data-counter-label>0 caracteres</small>
+              </div>
+
+            {% else %}
+              <div class="input-group">
+                <span class="input-group-text"><i class="fa-regular fa-pen-to-square"></i></span>
+                <input type="text"
+                       class="form-control"
+                       name="{{ p.id }}"
+                       required>
+              </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+          <span class="text-muted small"><i class="fa-regular fa-circle-check me-1"></i>Verifica antes de guardar</span>
+          <button id="submitBtn" class="btn btn-success">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Guardar
+          </button>
+        </div>
+      </div>
     </form>
   {% endif %}
+
 </div>
 {% endblock %}
 
 {% block scripts %}
-  {{ super() }}
-  <script>
+{{ super() }}
+<style>
+  .hover-lift{ transition: transform .16s ease, box-shadow .18s ease, border-color .18s ease }
+  .hover-lift:hover{ transform: translateY(-2px); box-shadow: var(--shadow-2) }
+  .kpi-icon{
+    width:40px; height:40px; display:grid; place-items:center;
+    border-radius:12px; color:#fff; font-size:1rem; box-shadow: var(--shadow-1);
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, var(--brand)));
+  }
+</style>
+
+<script>
+  // Deshabilitar botón en envío + spinner visual
+  (function(){
     const form = document.getElementById('entrevistaForm');
-    if (form) {
-      form.addEventListener('submit', () => {
-        document.getElementById('submitBtn').disabled = true;
-        document.getElementById('submitBtn').innerText = 'Guardando...';
-      });
-    }
-  </script>
+    if (!form) return;
+    const btn  = document.getElementById('submitBtn');
+    form.addEventListener('submit', function(){
+      if(btn){
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Guardando...';
+      }
+    });
+  })();
+
+  // Contador de caracteres para textareas con data-counter="true"
+  (function(){
+    document.querySelectorAll('textarea[data-counter="true"]').forEach(function(el){
+      const label = el.parentElement.querySelector('[data-counter-label]');
+      const update = () => {
+        const len = el.value.trim().length;
+        if(label) label.textContent = `${len} ${len===1?'carácter':'caracteres'}`;
+      };
+      el.addEventListener('input', update);
+      update();
+    });
+  })();
+</script>
 {% endblock %}

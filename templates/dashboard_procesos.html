@@ -1,45 +1,76 @@
+{# templates/dashboard_procesos.html #}
 {% extends 'base.html' %}
 
-{% block content %}
-<div class="container my-5">
-  <h1 class="mb-4">📊 Dashboard de Procesos</h1>
+{% block title %}📊 Dashboard de Procesos{% endblock %}
 
-  <!-- Estadísticas -->
-  <div class="row g-4 mb-5">
-    <div class="col-sm-4">
-      <div class="card text-center shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title">Total de Candidatas</h5>
-          <p class="display-5">{{ total }}</p>
+{% block content %}
+<div class="container py-3">
+
+  {# ───── Title / Intro ───── #}
+  <section class="hero-section">
+    <h1 class="h3 mb-1">📊 Dashboard de Procesos</h1>
+    <p class="text-muted mb-0">Resumen de candidatas, estados y movimientos recientes. Filtra por estado y rango de fechas.</p>
+  </section>
+
+  {# ───── KPIs ───── #}
+  <div class="row g-3 mt-2">
+    <div class="col-12 col-md-4">
+      <div class="card kpi-card h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="kpi-icon kpi-primary"><i class="fa-solid fa-users"></i></div>
+          <div class="flex-grow-1">
+            <div class="text-muted small">Total de Candidatas</div>
+            <div class="h3 m-0">{{ total }}</div>
+          </div>
+          <span class="badge-soft">100%</span>
         </div>
       </div>
     </div>
-    <div class="col-sm-4">
-      <div class="card text-center shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title">Entradas Hoy</h5>
-          <p class="display-5">{{ entradas_hoy }}</p>
+    <div class="col-12 col-md-4">
+      <div class="card kpi-card h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="kpi-icon kpi-success"><i class="fa-regular fa-calendar-plus"></i></div>
+          <div class="flex-grow-1">
+            <div class="text-muted small">Entradas Hoy</div>
+            <div class="h3 m-0">{{ entradas_hoy }}</div>
+          </div>
+          <span class="badge-soft">hoy</span>
         </div>
       </div>
     </div>
-    <div class="col-sm-4">
-      <div class="card text-center shadow-sm">
+    <div class="col-12 col-md-4">
+      <div class="card kpi-card h-100">
         <div class="card-body">
-          <h5 class="card-title">Por Estado</h5>
-          {% for estado, cnt in counts_por_estado.items() %}
-            <div>{{ estado.replace('_',' ').capitalize() }}: <strong>{{ cnt }}</strong></div>
-          {% endfor %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="kpi-icon kpi-accent"><i class="fa-solid fa-chart-pie"></i></div>
+            <div class="fw-semibold">Por Estado</div>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            {% for estado, cnt in counts_por_estado.items() %}
+              <span class="state-pill" data-state="{{ estado }}">
+                {{ estado.replace('_',' ').capitalize() }} <strong class="ms-1">{{ cnt }}</strong>
+              </span>
+            {% endfor %}
+            {% if not counts_por_estado %}
+              <span class="text-muted small">Sin datos</span>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Formulario de filtro -->
-  <div class="card mb-5 shadow-sm">
-    <div class="card-header">Filtrar Resultados</div>
+  {# ───── Filtros ───── #}
+  <div class="card mt-3">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="fa-solid fa-filter me-1"></i> Filtrar Resultados
+      <span class="ms-auto small text-muted d-none d-md-inline">
+        <i class="fa-regular fa-lightbulb me-1"></i>Tip: usa los atajos de fechas para rellenar rápido
+      </span>
+    </div>
     <div class="card-body">
-      <form method="get" action="{{ url_for('dashboard_procesos') }}" class="row g-3">
-        <div class="col-md-3">
+      <form method="get" action="{{ url_for('dashboard_procesos') }}" class="row g-3 align-items-end">
+        <div class="col-12 col-md-3">
           <label class="form-label">Estado</label>
           <select class="form-select" name="estado">
             <option value="">(Todos)</option>
@@ -50,81 +81,205 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-12 col-md-3">
           <label class="form-label">Desde</label>
           <input type="date" name="desde" class="form-control" value="{{ desde_str }}">
         </div>
-        <div class="col-md-3">
+        <div class="col-12 col-md-3">
           <label class="form-label">Hasta</label>
           <input type="date" name="hasta" class="form-control" value="{{ hasta_str }}">
         </div>
-        <div class="col-md-3 align-self-end text-end">
-          <button type="submit" class="btn btn-primary">Aplicar Filtro</button>
+        <div class="col-12 col-md-3 text-md-end">
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <button class="btn btn-outline-secondary btn-sm quick-range" type="button" data-range="hoy">Hoy</button>
+            <button class="btn btn-outline-secondary btn-sm quick-range" type="button" data-range="7d">7 días</button>
+            <button class="btn btn-outline-secondary btn-sm quick-range" type="button" data-range="30d">30 días</button>
+            <button class="btn btn-outline-secondary btn-sm quick-range" type="button" data-range="mes">Mes actual</button>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Aplicar Filtro
+          </button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Tabla de resultados filtrados -->
-  <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <span>Candidatas Filtradas ({{ candidatas.total }})</span>
-      <form method="get" class="d-flex align-items-center">
-        <!-- Mantener filtros -->
+  {# ───── Tabla resultados ───── #}
+  <div class="card mt-3">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div>
+        <i class="fa-regular fa-rectangle-list me-1"></i>
+        Candidatas Filtradas
+        <span class="badge-soft ms-2">{{ candidatas.total }}</span>
+      </div>
+      <form method="get" class="d-flex align-items-center gap-2">
+        {# Mantener filtros #}
         <input type="hidden" name="estado" value="{{ estado_filtro }}">
         <input type="hidden" name="desde" value="{{ desde_str }}">
         <input type="hidden" name="hasta" value="{{ hasta_str }}">
-        <label class="me-2 mb-0">Por página</label>
-        <select name="per_page" class="form-select form-select-sm me-2" onchange="this.form.submit()">
+        <label class="mb-0 small text-muted">Por página</label>
+        <select name="per_page" class="form-select form-select-sm" onchange="this.form.submit()">
           {% for n in [10,25,50,100,200] %}
             <option value="{{n}}" {% if candidatas.per_page == n %}selected{% endif %}>{{n}}</option>
           {% endfor %}
         </select>
       </form>
     </div>
-    <div class="card-body table-responsive">
-      <table class="table table-striped">
-        <thead class="table-light">
-          <tr>
-            <th>Fila</th>
-            <th>Nombre</th>
-            <th>Estado</th>
-            <th>Fecha Cambio</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in candidatas.items %}
-          <tr>
-            <td>{{ c.fila }}</td>
-            <td>{{ c.nombre_completo }}</td>
-            <td>{{ c.estado.replace('_',' ').capitalize() }}</td>
-            <td>{{ c.fecha_cambio_estado.strftime('%Y-%m-%d %H:%M') if c.fecha_cambio_estado else '' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-nowrap m-0">
+          <thead class="position-sticky top-0 table-light" style="z-index:1">
+            <tr>
+              <th style="width:100px">Fila</th>
+              <th>Nombre</th>
+              <th style="width:220px">Estado</th>
+              <th style="width:200px">Fecha Cambio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in candidatas.items %}
+            <tr>
+              <td class="text-muted">{{ c.fila }}</td>
+              <td class="fw-semibold">
+                <i class="fa-solid fa-user me-1 text-muted"></i>{{ c.nombre_completo }}
+              </td>
+              <td>
+                <span class="state-pill" data-state="{{ c.estado }}">
+                  {{ c.estado.replace('_',' ').capitalize() }}
+                </span>
+              </td>
+              <td>
+                {{ c.fecha_cambio_estado.strftime('%Y-%m-%d %H:%M') if c.fecha_cambio_estado else '—' }}
+              </td>
+            </tr>
+            {% endfor %}
+            {% if candidatas.items|length == 0 %}
+            <tr><td colspan="4" class="text-center text-muted py-4">Sin resultados para el filtro seleccionado.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
     </div>
 
-    <!-- Paginación -->
     <div class="card-footer d-flex justify-content-center">
       <ul class="pagination mb-0">
         <li class="page-item {% if not candidatas.has_prev %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('dashboard_procesos', page=candidatas.prev_num, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}">«</a>
+          <a class="page-link"
+             href="{{ url_for('dashboard_procesos', page=candidatas.prev_num, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}"
+             aria-label="Anterior">«</a>
         </li>
         {% for p in candidatas.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
           {% if p %}
             <li class="page-item {% if p == candidatas.page %}active{% endif %}">
-              <a class="page-link" href="{{ url_for('dashboard_procesos', page=p, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}">{{ p }}</a>
+              <a class="page-link"
+                 href="{{ url_for('dashboard_procesos', page=p, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}">{{ p }}</a>
             </li>
           {% else %}
             <li class="page-item disabled"><span class="page-link">…</span></li>
           {% endif %}
         {% endfor %}
         <li class="page-item {% if not candidatas.has_next %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('dashboard_procesos', page=candidatas.next_num, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}">»</a>
+          <a class="page-link"
+             href="{{ url_for('dashboard_procesos', page=candidatas.next_num, per_page=candidatas.per_page, estado=estado_filtro, desde=desde_str, hasta=hasta_str) }}"
+             aria-label="Siguiente">»</a>
         </li>
       </ul>
     </div>
   </div>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<style>
+  .kpi-card{ border:1px solid var(--border); box-shadow: var(--shadow-1); }
+  .kpi-icon{
+    width:44px; height:44px; display:grid; place-items:center;
+    border-radius:12px; color:#fff; font-size:1.1rem;
+    box-shadow: var(--shadow-1);
+  }
+  .kpi-primary{ background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 65%, var(--accent))); }
+  .kpi-success{ background: linear-gradient(135deg, var(--ok), color-mix(in srgb, var(--ok) 65%, var(--accent))); }
+  .kpi-accent{ background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, var(--brand))); }
+
+  .table-nowrap td, .table-nowrap th { white-space: nowrap; }
+  .state-pill{
+    border-radius:999px; padding:.35rem .65rem; font-weight:600; font-size:.85rem;
+    border:1px solid var(--border);
+    background: var(--card); color: var(--text);
+  }
+  /* Colores por estado */
+  .state-pill[data-state="en_proceso"]{
+    border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+    background: color-mix(in srgb, var(--warning) 10%, var(--card));
+    color: color-mix(in srgb, var(--warning) 50%, var(--text));
+  }
+  .state-pill[data-state="proceso_inscripcion"]{
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--card));
+    color: color-mix(in srgb, var(--accent) 55%, var(--text));
+  }
+  .state-pill[data-state="inscrita"],
+  .state-pill[data-state="inscrita_incompleta"]{
+    border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+    background: color-mix(in srgb, var(--brand) 10%, var(--card));
+    color: color-mix(in srgb, var(--brand) 55%, var(--text));
+  }
+  .state-pill[data-state="lista_para_trabajar"]{
+    border-color: color-mix(in srgb, var(--ok) 35%, var(--border));
+    background: color-mix(in srgb, var(--ok) 10%, var(--card));
+    color: color-mix(in srgb, var(--ok) 55%, var(--text));
+  }
+  .state-pill[data-state="trabajando"]{
+    border-color: color-mix(in srgb, var(--brand-2) 35%, var(--border));
+    background: color-mix(in srgb, var(--brand-2) 10%, var(--card));
+    color: color-mix(in srgb, var(--brand-2) 55%, var(--text));
+  }
+  .state-pill[data-state="descalificada"]{
+    border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+    background: color-mix(in srgb, var(--danger) 10%, var(--card));
+    color: color-mix(in srgb, var(--danger) 55%, var(--text));
+  }
+</style>
+
+<script>
+  // Atajos de rango de fechas (solo rellenan inputs)
+  (function(){
+    const form = document.querySelector('form[action="{{ url_for("dashboard_procesos") }}"]');
+    if(!form) return;
+    const desde = form.querySelector('input[name="desde"]');
+    const hasta = form.querySelector('input[name="hasta"]');
+    const pad = n => String(n).padStart(2,'0');
+    const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+    function setRange(kind){
+      const now = new Date();
+      let d1, d2;
+
+      if(kind==='hoy'){
+        d1 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        d2 = new Date(d1);
+      }else if(kind==='7d'){
+        d2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        d1 = new Date(d2); d1.setDate(d2.getDate() - 6);
+      }else if(kind==='30d'){
+        d2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        d1 = new Date(d2); d1.setDate(d2.getDate() - 29);
+      }else if(kind==='mes'){
+        d1 = new Date(now.getFullYear(), now.getMonth(), 1);
+        d2 = new Date(now.getFullYear(), now.getMonth()+1, 0);
+      }else{
+        return;
+      }
+      if(desde) desde.value = fmt(d1);
+      if(hasta) hasta.value = fmt(d2);
+    }
+
+    document.querySelectorAll('.quick-range').forEach(btn=>{
+      btn.addEventListener('click', ()=> setRange(btn.dataset.range));
+    });
+  })();
+</script>
 {% endblock %}

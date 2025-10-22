@@ -2,36 +2,200 @@
 {% block title %}Perfil – {{ candidata.nombre_completo }}{% endblock %}
 
 {% block content %}
+<style>
+  /* ======== Estilos principales ======== */
+  .perfil-wrapper {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    padding: 30px;
+    box-shadow: 0 10px 35px rgba(0,0,0,0.1);
+    transition: all 0.3s ease-in-out;
+  }
+  [data-theme="dark"] .perfil-wrapper {
+    background: rgba(17, 24, 39, 0.55);
+    border-color: rgba(255,255,255,0.1);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+  }
+  .perfil-wrapper:hover { transform: translateY(-2px); }
+
+  .perfil-header h1 {
+    font-weight: 800;
+    color: var(--primary-color, #1A5789);
+    font-size: 1.5rem;
+  }
+
+  .perfil-header small {
+    font-weight: 500;
+    color: #6c757d;
+  }
+
+  .foto-box {
+    width: 160px;
+    height: 160px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #f8f9fa;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    position: relative;
+  }
+  [data-theme="dark"] .foto-box {
+    background: #222;
+    border-color: rgba(255,255,255,0.12);
+  }
+
+  .foto-box img {
+    object-fit: cover;
+    width: 100%;
+    height: 100%;
+    transition: opacity .3s ease-in-out;
+  }
+
+  .foto-error, .foto-cargando {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #777;
+    background: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+  }
+  [data-theme="dark"] .foto-error, [data-theme="dark"] .foto-cargando {
+    background: rgba(0,0,0,0.4);
+    color: #bbb;
+  }
+
+  .badge {
+    border-radius: 30px !important;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .btn-glass {
+    border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #1A5789, #00AECF);
+    color: #fff;
+    font-weight: 600;
+    padding: 9px 18px;
+    box-shadow: 0 8px 25px rgba(26,87,137,0.25);
+    transition: all 0.25s ease;
+  }
+  .btn-glass:hover {
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+  }
+
+  .btn-outline-glass {
+    border-radius: 50px;
+    border: 1px solid rgba(0,0,0,0.1);
+    color: var(--primary-color, #1A5789);
+    background: rgba(255,255,255,0.6);
+    font-weight: 600;
+    padding: 8px 16px;
+  }
+  [data-theme="dark"] .btn-outline-glass {
+    color: #fff;
+    border-color: rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.1);
+  }
+  .btn-outline-glass:hover {
+    background: rgba(0,174,207,0.12);
+  }
+
+  .volver-link {
+    color: var(--primary-color, #1A5789);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .volver-link:hover { text-decoration: underline; }
+
+  .alert-glass {
+    background: rgba(255,255,255,0.75);
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: 12px;
+    padding: 12px 18px;
+    margin-bottom: 15px;
+    font-size: 0.95rem;
+    color: #333;
+  }
+  [data-theme="dark"] .alert-glass {
+    background: rgba(255,255,255,0.1);
+    color: #ddd;
+    border-color: rgba(255,255,255,0.1);
+  }
+</style>
+
 <div class="container my-4">
-  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-    <h1 class="h5 mb-0">Perfil de {{ candidata.nombre_completo }} <span class="text-muted">#{{ candidata.fila }}</span></h1>
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2 perfil-header">
+    <h1 class="mb-0">
+      👤 Perfil de {{ candidata.nombre_completo }}
+      <small class="ms-2">#{{ candidata.fila }}</small>
+    </h1>
     <div class="d-flex gap-2">
-      <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary btn-sm">← Volver a buscar</a>
-      <a href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}" class="btn btn-success btn-sm">Editar / Finalizar</a>
+      <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn-outline-glass btn btn-sm">← Volver</a>
+      <a href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}" class="btn-glass btn btn-sm">Editar / Finalizar</a>
     </div>
   </div>
 
-  <div class="card shadow-sm">
-    <div class="card-body d-flex flex-wrap align-items-start gap-4">
-      <div class="rounded border p-1" style="width:140px;height:140px;overflow:hidden;background:#f8f9fa;">
-        {% if candidata.foto_perfil or candidata.perfil %}
-          <img src="{{ url_for('perfil_candidata', fila=candidata.fila) }}" alt="Foto" class="w-100 h-100" style="object-fit:cover;">
+  <!-- Alertas de error o éxito -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="alert-glass">
+        {% if category == 'danger' %}
+          <i class="fa-solid fa-triangle-exclamation text-danger"></i>
+        {% elif category == 'success' %}
+          <i class="fa-solid fa-circle-check text-success"></i>
         {% else %}
-          <div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted small">Sin foto</div>
+          <i class="fa-solid fa-circle-info text-primary"></i>
         {% endif %}
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="perfil-wrapper">
+    <div class="d-flex flex-wrap align-items-start gap-4">
+      <div class="foto-box">
+        <div id="fotoCargando" class="foto-cargando">Cargando foto...</div>
+        <img id="fotoPerfil" 
+             src="{{ url_for('perfil_candidata', fila=candidata.fila) }}" 
+             alt="Foto de {{ candidata.nombre_completo }}" 
+             onload="fotoCargada()" 
+             onerror="fotoError()">
+        <div id="fotoError" class="foto-error d-none">
+          <i class="fa-solid fa-image-slash me-1"></i> Error al cargar
+        </div>
       </div>
 
       <div class="flex-grow-1">
-        <div class="mb-2">
+        <div class="mb-3">
           {% if candidata.estado %}
             <span class="badge bg-primary-subtle text-primary border">{{ candidata.estado|replace('_',' ') }}</span>
           {% endif %}
-          {% if tiene_ced1 %}<span class="badge bg-success-subtle text-success border ms-1">Cédula (frente)</span>{% else %}<span class="badge bg-light text-muted border ms-1">Cédula (frente)</span>{% endif %}
-          {% if tiene_ced2 %}<span class="badge bg-success-subtle text-success border ms-1">Cédula (reverso)</span>{% else %}<span class="badge bg-light text-muted border ms-1">Cédula (reverso)</span>{% endif %}
-          {% if tiene_foto %}<span class="badge bg-success-subtle text-success border ms-1">Foto</span>{% else %}<span class="badge bg-light text-muted border ms-1">Foto</span>{% endif %}
+          {% if tiene_ced1 %}
+            <span class="badge bg-success-subtle text-success border">Cédula (frente)</span>
+          {% else %}
+            <span class="badge bg-light text-muted border">Cédula (frente)</span>
+          {% endif %}
+          {% if tiene_ced2 %}
+            <span class="badge bg-success-subtle text-success border">Cédula (reverso)</span>
+          {% else %}
+            <span class="badge bg-light text-muted border">Cédula (reverso)</span>
+          {% endif %}
+          {% if tiene_foto %}
+            <span class="badge bg-success-subtle text-success border">Foto</span>
+          {% else %}
+            <span class="badge bg-light text-muted border">Foto</span>
+          {% endif %}
         </div>
 
-        <div class="row g-2">
+        <div class="row g-3">
           <div class="col-md-6">
             <div class="small text-muted">Cédula</div>
             <div class="fw-semibold">{{ candidata.cedula or '—' }}</div>
@@ -55,14 +219,38 @@
         </div>
         {% endif %}
 
-        <div class="mt-3">
-          <a href="{{ url_for('perfil_candidata', fila=candidata.fila) }}" class="btn btn-sm btn-outline-primary" download="perfil_{{ candidata.fila }}.png">
-            Descargar foto
+        <div class="mt-4 d-flex flex-wrap align-items-center gap-2">
+          <a href="{{ url_for('perfil_candidata', fila=candidata.fila) }}" 
+             class="btn-outline-glass btn btn-sm" 
+             download="perfil_{{ candidata.fila }}.png">
+             <i class="fa-solid fa-download me-1"></i> Descargar foto
           </a>
-          <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-sm btn-link">Volver a buscar</a>
+          <a href="{{ url_for('finalizar_proceso_buscar') }}" class="volver-link">
+            <i class="fa-solid fa-arrow-left-long me-1"></i> Volver a buscar
+          </a>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<script>
+  function fotoCargada() {
+    document.getElementById('fotoCargando').classList.add('d-none');
+    document.getElementById('fotoError').classList.add('d-none');
+  }
+
+  function fotoError() {
+    document.getElementById('fotoCargando').classList.add('d-none');
+    document.getElementById('fotoError').classList.remove('d-none');
+  }
+
+  // Si la imagen no carga en 5s, mostrar error automáticamente
+  window.addEventListener('DOMContentLoaded', () => {
+    const timeout = setTimeout(() => {
+      const img = document.getElementById('fotoPerfil');
+      if (!img.complete || img.naturalWidth === 0) fotoError();
+    }, 5000);
+  });
+</script>
 {% endblock %}
