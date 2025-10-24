@@ -2,32 +2,153 @@
 {% block title %}Cancelar Solicitud {{ solicitud.codigo_solicitud }}{% endblock %}
 
 {% block content %}
-<div class="container py-4 py-md-5" style="max-width: 920px;">
+<style>
+  /* ===== Fondo general y tipografía ===== */
+  body {
+    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
+    font-family: 'Poppins', sans-serif;
+    color: #e2e8f0;
+  }
 
-  <!-- Encabezado -->
-  <div class="d-flex flex-wrap justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+  /* ===== Contenedor principal ===== */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 1rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    padding: 2rem 2.5rem;
+    max-width: 950px;
+    margin: 3rem auto;
+  }
+
+  .glass-card h1 {
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /* ===== Botones ===== */
+  .btn-danger {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    border-radius: 0.6rem;
+    padding: 0.7rem 1.2rem;
+    transition: all 0.2s ease;
+  }
+
+  .btn-danger:hover {
+    background: linear-gradient(135deg, #f87171, #b91c1c);
+    transform: translateY(-1px);
+  }
+
+  .btn-outline-secondary {
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #e2e8f0;
+    border-radius: 0.6rem;
+    font-weight: 500;
+  }
+
+  .btn-outline-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
+
+  /* ===== Inputs y textarea ===== */
+  .form-control {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #f1f5f9;
+    border-radius: 0.6rem;
+    transition: all 0.2s ease;
+  }
+
+  .form-control:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  textarea.form-control {
+    resize: vertical;
+  }
+
+  .form-text, .small.text-muted {
+    color: #94a3b8;
+  }
+
+  .invalid-feedback {
+    color: #fca5a5 !important;
+    font-weight: 500;
+  }
+
+  /* ===== Alertas ===== */
+  .alert-warning {
+    background: rgba(250, 204, 21, 0.15);
+    border: 1px solid rgba(250, 204, 21, 0.25);
+    color: #facc15;
+    border-radius: 0.6rem;
+  }
+
+  .alert-danger, .alert-success {
+    border-radius: 0.6rem;
+  }
+
+  /* ===== Header de la tarjeta ===== */
+  .card-header {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: none;
+    border-radius: 1rem 1rem 0 0;
+    padding: 1rem 1.2rem;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /* ===== Etiquetas de estado ===== */
+  .badge {
+    font-size: 0.85rem;
+    border-radius: 0.4rem;
+    padding: 0.35em 0.6em;
+  }
+
+  /* ===== Contador de caracteres ===== */
+  #motivo-count {
+    font-weight: 600;
+  }
+</style>
+
+<div class="glass-card">
+  <div class="d-flex flex-wrap justify-content-between align-items-start align-items-md-center gap-2 mb-4">
     <div>
-      <h1 class="h4 mb-1">Cancelar Solicitud <span class="text-muted">({{ solicitud.codigo_solicitud }})</span></h1>
+      <h1 class="h4 mb-1">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+             stroke="currentColor" width="24" height="24" class="me-1 text-danger">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 9v3.75m0 3.75h.008M4.5 12a7.5 7.5 0 1115 0 7.5 7.5 0 01-15 0z" />
+        </svg>
+        Cancelar Solicitud <span class="text-info">({{ solicitud.codigo_solicitud }})</span>
+      </h1>
       <div class="small text-muted">
-        Esta acción registrará un motivo y cambiará el estado a <span class="fw-semibold">cancelada</span>.
+        Esta acción registrará un motivo y cambiará el estado a <span class="fw-semibold text-danger">cancelada</span>.
       </div>
     </div>
-    <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-light">
+    <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" 
+       class="btn btn-outline-secondary">
       <i class="bi bi-arrow-left-short me-1"></i> Volver
     </a>
   </div>
 
-  <!-- Tarjeta principal -->
-  <div class="card shadow-sm border-0 rounded-4 overflow-hidden">
-    <div class="card-header bg-danger text-white d-flex align-items-center gap-2">
-      <i class="bi bi-exclamation-octagon-fill fs-5"></i>
-      <span>Confirmar cancelación</span>
+  <div class="card shadow-none border-0 bg-transparent">
+    <div class="card-header">
+      <i class="bi bi-exclamation-octagon-fill me-2"></i>
+      Confirmar cancelación
     </div>
 
-    <div class="card-body p-3 p-md-4 p-lg-5">
-
-      <!-- Resumen de la solicitud -->
-      <div class="row g-3 mb-3">
+    <div class="card-body px-2 px-md-4 py-4">
+      <!-- Resumen -->
+      <div class="row g-3 mb-4">
         <div class="col-md-4">
           <div class="small text-muted">Código</div>
           <div class="fw-semibold">{{ solicitud.codigo_solicitud }}</div>
@@ -55,7 +176,7 @@
       </div>
 
       <!-- Aviso -->
-      <div class="alert alert-warning d-flex align-items-start gap-2">
+      <div class="alert alert-warning d-flex align-items-start gap-2 mb-4">
         <i class="bi bi-info-circle-fill mt-1"></i>
         <div>
           <div class="fw-semibold">Importante</div>
@@ -85,16 +206,17 @@
           <input type="hidden" name="next" value="{{ next_url }}">
         {% endif %}
 
-        <div class="mb-3">
+        <div class="mb-4">
           <label for="motivo" class="form-label fw-semibold">Motivo de cancelación</label>
           <textarea id="motivo"
                     name="motivo"
                     class="form-control{% if form and form.motivo and form.motivo.errors %} is-invalid{% endif %}"
                     rows="5"
+                    minlength="5"
                     maxlength="500"
                     required
                     placeholder="Describe claramente el motivo. Ej. Cambio de horario, necesidad cubierta por otro medio, etc.">{{ request.form.get('motivo', '') }}</textarea>
-          <div class="d-flex justify-content-between mt-1">
+          <div class="d-flex justify-content-between mt-2">
             {% if form and form.motivo and form.motivo.errors %}
               <div class="invalid-feedback d-block">
                 {{ form.motivo.errors[0] }}
@@ -106,7 +228,7 @@
           </div>
         </div>
 
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-3">
           <button id="btn-submit" type="submit" class="btn btn-danger">
             <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
             <i class="bi bi-x-circle-fill me-1"></i> Confirmar cancelación
@@ -117,7 +239,6 @@
           </a>
         </div>
       </form>
-
     </div>
   </div>
 </div>
@@ -126,22 +247,41 @@
 {% block scripts %}
 <script>
 (function() {
-  // Contador de caracteres del motivo
+  // Contador de caracteres y validación adicional
   const motivo = document.getElementById('motivo');
   const out = document.getElementById('motivo-count');
-  function upd() {
-    if (motivo && out) out.textContent = motivo.value.length;
-  }
-  if (motivo) {
-    motivo.addEventListener('input', upd);
-    upd();
-  }
-
-  // Evitar doble envío y mostrar spinner
   const form = document.getElementById('cancel-form');
   const btn = document.getElementById('btn-submit');
+
+  const updateCount = () => {
+    if (motivo && out) out.textContent = motivo.value.length;
+  };
+
+  const validateMotivo = () => {
+    const len = motivo.value.trim().length;
+    if (len < 5 || len > 500) {
+      motivo.classList.add('is-invalid');
+      return false;
+    }
+    motivo.classList.remove('is-invalid');
+    return true;
+  };
+
+  if (motivo) {
+    motivo.addEventListener('input', () => {
+      updateCount();
+      validateMotivo();
+    });
+    updateCount();
+  }
+
   if (form && btn) {
-    form.addEventListener('submit', function() {
+    form.addEventListener('submit', (e) => {
+      if (!validateMotivo()) {
+        e.preventDefault();
+        alert('Por favor, escribe un motivo válido (mínimo 5 caracteres).');
+        return false;
+      }
       const spinner = btn.querySelector('.spinner-border');
       if (spinner) spinner.classList.remove('d-none');
       btn.disabled = true;

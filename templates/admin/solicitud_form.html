@@ -1,255 +1,368 @@
-<!-- templates/admin/solicitud_form.html -->
 {% extends 'base.html' %}
-
 {% block title %}{{ 'Nueva Solicitud' if nuevo else ('Solicitud ' ~ solicitud.codigo_solicitud) }} | Doméstica del Cibao A&D{% endblock %}
 
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
 <style>
-  .page-wrap{background:#f5f7fb}
-  .form-card{background:#fff;border:0;border-radius:14px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
-  .section-title{font-weight:700;color:#0f3c7a}
-  .hint{font-size:.90rem;color:#667085}
-  .required::after{content:" *";color:#dc3545}
-  .chip{display:inline-flex;align-items:center;gap:.35rem;background:#eef2ff;color:#3730a3;border-radius:999px;padding:.25rem .6rem;font-size:.825rem}
-  .divider{height:1px;background:rgba(99,102,241,.15);margin:1.5rem 0}
-  .form-control, .form-select, textarea{border-radius:10px}
-  .sticky-actions{position:sticky;bottom:0;z-index:5;background:linear-gradient(180deg,rgba(255,255,255,0) 0,#fff 24px);padding-top:16px}
-  .field-spacer{margin-top:.35rem}
+  body {
+    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
+    font-family: 'Poppins', sans-serif;
+    color: #e2e8f0;
+  }
+
+  h1, h2 {
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .form-card {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 1.2rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  }
+
+  .section-title {
+    font-weight: 600;
+    color: #93c5fd;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+
+  .hint {
+    font-size: .85rem;
+    color: #94a3b8;
+  }
+
+  .divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 2rem 0;
+  }
+
+  .form-control, .form-select, textarea {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #f8fafc;
+    border-radius: 10px;
+  }
+
+  .form-control:focus, .form-select:focus {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: #38bdf8;
+    box-shadow: 0 0 6px #38bdf8;
+  }
+
+  label {
+    color: #f1f5f9;
+    font-weight: 500;
+  }
+
+  .required::after {
+    content: " *";
+    color: #ef4444;
+  }
+
+  .alert-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fecaca;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+    border: none;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #2563eb, #60a5fa);
+    transform: translateY(-1px);
+  }
+
+  .btn-outline-secondary {
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #e2e8f0;
+  }
+
+  .btn-outline-secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border-radius: 999px;
+    padding: .25rem .6rem;
+    font-size: .825rem;
+  }
+
+  .sticky-actions {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), #0f172a 40px);
+    padding-top: 16px;
+    z-index: 5;
+  }
+
+  .form-check-label {
+    color: #e2e8f0;
+  }
+
+  .input-group-text {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e2e8f0;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-wrap py-4 py-md-5">
-  <div class="container" style="max-width: 1040px;">
-    <div class="form-card p-3 p-md-4 p-lg-5">
+<div class="container py-5" style="max-width: 1100px;">
+  <div class="form-card p-4 p-md-5">
 
-      <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
-        <div>
-          <h1 class="h3 mb-1">{{ 'Nueva Solicitud' if nuevo else ('Solicitud ' ~ solicitud.codigo_solicitud) }}</h1>
-          <div class="text-muted small">
-            Completa los campos y guarda. <span class="chip"><i class="bi bi-shield-check"></i> Datos cifrados</span>
+    <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
+      <div>
+        <h1 class="h4 mb-1">{{ '📝 Nueva Solicitud' if nuevo else ('🗂️ Solicitud ' ~ solicitud.codigo_solicitud) }}</h1>
+        <div class="text-muted small">
+          Completa los campos y guarda. <span class="chip"><i class="bi bi-shield-check"></i> Datos cifrados</span>
+        </div>
+      </div>
+      <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left-circle me-1"></i> Volver
+      </a>
+    </div>
+
+    <form id="solicitud-form" method="post" novalidate>
+      {{ form.hidden_tag() }}
+
+      {% if form.errors %}
+        <div class="alert alert-danger border-0 mb-4">
+          <div class="d-flex">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <div>
+              <strong>Revisa los campos con errores:</strong>
+              <ul class="mb-0 mt-1">
+                {% for field, errs in form.errors.items() %}
+                  {% for e in errs %}
+                    <li><strong>{{ form[field].label.text if form[field] else field }}:</strong> {{ e }}</li>
+                  {% endfor %}
+                {% endfor %}
+              </ul>
+            </div>
           </div>
         </div>
-        <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-light">
-          <i class="bi bi-arrow-left-short me-1"></i> Volver
-        </a>
+      {% endif %}
+
+      <!-- SECCIÓN 1 -->
+      <h2 class="section-title h5 mb-3"><i class="bi bi-geo-alt-fill text-info"></i> Ubicación y rutas</h2>
+      <div class="row g-4">
+        <div class="col-md-7">
+          <label class="form-label required">{{ form.ciudad_sector.label.text }}</label>
+          {{ form.ciudad_sector(class="form-control", aria_required="true") }}
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">{{ form.rutas_cercanas.label.text }}</label>
+          {{ form.rutas_cercanas(class="form-control") }}
+        </div>
       </div>
 
-      <form id="solicitud-form" method="post" novalidate>
-        {{ form.hidden_tag() }}
+      <div class="divider"></div>
 
-        {% if form.errors %}
-          <div class="alert alert-danger border-0">
-            <div class="d-flex">
-              <i class="bi bi-exclamation-triangle-fill me-2"></i>
-              <div>
-                <strong>Revisa los campos marcados.</strong>
-                <ul class="mb-0 mt-1">
-                  {% for field, errs in form.errors.items() %}
-                    {% for e in errs %}
-                      <li><strong>{{ form[field].label.text if form[field] else field }}:</strong> {{ e }}</li>
-                    {% endfor %}
-                  {% endfor %}
-                </ul>
-              </div>
+      <!-- SECCIÓN 2 -->
+      <h2 class="section-title h5 mb-3"><i class="bi bi-card-checklist text-primary"></i> Detalles de la oferta</h2>
+      <div class="row g-4">
+        <div class="col-md-6">
+          <label class="form-label required">{{ form.modalidad_trabajo.label.text }}</label>
+          {{ form.modalidad_trabajo(class="form-control") }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">{{ form.horario.label.text }}</label>
+          {{ form.horario(class="form-control") }}
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">{{ form.experiencia.label.text }}</label>
+        {{ form.experiencia(rows=3, class="form-control", maxlength="500") }}
+        <div class="d-flex justify-content-between mt-1">
+          <span class="hint">Hasta 500 caracteres.</span>
+          <span class="hint"><span id="exp-count">0</span>/500</span>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">{{ form.funciones.label.text }}</label>
+        <div class="row g-2">
+          {% for sub in form.funciones %}
+          <div class="col-12 col-sm-6 col-lg-4">
+            <div class="form-check">
+              {{ sub(class="form-check-input", id=sub.id) }}
+              <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
             </div>
           </div>
-        {% endif %}
-
-        {# ===================== Sección 1: Ubicación ===================== #}
-        <h2 class="section-title h5 mb-3"><i class="bi bi-geo-alt-fill me-2"></i>Ubicación y rutas</h2>
-        <div class="row g-4">
-          <div class="col-md-7">
-            <label class="form-label required">{{ form.ciudad_sector.label.text }}</label>
-            {{ form.ciudad_sector(class="form-control", aria_required="true") }}
-          </div>
-          <div class="col-md-5">
-            <label class="form-label">{{ form.rutas_cercanas.label.text }}</label>
-            {{ form.rutas_cercanas(class="form-control") }}
-          </div>
+          {% endfor %}
         </div>
-
-        <div class="divider"></div>
-
-        {# ===================== Sección 2: Detalles ===================== #}
-        <h2 class="section-title h5 mb-3"><i class="bi bi-card-checklist me-2"></i>Detalles de la oferta</h2>
-        <div class="row g-4">
-          <div class="col-md-6">
-            <label class="form-label required">{{ form.modalidad_trabajo.label.text }}</label>
-            {{ form.modalidad_trabajo(class="form-control", aria_required="true") }}
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">{{ form.horario.label.text }}</label>
-            {{ form.horario(class="form-control") }}
-          </div>
-          <div class="col-12">
-            <label class="form-label">{{ form.experiencia.label.text }}</label>
-            {{ form.experiencia(rows=3, class="form-control", maxlength="500") }}
-            <div class="d-flex justify-content-between mt-1">
-              <span class="hint">Hasta 500 caracteres.</span>
-              <span class="hint"><span id="exp-count">0</span>/500</span>
-            </div>
-          </div>
+        <div id="wrap-funciones-otro" class="mt-2" style="{% if form.funciones.data and ('otro' in form.funciones.data) %}{% else %}display:none{% endif %};">
+          <label class="form-label">{{ form.funciones_otro.label.text }}</label>
+          {{ form.funciones_otro(class="form-control", placeholder="Puedes separar varias por coma") }}
         </div>
+      </div>
 
-        <div class="mt-3">
-          <label class="form-label">{{ form.funciones.label.text }}</label>
-          <div class="row g-2">
-            {% for sub in form.funciones %}
-              <div class="col-12 col-sm-6 col-lg-4">
-                <div class="form-check mb-1">
-                  {{ sub(class="form-check-input", id=sub.id) }}
-                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-
-          <div id="wrap-funciones-otro" class="mt-2" style="{% if form.funciones.data and ('otro' in form.funciones.data) %}{% else %}display:none{% endif %};">
-            <label class="form-label">{{ form.funciones_otro.label.text }}</label>
-            {{ form.funciones_otro(class="form-control", placeholder="Puedes separar varias por coma") }}
-          </div>
-        </div>
-
-        <div class="mt-3">
-          <label class="form-label">{{ form.edad_requerida.label.text }}</label>
-          <div class="d-flex flex-wrap gap-3">
-            {% for sub in form.edad_requerida %}
-              <div class="form-check">
-                {{ sub(class="form-check-input", id=sub.id) }}
-                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-              </div>
-            {% endfor %}
-          </div>
-
-          <div id="wrap-edad-otro" class="mt-2" style="{% if form.edad_requerida.data and ('otro' in form.edad_requerida.data) %}{% else %}display:none{% endif %};">
-            <label class="form-label">{{ form.edad_otro.label.text }}</label>
-            {{ form.edad_otro(class="form-control", placeholder="Ej. 30 a 40, 20-30…") }}
-            <div class="hint field-spacer">Si elegiste “Otro”, especifica aquí el rango/criterio.</div>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        {# ===================== Sección 3: Tipo de lugar ===================== #}
-        <h2 class="section-title h5 mb-3"><i class="bi bi-building me-2"></i>Tipo de lugar</h2>
-        <div class="row g-4">
-          <div class="col-md-6">
-            <label class="form-label required">{{ form.tipo_lugar.label.text }}</label>
-            {{ form.tipo_lugar(class="form-select", aria_required="true", id=form.tipo_lugar.id) }}
-            <div id="wrap-tipo-lugar-otro" class="mt-2" style="{% if form.tipo_lugar.data == 'otro' %}{% else %}display:none{% endif %};">
-              <label class="form-label">{{ form.tipo_lugar_otro.label.text }}</label>
-              {{ form.tipo_lugar_otro(class="form-control", placeholder="Ej. Local comercial, villa, etc.") }}
-            </div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.habitaciones.label.text }}</label>
-            {{ form.habitaciones(class="form-control", type="number", min="0", step="1") }}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.banos.label.text }}</label>
-            {{ form.banos(class="form-control", type="number", min="0", step="0.5") }}
-          </div>
-        </div>
-
-        <div class="mt-2">
+      <div class="mt-3">
+        <label class="form-label">{{ form.edad_requerida.label.text }}</label>
+        <div class="d-flex flex-wrap gap-3">
+          {% for sub in form.edad_requerida %}
           <div class="form-check">
-            {{ form.dos_pisos(class="form-check-input", id=form.dos_pisos.id) }}
-            <label class="form-check-label" for="{{ form.dos_pisos.id }}">La vivienda tiene dos pisos</label>
+            {{ sub(class="form-check-input", id=sub.id) }}
+            <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        <div id="wrap-edad-otro" class="mt-2" style="{% if form.edad_requerida.data and ('otro' in form.edad_requerida.data) %}{% else %}display:none{% endif %};">
+          <label class="form-label">{{ form.edad_otro.label.text }}</label>
+          {{ form.edad_otro(class="form-control", placeholder="Ej. 30 a 40, 20-30…") }}
+          <div class="hint">Si elegiste “Otro”, especifica aquí el rango.</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- SECCIÓN 3 -->
+      <h2 class="section-title h5 mb-3"><i class="bi bi-building text-info"></i> Tipo de lugar</h2>
+      <div class="row g-4">
+        <div class="col-md-6">
+          <label class="form-label required">{{ form.tipo_lugar.label.text }}</label>
+          {{ form.tipo_lugar(class="form-select") }}
+          <div id="wrap-tipo-lugar-otro" class="mt-2" style="{% if form.tipo_lugar.data == 'otro' %}{% else %}display:none{% endif %};">
+            <label class="form-label">{{ form.tipo_lugar_otro.label.text }}</label>
+            {{ form.tipo_lugar_otro(class="form-control", placeholder="Ej. Local comercial, villa…") }}
           </div>
         </div>
+        <div class="col-md-3">
+          <label class="form-label">{{ form.habitaciones.label.text }}</label>
+          {{ form.habitaciones(class="form-control", type="number", min="0", step="1") }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">{{ form.banos.label.text }}</label>
+          {{ form.banos(class="form-control", type="number", min="0", step="0.5") }}
+        </div>
+      </div>
 
-        <div class="mt-3">
-          <label class="form-label">{{ form.areas_comunes.label.text }}</label>
-          <div class="d-flex flex-wrap gap-3">
-            {% for sub in form.areas_comunes %}
-              <div class="form-check">
-                {{ sub(class="form-check-input", id=sub.id) }}
-                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-              </div>
+      <div class="mt-2">
+        <div class="form-check">
+          {{ form.dos_pisos(class="form-check-input", id=form.dos_pisos.id) }}
+          <label class="form-check-label" for="{{ form.dos_pisos.id }}">La vivienda tiene dos pisos</label>
+        </div>
+      </div>
+
+      <!-- ÁREAS COMUNES (DESCRIPCIONES DEL HOGAR) -->
+      {% if form.areas_comunes is defined %}
+      <div class="mt-4">
+        <label class="form-label">{{ form.areas_comunes.label.text if form.areas_comunes.label else 'Áreas comunes' }}</label>
+        <div class="row g-2">
+          {% for sub in form.areas_comunes %}
+          <div class="col-12 col-sm-6 col-lg-4">
+            <div class="form-check">
+              {{ sub(class="form-check-input", id=sub.id) }}
+              <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if form.area_otro is defined %}
+        <div id="wrap-areas-otro" class="mt-2" style="{% if form.areas_comunes.data and ('otro' in form.areas_comunes.data) %}{% else %}display:none{% endif %};">
+          <label class="form-label">{{ form.area_otro.label.text if form.area_otro.label else 'Otra área' }}</label>
+          {{ form.area_otro(class="form-control", placeholder="Ej. Balcón, cuarto de juegos…") }}
+          <div class="hint">Si elegiste “Otro”, especifica aquí el área adicional.</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="divider"></div>
+
+      <!-- SECCIÓN 4 -->
+      <h2 class="section-title h5 mb-3"><i class="bi bi-people-fill text-primary"></i> Ocupantes</h2>
+      <div class="row g-4">
+        <div class="col-md-3">
+          <label class="form-label">{{ form.adultos.label.text }}</label>
+          {{ form.adultos(class="form-control", type="number", min="0", step="1") }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">{{ form.ninos.label.text }}</label>
+          {{ form.ninos(class="form-control", type="number", min="0", step="1") }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">{{ form.edades_ninos.label.text }}</label>
+          {{ form.edades_ninos(class="form-control") }}
+        </div>
+        {% if form.mascota is defined %}
+        <div class="col-md-3">
+          <label class="form-label">{{ form.mascota.label.text }}</label>
+          {{ form.mascota(class="form-control") }}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- SECCIÓN 5 -->
+      <h2 class="section-title h5 mb-3"><i class="bi bi-currency-dollar text-success"></i> Compensación</h2>
+      <div class="row g-4">
+        <div class="col-md-6">
+          <label class="form-label required">{{ form.sueldo.label.text }}</label>
+          <div class="input-group">
+            <span class="input-group-text">RD$</span>
+            {{ form.sueldo(class="form-control") }}
+          </div>
+          <div class="hint mt-1">Monto mensual estimado.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">{{ form.pasaje_aporte.label.text }}</label>
+          <div>
+            {% for sub in form.pasaje_aporte %}
+            <div class="form-check form-check-inline">
+              {{ sub(class="form-check-input", id=sub.id) }}
+              <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+            </div>
             {% endfor %}
           </div>
-          <div class="mt-2">
-            <label class="form-label">{{ form.area_otro.label.text }}</label>
-            {{ form.area_otro(class="form-control", placeholder="Otra área (opcional)") }}
-          </div>
         </div>
+      </div>
 
-        <div class="divider"></div>
+      <div class="divider"></div>
 
-        {# ===================== Sección 4: Ocupantes ===================== #}
-        <h2 class="section-title h5 mb-3"><i class="bi bi-people-fill me-2"></i>Ocupantes</h2>
-        <div class="row g-4">
-          <div class="col-md-3">
-            <label class="form-label">{{ form.adultos.label.text }}</label>
-            {{ form.adultos(class="form-control", type="number", min="0", step="1", placeholder="0") }}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.ninos.label.text }}</label>
-            {{ form.ninos(class="form-control", type="number", min="0", step="1", placeholder="0") }}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.edades_ninos.label.text }}</label>
-            {{ form.edades_ninos(class="form-control", placeholder="Ej. 2 y 6 años") }}
-          </div>
-          {% if form.mascota is defined %}
-          <div class="col-md-3">
-            <label class="form-label">{{ form.mascota.label.text }}</label>
-            {{ form.mascota(class="form-control", placeholder="Ej. Perro, Gato (opcional)") }}
-          </div>
-          {% endif %}
+      <!-- SECCIÓN 6 -->
+      <h2 class="section-title h5 mb-3"><i class="bi bi-chat-text-fill text-info"></i> Nota adicional</h2>
+      <div class="mb-3">
+        <label class="form-label">{{ form.nota_cliente.label.text }}</label>
+        {{ form.nota_cliente(rows=3, class="form-control", maxlength="1000") }}
+        <div class="d-flex justify-content-end mt-1">
+          <span class="hint"><span id="nota-count">0</span>/1000</span>
         </div>
+      </div>
 
-        <div class="divider"></div>
-
-        {# ===================== Sección 5: Compensación ===================== #}
-        <h2 class="section-title h5 mb-3"><i class="bi bi-currency-dollar me-2"></i>Compensación</h2>
-        <div class="row g-4">
-          <div class="col-md-6">
-            <label class="form-label required">{{ form.sueldo.label.text }}</label>
-            <div class="input-group">
-              <span class="input-group-text">RD$</span>
-              {{ form.sueldo(class="form-control", aria_required="true") }}
-            </div>
-            <div class="hint field-spacer">Monto mensual estimado.</div>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">{{ form.pasaje_aporte.label.text }}</label>
-            <div>
-              {% for sub in form.pasaje_aporte %}
-                <div class="form-check form-check-inline">
-                  {{ sub(class="form-check-input", id=sub.id) }}
-                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-                </div>
-              {% endfor %}
-            </div>
-          </div>
+      <div class="sticky-actions mt-4">
+        <div class="d-flex gap-2 justify-content-end">
+          <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i> Cancelar
+          </a>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-save-fill me-1"></i> {{ 'Crear' if nuevo else 'Actualizar' }}
+          </button>
         </div>
+      </div>
 
-        <div class="divider"></div>
-
-        {# ===================== Sección 6: Nota adicional ===================== #}
-        <h2 class="section-title h5 mb-3"><i class="bi bi-chat-text-fill me-2"></i>Nota adicional</h2>
-        <div class="mb-3">
-          <label class="form-label">{{ form.nota_cliente.label.text }}</label>
-          {{ form.nota_cliente(rows=3, class="form-control", maxlength="1000") }}
-          <div class="d-flex justify-content-end mt-1">
-            <span class="hint"><span id="nota-count">0</span>/1000</span>
-          </div>
-        </div>
-
-        <div class="sticky-actions mt-4 pt-2">
-          <div class="d-flex gap-2 justify-content-end">
-            <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
-              Cancelar
-            </a>
-            <button type="submit" class="btn btn-primary px-4">{{ 'Crear' if nuevo else 'Actualizar' }}</button>
-          </div>
-        </div>
-      </form>
-
-    </div>
+    </form>
   </div>
 </div>
 {% endblock %}
@@ -257,9 +370,9 @@
 {% block scripts %}
 <script>
 (function(){
-  // Contadores
   const exp = document.getElementById("{{ form.experiencia.id }}");
   const nota = document.getElementById("{{ form.nota_cliente.id }}");
+
   function bindCount(el, outId){
     if(!el) return;
     const out = document.getElementById(outId);
@@ -269,37 +382,35 @@
   bindCount(exp, 'exp-count');
   bindCount(nota, 'nota-count');
 
-  // Toggle “Otro” - Funciones (checkbox múltiple con valor 'otro')
+  // Funciones -> Otro
   const funcWrap = document.getElementById('wrap-funciones-otro');
   const funcChecks = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
-  function updateFuncionesOtro(){
-    let on = false;
-    funcChecks.forEach(ch => { if (ch.value === 'otro' && ch.checked) on = true; });
-    if (funcWrap) funcWrap.style.display = on ? '' : 'none';
-  }
-  funcChecks.forEach(ch => ch.addEventListener('change', updateFuncionesOtro));
-  updateFuncionesOtro();
+  funcChecks.forEach(ch => ch.addEventListener('change', () => {
+    funcWrap.style.display = [...funcChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
+  }));
 
-  // Toggle “Otro” - Edad (checkbox múltiple con valor 'otro')
+  // Edad requerida -> Otro
   const edadWrap = document.getElementById('wrap-edad-otro');
   const edadChecks = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
-  function updateEdadOtro(){
-    let on = false;
-    edadChecks.forEach(ch => { if (ch.value === 'otro' && ch.checked) on = true; });
-    if (edadWrap) edadWrap.style.display = on ? '' : 'none';
-  }
-  edadChecks.forEach(ch => ch.addEventListener('change', updateEdadOtro));
-  updateEdadOtro();
+  edadChecks.forEach(ch => ch.addEventListener('change', () => {
+    edadWrap.style.display = [...edadChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
+  }));
 
-  // Toggle “Otro” - Tipo de lugar (select con opción 'otro')
+  // Tipo de lugar -> Otro
   const tipoSel = document.getElementById('{{ form.tipo_lugar.id }}');
   const tipoWrap = document.getElementById('wrap-tipo-lugar-otro');
-  function updateTipoLugarOtro(){
-    if (!tipoSel || !tipoWrap) return;
-    tipoWrap.style.display = (tipoSel.value === 'otro') ? '' : 'none';
-  }
-  if (tipoSel) tipoSel.addEventListener('change', updateTipoLugarOtro);
-  updateTipoLugarOtro();
+  if (tipoSel) tipoSel.addEventListener('change', () => {
+    tipoWrap.style.display = tipoSel.value === 'otro' ? '' : 'none';
+  });
+
+  // Áreas comunes -> Otro (descripciones del hogar)
+  {% if form.areas_comunes is defined and form.area_otro is defined %}
+  const areasWrap = document.getElementById('wrap-areas-otro');
+  const areasChecks = document.querySelectorAll('input[name="{{ form.areas_comunes.name }}"]');
+  areasChecks.forEach(ch => ch.addEventListener('change', () => {
+    areasWrap.style.display = [...areasChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
+  }));
+  {% endif %}
 })();
 </script>
 {% endblock %}

@@ -2,129 +2,269 @@
 {% block title %}Detalle Solicitud {{ solicitud.codigo_solicitud }}{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <h1>Solicitud {{ solicitud.codigo_solicitud }}</h1>
+<style>
+  body {
+    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
+    font-family: 'Poppins', sans-serif;
+    color: #e2e8f0;
+  }
 
-  <dl class="row mb-4">
-    <dt class="col-sm-3">Fecha Solicitud</dt>
-    <dd class="col-sm-9">{{ solicitud.fecha_solicitud.strftime('%Y-%m-%d') }}</dd>
+  h1, h2 {
+    color: #fff;
+    font-weight: 600;
+  }
 
-    <dt class="col-sm-3">Ciudad / Sector</dt>
-    <dd class="col-sm-9">{{ solicitud.ciudad_sector }}</dd>
+  .glass-card {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 1rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  }
 
-    <dt class="col-sm-3">Modalidad</dt>
-    <dd class="col-sm-9">{{ solicitud.modalidad_trabajo }}</dd>
+  .glass-header {
+    background: rgba(56, 189, 248, 0.15);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+    color: #93c5fd;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.8rem 1.2rem;
+  }
 
-    <dt class="col-sm-3">Estado</dt>
-    <dd class="col-sm-9 text-capitalize">{{ solicitud.estado }}</dd>
+  .table {
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
 
-    {% if solicitud.fecha_cancelacion %}
-      <dt class="col-sm-3">Fecha Cancelación</dt>
+  .table thead {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f8fafc;
+  }
+
+  .table-hover tbody tr:hover {
+    background: rgba(56, 189, 248, 0.08);
+    transition: 0.2s ease;
+  }
+
+  .badge {
+    border-radius: 0.4rem;
+    text-transform: capitalize;
+    padding: 0.35em 0.6em;
+    font-size: 0.85rem;
+  }
+
+  .badge-activa { background: #2563eb; }
+  .badge-proceso { background: #0ea5e9; }
+  .badge-cancelada { background: #f87171; }
+  .badge-reemplazo { background: #fbbf24; color: #1e293b; }
+  .badge-pagada { background: #22c55e; }
+
+  dt {
+    color: #94a3b8;
+  }
+
+  dd {
+    color: #f1f5f9;
+  }
+
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #e2e8f0;
+    border-radius: 0.6rem;
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+    color: #93c5fd;
+  }
+
+  .empty-block {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border-radius: 0.8rem;
+    padding: 2rem;
+    color: #94a3b8;
+    text-align: center;
+  }
+
+  .emoji-header {
+    font-size: 1.6rem;
+  }
+</style>
+
+<div class="container py-5" style="max-width: 1200px;">
+  <!-- Encabezado -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="h3 mb-1">
+        📄 Detalle Solicitud <span class="text-info">{{ solicitud.codigo_solicitud }}</span>
+      </h1>
+      <div class="text-muted small">
+        Estado:
+        {% set estado_class = 
+          'badge-activa' if solicitud.estado == 'activa' else
+          'badge-proceso' if solicitud.estado == 'proceso' else
+          'badge-cancelada' if solicitud.estado == 'cancelada' else
+          'badge-pagada' if solicitud.estado == 'pagada' else
+          'badge-reemplazo' if solicitud.estado == 'reemplazo' else 'bg-secondary'
+        %}
+        <span class="badge {{ estado_class }}">{{ solicitud.estado }}</span>
+      </div>
+    </div>
+    <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary">
+      <i class="bi bi-arrow-left-circle me-1"></i> Volver al Cliente
+    </a>
+  </div>
+
+  <!-- Información general -->
+  <div class="glass-card mb-4">
+    <div class="glass-header">
+      <i class="bi bi-info-circle-fill"></i> Información General
+    </div>
+    <dl class="row p-4 mb-0">
+      <dt class="col-sm-3">📅 Fecha Solicitud</dt>
+      <dd class="col-sm-9">{{ solicitud.fecha_solicitud.strftime('%Y-%m-%d') }}</dd>
+
+      <dt class="col-sm-3">🏙️ Ciudad / Sector</dt>
+      <dd class="col-sm-9">{{ solicitud.ciudad_sector }}</dd>
+
+      <dt class="col-sm-3">⚙️ Modalidad</dt>
+      <dd class="col-sm-9">{{ solicitud.modalidad_trabajo }}</dd>
+
+      {% if solicitud.fecha_cancelacion %}
+      <dt class="col-sm-3">⛔ Fecha Cancelación</dt>
       <dd class="col-sm-9">{{ solicitud.fecha_cancelacion.strftime('%Y-%m-%d %H:%M') }}</dd>
 
-      <dt class="col-sm-3">Motivo Cancelación</dt>
+      <dt class="col-sm-3">💬 Motivo Cancelación</dt>
       <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
+      {% endif %}
+    </dl>
+  </div>
+
+  <!-- Historial de Envíos -->
+  <div class="glass-card mb-4">
+    <div class="glass-header bg-info">
+      <i class="bi bi-send-fill"></i> Historial de Envíos
+    </div>
+    {% if envios %}
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead>
+            <tr>
+              <th>📦 Tipo</th>
+              <th>👩 Candidata</th>
+              <th>🕒 Fecha</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in envios %}
+            <tr>
+              <td>{{ e.tipo }}</td>
+              <td>{{ e.candidata.nombre_completo }}</td>
+              <td>{{ e.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-block">
+        <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+        No hay envíos registrados.
+      </div>
     {% endif %}
-  </dl>
+  </div>
 
-  {# 1) Historial de Envíos #}
-  <h2>Historial de Envíos</h2>
-  <table class="table table-striped mb-4">
-    <thead>
-      <tr>
-        <th>Tipo</th>
-        <th>Candidata</th>
-        <th>Fecha</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for e in envios %}
-      <tr>
-        <td>{{ e.tipo }}</td>
-        <td>{{ e.candidata.nombre_completo }}</td>
-        <td>{{ e.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="3" class="text-center">No hay envíos registrados.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {# 2) Sección de Cancelaciones (si hay) #}
+  <!-- Cancelaciones -->
   {% if solicitud.estado == 'cancelada' %}
-    <h2>Cancelaciones</h2>
-    <table class="table table-bordered mb-4">
-      <thead class="table-light">
-        <tr>
-          <th>#</th>
-          <th>Fecha</th>
-          <th>Motivo</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>1</td>
-          <td>{{ solicitud.fecha_cancelacion.strftime('%Y-%m-%d %H:%M') }}</td>
-          <td>{{ solicitud.motivo_cancelacion }}</td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="glass-card mb-4">
+    <div class="glass-header bg-danger">
+      <i class="bi bi-x-octagon-fill"></i> Cancelaciones
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>📅 Fecha</th>
+            <th>💬 Motivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>{{ solicitud.fecha_cancelacion.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ solicitud.motivo_cancelacion }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
   {% endif %}
 
-  {# 3) Reemplazos #}
-  <h2>Reemplazos</h2>
-  <table class="table table-bordered">
-    <thead class="table-light">
-      <tr>
-        <th>#</th>
-        <th>Candidata Fallida</th>
-        <th>Motivo</th>
-        <th>Fecha Fallo</th>
-        <th>Oportunidad</th>
-        <th>Inicio Reemplazo</th>
-        <th>Fin Reemplazo</th>
-        <th>Candidata Nueva</th>
-        <th>Nota</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in reemplazos %}
-      <tr>
-        <td>{{ loop.index }}</td>
-        <td>{{ r.candidata_old.nombre_completo }}</td>
-        <td>{{ r.motivo_fallo }}</td>
-        <td>{{ r.fecha_fallo.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td>{{ 'Sí' if r.oportunidad_nueva else 'No' }}</td>
-        <td>
-          {{ r.fecha_inicio_reemplazo 
-               and r.fecha_inicio_reemplazo.strftime('%Y-%m-%d %H:%M') 
-               or '—' }}
-        </td>
-        <td>
-          {{ r.fecha_fin_reemplazo 
-               and r.fecha_fin_reemplazo.strftime('%Y-%m-%d %H:%M') 
-               or '—' }}
-        </td>
-        <td>
-          {{ r.candidata_new 
-               and r.candidata_new.nombre_completo 
-               or '—' }}
-        </td>
-        <td>{{ r.nota_adicional or '—' }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="9" class="text-center">No hay reemplazos.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <!-- Reemplazos -->
+  <div class="glass-card mb-4">
+    <div class="glass-header bg-warning text-dark">
+      <i class="bi bi-arrow-repeat"></i> Reemplazos
+    </div>
+    {% if reemplazos %}
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>👩 Candidata Fallida</th>
+              <th>💬 Motivo</th>
+              <th>📅 Fecha Fallo</th>
+              <th>🎯 Oportunidad</th>
+              <th>🚀 Inicio Reemplazo</th>
+              <th>🏁 Fin Reemplazo</th>
+              <th>👩‍💼 Candidata Nueva</th>
+              <th>📝 Nota</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in reemplazos %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>{{ r.candidata_old.nombre_completo }}</td>
+              <td>{{ r.motivo_fallo }}</td>
+              <td>{{ r.fecha_fallo.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ '✅ Sí' if r.oportunidad_nueva else '❌ No' }}</td>
+              <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
+              <td>{{ r.fecha_fin_reemplazo and r.fecha_fin_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
+              <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}</td>
+              <td>{{ r.nota_adicional or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-block">
+        <i class="bi bi-emoji-frown fs-3 d-block mb-2"></i>
+        No hay reemplazos registrados.
+      </div>
+    {% endif %}
+  </div>
 
-  <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}"
-     class="btn btn-secondary">
-    ← Volver al cliente
-  </a>
+  <div class="text-end mt-4">
+    <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary">
+      <i class="bi bi-arrow-left-circle me-1"></i> Volver al Cliente
+    </a>
+  </div>
 </div>
 {% endblock %}

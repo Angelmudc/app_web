@@ -2,35 +2,173 @@
 {% block title %}Gestionar Plan – {{ solicitud.codigo_solicitud }}{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <h1>Gestionar Plan para {{ solicitud.codigo_solicitud }}</h1>
-  <form method="POST">
-    {{ form.csrf_token }}
+<style>
+  body {
+    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
+    font-family: 'Poppins', sans-serif;
+    color: #e2e8f0;
+  }
 
-    <div class="mb-3">
-      <label for="tipo_plan" class="form-label">Plan</label>
-      <select id="tipo_plan" name="tipo_plan" class="form-control">
-        <option value="Básico"    {% if solicitud.tipo_plan == 'Básico'    %}selected{% endif %}>Básico</option>
-        <option value="Premium"   {% if solicitud.tipo_plan == 'Premium'   %}selected{% endif %}>Premium</option>
-        <option value="VIP"       {% if solicitud.tipo_plan == 'VIP'       %}selected{% endif %}>VIP</option>
-      </select>
+  .glass-card {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 1rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  }
+
+  h1 { color: #fff; font-weight: 600; }
+
+  .form-control, .form-select {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #f8fafc;
+  }
+  .form-control:focus, .form-select:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 6px #38bdf8;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  label { font-weight: 500; color: #e2e8f0; }
+
+  .btn {
+    border-radius: 0.6rem;
+    font-weight: 500;
+    transition: all 0.25s ease;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border: none;
+    color: #fff;
+  }
+  .btn-primary:hover { background: linear-gradient(135deg, #60a5fa, #1d4ed8); }
+
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e2e8f0;
+  }
+  .btn-secondary:hover { background: rgba(255, 255, 255, 0.25); }
+
+  .card-header {
+    background: rgba(56, 189, 248, 0.15);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+    color: #93c5fd; font-weight: 600;
+  }
+
+  .form-text { color: #94a3b8; }
+
+  /* Animación de guardado */
+  @keyframes pulse {
+    0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(59,130,246,.55); }
+    70%  { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(59,130,246,0); }
+    100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+  }
+  .btn-saving {
+    animation: pulse 1.2s ease-out infinite;
+    pointer-events: none;
+    opacity: .95;
+  }
+  .form-disabled * {
+    pointer-events: none !important;
+    opacity: .75;
+  }
+</style>
+
+<div class="container py-5" style="max-width: 720px;">
+  <div class="glass-card p-4 p-md-5">
+    <div class="card-header d-flex align-items-center gap-2 mb-4">
+      <i class="bi bi-gear-fill fs-4 text-info"></i>
+      <h1 class="h4 mb-0">⚙️ Gestionar Plan – {{ solicitud.codigo_solicitud }}</h1>
     </div>
 
-    <div class="mb-3">
-      <label for="abono" class="form-label">Abono</label>
-      <input
-        id="abono"
-        name="abono"
-        type="text"
-        class="form-control"
-        value="{{ form.abono.data or solicitud.abono or '' }}"
-        placeholder="Introduzca el monto abonado"
-      >
-    </div>
+    <form method="POST" id="planForm" novalidate>
+      {{ form.csrf_token }}
 
-    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-    <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}"
-       class="btn btn-secondary ms-2">Cancelar</a>
-  </form>
+      <!-- Tipo de Plan -->
+      <div class="mb-4">
+        <label for="tipo_plan" class="form-label">
+          <i class="bi bi-box-seam-fill text-info me-1"></i> Plan del Cliente
+        </label>
+        <select id="tipo_plan" name="tipo_plan" class="form-select" required>
+          <option value="Básico"  {% if solicitud.tipo_plan == 'Básico'  %}selected{% endif %}>Básico 💼</option>
+          <option value="Premium" {% if solicitud.tipo_plan == 'Premium' %}selected{% endif %}>Premium 🌟</option>
+          <option value="VIP"     {% if solicitud.tipo_plan == 'VIP'     %}selected{% endif %}>VIP 👑</option>
+        </select>
+        <div class="form-text">Selecciona el plan que mejor se ajuste al cliente.</div>
+      </div>
+
+      <!-- Abono (texto para permitir comas y puntos) -->
+      <div class="mb-4">
+        <label for="abono" class="form-label">
+          <i class="bi bi-cash-stack text-success me-1"></i> Abono del Cliente
+        </label>
+        <input
+          id="abono"
+          name="abono"
+          type="text"
+          inputmode="decimal"
+          pattern="^[\d\s.,]+$"
+          class="form-control"
+          value="{{ form.abono.data or solicitud.abono or '' }}"
+          placeholder="💰 Ej: 1500, 1,500, 1.500,50"
+          required
+        >
+        <div class="form-text">Obligatorio. Acepta 1500 · 1,500 · 1.500 · 1.500,50 · 1500.50</div>
+      </div>
+
+      <!-- Botones -->
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-secondary">
+          <i class="bi bi-x-circle me-1"></i> Cancelar
+        </a>
+        <button type="submit" class="btn btn-primary" id="btn-submit">
+          <i class="bi bi-save-fill me-1"></i> Guardar Cambios
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const form = document.getElementById('planForm');
+  const btn  = document.getElementById('btn-submit');
+  const abonoInput = document.getElementById('abono');
+
+  // Limpieza en vivo: deja solo dígitos, coma, punto y espacios
+  abonoInput.addEventListener('input', (e) => {
+    const cleaned = e.target.value.replace(/[^\d.,\s]/g, '');
+    if (cleaned !== e.target.value) e.target.value = cleaned;
+  });
+
+  function quickValidMoney(raw) {
+    if (!raw) return false;
+    if (!/\d/.test(raw)) return false; // debe tener al menos un dígito
+    // formato básico válido: solo dígitos, puntos, comas y espacios
+    return /^[\d\s.,]+$/.test(raw);
+  }
+
+  form.addEventListener('submit', (e) => {
+    const raw = (abonoInput.value || '').trim();
+
+    if (!raw || !quickValidMoney(raw)) {
+      e.preventDefault();
+      alert('💡 Abono obligatorio. Usa formato: 1500, 1,500 o 1.500,50');
+      abonoInput.focus();
+      return false;
+    }
+
+    // Animación y bloqueo anti doble-submit
+    btn.disabled = true;
+    btn.classList.add('btn-saving');
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+    form.classList.add('form-disabled');
+  });
+})();
+</script>
 {% endblock %}

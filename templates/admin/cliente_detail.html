@@ -1,32 +1,209 @@
-{# templates/admin/cliente_detail.html #}
 {% extends 'base.html' %}
 {% block title %}Detalle Cliente{% endblock %}
 
 {% block content %}
-<div class="container py-4 py-md-5" style="max-width: 1200px;">
+<style>
+  /* ===== Fondo general ===== */
+  body {
+    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
+    font-family: 'Poppins', sans-serif;
+    color: #e2e8f0;
+  }
 
+  * { color-scheme: dark; }
+
+  /* Links visibles en dark */
+  a { color: #93c5fd; }
+  a:hover { color: #bfdbfe; }
+
+  /* Forzar a blanco cualquier texto oscuro heredado por Bootstrap */
+  .text-dark, .link-dark { color: #ffffff !important; }
+  .text-muted { color: #cbd5e1 !important; }
+  .text-light { color: #ffffff !important; }
+  .table, .table th, .table td { color: #e2e8f0 !important; }
+
+  /* ===== Tarjetas glass ===== */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 1rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+  }
+
+  /* Variante en SUPERFICIE BLANCA con contraste oscuro */
+  .surface-light {
+    background: #ffffff !important;
+    border: 1px solid rgba(0,0,0,0.08) !important;
+  }
+  .surface-light .glass-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    color: #111827 !important;
+  }
+  .surface-light .card-body,
+  .surface-light .table,
+  .surface-light .table th,
+  .surface-light .table td,
+  .surface-light .text-muted,
+  .surface-light p,
+  .surface-light dl,
+  .surface-light dt,
+  .surface-light dd {
+    color: #111827 !important;
+  }
+  .surface-light a { color: #1d4ed8 !important; }
+  .surface-light a:hover { color: #1e40af !important; }
+  .surface-light .badge.bg-warning { color: #111827 !important; }
+  .surface-light .badge.bg-light { background: #111827 !important; color: #ffffff !important; }
+
+  .glass-header {
+    background: rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.8rem 1.2rem;
+    color: #fff;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .glass-header i { font-size: 1.2rem; color: inherit; }
+
+  .card-body { color: #cbd5e1; }
+  .card-body dt { color: #94a3b8; }
+
+  /* ===== Botones ===== */
+  .btn { border-radius: 0.6rem; font-weight: 500; }
+
+  .btn-outline-secondary {
+    color: #e2e8f0 !important;
+    border-color: rgba(255,255,255,0.35) !important;
+  }
+  .btn-outline-secondary:hover { color: #0f172a !important; background: #e2e8f0 !important; }
+
+  .btn-warning {
+    background: linear-gradient(135deg, #facc15, #eab308);
+    border: none; color: #ffffff !important;
+  }
+  .btn-warning:hover { background: linear-gradient(135deg, #fde047, #fbbf24); color: #ffffff !important; }
+
+  .btn-success {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    border: none; color: #fff !important;
+  }
+  .btn-success:hover { background: linear-gradient(135deg, #4ade80, #15803d); color: #fff !important; }
+
+  .btn-light {
+    background: rgba(255, 255, 255, 0.15);
+    color: #e2e8f0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  .btn-light:hover { background: rgba(255, 255, 255, 0.25); color: #0f172a !important; }
+
+  .btn-info, .btn-primary, .btn-secondary, .btn-danger, .btn-dark {
+    color: #fff !important; border: none;
+  }
+  .btn-info    { background: #0ea5e9; }
+  .btn-info:hover { background: #0284c7; }
+  .btn-primary { background: #3b82f6; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-secondary { background: #475569; }
+  .btn-secondary:hover { background: #334155; }
+  .btn-dark { background: #0f172a; }
+  .btn-dark:hover { background: #0b1324; }
+
+  i.bi { color: inherit; display: inline-block; }
+
+  /* ===== Tablas ===== */
+  .table { background: rgba(255, 255, 255, 0.03); }
+  .table thead { background: rgba(255, 255, 255, 0.08); color: #f8fafc; }
+  .surface-light .table thead { background: #f1f5f9 !important; color: #0f172a !important; }
+  .table-hover tbody tr:hover { background: rgba(255, 255, 255, 0.08); transition: 0.2s ease; }
+  .surface-light .table-hover tbody tr:hover { background: #f8fafc !important; }
+
+  /* ===== Badges ===== */
+  .badge { border-radius: 0.4rem; padding: 0.4em 0.6em; text-transform: capitalize; }
+  .badge.bg-light     { background: #94a3b8 !important; color: #0f172a !important; }
+  .badge.bg-secondary { background: #475569 !important; color: #ffffff !important; }
+  .badge.bg-primary   { background: #3b82f6 !important; color: #ffffff !important; }
+  .badge.bg-success   { background: #16a34a !important; color: #ffffff !important; }
+  .badge.bg-warning   { background: #facc15 !important; color: #ffffff !important; }
+  .badge.bg-info      { background: #0ea5e9 !important; color: #ffffff !important; }
+
+  /* ===== Bloques vacíos ===== */
+  .empty-block {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border-radius: 0.8rem;
+    padding: 2.5rem;
+    color: #94a3b8;
+  }
+  .surface-light .empty-block {
+    background: #ffffff; border-color: #e5e7eb; color: #374151;
+  }
+
+  /* ===== Tooltip ===== */
+  .tooltip-inner {
+    background-color: rgba(30, 41, 59, 0.95);
+    color: #f8fafc;
+    border-radius: 0.4rem;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+  }
+
+  /* ===== Encabezado Cliente ===== */
+  .cliente-avatar {
+    background: linear-gradient(135deg, #38bdf8, #3b82f6);
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    font-weight: 700; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+  }
+
+  h1, h2, h3 { color: #fff; }
+
+  /* ===== Organización de botones de acciones ===== */
+  .actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(38px, 1fr));
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    min-width: 240px;
+  }
+  .actions-grid .btn { padding: 0.35rem 0.5rem; line-height: 1; }
+  .actions-grid .btn i, .actions-grid .btn .emoji { pointer-events: none; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); border: 0;
+  }
+</style>
+
+<div class="container py-4 py-md-5" style="max-width: 1200px;">
   <!-- ===== Encabezado ===== -->
   <div class="d-flex flex-wrap justify-content-between align-items-start align-items-md-center gap-3 mb-4">
     <div class="d-flex align-items-start gap-3">
-      <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
-           style="width:52px;height:52px; font-weight:700;">
+      <div class="cliente-avatar">
         {{ (cliente.nombre_completo or 'C').strip()[0]|upper }}
       </div>
       <div>
         <h1 class="h3 mb-1">Cliente: {{ cliente.nombre_completo | default('—') }}</h1>
         <div class="text-muted small">
-          <span class="me-2">Código: <span class="fw-semibold">{{ cliente.codigo | default('—') }}</span></span>
+          <span class="me-2">Código: <span class="fw-semibold text-info">{{ cliente.codigo | default('—') }}</span></span>
           <span class="me-2">Registrado: {{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}</span>
-          <span>Solicitudes: <span class="fw-semibold">{{ cliente.total_solicitudes | default(0) }}</span></span>
+          <span>Solicitudes: <span class="fw-semibold text-light">{{ cliente.total_solicitudes | default(0) }}</span></span>
         </div>
       </div>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
-        <i class="bi bi-pencil-fill me-1"></i> Editar Cliente
+        ✏️ <i class="bi bi-pencil-fill ms-1"></i> Editar Cliente
       </a>
       <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-light">
-        <i class="bi bi-arrow-left-short me-1"></i> Volver
+        ↩️ <i class="bi bi-arrow-left-short ms-1"></i> Volver
       </a>
     </div>
   </div>
@@ -34,10 +211,10 @@
   <!-- ===== Tarjetas de info ===== -->
   <div class="row g-4">
     <div class="col-lg-6">
-      <div class="card shadow-sm border-0 rounded-4 h-100">
-        <div class="card-header bg-primary text-white rounded-top-4 d-flex align-items-center gap-2">
+      <div class="glass-card h-100">
+        <div class="glass-header bg-primary">
           <i class="bi bi-person-circle"></i>
-          <span>Información General</span>
+          Información General
         </div>
         <dl class="row card-body mb-0">
           <dt class="col-sm-4">Email</dt>
@@ -56,39 +233,33 @@
     </div>
 
     <div class="col-lg-6">
-      <div class="card shadow-sm border-0 rounded-4 h-100">
-        <div class="card-header bg-info text-white rounded-top-4 d-flex align-items-center gap-2">
+      <div class="glass-card h-100">
+        <div class="glass-header bg-info">
           <i class="bi bi-bar-chart-fill"></i>
-          <span>Métricas</span>
+          Métricas
         </div>
         <dl class="row card-body mb-0">
           <dt class="col-sm-6">Total de Solicitudes</dt>
           <dd class="col-sm-6">{{ cliente.total_solicitudes | default(0) }}</dd>
 
           <dt class="col-sm-6">Última Solicitud</dt>
-          <dd class="col-sm-6">
-            {{ cliente.fecha_ultima_solicitud and cliente.fecha_ultima_solicitud.strftime('%Y-%m-%d') or '—' }}
-          </dd>
+          <dd class="col-sm-6">{{ cliente.fecha_ultima_solicitud and cliente.fecha_ultima_solicitud.strftime('%Y-%m-%d') or '—' }}</dd>
 
           <dt class="col-sm-6">Registro</dt>
-          <dd class="col-sm-6">
-            {{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}
-          </dd>
+          <dd class="col-sm-6">{{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}</dd>
 
           <dt class="col-sm-6">Última Actividad</dt>
-          <dd class="col-sm-6">
-            {{ cliente.fecha_ultima_actividad and cliente.fecha_ultima_actividad.strftime('%Y-%m-%d') or '—' }}
-          </dd>
+          <dd class="col-sm-6">{{ cliente.fecha_ultima_actividad and cliente.fecha_ultima_actividad.strftime('%Y-%m-%d') or '—' }}</dd>
         </dl>
       </div>
     </div>
   </div>
 
   <!-- ===== Notas ===== -->
-  <div class="card mt-4 shadow-sm border-0 rounded-4">
-    <div class="card-header bg-secondary text-white rounded-top-4 d-flex align-items-center gap-2">
+  <div class="glass-card mt-4">
+    <div class="glass-header bg-secondary">
       <i class="bi bi-sticky-fill"></i>
-      <span>Notas Administrativas</span>
+      Notas Administrativas
     </div>
     <div class="card-body">
       {% if cliente.notas_admin %}
@@ -104,33 +275,38 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
       <h2 class="h4 mb-0">Solicitudes</h2>
       <a href="{{ url_for('admin.nueva_solicitud_admin', cliente_id=cliente.id) }}" class="btn btn-success">
-        <i class="bi bi-plus-lg me-1"></i> Nueva Solicitud
+        ➕ <i class="bi bi-plus-lg ms-1"></i> Nueva Solicitud
       </a>
     </div>
 
     {% if cliente.solicitudes|length == 0 %}
-      <div class="border rounded-4 p-4 text-center text-muted">
+      <div class="empty-block text-center surface-light">
         <i class="bi bi-inbox fs-3 d-block mb-2"></i>
         Aún no hay solicitudes para este cliente.
       </div>
     {% else %}
-      <div class="table-responsive shadow-sm rounded-4 overflow-hidden">
+      <!-- AQUI: tarjeta opaca clara para contraste perfecto -->
+      <div class="table-responsive glass-card surface-light mt-3">
+        <div class="glass-header">
+          <i class="bi bi-card-checklist"></i>
+          Detalles de las Solicitudes
+        </div>
         <table class="table table-hover align-middle mb-0">
-          <thead class="table-light">
+          <thead>
             <tr>
-              <th style="min-width:120px;">Código</th>
-              <th style="min-width:110px;">Fecha</th>
-              <th style="min-width:180px;">Ciudad/Sector</th>
-              <th style="min-width:140px;">Modalidad</th>
-              <th style="min-width:110px;">Plan</th>
-              <th style="min-width:140px;">Estado</th>
-              <th class="text-center" style="min-width:520px;">Acciones</th>
+              <th>Código</th>
+              <th>Fecha</th>
+              <th>Ciudad/Sector</th>
+              <th>Modalidad</th>
+              <th>Plan</th>
+              <th>Estado</th>
+              <th class="text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {% for s in cliente.solicitudes %}
             <tr>
-              <td class="fw-semibold">{{ s.codigo_solicitud | default('—') }}</td>
+              <td class="fw-semibold text-primary">{{ s.codigo_solicitud | default('—') }}</td>
               <td>{{ s.fecha_solicitud and s.fecha_solicitud.strftime('%Y-%m-%d') or '—' }}</td>
               <td>{{ s.ciudad_sector | default('—') }}</td>
               <td>{{ s.modalidad_trabajo | default('—') }}</td>
@@ -140,82 +316,81 @@
                   'bg-secondary' if s.estado == 'proceso' else
                   'bg-primary'   if s.estado == 'activa'  else
                   'bg-success'   if s.estado == 'pagada'  else
-                  'bg-warning text-dark' if s.estado == 'cancelada' else
+                  'bg-warning'   if s.estado == 'cancelada' else
                   'bg-info'      if s.estado == 'reemplazo' else
-                  'bg-light text-dark'
+                  'bg-light'
                 %}
                 <span class="badge {{ badge_class }}">{{ s.estado | default('—') }}</span>
               </td>
-              <td class="text-nowrap text-center">
-                <div class="d-flex flex-wrap justify-content-center gap-1">
+              <td class="text-center">
+                <!-- Organización en grilla (icónica) -->
+                <div class="actions-grid">
                   <!-- Ver -->
                   <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
-                     class="btn btn-sm btn-outline-info" data-bs-toggle="tooltip" title="Ver detalle">
-                    <i class="bi bi-eye-fill"></i>
+                     class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Ver detalle" aria-label="Ver detalle">
+                    👁️ <i class="bi bi-eye-fill ms-1"></i><span class="sr-only">Ver</span>
                   </a>
 
                   <!-- Editar -->
                   <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
-                     class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Editar solicitud">
-                    <i class="bi bi-pencil-fill"></i>
+                     class="btn btn-sm btn-warning" data-bs-toggle="tooltip" title="Editar solicitud" aria-label="Editar">
+                    ✏️ <i class="bi bi-pencil-fill ms-1"></i><span class="sr-only">Editar</span>
                   </a>
 
-                  <!-- Gestionar Plan -->
+                  <!-- Plan / Abono -->
                   <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
-                     class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Plan / Abono">
-                    <i class="bi bi-credit-card-fill"></i>
+                     class="btn btn-sm btn-primary" data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
+                    💳 <i class="bi bi-credit-card-fill ms-1"></i><span class="sr-only">Plan</span>
                   </a>
 
                   <!-- Registrar pago -->
                   {% if s.estado in ['activa','proceso'] %}
                   <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}?next={{ request.full_path | urlencode }}"
-                     class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Registrar pago">
-                    <i class="bi bi-cash-stack"></i>
+                     class="btn btn-sm btn-success" data-bs-toggle="tooltip" title="Registrar pago" aria-label="Registrar pago">
+                    💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Pago</span>
                   </a>
                   {% endif %}
 
                   <!-- Reemplazo -->
                   <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
-                     class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Activar reemplazo">
-                    <i class="bi bi-arrow-repeat"></i>
+                     class="btn btn-sm btn-secondary" data-bs-toggle="tooltip" title="Activar reemplazo" aria-label="Reemplazo">
+                    🔁 <i class="bi bi-arrow-repeat ms-1"></i><span class="sr-only">Reemplazo</span>
                   </a>
 
-                  {# ==== Compatibilidad ==== #}
                   {% if s.candidata_id %}
-                    <!-- Ver compatibilidad (ADMIN) -->
+                    <!-- Compatibilidad admin -->
                     <a href="{{ url_for('admin.ver_compatibilidad', cliente_id=cliente.id, candidata_id=s.candidata_id) }}"
-                       class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" title="Ver compatibilidad (admin)">
-                      <i class="bi bi-people-fill"></i>
+                       class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Ver compatibilidad (admin)" aria-label="Compatibilidad admin">
+                      👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad</span>
                     </a>
-                    <!-- Llenar/editar test (Secretarías) -->
+                    <!-- Test Secretarías -->
                     <a href="{{ url_for('compat_candidata', fila=s.candidata_id) }}"
-                       class="btn btn-sm btn-outline-dark" data-bs-toggle="tooltip" title="Llenar/editar test (Secretarías)">
-                      <i class="bi bi-ui-checks-grid"></i>
+                       class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Llenar/editar test (Secretarías)" aria-label="Test Secretarías">
+                      ✅ <i class="bi bi-ui-checks-grid ms-1"></i><span class="sr-only">Test</span>
                     </a>
                   {% else %}
-                    <button class="btn btn-sm btn-outline-dark" disabled
-                            data-bs-toggle="tooltip" title="Asigna una candidata a la solicitud para evaluar compatibilidad">
-                      <i class="bi bi-people-fill"></i>
+                    <button class="btn btn-sm btn-secondary" disabled data-bs-toggle="tooltip" title="Asigna una candidata para evaluar compatibilidad" aria-label="Compatibilidad deshabilitada">
+                      👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad</span>
                     </button>
                   {% endif %}
 
                   {% if s.estado in ['activa','proceso','reemplazo'] %}
-                    <!-- Cancelar DIRECTO (rápido, sin motivo) -->
+                    <!-- Cancelar rápido -->
                     <form method="post"
                           action="{{ url_for('admin.cancelar_solicitud_directa', id=s.id) }}?next={{ request.full_path | urlencode }}"
                           class="d-inline"
                           onsubmit="return confirm('¿Cancelar solicitud {{ s.codigo_solicitud }} sin motivo?');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Cancelar rápido (sin motivo)">
-                        <i class="bi bi-x-circle-fill"></i>
+                      <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" title="Cancelar rápido (sin motivo)" aria-label="Cancelar rápido">
+                        ⛔ <i class="bi bi-x-circle-fill ms-1"></i><span class="sr-only">Cancelar rápido</span>
                       </button>
                     </form>
 
-                    <!-- Cancelar con MOTIVO (formulario) -->
+                    <!-- Cancelar con motivo -->
                     <a class="btn btn-sm btn-danger"
                        href="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id, next=request.full_path) }}"
-                       data-bs-toggle="tooltip" title="Cancelar con motivo">
-                      <i class="bi bi-x-octagon"></i>
+                       data-bs-toggle="tooltip" title="Cancelar con motivo" aria-label="Cancelar con motivo">
+                      🛑 <i class="bi bi-x-octagon ms-1"></i><span class="sr-only">Cancelar con motivo</span>
                     </a>
                   {% endif %}
                 </div>
@@ -230,7 +405,7 @@
 
   <div class="mt-4">
     <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary">
-      <i class="bi bi-arrow-left-circle me-1"></i> Volver a Clientes
+      ◀️ <i class="bi bi-arrow-left-circle ms-1"></i> Volver a Clientes
     </a>
   </div>
 </div>
@@ -238,12 +413,9 @@
 
 {% block scripts %}
 <script>
-  // Activar tooltips de Bootstrap
   (function(){
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.forEach(function (el) {
-      new bootstrap.Tooltip(el);
-    });
+    tooltipTriggerList.forEach(function (el) { new bootstrap.Tooltip(el); });
   })();
 </script>
 {% endblock %}

@@ -1,87 +1,211 @@
-<!-- templates/admin/solicitudes_copiar.html -->
 {% extends 'base.html' %}
-
 {% block title %}Copiar Solicitudes{% endblock %}
 
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+<style>
+  /* ===== Modo oscuro base ===== */
+  body {
+    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
+    font-family: 'Poppins', sans-serif;
+    color: #e2e8f0;
+  }
+  * { color-scheme: dark; }
+
+  /* ===== Colores de texto asegurados en dark ===== */
+  a { color: #93c5fd; }
+  a:hover { color: #bfdbfe; text-decoration: underline; }
+
+  /* Forzar blanco cuando Bootstrap usa tonos oscuros por defecto */
+  .text-dark, .link-dark, .navbar-light .navbar-nav .nav-link,
+  .form-label, label, legend, caption,
+  th, td, dt, dd, strong, b {
+    color: #ffffff !important;
+  }
+
+  .text-muted { color: #94a3b8 !important; }
+  .text-info  { color: #93c5fd !important; }
+  .text-warning { color: #fde68a !important; }
+  .text-success { color: #86efac !important; }
+
+  h1 { color: #fff; font-weight: 600; }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 1rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  }
+  .glass-card, .glass-card *:not(.btn):not(.badge):not([class*="text-"]) {
+    color: #e2e8f0;
+  }
+
+  .list-group-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    margin-bottom: 0.8rem;
+    transition: all 0.3s ease;
+    color: #e2e8f0;
+  }
+  .list-group-item :where(p, span, small, div) { color: #e2e8f0; }
+  .list-group-item small { color: #cbd5e1; }
+  .list-group-item strong, .list-group-item b { color: #ffffff; }
+
+  .list-group-item:hover {
+    background: rgba(56, 189, 248, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+    border: none;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    color: #fff;
+  }
+  .btn-primary:hover { background: linear-gradient(135deg, #2563eb, #60a5fa); }
+
+  .btn-success {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    border: none;
+    color: #fff;
+  }
+
+  .btn-outline-secondary {
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #e2e8f0;
+  }
+  .btn-outline-secondary:hover { background: rgba(255, 255, 255, 0.15); }
+
+  .btn-link { color: #93c5fd; text-decoration: none; }
+  .btn-link:hover { color: #bfdbfe; text-decoration: underline; }
+
+  .alert-info {
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    color: #93c5fd;
+  }
+
+  .copy-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 500;
+    z-index: 9999;
+    animation: fadeInOut 2s ease;
+  }
+  @keyframes fadeInOut {
+    0% { opacity: 0; transform: translateY(-10px); }
+    15% { opacity: 1; transform: translateY(0); }
+    85% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <h1 class="h3 m-0">Copiar Solicitudes Disponibles</h1>
+<div class="container py-5">
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+    <h1 class="h4 mb-0">📋 Copiar Solicitudes Disponibles</h1>
     <div>
-      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary me-2">← Volver al Listado</a>
-      <a href="{{ url_for('admin.resumen_solicitudes') }}" class="btn btn-link">Resumen de Solicitudes →</a>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary me-2">
+        <i class="bi bi-arrow-left-circle me-1"></i> Volver al Listado
+      </a>
+      <a href="{{ url_for('admin.resumen_solicitudes') }}" class="btn btn-link text-info">
+        Resumen de Solicitudes <i class="bi bi-arrow-right-circle ms-1"></i>
+      </a>
     </div>
   </div>
 
   {% if solicitudes and solicitudes|length > 0 %}
-    <ul class="list-group shadow-sm">
+  <div class="glass-card p-3 p-md-4">
+    <ul class="list-group list-unstyled mb-0">
       {% for s in solicitudes %}
-        <li class="list-group-item">
-          <div class="d-flex justify-content-between align-items-start gap-3">
-            <div class="flex-grow-1">
-              <div class="d-flex align-items-center flex-wrap gap-2">
-                <span class="fw-semibold">{{ s.codigo_solicitud }}</span>
-                <span class="text-muted">—</span>
-                <span>{{ s.ciudad_sector }}</span>
-              </div>
-
-              <!-- Modalidad y Dirección (dirección será opcional) -->
-              <div class="mt-1">
-                <small class="text-muted">
-                  <span class="me-2"><span class="fw-semibold">Modalidad:</span> {{ s.modalidad if s.modalidad else '—' }}</span>
-                  {% if s.direccion %}<span class="me-2">— <span class="fw-semibold">Dirección:</span> {{ s.direccion }}</span>{% endif %}
-                </small>
-              </div>
-
-              <!-- Funciones en línea, si existen -->
-              {% if s.funcs and s.funcs|length > 0 %}
-                <div class="mt-1">
-                  <small><span class="fw-semibold">Funciones:</span> {{ s.funcs | join(', ') }}</small>
-                </div>
-              {% endif %}
-
-              <!-- Reemplazos pendientes -->
-              {% if s.reemplazos and s.reemplazos|length > 0 %}
-                <div class="mt-2">
-                  <small class="text-warning">
-                    Reemplazos pendientes ({{ s.reemplazos|length }}):
-                    {{ s.reemplazos | map(attribute='candidata_new.nombre_completo') | join(', ') }}
-                  </small>
-                </div>
-              {% endif %}
+      <li class="list-group-item p-3">
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+          <div class="flex-grow-1">
+            <div class="d-flex align-items-center flex-wrap gap-2">
+              <span class="fw-semibold text-info">{{ s.codigo_solicitud }}</span>
+              <span class="text-muted">—</span>
+              <span>{{ s.ciudad_sector }}</span>
             </div>
 
-            <div class="text-end">
-              <button
-                type="button"
-                class="btn btn-sm btn-primary copy-btn"
-                data-order-text="{{ s.order_text|e }}">
-                Copiar
-              </button>
-
-              <!-- Formulario oculto para registrar la copia -->
-              <form method="post"
-                    action="{{ url_for('admin.copiar_solicitud', id=s.id) }}"
-                    class="d-none copy-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              </form>
+            <div class="mt-1">
+              <small class="text-muted">
+                <span class="me-2"><strong>Modalidad:</strong> {{ s.modalidad if s.modalidad else '—' }}</span>
+                {% if s.direccion %}
+                  <span class="me-2">— <strong>Dirección:</strong> {{ s.direccion }}</span>
+                {% endif %}
+              </small>
             </div>
+
+            {% if s.funcs and s.funcs|length > 0 %}
+            <div class="mt-1">
+              <small><strong>Funciones:</strong> {{ s.funcs | join(', ') }}</small>
+            </div>
+            {% endif %}
+
+            {% if s.reemplazos and s.reemplazos|length > 0 %}
+            <div class="mt-2">
+              <small class="text-warning">
+                ⚠️ Reemplazos pendientes ({{ s.reemplazos|length }}):
+                {{ s.reemplazos | map(attribute='candidata_new.nombre_completo') | join(', ') }}
+              </small>
+            </div>
+            {% endif %}
           </div>
-        </li>
+
+          <div class="text-end">
+            <!-- order_text como JSON para preservar saltos de línea -->
+            <button
+              type="button"
+              class="btn btn-sm btn-primary copy-btn"
+              data-order-text='{{ s.order_text | tojson }}'
+              aria-label="Copiar texto de la solicitud {{ s.codigo_solicitud }}"
+            >
+              <i class="bi bi-clipboard-check me-1"></i> Copiar
+            </button>
+
+            <form method="post" action="{{ url_for('admin.copiar_solicitud', id=s.id) }}" class="d-none copy-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            </form>
+          </div>
+        </div>
+      </li>
       {% endfor %}
     </ul>
+  </div>
   {% else %}
-    <div class="alert alert-info d-flex align-items-center" role="alert">
-      <div>No hay solicitudes pendientes de copia.</div>
-    </div>
+  <div class="alert alert-info d-flex align-items-center mt-4" role="alert">
+    <i class="bi bi-info-circle-fill me-2"></i>
+    No hay solicitudes pendientes de copia.
+  </div>
   {% endif %}
 </div>
+
+<div id="copy-toast" class="copy-toast" style="display:none;">✅ Copiado al portapapeles</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const fallbackCopy = (text) => {
+  const toast = document.getElementById('copy-toast');
+
+  function showToast() {
+    toast.style.display = 'block';
+    setTimeout(() => toast.style.display = 'none', 1800);
+  }
+
+  function fallbackCopy(text) {
     try {
       const ta = document.createElement('textarea');
       ta.value = text;
@@ -94,47 +218,43 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.removeChild(ta);
       return ok;
     } catch (e) {
+      console.error('Error al copiar:', e);
       return false;
     }
-  };
+  }
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const text = btn.dataset.orderText || '';
-      let copied = false;
+      let text = '';
+      try {
+        text = JSON.parse(btn.dataset.orderText);
+      } catch {
+        text = btn.dataset.orderText || '';
+      }
 
+      let copied = false;
       if (navigator.clipboard && window.isSecureContext) {
         try {
           await navigator.clipboard.writeText(text);
           copied = true;
         } catch (e) {
-          copied = fallbackCopy(text);
+        copied = fallbackCopy(text);
         }
       } else {
         copied = fallbackCopy(text);
       }
 
       if (copied) {
-        const originalHtml = btn.innerHTML;
-        btn.innerHTML = 'Copiado ✓';
+        showToast();
+        btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Copiado';
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-success');
         btn.disabled = true;
 
-        // Enviar formulario para marcar como copiada
         const form = btn.closest('.text-end').querySelector('.copy-form');
-        if (form) {
-          setTimeout(() => form.submit(), 200);
-        } else {
-          setTimeout(() => {
-            btn.innerHTML = originalHtml;
-            btn.classList.remove('btn-success');
-            btn.classList.add('btn-primary');
-            btn.disabled = false;
-          }, 1200);
-        }
+        if (form) setTimeout(() => form.submit(), 500);
       } else {
-        alert('No se pudo copiar. Intenta de nuevo.');
+        alert('❌ No se pudo copiar. Intenta de nuevo.');
       }
     });
   });

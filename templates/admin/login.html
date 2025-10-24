@@ -3,55 +3,166 @@
 {% block title %}Admin Login{% endblock %}
 
 {% block content %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-6 col-lg-4">
-      <div class="card mt-5 shadow-sm">
-        <div class="card-body">
-          <h3 class="card-title text-center mb-4">Iniciar Sesión</h3>
+<style>
+  /* === Estilo glass moderno === */
+  body {
+    background: radial-gradient(circle at top, #0f172a 0%, #020617 100%);
+    font-family: 'Poppins', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
 
-          {% if error %}
-            <div class="alert alert-danger">
-              {{ error }}
-            </div>
-          {% endif %}
+  .glass-card {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 1rem;
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 420px;
+    color: #e2e8f0;
+  }
 
-          <form method="post" novalidate>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  .glass-card h3 {
+    text-align: center;
+    font-weight: 600;
+    margin-bottom: 1.8rem;
+    color: #fff;
+  }
 
-            <div class="mb-3">
-              <label for="usuario" class="form-label">Usuario</label>
-              <input
-                type="text"
-                class="form-control"
-                id="usuario"
-                name="usuario"
-                placeholder="Tu usuario"
-                required
-                autofocus
-              >
-            </div>
-            <div class="mb-3">
-              <label for="clave" class="form-label">Contraseña</label>
-              <input
-                type="password"
-                class="form-control"
-                id="clave"
-                name="clave"
-                placeholder="Tu contraseña"
-                required
-              >
-            </div>
-            <div class="d-grid">
-              <button type="submit" class="btn btn-primary">
-                Entrar
-              </button>
-            </div>
-          </form>
+  .form-label {
+    font-weight: 500;
+    color: #cbd5e1;
+    margin-bottom: 0.4rem;
+  }
 
-        </div>
-      </div>
-    </div>
+  .form-control {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e2e8f0;
+    border-radius: 0.6rem;
+    padding: 0.7rem 1rem;
+    width: 100%;
+    transition: all 0.2s ease;
+  }
+
+  .form-control:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #38bdf8, #3b82f6);
+    border: none;
+    padding: 0.75rem;
+    font-weight: 600;
+    border-radius: 0.6rem;
+    transition: all 0.25s ease;
+    color: #fff;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    transform: translateY(-1px);
+  }
+
+  .alert {
+    border-radius: 0.6rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .alert-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .alert-danger svg {
+    width: 18px;
+    height: 18px;
+    color: #f87171;
+  }
+
+  .login-icon {
+    width: 65px;
+    height: 65px;
+    margin: 0 auto 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #38bdf8, #2563eb);
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+  }
+
+  .login-icon svg {
+    width: 32px;
+    height: 32px;
+    color: #fff;
+  }
+</style>
+
+<div class="glass-card mt-5">
+  <div class="login-icon">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+      stroke-width="1.5" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M9 12h12m0 0l-3 3m3-3l-3-3" />
+    </svg>
   </div>
+
+  <h3>Iniciar Sesión</h3>
+
+  {% if error %}
+    <div class="alert alert-danger">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+        stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+      </svg>
+      {{ error }}
+    </div>
+  {% endif %}
+
+  <form method="post" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label for="usuario" class="form-label">Usuario</label>
+      <input
+        type="text"
+        class="form-control"
+        id="usuario"
+        name="usuario"
+        placeholder="Ingresa tu usuario"
+        required
+        autofocus>
+    </div>
+
+    <div class="mb-4">
+      <label for="clave" class="form-label">Contraseña</label>
+      <input
+        type="password"
+        class="form-control"
+        id="clave"
+        name="clave"
+        placeholder="Ingresa tu contraseña"
+        required>
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100">
+      Entrar
+    </button>
+  </form>
 </div>
 {% endblock %}
