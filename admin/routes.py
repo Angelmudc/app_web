@@ -611,7 +611,7 @@ def nueva_solicitud_admin(cliente_id):
         if hasattr(form, 'funciones_otro'):   form.funciones_otro.data = ''
         if hasattr(form, 'areas_comunes'):    form.areas_comunes.data = []
         if hasattr(form, 'area_otro'):        form.area_otro.data = ''
-        if hasattr(form, 'edad_requerida'):   form.edad_requerida.data = []  # lista de códigos
+        if hasattr(form, 'edad_requerida'):   form.edad_requerida.data = []  # lista de CÓDIGOS
         if hasattr(form, 'edad_otro'):        form.edad_otro.data = ''
         if hasattr(form, 'tipo_lugar_otro'):  form.tipo_lugar_otro.data = ''
         if hasattr(form, 'mascota'):          form.mascota.data = ''
@@ -629,44 +629,49 @@ def nueva_solicitud_admin(cliente_id):
                 codigo_solicitud=nuevo_codigo
             )
 
-            # Carga de campos crudos desde WTForms
+            # Carga general desde WTForms
             form.populate_obj(s)
 
-            # Tipo de lugar (maneja 'otro')
+            # Tipo de lugar ('otro')
             s.tipo_lugar = _map_tipo_lugar(
                 getattr(s, 'tipo_lugar', ''),
                 getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
             )
 
-            # Edad requerida → guardar LABELS legibles (canónico)
+            # Edad requerida → guardar LABELS legibles
             s.edad_requerida = _map_edad_choices(
                 codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
                 edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
                 otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
             )
 
-            # Mascota (normaliza vacío a None)
+            # Mascota
             if hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
 
-            # Funciones (codes + “otro”)
-            s.funciones = _map_funciones(
-                vals=(form.funciones.data if hasattr(form, 'funciones') else []),
-                extra_text=(form.funciones_otro.data if hasattr(form, 'funciones_otro') else '')
-            )
+            # ===== Funciones (códigos válidos) + texto "otro" =====
+            selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
+            extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+            if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
+                valid_codes = _allowed_codes_from_choices(form.funciones.choices)
+                s.funciones = [c for c in selected_codes if c in valid_codes and c != 'otro']
+            else:
+                s.funciones = [c for c in selected_codes if c != 'otro']
+            if hasattr(s, 'funciones_otro'):
+                s.funciones_otro = extra_text or None
 
-            # Áreas comunes (filtra solo códigos válidos de las choices)
+            # Áreas comunes válidas
             allowed_areas = _allowed_codes_from_choices(form.areas_comunes.choices) if hasattr(form, 'areas_comunes') else set()
-            s.areas_comunes = [a for a in _clean_list(getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})) .data) if a in allowed_areas]
+            s.areas_comunes = [a for a in _clean_list(getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data) if a in allowed_areas]
 
             # Área "otro"
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                s.area_otro = (form.area_otro.data or '').strip()
+                s.area_otro = (form.area_otro.data or '').strip() or None
 
-            # Pasaje (BooleanField) → default False si no existe
-            s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', type('x', (object,), {'data': False})) .data)
+            # Pasaje
+            s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', type('x', (object,), {'data': False})).data)
 
-            # Métricas de cliente
+            # Métricas cliente
             db.session.add(s)
             c.total_solicitudes = (c.total_solicitudes or 0) + 1
             c.fecha_ultima_solicitud = datetime.utcnow()
@@ -687,7 +692,6 @@ def nueva_solicitud_admin(cliente_id):
             flash('Ocurrió un error al crear la solicitud.', 'danger')
 
     elif request.method == 'POST':
-        # POST con validación fallida
         flash('Revisa los campos marcados en rojo.', 'danger')
 
     return render_template(
@@ -723,34 +727,55 @@ def editar_solicitud_admin(cliente_id, id):
                     form.tipo_lugar.data = 'otro'
                     form.tipo_lugar_otro.data = (s.tipo_lugar or '').strip()
         except Exception:
-            # No rompe el render si choices no está configurado todavía
             pass
 
-        # ---- Edad requerida: LABELS (BD) → CÓDIGOS (form) + “otro” ----
+        # ---- Edad requerida (BD guarda LABELS) → form CÓDIGOS y “otro” ----
         if hasattr(form, 'edad_requerida'):
             selected_codes, otro_text = _split_edad_for_form(
                 stored_list=s.edad_requerida,
                 edad_choices=form.edad_requerida.choices
             )
-            form.edad_requerida.data = selected_codes
+            # Si hay texto libre, marca 'otro' en el form
+            try:
+                edad_codes = set(selected_codes or [])
+                if (otro_text or '').strip():
+                    allowed_edad = _allowed_codes_from_choices(form.edad_requerida.choices)
+                    if 'otro' in allowed_edad:
+                        edad_codes.add('otro')
+                form.edad_requerida.data = list(edad_codes)
+            except Exception:
+                form.edad_requerida.data = selected_codes or []
             if hasattr(form, 'edad_otro'):
-                form.edad_otro.data = otro_text
+                form.edad_otro.data = (otro_text or '').strip()
 
         # ---- Funciones ----
         if hasattr(form, 'funciones'):
             allowed_fun_codes = _allowed_codes_from_choices(form.funciones.choices)
             funs_guardadas = _clean_list(s.funciones)
             form.funciones.data = [f for f in funs_guardadas if f in allowed_fun_codes]
+
+            # Extras fuera de catálogo que antes se guardaron (por compatibilidad)
             extras = [f for f in funs_guardadas if f not in allowed_fun_codes and f != 'otro']
+
+            # Valor base del campo libre
+            base_otro = (getattr(s, 'funciones_otro', '') or '').strip()
             if hasattr(form, 'funciones_otro'):
-                base_otro = (getattr(s, 'funciones_otro', '') or '').strip()
                 form.funciones_otro.data = (", ".join(extras) if extras else base_otro)
 
-        # ---- Mascota ----
+            # >>> FIX visible: si hay texto en funciones_otro, marca 'otro' seleccionado
+            try:
+                if (form.funciones_otro.data or '').strip():
+                    fun_codes = set(form.funciones.data or [])
+                    if 'otro' in allowed_fun_codes:
+                        fun_codes.add('otro')
+                    form.funciones.data = list(fun_codes)
+            except Exception:
+                # si algo falla, al menos no romper el render
+                pass
+
+        # ---- Mascota / Áreas / Pasaje ----
         if hasattr(form, 'mascota'):
             form.mascota.data = (getattr(s, 'mascota', '') or '')
-
-        # ---- Áreas y pasaje ----
         if hasattr(form, 'areas_comunes'):
             form.areas_comunes.data = _clean_list(s.areas_comunes)
         if hasattr(form, 'area_otro'):
@@ -761,7 +786,7 @@ def editar_solicitud_admin(cliente_id, id):
     # POST válido
     if form.validate_on_submit():
         try:
-            # Carga cruda
+            # Carga general
             form.populate_obj(s)
 
             # Tipo de lugar
@@ -781,20 +806,25 @@ def editar_solicitud_admin(cliente_id, id):
             if hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
 
-            # Funciones
-            s.funciones = _map_funciones(
-                vals=(form.funciones.data if hasattr(form, 'funciones') else []),
-                extra_text=(form.funciones_otro.data if hasattr(form, 'funciones_otro') else '')
-            )
+            # ===== Funciones (códigos válidos) + texto "otro" =====
+            selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
+            extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+            if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
+                valid_codes = _allowed_codes_from_choices(form.funciones.choices)
+                s.funciones = [c for c in selected_codes if c in valid_codes and c != 'otro']
+            else:
+                s.funciones = [c for c in selected_codes if c != 'otro']
+            if hasattr(s, 'funciones_otro'):
+                s.funciones_otro = extra_text or None
 
-            # Áreas (solo válidas)
+            # Áreas válidas
             if hasattr(form, 'areas_comunes'):
                 allowed_areas = _allowed_codes_from_choices(form.areas_comunes.choices)
                 s.areas_comunes = [a for a in _clean_list(form.areas_comunes.data) if a in allowed_areas]
 
             # Área "otro"
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                s.area_otro = (form.area_otro.data or '').strip()
+                s.area_otro = (form.area_otro.data or '').strip() or None
 
             # Pasaje
             if hasattr(form, 'pasaje_aporte'):
@@ -818,7 +848,6 @@ def editar_solicitud_admin(cliente_id, id):
             flash('Ocurrió un error al actualizar la solicitud.', 'danger')
 
     elif request.method == 'POST':
-        # POST con validación fallida
         flash('Revisa los campos marcados en rojo.', 'danger')
 
     return render_template(
@@ -1716,6 +1745,20 @@ def _as_list(v):
             return [txt]
     return [_s(v)]
 
+def _unique_keep_order(seq):
+    """Devuelve únicos preservando el orden de aparición."""
+    seen = set()
+    out = []
+    for x in seq or []:
+        sx = _s(x)
+        if not sx:
+            continue
+        if sx in seen:
+            continue
+        seen.add(sx)
+        out.append(sx)
+    return out
+
 def _fmt_banos(val) -> str:
     if val is None:
         return ""
@@ -1732,10 +1775,8 @@ def _fmt_banos(val) -> str:
 
 def _norm_area(a: str) -> str:
     k = _s(a).lower()
-    # Si viene el código exacto, usa la etiqueta del catálogo
     if k in AREAS_MAP:
         return AREAS_MAP[k]
-    # Fallback: intenta limpiar variantes comunes
     alias = {
         "balcon": "Balcón", "balcón": "Balcón",
         "lavado": "Lavado", "terraza": "Terraza",
@@ -1766,55 +1807,34 @@ def _fmt_codigo_humano(codigo: str) -> str:
     return f"{left_fmt}-{right}" if right else left_fmt
 
 def _format_money_usd(raw) -> str:
-    """
-    Normaliza monto a USD con miles correctos:
-    - "20,000"      -> "$20,000"
-    - "1,234,567.8" -> "$1,234,567.80" (si quieres dos decimales, ajusta abajo)
-    - "1.234.567,8" -> "$1,234,567.80"
-    - "20000"       -> "$20,000"
-    """
     s = str(raw or "").strip()
     if not s:
         return ""
-    # Quitar signos/espacios
     s = s.replace("RD$", "").replace("$", "").replace(" ", "")
-
-    # 1) Formato US: 1,234,567.89  (comas de miles, punto decimal)
     us_pattern = r"^\d{1,3}(,\d{3})+(\.\d+)?$"
-    # 2) Formato EU: 1.234.567,89  (puntos de miles, coma decimal)
     eu_pattern = r"^\d{1,3}(\.\d{3})+(,\d+)?$"
-    # 3) Solo dígitos (sin separadores)
     plain_digits = r"^\d+$"
-
     try:
         if re.match(us_pattern, s):
-            # Quitar comas (miles)
             num = s.replace(",", "")
             val = Decimal(num)
         elif re.match(eu_pattern, s):
-            # Quitar puntos (miles) y convertir coma a punto (decimal)
             num = s.replace(".", "").replace(",", ".")
             val = Decimal(num)
         elif re.match(plain_digits, s):
             val = Decimal(s)
         else:
-            # Caso mixto/simple:
-            # - Si hay comas y NO hay punto → si coincide con miles (grupos de 3) quita comas
             if "," in s and "." not in s and re.match(r"^\d{1,3}(,\d{3})+$", s):
                 val = Decimal(s.replace(",", ""))
             else:
-                # Último recurso: intenta interpretar coma como decimal si hay solo una
                 if "," in s and "." not in s and s.count(",") == 1:
                     val = Decimal(s.replace(",", "."))
                 else:
-                    # O quita comas sueltas
                     val = Decimal(s.replace(",", ""))
-        # Formato salida: si entero, sin decimales; si tiene decimales, 2 decimales.
         if val == val.to_integral():
             return f"${int(val):,}"
         return f"${val:,.2f}"
     except Exception:
-        # Devuelve crudo con $ si no se puede parsear
         return f"${s}"
 
 # ------------------------------ RUTAS ----------------------------------------
@@ -1827,8 +1847,10 @@ def _format_money_usd(raw) -> str:
 def copiar_solicitudes():
     """
     Lista solicitudes copiables y arma el texto final:
-    Sin prefijos fijos de Modalidad/Hogar; Mascotas solo si hay; con líneas en blanco
-    entre bloques para que sea fácil de leer/pegar.
+    - Modalidad/Hogar sin prefijos fijos.
+    - Mascotas solo si hay.
+    - Líneas en blanco entre bloques.
+    - Funciones en el MISMO ORDEN seleccionado (y 'otro' al final si aplica).
     """
     q = _s(request.args.get('q'))
     try:
@@ -1880,7 +1902,8 @@ def copiar_solicitudes():
     )
 
     form = AdminSolicitudForm()
-    FUNCIONES_CHOICES = dict(getattr(form.funciones, "choices", []) or [])
+    FUNCIONES_CHOICES = list(getattr(form.funciones, "choices", []) or [])
+    FUNCIONES_LABELS = {k: v for k, v in FUNCIONES_CHOICES}
 
     solicitudes = []
     for s in raw_sols:
@@ -1889,20 +1912,23 @@ def copiar_solicitudes():
         else:
             reems = [r for r in (s.reemplazos or []) if bool(getattr(r, 'oportunidad_nueva', False))]
 
-        # Funciones (labels + "otro")
+        # ====================== FUNCIONES (ORDEN CORRECTO) ======================
+        # 1) Toma lo guardado (list) preservando orden y únicos.
+        raw_codes = _unique_keep_order(_as_list(getattr(s, 'funciones', None)))
+        # 2) Excluye 'otro' de códigos (el texto libre va aparte).
+        raw_codes = [c for c in raw_codes if c != 'otro']
+        # 3) Mapea a labels respetando ese orden.
         funcs = []
-        seleccion = set(_as_list(getattr(s, 'funciones', None)))
-        for code in seleccion:
-            if code == 'otro':
-                continue
-            label = FUNCIONES_CHOICES.get(code)
+        for code in raw_codes:
+            label = FUNCIONES_LABELS.get(code)
             if label:
                 funcs.append(label)
+        # 4) Texto libre de "otro" al final (si existe).
         custom_f = _s(getattr(s, 'funciones_otro', None))
         if custom_f:
             funcs.append(custom_f)
 
-        # Adultos/Niños
+        # ====================== ADULTOS / NIÑOS ======================
         adultos_val = _s(getattr(s, 'adultos', None))
         ninos_line = ""
         ninos_raw = getattr(s, 'ninos', None)
@@ -1912,11 +1938,11 @@ def copiar_solicitudes():
             if ed:
                 ninos_line += f" ({ed})"
 
-        # Modalidad (tal cual; sin adornos)
+        # ====================== MODALIDAD ======================
         modalidad = _first_nonempty_attr(s, ['modalidad_trabajo', 'modalidad', 'tipo_modalidad'], '')
         modalidad_line = modalidad
 
-        # Hogar (sin prefijo)
+        # ====================== HOGAR ======================
         hogar_partes_detalle = []
         habitaciones = getattr(s, 'habitaciones', None)
         if habitaciones not in (None, "", 0, "0"):
@@ -1927,7 +1953,7 @@ def copiar_solicitudes():
         if bool(getattr(s, 'dos_pisos', False)):
             hogar_partes_detalle.append("2 pisos")
 
-        # Áreas (desde catálogo)
+        # Áreas
         areas = []
         for a in _as_list(getattr(s, 'areas_comunes', None)):
             areas.append(_norm_area(a))
@@ -1945,11 +1971,11 @@ def copiar_solicitudes():
         else:
             hogar_descr = ", ".join(hogar_partes_detalle) if hogar_partes_detalle else ""
 
-        # Mascotas (solo si hay)
+        # ====================== MASCOTAS ======================
         mascota_val = _s(getattr(s, 'mascota', None))
         mascota_line = f"Mascotas: {mascota_val}" if mascota_val else ""
 
-        # Campos base
+        # ====================== CAMPOS BASE ======================
         codigo         = _s(getattr(s, 'codigo_solicitud', None))
         ciudad_sector  = _s(getattr(s, 'ciudad_sector', None))
         rutas_cercanas = _s(getattr(s, 'rutas_cercanas', None))
@@ -1965,14 +1991,14 @@ def copiar_solicitudes():
         experiencia_it = f"*{experiencia}*" if experiencia else ""
         horario        = _s(getattr(s, 'horario', None))
 
-        # Sueldo (USD con miles correctos)
+        # Sueldo
         sueldo_final  = _format_money_usd(getattr(s, 'sueldo', None))
         pasaje_aporte = bool(getattr(s, 'pasaje_aporte', False))
 
-        # === NOTA DEL CLIENTE (sin texto fijo) ===
+        # Nota del cliente (al final, sin prefijo)
         nota_cli = _s(getattr(s, 'nota_cliente', None))
 
-        # ===== Texto final con espacios =====
+        # ===== Texto final =====
         cod_fmt = _fmt_codigo_humano(codigo) if codigo else ""
         header_block = "\n".join([
             f"Disponible ( {cod_fmt} )" if cod_fmt else "Disponible",
@@ -2022,8 +2048,7 @@ def copiar_solicitudes():
             "",
             sueldo_block if sueldo_block else None,
             "",
-            # Nota al final, sin prefijos
-            (nota_cli if nota_cli else None),
+            (nota_cli if nota_cli else None),  # Nota al final, sin prefijos
         ]
 
         cleaned = []
@@ -2086,7 +2111,6 @@ def copiar_solicitud(id):
         flash('Ocurrió un error al marcar como copiada.', 'danger')
 
     return redirect(url_for('admin.copiar_solicitudes'))
-
 
 
 
