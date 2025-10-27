@@ -2,44 +2,69 @@
 
 {% block title %}Admin Login{% endblock %}
 
-{% block content %}
+{% block head %}
 <style>
-  /* === Estilo glass moderno === */
+  /* ===== Fondo y tipografía ===== */
   body {
     background: radial-gradient(circle at top, #0f172a 0%, #020617 100%);
     font-family: 'Poppins', sans-serif;
     min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
   }
 
+  /* ===== Contenedor centrado ===== */
+  .auth-wrap {
+    min-height: calc(100vh - 0px);
+    display: grid;
+    place-items: center;
+    padding: 2rem 1rem;
+  }
+
+  /* ===== Tarjeta glass ===== */
   .glass-card {
+    width: 100%;
+    max-width: 420px;
+    color: #e2e8f0;
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 1rem;
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
-    padding: 2.5rem;
-    width: 100%;
-    max-width: 420px;
-    color: #e2e8f0;
+    padding: 2.2rem;
   }
 
-  .glass-card h3 {
+  .auth-header {
+    display: grid;
+    place-items: center;
+    gap: .75rem;
+    margin-bottom: 1.5rem;
     text-align: center;
-    font-weight: 600;
-    margin-bottom: 1.8rem;
-    color: #fff;
   }
 
+  .login-icon {
+    width: 68px;
+    height: 68px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #38bdf8, #2563eb);
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+  }
+  .login-icon svg { width: 32px; height: 32px; color: #fff; }
+
+  .auth-title {
+    margin: 0;
+    color: #fff;
+    font-weight: 600;
+    letter-spacing: .2px;
+  }
+
+  /* ===== Formularios ===== */
   .form-label {
     font-weight: 500;
     color: #cbd5e1;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.35rem;
   }
-
   .form-control {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -49,35 +74,37 @@
     width: 100%;
     transition: all 0.2s ease;
   }
-
+  .form-control::placeholder { color: #94a3b8; }
   .form-control:focus {
     border-color: #38bdf8;
     box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
     background: rgba(255, 255, 255, 0.08);
+    outline: none;
   }
 
+  /* ===== Botón ===== */
   .btn-primary {
     background: linear-gradient(135deg, #38bdf8, #3b82f6);
     border: none;
-    padding: 0.75rem;
+    padding: 0.8rem;
     font-weight: 600;
     border-radius: 0.6rem;
-    transition: all 0.25s ease;
     color: #fff;
+    width: 100%;
+    transition: all 0.25s ease;
   }
-
   .btn-primary:hover {
     background: linear-gradient(135deg, #3b82f6, #2563eb);
     transform: translateY(-1px);
   }
 
+  /* ===== Alertas ===== */
   .alert {
     border-radius: 0.6rem;
     padding: 0.75rem 1rem;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
     margin-bottom: 1rem;
   }
-
   .alert-danger {
     background: rgba(239, 68, 68, 0.15);
     border: 1px solid rgba(239, 68, 68, 0.25);
@@ -86,83 +113,86 @@
     align-items: center;
     gap: 0.5rem;
   }
+  .alert-danger svg { width: 18px; height: 18px; color: #f87171; }
 
-  .alert-danger svg {
-    width: 18px;
-    height: 18px;
-    color: #f87171;
-  }
-
-  .login-icon {
-    width: 65px;
-    height: 65px;
-    margin: 0 auto 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: linear-gradient(145deg, #38bdf8, #2563eb);
-    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
-  }
-
-  .login-icon svg {
-    width: 32px;
-    height: 32px;
-    color: #fff;
-  }
+  /* ===== Utilidades ===== */
+  .text-muted { color: #94a3b8 !important; }
+  .small-note { margin-top: 1rem; font-size: .85rem; color: #94a3b8; text-align: center; }
 </style>
+{% endblock %}
 
-<div class="glass-card mt-5">
-  <div class="login-icon">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-      stroke-width="1.5" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M9 12h12m0 0l-3 3m3-3l-3-3" />
-    </svg>
-  </div>
+{% block content %}
+<main class="auth-wrap">
+  <section class="glass-card" role="form" aria-labelledby="authTitle">
+    <header class="auth-header">
+      <div class="login-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+          stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M9 12h12m0 0l-3 3m3-3l-3-3" />
+        </svg>
+      </div>
+      <h1 id="authTitle" class="auth-title h4">Iniciar Sesión</h1>
+      <p class="text-muted m-0">Acceso administrativo</p>
+    </header>
 
-  <h3>Iniciar Sesión</h3>
+    {# ——— Mensajes de error simples (variable `error`) ——— #}
+    {% if error %}
+      <div class="alert alert-danger" role="alert">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+          stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+        </svg>
+        <span>{{ error }}</span>
+      </div>
+    {% endif %}
 
-  {% if error %}
-    <div class="alert alert-danger">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-        stroke-width="1.5" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round"
-          d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
-      </svg>
-      {{ error }}
-    </div>
-  {% endif %}
+    {# ——— Mensajes con flash (opcional) ——— #}
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+        {% for category, msg in msgs %}
+          <div class="alert alert-{{ category if category else 'danger' }}" role="alert">
+            {{ msg }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
 
-  <form method="post" novalidate>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <form method="post" novalidate>
+      {% if csrf_token is defined %}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% endif %}
 
-    <div class="mb-3">
-      <label for="usuario" class="form-label">Usuario</label>
-      <input
-        type="text"
-        class="form-control"
-        id="usuario"
-        name="usuario"
-        placeholder="Ingresa tu usuario"
-        required
-        autofocus>
-    </div>
+      <div class="mb-3">
+        <label for="usuario" class="form-label">Usuario</label>
+        <input
+          type="text"
+          class="form-control"
+          id="usuario"
+          name="usuario"
+          placeholder="Ingresa tu usuario"
+          required
+          autocomplete="username"
+          autofocus>
+      </div>
 
-    <div class="mb-4">
-      <label for="clave" class="form-label">Contraseña</label>
-      <input
-        type="password"
-        class="form-control"
-        id="clave"
-        name="clave"
-        placeholder="Ingresa tu contraseña"
-        required>
-    </div>
+      <div class="mb-4">
+        <label for="clave" class="form-label">Contraseña</label>
+        <input
+          type="password"
+          class="form-control"
+          id="clave"
+          name="clave"
+          placeholder="Ingresa tu contraseña"
+          required
+          autocomplete="current-password">
+      </div>
 
-    <button type="submit" class="btn btn-primary w-100">
-      Entrar
-    </button>
-  </form>
-</div>
+      <button type="submit" class="btn btn-primary">Entrar</button>
+
+      <p class="small-note">Protegido • Área solo para administradores</p>
+    </form>
+  </section>
+</main>
 {% endblock %}

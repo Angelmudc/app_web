@@ -1819,6 +1819,8 @@ def _format_money_usd(raw) -> str:
 
 # ------------------------------ RUTAS ----------------------------------------
 
+# RUTAS ADMIN – copiar solicitudes (con nota_cliente al final si existe)
+
 @admin_bp.route('/solicitudes/copiar')
 @login_required
 @admin_required
@@ -1967,6 +1969,9 @@ def copiar_solicitudes():
         sueldo_final  = _format_money_usd(getattr(s, 'sueldo', None))
         pasaje_aporte = bool(getattr(s, 'pasaje_aporte', False))
 
+        # === NOTA DEL CLIENTE (sin texto fijo) ===
+        nota_cli = _s(getattr(s, 'nota_cliente', None))
+
         # ===== Texto final con espacios =====
         cod_fmt = _fmt_codigo_humano(codigo) if codigo else ""
         header_block = "\n".join([
@@ -2016,6 +2021,9 @@ def copiar_solicitudes():
             familia_block if familia_block else None,
             "",
             sueldo_block if sueldo_block else None,
+            "",
+            # Nota al final, sin prefijos
+            (nota_cli if nota_cli else None),
         ]
 
         cleaned = []
@@ -2049,6 +2057,7 @@ def copiar_solicitudes():
         has_more=has_more
     )
 
+
 @admin_bp.route('/solicitudes/<int:id>/copiar', methods=['POST'])
 @login_required
 @admin_required
@@ -2077,6 +2086,7 @@ def copiar_solicitud(id):
         flash('Ocurrió un error al marcar como copiada.', 'danger')
 
     return redirect(url_for('admin.copiar_solicitudes'))
+
 
 
 

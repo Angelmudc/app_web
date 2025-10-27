@@ -17,7 +17,7 @@
   a { color: #93c5fd; }
   a:hover { color: #bfdbfe; text-decoration: underline; }
 
-  /* Forzar blanco cuando Bootstrap usa tonos oscuros por defecto */
+  /* Forzar blanco en elementos que Bootstrap pone oscuros */
   .text-dark, .link-dark, .navbar-light .navbar-nav .nav-link,
   .form-label, label, legend, caption,
   th, td, dt, dd, strong, b {
@@ -134,9 +134,9 @@
         <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
           <div class="flex-grow-1">
             <div class="d-flex align-items-center flex-wrap gap-2">
-              <span class="fw-semibold text-info">{{ s.codigo_solicitud }}</span>
+              <span class="fw-semibold text-info">{{ s.codigo_solicitud or '—' }}</span>
               <span class="text-muted">—</span>
-              <span>{{ s.ciudad_sector }}</span>
+              <span>{{ s.ciudad_sector or '—' }}</span>
             </div>
 
             <div class="mt-1">
@@ -158,7 +158,11 @@
             <div class="mt-2">
               <small class="text-warning">
                 ⚠️ Reemplazos pendientes ({{ s.reemplazos|length }}):
-                {{ s.reemplazos | map(attribute='candidata_new.nombre_completo') | join(', ') }}
+                {{ s.reemplazos
+                   | selectattr('candidata_new', 'defined')
+                   | selectattr('candidata_new', 'ne', none)
+                   | map(attribute='candidata_new.nombre_completo')
+                   | join(', ') }}
               </small>
             </div>
             {% endif %}
@@ -170,13 +174,15 @@
               type="button"
               class="btn btn-sm btn-primary copy-btn"
               data-order-text='{{ s.order_text | tojson }}'
-              aria-label="Copiar texto de la solicitud {{ s.codigo_solicitud }}"
+              aria-label="Copiar texto de la solicitud {{ s.codigo_solicitud or '' }}"
             >
               <i class="bi bi-clipboard-check me-1"></i> Copiar
             </button>
 
             <form method="post" action="{{ url_for('admin.copiar_solicitud', id=s.id) }}" class="d-none copy-form">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {% if csrf_token is defined %}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {% endif %}
             </form>
           </div>
         </div>
@@ -202,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function showToast() {
     toast.style.display = 'block';
-    setTimeout(() => toast.style.display = 'none', 1800);
+    setTimeout(() => { toast.style.display = 'none'; }, 1800);
   }
 
   function fallbackCopy(text) {
@@ -210,35 +216,40 @@ document.addEventListener('DOMContentLoaded', () => {
       const ta = document.createElement('textarea');
       ta.value = text;
       ta.setAttribute('readonly', '');
-      ta.style.position = 'absolute';
-      ta.style.left = '-9999px';
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
       document.body.appendChild(ta);
       ta.select();
       const ok = document.execCommand('copy');
       document.body.removeChild(ta);
       return ok;
     } catch (e) {
-      console.error('Error al copiar:', e);
+      console.error('Error al copiar (fallback):', e);
       return false;
     }
   }
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      // Lee el JSON embebido en el data-attribute.
       let text = '';
       try {
+        // dataset entrega una string; tojson produce una string JSON válida.
+        // Si por alguna razón viniera ya plano, caemos al catch.
         text = JSON.parse(btn.dataset.orderText);
+        if (typeof text !== 'string') { text = String(text ?? ''); }
       } catch {
         text = btn.dataset.orderText || '';
       }
 
+      // Copia robusta
       let copied = false;
       if (navigator.clipboard && window.isSecureContext) {
         try {
           await navigator.clipboard.writeText(text);
           copied = true;
         } catch (e) {
-        copied = fallbackCopy(text);
+          copied = fallbackCopy(text);
         }
       } else {
         copied = fallbackCopy(text);
@@ -251,8 +262,11 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.classList.add('btn-success');
         btn.disabled = true;
 
-        const form = btn.closest('.text-end').querySelector('.copy-form');
-        if (form) setTimeout(() => form.submit(), 500);
+        // Marca como copiada en el backend (oculta del listado hasta mañana)
+        const form = btn.closest('.text-end')?.querySelector('.copy-form');
+        if (form) {
+          setTimeout(() => { form.submit(); }, 500);
+        }
       } else {
         alert('❌ No se pudo copiar. Intenta de nuevo.');
       }
@@ -261,3 +275,4 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 {% endblock %}
+
