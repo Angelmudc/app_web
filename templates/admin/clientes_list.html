@@ -10,6 +10,12 @@
     --accent:#38bdf8;
     --border-color:rgba(255,255,255,0.12);
     --btn-radius:.6rem;
+
+    /* Menú de interacción: SÓLIDO (sin glass) */
+    --menu-bg:#0b1220;
+    --menu-text:#e2e8f0;
+    --menu-border:#1f2937;
+    --menu-hover:#2563eb;
   }
   body.light-mode{
     --bg-color:#f3f4f6;
@@ -17,7 +23,13 @@
     --text-color:#1e293b;
     --accent:#2563eb;
     --border-color:rgba(0,0,0,.1);
+
+    --menu-bg:#ffffff;
+    --menu-text:#111827;
+    --menu-border:#e5e7eb;
+    --menu-hover:#2563eb;
   }
+
   body{
     background:var(--bg-color);
     font-family:'Poppins',sans-serif;
@@ -27,7 +39,7 @@
   .container{max-width:98%}
   h1{font-weight:600}
 
-  /* Simplicidad: sin blur para evitar lag */
+  /* Card sin blur */
   .glass-card{
     background:var(--card-bg);
     border:1px solid var(--border-color);
@@ -46,7 +58,7 @@
     cursor:pointer;
   }
 
-  /* Tabla ligera (sin transform/scale) */
+  /* Tabla */
   .table{width:100%;border-collapse:collapse;font-size:.98rem;color:var(--text-color)}
   thead th{
     background:rgba(255,255,255,.08);
@@ -57,7 +69,7 @@
   tbody tr:hover{background:rgba(56,189,248,.12)}
   td{padding:1rem;text-align:center;border-bottom:1px solid var(--border-color)}
 
-  /* Botones sin transiciones pesadas */
+  /* Botones */
   .btn{border-radius:var(--btn-radius);font-weight:500}
   .btn-sm{padding:.4rem .7rem}
   .btn-success{background:#10b981;border:none;color:#fff}
@@ -71,40 +83,58 @@
   .btn-outline-secondary{border:1px solid var(--border-color);color:var(--text-color)}
   .btn-outline-secondary:hover{background:var(--accent);color:#fff;border-color:transparent}
 
-  /* Dropdown minimal y estable */
-  .btn-group{position:relative}
+  /* Permitir que algo pueda salirse de la tabla si hace falta */
+  .table-responsive{overflow:visible !important; position:relative; z-index:1;}
+
+  /* Menú base (cuando está dentro del flujo) — SIEMPRE sólido */
   .dropdown-menu{
     min-width:210px;
     font-size:.95rem;
-    background:var(--card-bg);
-    border:1px solid var(--border-color);
+    background:var(--menu-bg) !important;
+    color:var(--menu-text) !important;
+    border:1px solid var(--menu-border) !important;
     border-radius:.8rem;
-    display:none;opacity:1; /* sin fades */
-    position:absolute;top:110%;right:0;z-index:20;
-    box-shadow:0 10px 20px rgba(0,0,0,.25);
+    display:none;
+    position:absolute; top:110%; right:0;
+    box-shadow:0 12px 28px rgba(0,0,0,.45);
+    pointer-events:auto;
   }
   .dropdown-menu.show{display:block}
-  .dropdown-item{color:var(--text-color);padding:.55rem .9rem;display:block;text-decoration:none}
-  .dropdown-item:hover{background:var(--accent);color:#fff}
+  .dropdown-item{
+    color:var(--menu-text) !important;
+    padding:.55rem .9rem;
+    display:block;
+    text-decoration:none;
+    background:transparent !important;
+  }
+  .dropdown-item:hover{
+    background:var(--menu-hover) !important;
+    color:#fff !important;
+  }
+  .dropdown-divider{
+    margin:.35rem 0;
+    border-top:1px solid var(--menu-border) !important;
+  }
   .dropdown-toggle::after{display:none}
 
-  /* Paginación */
-  .page-link{background:rgba(255,255,255,.08);border:1px solid var(--border-color);color:var(--text-color)}
-  .page-item.active .page-link{background:var(--accent);color:#fff;border:none}
-
-  /* Mobile sin animaciones */
-  @media (max-width:991px){
-    .table thead{display:none}
-    .table,.table tbody,.table tr,.table td{display:block;width:100%}
-    .table tr{margin-bottom:1rem;border:1px solid var(--border-color);border-radius:.75rem;background:rgba(255,255,255,.06);padding:.5rem}
-    .table td{display:flex;justify-content:space-between;text-align:left;border:none;border-bottom:1px dashed var(--border-color)}
-    .table td:last-child{border-bottom:none}
-    .table td::before{content:attr(data-label);font-weight:600;color:var(--accent);margin-right:1rem}
+  /* PORTAL: contenedor fijo sobre todo */
+  #dropdown-portal{
+    position:fixed;
+    inset:0;
+    pointer-events:none; /* deja pasar clicks fuera del menú */
+    z-index:2147483647;  /* máximo */
   }
-
-  /* Respeta usuarios con reduced motion */
-  @media (prefers-reduced-motion:reduce){
-    *{animation:none!important;transition:none!important}
+  #dropdown-portal .portal-menu{
+    position:fixed;      /* se posiciona por coordenadas absolutas del botón */
+    background:var(--menu-bg);
+    color:var(--menu-text);
+    border:1px solid var(--menu-border);
+    border-radius:.8rem;
+    box-shadow:0 12px 28px rgba(0,0,0,.55);
+    min-width:210px;
+    max-height:60vh;
+    overflow:auto;
+    pointer-events:auto; /* el menú sí recibe clicks */
   }
 </style>
 
@@ -150,17 +180,15 @@
         <tbody>
           {% for c in clientes %}
           <tr>
-            <td data-label="#"> {{ c.id }} </td>
-            <td data-label="Código"> {{ c.codigo }} </td>
-            <td data-label="Nombre"> {{ c.nombre_completo }} </td>
-            <td data-label="Email"> {{ c.email }} </td>
-            <td data-label="Teléfono"> {{ c.telefono }} </td>
-            <td data-label="Ciudad"> {{ c.ciudad or '—' }} </td>
-            <td data-label="Sector"> {{ c.sector or '—' }} </td>
-            <td data-label="Solicitudes">
-              <span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span>
-            </td>
-            <td data-label="Registro"> {{ c.fecha_registro.strftime('%Y-%m-%d') }} </td>
+            <td data-label="#">{{ c.id }}</td>
+            <td data-label="Código">{{ c.codigo }}</td>
+            <td data-label="Nombre">{{ c.nombre_completo }}</td>
+            <td data-label="Email">{{ c.email }}</td>
+            <td data-label="Teléfono">{{ c.telefono }}</td>
+            <td data-label="Ciudad">{{ c.ciudad or '—' }}</td>
+            <td data-label="Sector">{{ c.sector or '—' }}</td>
+            <td data-label="Solicitudes"><span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span></td>
+            <td data-label="Registro">{{ c.fecha_registro.strftime('%Y-%m-%d') }}</td>
             <td data-label="Acciones">
               <div class="btn-group">
                 <button type="button"
@@ -170,7 +198,7 @@
                         aria-expanded="false">
                   Elegir
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end" id="menu-{{ c.id }}" role="menu">
+                <ul class="dropdown-menu dropdown-menu-end" id="menu-{{ c.id }}" role="menu" tabindex="-1" aria-label="Acciones de cliente">
                   <li><a class="dropdown-item" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}"><i class="bi bi-eye-fill text-info me-2"></i>Ver Detalle</a></li>
                   <li><a class="dropdown-item" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}"><i class="bi bi-pencil-fill text-warning me-2"></i>Editar</a></li>
                   <li><hr class="dropdown-divider"></li>
@@ -198,8 +226,11 @@
   {% endif %}
 </div>
 
+<!-- Portal fijo (vacío al inicio) -->
+<div id="dropdown-portal" aria-hidden="true"></div>
+
 <script>
-  // MODO CLARO/OSCURO (simple, sin animaciones)
+  // MODO CLARO/OSCURO
   (function(){
     const t=document.getElementById('modeToggle');
     const i=document.getElementById('modeIcon');
@@ -210,29 +241,112 @@
     });
   })();
 
-  // DROPDOWNS LIGEROS (sin scroll/resize listeners)
+  // DROPDOWNS — usando PORTAL AL BODY para evitar que queden "detrás"
   (function(){
-    function closeAll(except){
-      document.querySelectorAll('.dropdown-menu.show').forEach(m=>{ if(m!==except) m.classList.remove('show'); });
-      document.querySelectorAll('.elegir-btn[aria-expanded="true"]').forEach(b=>b.setAttribute('aria-expanded','false'));
+    const portal = document.getElementById('dropdown-portal');
+    let openState = null; // {btn, menu, placeholder, originGroup}
+
+    function closeAll(){
+      if(!openState) return;
+      const {menu, placeholder, originGroup, btn} = openState;
+      // Restaurar menú a su lugar original
+      try{
+        menu.classList.remove('show');
+        menu.removeAttribute('style');
+        menu.classList.remove('portal-menu');
+        originGroup.replaceChild(menu, placeholder);
+      }catch(e){}
+      // Limpiar portal
+      portal.innerHTML = '';
+      portal.setAttribute('aria-hidden','true');
+      // Estado
+      openState = null;
+      // Accesibilidad
+      btn && btn.setAttribute('aria-expanded','false');
     }
-    document.querySelectorAll('.btn-group').forEach(g=>{
-      const btn=g.querySelector('.elegir-btn'); const menu=g.querySelector('.dropdown-menu');
-      if(!btn||!menu) return;
-      btn.addEventListener('click',e=>{
+
+    function openMenu(btn, menu){
+      closeAll(); // cierra otros
+
+      // Placeholder para volver a montar
+      const placeholder = document.createComment('menu-anchor');
+      const originGroup = menu.parentNode;
+      originGroup.replaceChild(placeholder, menu);
+
+      // Marcas de estado
+      btn.setAttribute('aria-expanded','true');
+
+      // Mover menú al portal y posicionarlo
+      menu.classList.add('portal-menu','show');
+      portal.innerHTML = '';
+      portal.appendChild(menu);
+      portal.setAttribute('aria-hidden','false');
+
+      // Coordenadas del botón
+      const r = btn.getBoundingClientRect();
+      const menuRect = {width: Math.max(210, menu.offsetWidth || 210)};
+      // Posición por defecto (abajo-derecha del botón)
+      let top = r.bottom + 8;
+      let left = r.right - menuRect.width;
+
+      // Evitar salir por la derecha
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if(left + menuRect.width > vw - 8) left = vw - menuRect.width - 8;
+      if(left < 8) left = 8;
+
+      // Si no cabe abajo, abrir arriba
+      const estimatedHeight = Math.min(menu.scrollHeight, vh * 0.6);
+      if(top + estimatedHeight > vh - 8){
+        top = r.top - 8 - estimatedHeight;
+      }
+      if(top < 8) top = 8;
+
+      // Aplicar estilo fijo
+      menu.style.left = left + 'px';
+      menu.style.top  = top  + 'px';
+      menu.style.maxHeight = '60vh';
+
+      // Guardar estado
+      openState = {btn, menu, placeholder, originGroup};
+
+      // Accesibilidad
+      menu.setAttribute('tabindex','-1');
+      menu.focus();
+    }
+
+    // Delegación: manejar todos los .btn-group
+    document.querySelectorAll('.btn-group').forEach(group=>{
+      const btn = group.querySelector('.elegir-btn');
+      const menu = group.querySelector('.dropdown-menu');
+      if(!btn || !menu) return;
+
+      btn.addEventListener('click', (e)=>{
         e.stopPropagation();
-        const open=menu.classList.contains('show');
-        closeAll();
-        if(!open){ menu.classList.add('show'); btn.setAttribute('aria-expanded','true'); }
-        else{ menu.classList.remove('show'); btn.setAttribute('aria-expanded','false'); }
-      });
-      menu.addEventListener('keydown',ev=>{
-        if(ev.key==='Escape'){ menu.classList.remove('show'); btn.setAttribute('aria-expanded','false'); btn.focus(); }
+        // Si ya está ese mismo abierto → cerrar
+        if(openState && openState.menu === menu){
+          closeAll();
+          return;
+        }
+        openMenu(btn, menu);
       });
     });
-    document.addEventListener('click',e=>{
-      if(!e.target.closest('.btn-group')) closeAll();
+
+    // Cerrar al hacer click fuera
+    document.addEventListener('click', (e)=>{
+      if(openState){
+        const isInside = e.target.closest('.portal-menu') || e.target.closest('.elegir-btn');
+        if(!isInside) closeAll();
+      }
     });
+
+    // Cerrar con Escape
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'Escape') closeAll();
+    });
+
+    // Recalcular/ cerrar si cambia el viewport (scroll/resize)
+    window.addEventListener('scroll', closeAll, {passive:true});
+    window.addEventListener('resize', closeAll);
   })();
 </script>
 {% endblock %}
