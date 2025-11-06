@@ -51,7 +51,7 @@
       --radius: 16px;
       --radius-sm: 12px;
     }
-    /* Modo oscuro sigue disponible; pero el default es claro */
+    /* Modo oscuro (opcional) */
     html[data-theme="dark"]{
       --bg: #0c111b;
       --bg-soft: #101826;
@@ -98,6 +98,10 @@
       font-weight:700;
       letter-spacing:.2px;
       color: var(--text);
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .nav-link{
       color: var(--text) !important;
@@ -116,6 +120,19 @@
       color: var(--brand) !important;
       font-weight:600;
       box-shadow: inset 0 0 0 1px rgba(37,99,235,.2);
+    }
+    /* Asegurar que el ícono del toggler siempre se vea (sin depender de navbar-light/dark) */
+    .navbar-toggler{
+      border-color: rgba(15,23,42,.15);
+    }
+    .navbar-toggler:focus{ box-shadow: 0 0 0 4px var(--ring); }
+    .navbar-toggler-icon{
+      background-image:
+        url("data:image/svg+xml;charset=utf8,%3Csvg viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke='rgba(15,23,42,0.85)' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
+    }
+    html[data-theme="dark"] .navbar-toggler-icon{
+      background-image:
+        url("data:image/svg+xml;charset=utf8,%3Csvg viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke='rgba(229,231,235,0.9)' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
     }
 
     /* ======= HERO ======= */
@@ -205,6 +222,7 @@
       background: #f3f6ff;
       color: var(--text);
       border-bottom: 1px solid var(--border);
+      vertical-align: middle;
     }
     .table-hover tbody tr:hover{background: #f7faff}
 
@@ -258,6 +276,30 @@
       color: #1d4ed8;
       border:1px solid #dbe7ff;
       border-radius: 999px; padding:.35rem .6rem; font-weight:600;
+    }
+
+    /* ======= UTILIDADES RESPONSIVE GLOBALES ======= */
+    img, video, iframe{max-width:100%; height:auto}
+    /* Forzar scroll horizontal de tablas en móviles (sin tocar cada template) */
+    @media (max-width: 576px){
+      .table, table.dataTable{
+        display:block;
+        width:100%;
+        overflow-x:auto;
+        -webkit-overflow-scrolling:touch;
+        white-space:nowrap;
+      }
+      .dataTables_wrapper .dataTables_length,
+      .dataTables_wrapper .dataTables_filter{
+        width:100%;
+        display:block;
+        margin: .35rem 0;
+      }
+      .navbar .navbar-brand{max-width: 65vw;}
+      main.container{padding-left: 12px; padding-right: 12px;}
+      .nav-link{padding:.55rem .75rem}
+      /* Toaster ocupa ancho útil en móvil */
+      .toast{max-width: min(92vw, 420px);}
     }
 
     /* Accesibilidad: reduce motion */
@@ -384,8 +426,6 @@
     (function(){
       const root = document.documentElement;
       const saved = localStorage.getItem('theme');
-      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      // default a light; solo usa dark si el usuario lo guardó
       root.setAttribute('data-theme', saved || 'light');
       const applyThemeMeta = () => {
         const dark = root.getAttribute('data-theme') === 'dark';

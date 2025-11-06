@@ -1053,8 +1053,10 @@ def gestionar_plan(cliente_id, id):
             s.abono = s_abono
 
             # --- Estado ---
-            if s.estado not in ('pagada', 'cancelada'):
-                s.estado = 'activa'
+            # Reactivar SIEMPRE, aunque esté pagada o cancelada.
+            s.estado = 'activa'
+            s.fecha_cancelacion = None
+            s.motivo_cancelacion = None
 
             # --- Timestamps ---
             now = datetime.utcnow()

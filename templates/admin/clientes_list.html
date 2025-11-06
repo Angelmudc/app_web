@@ -58,7 +58,7 @@
     cursor:pointer;
   }
 
-  /* Tabla */
+  /* Tabla escritorio */
   .table{width:100%;border-collapse:collapse;font-size:.98rem;color:var(--text-color)}
   thead th{
     background:rgba(255,255,255,.08);
@@ -83,10 +83,10 @@
   .btn-outline-secondary{border:1px solid var(--border-color);color:var(--text-color)}
   .btn-outline-secondary:hover{background:var(--accent);color:#fff;border-color:transparent}
 
-  /* Permitir que algo pueda salirse de la tabla si hace falta */
+  /* Para el dropdown portal que sacamos fuera del flujo */
   .table-responsive{overflow:visible !important; position:relative; z-index:1;}
 
-  /* Menú base (cuando está dentro del flujo) — SIEMPRE sólido */
+  /* Menú base — SIEMPRE sólido */
   .dropdown-menu{
     min-width:210px;
     font-size:.95rem;
@@ -121,11 +121,11 @@
   #dropdown-portal{
     position:fixed;
     inset:0;
-    pointer-events:none; /* deja pasar clicks fuera del menú */
-    z-index:2147483647;  /* máximo */
+    pointer-events:none;
+    z-index:2147483647;
   }
   #dropdown-portal .portal-menu{
-    position:fixed;      /* se posiciona por coordenadas absolutas del botón */
+    position:fixed;
     background:var(--menu-bg);
     color:var(--menu-text);
     border:1px solid var(--menu-border);
@@ -134,9 +134,57 @@
     min-width:210px;
     max-height:60vh;
     overflow:auto;
-    pointer-events:auto; /* el menú sí recibe clicks */
+    pointer-events:auto;
   }
+
+  /* ======= Overrides críticos para móvil (<576px) =======
+     Cancelan el nowrap/scroll horizontal que viene del base */
+  @media (max-width: 576px){
+    .glass-card{padding:.85rem}
+    .table, table.dataTable{
+      white-space:normal !important;
+      overflow-x:visible !important;
+    }
+    .table td{padding:.65rem .75rem; font-size:.95rem}
+    .btn-group .btn{padding:.5rem .6rem}
+    .container{max-width:100%}
+  }
+
+  /* ======= Tabla “apilada” en móvil/tabla <=768px ======= */
+  @media (max-width: 768px){
+    thead{display:none}
+    .table, .table tbody, .table tr, .table td{display:block; width:100%}
+    .table tr{margin-bottom:.9rem; border:1px solid var(--border-color); border-radius:.8rem; overflow:hidden}
+    .table td{
+      text-align:left; border:none; border-bottom:1px solid var(--border-color);
+      padding:.75rem .9rem; background:rgba(255,255,255,.03);
+      display:flex; justify-content:space-between; gap:.75rem;
+    }
+    .table td:last-child{border-bottom:none}
+    .table td::before{
+      content:attr(data-label);
+      font-weight:600; opacity:.85;
+      margin-right:.75rem;
+      flex: 1 1 auto;
+    }
+    .table td > *:not(.badge){max-width:60%; word-break:break-word;}
+    .btn-group{width:100%}
+    .btn-group .btn{width:100%}
+    .mode-toggle{width:40px;height:40px}
+  }
+
+  /* Paginación simple */
+  .pagination-sm .page-link{border-radius:.6rem}
 </style>
+
+{% set page = (request.args.get('page','1')|int if request.args.get('page') else 1) %}
+{% set per_page = (request.args.get('per_page','25')|int if request.args.get('per_page') else 25) %}
+{% set items = (clientes|sort(attribute='fecha_registro', reverse=True) if clientes is iterable else clientes) %}
+{% set total = items|length if items is iterable else 0 %}
+{% set start = (page-1) * per_page %}
+{% set end = start + per_page %}
+{% set slice = items[start:end] if items is iterable else [] %}
+{% set last_page = ( (total-1)//per_page + 1 ) if total > 0 else 1 %}
 
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
@@ -154,9 +202,20 @@
     </div>
   </div>
 
-  <form class="d-flex mb-4" method="get" action="{{ url_for('admin.listar_clientes') }}">
-    <input name="q" class="form-control me-2" placeholder="🔎 Buscar por ID, código, nombre, email o teléfono" value="{{ q }}">
-    <button class="btn btn-outline-secondary"><i class="bi bi-search"></i> Buscar</button>
+  <form class="row g-2 align-items-center mb-3" method="get" action="{{ url_for('admin.listar_clientes') }}">
+    <div class="col-12 col-md">
+      <input name="q" class="form-control" placeholder="🔎 Buscar por ID, código, nombre, email o teléfono" value="{{ q }}">
+    </div>
+    <div class="col-6 col-md-auto">
+      <select name="per_page" class="form-select">
+        {% for n in [10,25,50,100] %}
+          <option value="{{n}}" {% if per_page==n %}selected{% endif %}>{{n}} por página</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-auto">
+      <button class="btn btn-outline-secondary w-100"><i class="bi bi-search"></i> Buscar</button>
+    </div>
   </form>
 
   {% if clientes %}
@@ -178,9 +237,9 @@
           </tr>
         </thead>
         <tbody>
-          {% for c in clientes %}
+          {% for c in slice %}
           <tr>
-            <td data-label="#">{{ c.id }}</td>
+            <td data-label="#"> {{ c.id }} </td>
             <td data-label="Código">{{ c.codigo }}</td>
             <td data-label="Nombre">{{ c.nombre_completo }}</td>
             <td data-label="Email">{{ c.email }}</td>
@@ -188,7 +247,7 @@
             <td data-label="Ciudad">{{ c.ciudad or '—' }}</td>
             <td data-label="Sector">{{ c.sector or '—' }}</td>
             <td data-label="Solicitudes"><span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span></td>
-            <td data-label="Registro">{{ c.fecha_registro.strftime('%Y-%m-%d') }}</td>
+            <td data-label="Registro">{% if c.fecha_registro %}{{ c.fecha_registro.strftime('%Y-%m-%d') }}{% else %}—{% endif %}</td>
             <td data-label="Acciones">
               <div class="btn-group">
                 <button type="button"
@@ -218,6 +277,24 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Paginación -->
+    <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+      <small class="text-muted">Mostrando {{ start+1 if total>0 else 0 }}–{{ [end, total]|min }} de {{ total }}</small>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          {% set q_current = request.args.get('q','') %}
+          {% set per = per_page %}
+          <li class="page-item {% if page<=1 %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('admin.listar_clientes') }}?q={{ q_current }}&per_page={{ per }}&page={{ page-1 }}">Anterior</a>
+          </li>
+          <li class="page-item disabled"><span class="page-link">Página {{ page }} / {{ last_page }}</span></li>
+          <li class="page-item {% if page>=last_page %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('admin.listar_clientes') }}?q={{ q_current }}&per_page={{ per }}&page={{ page+1 }}">Siguiente</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
   </div>
   {% else %}
   <div class="alert alert-info glass-card mt-4 text-center p-4">
@@ -230,7 +307,7 @@
 <div id="dropdown-portal" aria-hidden="true"></div>
 
 <script>
-  // MODO CLARO/OSCURO
+  // MODO CLARO/OSCURO (local a esta página)
   (function(){
     const t=document.getElementById('modeToggle');
     const i=document.getElementById('modeIcon');
@@ -241,110 +318,79 @@
     });
   })();
 
-  // DROPDOWNS — usando PORTAL AL BODY para evitar que queden "detrás"
+  // DROPDOWNS — usando PORTAL AL BODY
   (function(){
     const portal = document.getElementById('dropdown-portal');
-    let openState = null; // {btn, menu, placeholder, originGroup}
+    let openState = null;
 
     function closeAll(){
       if(!openState) return;
       const {menu, placeholder, originGroup, btn} = openState;
-      // Restaurar menú a su lugar original
       try{
         menu.classList.remove('show');
         menu.removeAttribute('style');
         menu.classList.remove('portal-menu');
         originGroup.replaceChild(menu, placeholder);
       }catch(e){}
-      // Limpiar portal
       portal.innerHTML = '';
       portal.setAttribute('aria-hidden','true');
-      // Estado
       openState = null;
-      // Accesibilidad
       btn && btn.setAttribute('aria-expanded','false');
     }
 
     function openMenu(btn, menu){
-      closeAll(); // cierra otros
-
-      // Placeholder para volver a montar
+      closeAll();
       const placeholder = document.createComment('menu-anchor');
       const originGroup = menu.parentNode;
       originGroup.replaceChild(placeholder, menu);
 
-      // Marcas de estado
       btn.setAttribute('aria-expanded','true');
 
-      // Mover menú al portal y posicionarlo
       menu.classList.add('portal-menu','show');
       portal.innerHTML = '';
       portal.appendChild(menu);
       portal.setAttribute('aria-hidden','false');
 
-      // Coordenadas del botón
       const r = btn.getBoundingClientRect();
       const menuRect = {width: Math.max(210, menu.offsetWidth || 210)};
-      // Posición por defecto (abajo-derecha del botón)
       let top = r.bottom + 8;
       let left = r.right - menuRect.width;
 
-      // Evitar salir por la derecha
       const vw = window.innerWidth, vh = window.innerHeight;
       if(left + menuRect.width > vw - 8) left = vw - menuRect.width - 8;
       if(left < 8) left = 8;
 
-      // Si no cabe abajo, abrir arriba
       const estimatedHeight = Math.min(menu.scrollHeight, vh * 0.6);
-      if(top + estimatedHeight > vh - 8){
-        top = r.top - 8 - estimatedHeight;
-      }
+      if(top + estimatedHeight > vh - 8){ top = r.top - 8 - estimatedHeight; }
       if(top < 8) top = 8;
 
-      // Aplicar estilo fijo
       menu.style.left = left + 'px';
       menu.style.top  = top  + 'px';
       menu.style.maxHeight = '60vh';
 
-      // Guardar estado
       openState = {btn, menu, placeholder, originGroup};
-
-      // Accesibilidad
       menu.setAttribute('tabindex','-1');
       menu.focus();
     }
 
-    // Delegación: manejar todos los .btn-group
     document.querySelectorAll('.btn-group').forEach(group=>{
       const btn = group.querySelector('.elegir-btn');
       const menu = group.querySelector('.dropdown-menu');
       if(!btn || !menu) return;
-
       btn.addEventListener('click', (e)=>{
         e.stopPropagation();
-        // Si ya está ese mismo abierto → cerrar
-        if(openState && openState.menu === menu){
-          closeAll();
-          return;
-        }
+        if(openState && openState.menu === menu){ closeAll(); return; }
         openMenu(btn, menu);
       });
     });
 
-    // Cerrar al hacer click fuera
     document.addEventListener('click', (e)=>{
       if(openState){
         const isInside = e.target.closest('.portal-menu') || e.target.closest('.elegir-btn');
         if(!isInside) closeAll();
       }
     });
-
-    // Cerrar con Escape
-    document.addEventListener('keydown', (e)=>{
-      if(e.key === 'Escape') closeAll();
-    });
-
-    // Recalcular/ cerrar si cambia el viewport (scroll/resize)
+    document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeAll(); });
     window.addEventListener('scroll', closeAll, {passive:true});
     window.addEventListener('resize', closeAll);
   })();
