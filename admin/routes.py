@@ -27,7 +27,7 @@ from admin.forms import (
 from utils import letra_por_indice
 
 from . import admin_bp
-from .decorators import admin_required
+from .decorators import admin_required, staff_required
 
 
 # =============================================================================
@@ -119,7 +119,7 @@ def logout():
 # =============================================================================
 @admin_bp.route('/clientes')
 @login_required
-@admin_required
+@staff_required
 def listar_clientes():
     """
     Lista de clientes con búsqueda básica.
@@ -410,58 +410,56 @@ def _next_codigo_solicitud(cliente: Cliente) -> str:
             return code
         intento += 1
 
-
 # =============================================================================
 #                         CLIENTES – CREAR / EDITAR / ELIMINAR / DETALLE
 # =============================================================================
 
 @admin_bp.route('/clientes/nuevo', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@staff_required
 def nuevo_cliente():
-    """🟢 Crear un nuevo cliente desde el panel de administración."""
+    """🟢 Crear un nuevo cliente desde el panel de administración (sin credenciales de login)."""
     form = AdminClienteForm()
 
     if form.validate_on_submit():
         _norm_cliente_form(form)
 
         # --- Validación de código único (case-sensitive) ---
-        if Cliente.query.filter(Cliente.codigo == form.codigo.data).first():
-            form.codigo.errors.append("Este código ya está en uso.")
-            flash("El código ya está en uso.", "danger")
+        try:
+            if Cliente.query.filter(Cliente.codigo == form.codigo.data).first():
+                form.codigo.errors.append("Este código ya está en uso.")
+                flash("El código ya está en uso.", "danger")
+                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+        except Exception:
+            flash("No se pudo validar el código del cliente.", "danger")
             return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
 
         # --- Validación de email único (case-insensitive) ---
         email_norm = (form.email.data or "").lower().strip()
-        if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
-            form.email.errors.append("Este email ya está registrado.")
-            flash("El email ya está registrado.", "danger")
-            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
-
-        # --- Validación de contraseña y confirmación ---
-        pwd = (form.password_new.data or '').strip()
-        pwd2 = (form.password_confirm.data or '').strip()
-
-        if not pwd:
-            form.password_new.errors.append("Debes establecer una contraseña.")
-            flash("Debes establecer una contraseña.", "danger")
-            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
-
-        if pwd != pwd2:
-            form.password_confirm.errors.append("La confirmación de contraseña no coincide.")
-            flash("La confirmación de contraseña no coincide.", "danger")
-            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
-
-        # --- Creación del cliente ---
         try:
+            if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
+                form.email.errors.append("Este email ya está registrado.")
+                flash("El email ya está registrado.", "danger")
+                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+        except Exception:
+            flash("No se pudo validar el email del cliente.", "danger")
+            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+
+        # --- Creación del cliente (sin password ni username) ---
+        try:
+            ahora = datetime.utcnow()
             c = Cliente()
             form.populate_obj(c)
+
+            # Normalizamos email y fechas clave
             c.email = email_norm
-            c.password_hash = generate_password_hash(pwd)
-            c.fecha_registro = datetime.utcnow()
+            if not c.fecha_registro:
+                c.fecha_registro = ahora
+            if not c.created_at:
+                c.created_at = ahora
+            c.updated_at = ahora
 
             db.session.add(c)
-            db.session.flush()
             db.session.commit()
 
             flash('Cliente creado correctamente ✅', 'success')
@@ -494,9 +492,9 @@ def nuevo_cliente():
 # ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>/editar', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@staff_required
 def editar_cliente(cliente_id):
-    """✏️ Editar la información de un cliente existente."""
+    """✏️ Editar la información de un cliente existente (sin manejar contraseñas)."""
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminClienteForm(obj=c)
 
@@ -505,36 +503,35 @@ def editar_cliente(cliente_id):
 
         # --- Validar código si se modifica ---
         if form.codigo.data != c.codigo:
-            if Cliente.query.filter(Cliente.codigo == form.codigo.data).first():
-                form.codigo.errors.append("Este código ya está en uso.")
-                flash("El código ya está en uso.", "danger")
+            try:
+                if Cliente.query.filter(Cliente.codigo == form.codigo.data).first():
+                    form.codigo.errors.append("Este código ya está en uso.")
+                    flash("El código ya está en uso.", "danger")
+                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+            except Exception:
+                flash("No se pudo validar el código del cliente.", "danger")
                 return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
 
         # --- Validar email si se modifica ---
         email_norm = (form.email.data or "").lower().strip()
-        if email_norm != (c.email or "").lower().strip():
-            if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
-                form.email.errors.append("Este email ya está registrado.")
-                flash("Este email ya está registrado.", "danger")
+        email_actual = (c.email or "").lower().strip()
+        if email_norm != email_actual:
+            try:
+                if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
+                    form.email.errors.append("Este email ya está registrado.")
+                    flash("Este email ya está registrado.", "danger")
+                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+            except Exception:
+                flash("No se pudo validar el email del cliente.", "danger")
                 return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
 
-        # --- Guardar cambios ---
+        # --- Guardar cambios (sin tocar credenciales) ---
         try:
             form.populate_obj(c)
             c.email = email_norm
-
-            # Cambio de contraseña (solo si el usuario envía una nueva)
-            pwd = (form.password_new.data or '').strip()
-            pwd2 = (form.password_confirm.data or '').strip()
-            if pwd:
-                if pwd != pwd2:
-                    form.password_confirm.errors.append("La confirmación de contraseña no coincide.")
-                    flash("La confirmación de contraseña no coincide.", "danger")
-                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
-                c.password_hash = generate_password_hash(pwd)
-
             c.fecha_ultima_actividad = datetime.utcnow()
-            db.session.flush()
+            c.updated_at = datetime.utcnow()
+
             db.session.commit()
 
             flash('Cliente actualizado correctamente ✅', 'success')
@@ -545,7 +542,7 @@ def editar_cliente(cliente_id):
             which = parse_integrity_error(e)
             if which == "codigo":
                 form.codigo.errors.append("Este código ya está en uso.")
-                flash("El código ya está en uso.", "danger")
+                flash("Este código ya está en uso.", "danger")
             elif which == "email":
                 form.email.errors.append("Este email ya está registrado.")
                 flash("Este email ya está registrado.", "danger")
@@ -585,7 +582,7 @@ def eliminar_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>')
 @login_required
-@admin_required
+@staff_required
 def detalle_cliente(cliente_id):
     """📋 Muestra el detalle completo del cliente."""
     c = Cliente.query.get_or_404(cliente_id)
@@ -597,7 +594,7 @@ def detalle_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@staff_required
 def nueva_solicitud_admin(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminSolicitudForm()
@@ -707,7 +704,7 @@ def nueva_solicitud_admin(cliente_id):
 # ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@staff_required
 def editar_solicitud_admin(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminSolicitudForm(obj=s)
@@ -1371,7 +1368,7 @@ def api_candidatas():
 # ============================================================
 @admin_bp.route('/solicitudes')
 @login_required
-@admin_required
+@staff_required
 def listar_solicitudes():
     """
     Muestra contadores clave:
@@ -1843,9 +1840,46 @@ def _format_money_usd(raw) -> str:
 
 # RUTAS ADMIN – copiar solicitudes (con nota_cliente al final si existe)
 
+# Helper específico para formatear el código de la solicitud
+def _fmt_codigo_solicitud(codigo: str) -> str:
+    """
+    Formatea solo el tramo numérico final del código si:
+      - NO tiene ya comas ni puntos (es decir, no fue formateado antes).
+    Ejemplos:
+      'SOL-1000'  -> 'SOL-1,000'
+      '1000'      -> '1,000'
+      'SOL-1,333' -> 'SOL-1,333'  (no se toca)
+      '2,005'     -> '2,005'      (no se toca, evita el bug 2,5)
+    """
+    c = (codigo or "").strip()
+    if not c:
+        return ""
+
+    # Si ya tiene coma o punto, asumimos que el usuario ya le dio el formato que quiere
+    if "," in c or "." in c:
+        return c
+
+    # Buscar el último bloque de dígitos en el string
+    m = re.search(r"(\d+)(?!.*\d)", c)
+    if not m:
+        # No hay números, devuelve tal cual
+        return c
+
+    n_str = m.group(1)
+    try:
+        n = int(n_str)
+    except ValueError:
+        return c
+
+    # Formatear con separador de miles
+    formatted = f"{n:,}"  # 1000 -> '1,000'
+    # Reconstruir el código con el tramo numérico formateado
+    return c[:m.start(1)] + formatted + c[m.end(1):]
+
+
 @admin_bp.route('/solicitudes/copiar')
 @login_required
-@admin_required
+@staff_required
 def copiar_solicitudes():
     """
     Lista solicitudes copiables y arma el texto final:
@@ -1855,10 +1889,14 @@ def copiar_solicitudes():
     - Funciones en el MISMO ORDEN seleccionado (y 'otro' al final si aplica).
     """
     q = _s(request.args.get('q'))
+
+    # Paginación robusta
     try:
-        page = max(1, int(request.args.get('page', 1) or 1))
+        page = int(request.args.get('page', 1) or 1)
     except Exception:
         page = 1
+    page = max(1, page)
+
     try:
         per_page = int(request.args.get('per_page', 50) or 50)
     except Exception:
@@ -1882,10 +1920,12 @@ def copiar_solicitudes():
     if q:
         like = f"%{q}%"
         filtros = []
-        for col in (Solicitud.ciudad_sector,
-                    Solicitud.codigo_solicitud,
-                    Solicitud.rutas_cercanas,
-                    Solicitud.modalidad_trabajo):
+        for col in (
+            Solicitud.ciudad_sector,
+            Solicitud.codigo_solicitud,
+            Solicitud.rutas_cercanas,
+            Solicitud.modalidad_trabajo
+        ):
             filtros.append(col.ilike(like))
         filtros.append(cast(Solicitud.funciones, db.Text).ilike(like))
         base_q = base_q.filter(or_(*filtros))
@@ -1915,17 +1955,15 @@ def copiar_solicitudes():
             reems = [r for r in (s.reemplazos or []) if bool(getattr(r, 'oportunidad_nueva', False))]
 
         # ====================== FUNCIONES (ORDEN CORRECTO) ======================
-        # 1) Toma lo guardado (list) preservando orden y únicos.
         raw_codes = _unique_keep_order(_as_list(getattr(s, 'funciones', None)))
-        # 2) Excluye 'otro' de códigos (el texto libre va aparte).
         raw_codes = [c for c in raw_codes if c != 'otro']
-        # 3) Mapea a labels respetando ese orden.
+
         funcs = []
         for code in raw_codes:
             label = FUNCIONES_LABELS.get(code)
             if label:
                 funcs.append(label)
-        # 4) Texto libre de "otro" al final (si existe).
+
         custom_f = _s(getattr(s, 'funciones_otro', None))
         if custom_f:
             funcs.append(custom_f)
@@ -1955,7 +1993,6 @@ def copiar_solicitudes():
         if bool(getattr(s, 'dos_pisos', False)):
             hogar_partes_detalle.append("2 pisos")
 
-        # Áreas
         areas = []
         for a in _as_list(getattr(s, 'areas_comunes', None)):
             areas.append(_norm_area(a))
@@ -2001,7 +2038,7 @@ def copiar_solicitudes():
         nota_cli = _s(getattr(s, 'nota_cliente', None))
 
         # ===== Texto final =====
-        cod_fmt = _fmt_codigo_humano(codigo) if codigo else ""
+        cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
         header_block = "\n".join([
             f"Disponible ( {cod_fmt} )" if cod_fmt else "Disponible",
             f"📍 {ciudad_sector}" if ciudad_sector else "📍",
@@ -2035,7 +2072,10 @@ def copiar_solicitudes():
 
         sueldo_block = ""
         if sueldo_final:
-            sueldo_block = f"Sueldo: {sueldo_final} mensual" + (", más ayuda del pasaje" if pasaje_aporte else ", pasaje incluido")
+            sueldo_block = (
+                f"Sueldo: {sueldo_final} mensual"
+                + (", más ayuda del pasaje" if pasaje_aporte else ", pasaje incluido")
+            )
 
         parts = [
             header_block,
@@ -2050,7 +2090,7 @@ def copiar_solicitudes():
             "",
             sueldo_block if sueldo_block else None,
             "",
-            (nota_cli if nota_cli else None),  # Nota al final, sin prefijos
+            (nota_cli if nota_cli else None),
         ]
 
         cleaned = []
@@ -2087,7 +2127,7 @@ def copiar_solicitudes():
 
 @admin_bp.route('/solicitudes/<int:id>/copiar', methods=['POST'])
 @login_required
-@admin_required
+@staff_required
 def copiar_solicitud(id):
     s = Solicitud.query.get_or_404(id)
 
@@ -2113,7 +2153,6 @@ def copiar_solicitud(id):
         flash('Ocurrió un error al marcar como copiada.', 'danger')
 
     return redirect(url_for('admin.copiar_solicitudes'))
-
 
 
 # =============================================================================
@@ -2145,7 +2184,7 @@ def _is_safe_redirect_url(target: str) -> bool:
 # ---------------------------------------
 @admin_bp.route('/solicitudes/proceso/clients')
 @login_required
-@admin_required
+@staff_required
 def listar_clientes_con_proceso():
     """
     Lista clientes con solicitudes en 'proceso' y el conteo de pendientes.
@@ -2200,7 +2239,7 @@ def listar_clientes_con_proceso():
 # ---------------------------------------
 @admin_bp.route('/solicitudes/proceso/<int:cliente_id>')
 @login_required
-@admin_required
+@staff_required
 def listar_solicitudes_de_cliente_proceso(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
 
@@ -2232,7 +2271,7 @@ def listar_solicitudes_de_cliente_proceso(cliente_id):
 # ---------------------------------------
 @admin_bp.route('/solicitudes/proceso/acciones')
 @login_required
-@admin_required
+@staff_required
 def acciones_solicitudes_proceso():
     # Paginación opcional
     page = max(1, int(request.args.get('page', 1) or 1))
@@ -2261,7 +2300,7 @@ def acciones_solicitudes_proceso():
 # ---------------------------------------
 @admin_bp.route('/solicitudes/<int:id>/activar', methods=['POST'])
 @login_required
-@admin_required
+@staff_required
 def activar_solicitud_directa(id):
     s = Solicitud.query.get_or_404(id)
     try:
@@ -2289,7 +2328,7 @@ def activar_solicitud_directa(id):
 # -----------------------------------------------------------------------------
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/cancelar', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@staff_required
 def cancelar_solicitud(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
 

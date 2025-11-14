@@ -71,78 +71,99 @@ class AdminClienteForm(FlaskForm):
     _lower = lambda v: v.lower() if isinstance(v, str) else v
     _strip_lower = lambda v: v.strip().lower() if isinstance(v, str) else v
 
-    username = StringField(
-        'Usuario (login)',
-        validators=[
-            DataRequired("Ingresa un nombre de usuario."),
-            Length(min=3, max=64, message="Entre 3 y 64 caracteres."),
-            Regexp(r'^[a-zA-Z0-9_.-]+$', message="Solo letras, números, punto, guion y guion bajo.")
-        ],
-        filters=[_strip_lower],
-        render_kw={"placeholder": "ej. juan.perez", "autocomplete": "username"}
-    )
-
     codigo = StringField(
         'Código cliente',
-        validators=[DataRequired("Ingresa el código."), Length(max=20)],
+        validators=[
+            DataRequired("Ingresa el código."),
+            Length(max=20)
+        ],
         filters=[_strip],
-        render_kw={"placeholder": "Ej. CLI-001", "autocomplete": "off"}
+        render_kw={
+            "placeholder": "Ej. CLI-001",
+            "autocomplete": "off"
+        }
     )
+
     nombre_completo = StringField(
         'Nombre completo',
-        validators=[DataRequired("Ingresa el nombre completo."), Length(max=200)],
+        validators=[
+            DataRequired("Ingresa el nombre completo."),
+            Length(max=200)
+        ],
         filters=[_strip],
-        render_kw={"placeholder": "Ej. Juan Pérez", "autocomplete": "name"}
+        render_kw={
+            "placeholder": "Ej. Juan Pérez",
+            "autocomplete": "name"
+        }
     )
 
     email = StringField(
         'Email',
-        validators=[DataRequired("Ingresa el correo."), Email("Correo inválido."), Length(max=100)],
+        validators=[
+            DataRequired("Ingresa el correo."),
+            Email("Correo inválido."),
+            Length(max=100)
+        ],
         filters=[_strip_lower],
-        render_kw={"placeholder": "correo@dominio.com", "inputmode": "email", "autocomplete": "email"}
-    )
-    telefono = StringField(
-        'Teléfono',
-        validators=[DataRequired("Ingresa el teléfono."), Length(max=20)],
-        filters=[_strip],
-        render_kw={"placeholder": "809-123-4567", "inputmode": "tel", "autocomplete": "tel"}
-    )
-    ciudad = StringField(
-        'Ciudad',
-        validators=[Optional(), Length(max=100)],
-        filters=[_strip],
-        render_kw={"placeholder": "Ej. Santiago"}
-    )
-    sector = StringField(
-        'Sector',
-        validators=[Optional(), Length(max=100)],
-        filters=[_strip],
-        render_kw={"placeholder": "Ej. Los Jardines"}
+        render_kw={
+            "placeholder": "correo@dominio.com",
+            "inputmode": "email",
+            "autocomplete": "email"
+        }
     )
 
-    password_new = PasswordField(
-        'Nueva contraseña',
-        validators=[Optional(), Length(min=6, max=128, message="La contraseña debe tener entre 6 y 128 caracteres.")],
-        render_kw={"placeholder": "Dejar en blanco para no cambiar", "autocomplete": "new-password"}
+    telefono = StringField(
+        'Teléfono',
+        validators=[
+            DataRequired("Ingresa el teléfono."),
+            Length(max=20)
+        ],
+        filters=[_strip],
+        render_kw={
+            "placeholder": "809-123-4567",
+            "inputmode": "tel",
+            "autocomplete": "tel"
+        }
     )
-    password_confirm = PasswordField(
-        'Confirmar contraseña',
-        validators=[Optional(), EqualTo('password_new', message="Las contraseñas no coinciden.")],
-        render_kw={"placeholder": "Repite la contraseña", "autocomplete": "new-password"}
+
+    ciudad = StringField(
+        'Ciudad',
+        validators=[
+            Optional(),
+            Length(max=100)
+        ],
+        filters=[_strip],
+        render_kw={
+            "placeholder": "Ej. Santiago"
+        }
+    )
+
+    sector = StringField(
+        'Sector',
+        validators=[
+            Optional(),
+            Length(max=100)
+        ],
+        filters=[_strip],
+        render_kw={
+            "placeholder": "Ej. Los Jardines"
+        }
     )
 
     notas_admin = TextAreaField(
         'Notas administrativas',
-        validators=[Optional(), Length(max=1000)],
+        validators=[
+            Optional(),
+            Length(max=1000)
+        ],
         filters=[_strip],
-        render_kw={"placeholder": "Observaciones internas (no visibles para el cliente).", "rows": 3}
+        render_kw={
+            "placeholder": "Observaciones internas (no visibles para el cliente).",
+            "rows": 3
+        }
     )
 
     submit = SubmitField('Guardar cliente')
-
-    def validate_password_confirm(self, field):
-        if self.password_new.data and not (field.data or "").strip():
-            raise ValidationError("Confirma la contraseña.")
 
 
 # =============================================================================

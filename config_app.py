@@ -35,10 +35,12 @@ csrf    = CSRFProtect()
 # Usuarios en memoria (para login admin/secretaria)
 # ─────────────────────────────────────────────────────────────
 USUARIOS = {
-    "angel":    {"pwd_hash": generate_password_hash("0000"),  "role": "admin"},
-    "divina":   {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
-    "darielis": {"pwd_hash": generate_password_hash("3333"),  "role": "secretaria"},
+    "angel":     {"pwd_hash": generate_password_hash("0000"),  "role": "admin"},
+    "divina":    {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
+    "darielis":  {"pwd_hash": generate_password_hash("3333"),  "role": "secretaria"},
+    "sofia":     {"pwd_hash": generate_password_hash("1234"),  "role": "secretaria"},
 }
+
 
 # ─────────────────────────────────────────────────────────────
 # Utilidad: normalizar cédula (devuelve 11 dígitos sin guiones)

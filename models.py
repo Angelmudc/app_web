@@ -177,16 +177,13 @@ from flask_login import UserMixin
 from sqlalchemy.orm import synonym as orm_synonym
 from config_app import db
 
+
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 
     id                         = db.Column(db.Integer, primary_key=True)
 
-    # ----- Credenciales / Login -----
-    username                   = db.Column(db.String(64), unique=True, index=True, nullable=False)
-    password_hash              = db.Column(db.String(256), nullable=False)
-
-    # Activo / tracking
+    # ----- Estado / tracking de cuenta (sigue existiendo aunque no tenga login propio) -----
     is_active                  = db.Column(db.Boolean, nullable=False, default=True)
     created_at                 = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at                 = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -194,7 +191,7 @@ class Cliente(UserMixin, db.Model):
     # ----- Identificación del cliente -----
     codigo                     = db.Column(db.String(20), unique=True, nullable=False, index=True)
 
-    # Rol: 'cliente' o 'admin'
+    # Rol interno: 'cliente' o 'admin' (por si lo usas en lógica de negocio)
     role                       = db.Column(
                                     db.String(20),
                                     nullable=False,
@@ -254,13 +251,12 @@ class Cliente(UserMixin, db.Model):
 
     # ----- Métodos útiles -----
     def get_id(self):
+        # Para flask-login, si en algún momento decides loguear por ID de cliente.
         return str(self.id)
 
     def __repr__(self):
-        return f"<Cliente {self.username} ({self.codigo})>"
+        return f"<Cliente {self.nombre_completo} ({self.codigo})>"
 
-
-        
 class Solicitud(db.Model):
     __tablename__ = 'solicitudes'
 

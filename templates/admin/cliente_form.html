@@ -157,20 +157,7 @@
             {% endif %}
           </div>
 
-          <div class="col-md-4">
-            <label class="form-label">Usuario <span class="text-danger">*</span></label>
-            {% set has_err = cliente_form.username.errors %}
-            {{ cliente_form.username(
-              class="form-control" + (" is-invalid" if has_err else ""),
-              placeholder="Ej. juan_perez",
-              autocomplete="username"
-            ) }}
-            {% if has_err %}
-              <div class="invalid-feedback">{{ cliente_form.username.errors[0] }}</div>
-            {% endif %}
-          </div>
-
-          <div class="col-md-4">
+          <div class="col-md-8">
             <label class="form-label">Nombre completo <span class="text-danger">*</span></label>
             {% set has_err = cliente_form.nombre_completo.errors %}
             {{ cliente_form.nombre_completo(
@@ -240,29 +227,6 @@
 
       <hr class="divider my-4">
 
-      <!-- Contraseña -->
-      <div class="mb-4">
-        <h5 class="mb-3"><i class="bi bi-shield-lock-fill section-icon"></i> Contraseña</h5>
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label">{{ 'Contraseña inicial' if nuevo else 'Nueva contraseña' }}</label>
-            <div class="input-group">
-              {{ cliente_form.password_new(class="form-control", placeholder="••••••") }}
-              <button class="btn btn-outline-secondary" type="button" id="toggle-pass-new"><i class="bi bi-eye"></i></button>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Confirmar contraseña</label>
-            <div class="input-group">
-              {{ cliente_form.password_confirm(class="form-control", placeholder="Repite la contraseña") }}
-              <button class="btn btn-outline-secondary" type="button" id="toggle-pass-confirm"><i class="bi bi-eye"></i></button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <hr class="divider my-4">
-
       <!-- Notas -->
       <div class="mb-4">
         <h5 class="mb-3"><i class="bi bi-journal-text section-icon"></i> Notas administrativas</h5>
@@ -284,19 +248,4 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-(function(){
-  const toggle = (btnId, input) => {
-    const btn = document.getElementById(btnId);
-    if(!btn || !input) return;
-    btn.addEventListener('click', () => {
-      const isPwd = input.getAttribute('type') === 'password';
-      input.setAttribute('type', isPwd ? 'text' : 'password');
-      btn.querySelector('i').className = isPwd ? 'bi bi-eye-slash' : 'bi bi-eye';
-    });
-  };
-  toggle('toggle-pass-new', document.getElementById('{{ cliente_form.password_new.id }}'));
-  toggle('toggle-pass-confirm', document.getElementById('{{ cliente_form.password_confirm.id }}'));
-})();
-</script>
 {% endblock %}

@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
-{% block title %}¡Alto ahí!{% endblock %}
+{% block title %}Acceso denegado{% endblock %}
 {% block content %}
 <div class="container py-5 text-center">
   <h1 class="display-1 text-danger">403</h1>
-  <p class="lead">¡Ey, mira quién quiere pasar sin permiso!</p>
-  <p>Esta área es exclusiva para súper administradores con capa y antifaz. 🦸‍♂️</p>
-  <a href="{{ url_for('login') }}" class="btn btn-primary mt-3">
-    Intenta de nuevo (si tienes nivel Jedi)
+  <p class="lead fw-bold">Acceso no autorizado</p>
+  <p>No tienes permisos para acceder a esta sección.</p>
+
+  <a href="{{ url_for('admin.login') }}" class="btn btn-primary mt-3">
+    Volver al inicio de sesión
   </a>
 </div>
 {% endblock %}

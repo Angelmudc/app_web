@@ -41,7 +41,7 @@ from decorators import roles_required, admin_required
 
 # HTTP externo (si lo usas en otras partes)
 import requests  # mantener por ahora; si no se usa en el resto, luego lo quitamos
-
+from config_app import USUARIOS
 # PDF (fpdf2)
 try:
     from fpdf import FPDF  # fpdf2
@@ -77,10 +77,9 @@ def _shutdown_session(exception=None):
 #  Nota: idealmente migrar a tabla/ORM + passwords via gestión real de usuarios.
 # -----------------------------------------------------------------------------
 USUARIOS = {
-    "angel":    {"pwd": generate_password_hash("0000"), "role": "admin"},
-    "divina":   {"pwd": generate_password_hash("67890"), "role": "admin"},
-    "xcvcbx":   {"pwd": generate_password_hash("9999"), "role": "secretaria"},
-    "darielis": {"pwd": generate_password_hash("3333"), "role": "secretaria"},
+    "Cruz":    {"pwd": generate_password_hash("8998"), "role": "admin"},
+    "Celina":    {"pwd": generate_password_hash("1232"),  "role": "secretaria"},
+    "vanina": {"pwd": generate_password_hash("2424"), "role": "secretaria"},
 }
 
 # -----------------------------------------------------------------------------
@@ -312,6 +311,7 @@ def home():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
+
     if request.method == 'POST':
         # Higiene de entrada: limitar tamaño para evitar abusos
         usuario = (request.form.get('usuario') or '').strip()[:64]
@@ -319,17 +319,19 @@ def login():
 
         user = USUARIOS.get(usuario)
 
-        if user and check_password_hash(user['pwd'], clave):
+        # Aquí usamos pwd_hash en vez de 'pwd'
+        if user and check_password_hash(user.get('pwd_hash', ''), clave):
             # Rotar la sesión para evitar fijación
             session.clear()
             session['usuario'] = usuario
-            session['role']    = user['role']
-            # (Opcional) marca de tiempo de login
+            session['role']    = user.get('role', 'admin')
+            # marca de tiempo de login
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+
+            # Puedes mandarlo al home del panel
             return redirect(url_for('home'))
 
         mensaje = "Usuario o clave incorrectos."
-        # (Opcional) podrías registrar intentos fallidos aquí con app.logger.warning
 
     return render_template('login.html', mensaje=mensaje)
 
