@@ -308,32 +308,49 @@ def home():
     return render_template('home.html', usuario=session['usuario'], current_year=date.today().year)
 
 
+from datetime import datetime
+from flask import request, render_template, redirect, url_for, session
+from werkzeug.security import check_password_hash
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
 
     if request.method == 'POST':
-        # Higiene de entrada: limitar tamaño para evitar abusos
-        usuario = (request.form.get('usuario') or '').strip()[:64]
+        # 1) Leer y normalizar
+        usuario = (request.form.get('usuario') or '').strip()[:64].lower()
         clave   = (request.form.get('clave')   or '').strip()[:128]
 
+        # 2) Buscar usuario en el diccionario
         user = USUARIOS.get(usuario)
 
-        # Aquí usamos pwd_hash en vez de 'pwd'
-        if user and check_password_hash(user.get('pwd_hash', ''), clave):
-            # Rotar la sesión para evitar fijación
+        # 3) Obtener el hash de forma segura
+        stored_hash = None
+        if user:
+            # Soporta tanto 'pwd_hash' (nuevo) como 'pwd' (por si quedara algo viejo)
+            stored_hash = user.get('pwd_hash') or user.get('pwd')
+
+        ok = False
+        if stored_hash:
+            try:
+                ok = check_password_hash(stored_hash, clave)
+            except Exception:
+                ok = False
+
+        if ok:
+            # 4) Login correcto → limpiar y setear sesión
             session.clear()
-            session['usuario'] = usuario
-            session['role']    = user.get('role', 'admin')
-            # marca de tiempo de login
+            session['usuario']  = usuario
+            session['role']     = user.get('role', 'admin')
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
 
-            # Puedes mandarlo al home del panel
             return redirect(url_for('home'))
 
+        # Si llega aquí, algo falló
         mensaje = "Usuario o clave incorrectos."
 
     return render_template('login.html', mensaje=mensaje)
+
 
 
 @app.route('/logout')
