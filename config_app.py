@@ -35,10 +35,9 @@ csrf    = CSRFProtect()
 # Usuarios en memoria (para login admin/secretaria)
 # ─────────────────────────────────────────────────────────────
 USUARIOS = {
-    "angel":     {"pwd_hash": generate_password_hash("0000"),  "role": "admin"},
-    "divina":    {"pwd_hash": generate_password_hash("67890"), "role": "admin"},
-    "darielis":  {"pwd_hash": generate_password_hash("3333"),  "role": "secretaria"},
-    "sofia":     {"pwd_hash": generate_password_hash("1234"),  "role": "secretaria"},
+    "Cruz":     {"pwd_hash": generate_password_hash("8998"),  "role": "admin"},
+    "Celina":  {"pwd_hash": generate_password_hash("1232"),  "role": "secretaria"},
+    "vanina":     {"pwd_hash": generate_password_hash("2424"),  "role": "secretaria"},
 }
 
 
