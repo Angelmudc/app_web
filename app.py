@@ -317,39 +317,53 @@ def login():
     mensaje = ""
 
     if request.method == 'POST':
-        # 1) Leer y normalizar
-        usuario = (request.form.get('usuario') or '').strip()[:64].lower()
-        clave   = (request.form.get('clave')   or '').strip()[:128]
+        # Lo que viene del form
+        usuario_raw = (request.form.get('usuario') or '').strip()[:64]
+        clave       = (request.form.get('clave')   or '').strip()[:128]
 
-        # 2) Buscar usuario en el diccionario
-        user = USUARIOS.get(usuario)
+        # Intentamos varias variantes del usuario
+        posibles_claves = [
+            usuario_raw,
+            usuario_raw.lower(),
+            usuario_raw.upper(),
+        ]
 
-        # 3) Obtener el hash de forma segura
-        stored_hash = None
-        if user:
-            # Soporta tanto 'pwd_hash' (nuevo) como 'pwd' (por si quedara algo viejo)
-            stored_hash = user.get('pwd_hash') or user.get('pwd')
+        user = None
+        usuario_key = None
+
+        for k in posibles_claves:
+            if k in USUARIOS:
+                user = USUARIOS[k]
+                usuario_key = k
+                break
 
         ok = False
-        if stored_hash:
-            try:
-                ok = check_password_hash(stored_hash, clave)
-            except Exception:
-                ok = False
+        if user:
+            # Acepta tanto 'pwd_hash' como 'pwd'
+            stored = user.get('pwd_hash') or user.get('pwd')
+
+            if stored:
+                try:
+                    # Si está hasheado, esto funciona
+                    ok = check_password_hash(stored, clave)
+                except Exception:
+                    # Si NO es un hash, comparamos directo (texto plano)
+                    ok = (stored == clave)
 
         if ok:
-            # 4) Login correcto → limpiar y setear sesión
+            # Login correcto
             session.clear()
-            session['usuario']  = usuario
-            session['role']     = user.get('role', 'admin')
+            session['usuario']   = usuario_key
+            session['role']      = user.get('role', 'admin')
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
 
             return redirect(url_for('home'))
 
-        # Si llega aquí, algo falló
+        # Si algo falla:
         mensaje = "Usuario o clave incorrectos."
 
     return render_template('login.html', mensaje=mensaje)
+
 
 
 
