@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+{% block title %}Activar Reemplazo{% endblock %}
+
+{% block head %}
+  <style>
+    body {
+      background: radial-gradient(circle at top left, #0f172a, #020617 90%);
+      font-family: 'Poppins', sans-serif;
+      color: #e2e8f0;
+    }
+
+    .glass-card {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 1rem;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+      padding: 2rem;
+    }
+
+    h1 {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    label {
+      font-weight: 500;
+      color: #f1f5f9;
+    }
+
+    .form-control, .form-select {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f8fafc;
+    }
+
+    .form-control:focus, .form-select:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 6px #38bdf8;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .input-group-text {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .btn {
+      border-radius: 0.6rem;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      border: none;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #60a5fa, #1d4ed8);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #e2e8f0;
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .alert-danger {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fecaca;
+    }
+
+    .form-text {
+      color: #94a3b8;
+    }
+
+    .emoji-title {
+      font-size: 1.5rem;
+    }
+
+    /* ===== Select2 (dark + z-index alto) ===== */
+    .select2-container { width: 100% !important; z-index: 9999 !important; }
+    .select2-dropdown {
+      background: rgba(17, 24, 39, 0.98) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      color: #f8fafc !important;
+      z-index: 9999 !important;
+    }
+    .select2-results__option--highlighted {
+      background: rgba(56, 189, 248, 0.25) !important;
+      color: #e2e8f0 !important;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+      color: #e2e8f0 !important;
+      line-height: 44px !important;
+    }
+    .select2-container--default .select2-selection--single {
+      height: 44px !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+      height: 44px !important;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__arrow b {
+      border-color: #38bdf8 transparent transparent transparent !important;
+    }
+    .select2-search--dropdown .select2-search__field {
+      background: rgba(255, 255, 255, 0.08) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      color: #f8fafc !important;
+    }
+    .select2-search--dropdown .select2-search__field::placeholder {
+      color: #94a3b8 !important;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 700px;">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="emoji-title">🔄 Activar Reemplazo</h1>
+    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
+      <i class="bi bi-arrow-left me-1"></i> Volver
+    </a>
+  </div>
+
+  <div class="glass-card">
+    <p class="mb-4 text-muted">
+      Registra la candidata que falló y el motivo. El sistema activará el reemplazo
+      y comenzará una nueva búsqueda para este cliente.
+    </p>
+
+    <form method="POST" id="reemplazoForm" novalidate>
+      {{ form.csrf_token }}
+
+      {% if form.errors %}
+        <div class="alert alert-danger">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <strong>Revisa los campos con error:</strong>
+          <ul class="mb-0 mt-1">
+            {% for field, errors in form.errors.items() %}
+              {% for error in errors %}
+                <li><strong>{{ form[field].label.text }}:</strong> {{ error }}</li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <!-- Candidata que falló -->
+      <div class="mb-4">
+        <label class="form-label">
+          <i class="bi bi-person-x-fill text-danger me-1"></i>
+          {{ form.candidata_old_name.label.text }}
+        </label>
+
+        {# Select2 para buscar la candidata que falló #}
+        <select id="candidata-old-select" class="form-select">
+          <option value=""></option>
+        </select>
+
+        {# Hidden fields que realmente se envían al backend (WTForms) #}
+        {{ form.candidata_old_id(id="candidata_old_id") }}
+        <input type="hidden"
+               id="candidata_old_name"
+               name="{{ form.candidata_old_name.name }}"
+               value="{{ form.candidata_old_name.data or '' }}"/>
+
+        <div class="form-text">
+          Escribe para buscar y seleccionar la candidata que falló.
+        </div>
+      </div>
+
+      <!-- Motivo del fallo -->
+      <div class="mb-4">
+        <label class="form-label">
+          <i class="bi bi-chat-left-dots text-warning me-1"></i>
+          {{ form.motivo_fallo.label.text }}
+        </label>
+        {{ form.motivo_fallo(class="form-control", rows=3, placeholder="Describe brevemente el motivo del reemplazo...") }}
+        <div class="form-text">Ejemplo: No se presentó, problemas personales, incompatibilidad, etc.</div>
+      </div>
+
+      <!-- Nota interna (opcional) -->
+      {% if form.nota_adicional %}
+      <div class="mb-4">
+        <label class="form-label">
+          <i class="bi bi-journal-text text-info me-1"></i>
+          {{ form.nota_adicional.label.text }}
+        </label>
+        {{ form.nota_adicional(class="form-control", rows=3, placeholder="Información interna para seguimiento (opcional)...") }}
+        <div class="form-text">Esta nota es solo para uso interno de la agencia.</div>
+      </div>
+      {% endif %}
+
+      <!-- Botones -->
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
+          <i class="bi bi-x-circle me-1"></i> Cancelar
+        </a>
+        <button type="submit" class="btn btn-primary" id="btn-submit">
+          <i class="bi bi-arrow-repeat me-1"></i> {{ form.submit.label.text }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+          integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+          crossorigin="anonymous"></script>
+
+  <!-- Select2 -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+  <script>
+  (function(){
+    const $sel = $('#candidata-old-select');
+    const $idField   = $('#candidata_old_id');
+    const $nameField = $('#candidata_old_name');
+
+    $sel.select2({
+      width: '100%',
+      placeholder: '🔍 Buscar candidata que falló…',
+      allowClear: true,
+      minimumInputLength: 1,
+      dropdownParent: $(document.body),
+      ajax: {
+        delay: 200,
+        url: "{{ url_for('admin.api_candidatas') }}",
+        dataType: 'json',
+        data: params => ({ q: params.term || '' }),
+        processResults: data => ({
+          results: (data.results || []).map(i => ({ id: i.id, text: i.text }))
+        })
+      }
+    });
+
+    // Cuando seleccionas una candidata, rellenamos los campos ocultos
+    $sel.on('select2:select', function(e){
+      const data = e.params.data || {};
+      if (data.id) {
+        $idField.val(data.id);
+        $nameField.val(data.text || '');
+      }
+    });
+
+    // Si limpias el select, limpiamos los hidden
+    $sel.on('select2:clear', function(){
+      $idField.val('');
+      $nameField.val('');
+    });
+
+    // Preselección si viene del servidor
+    {% if form.candidata_old_id.data %}
+      (function(){
+        const preId   = "{{ form.candidata_old_id.data }}";
+        const preText = "{{ (form.candidata_old_name.data or '')|replace('\"','\\\"') }}";
+        if (preId) {
+          const option = new Option(preText || 'Seleccionada', preId, true, true);
+          $sel.append(option).trigger('change');
+          $idField.val(preId);
+          $nameField.val(preText);
+        }
+      })();
+    {% endif %}
+
+    // Spinner al enviar formulario
+    const form = document.getElementById('reemplazoForm');
+    const btn  = document.getElementById('btn-submit');
+    form.addEventListener('submit', () => {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+    });
+  })();
+  </script>
+{% endblock %}

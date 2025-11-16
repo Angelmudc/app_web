@@ -103,6 +103,22 @@
   .emoji-header {
     font-size: 1.6rem;
   }
+
+  /* textarea resumen cliente */
+  #resumenCliente {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.6);
+    color: #e2e8f0;
+    border-radius: 0.75rem;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+  }
+
+  #resumenCliente:focus {
+    outline: none;
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.8);
+  }
 </style>
 
 <div class="container py-5" style="max-width: 1200px;">
@@ -152,6 +168,24 @@
       <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
       {% endif %}
     </dl>
+  </div>
+
+  <!-- 🔥 Resumen listo para enviar al cliente -->
+  <div class="glass-card mb-4">
+    <div class="glass-header">
+      <i class="bi bi-clipboard-check"></i> Resumen para enviar al cliente
+    </div>
+    <div class="p-4">
+      <p class="small text-muted mb-2">
+        Texto organizado con emojis, listo para copiar y pegar en WhatsApp o correo.
+      </p>
+      <div class="mb-3">
+        <textarea id="resumenCliente" class="form-control" rows="12" readonly>{{ resumen_cliente }}</textarea>
+      </div>
+      <button type="button" class="btn btn-secondary" onclick="copiarResumenCliente()">
+        <i class="bi bi-clipboard me-1"></i> Copiar resumen
+      </button>
+    </div>
   </div>
 
   <!-- Historial de Envíos -->
@@ -267,4 +301,33 @@
     </a>
   </div>
 </div>
+
+<script>
+  function copiarResumenCliente() {
+    const textarea = document.getElementById('resumenCliente');
+    if (!textarea) return;
+
+    const text = textarea.value;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { alert('Resumen copiado al portapapeles.'); },
+        function () { alert('No se pudo copiar automáticamente. Copia el texto manualmente.'); }
+      );
+    } else {
+      textarea.select();
+      textarea.setSelectionRange(0, 99999);
+      try {
+        const ok = document.execCommand('copy');
+        if (ok) {
+          alert('Resumen copiado al portapapeles.');
+        } else {
+          alert('No se pudo copiar automáticamente. Copia el texto manualmente.');
+        }
+      } catch (e) {
+        alert('No se pudo copiar automáticamente. Copia el texto manualmente.');
+      }
+    }
+  }
+</script>
 {% endblock %}

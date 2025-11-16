@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block title %}Solicitudes prioritarias{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">
+      🔥 Solicitudes prioritarias
+    </h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary btn-sm">
+        Volver a clientes
+      </a>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary btn-sm">
+        Ver todas las solicitudes
+      </a>
+    </div>
+  </div>
+
+  <!-- 🔥 Texto nuevo, claro y profesional para secretarias -->
+  <p class="text-muted">
+    Aquí se muestran las solicitudes que llevan varios días activas sin recibir una candidata. 
+    Estas solicitudes necesitan seguimiento rápido para evitar atrasos y mantener al cliente satisfecho.
+  </p>
+
+  {% if solicitudes|length == 0 %}
+    <div class="alert alert-success">
+      No hay solicitudes prioritarias ahora mismo. ✅
+    </div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Código</th>
+            <th>Cliente</th>
+            <th>Ciudad / Sector</th>
+            <th>Estado</th>
+            <th>Fecha solicitud</th>
+            <th>Días en seguimiento</th>
+            <th>Prioridad</th>
+            <th>Candidata asignada</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in solicitudes %}
+            {% set row_class = '' %}
+            {% if s.nivel_prioridad == 'media' %}
+              {% set row_class = 'table-warning' %}
+            {% elif s.nivel_prioridad == 'alta' %}
+              {% set row_class = 'table-danger' %}
+            {% elif s.nivel_prioridad == 'critica' %}
+              {% set row_class = 'table-danger' %}
+            {% endif %}
+
+            <tr class="{{ row_class }}">
+              <td>
+                <strong>{{ s.codigo_solicitud }}</strong>
+              </td>
+              <td>
+                {% if s.cliente %}
+                  {{ s.cliente.nombre_completo }}<br>
+                  <small class="text-muted">{{ s.cliente.codigo }}</small>
+                {% else %}
+                  <span class="text-muted">Sin cliente vinculado</span>
+                {% endif %}
+              </td>
+              <td>
+                {{ s.ciudad_sector or '—' }}
+              </td>
+              <td>
+                <span class="badge bg-secondary text-uppercase">
+                  {{ s.estado }}
+                </span>
+              </td>
+              <td>
+                {{ s.fecha_solicitud.strftime('%d/%m/%Y %H:%M') if s.fecha_solicitud }}
+              </td>
+              <td>
+                {{ s.dias_en_seguimiento or '-' }}
+              </td>
+              <td>
+                {% if s.es_prioritaria %}
+                  {% if s.nivel_prioridad == 'critica' %}
+                    <span class="badge bg-danger">
+                      🚨 CRÍTICA
+                    </span>
+                  {% elif s.nivel_prioridad == 'alta' %}
+                    <span class="badge bg-danger">
+                      🔥 ALTA
+                    </span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">
+                      ⚠️ MEDIA
+                    </span>
+                  {% endif %}
+                {% else %}
+                  <span class="badge bg-success">
+                    Normal
+                  </span>
+                {% endif %}
+              </td>
+              <td>
+                {% if s.candidata %}
+                  {{ s.candidata.nombre_completo or 'Candidata asignada' }}
+                {% else %}
+                  <span class="text-muted">Sin candidata asignada</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <a
+                  href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}"
+                  class="btn btn-sm btn-primary"
+                >
+                  Ver detalle
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -16,13 +16,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from functools import wraps  # si otros decoradores locales lo usan
 
 from config_app import db, USUARIOS
-from models import Cliente, Solicitud, Candidata, Reemplazo
+from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente
 from admin.forms import (
     AdminClienteForm,
     AdminSolicitudForm,
     AdminPagoForm,
     AdminReemplazoForm,
-    AdminGestionPlanForm
+    AdminGestionPlanForm,
+    AdminReemplazoFinForm,  # 🔹 NUEVO FORM PARA FINALIZAR REEMPLAZO
 )
 from utils import letra_por_indice
 
@@ -71,6 +72,158 @@ def _register_login_fail() -> None:
 
 def _reset_login_fail() -> None:
     session.pop('admin_login_fail', None)
+
+def build_resumen_cliente_solicitud(s: Solicitud) -> str:
+    """
+    Arma un resumen limpio y entendible de la solicitud para compartir con el cliente.
+    Formato pensado para WhatsApp / correo: con emojis, espacios y todo organizado.
+    """
+    # Para mapear funciones (códigos -> etiquetas legibles)
+    try:
+        form_tmp = AdminSolicitudForm()
+        FUNCIONES_LABELS = {code: label for code, label in (getattr(form_tmp, "funciones", None).choices or [])}
+    except Exception:
+        FUNCIONES_LABELS = {}
+
+    # Campos base
+    codigo        = _s(getattr(s, 'codigo_solicitud', None))
+    ciudad_sector = _s(getattr(s, 'ciudad_sector', None))
+    rutas         = _s(getattr(s, 'rutas_cercanas', None))
+    modalidad     = _s(getattr(s, 'modalidad_trabajo', None))
+    edad_req_raw  = getattr(s, 'edad_requerida', None)
+    experiencia   = _s(getattr(s, 'experiencia', None))
+    horario       = _s(getattr(s, 'horario', None))
+    nota_cli      = _s(getattr(s, 'nota_cliente', None))
+
+    # Edad requerida (suele estar como lista de labels)
+    edad_list = _as_list(edad_req_raw)
+    edad_txt  = ", ".join(edad_list) if edad_list else ""
+
+    # Funciones (códigos -> etiquetas)
+    raw_fun_codes = _unique_keep_order(_as_list(getattr(s, 'funciones', None)))
+    fun_labels = []
+    for code in raw_fun_codes:
+        if code == 'otro':
+            continue
+        label = FUNCIONES_LABELS.get(code, code)
+        if label:
+            fun_labels.append(label)
+
+    otros_fun = _s(getattr(s, 'funciones_otro', None))
+    if otros_fun:
+        fun_labels.append(otros_fun)
+
+    funciones_txt = ", ".join(fun_labels) if fun_labels else ""
+
+    # Hogar
+    tipo_lugar   = _s(getattr(s, 'tipo_lugar', None))
+    habitaciones = _s(getattr(s, 'habitaciones', None))
+    banos_txt    = _fmt_banos(getattr(s, 'banos', None))
+
+    # Áreas comunes
+    areas_raw   = _as_list(getattr(s, 'areas_comunes', None))
+    area_otro   = _s(getattr(s, 'area_otro', None))
+    if area_otro:
+        areas_raw.append(area_otro)
+    areas_txt = ", ".join(_unique_keep_order([_norm_area(a) for a in areas_raw])) if areas_raw else ""
+
+    # Familia
+    adultos    = _s(getattr(s, 'adultos', None))
+    ninos_val  = _s(getattr(s, 'ninos', None))
+    edades_n   = _s(getattr(s, 'edades_ninos', None))
+    mascota    = _s(getattr(s, 'mascota', None))
+
+    # Dinero
+    sueldo_raw    = getattr(s, 'sueldo', None)
+    sueldo_txt    = _format_money_usd(sueldo_raw)
+    pasaje_aporte = bool(getattr(s, 'pasaje_aporte', False))
+
+    lineas = []
+
+    # Encabezado
+    if codigo:
+        lineas.append(f"🧾 Resumen de su solicitud ({codigo})")
+    else:
+        lineas.append("🧾 Resumen de su solicitud")
+    lineas.append("")
+
+    # Ubicación / modalidad
+    if ciudad_sector:
+        lineas.append(f"📍 Ciudad / Sector: {ciudad_sector}")
+    if rutas:
+        lineas.append(f"🚌 Ruta más cercana: {rutas}")
+    if modalidad:
+        lineas.append(f"💼 Modalidad: {modalidad}")
+    if edad_txt:
+        lineas.append(f"👤 Edad requerida: {edad_txt}")
+    if horario:
+        lineas.append(f"⏰ Horario: {horario}")
+    if experiencia:
+        lineas.append(f"⭐ Experiencia solicitada: {experiencia}")
+    lineas.append("")
+
+    # Hogar
+    lineas.append("🏠 Detalles del hogar:")
+    hogar_sub = []
+    if tipo_lugar:
+        hogar_sub.append(f"• Tipo de lugar: {tipo_lugar}")
+    if habitaciones:
+        hogar_sub.append(f"• Habitaciones: {habitaciones}")
+    if banos_txt:
+        hogar_sub.append(f"• Baños: {banos_txt}")
+    if areas_txt:
+        hogar_sub.append(f"• Áreas comunes: {areas_txt}")
+
+    if hogar_sub:
+        lineas.extend(hogar_sub)
+    else:
+        lineas.append("• (No se especificaron detalles del hogar)")
+    lineas.append("")
+
+    # Familia
+    lineas.append("👨‍👩‍👧‍👦 Composición del hogar:")
+    fam_sub = []
+    if adultos:
+        fam_sub.append(f"• Adultos en casa: {adultos}")
+    if ninos_val:
+        if edades_n:
+            fam_sub.append(f"• Niños: {ninos_val} (edades: {edades_n})")
+        else:
+            fam_sub.append(f"• Niños: {ninos_val}")
+    if mascota:
+        fam_sub.append(f"• Mascotas: {mascota}")
+
+    if fam_sub:
+        lineas.extend(fam_sub)
+    else:
+        lineas.append("• (No se especificó información de adultos/niños/mascotas)")
+    lineas.append("")
+
+    # Funciones
+    lineas.append("🧹 Funciones principales:")
+    if funciones_txt:
+        lineas.append(f"• {funciones_txt}")
+    else:
+        lineas.append("• (No se especificaron funciones en detalle)")
+    lineas.append("")
+
+    # Dinero
+    lineas.append("💰 Oferta económica:")
+    if sueldo_txt:
+        extra = "más ayuda del pasaje" if pasaje_aporte else "pasaje incluido"
+        lineas.append(f"• Sueldo: {sueldo_txt} mensual, {extra}")
+    else:
+        lineas.append("• (No se especificó sueldo)")
+
+    lineas.append("")
+
+    # Nota del cliente
+    if nota_cli:
+        lineas.append("📝 Nota adicional del cliente:")
+        lineas.append(f"{nota_cli}")
+        lineas.append("")
+
+    return "\n".join(lineas).rstrip()
 
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
@@ -584,9 +737,257 @@ def eliminar_cliente(cliente_id):
 @login_required
 @staff_required
 def detalle_cliente(cliente_id):
-    """📋 Muestra el detalle completo del cliente."""
-    c = Cliente.query.get_or_404(cliente_id)
-    return render_template('admin/cliente_detail.html', cliente=c)
+    """
+    📋 Vista 360° del cliente:
+    - Datos del cliente
+    - Resumen de solicitudes (totales, estados, monto pagado)
+    - Lista de solicitudes del cliente
+    - Timeline simple de eventos (creación, pagos, cancelaciones, reemplazos)
+    - Listado de tareas de seguimiento del cliente
+    """
+    from decimal import Decimal  # por si no está arriba
+
+    cliente = Cliente.query.get_or_404(cliente_id)
+
+    # Cargar todas las solicitudes del cliente con relaciones básicas
+    solicitudes = (
+        Solicitud.query
+        .options(
+            joinedload(Solicitud.candidata),
+            joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new)
+        )
+        .filter_by(cliente_id=cliente_id)
+        .order_by(Solicitud.fecha_solicitud.desc())
+        .all()
+    )
+
+    # ------------------------------
+    # RESUMEN / KPI POR CLIENTE
+    # ------------------------------
+    total_sol = len(solicitudes)
+    estados_count = {
+        'proceso': 0,
+        'activa': 0,
+        'pagada': 0,
+        'cancelada': 0,
+        'reemplazo': 0,
+        'otro': 0,
+    }
+
+    monto_total_pagado = Decimal('0.00')
+    primera_solicitud = None
+    ultima_solicitud = None
+
+    for s in solicitudes:
+        # Contar estados
+        estado = (s.estado or '').strip().lower() or 'otro'
+        if estado not in estados_count:
+            estado = 'otro'
+        estados_count[estado] += 1
+
+        # Monto pagado (guardado como string "1234.56" normalmente)
+        raw_monto = (s.monto_pagado or '').strip() if hasattr(s, 'monto_pagado') else ''
+        if raw_monto:
+            try:
+                monto_total_pagado += Decimal(raw_monto)
+            except Exception:
+                pass  # si hay valores viejos mal formateados, no rompe
+
+        # Fechas
+        fs = getattr(s, 'fecha_solicitud', None)
+        if fs:
+            if primera_solicitud is None or fs < primera_solicitud:
+                primera_solicitud = fs
+            if ultima_solicitud is None or fs > ultima_solicitud:
+                ultima_solicitud = fs
+
+    # Última actividad del cliente (si no hay, usamos última_solicitud)
+    ultima_actividad = getattr(cliente, 'fecha_ultima_actividad', None) or ultima_solicitud
+
+    # Formato de dinero para mostrar
+    monto_total_pagado_str = f"RD$ {monto_total_pagado:,.2f}"
+
+    kpi_cliente = {
+        'total_solicitudes': total_sol,
+        'estados': estados_count,
+        'monto_total_pagado': monto_total_pagado,
+        'monto_total_pagado_str': monto_total_pagado_str,
+        'primera_solicitud': primera_solicitud,
+        'ultima_solicitud': ultima_solicitud,
+        'ultima_actividad': ultima_actividad,
+    }
+
+    # ------------------------------
+    # TIMELINE SIMPLE
+    # ------------------------------
+    timeline = []
+
+    for s in solicitudes:
+        # Creación
+        if s.fecha_solicitud:
+            timeline.append({
+                'fecha': s.fecha_solicitud,
+                'tipo': 'Solicitud creada',
+                'detalle': f"Solicitud {s.codigo_solicitud or s.id}"
+            })
+
+        # Publicada / copiada
+        if getattr(s, 'last_copiado_at', None):
+            timeline.append({
+                'fecha': s.last_copiado_at,
+                'tipo': 'Publicación / copia',
+                'detalle': f"Solicitud {s.codigo_solicitud or s.id} marcada como copiada"
+            })
+
+        # Pagada
+        if s.estado == 'pagada' and getattr(s, 'fecha_ultima_modificacion', None):
+            timeline.append({
+                'fecha': s.fecha_ultima_modificacion,
+                'tipo': 'Pago registrado',
+                'detalle': f"Solicitud {s.codigo_solicitud or s.id} marcada como pagada"
+            })
+
+        # Cancelada
+        if s.estado == 'cancelada' and getattr(s, 'fecha_cancelacion', None):
+            motivo = (s.motivo_cancelacion or '').strip()
+            timeline.append({
+                'fecha': s.fecha_cancelacion,
+                'tipo': 'Solicitud cancelada',
+                'detalle': f"{s.codigo_solicitud or s.id} – {motivo or 'Sin motivo especificado'}"
+            })
+
+        # Reemplazos
+        for r in (s.reemplazos or []):
+            fecha_r = getattr(r, 'fecha_inicio_reemplazo', None) or getattr(r, 'created_at', None)
+            if not fecha_r:
+                continue
+            nombre_new = getattr(getattr(r, 'candidata_new', None), 'nombre_completo', None)
+            detalle_r = f"Reemplazo para {s.codigo_solicitud or s.id}"
+            if nombre_new:
+                detalle_r += f" con {nombre_new}"
+            timeline.append({
+                'fecha': fecha_r,
+                'tipo': 'Reemplazo activado',
+                'detalle': detalle_r
+            })
+
+    # Ordenar timeline de más reciente a más viejo
+    timeline = sorted(timeline, key=lambda e: e['fecha'], reverse=True)
+
+    # ------------------------------
+    # TAREAS DEL CLIENTE
+    # ------------------------------
+    tareas = (
+        TareaCliente.query
+        .filter_by(cliente_id=cliente_id)
+        .order_by(
+            TareaCliente.estado != 'pendiente',             # primero pendientes
+            TareaCliente.fecha_vencimiento.is_(None),       # luego las que no tienen fecha
+            TareaCliente.fecha_vencimiento.asc(),           # vencen antes
+            TareaCliente.fecha_creacion.desc()              # últimas creadas
+        )
+        .all()
+    )
+
+    return render_template(
+        'admin/cliente_detail.html',
+        cliente=cliente,
+        solicitudes=solicitudes,
+        kpi_cliente=kpi_cliente,
+        timeline=timeline,
+        tareas=tareas
+    )
+
+@admin_bp.route('/tareas/pendientes')
+@login_required
+@staff_required
+def tareas_pendientes():
+    """
+    Lista todas las tareas que NO están completadas, ordenadas por fecha de vencimiento.
+    """
+    hoy = date.today()
+
+    tareas = (
+        TareaCliente.query
+        .options(joinedload(TareaCliente.cliente))
+        .filter(TareaCliente.estado != 'completada')
+        .order_by(
+            TareaCliente.fecha_vencimiento.is_(None),
+            TareaCliente.fecha_vencimiento.asc(),
+            TareaCliente.fecha_creacion.desc()
+        )
+        .all()
+    )
+
+    return render_template(
+        'admin/tareas_pendientes.html',
+        tareas=tareas,
+        hoy=hoy
+    )
+
+@admin_bp.route('/tareas/hoy')
+@login_required
+@staff_required
+def tareas_hoy():
+    """
+    Lista tareas con fecha_vencimiento == hoy y que no están completadas.
+    """
+    hoy = date.today()
+
+    tareas = (
+        TareaCliente.query
+        .options(joinedload(TareaCliente.cliente))
+        .filter(
+            TareaCliente.estado != 'completada',
+            TareaCliente.fecha_vencimiento == hoy
+        )
+        .order_by(TareaCliente.fecha_creacion.desc())
+        .all()
+    )
+
+    return render_template(
+        'admin/tareas_hoy.html',
+        tareas=tareas,
+        hoy=hoy
+    )
+
+@admin_bp.route('/clientes/<int:cliente_id>/tareas/rapida', methods=['POST'])
+@login_required
+@staff_required
+def crear_tarea_rapida(cliente_id):
+    """
+    Crea una tarea rápida para hoy asociada al cliente.
+    No pide formulario, simplemente genera:
+      - Título: "Dar seguimiento a <nombre>"
+      - fecha_vencimiento: hoy
+      - estado: pendiente
+    """
+    cliente = Cliente.query.get_or_404(cliente_id)
+
+    titulo = (request.form.get('titulo') or '').strip()
+    if not titulo:
+        titulo = f"Dar seguimiento a {cliente.nombre_completo}"
+
+    hoy = date.today()
+
+    try:
+        tarea = TareaCliente(
+            cliente_id=cliente.id,
+            titulo=titulo,
+            fecha_creacion=datetime.utcnow(),
+            fecha_vencimiento=hoy,
+            estado='pendiente',
+            prioridad='media'
+        )
+        db.session.add(tarea)
+        db.session.commit()
+        flash('Tarea rápida creada para hoy.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo crear la tarea rápida.', 'danger')
+
+    return redirect(url_for('admin.detalle_cliente', cliente_id=cliente.id))
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1206,56 +1607,97 @@ def _nonempty_str(x: str) -> str:
 # ============================================================
 #                           REEMPLAZOS
 # ============================================================
-@admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET','POST'])
+@admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def nuevo_reemplazo(s_id):
-    # Eager loading para evitar N+1 si la plantilla muestra relaciones
-    sol = (Solicitud.query
-           .options(joinedload(Solicitud.reemplazos))
-           .get_or_404(s_id))
+    """
+    INICIO del reemplazo:
+    - Marca la solicitud en estado 'reemplazo'.
+    - Registra candidata que falló + motivo.
+    - Fecha de inicio del reemplazo se marca automáticamente (ahora).
+    """
+    # Cargamos la solicitud con reemplazos para que la plantilla tenga todo
+    sol = (
+        Solicitud.query
+        .options(joinedload(Solicitud.reemplazos))
+        .get_or_404(s_id)
+    )
 
-    # Reglas: no permitir reemplazo si está cancelada o pagada
+    # Regla: no permitir reemplazo SOLO si está cancelada
     if request.method == 'POST':
         if sol.estado == 'cancelada':
             flash('No puedes crear reemplazos en una solicitud cancelada.', 'warning')
             return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id, id=sol.id))
-        if sol.estado == 'pagada':
-            flash('No puedes crear reemplazos en una solicitud pagada.', 'warning')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id, id=sol.id))
 
     form = AdminReemplazoForm()
 
+    # Prefill en GET: si la solicitud tiene candidata, la ponemos como "candidata que falló"
+    if request.method == 'GET' and sol.candidata:
+        if hasattr(form, 'candidata_old_id'):
+            form.candidata_old_id.data = sol.candidata.fila
+        if hasattr(form, 'candidata_old_name'):
+            form.candidata_old_name.data = sol.candidata.nombre_completo or ''
+
     if form.validate_on_submit():
         try:
-            # Validaciones mínimas de IDs de candidatas si tu modelo lo exige
+            # Candidata que falló
             cand_old_id = form.candidata_old_id.data
-            if cand_old_id:
-                cand_old = Candidata.query.get(cand_old_id)
-                if not cand_old:
-                    flash('La candidata anterior no existe.', 'danger')
-                    return render_template('admin/reemplazo_form.html', form=form, solicitud=sol)
+            cand_old = Candidata.query.get(cand_old_id) if cand_old_id else None
+            if not cand_old:
+                flash('La candidata anterior no existe.', 'danger')
+                return render_template(
+                    'admin/reemplazo_inicio.html',
+                    form=form,
+                    solicitud=sol
+                )
 
-            fecha_ini = form.fecha_inicio_reemplazo.data
-            # Si envían fecha a futuro muy lejos, opcionalmente podrías limitarlo
-            # if fecha_ini and fecha_ini > datetime.utcnow() + timedelta(days=30): ...
-
+            # Creamos el registro de reemplazo
             r = Reemplazo(
-                solicitud_id           = s_id,
-                candidata_old_id       = cand_old_id,
-                motivo_fallo           = _nonempty_str(form.motivo_fallo.data),
-                fecha_inicio_reemplazo = fecha_ini,
+                solicitud_id     = sol.id,
+                candidata_old_id = cand_old_id,
+                motivo_fallo     = _nonempty_str(form.motivo_fallo.data),
             )
+
+            # 🔹 INICIO DEL REEMPLAZO:
+            # Se marca automáticamente con la fecha y hora actual
+            # y oportunidad_nueva = True (método helper del modelo)
+            if hasattr(r, 'iniciar_reemplazo'):
+                r.iniciar_reemplazo()
+            else:
+                # fallback por si no existe el helper
+                ahora = _now_utc()
+                r.fecha_fallo            = ahora
+                r.fecha_inicio_reemplazo = ahora
+                r.oportunidad_nueva      = True
+
             db.session.add(r)
 
-            # Estado y métricas
+            # 🔹 ESTADO DE LA SOLICITUD:
+            # La solicitud pasa a estado "reemplazo" aunque antes estuviera pagada o activa
             sol.estado = 'reemplazo'
-            sol.fecha_ultima_actividad     = _now_utc()
-            sol.fecha_ultima_modificacion  = _now_utc()
+
+            # Reiniciamos el seguimiento de prioridad (cuenta desde ahora)
+            if hasattr(sol, 'marcar_activada'):
+                sol.marcar_activada()
+            else:
+                # fallback mínimo: marcar fechas si tienes los campos nuevos
+                ahora = _now_utc()
+                if hasattr(sol, 'fecha_inicio_seguimiento') and not sol.fecha_inicio_seguimiento:
+                    sol.fecha_inicio_seguimiento = ahora
+                if hasattr(sol, 'fecha_ultimo_estado'):
+                    sol.fecha_ultimo_estado = ahora
+
+            # Actualizamos marcas de actividad/modificación si existen en el modelo
+            ahora2 = _now_utc()
+            if hasattr(sol, 'fecha_ultima_actividad'):
+                sol.fecha_ultima_actividad = ahora2
+            if hasattr(sol, 'fecha_ultima_modificacion'):
+                sol.fecha_ultima_modificacion = ahora2
 
             db.session.commit()
             flash('Reemplazo activado y solicitud marcada como reemplazo.', 'success')
-            return redirect(url_for('admin.listar_clientes'))
+            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id, id=sol.id))
 
         except IntegrityError:
             db.session.rollback()
@@ -1267,11 +1709,93 @@ def nuevo_reemplazo(s_id):
             db.session.rollback()
             flash('Ocurrió un error al crear el reemplazo.', 'danger')
 
+    # Usamos el HTML NUEVO
     return render_template(
-        'admin/reemplazo_form.html',
+        'admin/reemplazo_inicio.html',
         form=form,
         solicitud=sol
     )
+
+
+
+@admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/finalizar', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def finalizar_reemplazo(s_id, reemplazo_id):
+    """
+    FIN de reemplazo:
+    - Registra la nueva candidata que se envió.
+    - Marca fecha_fin_reemplazo.
+    - Vuelve a poner la solicitud en 'pagada' con la nueva candidata
+      para que NO se siga publicando.
+    """
+    sol = (
+        Solicitud.query
+        .options(
+            joinedload(Solicitud.reemplazos),
+            joinedload(Solicitud.cliente)
+        )
+        .get_or_404(s_id)
+    )
+
+    r = (
+        Reemplazo.query
+        .filter_by(id=reemplazo_id, solicitud_id=s_id)
+        .first_or_404()
+    )
+
+    form = AdminReemplazoFinForm()
+
+    # Prefill si ya tenía candidata_new (por si reabren el form)
+    if request.method == 'GET' and r.candidata_new:
+        form.candidata_new_id.data   = r.candidata_new_id
+        form.candidata_new_name.data = r.candidata_new.nombre_completo or ''
+
+    if form.validate_on_submit():
+        try:
+            cand_new_id = form.candidata_new_id.data
+
+            cand_new = Candidata.query.get(cand_new_id) if cand_new_id else None
+            if not cand_new:
+                flash('La nueva candidata seleccionada no existe.', 'danger')
+                return render_template(
+                    'admin/reemplazo_fin.html',
+                    form=form,
+                    solicitud=sol,
+                    reemplazo=r
+                )
+
+            ahora = _now_utc()
+
+            # Actualizar reemplazo
+            r.candidata_new_id    = cand_new_id
+            r.fecha_fin_reemplazo = ahora
+            if hasattr(form, 'nota_adicional'):
+                r.nota_adicional = _nonempty_str(form.nota_adicional.data)
+
+            # Actualizar solicitud con la nueva candidata
+            sol.candidata_id              = cand_new_id
+            sol.estado                    = 'pagada'          # <-- aquí el cambio
+            sol.fecha_ultimo_estado       = ahora
+            sol.fecha_ultima_modificacion = ahora
+
+            db.session.commit()
+            flash('Reemplazo finalizado y nueva candidata asignada.', 'success')
+            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
+
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('Ocurrió un error al finalizar el reemplazo.', 'danger')
+
+    return render_template(
+        'admin/reemplazo_fin.html',
+        form=form,
+        solicitud=sol,
+        reemplazo=r
+    )
+
+
+
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
@@ -1295,7 +1819,7 @@ def detalle_solicitud(cliente_id, id):
             'candidata': s.candidata,
             'fecha':     s.fecha_solicitud
         })
-    # Ordena por fecha para consistencia
+
     reemplazos_ordenados = sorted(list(s.reemplazos or []),
                                   key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min)
     for idx, r in enumerate(reemplazos_ordenados, start=1):
@@ -1314,53 +1838,106 @@ def detalle_solicitud(cliente_id, id):
             'motivo': s.motivo_cancelacion
         })
 
+    # 👉 Resumen listo para enviar al cliente (helper que ya te di antes)
+    resumen_cliente = build_resumen_cliente_solicitud(s)
+
     return render_template(
         'admin/solicitud_detail.html',
         solicitud      = s,
         envios         = envios,
         cancelaciones  = cancelaciones,
-        reemplazos     = reemplazos_ordenados
+        reemplazos     = reemplazos_ordenados,
+        resumen_cliente=resumen_cliente
     )
+
+from datetime import datetime, timedelta
+from sqlalchemy.orm import joinedload
+from sqlalchemy import func
+
+@admin_bp.route('/solicitudes/prioridad')
+@login_required
+@admin_required
+def solicitudes_prioridad():
+    """
+    Lista TODAS las solicitudes prioritarias del sistema.
+
+    Criterio SQL:
+    - estado en ('proceso', 'activa', 'reemplazo')
+    - COALESCE(fecha_inicio_seguimiento, fecha_solicitud) <= hoy - 7 días
+
+    Luego, en Python, usamos las propiedades del modelo para mostrar
+    días en seguimiento, nivel de prioridad, etc.
+    """
+    hoy = datetime.utcnow()
+    limite_fecha = hoy - timedelta(days=7)
+
+    base_date = func.coalesce(Solicitud.fecha_inicio_seguimiento,
+                              Solicitud.fecha_solicitud)
+
+    solicitudes = (
+        Solicitud.query
+        .options(
+            joinedload(Solicitud.cliente),
+            joinedload(Solicitud.candidata)
+        )
+        .filter(
+            Solicitud.estado.in_(['proceso', 'activa', 'reemplazo']),
+            base_date <= limite_fecha
+        )
+        .order_by(base_date.asc())
+        .all()
+    )
+
+    # Por si quieres filtrar extra en Python (usa la lógica de es_prioritaria):
+    solicitudes = [s for s in solicitudes if s.es_prioritaria]
+
+    return render_template(
+        'admin/solicitudes_prioridad.html',
+        solicitudes=solicitudes
+    )
+
 
 
 # ============================================================
 #                                   API
 # ============================================================
-@admin_bp.route('/api/candidatas')
+@admin_bp.route('/api/candidatas', methods=['GET'])
 @login_required
 @admin_required
 def api_candidatas():
     """
-    Búsqueda paginada y con límite:
-    - q: término (mín. 2 chars), case-insensitive
-    - page: 1..n
-    - per_page: 1..50 (default 20)
+    API sencilla para autocomplete de candidatas.
+
+    - Busca por nombre (coincidencia parcial, case-insensitive).
+    - Si no se envía 'q', devuelve hasta 50 candidatas.
+    - Formato de respuesta compatible con el autocomplete del front.
     """
     term = (request.args.get('q') or '').strip()
-    page = max(1, int(request.args.get('page', 1) or 1))
-    per_page = int(request.args.get('per_page', 20) or 20)
-    per_page = max(1, min(per_page, 50))
 
     query = Candidata.query
 
     if term:
-        if len(term) < 2:
-            # Evita escaneos con términos de 1 carácter
-            return jsonify(results=[], meta={'page': page, 'per_page': per_page, 'total': 0, 'has_more': False})
-        query = query.filter(Candidata.nombre_completo.ilike(f'%{term}%'))
+        # Coincidencia parcial por nombre
+        like = f"%{term}%"
+        query = query.filter(Candidata.nombre_completo.ilike(like))
 
-    total = query.count()
-    resultados = (query
-                  .order_by(Candidata.nombre_completo)
-                  .offset((page - 1) * per_page)
-                  .limit(per_page)
-                  .all())
-
-    has_more = (page * per_page) < total
-    return jsonify(
-        results=[{'id': c.fila, 'text': c.nombre_completo} for c in resultados],
-        meta={'page': page, 'per_page': per_page, 'total': total, 'has_more': has_more}
+    candidatas = (
+        query
+        .order_by(Candidata.nombre_completo.asc())
+        .limit(50)
+        .all()
     )
+
+    results = [
+        {
+            "id": c.fila,                     # el ID que usas en otras partes
+            "text": c.nombre_completo or ""   # lo que se muestra en el autocomplete
+        }
+        for c in candidatas
+    ]
+
+    return jsonify({"results": results})
+
 
 
 # ============================================================

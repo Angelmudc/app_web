@@ -12,15 +12,31 @@ Incluye:
 
 from flask_wtf import FlaskForm
 from wtforms import (
-    StringField, PasswordField, TextAreaField, BooleanField,
-    IntegerField, HiddenField, SelectField, SelectMultipleField,
-    DecimalField, SubmitField, RadioField
+    StringField,
+    PasswordField,
+    TextAreaField,
+    BooleanField,
+    IntegerField,
+    HiddenField,
+    SelectField,
+    SelectMultipleField,
+    DecimalField,
+    SubmitField,
+    RadioField
 )
 from wtforms.validators import (
-    DataRequired, InputRequired, Optional, Length, NumberRange, Email,
-    EqualTo, Regexp, ValidationError
+    DataRequired,
+    InputRequired,
+    Optional,
+    Length,
+    NumberRange,
+    Email,
+    EqualTo,
+    Regexp,
+    ValidationError
 )
 from wtforms.widgets import ListWidget, CheckboxInput
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -369,19 +385,66 @@ class AdminPagoForm(FlaskForm):
 #                                REEMPLAZO
 # =============================================================================
 class AdminReemplazoForm(FlaskForm):
+    # ID de la candidata que falló (se pasa oculto desde la vista)
     candidata_old_id = HiddenField(validators=[DataRequired()])
+
+    # Nombre solo para mostrarlo en el formulario
     candidata_old_name = StringField(
         'Candidata que falló',
         validators=[DataRequired("Indica la candidata."), Length(max=200)]
     )
+
+    # Motivo por el cual se activa el reemplazo
     motivo_fallo = TextAreaField(
         'Motivo del fallo',
         validators=[DataRequired("Indica el motivo."), Length(max=500)],
         render_kw={"rows": 3}
     )
-    fecha_inicio_reemplazo = StringField(
-        'Fecha inicio del reemplazo',
-        validators=[DataRequired("Indica la fecha de inicio."), Length(max=16)],
-        render_kw={"type": "datetime-local"}
+
+    # Nota interna opcional (se guarda en Reemplazo.nota_adicional si la usas)
+    nota_adicional = TextAreaField(
+        'Nota interna (opcional)',
+        validators=[Optional(), Length(max=1000)],
+        render_kw={
+            "rows": 3,
+            "placeholder": "Detalles adicionales para el seguimiento (opcional)."
+        }
     )
+
     submit = SubmitField('Activar reemplazo')
+
+
+class AdminReemplazoFinForm(FlaskForm):
+    """
+    Formulario para FINALIZAR el reemplazo:
+    - Seleccionar la nueva candidata enviada.
+    - Guardar nota opcional sobre el reemplazo.
+    """
+
+    # ID de la nueva candidata (viaja oculto, se llena desde búsqueda/autocomplete)
+    candidata_new_id = HiddenField(
+        'ID nueva candidata',
+        validators=[DataRequired(message='Debes seleccionar la nueva candidata.')]
+    )
+
+    # Nombre de la nueva candidata: aquí TIENES que poder escribir para buscar
+    candidata_new_name = StringField(
+        'Nueva candidata seleccionada',
+        validators=[DataRequired(message='Escribe o selecciona la nueva candidata.')],
+        render_kw={
+            "placeholder": "Buscar nueva candidata..."
+            # OJO: NADA de readonly aquí
+        }
+    )
+
+    # Nota opcional sobre el reemplazo
+    nota_adicional = TextAreaField(
+        'Notas sobre el reemplazo',
+        validators=[Optional(), Length(max=1000)],
+        render_kw={
+            "rows": 3,
+            "placeholder": "Notas internas sobre este cierre de reemplazo (opcional)..."
+        }
+    )
+
+    submit = SubmitField('Finalizar reemplazo')

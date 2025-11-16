@@ -249,6 +249,14 @@ class Cliente(UserMixin, db.Model):
         cascade='all, delete-orphan'
     )
 
+    # 👇 NUEVO: tareas asociadas al cliente
+    tareas = db.relationship(
+        'TareaCliente',
+        back_populates='cliente',
+        order_by='TareaCliente.fecha_creacion.desc()',
+        cascade='all, delete-orphan'
+    )
+
     # ----- Métodos útiles -----
     def get_id(self):
         # Para flask-login, si en algún momento decides loguear por ID de cliente.
@@ -257,13 +265,63 @@ class Cliente(UserMixin, db.Model):
     def __repr__(self):
         return f"<Cliente {self.nombre_completo} ({self.codigo})>"
 
+
+class TareaCliente(db.Model):
+    __tablename__ = 'tareas_clientes'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    cliente_id       = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False, index=True)
+
+    titulo           = db.Column(db.String(200), nullable=False)
+    descripcion      = db.Column(db.Text, nullable=True)
+
+    fecha_creacion   = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    # Día límite para hacer la tarea (lo que usamos en "Tareas de hoy")
+    fecha_vencimiento = db.Column(db.Date, nullable=True, index=True)
+
+    estado = db.Column(
+        SAEnum('pendiente', 'en_progreso', 'completada', name='estado_tarea_cliente_enum'),
+        nullable=False,
+        default='pendiente'
+    )
+
+    prioridad = db.Column(
+        SAEnum('baja', 'media', 'alta', name='prioridad_tarea_cliente_enum'),
+        nullable=False,
+        default='media'
+    )
+
+    completada_at    = db.Column(db.DateTime, nullable=True)
+
+    # Relación inversa
+    cliente          = db.relationship('Cliente', back_populates='tareas')
+
+    def __repr__(self):
+        return f"<TareaCliente {self.id} - {self.titulo[:20]}>"
+
+
 class Solicitud(db.Model):
     __tablename__ = 'solicitudes'
 
     id                     = db.Column(db.Integer, primary_key=True)
     cliente_id             = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
+
+    # Fecha original de creación (no se toca, es histórica)
     fecha_solicitud        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     codigo_solicitud       = db.Column(db.String(50), nullable=False, unique=True)
+
+    # ─────────────────────────────────────────────
+    # SEGUIMIENTO / PRIORIDAD (NUEVO)
+    # ─────────────────────────────────────────────
+    # Desde cuándo se está dando seguimiento ACTIVO a esta solicitud.
+    # Se debe renovar cada vez que la pongas en 'activa' (o cuando tú decidas).
+    fecha_inicio_seguimiento = db.Column(db.DateTime, nullable=True)
+
+    # Cuántas veces se ha activado la solicitud (para control interno)
+    veces_activada         = db.Column(db.Integer, nullable=False, default=0)
+
+    # Última vez que se cambió el estado
+    fecha_ultimo_estado    = db.Column(db.DateTime, nullable=True)
 
     # Plan y pago
     tipo_plan              = db.Column(db.String(50), nullable=True)
@@ -362,6 +420,83 @@ class Solicitud(db.Model):
     fecha_cancelacion      = db.Column(db.DateTime, nullable=True)
     motivo_cancelacion     = db.Column(db.String(255), nullable=True)
 
+    # ─────────────────────────────────────────────────────────────
+    # LÓGICA DE PRIORIDAD / SEGUIMIENTO (SOLO CÁLCULO)
+    # ─────────────────────────────────────────────────────────────
+    @property
+    def dias_desde_creacion(self) -> int | None:
+        """
+        Días desde que se creó la solicitud (histórico).
+        Esto NO se usa para prioridad, solo referencia general.
+        """
+        if not self.fecha_solicitud:
+            return None
+        delta = datetime.utcnow() - self.fecha_solicitud
+        return delta.days
+
+    @property
+    def dias_en_seguimiento(self) -> int | None:
+        """
+        Días contando desde fecha_inicio_seguimiento.
+        Si no tiene fecha_inicio_seguimiento, cae a fecha_solicitud como backup.
+        ESTO es lo que se usa para decidir si es prioritaria.
+        """
+        base = self.fecha_inicio_seguimiento or self.fecha_solicitud
+        if not base:
+            return None
+        delta = datetime.utcnow() - base
+        return delta.days
+
+    @property
+    def es_prioritaria(self) -> bool:
+        """
+        Una solicitud es PRIORITARIA si:
+        - Está en estado 'proceso', 'activa' o 'reemplazo'
+        - Y lleva 7 días o más EN SEGUIMIENTO (no solo desde que se creó).
+        """
+        estados_activos = {'proceso', 'activa', 'reemplazo'}
+        if self.estado not in estados_activos:
+            return False
+
+        dias = self.dias_en_seguimiento
+        if dias is None:
+            return False
+
+        return dias >= 7
+
+    @property
+    def nivel_prioridad(self) -> str:
+        """
+        Niveles para pintar distinto:
+        - 'normal'   -> no prioritaria
+        - 'media'    -> 7 a 9 días en seguimiento
+        - 'alta'     -> 10 a 14 días
+        - 'critica'  -> 15 días o más
+        """
+        if not self.es_prioritaria:
+            return 'normal'
+
+        dias = self.dias_en_seguimiento or 0
+        if dias >= 15:
+            return 'critica'
+        elif dias >= 10:
+            return 'alta'
+        else:
+            return 'media'
+
+    def marcar_activada(self):
+        """
+        Llamar a esto cada vez que la solicitud se ponga en 'activa'
+        (o cuando reinicies el seguimiento):
+        - Reinicia fecha_inicio_seguimiento
+        - Aumenta veces_activada
+        - Actualiza fecha_ultimo_estado
+        """
+        ahora = datetime.utcnow()
+        self.fecha_inicio_seguimiento = ahora
+        self.fecha_ultimo_estado = ahora
+        self.veces_activada = (self.veces_activada or 0) + 1
+
     # ─────────────────────────────────────────────────────────
     # COMPATIBILIDAD – Test del CLIENTE (por solicitud)
     # ─────────────────────────────────────────────────────────
@@ -416,24 +551,96 @@ class Solicitud(db.Model):
     )
 
 
+
 class Reemplazo(db.Model):
     __tablename__ = 'reemplazos'
+
     id                     = db.Column(db.Integer, primary_key=True)
     solicitud_id           = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=False)
+
+    # Candidata que falló
     candidata_old_id       = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=False)
     motivo_fallo           = db.Column(db.Text,    nullable=False)
-    fecha_fallo            = db.Column(db.DateTime,nullable=False, default=datetime.utcnow)
+
+    # Cuándo falló (para historial)
+    fecha_fallo            = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Si esta solicitud queda “abierta” para buscar alguien nuevo
     oportunidad_nueva      = db.Column(db.Boolean, nullable=False, default=False)
-    fecha_inicio_reemplazo = db.Column(db.DateTime,nullable=True)
-    fecha_fin_reemplazo    = db.Column(db.DateTime,nullable=True)
+
+    # Reemplazo como proceso:
+    # - inicio: se abre el reemplazo y se empieza nueva búsqueda
+    # - fin: se cierra porque se le envió nueva candidata
+    fecha_inicio_reemplazo = db.Column(db.DateTime, nullable=True)
+    fecha_fin_reemplazo    = db.Column(db.DateTime, nullable=True)
+
+    # Nueva candidata asignada al cerrar el reemplazo
     candidata_new_id       = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=True)
+
+    # Notas internas del reemplazo
     nota_adicional         = db.Column(db.Text,    nullable=True)
-    created_at             = db.Column(db.DateTime,nullable=False, default=datetime.utcnow)
-    # relaciones:
+
+    # Registro técnico
+    created_at             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relaciones
     solicitud              = db.relationship('Solicitud', back_populates='reemplazos')
     candidata_old          = db.relationship('Candidata', foreign_keys=[candidata_old_id])
     candidata_new          = db.relationship('Candidata', foreign_keys=[candidata_new_id])
 
+    # ──────────────────────────────────────────────
+    # Helpers de estado (solo lógica, no BD)
+    # ──────────────────────────────────────────────
+    @property
+    def reemplazo_activo(self) -> bool:
+        """
+        Un reemplazo se considera ACTIVO cuando:
+        - Tiene fecha_inicio_reemplazo
+        - Y todavía no tiene fecha_fin_reemplazo
+        """
+        return self.fecha_inicio_reemplazo is not None and self.fecha_fin_reemplazo is None
+
+    @property
+    def dias_en_reemplazo(self) -> int | None:
+        """
+        Devuelve cuántos días lleva o duró el reemplazo:
+        - Si está activo  -> desde fecha_inicio_reemplazo hasta ahora.
+        - Si está cerrado -> desde fecha_inicio_reemplazo hasta fecha_fin_reemplazo.
+        """
+        if not self.fecha_inicio_reemplazo:
+            return None
+
+        fin = self.fecha_fin_reemplazo or datetime.utcnow()
+        delta = fin - self.fecha_inicio_reemplazo
+        return delta.days
+
+    # ──────────────────────────────────────────────
+    # Acciones de negocio (para usar en las rutas)
+    # ──────────────────────────────────────────────
+    def iniciar_reemplazo(self):
+        """
+        Marca el INICIO del reemplazo:
+        - Coloca fecha_inicio_reemplazo con la hora actual.
+        - Marca oportunidad_nueva = True (hay que buscar nueva candidata).
+        - Limpia fecha_fin_reemplazo por si acaso.
+        """
+        ahora = datetime.utcnow()
+        self.fecha_inicio_reemplazo = ahora
+        self.fecha_fin_reemplazo = None
+        self.oportunidad_nueva = True
+
+    def cerrar_reemplazo(self, candidata_nueva_id: int | None = None):
+        """
+        Marca el FIN del reemplazo:
+        - Coloca fecha_fin_reemplazo con la hora actual.
+        - Asigna la nueva candidata (si se pasa).
+        - Marca oportunidad_nueva = False (reemplazo cerrado).
+        """
+        ahora = datetime.utcnow()
+        self.fecha_fin_reemplazo = ahora
+        self.oportunidad_nueva = False
+        if candidata_nueva_id is not None:
+            self.candidata_new_id = candidata_nueva_id
 
 
 class LlamadaCandidata(db.Model):

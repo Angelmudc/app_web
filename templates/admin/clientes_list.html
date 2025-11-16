@@ -82,6 +82,8 @@
   .btn-info:hover{background:#0284c7}
   .btn-outline-secondary{border:1px solid var(--border-color);color:var(--text-color)}
   .btn-outline-secondary:hover{background:var(--accent);color:#fff;border-color:transparent}
+  .btn-danger{background:#ef4444;border:none;color:#fff}
+  .btn-danger:hover{background:#dc2626}
 
   /* Para el dropdown portal que sacamos fuera del flujo */
   .table-responsive{overflow:visible !important; position:relative; z-index:1;}
@@ -137,8 +139,7 @@
     pointer-events:auto;
   }
 
-  /* ======= Overrides críticos para móvil (<576px) =======
-     Cancelan el nowrap/scroll horizontal que viene del base */
+  /* ======= Overrides críticos para móvil (<576px) ======= */
   @media (max-width: 576px){
     .glass-card{padding:.85rem}
     .table, table.dataTable{
@@ -191,10 +192,21 @@
     <h1 class="h3 mb-0">👥 Clientes</h1>
     <div class="d-flex align-items-center gap-3">
       <div class="btn-group" role="group">
-        <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-success"><i class="bi bi-person-plus-fill"></i> Nuevo</a>
-        <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary"><i class="bi bi-card-list"></i> Solicitudes</a>
-        <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="btn btn-warning text-dark"><i class="bi bi-lightning-fill"></i> Pendientes ⚡</a>
-        <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="btn btn-info"><i class="bi bi-calendar-day-fill"></i> Resumen Hoy 📅</a>
+        <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-success">
+          <i class="bi bi-person-plus-fill"></i> Nuevo
+        </a>
+        <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary">
+          <i class="bi bi-card-list"></i> Solicitudes
+        </a>
+        <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="btn btn-warning text-dark">
+          <i class="bi bi-lightning-fill"></i> Pendientes ⚡
+        </a>
+        <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="btn btn-danger">
+          <i class="bi bi-exclamation-triangle-fill"></i> Prioritarias 🔥
+        </a>
+        <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="btn btn-info">
+          <i class="bi bi-calendar-day-fill"></i> Resumen Hoy 📅
+        </a>
       </div>
       <div class="mode-toggle" id="modeToggle" title="Cambiar modo">
         <i class="bi bi-sun-fill" id="modeIcon"></i>
@@ -214,7 +226,9 @@
       </select>
     </div>
     <div class="col-6 col-md-auto">
-      <button class="btn btn-outline-secondary w-100"><i class="bi bi-search"></i> Buscar</button>
+      <button class="btn btn-outline-secondary w-100">
+        <i class="bi bi-search"></i> Buscar
+      </button>
     </div>
   </form>
 
@@ -246,8 +260,16 @@
             <td data-label="Teléfono">{{ c.telefono }}</td>
             <td data-label="Ciudad">{{ c.ciudad or '—' }}</td>
             <td data-label="Sector">{{ c.sector or '—' }}</td>
-            <td data-label="Solicitudes"><span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span></td>
-            <td data-label="Registro">{% if c.fecha_registro %}{{ c.fecha_registro.strftime('%Y-%m-%d') }}{% else %}—{% endif %}</td>
+            <td data-label="Solicitudes">
+              <span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span>
+            </td>
+            <td data-label="Registro">
+              {% if c.fecha_registro %}
+                {{ c.fecha_registro.strftime('%Y-%m-%d') }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
             <td data-label="Acciones">
               <div class="btn-group">
                 <button type="button"
@@ -258,8 +280,16 @@
                   Elegir
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" id="menu-{{ c.id }}" role="menu" tabindex="-1" aria-label="Acciones de cliente">
-                  <li><a class="dropdown-item" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}"><i class="bi bi-eye-fill text-info me-2"></i>Ver Detalle</a></li>
-                  <li><a class="dropdown-item" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}"><i class="bi bi-pencil-fill text-warning me-2"></i>Editar</a></li>
+                  <li>
+                    <a class="dropdown-item" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}">
+                      <i class="bi bi-eye-fill text-info me-2"></i>Ver Detalle
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">
+                      <i class="bi bi-pencil-fill text-warning me-2"></i>Editar
+                    </a>
+                  </li>
                   <li><hr class="dropdown-divider"></li>
                   <li>
                     <a class="dropdown-item text-danger" href="#" onclick="if(confirm('¿Eliminar cliente #{{ c.id }}?')) document.getElementById('del-{{c.id}}').submit();">
@@ -280,7 +310,9 @@
 
     <!-- Paginación -->
     <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-      <small class="text-muted">Mostrando {{ start+1 if total>0 else 0 }}–{{ [end, total]|min }} de {{ total }}</small>
+      <small class="text-muted">
+        Mostrando {{ start+1 if total>0 else 0 }}–{{ [end, total]|min }} de {{ total }}
+      </small>
       <nav>
         <ul class="pagination pagination-sm mb-0">
           {% set q_current = request.args.get('q','') %}
@@ -288,7 +320,9 @@
           <li class="page-item {% if page<=1 %}disabled{% endif %}">
             <a class="page-link" href="{{ url_for('admin.listar_clientes') }}?q={{ q_current }}&per_page={{ per }}&page={{ page-1 }}">Anterior</a>
           </li>
-          <li class="page-item disabled"><span class="page-link">Página {{ page }} / {{ last_page }}</span></li>
+          <li class="page-item disabled">
+            <span class="page-link">Página {{ page }} / {{ last_page }}</span>
+          </li>
           <li class="page-item {% if page>=last_page %}disabled{% endif %}">
             <a class="page-link" href="{{ url_for('admin.listar_clientes') }}?q={{ q_current }}&per_page={{ per }}&page={{ page+1 }}">Siguiente</a>
           </li>

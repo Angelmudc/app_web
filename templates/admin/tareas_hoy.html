@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Tareas de hoy{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Tareas de hoy ({{ hoy.strftime('%d/%m/%Y') }})</h1>
+
+{% if tareas %}
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Cliente</th>
+        <th>Título</th>
+        <th>Estado</th>
+        <th>Prioridad</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tareas %}
+        <tr>
+          <td>
+            <a href="{{ url_for('admin.detalle_cliente', cliente_id=t.cliente.id) }}">
+              {{ t.cliente.nombre_completo }} ({{ t.cliente.codigo }})
+            </a>
+          </td>
+          <td>{{ t.titulo }}</td>
+          <td>{{ t.estado|capitalize }}</td>
+          <td>{{ t.prioridad|capitalize }}</td>
+          <td>
+            <a class="btn btn-sm btn-outline-primary"
+               href="{{ url_for('admin.detalle_cliente', cliente_id=t.cliente.id) }}">
+              Ver cliente
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="text-muted">Hoy no tienes tareas programadas.</p>
+{% endif %}
+{% endblock %}

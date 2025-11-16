@@ -176,6 +176,7 @@
   }
   .actions-grid .btn { padding: 0.35rem 0.5rem; line-height: 1; }
   .actions-grid .btn i, .actions-grid .btn .emoji { pointer-events: none; }
+
   .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0,0,0,0); border: 0;
@@ -192,9 +193,20 @@
       <div>
         <h1 class="h3 mb-1">Cliente: {{ cliente.nombre_completo | default('—') }}</h1>
         <div class="text-muted small">
-          <span class="me-2">Código: <span class="fw-semibold text-info">{{ cliente.codigo | default('—') }}</span></span>
-          <span class="me-2">Registrado: {{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}</span>
-          <span>Solicitudes: <span class="fw-semibold text-light">{{ cliente.total_solicitudes | default(0) }}</span></span>
+          <span class="me-2">
+            Código:
+            <span class="fw-semibold text-info">{{ cliente.codigo | default('—') }}</span>
+          </span>
+          <span class="me-2">
+            Registrado:
+            {{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}
+          </span>
+          <span>
+            Solicitudes:
+            <span class="fw-semibold text-light">
+              {{ kpi_cliente.total_solicitudes or 0 }}
+            </span>
+          </span>
         </div>
       </div>
     </div>
@@ -208,8 +220,38 @@
     </div>
   </div>
 
+  <!-- ===== BOTONES NUEVOS — ACCESOS A TAREAS ===== -->
+  <div class="d-flex flex-wrap gap-2 mb-4">
+
+    <a href="{{ url_for('admin.tareas_pendientes') }}" class="btn btn-primary">
+      📋 Tareas pendientes
+    </a>
+
+    <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-info">
+      📅 Tareas de hoy
+    </a>
+
+    <a href="{{ url_for('admin.crear_tarea_rapida', cliente_id=cliente.id) }}" class="btn btn-warning">
+      📝 Crear tarea completa
+    </a>
+
+    <form method="post"
+          action="{{ url_for('admin.crear_tarea_rapida', cliente_id=cliente.id) }}"
+          class="d-inline">
+      {% if csrf_token %}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% endif %}
+      <button type="submit" class="btn btn-success">
+        ⚡ Crear tarea rápida
+      </button>
+    </form>
+
+  </div>
+  <!-- ===== FIN BOTONES NUEVOS ===== -->
+
   <!-- ===== Tarjetas de info ===== -->
   <div class="row g-4">
+    <!-- Información general -->
     <div class="col-lg-6">
       <div class="glass-card h-100">
         <div class="glass-header bg-primary">
@@ -232,25 +274,88 @@
       </div>
     </div>
 
+    <!-- Métricas / KPIs -->
     <div class="col-lg-6">
       <div class="glass-card h-100">
         <div class="glass-header bg-info">
           <i class="bi bi-bar-chart-fill"></i>
           Métricas
         </div>
-        <dl class="row card-body mb-0">
-          <dt class="col-sm-6">Total de Solicitudes</dt>
-          <dd class="col-sm-6">{{ cliente.total_solicitudes | default(0) }}</dd>
+        <div class="card-body">
+          <div class="row text-center mb-3">
+            <div class="col-4">
+              <div class="h4 mb-0">{{ kpi_cliente.total_solicitudes or 0 }}</div>
+              <small class="text-muted">Solicitudes</small>
+            </div>
+            <div class="col-4">
+              <div class="h4 mb-0">
+                {% set pagadas = kpi_cliente.estados.pagada or 0 %}
+                {{ pagadas }}
+              </div>
+              <small class="text-muted">Pagadas</small>
+            </div>
+            <div class="col-4">
+              <div class="h4 mb-0">
+                {% set activas = kpi_cliente.estados.activa or 0 %}
+                {{ activas }}
+              </div>
+              <small class="text-muted">Activas</small>
+            </div>
+          </div>
 
-          <dt class="col-sm-6">Última Solicitud</dt>
-          <dd class="col-sm-6">{{ cliente.fecha_ultima_solicitud and cliente.fecha_ultima_solicitud.strftime('%Y-%m-%d') or '—' }}</dd>
+          <hr>
 
-          <dt class="col-sm-6">Registro</dt>
-          <dd class="col-sm-6">{{ cliente.fecha_registro and cliente.fecha_registro.strftime('%Y-%m-%d') or '—' }}</dd>
+          <div class="row mb-2">
+            <div class="col-6">
+              <small class="text-muted d-block">En proceso</small>
+              <span>{{ kpi_cliente.estados.proceso or 0 }}</span>
+            </div>
+            <div class="col-6">
+              <small class="text-muted d-block">Con reemplazo</small>
+              <span>{{ kpi_cliente.estados.reemplazo or 0 }}</span>
+            </div>
+          </div>
 
-          <dt class="col-sm-6">Última Actividad</dt>
-          <dd class="col-sm-6">{{ cliente.fecha_ultima_actividad and cliente.fecha_ultima_actividad.strftime('%Y-%m-%d') or '—' }}</dd>
-        </dl>
+          <div class="row mb-2">
+            <div class="col-6">
+              <small class="text-muted d-block">Canceladas</small>
+              <span>{{ kpi_cliente.estados.cancelada or 0 }}</span>
+            </div>
+            <div class="col-6">
+              <small class="text-muted d-block">Otros estados</small>
+              <span>{{ kpi_cliente.estados.otro or 0 }}</span>
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="mb-2">
+            <small class="text-muted d-block">Monto total pagado</small>
+            <span class="fw-bold">
+              {{ kpi_cliente.monto_total_pagado_str }}
+            </span>
+          </div>
+
+          <div class="row">
+            <div class="col-6">
+              <small class="text-muted d-block">Primera solicitud</small>
+              {% if kpi_cliente.primera_solicitud %}
+                <span>{{ kpi_cliente.primera_solicitud.strftime('%d/%m/%Y') }}</span>
+              {% else %}
+                <span>—</span>
+              {% endif %}
+            </div>
+            <div class="col-6">
+              <small class="text-muted d-block">Última actividad</small>
+              {% if kpi_cliente.ultima_actividad %}
+                <span>{{ kpi_cliente.ultima_actividad.strftime('%d/%m/%Y %H:%M') }}</span>
+              {% else %}
+                <span>—</span>
+              {% endif %}
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   </div>
@@ -270,6 +375,54 @@
     </div>
   </div>
 
+  <!-- ===== Tareas de seguimiento ===== -->
+  <div class="glass-card mt-4">
+    <div class="glass-header bg-warning">
+      <i class="bi bi-flag-fill"></i>
+      Tareas de seguimiento
+    </div>
+    <div class="card-body">
+      <form method="post"
+            action="{{ url_for('admin.crear_tarea_rapida', cliente_id=cliente.id) }}"
+            class="d-inline">
+        {% if csrf_token %}
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% endif %}
+        <button type="submit" class="btn btn-sm btn-warning">
+          ➕ Crear tarea rápida para hoy
+        </button>
+      </form>
+
+      {% if tareas %}
+        <h3 class="mt-4 h5">Tareas de seguimiento</h3>
+        <ul class="list-group mb-4 mt-2">
+          {% for t in tareas %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                <strong>{{ t.titulo }}</strong>
+                {% if t.fecha_vencimiento %}
+                  <small class="text-muted">
+                    — vence {{ t.fecha_vencimiento.strftime('%d/%m/%Y') }}
+                  </small>
+                {% endif %}
+                {% if t.descripcion %}
+                  <div class="small text-muted">{{ t.descripcion }}</div>
+                {% endif %}
+              </div>
+              <span class="badge bg-{% if t.estado == 'completada' %}success{% elif t.estado == 'en_progreso' %}info{% else %}warning{% endif %}">
+                {{ t.estado|capitalize }}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted mt-3 mb-0">
+          No hay tareas creadas para este cliente todavía.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- ===== Solicitudes ===== -->
   <div class="mt-5">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
@@ -279,13 +432,13 @@
       </a>
     </div>
 
-    {% if cliente.solicitudes|length == 0 %}
+    {% if solicitudes|length == 0 %}
       <div class="empty-block text-center surface-light">
         <i class="bi bi-inbox fs-3 d-block mb-2"></i>
         Aún no hay solicitudes para este cliente.
       </div>
     {% else %}
-      <!-- AQUI: tarjeta opaca clara para contraste perfecto -->
+      <!-- tarjeta opaca clara para contraste perfecto -->
       <div class="table-responsive glass-card surface-light mt-3">
         <div class="glass-header">
           <i class="bi bi-card-checklist"></i>
@@ -304,20 +457,27 @@
             </tr>
           </thead>
           <tbody>
-            {% for s in cliente.solicitudes %}
+            {% for s in solicitudes %}
             <tr>
               <td class="fw-semibold text-primary">{{ s.codigo_solicitud | default('—') }}</td>
-              <td>{{ s.fecha_solicitud and s.fecha_solicitud.strftime('%Y-%m-%d') or '—' }}</td>
+              <td>
+                {% if s.fecha_solicitud %}
+                  {{ s.fecha_solicitud.strftime('%Y-%m-%d') }}
+                {% else %}
+                  — 
+                {% endif %}
+              </td>
               <td>{{ s.ciudad_sector | default('—') }}</td>
               <td>{{ s.modalidad_trabajo | default('—') }}</td>
               <td>{{ s.tipo_plan | default('—') }}</td>
               <td>
+                {% set est = s.estado or '' %}
                 {% set badge_class =
-                  'bg-secondary' if s.estado == 'proceso' else
-                  'bg-primary'   if s.estado == 'activa'  else
-                  'bg-success'   if s.estado == 'pagada'  else
-                  'bg-warning'   if s.estado == 'cancelada' else
-                  'bg-info'      if s.estado == 'reemplazo' else
+                  'bg-secondary' if est == 'proceso' else
+                  'bg-primary'   if est == 'activa'  else
+                  'bg-success'   if est == 'pagada'  else
+                  'bg-warning'   if est == 'cancelada' else
+                  'bg-info'      if est == 'reemplazo' else
                   'bg-light'
                 %}
                 <span class="badge {{ badge_class }}">{{ s.estado | default('—') }}</span>
@@ -347,29 +507,47 @@
                   {% if s.estado in ['activa','proceso'] %}
                   <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}?next={{ request.full_path | urlencode }}"
                      class="btn btn-sm btn-success" data-bs-toggle="tooltip" title="Registrar pago" aria-label="Registrar pago">
-                    💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Pago</span>
+                    💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Registrar pago</span>
                   </a>
                   {% endif %}
 
-                  <!-- Reemplazo -->
+                  <!-- Reemplazo: INICIO -->
                   <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
-                     class="btn btn-sm btn-secondary" data-bs-toggle="tooltip" title="Activar reemplazo" aria-label="Reemplazo">
-                    🔁 <i class="bi bi-arrow-repeat ms-1"></i><span class="sr-only">Reemplazo</span>
+                     class="btn btn-sm btn-secondary"
+                     data-bs-toggle="tooltip"
+                     title="Activar reemplazo (registrar candidata que falló)"
+                     aria-label="Activar reemplazo">
+                    🔁 <i class="bi bi-arrow-repeat ms-1"></i><span class="sr-only">Activar reemplazo</span>
                   </a>
+
+                  <!-- Reemplazo: FIN (solo si está en estado reemplazo) -->
+                  {% if s.estado == 'reemplazo' and s.reemplazos %}
+                    {% set r_ultimo = s.reemplazos[-1] %}
+                    <a href="{{ url_for('admin.finalizar_reemplazo', s_id=s.id, reemplazo_id=r_ultimo.id) }}"
+                       class="btn btn-sm btn-dark"
+                       data-bs-toggle="tooltip"
+                       title="Finalizar reemplazo (nueva candidata enviada)"
+                       aria-label="Finalizar reemplazo">
+                      ✅ <i class="bi bi-check2-circle ms-1"></i><span class="sr-only">Finalizar reemplazo</span>
+                    </a>
+                  {% endif %}
 
                   {% if s.candidata_id %}
                     <!-- Compatibilidad admin -->
                     <a href="{{ url_for('admin.ver_compatibilidad', cliente_id=cliente.id, candidata_id=s.candidata_id) }}"
                        class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Ver compatibilidad (admin)" aria-label="Compatibilidad admin">
-                      👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad</span>
+                      👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad admin</span>
                     </a>
                     <!-- Test Secretarías -->
                     <a href="{{ url_for('compat_candidata', fila=s.candidata_id) }}"
                        class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Llenar/editar test (Secretarías)" aria-label="Test Secretarías">
-                      ✅ <i class="bi bi-ui-checks-grid ms-1"></i><span class="sr-only">Test</span>
+                      ✅ <i class="bi bi-ui-checks-grid ms-1"></i><span class="sr-only">Test Secretarías</span>
                     </a>
                   {% else %}
-                    <button class="btn btn-sm btn-secondary" disabled data-bs-toggle="tooltip" title="Asigna una candidata para evaluar compatibilidad" aria-label="Compatibilidad deshabilitada">
+                    <button class="btn btn-sm btn-secondary" disabled
+                            data-bs-toggle="tooltip"
+                            title="Asigna una candidata para evaluar compatibilidad"
+                            aria-label="Compatibilidad deshabilitada">
                       👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad</span>
                     </button>
                   {% endif %}
@@ -403,6 +581,37 @@
     {% endif %}
   </div>
 
+  <!-- ===== Historial de actividad (Timeline) ===== -->
+  <div class="glass-card mt-4">
+    <div class="glass-header bg-dark">
+      <i class="bi bi-clock-history"></i>
+      Historial de actividad
+    </div>
+    <div class="card-body">
+      {% if timeline %}
+        <ul class="list-unstyled mb-0">
+          {% for e in timeline %}
+            <li class="mb-2">
+              <div class="small text-muted">
+                {% if e.fecha %}
+                  {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
+                {% else %}
+                  — 
+                {% endif %}
+              </div>
+              <div>
+                <strong>{{ e.tipo }}</strong> – {{ e.detalle }}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <span class="text-muted">Todavía no hay historial para mostrar.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ===== Volver ===== -->
   <div class="mt-4">
     <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary">
       ◀️ <i class="bi bi-arrow-left-circle ms-1"></i> Volver a Clientes
