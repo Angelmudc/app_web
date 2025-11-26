@@ -1273,15 +1273,24 @@ def reporte_pagos():
 # SUBIR FOTOS (BINARIOS EN DB)
 # -----------------------------------------------------------------------------
 from flask import Blueprint
+
 subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
+
 
 @subir_bp.route('', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def subir_fotos():
+    """
+    Vista para:
+    - Buscar candidata por nombre, cédula o teléfono.
+    - Subir imágenes: depuración, perfil, cédula frente (cedula1) y cédula reverso (cedula2).
+    Todo se guarda como binario en la tabla Candidata.
+    """
     accion = (request.args.get('accion') or 'buscar').strip()
     fila_id = request.args.get('fila', type=int)
     resultados = []
 
+    # ========================= MODO BUSCAR =========================
     if accion == 'buscar':
         if request.method == 'POST':
             q = (request.form.get('busqueda') or '').strip()[:128]
@@ -1291,11 +1300,16 @@ def subir_fotos():
 
             like = f"%{q}%"
             try:
-                filas = (Candidata.query.filter(
-                    (Candidata.nombre_completo.ilike(like)) |
-                    (Candidata.cedula.ilike(like)) |
-                    (Candidata.numero_telefono.ilike(like))
-                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                filas = (
+                    Candidata.query.filter(
+                        (Candidata.nombre_completo.ilike(like)) |
+                        (Candidata.cedula.ilike(like)) |
+                        (Candidata.numero_telefono.ilike(like))
+                    )
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
             except Exception:
                 app.logger.exception("❌ Error buscando en subir_fotos")
                 filas = []
@@ -1303,15 +1317,19 @@ def subir_fotos():
             if not filas:
                 flash("⚠️ No se encontraron candidatas.", "warning")
             else:
-                resultados = [{
-                    'fila': c.fila,
-                    'nombre': c.nombre_completo,
-                    'telefono': c.numero_telefono or 'No especificado',
-                    'cedula': c.cedula or 'No especificado',
-                } for c in filas]
+                resultados = [
+                    {
+                        'fila': c.fila,
+                        'nombre': c.nombre_completo,
+                        'telefono': c.numero_telefono or 'No especificado',
+                        'cedula': c.cedula or 'No especificado',
+                    }
+                    for c in filas
+                ]
 
         return render_template('subir_fotos.html', accion='buscar', resultados=resultados)
 
+    # ========================= MODO SUBIR =========================
     if accion == 'subir':
         if not fila_id:
             flash("❌ Debes seleccionar primero una candidata.", "danger")
@@ -1322,35 +1340,62 @@ def subir_fotos():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
+        # GET: mostrar formulario
         if request.method == 'GET':
             return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
+        # POST: guardar archivos
         files = {
             'depuracion': request.files.get('depuracion'),
-            'perfil':     request.files.get('perfil'),
+            'perfil': request.files.get('perfil'),
+            'cedula1': request.files.get('cedula1'),
+            'cedula2': request.files.get('cedula2'),
         }
 
-        for campo, archivo in files.items():
+        # Depuración y perfil OBLIGATORIOS
+        required_campos = ['depuracion', 'perfil']
+        for campo in required_campos:
+            archivo = files.get(campo)
             if not archivo or archivo.filename == '':
-                flash(f"❌ Falta el archivo para {campo}.", "danger")
+                etiqueta = "depuración" if campo == "depuracion" else "perfil"
+                flash(f"❌ Falta el archivo de {etiqueta}.", "danger")
                 return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
         try:
-            # Lee bytes (si el storage envía FileStorage/stream)
-            candidata.depuracion = files['depuracion'].read()
-            candidata.perfil     = files['perfil'].read()
+            # Siempre que venga archivo válido, se guarda
+            dep = files.get('depuracion')
+            if dep and dep.filename:
+                candidata.depuracion = dep.read()
+
+            perf = files.get('perfil')
+            if perf and perf.filename:
+                candidata.perfil = perf.read()
+
+            c1 = files.get('cedula1')
+            if c1 and c1.filename:
+                candidata.cedula1 = c1.read()
+
+            c2 = files.get('cedula2')
+            if c2 and c2.filename:
+                candidata.cedula2 = c2.read()
+
             db.session.commit()
             flash("✅ Imágenes subidas y guardadas en la base de datos.", "success")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
         except Exception:
             db.session.rollback()
             app.logger.exception("❌ Error guardando imágenes en la BD")
             flash("❌ Error guardando en la BD.", "danger")
             return render_template('subir_fotos.html', accion='subir', fila=fila_id)
 
+    # Si algo raro, mandamos a buscar de nuevo
     return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
+
+# Registrar blueprint
 app.register_blueprint(subir_bp)
+
 
 
 # -----------------------------------------------------------------------------

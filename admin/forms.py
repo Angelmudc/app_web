@@ -186,7 +186,24 @@ class AdminClienteForm(FlaskForm):
 #                                 SOLICITUD
 # =============================================================================
 class AdminSolicitudForm(FlaskForm):
-    # Ubicación
+    # ─────────────────────────────────────────────
+    # TIPO DE SOLICITUD
+    # ─────────────────────────────────────────────
+    tipo_servicio = SelectField(
+        'Tipo de solicitud',
+        choices=[
+            ('DOMESTICA_LIMPIEZA', 'Doméstica de limpieza / general'),
+            ('NINERA',             'Niñera'),
+            ('ENFERMERA',          'Enfermera / Cuidadora'),
+            ('CHOFER',             'Chofer'),
+        ],
+        validators=[DataRequired("Selecciona el tipo de solicitud.")],
+        coerce=str
+    )
+
+    # ─────────────────────────────────────────────
+    # UBICACIÓN
+    # ─────────────────────────────────────────────
     ciudad_sector = StringField(
         'Ciudad / Sector',
         validators=[DataRequired("Indica ciudad y sector."), Length(max=200)],
@@ -198,14 +215,15 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Ej. Ruta K, Av. 27 Febrero (opcional)"}
     )
 
-    # Detalles
+    # ─────────────────────────────────────────────
+    # DETALLES GENERALES (cualquier tipo)
+    # ─────────────────────────────────────────────
     modalidad_trabajo = StringField(
         'Modalidad de trabajo',
         validators=[DataRequired("Indica la modalidad de trabajo."), Length(max=100)],
         render_kw={"placeholder": "Dormida / Salida diaria"}
     )
 
-    # ✅ Edad requerida como CHECKBOX múltiple (sincronizado con cliente y template)
     edad_requerida = MultiCheckboxField(
         'Edad requerida',
         choices=[
@@ -238,16 +256,15 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Ej. L–V 8:00 a 17:00"}
     )
 
-    # Funciones (múltiple) + “Otro”
     funciones = MultiCheckboxField(
         'Funciones a realizar al personal',
         choices=[
-            ('limpieza', 'Limpieza General'),
-            ('cocinar', 'Cocinar'),
-            ('lavar', 'Lavar'),
-            ('ninos', 'Cuidar Niños'),
+            ('limpieza',     'Limpieza General'),
+            ('cocinar',      'Cocinar'),
+            ('lavar',        'Lavar'),
+            ('ninos',        'Cuidar Niños'),
             ('envejeciente', 'Cuidar envejecientes'),
-            ('otro', 'Otro'),
+            ('otro',         'Otro'),
         ],
         validators=[Optional()],
         coerce=str,
@@ -259,11 +276,19 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Especifica otra función (opcional)"}
     )
 
-    # Tipo de lugar + “Otro”
+    # ─────────────────────────────────────────────
+    # TIPO DE LUGAR
+    # ─────────────────────────────────────────────
+    # OJO: ahora son Optional, la lógica de obligatorio la hacemos en validate()
     tipo_lugar = SelectField(
         'Tipo de lugar',
-        choices=[('casa', 'Casa'), ('oficina', 'Oficina'), ('apto', 'Apartamento'), ('otro', 'Otro')],
-        validators=[DataRequired("Selecciona el tipo de lugar.")],
+        choices=[
+            ('casa',    'Casa'),
+            ('oficina', 'Oficina'),
+            ('apto',    'Apartamento'),
+            ('otro',    'Otro')
+        ],
+        validators=[Optional()],
         coerce=str
     )
     tipo_lugar_otro = StringField(
@@ -272,16 +297,15 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Ej. Local comercial, villa, etc."}
     )
 
-    # Inmueble
     habitaciones = IntegerField(
         'Habitaciones',
-        validators=[DataRequired("Indica cuántas habitaciones."), NumberRange(min=0)],
+        validators=[Optional(), NumberRange(min=0)],
         render_kw={"min": 0}
     )
     banos = DecimalField(
         'Baños',
         places=1,
-        validators=[DataRequired("Indica la cantidad de baños."), NumberRange(min=0)],
+        validators=[Optional(), NumberRange(min=0)],
         render_kw={"min": "0", "step": "0.5"}
     )
     dos_pisos = BooleanField('¿Tiene dos pisos?')
@@ -297,13 +321,16 @@ class AdminSolicitudForm(FlaskForm):
     area_otro = StringField(
         'Otra área',
         validators=[Optional(), Length(max=200)],
-        render_kw={"placeholder": "Especifica otra área (opcional)"}
+        render_kw={"placeholder": "Ej. Balcón, cuarto de juegos…"}
     )
 
-    # Ocupantes
+    # ─────────────────────────────────────────────
+    # OCUPANTES
+    # ─────────────────────────────────────────────
+    # Igual: ponemos Optional y validamos por tipo en validate()
     adultos = IntegerField(
         'Adultos',
-        validators=[DataRequired("Indica cuántos adultos."), NumberRange(min=0)],
+        validators=[Optional(), NumberRange(min=0)],
         render_kw={"min": 0}
     )
     ninos = IntegerField(
@@ -317,17 +344,149 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Ej. 2 y 6 años (opcional)"}
     )
 
-    # Mascota
     mascota = StringField(
         'Mascota',
         validators=[Optional(), Length(max=100)],
         render_kw={"placeholder": "Ej. Perro, Gato… (opcional)"}
     )
 
-    # Compensación
+    # ─────────────────────────────────────────────
+    # CAMPOS ESPECÍFICOS – NIÑERA
+    # ─────────────────────────────────────────────
+    ninera_cant_ninos = IntegerField(
+        'Cantidad de niños a cuidar',
+        validators=[Optional(), NumberRange(min=0)],
+        render_kw={"min": 0}
+    )
+    ninera_edades = StringField(
+        'Edades de los niños a cuidar',
+        validators=[Optional(), Length(max=200)],
+        render_kw={"placeholder": "Ej. 1 año y 4 años"}
+    )
+    ninera_tareas = MultiCheckboxField(
+        'Tareas principales con los niños',
+        choices=[
+            ('jugar',          'Jugar y actividades'),
+            ('tareas',         'Apoyo con tareas'),
+            ('llevar_colegio', 'Llevar / buscar al colegio'),
+            ('alimentar',      'Alimentarlos'),
+            ('banar',          'Bañarlos'),
+            ('dormir',         'Ayudar a dormir'),
+            ('otro',           'Otro'),
+        ],
+        validators=[Optional()],
+        coerce=str,
+        default=[]
+    )
+    ninera_tareas_otro = StringField(
+        'Otras tareas con los niños',
+        validators=[Optional(), Length(max=200)],
+        render_kw={"placeholder": "Especifica tareas adicionales (opcional)"}
+    )
+    ninera_condicion_especial = TextAreaField(
+        'Condiciones especiales (salud / comportamiento)',
+        validators=[Optional(), Length(max=1000)],
+        render_kw={"rows": 3, "placeholder": "Ej. alergias, TDAH, autismo… (opcional)"}
+    )
+
+    # ─────────────────────────────────────────────
+    # CAMPOS ESPECÍFICOS – ENFERMERA / CUIDADORA
+    # ─────────────────────────────────────────────
+    enf_a_quien_cuida = StringField(
+        '¿A quién debe cuidar?',
+        validators=[Optional(), Length(max=200)],
+        render_kw={"placeholder": "Ej. señora de 80 años, paciente postrado…"}
+    )
+    enf_movilidad = SelectField(
+        'Movilidad de la persona',
+        choices=[
+            ('',          'Selecciona…'),
+            ('autonomo',  'Se mueve sola'),
+            ('parcial',   'Necesita ayuda parcial'),
+            ('postrado',  'Postrado en cama'),
+        ],
+        validators=[Optional()],
+        coerce=str
+    )
+    enf_condicion_principal = TextAreaField(
+        'Condición principal / diagnóstico',
+        validators=[Optional(), Length(max=1000)],
+        render_kw={"rows": 3, "placeholder": "Ej. Alzheimer, demencia, ACV, etc."}
+    )
+    enf_tareas = MultiCheckboxField(
+        'Tareas principales de cuidado',
+        choices=[
+            ('medicacion', 'Administrar medicamentos'),
+            ('aseo',       'Aseo personal'),
+            ('alimentar',  'Alimentación'),
+            ('movilizar',  'Ayudar a movilizar / caminar'),
+            ('control',    'Control de signos / chequeos básicos'),
+            ('otro',       'Otro'),
+        ],
+        validators=[Optional()],
+        coerce=str,
+        default=[]
+    )
+    enf_tareas_otro = StringField(
+        'Otras tareas de cuidado',
+        validators=[Optional(), Length(max=200)],
+        render_kw={"placeholder": "Especifica tareas adicionales (opcional)"}
+    )
+
+    # ─────────────────────────────────────────────
+    # CAMPOS ESPECÍFICOS – CHOFER
+    # ─────────────────────────────────────────────
+    chofer_vehiculo = RadioField(
+        'Vehículo que usará',
+        choices=[
+            ('cliente',  'Vehículo del cliente'),
+            ('empleado', 'Vehículo propio del chofer')
+        ],
+        validators=[Optional()],
+        coerce=str
+    )
+    chofer_tipo_vehiculo = SelectField(
+        'Tipo de vehículo',
+        choices=[
+            ('',              'Selecciona…'),
+            ('carro',         'Carro'),
+            ('yipeta',        'Yipeta'),
+            ('pickup',        'Pickup'),
+            ('minibus',       'Minibús'),
+            ('camion_ligero', 'Camión ligero'),
+            ('otro',          'Otro'),
+        ],
+        validators=[Optional()],
+        coerce=str
+    )
+    chofer_tipo_vehiculo_otro = StringField(
+        'Especifica el tipo de vehículo (si marcaste Otro)',
+        validators=[Optional(), Length(max=100)],
+        render_kw={"placeholder": "Ej. Guagua turística, camión mediano…"}
+    )
+    chofer_rutas = StringField(
+        'Rutas habituales',
+        validators=[Optional(), Length(max=255)],
+        render_kw={"placeholder": "Ej. Dentro de la ciudad, carretera, aeropuerto…"}
+    )
+    chofer_viajes_largos = RadioField(
+        '¿Hará viajes largos / fuera de la ciudad?',
+        choices=[('1', 'Sí'), ('0', 'No')],
+        validators=[Optional()],
+        coerce=lambda v: v == '1'
+    )
+    chofer_licencia_detalle = StringField(
+        'Licencia / experiencia manejando',
+        validators=[Optional(), Length(max=255)],
+        render_kw={"placeholder": "Ej. Licencia cat. 3, maneja mecánico y automático."}
+    )
+
+    # ─────────────────────────────────────────────
+    # COMPENSACIÓN
+    # ─────────────────────────────────────────────
     sueldo = StringField(
         'Sueldo',
-        validators=[DataRequired("Indica el sueldo.")],  # longitud libre por si lleva formato
+        validators=[DataRequired("Indica el sueldo.")],
         render_kw={"placeholder": "Ej. 23,000 mensual"}
     )
     pasaje_aporte = RadioField(
@@ -345,6 +504,63 @@ class AdminSolicitudForm(FlaskForm):
     )
 
     submit = SubmitField('Guardar solicitud')
+
+    # ─────────────────────────────────────────────
+    # VALIDACIÓN CONDICIONAL POR TIPO
+    # ─────────────────────────────────────────────
+    def validate(self, extra_validators=None):
+        """Validación condicional según tipo de servicio."""
+        rv = super().validate(extra_validators)
+        tipo = (self.tipo_servicio.data or '').strip()
+
+        # Para DOMÉSTICA y ENFERMERA: hogar obligatorio
+        if tipo in ('DOMESTICA_LIMPIEZA', 'ENFERMERA', ''):
+            if not self.tipo_lugar.data:
+                self.tipo_lugar.errors.append("Selecciona el tipo de lugar.")
+                rv = False
+            if self.habitaciones.data is None:
+                self.habitaciones.errors.append("Indica cuántas habitaciones.")
+                rv = False
+            if self.banos.data is None:
+                self.banos.errors.append("Indica la cantidad de baños.")
+                rv = False
+            if self.adultos.data is None:
+                self.adultos.errors.append("Indica cuántos adultos hay en la casa.")
+                rv = False
+
+        # Para NIÑERA: no exigimos casa/baños, pero sí niños básicos
+        if tipo == 'NINERA':
+            # Si no llenan cantidad de niños, al menos avisa
+            if self.ninera_cant_ninos.data is None or self.ninera_cant_ninos.data <= 0:
+                self.ninera_cant_ninos.errors.append("Indica cuántos niños va a cuidar.")
+                rv = False
+            if not (self.ninera_edades.data or "").strip():
+                self.ninera_edades.errors.append("Especifica las edades de los niños.")
+                rv = False
+
+        # Para ENFERMERA: detalles mínimos de paciente
+        if tipo == 'ENFERMERA':
+            if not (self.enf_a_quien_cuida.data or "").strip():
+                self.enf_a_quien_cuida.errors.append("Indica a quién debe cuidar.")
+                rv = False
+            if self.enf_movilidad.data is None or self.enf_movilidad.data == '':
+                self.enf_movilidad.errors.append("Indica la movilidad de la persona.")
+                rv = False
+
+        # Para CHOFER: no exigimos hogar/ocupantes; pedimos lo mínimo de chofer
+        if tipo == 'CHOFER':
+            # Quitamos posibles errores de hogar/ocupantes si quedaron
+            for f in (self.tipo_lugar, self.habitaciones, self.banos, self.adultos):
+                f.errors.clear()
+
+            if not self.chofer_vehiculo.data:
+                self.chofer_vehiculo.errors.append("Indica si usará vehículo del cliente o propio.")
+                rv = False
+            if not self.chofer_tipo_vehiculo.data:
+                self.chofer_tipo_vehiculo.errors.append("Selecciona el tipo de vehículo.")
+                rv = False
+
+        return rv
 
 
 # =============================================================================

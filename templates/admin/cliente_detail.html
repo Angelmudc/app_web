@@ -181,6 +181,46 @@
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0,0,0,0); border: 0;
   }
+
+  /* ===== Timeline ===== */
+  .timeline {
+    position: relative;
+    margin-left: 1.2rem;
+    padding-left: 1.2rem;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0.3rem;
+    top: 0.4rem;
+    bottom: 0.4rem;
+    width: 2px;
+    background: linear-gradient(to bottom, rgba(148, 163, 184, 0.5), rgba(148, 163, 184, 0.1));
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 1.1rem;
+  }
+  .timeline-dot {
+    position: absolute;
+    left: -1.15rem;
+    top: 0.2rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #38bdf8;
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25);
+  }
+  .timeline-content {
+    background: rgba(15, 23, 42, 0.75);
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    font-size: 0.9rem;
+  }
+  .timeline-content small {
+    color: #94a3b8;
+  }
 </style>
 
 <div class="container py-4 py-md-5" style="max-width: 1200px;">
@@ -222,7 +262,6 @@
 
   <!-- ===== BOTONES NUEVOS — ACCESOS A TAREAS ===== -->
   <div class="d-flex flex-wrap gap-2 mb-4">
-
     <a href="{{ url_for('admin.tareas_pendientes') }}" class="btn btn-primary">
       📋 Tareas pendientes
     </a>
@@ -245,7 +284,6 @@
         ⚡ Crear tarea rápida
       </button>
     </form>
-
   </div>
   <!-- ===== FIN BOTONES NUEVOS ===== -->
 
@@ -450,6 +488,7 @@
               <th>Código</th>
               <th>Fecha</th>
               <th>Ciudad/Sector</th>
+              <th>Tipo servicio</th>
               <th>Modalidad</th>
               <th>Plan</th>
               <th>Estado</th>
@@ -468,6 +507,24 @@
                 {% endif %}
               </td>
               <td>{{ s.ciudad_sector | default('—') }}</td>
+
+              <!-- ===== NUEVA COLUMNA: TIPO SERVICIO ===== -->
+              <td>
+                {% set ts = s.tipo_servicio or '' %}
+                {% if ts == 'NINERA' %}
+                  Niñera
+                {% elif ts == 'ENFERMERA' %}
+                  Enfermera / Cuidadora
+                {% elif ts == 'CHOFER' %}
+                  Chofer
+                {% elif ts == 'DOMESTICA_LIMPIEZA' or not ts %}
+                  Doméstica (limpieza)
+                {% else %}
+                  {{ ts }}
+                {% endif %}
+              </td>
+              <!-- ======================================== -->
+
               <td>{{ s.modalidad_trabajo | default('—') }}</td>
               <td>{{ s.tipo_plan | default('—') }}</td>
               <td>
@@ -589,42 +646,31 @@
     </div>
     <div class="card-body">
       {% if timeline %}
-        <ul class="list-unstyled mb-0">
+        <ul class="list-unstyled mb-0 timeline">
           {% for e in timeline %}
-            <li class="mb-2">
-              <div class="small text-muted">
-                {% if e.fecha %}
-                  {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
-                {% else %}
-                  — 
+            <li class="timeline-item">
+              <span class="timeline-dot"></span>
+              <div class="timeline-content">
+                <div class="d-flex justify-content-between align-items-baseline">
+                  <strong>{{ e.tipo }}</strong>
+                  {% if e.fecha %}
+                    <small>{{ e.fecha.strftime('%d/%m/%Y %H:%M') }}</small>
+                  {% endif %}
+                </div>
+                {% if e.detalle %}
+                  <div>{{ e.detalle }}</div>
                 {% endif %}
-              </div>
-              <div>
-                <strong>{{ e.tipo }}</strong> – {{ e.detalle }}
               </div>
             </li>
           {% endfor %}
         </ul>
       {% else %}
-        <span class="text-muted">Todavía no hay historial para mostrar.</span>
+        <p class="text-muted mb-0">
+          Aún no hay eventos registrados en el historial de este cliente.
+        </p>
       {% endif %}
     </div>
   </div>
-
-  <!-- ===== Volver ===== -->
-  <div class="mt-4">
-    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary">
-      ◀️ <i class="bi bi-arrow-left-circle ms-1"></i> Volver a Clientes
-    </a>
-  </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-  (function(){
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.forEach(function (el) { new bootstrap.Tooltip(el); });
-  })();
-</script>
 {% endblock %}

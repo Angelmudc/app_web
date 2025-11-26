@@ -738,12 +738,12 @@ def eliminar_cliente(cliente_id):
 @staff_required
 def detalle_cliente(cliente_id):
     """
-    📋 Vista 360° del cliente:
+    Vista 360° del cliente:
     - Datos del cliente
     - Resumen de solicitudes (totales, estados, monto pagado)
     - Lista de solicitudes del cliente
-    - Timeline simple de eventos (creación, pagos, cancelaciones, reemplazos)
-    - Listado de tareas de seguimiento del cliente
+    - Línea de tiempo simple de eventos (creación, publicaciones, pagos, cancelaciones, reemplazos)
+    - Tareas de seguimiento del cliente
     """
     from decimal import Decimal  # por si no está arriba
 
@@ -791,9 +791,10 @@ def detalle_cliente(cliente_id):
             try:
                 monto_total_pagado += Decimal(raw_monto)
             except Exception:
-                pass  # si hay valores viejos mal formateados, no rompe
+                # Si hay valores viejos mal formateados, no rompemos el flujo
+                pass
 
-        # Fechas
+        # Fechas de solicitudes para KPIs
         fs = getattr(s, 'fecha_solicitud', None)
         if fs:
             if primera_solicitud is None or fs < primera_solicitud:
@@ -818,53 +819,68 @@ def detalle_cliente(cliente_id):
     }
 
     # ------------------------------
-    # TIMELINE SIMPLE
+    # TIMELINE SIMPLE (HUMANO)
     # ------------------------------
     timeline = []
 
     for s in solicitudes:
-        # Creación
+        codigo = s.codigo_solicitud or s.id
+
+        # 1) Creación de la solicitud
         if s.fecha_solicitud:
             timeline.append({
                 'fecha': s.fecha_solicitud,
                 'tipo': 'Solicitud creada',
-                'detalle': f"Solicitud {s.codigo_solicitud or s.id}"
+                'detalle': f"Se creó la solicitud {codigo} para este cliente."
             })
 
-        # Publicada / copiada
+        # 2) Solicitud activada / en búsqueda (lo más parecido a 'publicada')
+        #    Usamos fecha_ultima_modificacion como referencia.
+        if s.estado == 'activa' and getattr(s, 'fecha_ultima_modificacion', None):
+            timeline.append({
+                'fecha': s.fecha_ultima_modificacion,
+                'tipo': 'Solicitud activada',
+                'detalle': f"La solicitud {codigo} está activa y en búsqueda de candidata."
+            })
+
+        # 3) Solicitud copiada para publicar (texto que se copia para redes / grupos)
         if getattr(s, 'last_copiado_at', None):
             timeline.append({
                 'fecha': s.last_copiado_at,
-                'tipo': 'Publicación / copia',
-                'detalle': f"Solicitud {s.codigo_solicitud or s.id} marcada como copiada"
+                'tipo': 'Solicitud copiada para publicar',
+                'detalle': f"Se copió el texto de la solicitud {codigo} para publicarla en redes o grupos."
             })
 
-        # Pagada
+        # 4) Pago registrado
         if s.estado == 'pagada' and getattr(s, 'fecha_ultima_modificacion', None):
             timeline.append({
                 'fecha': s.fecha_ultima_modificacion,
                 'tipo': 'Pago registrado',
-                'detalle': f"Solicitud {s.codigo_solicitud or s.id} marcada como pagada"
+                'detalle': f"La solicitud {codigo} fue marcada como pagada."
             })
 
-        # Cancelada
+        # 5) Solicitud cancelada
         if s.estado == 'cancelada' and getattr(s, 'fecha_cancelacion', None):
             motivo = (s.motivo_cancelacion or '').strip()
+            texto_motivo = motivo or 'Sin motivo especificado por el cliente.'
             timeline.append({
                 'fecha': s.fecha_cancelacion,
                 'tipo': 'Solicitud cancelada',
-                'detalle': f"{s.codigo_solicitud or s.id} – {motivo or 'Sin motivo especificado'}"
+                'detalle': f"La solicitud {codigo} fue cancelada. Motivo: {texto_motivo}"
             })
 
-        # Reemplazos
+        # 6) Reemplazos activados
         for r in (s.reemplazos or []):
             fecha_r = getattr(r, 'fecha_inicio_reemplazo', None) or getattr(r, 'created_at', None)
             if not fecha_r:
                 continue
+
             nombre_new = getattr(getattr(r, 'candidata_new', None), 'nombre_completo', None)
-            detalle_r = f"Reemplazo para {s.codigo_solicitud or s.id}"
             if nombre_new:
-                detalle_r += f" con {nombre_new}"
+                detalle_r = f"Se activó un reemplazo en la solicitud {codigo} con la candidata {nombre_new}."
+            else:
+                detalle_r = f"Se activó un reemplazo en la solicitud {codigo}."
+
             timeline.append({
                 'fecha': fecha_r,
                 'tipo': 'Reemplazo activado',
@@ -883,8 +899,8 @@ def detalle_cliente(cliente_id):
         .order_by(
             TareaCliente.estado != 'pendiente',             # primero pendientes
             TareaCliente.fecha_vencimiento.is_(None),       # luego las que no tienen fecha
-            TareaCliente.fecha_vencimiento.asc(),           # vencen antes
-            TareaCliente.fecha_creacion.desc()              # últimas creadas
+            TareaCliente.fecha_vencimiento.asc(),           # las que vencen antes van arriba
+            TareaCliente.fecha_creacion.desc()              # últimas creadas al final dentro del mismo grupo
         )
         .all()
     )
@@ -897,6 +913,7 @@ def detalle_cliente(cliente_id):
         timeline=timeline,
         tareas=tareas
     )
+
 
 @admin_bp.route('/tareas/pendientes')
 @login_required
@@ -991,6 +1008,164 @@ def crear_tarea_rapida(cliente_id):
 
 
 # ─────────────────────────────────────────────────────────────
+# HELPERS: Detalles por tipo de servicio (JSONB)
+# ─────────────────────────────────────────────────────────────
+
+def _build_detalles_servicio_from_form(form) -> dict | None:
+    """
+    Construye el JSON que se guarda en Solicitud.detalles_servicio
+    según el tipo de servicio seleccionado.
+    """
+    ts = getattr(form, 'tipo_servicio', None).data if hasattr(form, 'tipo_servicio') else None
+    if not ts:
+        return None
+
+    detalles: dict = {
+        "tipo": ts  # siempre guardamos el tipo aquí
+    }
+
+    # ─────────────────────────────
+    # NIÑERA
+    # ─────────────────────────────
+    if ts == 'NINERA':
+        cant_ninos = form.ninera_cant_ninos.data if hasattr(form, 'ninera_cant_ninos') else None
+        edades = (form.ninera_edades.data or '').strip() if hasattr(form, 'ninera_edades') else ''
+        tareas = form.ninera_tareas.data if hasattr(form, 'ninera_tareas') else []
+        tareas_otro = (form.ninera_tareas_otro.data or '').strip() if hasattr(form, 'ninera_tareas_otro') else ''
+        condicion = (form.ninera_condicion_especial.data or '').strip() if hasattr(form, 'ninera_condicion_especial') else ''
+
+        detalles.update({
+            "cantidad_ninos": cant_ninos,
+            "edades_ninos": edades or None,
+            "tareas": _clean_list(tareas or []),
+            "tareas_otro": tareas_otro or None,
+            "condicion_especial": condicion or None,
+        })
+
+    # ─────────────────────────────
+    # ENFERMERA / CUIDADORA
+    # ─────────────────────────────
+    elif ts == 'ENFERMERA':
+        a_quien = (form.enf_a_quien_cuida.data or '').strip() if hasattr(form, 'enf_a_quien_cuida') else ''
+        condicion = (form.enf_condicion_principal.data or '').strip() if hasattr(form, 'enf_condicion_principal') else ''
+        movilidad = form.enf_movilidad.data if hasattr(form, 'enf_movilidad') else ''
+        tareas = form.enf_tareas.data if hasattr(form, 'enf_tareas') else []
+        tareas_otro = (form.enf_tareas_otro.data or '').strip() if hasattr(form, 'enf_tareas_otro') else ''
+
+        detalles.update({
+            "a_quien_cuida": a_quien or None,
+            "condicion_principal": condicion or None,
+            "movilidad": movilidad or None,
+            "tareas": _clean_list(tareas or []),
+            "tareas_otro": tareas_otro or None,
+        })
+
+    # ─────────────────────────────
+    # CHOFER
+    # ─────────────────────────────
+    elif ts == 'CHOFER':
+        vehiculo = form.chofer_vehiculo.data if hasattr(form, 'chofer_vehiculo') else ''
+        tipo_vehiculo = form.chofer_tipo_vehiculo.data if hasattr(form, 'chofer_tipo_vehiculo') else ''
+        tipo_vehiculo_otro = (form.chofer_tipo_vehiculo_otro.data or '').strip() if hasattr(form, 'chofer_tipo_vehiculo_otro') else ''
+        rutas = (form.chofer_rutas.data or '').strip() if hasattr(form, 'chofer_rutas') else ''
+        viajes_largos = bool(form.chofer_viajes_largos.data) if hasattr(form, 'chofer_viajes_largos') else None
+        licencia = (form.chofer_licencia_detalle.data or '').strip() if hasattr(form, 'chofer_licencia_detalle') else ''
+
+        detalles.update({
+            "vehiculo": vehiculo or None,
+            "tipo_vehiculo": tipo_vehiculo or None,
+            "tipo_vehiculo_otro": tipo_vehiculo_otro or None,
+            "rutas": rutas or None,
+            "viajes_largos": viajes_largos,
+            "licencia_requisitos": licencia or None,
+        })
+
+    # ─────────────────────────────
+    # DOMÉSTICA DE LIMPIEZA
+    # ─────────────────────────────
+    elif ts == 'DOMESTICA_LIMPIEZA':
+        # No metemos más cosas aquí porque ya usamos columnas normales (funciones, áreas, etc.)
+        pass
+
+    # Limpiar claves vacías
+    clean = {
+        k: v for k, v in detalles.items()
+        if v not in (None, '', [], {})
+    }
+    return clean or None
+
+
+def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
+    """
+    Cuando se edita una solicitud, toma solicitud.detalles_servicio (JSON)
+    y rellena los campos específicos correspondientes en el form.
+    """
+    try:
+        if not hasattr(solicitud, 'detalles_servicio') or not solicitud.detalles_servicio:
+            return
+
+        data = solicitud.detalles_servicio or {}
+        ts = data.get("tipo") or getattr(solicitud, 'tipo_servicio', None)
+
+        # Aseguramos que el select tenga el tipo
+        if hasattr(form, 'tipo_servicio') and not form.tipo_servicio.data:
+            form.tipo_servicio.data = ts
+
+        # ─────────────────────────────
+        # NIÑERA
+        # ─────────────────────────────
+        if ts == 'NINERA':
+            if hasattr(form, 'ninera_cant_ninos'):
+                form.ninera_cant_ninos.data = data.get("cantidad_ninos")
+            if hasattr(form, 'ninera_edades'):
+                form.ninera_edades.data = data.get("edades_ninos") or ''
+            if hasattr(form, 'ninera_tareas'):
+                form.ninera_tareas.data = data.get("tareas") or []
+            if hasattr(form, 'ninera_tareas_otro'):
+                form.ninera_tareas_otro.data = data.get("tareas_otro") or ''
+            if hasattr(form, 'ninera_condicion_especial'):
+                form.ninera_condicion_especial.data = data.get("condicion_especial") or ''
+
+        # ─────────────────────────────
+        # ENFERMERA / CUIDADORA
+        # ─────────────────────────────
+        elif ts == 'ENFERMERA':
+            if hasattr(form, 'enf_a_quien_cuida'):
+                form.enf_a_quien_cuida.data = data.get("a_quien_cuida") or ''
+            if hasattr(form, 'enf_condicion_principal'):
+                form.enf_condicion_principal.data = data.get("condicion_principal") or ''
+            if hasattr(form, 'enf_movilidad'):
+                form.enf_movilidad.data = data.get("movilidad") or ''
+            if hasattr(form, 'enf_tareas'):
+                form.enf_tareas.data = data.get("tareas") or []
+            if hasattr(form, 'enf_tareas_otro'):
+                form.enf_tareas_otro.data = data.get("tareas_otro") or ''
+
+        # ─────────────────────────────
+        # CHOFER
+        # ─────────────────────────────
+        elif ts == 'CHOFER':
+            if hasattr(form, 'chofer_vehiculo'):
+                form.chofer_vehiculo.data = data.get("vehiculo") or None
+            if hasattr(form, 'chofer_tipo_vehiculo'):
+                form.chofer_tipo_vehiculo.data = data.get("tipo_vehiculo") or ''
+            if hasattr(form, 'chofer_tipo_vehiculo_otro'):
+                form.chofer_tipo_vehiculo_otro.data = data.get("tipo_vehiculo_otro") or ''
+            if hasattr(form, 'chofer_rutas'):
+                form.chofer_rutas.data = data.get("rutas") or ''
+            if hasattr(form, 'chofer_viajes_largos'):
+                form.chofer_viajes_largos.data = bool(data.get("viajes_largos")) if "viajes_largos" in data else None
+            if hasattr(form, 'chofer_licencia_detalle'):
+                form.chofer_licencia_detalle.data = data.get("licencia_requisitos") or ''
+
+        # DOMESTICA_LIMPIEZA no tiene extras en JSON
+
+    except Exception:
+        # Si algo falla, no explotamos el render
+        return
+
+
+# ─────────────────────────────────────────────────────────────
 # ADMIN: Nueva solicitud
 # ─────────────────────────────────────────────────────────────
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET', 'POST'])
@@ -1004,23 +1179,49 @@ def nueva_solicitud_admin(cliente_id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        # Valores iniciales limpios/seguros
+        # Valores iniciales
+        if hasattr(form, 'tipo_servicio'):
+            form.tipo_servicio.data = 'DOMESTICA_LIMPIEZA'
+
         if hasattr(form, 'funciones'):        form.funciones.data = []
         if hasattr(form, 'funciones_otro'):   form.funciones_otro.data = ''
         if hasattr(form, 'areas_comunes'):    form.areas_comunes.data = []
         if hasattr(form, 'area_otro'):        form.area_otro.data = ''
-        if hasattr(form, 'edad_requerida'):   form.edad_requerida.data = []  # lista de CÓDIGOS
+        if hasattr(form, 'edad_requerida'):   form.edad_requerida.data = []
         if hasattr(form, 'edad_otro'):        form.edad_otro.data = ''
         if hasattr(form, 'tipo_lugar_otro'):  form.tipo_lugar_otro.data = ''
         if hasattr(form, 'mascota'):          form.mascota.data = ''
 
+        # Limpia bloques específicos
+        if hasattr(form, 'ninera_cant_ninos'):
+            form.ninera_cant_ninos.data = None
+            form.ninera_edades.data = ''
+            form.ninera_tareas.data = []
+            form.ninera_tareas_otro.data = ''
+            form.ninera_condicion_especial.data = ''
+
+        if hasattr(form, 'enf_a_quien_cuida'):
+            form.enf_a_quien_cuida.data = ''
+            form.enf_movilidad.data = ''
+            form.enf_condicion_principal.data = ''
+            form.enf_tareas.data = []
+            form.enf_tareas_otro.data = ''
+
+        if hasattr(form, 'chofer_vehiculo'):
+            form.chofer_vehiculo.data = None
+            form.chofer_tipo_vehiculo.data = ''
+            form.chofer_tipo_vehiculo_otro.data = ''
+            form.chofer_rutas.data = ''
+            form.chofer_viajes_largos.data = None
+            form.chofer_licencia_detalle.data = ''
+
     # POST válido
     if form.validate_on_submit():
         try:
-            # Código único robusto
+            # Código único
             nuevo_codigo = _next_codigo_solicitud(c)
 
-            # Instanciar con mínimos obligatorios
+            # Instanciar con mínimos
             s = Solicitud(
                 cliente_id=c.id,
                 fecha_solicitud=datetime.utcnow(),
@@ -1030,13 +1231,17 @@ def nueva_solicitud_admin(cliente_id):
             # Carga general desde WTForms
             form.populate_obj(s)
 
-            # Tipo de lugar ('otro')
+            # Tipo de servicio
+            if hasattr(form, 'tipo_servicio'):
+                s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
+
+            # Tipo de lugar
             s.tipo_lugar = _map_tipo_lugar(
                 getattr(s, 'tipo_lugar', ''),
                 getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
             )
 
-            # Edad requerida → guardar LABELS legibles
+            # Edad requerida (guardar LABELS)
             s.edad_requerida = _map_edad_choices(
                 codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
                 edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
@@ -1047,7 +1252,7 @@ def nueva_solicitud_admin(cliente_id):
             if hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
 
-            # ===== Funciones (códigos válidos) + texto "otro" =====
+            # Funciones
             selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
             extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
             if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
@@ -1060,7 +1265,10 @@ def nueva_solicitud_admin(cliente_id):
 
             # Áreas comunes válidas
             allowed_areas = _allowed_codes_from_choices(form.areas_comunes.choices) if hasattr(form, 'areas_comunes') else set()
-            s.areas_comunes = [a for a in _clean_list(getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data) if a in allowed_areas]
+            s.areas_comunes = [
+                a for a in _clean_list(getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data)
+                if a in allowed_areas
+            ]
 
             # Área "otro"
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
@@ -1068,6 +1276,9 @@ def nueva_solicitud_admin(cliente_id):
 
             # Pasaje
             s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', type('x', (object,), {'data': False})).data)
+
+            # Detalles específicos según tipo_servicio (JSONB)
+            s.detalles_servicio = _build_detalles_servicio_from_form(form)
 
             # Métricas cliente
             db.session.add(s)
@@ -1113,8 +1324,21 @@ def editar_solicitud_admin(cliente_id, id):
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
+    # ─────────────────────────────────────────
+    # GET: pre-cargar campos
+    # ─────────────────────────────────────────
     if request.method == 'GET':
-        # ---- Tipo de lugar ----
+        # Tipo de servicio
+        if hasattr(form, 'tipo_servicio'):
+            valid_ts = {code for code, _ in form.tipo_servicio.choices}
+            if not s.tipo_servicio:
+                if 'DOMESTICA_LIMPIEZA' in valid_ts:
+                    form.tipo_servicio.data = 'DOMESTICA_LIMPIEZA'
+            else:
+                if s.tipo_servicio in valid_ts:
+                    form.tipo_servicio.data = s.tipo_servicio
+
+        # Tipo de lugar
         try:
             if hasattr(form, 'tipo_lugar') and hasattr(form, 'tipo_lugar_otro'):
                 allowed_tl = _allowed_codes_from_choices(form.tipo_lugar.choices)
@@ -1127,13 +1351,12 @@ def editar_solicitud_admin(cliente_id, id):
         except Exception:
             pass
 
-        # ---- Edad requerida (BD guarda LABELS) → form CÓDIGOS y “otro” ----
+        # Edad requerida
         if hasattr(form, 'edad_requerida'):
             selected_codes, otro_text = _split_edad_for_form(
                 stored_list=s.edad_requerida,
                 edad_choices=form.edad_requerida.choices
             )
-            # Si hay texto libre, marca 'otro' en el form
             try:
                 edad_codes = set(selected_codes or [])
                 if (otro_text or '').strip():
@@ -1146,21 +1369,18 @@ def editar_solicitud_admin(cliente_id, id):
             if hasattr(form, 'edad_otro'):
                 form.edad_otro.data = (otro_text or '').strip()
 
-        # ---- Funciones ----
+        # Funciones
         if hasattr(form, 'funciones'):
             allowed_fun_codes = _allowed_codes_from_choices(form.funciones.choices)
             funs_guardadas = _clean_list(s.funciones)
             form.funciones.data = [f for f in funs_guardadas if f in allowed_fun_codes]
 
-            # Extras fuera de catálogo que antes se guardaron (por compatibilidad)
             extras = [f for f in funs_guardadas if f not in allowed_fun_codes and f != 'otro']
 
-            # Valor base del campo libre
             base_otro = (getattr(s, 'funciones_otro', '') or '').strip()
             if hasattr(form, 'funciones_otro'):
                 form.funciones_otro.data = (", ".join(extras) if extras else base_otro)
 
-            # >>> FIX visible: si hay texto en funciones_otro, marca 'otro' seleccionado
             try:
                 if (form.funciones_otro.data or '').strip():
                     fun_codes = set(form.funciones.data or [])
@@ -1168,10 +1388,9 @@ def editar_solicitud_admin(cliente_id, id):
                         fun_codes.add('otro')
                     form.funciones.data = list(fun_codes)
             except Exception:
-                # si algo falla, al menos no romper el render
                 pass
 
-        # ---- Mascota / Áreas / Pasaje ----
+        # Mascota / Áreas / Pasaje
         if hasattr(form, 'mascota'):
             form.mascota.data = (getattr(s, 'mascota', '') or '')
         if hasattr(form, 'areas_comunes'):
@@ -1181,11 +1400,20 @@ def editar_solicitud_admin(cliente_id, id):
         if hasattr(form, 'pasaje_aporte'):
             form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
 
+        # Detalles específicos (JSONB)
+        _populate_form_detalles_from_solicitud(form, s)
+
+    # ─────────────────────────────────────────
     # POST válido
+    # ─────────────────────────────────────────
     if form.validate_on_submit():
         try:
             # Carga general
             form.populate_obj(s)
+
+            # Tipo de servicio
+            if hasattr(form, 'tipo_servicio'):
+                s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
 
             # Tipo de lugar
             s.tipo_lugar = _map_tipo_lugar(
@@ -1193,7 +1421,7 @@ def editar_solicitud_admin(cliente_id, id):
                 getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
             )
 
-            # Edad requerida (guardar LABELS)
+            # Edad requerida (LABELS)
             s.edad_requerida = _map_edad_choices(
                 codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
                 edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
@@ -1204,7 +1432,7 @@ def editar_solicitud_admin(cliente_id, id):
             if hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
 
-            # ===== Funciones (códigos válidos) + texto "otro" =====
+            # Funciones
             selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
             extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
             if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
@@ -1228,8 +1456,11 @@ def editar_solicitud_admin(cliente_id, id):
             if hasattr(form, 'pasaje_aporte'):
                 s.pasaje_aporte = bool(form.pasaje_aporte.data)
 
-            # Timestamps
+            # Timestamp
             s.fecha_ultima_modificacion = datetime.utcnow()
+
+            # Detalles específicos (JSONB)
+            s.detalles_servicio = _build_detalles_servicio_from_form(form)
 
             db.session.commit()
             flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
@@ -2418,6 +2649,11 @@ def _format_money_usd(raw) -> str:
 # RUTAS ADMIN – copiar solicitudes (con nota_cliente al final si existe)
 
 # Helper específico para formatear el código de la solicitud
+# ------------------------------ RUTAS ----------------------------------------
+
+# RUTAS ADMIN – copiar solicitudes (con nota_cliente al final si existe)
+
+# Helper específico para formatear el código de la solicitud
 def _fmt_codigo_solicitud(codigo: str) -> str:
     """
     Formatea solo el tramo numérico final del código si:
@@ -2464,6 +2700,7 @@ def copiar_solicitudes():
     - Mascotas solo si hay.
     - Líneas en blanco entre bloques.
     - Funciones en el MISMO ORDEN seleccionado (y 'otro' al final si aplica).
+    - Agrega detalles extras según el tipo (niñera / enfermera / chofer).
     """
     q = _s(request.args.get('q'))
 
@@ -2520,9 +2757,20 @@ def copiar_solicitudes():
         .all()
     )
 
+    # Form temporal para leer choices y labels
     form = AdminSolicitudForm()
-    FUNCIONES_CHOICES = list(getattr(form.funciones, "choices", []) or [])
-    FUNCIONES_LABELS = {k: v for k, v in FUNCIONES_CHOICES}
+
+    FUNCIONES_CHOICES      = list(getattr(form, 'funciones',      None).choices or [])
+    FUNCIONES_LABELS       = {k: v for k, v in FUNCIONES_CHOICES}
+
+    NINERA_TAREAS_CHOICES  = list(getattr(form, 'ninera_tareas',  None).choices or [])
+    NINERA_TAREAS_LABELS   = {k: v for k, v in NINERA_TAREAS_CHOICES}
+
+    ENF_TAREAS_CHOICES     = list(getattr(form, 'enf_tareas',     None).choices or [])
+    ENF_TAREAS_LABELS      = {k: v for k, v in ENF_TAREAS_CHOICES}
+
+    ENF_MOV_CHOICES        = list(getattr(form, 'enf_movilidad',  None).choices or [])
+    ENF_MOV_LABELS         = {k: v for k, v in ENF_MOV_CHOICES}
 
     solicitudes = []
     for s in raw_sols:
@@ -2580,12 +2828,14 @@ def copiar_solicitudes():
             hogar_partes_detalle.append(", ".join(areas))
 
         tipo_lugar = _s(getattr(s, 'tipo_lugar', None))
-        if tipo_lugar and hogar_partes_detalle:
-            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}"
-        elif tipo_lugar:
-            hogar_descr = tipo_lugar
+        # Solo imprimimos algo del hogar si hay detalles reales (habitaciones, baños o áreas).
+        if hogar_partes_detalle:
+            if tipo_lugar:
+                hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}"
+            else:
+                hogar_descr = ", ".join(hogar_partes_detalle)
         else:
-            hogar_descr = ", ".join(hogar_partes_detalle) if hogar_partes_detalle else ""
+            hogar_descr = ""
 
         # ====================== MASCOTAS ======================
         mascota_val = _s(getattr(s, 'mascota', None))
@@ -2614,6 +2864,110 @@ def copiar_solicitudes():
         # Nota del cliente (al final, sin prefijo)
         nota_cli = _s(getattr(s, 'nota_cliente', None))
 
+        # ====================== DETALLES SERVICIO (NIÑERA / ENFERMERA / CHOFER) ======================
+        detalles = getattr(s, 'detalles_servicio', None) or {}
+        ts_det   = detalles.get("tipo") or _s(getattr(s, 'tipo_servicio', None))
+
+        ninera_block = ""
+        enf_block    = ""
+        chofer_block = ""
+
+        # ---- NIÑERA ----
+        if ts_det == 'NINERA':
+            cant_ninos = detalles.get("cantidad_ninos") or detalles.get("cant_ninos")
+            edades_n   = detalles.get("edades_ninos")   or detalles.get("edades")
+            tareas_cd  = detalles.get("tareas") or []
+            cond_esp   = detalles.get("condicion_especial") or detalles.get("condicion")
+
+            lineas_nin = []
+
+            if cant_ninos or edades_n:
+                base = "Niños a cuidar: "
+                if cant_ninos:
+                    base += str(cant_ninos)
+                if edades_n:
+                    base += f" ({edades_n})"
+                lineas_nin.append(base)
+
+            if tareas_cd:
+                etiquetas = []
+                for code in _as_list(tareas_cd):
+                    lbl = NINERA_TAREAS_LABELS.get(code)
+                    if lbl:
+                        etiquetas.append(lbl)
+                    else:
+                        etiquetas.append(str(code))
+                lineas_nin.append("Tareas con los niños: " + ", ".join(etiquetas))
+
+            if cond_esp:
+                lineas_nin.append(f"Condición especial: {cond_esp}")
+
+            ninera_block = "\n".join(lineas_nin) if lineas_nin else ""
+
+        # ---- ENFERMERA / CUIDADORA ----
+        elif ts_det == 'ENFERMERA':
+            a_quien   = detalles.get("a_quien_cuida") or detalles.get("a_quien")
+            cond_prin = detalles.get("condicion_principal") or detalles.get("condicion")
+            movilidad = detalles.get("movilidad") or ""
+            tareas_cd = detalles.get("tareas") or []
+
+            lineas_enf = []
+            if a_quien:
+                lineas_enf.append(f"A quién cuida: {a_quien}")
+
+            if movilidad:
+                mov_lbl = ENF_MOV_LABELS.get(movilidad, movilidad)
+                if mov_lbl:
+                    lineas_enf.append(f"Movilidad: {mov_lbl}")
+
+            if cond_prin:
+                lineas_enf.append(f"Condición principal: {cond_prin}")
+
+            if tareas_cd:
+                etiquetas = []
+                for code in _as_list(tareas_cd):
+                    lbl = ENF_TAREAS_LABELS.get(code)
+                    if lbl:
+                        etiquetas.append(lbl)
+                    else:
+                        etiquetas.append(str(code))
+                lineas_enf.append("Tareas de cuidado: " + ", ".join(etiquetas))
+
+            enf_block = "\n".join(lineas_enf) if lineas_enf else ""
+
+        # ---- CHOFER ----
+        elif ts_det == 'CHOFER':
+            vehiculo    = detalles.get("vehiculo")
+            tipo_veh    = detalles.get("tipo_vehiculo")
+            tipo_otro   = detalles.get("tipo_vehiculo_otro")
+            rutas       = detalles.get("rutas")
+            viajes_larg = detalles.get("viajes_largos")
+            lic_det     = detalles.get("licencia_requisitos") or detalles.get("licencia_detalle")
+
+            lineas_ch = []
+            if vehiculo:
+                if vehiculo == 'cliente':
+                    lineas_ch.append("Vehículo: del cliente")
+                elif vehiculo == 'empleado':
+                    lineas_ch.append("Vehículo: propio del chofer")
+                else:
+                    lineas_ch.append(f"Vehículo: {vehiculo}")
+
+            if tipo_veh or tipo_otro:
+                tv = tipo_otro or tipo_veh
+                lineas_ch.append(f"Tipo de vehículo: {tv}")
+
+            if rutas:
+                lineas_ch.append(f"Rutas habituales: {rutas}")
+
+            if viajes_larg is not None:
+                lineas_ch.append("Viajes largos / fuera de la ciudad: Sí" if viajes_larg else "Viajes largos / fuera de la ciudad: No")
+
+            if lic_det:
+                lineas_ch.append(f"Licencia / experiencia: {lic_det}")
+
+            chofer_block = "\n".join(lineas_ch) if lineas_ch else ""
+
         # ===== Texto final =====
         cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
         header_block = "\n".join([
@@ -2636,7 +2990,7 @@ def copiar_solicitudes():
         info_block = "\n".join([x for x in info_lines])
 
         funciones_block = f"Funciones: {', '.join(funcs)}" if funcs else ""
-        hogar_line = hogar_descr
+        hogar_line      = hogar_descr
 
         familia_parts = []
         if adultos_val:
@@ -2654,6 +3008,8 @@ def copiar_solicitudes():
                 + (", más ayuda del pasaje" if pasaje_aporte else ", pasaje incluido")
             )
 
+        # Armamos el orden final SIN cambiar el modelo original,
+        # solo metiendo los bloques de detalles donde corresponde.
         parts = [
             header_block,
             "",
@@ -2663,6 +3019,10 @@ def copiar_solicitudes():
             "",
             hogar_line if hogar_line else None,
             "",
+            ninera_block if ninera_block else None,
+            enf_block if enf_block else None,
+            chofer_block if chofer_block else None,
+            "" if (ninera_block or enf_block or chofer_block) else None,
             familia_block if familia_block else None,
             "",
             sueldo_block if sueldo_block else None,
@@ -2700,6 +3060,8 @@ def copiar_solicitudes():
         total=total,
         has_more=has_more
     )
+
+
 
 
 @admin_bp.route('/solicitudes/<int:id>/copiar', methods=['POST'])

@@ -385,6 +385,45 @@ class Solicitud(db.Model):
     # Nota adicional
     nota_cliente           = db.Column(db.Text, nullable=True)
 
+    # ─────────────────────────────────────────────
+    # NUEVO: Tipo de servicio + detalles específicos
+    # ─────────────────────────────────────────────
+    tipo_servicio = db.Column(
+        db.String(50),
+        nullable=True,
+        index=True,
+        comment="Tipo de servicio solicitado: DOMESTICA_LIMPIEZA, NINERA, ENFERMERA, CHOFER, etc."
+    )
+
+    # Estructura sugerida (no obligatoria) para detalles_servicio:
+    # {
+    #   "ninera": {
+    #       "cant_ninos": 2,
+    #       "edades": "2 y 6 años",
+    #       "tareas": ["jugar", "llevar al colegio"],
+    #       "condicion_especial": "TDAH"
+    #   },
+    #   "enfermera": {
+    #       "a_quien_cuida": "Señora 80 años",
+    #       "movilidad": "parcial",
+    #       "condicion_principal": "Alzheimer",
+    #       "tareas": ["medicacion", "aseo", "movilizar"]
+    #   },
+    #   "chofer": {
+    #       "vehiculo": "cliente" / "empleado",
+    #       "tipo_vehiculo": "carro" / "yipeta" / "otro",
+    #       "tipo_vehiculo_otro": "Minibús",
+    #       "rutas": "PP–Santiago, dentro de la ciudad",
+    #       "viajes_largos": true/false,
+    #       "licencia_detalle": "Cat. 3, maneja mecánico"
+    #   }
+    # }
+    detalles_servicio = db.Column(
+        JSONB,
+        nullable=True,
+        comment="Bloque de respuestas específicas según el tipo de servicio (niñera, chofer, etc.)."
+    )
+
     # Áreas comunes (nuevo portal)
     areas_comunes          = db.Column(
                                 ARRAY(db.String(50)),
@@ -496,6 +535,81 @@ class Solicitud(db.Model):
         self.fecha_inicio_seguimiento = ahora
         self.fecha_ultimo_estado = ahora
         self.veces_activada = (self.veces_activada or 0) + 1
+
+    # ─────────────────────────────────────────────────────────
+    # HELPERS – Etiquetas legibles para tipo_servicio
+    # ─────────────────────────────────────────────────────────
+    @property
+    def tipo_servicio_label(self) -> str:
+        """
+        Devuelve una etiqueta legible según el código de tipo_servicio.
+        Si está en NULL, lo tratamos como 'Doméstica general' (las solicitudes antiguas).
+        """
+        mapping = {
+            'DOMESTICA_LIMPIEZA': 'Doméstica de limpieza',
+            'NINERA': 'Niñera',
+            'ENFERMERA': 'Enfermera / Cuidadora',
+            'CHOFER': 'Chofer',
+        }
+
+        if not self.tipo_servicio:
+            # Solicitudes antiguas que no tienen tipo: las tratamos como doméstica general
+            return 'Doméstica general'
+
+        return mapping.get(self.tipo_servicio, self.tipo_servicio)
+
+    # ─────────────────────────────────────────────────────────
+    # HELPERS – Acceso cómodo al JSON de detalles_servicio
+    # ─────────────────────────────────────────────────────────
+    def _get_detalles_bloque(self, bloque: str) -> dict:
+        """
+        Devuelve el dict del bloque indicado dentro de detalles_servicio.
+        Ej: bloque 'ninera', 'enfermera', 'chofer'.
+        Nunca devuelve None (si no existe, devuelve {}).
+        """
+        base = self.detalles_servicio or {}
+        data = base.get(bloque) or {}
+        # Garantizamos que siempre sea dict
+        return data if isinstance(data, dict) else {}
+
+    def _set_detalles_bloque(self, bloque: str, data: dict | None) -> None:
+        """
+        Actualiza un bloque específico dentro de detalles_servicio.
+        Si data es None o {}, borra el bloque.
+        """
+        base = dict(self.detalles_servicio or {})
+        if data:
+            base[bloque] = data
+        else:
+            base.pop(bloque, None)
+        self.detalles_servicio = base or None
+
+    @property
+    def detalles_ninera(self) -> dict:
+        """Acceso directo al bloque de niñera dentro de detalles_servicio."""
+        return self._get_detalles_bloque("ninera")
+
+    @detalles_ninera.setter
+    def detalles_ninera(self, value: dict | None) -> None:
+        self._set_detalles_bloque("ninera", value)
+
+    @property
+    def detalles_enfermera(self) -> dict:
+        """Acceso directo al bloque de enfermera/cuidadora dentro de detalles_servicio."""
+        return self._get_detalles_bloque("enfermera")
+
+    @detalles_enfermera.setter
+    def detalles_enfermera(self, value: dict | None) -> None:
+        self._set_detalles_bloque("enfermera", value)
+
+    @property
+    def detalles_chofer(self) -> dict:
+        """Acceso directo al bloque de chofer dentro de detalles_servicio."""
+        return self._get_detalles_bloque("chofer")
+
+    @detalles_chofer.setter
+    def detalles_chofer(self, value: dict | None) -> None:
+        self._set_detalles_bloque("chofer", value)
 
     # ─────────────────────────────────────────────────────────
     # COMPATIBILIDAD – Test del CLIENTE (por solicitud)

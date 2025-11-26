@@ -175,6 +175,75 @@
             </div>
           </div>
         </div>
+
+        {# ---- Cédula frente (cedula1) ---- #}
+        <div class="col-12 col-lg-6">
+          <div class="card h-100">
+            <div class="card-header d-flex align-items-center gap-2">
+              <i class="fa-solid fa-id-card"></i>
+              <span>Foto de cédula (frente)</span>
+            </div>
+            <div class="card-body">
+              <div class="upload-zone border rounded-2 p-3 text-center"
+                   data-target="cedula1"
+                   tabindex="0">
+                <div class="mb-2">
+                  <i class="fa-solid fa-cloud-arrow-up fa-2x"></i>
+                </div>
+                <p class="mb-2">Arrastra y suelta aquí, o haz clic para seleccionar.</p>
+                <p class="text-muted small">Opcional • Formatos: JPG/PNG • Máx: 5 MB</p>
+                <input class="form-control d-none"
+                       type="file"
+                       id="cedula1"
+                       name="cedula1"
+                       accept="image/*">
+                <div class="ratio ratio-4x3 mt-3 rounded overflow-hidden bg-light skeleton d-none" id="preview-wrap-cedula1">
+                  <img id="preview-cedula1" alt="Vista previa cédula frente" class="w-100 h-100 object-fit-cover">
+                </div>
+                <div class="d-flex justify-content-center gap-2 mt-2 d-none" id="controls-cedula1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-clear="cedula1">
+                    <i class="fa-regular fa-trash-can me-1"></i>Quitar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Cédula reverso (cedula2) ---- #}
+        <div class="col-12 col-lg-6">
+          <div class="card h-100">
+            <div class="card-header d-flex align-items-center gap-2">
+              <i class="fa-solid fa-id-card"></i>
+              <span>Foto de cédula (reverso)</span>
+            </div>
+            <div class="card-body">
+              <div class="upload-zone border rounded-2 p-3 text-center"
+                   data-target="cedula2"
+                   tabindex="0">
+                <div class="mb-2">
+                  <i class="fa-solid fa-cloud-arrow-up fa-2x"></i>
+                </div>
+                <p class="mb-2">Arrastra y suelta aquí, o haz clic para seleccionar.</p>
+                <p class="text-muted small">Opcional • Formatos: JPG/PNG • Máx: 5 MB</p>
+                <input class="form-control d-none"
+                       type="file"
+                       id="cedula2"
+                       name="cedula2"
+                       accept="image/*">
+                <div class="ratio ratio-4x3 mt-3 rounded overflow-hidden bg-light skeleton d-none" id="preview-wrap-cedula2">
+                  <img id="preview-cedula2" alt="Vista previa cédula reverso" class="w-100 h-100 object-fit-cover">
+                </div>
+                <div class="d-flex justify-content-center gap-2 mt-2 d-none" id="controls-cedula2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-clear="cedula2">
+                    <i class="fa-regular fa-trash-can me-1"></i>Quitar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <div class="d-flex justify-content-end gap-2 mt-3">
@@ -254,7 +323,7 @@
       if (ctr)  ctr.classList.add('d-none');
     }
 
-    // Bind clear buttons
+    // Botones de limpiar
     document.querySelectorAll('[data-clear]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const kind = btn.getAttribute('data-clear');
@@ -262,14 +331,16 @@
       });
     });
 
-    // Zone behavior
+    // Zonas de carga
     document.querySelectorAll('.upload-zone').forEach(zone=>{
       const kind  = zone.getAttribute('data-target');
       const input = $(kind);
 
-      // Click to open
+      if (!kind || !input) return;
+
+      // Click para abrir selector
       zone.addEventListener('click', e=>{
-        if (e.target.tagName !== 'BUTTON') input?.click();
+        if (e.target.tagName !== 'BUTTON') input.click();
       });
       zone.addEventListener('keypress', e=>{
         if ((e.key === 'Enter' || e.key === ' ') && input) {
@@ -278,8 +349,8 @@
         }
       });
 
-      // Input change
-      input?.addEventListener('change', ()=>{
+      // Cambio por selector normal
+      input.addEventListener('change', ()=>{
         const file = input.files && input.files[0];
         if (!file) return;
 
@@ -297,22 +368,25 @@
       });
 
       // Drag & drop
-      ;['dragenter','dragover'].forEach(ev=>{
+      ['dragenter','dragover'].forEach(ev=>{
         zone.addEventListener(ev, e=>{
           e.preventDefault(); e.stopPropagation();
           zone.classList.add('border-primary');
         }, false);
       });
-      ;['dragleave','drop'].forEach(ev=>{
+      ['dragleave','drop'].forEach(ev=>{
         zone.addEventListener(ev, e=>{
           e.preventDefault(); e.stopPropagation();
           zone.classList.remove('border-primary');
         }, false);
       });
+
       zone.addEventListener('drop', e=>{
         const dt = e.dataTransfer;
-        const file = dt && dt.files && dt.files[0];
-        if (!file || !input) return;
+        if (!dt || !dt.files || !dt.files.length) return;
+
+        const file = dt.files[0];
+
         if (!file.type.startsWith('image/')){
           alert('El archivo debe ser una imagen.');
           return;
@@ -321,15 +395,19 @@
           alert(`La imagen supera ${MAX_MB} MB. Por favor, selecciona otra.`);
           return;
         }
-        // Set file to input programmatically is not trivial (FileList is read-only).
-        // Workaround: open selector with message.
-        // Better UX: just preview and ask user to confirmar usando botón "Seleccionar".
+
+        // Asignamos directamente los archivos arrastrados al input
+        try {
+          input.files = dt.files;
+        } catch (err) {
+          console.warn('No se pudo asignar files al input directamente:', err);
+        }
+
         showPreview(kind, file);
-        alert('Vista previa cargada por arrastre. Por favor, haz clic en el recuadro para seleccionar el mismo archivo desde el selector (limitación del navegador).');
       });
     });
 
-    // Submit button loading state
+    // Estado de cargando al enviar el formulario de subida
     const uploadForm = document.getElementById('uploadForm');
     if (uploadForm){
       uploadForm.addEventListener('submit', ()=>{
