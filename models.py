@@ -8,6 +8,8 @@ from sqlalchemy.orm import relationship
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from config_app import db
+from sqlalchemy.orm import synonym
+
 
 
 class Candidata(db.Model):
@@ -784,3 +786,202 @@ class LlamadaCandidata(db.Model):
     created_at        = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     candidata         = relationship('Candidata', back_populates='llamadas')
+
+
+class CandidataWeb(db.Model):
+    """
+    Ficha pública de la candidata para la web (landing Domésticas disponibles).
+    No toca los datos internos de la candidata, solo lo que se muestra al cliente.
+    """
+    __tablename__ = 'candidatas_web'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Relación 1–1 con la candidata interna
+    candidata_id = db.Column(
+        db.Integer,
+        db.ForeignKey('candidatas.fila'),
+        nullable=False,
+        unique=True,
+        index=True
+    )
+
+    # ─────────────────────────────────────────────
+    # CONTROL DE PUBLICACIÓN
+    # ─────────────────────────────────────────────
+    visible = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default=text('true'),
+        comment="Si está en True, la candidata aparece en la web pública."
+    )
+
+    estado_publico = db.Column(
+        SAEnum('disponible', 'reservada', 'no_disponible',
+               name='estado_publico_candidata_enum'),
+        nullable=False,
+        default='disponible',
+        server_default=text("'disponible'"),
+        comment="Estado visible para el cliente en la web."
+    )
+
+    es_destacada = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=text('false'),
+        comment="Si es True, se muestra como candidata destacada."
+    )
+
+    orden_lista = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Orden manual en la lista pública (1,2,3...)."
+    )
+
+    fecha_publicacion = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        comment="Cuándo se publicó por primera vez en la web."
+    )
+
+    fecha_ultima_actualizacion = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        comment="Última vez que se actualizó esta ficha web."
+    )
+
+    # ─────────────────────────────────────────────
+    # TEXTO QUE VE EL CLIENTE (MARKETING)
+    # ─────────────────────────────────────────────
+    nombre_publico = db.Column(
+        db.String(200),
+        nullable=True,
+        comment="Nombre que se muestra en la web. Si es NULL, se usa el nombre real."
+    )
+
+    edad_publica = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Texto libre de edad: '37 años', 'Mayor de 45 años', etc."
+    )
+
+    ciudad_publica = db.Column(
+        db.String(120),
+        nullable=True,
+        comment="Ciudad que se muestra al cliente."
+    )
+
+    sector_publico = db.Column(
+        db.String(120),
+        nullable=True,
+        comment="Sector o zona de referencia para el cliente."
+    )
+
+    modalidad_publica = db.Column(
+        db.String(120),
+        nullable=True,
+        comment="Modalidad visible: con dormida, sin dormida, por días, etc."
+    )
+
+    tipo_servicio_publico = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Tipo de servicio: DOMESTICA, NINERA, ENFERMERA, etc."
+    )
+
+    anos_experiencia_publicos = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Texto de años de experiencia: '5 años', 'Más de 10 años', etc."
+    )
+
+    experiencia_resumen = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Resumen corto que sale en la tarjeta de la lista."
+    )
+
+    experiencia_detallada = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Descripción más larga para la página de detalle."
+    )
+
+    tags_publicos = db.Column(
+        db.String(255),
+        nullable=True,
+        comment="Lista de tags separados por coma: 'Limpieza, Cocina básica, Niñera'."
+    )
+
+    frase_destacada = db.Column(
+        db.String(200),
+        nullable=True,
+        comment="Frase llamativa para enganchar al cliente."
+    )
+
+    # ─────────────────────────────────────────────
+    # SUELDO / DISPONIBILIDAD / FOTO
+    # ─────────────────────────────────────────────
+    sueldo_desde = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Rango mínimo sugerido de sueldo en RD$ (solo referencia)."
+    )
+
+    sueldo_hasta = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Rango máximo sugerido de sueldo en RD$ (solo referencia)."
+    )
+
+    sueldo_texto_publico = db.Column(
+        db.String(120),
+        nullable=True,
+        comment="Texto que se muestra: 'RD$16,000 en adelante', 'Según horario', etc."
+    )
+
+    foto_publica_url = db.Column(
+        db.String(255),
+        nullable=True,
+        comment="URL de la foto que se muestra en la web. Si está NULL, usas la de la BD interna."
+    )
+
+    disponible_inmediato = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default=text('true'),
+        comment="Si está disponible para iniciar de inmediato."
+    )
+
+    # ─────────────────────────────────────────────
+    # RELACIONES
+    # ─────────────────────────────────────────────
+    candidata = db.relationship(
+        'Candidata',
+        backref=db.backref('ficha_web', uselist=False)
+    )
+
+    # ─────────────────────────────────────────────
+    # ALIAS / SINÓNIMOS PARA CAMPOS USADOS EN LAS RUTAS
+    # (NO CAMBIAN LA BD, SOLO DAN OTROS NOMBRES)
+    # ─────────────────────────────────────────────
+    # Campos "lógicos"
+    disponible_en_web = synonym('visible')
+    destacada_en_web = synonym('es_destacada')
+    orden_web = synonym('orden_lista')
+    fecha_publicacion_web = synonym('fecha_publicacion')
+
+    # Alias de texto usados en las rutas / formularios
+    ciudad_web = synonym('ciudad_publica')
+    modalidad_web = synonym('modalidad_publica')
+    experiencia_web = synonym('experiencia_resumen')
+    nota_publica = synonym('experiencia_detallada')
+
+    def __repr__(self) -> str:
+        return f"<CandidataWeb {self.id} – candidata_id={self.candidata_id}>"

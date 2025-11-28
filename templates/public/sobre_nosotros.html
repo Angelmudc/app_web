@@ -1,0 +1,134 @@
+{% extends "public/base_public.html" %}
+{% block title %}Sobre nosotros - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container">
+    <h1 class="section-title">Sobre Doméstica del Cibao A&amp;D</h1>
+    <p class="section-subtitle">
+      Agencia especializada en selección, evaluación y colocación de trabajadoras domésticas
+      para familias del Cibao y otras zonas del país.
+    </p>
+
+    <div class="grid-2">
+      <!-- Columna izquierda: Historia / quiénes somos -->
+      <div class="card">
+        <h2 style="font-size:1.1rem; margin-bottom:0.6rem;">Quiénes somos</h2>
+        <p style="font-size:0.9rem; color:var(--color-texto-suave); margin-bottom:0.8rem;">
+          Doméstica del Cibao A&amp;D nace como una agencia familiar, dirigida por una licenciada
+          en el área humana y con años de experiencia reclutando, filtrando y acompañando
+          tanto a empleadas domésticas como a familias.
+        </p>
+        <p style="font-size:0.9rem; color:var(--color-texto-suave); margin-bottom:0.8rem;">
+          Nuestro enfoque es simple: <strong>cuidar tu hogar como si fuera el nuestro</strong>.
+          Por eso cada candidata pasa por un proceso de entrevistas, verificación y
+          seguimiento, antes de ser presentada a los clientes.
+        </p>
+        <p style="font-size:0.9rem; color:var(--color-texto-suave);">
+          Trabajamos principalmente en el Cibao, pero podemos coordinar servicios para otras
+          provincias según disponibilidad y tipo de solicitud.
+        </p>
+      </div>
+
+      <!-- Columna derecha: Misión / visión / valores -->
+      <div class="card">
+        <h2 style="font-size:1.1rem; margin-bottom:0.6rem;">Nuestra misión</h2>
+        <p style="font-size:0.9rem; color:var(--color-texto-suave); margin-bottom:0.8rem;">
+          Conectar familias responsables con domésticas confiables, comprometidas y bien
+          evaluadas, creando relaciones de trabajo estables, respetuosas y de largo plazo.
+        </p>
+
+        <h3 style="font-size:0.98rem; margin:0.6rem 0 0.3rem;">Visión</h3>
+        <p style="font-size:0.9rem; color:var(--color-texto-suave); margin-bottom:0.8rem;">
+          Ser la agencia de domésticas de referencia en el Cibao, reconocida por su trato
+          humano, su organización y la calidad de sus colocaciones.
+        </p>
+
+        <h3 style="font-size:0.98rem; margin:0.6rem 0 0.3rem;">Valores</h3>
+        <ul class="card-list">
+          <li><strong>Respeto</strong> a las familias y a las trabajadoras.</li>
+          <li><strong>Transparencia</strong> en la información y los acuerdos.</li>
+          <li><strong>Responsabilidad</strong> en cada colocación que realizamos.</li>
+          <li><strong>Confidencialidad</strong> en los datos de clientes y domésticas.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Por qué confiar en nosotros</h2>
+    <p class="section-subtitle">
+      No solo “mandamos una doméstica”. Acompañamos el proceso completo desde la búsqueda
+      hasta el seguimiento después de la contratación.
+    </p>
+
+    <div class="grid-3">
+      <div class="card">
+        <h3>Proceso de filtrado</h3>
+        <ul class="card-list">
+          <li>Formulario completo de inscripción.</li>
+          <li>Entrevista personal y telefónica.</li>
+          <li>Verificación de referencias laborales y familiares.</li>
+          <li>Evaluación de experiencia y habilidades de la candidata.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Acompañamiento al cliente</h3>
+        <ul class="card-list">
+          <li>Orientación para definir el perfil que necesitas.</li>
+          <li>Presentación de candidatas acordes a tu hogar.</li>
+          <li>Apoyo en el proceso de prueba y ajuste de funciones.</li>
+          <li>Seguimiento después de la contratación.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Reemplazos y soporte</h3>
+        <ul class="card-list">
+          <li>Política clara de reemplazos según el servicio contratado.</li>
+          <li>Atención rápida en caso de que algo no funcione.</li>
+          <li>Comunicación directa por WhatsApp y llamadas.</li>
+          <li>Registro interno del historial de cada solicitud.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="grid-2">
+      <div>
+        <h2 class="section-title">Zonas de cobertura</h2>
+        <p class="section-subtitle">
+          Principalmente trabajamos en la zona norte del país. Según el caso, podemos evaluar
+          solicitudes para otras provincias.
+        </p>
+        <ul class="card-list">
+          <li>Puerto Plata y zonas cercanas.</li>
+          <li>Santiago y municipios aledaños.</li>
+          <li>Otros pueblos del Cibao según disponibilidad.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Algunos datos de nuestro trabajo</h3>
+        <ul class="card-list">
+          <li>+ decenas de familias atendidas a lo largo de los años.</li>
+          <li>Domésticas con experiencia en limpieza, cocina, cuidado de niños y adultos.</li>
+          <li>Proceso organizado para seguimiento de pagos, pruebas y reemplazos.</li>
+          <li>Sistema digital interno para manejar candidatas y solicitudes.</li>
+        </ul>
+        <p class="info-text">
+          Si quieres saber cómo podemos ayudarte en tu caso específico, contáctanos y te
+          orientamos sin compromiso.
+        </p>
+        <a href="{{ url_for('public.contacto') }}" class="btn btn-primary">Hablar con la agencia</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

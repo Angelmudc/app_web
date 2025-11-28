@@ -1,0 +1,13 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Gracias - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container">
+    <h1 class="section-title">¡Gracias por escribirnos!</h1>
+    <p class="section-subtitle">Hemos recibido tu mensaje. Un miembro de Doméstica del Cibao A&D se pondrá en contacto contigo lo antes posible.</p>
+    <a href="{{ url_for('public.index') }}" class="btn btn-primary">Volver al inicio</a>
+  </div>
+</section>
+{% endblock %}

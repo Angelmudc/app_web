@@ -1,0 +1,119 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Detalle de candidata - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container detalle-candidata">
+    <a href="{{ url_for('public.domesticas') }}" class="back-link">
+      ← Volver a domésticas disponibles
+    </a>
+
+    <div class="detalle-card">
+      {# ===== FOTO PRINCIPAL ===== #}
+      {% if candidata.foto %}
+      <div class="detalle-avatar">
+        <img
+          src="{{ candidata.foto }}"
+          alt="Foto de {{ candidata.nombre }}"
+          onclick="verImagenCompleta(this.src)"
+        >
+      </div>
+      {% endif %}
+
+      {# ===== INFORMACIÓN ===== #}
+      <div class="detalle-info">
+        <h1 class="detalle-nombre">
+          {{ candidata.nombre }}{% if candidata.edad %}, {{ candidata.edad }} años{% endif %}
+        </h1>
+
+        <div class="detalle-meta">
+          {% if candidata.codigo %}
+            <p class="detalle-codigo">
+              <span class="badge badge-primario">Código: {{ candidata.codigo }}</span>
+            </p>
+          {% endif %}
+
+          {% if candidata.modalidad %}
+            <p class="detalle-modalidad">
+              Modalidad preferida:
+              <strong>{{ candidata.modalidad }}</strong>
+            </p>
+          {% endif %}
+        </div>
+
+        {% if candidata.experiencia %}
+        <div class="detalle-experiencia">
+          <h2>Experiencia</h2>
+          <p>{{ candidata.experiencia }}</p>
+        </div>
+        {% endif %}
+
+        {# ===== CTA: WHATSAPP ===== #}
+        <div class="detalle-cta">
+          <p class="detalle-cta-text">
+            Si te interesa esta candidata, escríbenos por WhatsApp indicando el código
+            {% if candidata.codigo %}
+              <strong>{{ candidata.codigo }}</strong>.
+            {% else %}
+              que aparece en su ficha.
+            {% endif %}
+          </p>
+
+          {# Número de WhatsApp de la agencia (CAMBIA ESTE NÚMERO) #}
+          {% set wa_number = '18090000000' %}
+          {% set wa_text = (
+            'Hola, me interesa la candidata ' ~ (candidata.nombre or '') ~
+            (candidata.codigo and ' (código ' ~ candidata.codigo ~ ')' or '') ~
+            '. Quiero más información, por favor.'
+          ) %}
+
+          <div class="detalle-cta-buttons">
+            <a
+              href="https://wa.me/{{ wa_number }}?text={{ wa_text|urlencode }}"
+              target="_blank"
+              rel="noopener"
+              class="btn btn-primary"
+            >
+              Ofrecer empleo por WhatsApp
+            </a>
+
+            <a
+              href="{{ url_for('public.domesticas') }}"
+              class="btn btn-outline"
+            >
+              Ver otras candidatas
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ===== MODAL PARA VER IMAGEN EN GRANDE ===== #}
+<div id="modalImagen" class="modal-imagen">
+  <span class="cerrar-modal" onclick="cerrarImagen()">&times;</span>
+  <img class="modal-contenido" id="imgModalGrande" alt="Foto candidata">
+</div>
+
+<script>
+  function verImagenCompleta(src) {
+    const modal = document.getElementById('modalImagen');
+    const img = document.getElementById('imgModalGrande');
+    img.src = src;
+    modal.style.display = 'block';
+  }
+
+  function cerrarImagen() {
+    document.getElementById('modalImagen').style.display = 'none';
+  }
+
+  window.addEventListener('click', function (e) {
+    const modal = document.getElementById('modalImagen');
+    if (e.target === modal) {
+      modal.style.display = 'none';
+    }
+  });
+</script>
+{% endblock %}

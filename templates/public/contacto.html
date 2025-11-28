@@ -1,0 +1,55 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Contacto - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container">
+    <h1 class="section-title">Contacto</h1>
+    <p class="section-subtitle">Llena este formulario o escríbenos directo a WhatsApp.</p>
+
+    <div class="grid-2">
+      <form class="contact-form">
+        <div class="form-group">
+          <label for="nombre">Nombre completo</label>
+          <input type="text" id="nombre" name="nombre" placeholder="Tu nombre" required>
+        </div>
+        <div class="form-group">
+          <label for="telefono">Teléfono</label>
+          <input type="tel" id="telefono" name="telefono" placeholder="Tu número de WhatsApp" required>
+        </div>
+        <div class="form-group">
+          <label for="ciudad">Ciudad / sector</label>
+          <input type="text" id="ciudad" name="ciudad" placeholder="Ej. Santiago, La Trinitaria">
+        </div>
+        <div class="form-group">
+          <label for="servicio">¿Qué servicio buscas?</label>
+          <select id="servicio" name="servicio">
+            <option value="">Selecciona una opción</option>
+            <option value="con-dormida">Doméstica con dormida</option>
+            <option value="sin-dormida">Doméstica sin dormida</option>
+            <option value="por-dias">Por días / por horas</option>
+            <option value="ninera">Niñera</option>
+            <option value="adulto-mayor">Cuidado de adulto mayor</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="mensaje">Cuéntanos qué necesitas</label>
+          <textarea id="mensaje" name="mensaje" rows="4" placeholder="Ej: necesito una doméstica con dormida para familia de 4 personas..."></textarea>
+        </div>
+        <button type="button" class="btn btn-primary" id="enviarContacto">Enviar por WhatsApp</button>
+      </form>
+
+      <div>
+        <h3>Datos de contacto</h3>
+        <p>📞 <a href="tel:+18094296892">+1 (809) 429-6892</a></p>
+        <p>📧 <a href="mailto:info@domesticadelcibao.com">info@domesticadelcibao.com</a></p>
+        <p>🕒 Lunes a viernes · 8:00 a.m. - 5:00 p.m.</p>
+        <p>📍 Cibao, República Dominicana</p>
+        <p class="info-text">*Por ahora este formulario envía la información directo a WhatsApp para que la atención sea rápida.</p>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Servicios - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container">
+    <h1 class="section-title">Servicios y modalidades</h1>
+    <p class="section-subtitle">Te ayudamos a encontrar la persona adecuada según tu hogar, horario y presupuesto.</p>
+
+    <div class="grid-3">
+      <div class="card">
+        <h3>Doméstica con dormida</h3>
+        <p>Para hogares que necesitan apoyo interno de lunes a sábado o según acuerdo. Ideal para familias que quieren presencia constante.</p>
+        <ul class="card-list">
+          <li>Limpieza general del hogar</li>
+          <li>Apoyo en cocina y lavado</li>
+          <li>Horario interno según acuerdo</li>
+        </ul>
+        <a href="#" class="btn btn-secondary" data-solicitar-domestica>Quiero este servicio</a>
+      </div>
+
+      <div class="card">
+        <h3>Doméstica sin dormida</h3>
+        <p>Trabajadora que entra y sale todos los días. Modalidad común de lunes a viernes o lunes a sábado.</p>
+        <ul class="card-list">
+          <li>Horario fijo diario</li>
+          <li>Limpieza, organización y apoyo básico</li>
+          <li>Opciones con y sin sábado</li>
+        </ul>
+        <a href="#" class="btn btn-secondary" data-solicitar-domestica>Quiero este servicio</a>
+      </div>
+
+      <div class="card">
+        <h3>Por días o por horas</h3>
+        <p>Ideal para apartamentos o personas que solo necesitan limpieza profunda periódica o mantenimiento ligero.</p>
+        <ul class="card-list">
+          <li>Limpieza profunda o mantenimiento</li>
+          <li>Frecuencia flexible</li>
+          <li>Se define por días y horario</li>
+        </ul>
+        <a href="#" class="btn btn-secondary" data-solicitar-domestica>Quiero este servicio</a>
+      </div>
+    </div>
+
+    <h2 class="section-title margin-top">Servicios especializados</h2>
+    <div class="grid-3">
+      <div class="card">
+        <h3>Niñera</h3>
+        <p>Cuidado de niños con enfoque en responsabilidad, orden y cariño. Se define horario y funciones específicas.</p>
+      </div>
+      <div class="card">
+        <h3>Cuidado de adulto mayor</h3>
+        <p>Apoyo en el hogar para personas mayores que necesitan compañía, seguimiento y ayuda en tareas diarias.</p>
+      </div>
+      <div class="card">
+        <h3>Limpieza puntual</h3>
+        <p>Limpieza especial para mudanzas, después de remodelaciones o cuando quieres una limpieza profunda.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <div class="container cta-inner">
+    <div>
+      <h2>¿No sabes cuál modalidad te conviene?</h2>
+      <p>Escríbenos y te orientamos según tu caso, espacio y presupuesto.</p>
+    </div>
+    <a href="#" class="btn btn-primary" data-solicitar-domestica>Hablar por WhatsApp</a>
+  </div>
+</section>
+{% endblock %}

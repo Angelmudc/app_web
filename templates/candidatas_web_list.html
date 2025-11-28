@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Candidatas para la web{% endblock %}
+
+{% block content %}
+<div class="container pb-4">
+
+  <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+    <div>
+      <h1 class="h4 mb-1 d-flex align-items-center gap-2">
+        <i class="fa-solid fa-globe"></i>
+        Domésticas en la web
+      </h1>
+      <p class="text-muted mb-0">
+        Aquí eliges qué candidatas se muestran en la página pública y ajustas su información visible.
+      </p>
+    </div>
+  </div>
+
+  <!-- BUSCADOR -->
+  <div class="card mt-3">
+    <div class="card-body">
+      <form method="post" class="row g-2 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-12 col-md-9">
+          <label for="q" class="form-label mb-1">Buscar candidata</label>
+          <div class="input-group input-group-lg">
+            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input
+              type="text"
+              class="form-control"
+              id="q"
+              name="q"
+              placeholder="Nombre, cédula, código o teléfono"
+              value="{{ q or '' }}"
+              autocomplete="off">
+          </div>
+          <div class="form-text">
+            Tip: puedes pegar la cédula sin guiones o escribir parte del nombre.
+          </div>
+        </div>
+        <div class="col-12 col-md-3 d-grid">
+          <button type="submit" class="btn btn-primary btn-lg">
+            <i class="fa-solid fa-search me-1"></i>Buscar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- RESULTADOS -->
+  <div class="card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span class="fw-semibold">
+        <i class="fa-solid fa-list-ul me-2"></i> Resultados
+      </span>
+      <span class="badge bg-light text-dark">
+        {{ resultados|length }} candidata{{ resultados|length != 1 and 's' or '' }}
+      </span>
+    </div>
+    <div class="card-body p-0">
+      {% if resultados %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Nombre</th>
+              <th>Código</th>
+              <th>Cédula</th>
+              <th>Teléfono</th>
+              <th>Estado interno</th>
+              <th>Estado web</th>
+              <th>Visible</th>
+              <th style="width: 170px;" class="text-center">Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+          {# resultados = [(Candidata, CandidataWeb), ...] #}
+          {% for cand, ficha in resultados %}
+            <tr>
+              <td class="fw-semibold">
+                {{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}
+              </td>
+              <td>{{ cand.codigo or '—' }}</td>
+              <td>
+                <span class="badge bg-secondary-subtle text-dark">
+                  {{ cand.cedula or '—' }}
+                </span>
+              </td>
+              <td>{{ cand.numero_telefono or '—' }}</td>
+              <td>
+                <span class="badge bg-light text-dark">
+                  {{ cand.estado or '—' }}
+                </span>
+              </td>
+              <td>
+                {% if ficha %}
+                  {% if ficha.estado_publico == 'disponible' %}
+                    <span class="badge bg-success-subtle text-success">Disponible</span>
+                  {% elif ficha.estado_publico == 'reservada' %}
+                    <span class="badge bg-warning-subtle text-warning">Reservada</span>
+                  {% elif ficha.estado_publico == 'no_disponible' %}
+                    <span class="badge bg-secondary-subtle text-secondary">No disponible</span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary">{{ ficha.estado_publico }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary">Sin ficha web</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if ficha and ficha.visible %}
+                  <span class="badge bg-success-subtle text-success">Sí</span>
+                {% else %}
+                  <span class="badge bg-light text-muted">No</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <a
+                  href="{{ url_for('editar_candidata_web', fila=cand.fila) }}"
+                  class="btn btn-sm btn-outline-primary">
+                  <i class="fa-solid fa-pen-to-square me-1"></i> Configurar web
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="text-muted text-center my-3">
+          No se encontraron candidatas con ese criterio.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="text-center mt-4">
+    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">
+      <i class="fa-solid fa-house me-1"></i>Volver al inicio
+    </a>
+  </div>
+
+</div>
+{% endblock %}

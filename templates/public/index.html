@@ -1,0 +1,93 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Inicio - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<section class="hero" id="inicio">
+  <div class="container hero-grid">
+    <div class="hero-text">
+      <h1>Domésticas confiables para tu hogar en el Cibao</h1>
+      <p>Seleccionamos, filtramos y acompañamos el proceso para que tengas una doméstica responsable, estable y acorde a tu hogar.</p>
+      <div class="hero-actions">
+        <a href="#" class="btn btn-primary" data-solicitar-domestica>Solicitar una doméstica</a>
+        <a href="{{ url_for('public.domesticas') }}" class="btn btn-outline">Ver domésticas disponibles</a>
+      </div>
+      <div class="hero-badges">
+        <span>✔ Filtro y selección</span>
+        <span>✔ Proceso claro</span>
+        <span>✔ Reemplazo según política</span>
+      </div>
+    </div>
+    <div class="hero-card">
+      <h2>¿Qué necesitas hoy?</h2>
+      <ul class="hero-list">
+        <li>Doméstica con dormida</li>
+        <li>Doméstica sin dormida</li>
+        <li>Por días / por horas</li>
+        <li>Niñera o cuidado adulto mayor</li>
+      </ul>
+      <p class="hero-card-text">Cuéntanos tu caso y te presentamos candidatas filtradas según tu hogar, horario y presupuesto.</p>
+      <a href="#" class="btn btn-secondary full-width" data-solicitar-domestica>Hablar por WhatsApp</a>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="beneficios">
+  <div class="container">
+    <h2 class="section-title">¿Por qué Doméstica del Cibao A&D?</h2>
+    <p class="section-subtitle">No solo te conseguimos una doméstica, te acompañamos en todo el proceso.</p>
+    <div class="grid-3">
+      <div class="card">
+        <h3>Filtro y selección</h3>
+        <p>Entrevistas, referencia básica y experiencia previa antes de presentarlas a tu familia.</p>
+      </div>
+      <div class="card">
+        <h3>Proceso claro</h3>
+        <p>Te explicamos funciones, horario, modalidad y condiciones antes de cerrar el acuerdo.</p>
+      </div>
+      <div class="card">
+        <h3>Seguimiento real</h3>
+        <p>Damos seguimiento y buscamos soluciones si algo no sale como esperabas.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="proceso">
+  <div class="container">
+    <h2 class="section-title">¿Cómo funciona el proceso?</h2>
+    <div class="steps-grid">
+      <div class="step">
+        <span class="step-number">1</span>
+        <h3>Nos cuentas qué necesitas</h3>
+        <p>Ciudad, horario, funciones principales y sueldo aproximado.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h3>Te presentamos candidatas</h3>
+        <p>Te mostramos opciones filtradas según tu hogar y lo que buscas.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h3>Entrevista y decisión</h3>
+        <p>Coordinamos entrevista, aclaramos dudas y definimos las condiciones.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h3>Contratación y seguimiento</h3>
+        <p>Formalizamos el acuerdo y damos seguimiento inicial al servicio.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <div class="container cta-inner">
+    <div>
+      <h2>¿Listo para encontrar tu próxima doméstica?</h2>
+      <p>Escríbenos por WhatsApp y cuéntanos qué tipo de ayuda necesitas en tu hogar.</p>
+    </div>
+    <a href="#" class="btn btn-primary" data-solicitar-domestica>Hablar ahora por WhatsApp</a>
+  </div>
+</section>
+{% endblock %}

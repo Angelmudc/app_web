@@ -36,10 +36,9 @@ csrf    = CSRFProtect()
 # ─────────────────────────────────────────────────────────────
 USUARIOS = {
     "Cruz":     {"pwd_hash": generate_password_hash("8998"),  "role": "admin"},
-    "Celina":  {"pwd_hash": generate_password_hash("1232"),  "role": "secretaria"},
-    "vanina":     {"pwd_hash": generate_password_hash("2424"),  "role": "secretaria"},
+    "Celina":   {"pwd_hash": generate_password_hash("1232"),  "role": "secretaria"},
+    "vanina":   {"pwd_hash": generate_password_hash("2424"),  "role": "secretaria"},
 }
-
 
 # ─────────────────────────────────────────────────────────────
 # Utilidad: normalizar cédula (devuelve 11 dígitos sin guiones)
@@ -190,13 +189,20 @@ def create_app():
         except Exception:
             return None
 
-    # Blueprints (después de configurar login/CSRF/DB)
+    # ── Blueprints (después de configurar login/CSRF/DB)
+
+    # Admin
     from admin.routes import admin_bp
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
-    # Importar el blueprint del paquete, no del módulo
+    # Clientes
     from clientes import clientes_bp
     app.register_blueprint(clientes_bp)
+
+    # Público (Web Doméstica del Cibao)
+    # Asegúrate de tener el paquete `public` con __init__.py y routes.py
+    from public import public_bp
+    app.register_blueprint(public_bp)  # sin prefix: responde en "/"
 
     # Config de entrevistas (si existe)
     try:
@@ -220,4 +226,3 @@ def create_app():
         db.session.remove()
 
     return app
-

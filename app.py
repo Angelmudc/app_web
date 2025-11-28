@@ -1,25 +1,27 @@
 # -*- coding: utf-8 -*-
 from dotenv import load_dotenv
 load_dotenv()
-import io
 
+import io
 import os
 import re
 import json
 import logging
 import unicodedata
 from datetime import datetime, date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+
+import requests  # HTTP externo (si lo usas en otras partes)
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, send_file, send_from_directory, flash, jsonify,
     current_app, abort
 )
-from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 
-from flask_caching import Cache
+from flask_login import login_user, logout_user, login_required, current_user
+
+from flask_caching import Cache   # si no lo usas directo aquí, igual se puede dejar
 from flask_migrate import Migrate
 
 # SQLAlchemy
@@ -28,25 +30,33 @@ from sqlalchemy.orm import subqueryload, joinedload, load_only
 from sqlalchemy.exc import OperationalError, IntegrityError, DBAPIError
 from sqlalchemy.sql import text
 
-# Modelos / Forms (usa los que realmente llamas en este archivo)
-from models import Candidata, LlamadaCandidata, Solicitud, Reemplazo
-from forms import LlamadaCandidataForm
+# 🔐 HASH DE CONTRASEÑAS (LO QUE FALTABA)
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# Login
-from flask_login import login_user, logout_user, login_required, current_user
+# App factory / DB / CSRF / usuarios en memoria
+from config_app import create_app, db, csrf, USUARIOS
 
-# App factory / DB / CSRF / Decorators
-from config_app import create_app, db, csrf
+# Decoradores
 from decorators import roles_required, admin_required
 
-# HTTP externo (si lo usas en otras partes)
-import requests  # mantener por ahora; si no se usa en el resto, luego lo quitamos
-from config_app import USUARIOS
+# Modelos
+from models import (
+    Candidata,
+    LlamadaCandidata,
+    CandidataWeb,
+    Solicitud,
+    Reemplazo,
+)
+
+# Formularios
+from forms import LlamadaCandidataForm
+
 # PDF (fpdf2)
 try:
     from fpdf import FPDF  # fpdf2
 except Exception:
     FPDF = None
+
 
 # -----------------------------------------------------------------------------
 # APP BOOT
@@ -3474,6 +3484,136 @@ def compat_candidata():
                            resultados=resultados,
                            mensaje=mensaje,
                            q=q)
+
+# ─────────────────────────────────────────────────────────────
+# ADMIN / SECRETARÍA – GESTIÓN DE CANDIDATAS PARA LA WEB
+# ─────────────────────────────────────────────────────────────
+
+@app.route('/admin/candidatas_web', methods=['GET', 'POST'])
+@login_required
+def listar_candidatas_web():
+
+    q = (request.form.get('q') or request.args.get('q') or '').strip()
+
+    # BASE: TODAS las candidatas
+    query = (
+        db.session.query(Candidata, CandidataWeb)
+        .outerjoin(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+    )
+
+    # 🔍 BÚSQUEDA SOLO EN CANDIDATA (donde están los datos reales)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+                Candidata.numero_telefono.ilike(like),
+            )
+        )
+
+    # Orden limpio y lógico
+    query = query.order_by(
+        Candidata.nombre_completo.asc()
+    )
+
+    resultados = query.all()  # [(candidata, ficha_web), ...]
+
+    return render_template(
+        'candidatas_web_list.html',
+        resultados=resultados,
+        q=q
+    )
+
+
+@app.route('/admin/candidatas_web/<int:fila>/editar', methods=['GET', 'POST'])
+@login_required
+def editar_candidata_web(fila):
+    """
+    Editar la ficha pública de una candidata:
+    - Lee los datos internos desde Candidata (nombre_completo, etc.).
+    - Guarda todo lo que es de la web en CandidataWeb.
+    """
+    # 'fila' = identificador interno de la candidata
+    cand = Candidata.query.filter_by(fila=fila).first_or_404()
+
+    # Buscar ficha web; si no existe, crearla en memoria
+    ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
+    if not ficha:
+        ficha = CandidataWeb(
+            candidata_id=cand.fila,
+            visible=True,
+            estado_publico='disponible',
+        )
+        db.session.add(ficha)
+        db.session.flush()  # la deja lista sin hacer commit todavía
+
+    if request.method == 'POST':
+        # Checkboxes
+        ficha.visible = bool(request.form.get('visible'))
+        ficha.es_destacada = bool(request.form.get('es_destacada'))
+        ficha.disponible_inmediato = bool(request.form.get('disponible_inmediato'))
+
+        # Estado público (select con opciones válidas)
+        estado = (request.form.get('estado_publico') or '').strip()
+        if estado in ['disponible', 'reservada', 'no_disponible']:
+            ficha.estado_publico = estado
+
+        # Orden manual
+        orden_raw = (request.form.get('orden_lista') or '').strip()
+        if orden_raw:
+            try:
+                ficha.orden_lista = int(orden_raw)
+            except ValueError:
+                flash("⚠️ El orden debe ser un número entero.", "warning")
+        else:
+            ficha.orden_lista = None
+
+        # Textos públicos
+        ficha.nombre_publico = (request.form.get('nombre_publico') or '').strip()[:200] or None
+        ficha.edad_publica = (request.form.get('edad_publica') or '').strip()[:50] or None
+        ficha.ciudad_publica = (request.form.get('ciudad_publica') or '').strip()[:120] or None
+        ficha.sector_publico = (request.form.get('sector_publico') or '').strip()[:120] or None
+        ficha.modalidad_publica = (request.form.get('modalidad_publica') or '').strip()[:120] or None
+        ficha.tipo_servicio_publico = (request.form.get('tipo_servicio_publico') or '').strip()[:50] or None
+        ficha.anos_experiencia_publicos = (request.form.get('anos_experiencia_publicos') or '').strip()[:50] or None
+
+        ficha.experiencia_resumen = (request.form.get('experiencia_resumen') or '').strip() or None
+        ficha.experiencia_detallada = (request.form.get('experiencia_detallada') or '').strip() or None
+        ficha.tags_publicos = (request.form.get('tags_publicos') or '').strip()[:255] or None
+        ficha.frase_destacada = (request.form.get('frase_destacada') or '').strip()[:200] or None
+
+        # Sueldo y foto
+        sueldo_desde_raw = (request.form.get('sueldo_desde') or '').strip()
+        sueldo_hasta_raw = (request.form.get('sueldo_hasta') or '').strip()
+
+        ficha.sueldo_desde = int(sueldo_desde_raw) if sueldo_desde_raw.isdigit() else None
+        ficha.sueldo_hasta = int(sueldo_hasta_raw) if sueldo_hasta_raw.isdigit() else None
+
+        ficha.sueldo_texto_publico = (request.form.get('sueldo_texto_publico') or '').strip()[:120] or None
+        ficha.foto_publica_url = (request.form.get('foto_publica_url') or '').strip()[:255] or None
+
+        # Fecha de publicación la primera vez que se marca visible
+        if ficha.visible and ficha.fecha_publicacion is None:
+            ficha.fecha_publicacion = datetime.utcnow()
+
+        try:
+            db.session.commit()
+            flash("✅ Ficha para la web actualizada correctamente.", "success")
+            # Para que no se ponga lento, volvemos a la misma ficha en vez de cargar el listado completo
+            return redirect(url_for('editar_candidata_web', fila=cand.fila))
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Error guardando ficha web de candidata")
+            flash("❌ Ocurrió un error guardando los cambios.", "danger")
+
+    return render_template(
+        'candidata_web_form.html',
+        cand=cand,
+        ficha=ficha,
+    )
+
 
 
 # -----------------------------------------------------------------------------

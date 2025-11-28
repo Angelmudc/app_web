@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+{% block title %}Ficha web de {{ cand.nombre_completo }}{% endblock %}
+
+{% block content %}
+<div class="container pb-4 detalle-candidata">
+
+  <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+    <div>
+      <a href="{{ url_for('listar_candidatas_web') }}" class="text-decoration-none mb-2 d-inline-block">
+        ← Volver a listado de domésticas web
+      </a>
+      <h1 class="h4 mb-0 d-flex align-items-center gap-2">
+        <i class="fa-solid fa-globe"></i>
+        Ficha pública de {{ cand.nombre_completo }}
+      </h1>
+      <p class="text-muted mb-0">
+        Aquí controlas cómo se verá esta candidata en la página pública.
+      </p>
+    </div>
+  </div>
+
+  <div class="row mt-3 g-3 detalle-card">
+
+    <!-- Columna izquierda: datos internos -->
+    <div class="col-12 col-lg-4">
+      <div class="mb-3">
+        <h2 class="h5 mb-1">Datos internos</h2>
+        <p class="text-muted mb-2">Estos datos vienen de la inscripción y no se modifican aquí.</p>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <p class="mb-1"><strong>Nombre:</strong> {{ cand.nombre_completo }}</p>
+          <p class="mb-1"><strong>Cédula:</strong> {{ cand.cedula or '—' }}</p>
+          <p class="mb-1"><strong>Código:</strong> {{ cand.codigo or '—' }}</p>
+          <p class="mb-0"><strong>Teléfono:</strong> {{ cand.numero_telefono or '—' }}</p>
+        </div>
+      </div>
+
+      {% if cand.foto_perfil %}
+      <div class="card">
+        <div class="card-body text-center">
+          <p class="mb-2 fw-semibold">Foto de la candidata (perfil)</p>
+          <img
+            src="{{ cand.foto_perfil }}"
+            alt="Foto candidata"
+            style="max-width: 100%; border-radius: 1rem; border: 2px solid rgba(148,163,184,.6); box-shadow: 0 10px 25px rgba(15,23,42,.5);"
+          >
+          <p class="text-muted small mt-2 mb-0">
+            (La gestión de fotos se hace en la sección de “Subir fotos”.)
+          </p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Columna derecha: configuración web -->
+    <div class="col-12 col-lg-8">
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- VISIBILIDAD -->
+        <div class="card mb-3">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">
+              Configuración de visibilidad
+            </span>
+          </div>
+          <div class="card-body">
+
+            <div class="form-check form-switch mb-3">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="visible"
+                name="visible"
+                {% if ficha.visible %}checked{% endif %}>
+              <label class="form-check-label" for="visible">
+                Mostrar esta candidata en la página pública
+              </label>
+            </div>
+
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <label for="estado_publico" class="form-label mb-1">Estado público</label>
+                <select id="estado_publico" name="estado_publico" class="form-select">
+                  <option value="disponible"    {% if ficha.estado_publico == 'disponible' %}selected{% endif %}>Disponible</option>
+                  <option value="reservada"     {% if ficha.estado_publico == 'reservada' %}selected{% endif %}>Reservada</option>
+                  <option value="no_disponible" {% if ficha.estado_publico == 'no_disponible' %}selected{% endif %}>No disponible</option>
+                </select>
+                <div class="form-text">Este estado solo afecta lo que ve el cliente en la web.</div>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label mb-1">Destacada</label>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="form-check form-switch">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="es_destacada"
+                      name="es_destacada"
+                      {% if ficha.es_destacada %}checked{% endif %}>
+                    <label class="form-check-label" for="es_destacada">
+                      Marcar como destacada
+                    </label>
+                  </div>
+                  <input
+                    type="number"
+                    class="form-control form-control-sm"
+                    style="max-width: 120px;"
+                    id="orden_lista"
+                    name="orden_lista"
+                    placeholder="Orden"
+                    value="{{ ficha.orden_lista or '' }}">
+                </div>
+                <div class="form-text">
+                  Mientras más pequeño el número, más arriba aparece.
+                </div>
+              </div>
+            </div>
+
+            <div class="form-check form-switch mt-3">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="disponible_inmediato"
+                name="disponible_inmediato"
+                {% if ficha.disponible_inmediato %}checked{% endif %}>
+              <label class="form-check-label" for="disponible_inmediato">
+                Disponible para iniciar de inmediato
+              </label>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- INFORMACIÓN VISIBLE EN LA WEB -->
+        <div class="card mb-3">
+          <div class="card-header">
+            <span class="fw-semibold">Información visible en la web</span>
+          </div>
+          <div class="card-body">
+            <div class="mb-2">
+              <label for="nombre_publico" class="form-label mb-1">Nombre que verá el cliente</label>
+              <input
+                type="text"
+                class="form-control"
+                id="nombre_publico"
+                name="nombre_publico"
+                value="{{ ficha.nombre_publico or cand.nombre_completo }}">
+              <div class="form-text">
+                Puedes usar solo el primer nombre si quieres (ej.: “María P.”).
+              </div>
+            </div>
+
+            <div class="row g-2 mt-1">
+              <div class="col-12 col-md-6">
+                <label for="edad_publica" class="form-label mb-1">Edad visible</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="edad_publica"
+                  name="edad_publica"
+                  placeholder="Ej.: 37 años, Mayor de 45 años"
+                  value="{{ ficha.edad_publica or '' }}">
+              </div>
+              <div class="col-12 col-md-6">
+                <label for="ciudad_publica" class="form-label mb-1">Ciudad / Sector</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="ciudad_publica"
+                  name="ciudad_publica"
+                  placeholder="Ej.: Santiago, Villa María"
+                  value="{{ ficha.ciudad_publica or '' }}">
+              </div>
+            </div>
+
+            <div class="row g-2 mt-2">
+              <div class="col-12 col-md-6">
+                <label for="sector_publico" class="form-label mb-1">Sector (opcional)</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="sector_publico"
+                  name="sector_publico"
+                  placeholder="Ej.: Villa Olga, Los Jardines"
+                  value="{{ ficha.sector_publico or '' }}">
+              </div>
+              <div class="col-12 col-md-6">
+                <label for="modalidad_publica" class="form-label mb-1">Modalidad que verá el cliente</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="modalidad_publica"
+                  name="modalidad_publica"
+                  placeholder="Con dormida / Sin dormida / Por días"
+                  value="{{ ficha.modalidad_publica or '' }}">
+              </div>
+            </div>
+
+            <div class="row g-2 mt-2">
+              <div class="col-12 col-md-6">
+                <label for="tipo_servicio_publico" class="form-label mb-1">Tipo de servicio</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="tipo_servicio_publico"
+                  name="tipo_servicio_publico"
+                  placeholder="Doméstica, Niñera, Enfermera, etc."
+                  value="{{ ficha.tipo_servicio_publico or 'DOMESTICA' }}">
+              </div>
+              <div class="col-12 col-md-6">
+                <label for="anos_experiencia_publicos" class="form-label mb-1">Años de experiencia</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="anos_experiencia_publicos"
+                  name="anos_experiencia_publicos"
+                  placeholder="Ej.: 3 años, Más de 10 años"
+                  value="{{ ficha.anos_experiencia_publicos or '' }}">
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label for="experiencia_resumen" class="form-label mb-1">
+                Resumen de experiencia (lo que se muestra en la tarjeta)
+              </label>
+              <textarea
+                id="experiencia_resumen"
+                name="experiencia_resumen"
+                rows="3"
+                class="form-control"
+                placeholder="Ej.: 3 años con niños, sabe cocinar básico, experiencia en apartamentos grandes.">{{ ficha.experiencia_resumen or '' }}</textarea>
+            </div>
+
+            <div class="mt-3">
+              <label for="experiencia_detallada" class="form-label mb-1">
+                Descripción detallada (para la página de detalle)
+              </label>
+              <textarea
+                id="experiencia_detallada"
+                name="experiencia_detallada"
+                rows="4"
+                class="form-control"
+                placeholder="Aquí puedes detallar mejor su experiencia, tipo de casa donde ha trabajado, funciones, etc.">{{ ficha.experiencia_detallada or '' }}</textarea>
+            </div>
+
+            <div class="mt-3">
+              <label for="tags_publicos" class="form-label mb-1">Etiquetas visibles (tags)</label>
+              <input
+                type="text"
+                class="form-control"
+                id="tags_publicos"
+                name="tags_publicos"
+                placeholder="responsable, con dormida, cuida niños, buena cocinera"
+                value="{{ ficha.tags_publicos or '' }}">
+              <div class="form-text">
+                Separadas por coma. Más adelante se pueden usar como filtros.
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label for="frase_destacada" class="form-label mb-1">Frase destacada</label>
+              <input
+                type="text"
+                class="form-control"
+                id="frase_destacada"
+                name="frase_destacada"
+                placeholder="Ej.: Muy paciente con niños y responsable."
+                value="{{ ficha.frase_destacada or '' }}">
+            </div>
+
+          </div>
+        </div>
+
+        <!-- SUELDO Y FOTO -->
+        <div class="card mb-3">
+          <div class="card-header">
+            <span class="fw-semibold">Sueldo de referencia y foto pública</span>
+          </div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-12 col-md-4">
+                <label for="sueldo_desde" class="form-label mb-1">Sueldo desde (RD$)</label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="sueldo_desde"
+                  name="sueldo_desde"
+                  min="0"
+                  step="1"
+                  value="{{ ficha.sueldo_desde or '' }}">
+              </div>
+              <div class="col-12 col-md-4">
+                <label for="sueldo_hasta" class="form-label mb-1">Sueldo hasta (RD$)</label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="sueldo_hasta"
+                  name="sueldo_hasta"
+                  min="0"
+                  step="1"
+                  value="{{ ficha.sueldo_hasta or '' }}">
+              </div>
+              <div class="col-12 col-md-4">
+                <label for="sueldo_texto_publico" class="form-label mb-1">Texto de sueldo</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="sueldo_texto_publico"
+                  name="sueldo_texto_publico"
+                  placeholder="Ej.: RD$18,000 en adelante"
+                  value="{{ ficha.sueldo_texto_publico or '' }}">
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label for="foto_publica_url" class="form-label mb-1">URL de foto pública (opcional)</label>
+              <input
+                type="text"
+                class="form-control"
+                id="foto_publica_url"
+                name="foto_publica_url"
+                placeholder="Si usas una foto distinta a la interna, pega aquí la URL."
+                value="{{ ficha.foto_publica_url or '' }}">
+              <div class="form-text">
+                Si está vacía, se puede usar la foto interna o un placeholder en la web.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2">
+          <a
+            href="{{ url_for('listar_candidatas_web') }}"
+            class="btn btn-outline-secondary">
+            Cancelar
+          </a>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Guardar ficha web
+          </button>
+        </div>
+
+      </form>
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}
