@@ -313,7 +313,6 @@ def robots_txt():
 # -----------------------------------------------------------------------------
 
 @app.route('/home')
-@roles_required('admin', 'secretaria')
 def home():
     if 'usuario' not in session:
         return redirect(url_for('login'))
