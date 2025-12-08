@@ -87,6 +87,8 @@
             <thead class="position-sticky top-0" style="z-index:1">
               <tr>
                 <th style="width:90px">ID</th>
+                {# ✅ NUEVA COLUMNA CÓDIGO #}
+                <th style="width:120px">Código</th>
                 <th>Nombre</th>
                 <th>Cédula</th>
                 <th>Teléfono</th>
@@ -97,6 +99,16 @@
               {% for c in resultados %}
               <tr class="row-click" data-edit-href="?candidata_id={{ c.fila }}" style="cursor: pointer;">
                 <td class="text-muted">{{ c.fila }}</td>
+
+                {# ✅ CÓDIGO (si tiene) #}
+                <td>
+                  {% if c.codigo %}
+                    <span class="badge bg-dark">{{ c.codigo }}</span>
+                  {% else %}
+                    <span class="text-muted">Sin código</span>
+                  {% endif %}
+                </td>
+
                 <td class="fw-semibold">
                   <i class="fa-solid fa-user me-1 text-muted"></i>{{ c.nombre_completo }}
                 </td>
@@ -169,6 +181,16 @@
         <i class="fa-solid fa-id-card-clip me-2"></i>Identidad
       </div>
       <div class="card-body">
+
+        {# ✅ CÓDIGO SOLO LECTURA #}
+        <div class="mb-3">
+          <label class="form-label" for="codigo">Código</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="fa-solid fa-barcode"></i></span>
+            <input id="codigo" class="form-control" value="{{ candidata.codigo or 'Sin código' }}" readonly>
+          </div>
+        </div>
+
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label" for="nombre">Nombre completo</label>

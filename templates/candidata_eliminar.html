@@ -1,0 +1,364 @@
+{# templates/candidata_eliminar.html #}
+{% extends "base.html" %}
+
+{% block title %}🗑️ Eliminar Candidata{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+
+  {# Encabezado #}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-1">🗑️ Eliminar Candidata</h1>
+      <p class="text-muted mb-0">
+        Usa esta pantalla para eliminar candidatas <strong>manualmente</strong> cuando el sistema no las marcó como duplicadas.
+      </p>
+    </div>
+    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">
+      ← Volver al inicio
+    </a>
+  </div>
+
+  {# Mensajes flash #}
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+      <div class="mt-2">
+        {% for cat, m in msgs %}
+          <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+            {{ m }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% if mensaje %}
+    <div class="alert alert-warning mt-3" role="status">
+      {{ mensaje }}
+    </div>
+  {% endif %}
+
+  {# ============================================================ #}
+  {# ====================   PASO 1: BUSCAR   ==================== #}
+  {# ============================================================ #}
+  {% if not candidata %}
+    <div class="card mt-3">
+      <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end" autocomplete="off">
+          <div class="col-12 col-md-9">
+            <label for="busqueda" class="form-label mb-1">Buscar candidata</label>
+            <div class="input-group input-group-lg">
+              <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <input id="busqueda" name="busqueda" class="form-control"
+                     placeholder="Nombre, cédula, teléfono o código (ej: CAN-000012)"
+                     value="{{ busqueda or '' }}">
+              {% if busqueda %}
+                <a href="{{ url_for('eliminar_candidata') }}" class="btn btn-outline-secondary" title="Limpiar">
+                  <i class="fa-solid fa-eraser"></i>
+                </a>
+              {% endif %}
+              <button class="btn btn-danger" type="submit">
+                Buscar
+              </button>
+            </div>
+            <div class="form-text">
+              Se listan máximo 100 resultados. Revisa bien antes de eliminar.
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% if resultados %}
+      <div class="card mt-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span class="fw-semibold">
+            <i class="fa-solid fa-list-ul me-2"></i>Resultados
+          </span>
+          <span class="badge bg-secondary">
+            {{ resultados|length }} candidata{{ resultados|length != 1 and 's' or '' }}
+          </span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>#</th>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Cédula</th>
+                  <th>Teléfono</th>
+                  <th>Estado</th>
+                  <th class="text-center" style="width: 150px;">Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for c in resultados %}
+                  <tr>
+                    <td class="text-muted">{{ c.fila }}</td>
+                    <td>
+                      {% if c.codigo %}
+                        <span class="badge bg-dark">{{ c.codigo }}</span>
+                      {% else %}
+                        <span class="text-muted">Sin código</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ c.nombre_completo }}</td>
+                    <td>{{ c.cedula or '-' }}</td>
+                    <td>{{ c.numero_telefono or '-' }}</td>
+                    <td>
+                      {% if c.estado == 'trabajando' %}
+                        <span class="badge bg-success">Trabajando</span>
+                      {% elif c.estado == 'lista_para_trabajar' %}
+                        <span class="badge bg-primary">Lista para trabajar</span>
+                      {% elif c.estado == 'inscrita' %}
+                        <span class="badge bg-info text-dark">Inscrita</span>
+                      {% elif c.estado == 'descalificada' %}
+                        <span class="badge bg-danger">Descalificada</span>
+                      {% else %}
+                        <span class="badge bg-secondary">{{ c.estado or 'N/D' }}</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-center">
+                      <a href="{{ url_for('eliminar_candidata', candidata_id=c.fila, busqueda=busqueda) }}"
+                         class="btn btn-sm btn-outline-danger">
+                        Ver para eliminar
+                      </a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% else %}
+  {# ============================================================ #}
+  {# ===============   PASO 2: REVISAR DETALLE   ================ #}
+  {# ============================================================ #}
+
+  <div class="alert alert-danger d-flex align-items-center mt-3" role="alert">
+    <i class="fa-solid fa-triangle-exclamation me-2"></i>
+    <div>
+      Estás a punto de eliminar a la candidata <strong>{{ candidata.nombre_completo }}</strong>.
+      Esta acción es <strong>definitiva</strong> y elimina también sus llamadas y solicitudes relacionadas.
+    </div>
+  </div>
+
+  <div class="row g-3 mt-2">
+    <div class="col-lg-8">
+      <div class="card mb-3">
+        <div class="card-header fw-semibold">
+          <i class="fa-solid fa-id-card me-2"></i>Datos principales
+        </div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-3">Fila (ID)</dt>
+            <dd class="col-sm-9">{{ candidata.fila }}</dd>
+
+            <dt class="col-sm-3">Código</dt>
+            <dd class="col-sm-9">
+              {% if candidata.codigo %}
+                <span class="badge bg-dark">{{ candidata.codigo }}</span>
+              {% else %}
+                <span class="text-muted">Sin código</span>
+              {% endif %}
+            </dd>
+
+            <dt class="col-sm-3">Nombre</dt>
+            <dd class="col-sm-9">{{ candidata.nombre_completo }}</dd>
+
+            <dt class="col-sm-3">Cédula</dt>
+            <dd class="col-sm-9">{{ candidata.cedula or '—' }}</dd>
+
+            <dt class="col-sm-3">Teléfono</dt>
+            <dd class="col-sm-9">{{ candidata.numero_telefono or '—' }}</dd>
+
+            <dt class="col-sm-3">Modalidad</dt>
+            <dd class="col-sm-9">{{ candidata.modalidad_trabajo_preferida or '—' }}</dd>
+
+            <dt class="col-sm-3">Rutas</dt>
+            <dd class="col-sm-9">{{ candidata.rutas_cercanas or '—' }}</dd>
+
+            <dt class="col-sm-3">Estado</dt>
+            <dd class="col-sm-9">
+              {% if candidata.estado == 'trabajando' %}
+                <span class="badge bg-success">Trabajando</span>
+              {% elif candidata.estado == 'lista_para_trabajar' %}
+                <span class="badge bg-primary">Lista para trabajar</span>
+              {% elif candidata.estado == 'inscrita' %}
+                <span class="badge bg-info text-dark">Inscrita</span>
+              {% elif candidata.estado == 'descalificada' %}
+                <span class="badge bg-danger">Descalificada</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ candidata.estado or 'N/D' }}</span>
+              {% endif %}
+            </dd>
+
+            <dt class="col-sm-3">Experiencia</dt>
+            <dd class="col-sm-9">
+              {{ candidata.anos_experiencia or '' }}{% if candidata.anos_experiencia and candidata.areas_experiencia %} – {% endif %}
+              {{ candidata.areas_experiencia or '' }}
+            </dd>
+
+            <dt class="col-sm-3">Inscripción</dt>
+            <dd class="col-sm-9">
+              {% if candidata.inscripcion %}
+                <span class="badge bg-success">Inscrita</span>
+              {% else %}
+                <span class="badge bg-secondary">No inscrita / incompleta</span>
+              {% endif %}
+            </dd>
+
+          </dl>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold">
+          <i class="fa-solid fa-file-lines me-2"></i>Entrevista
+        </div>
+        <div class="card-body">
+          {% if docs_info.entrevista_realizada %}
+            <p class="mb-2">
+              <span class="badge bg-success me-1">✔ Tiene entrevista</span>
+              <span class="text-muted">Texto completo del formulario:</span>
+            </p>
+            <div class="border rounded p-2 bg-light" style="max-height: 260px; overflow-y: auto; white-space: pre-wrap;">
+              {{ candidata.entrevista }}
+            </div>
+          {% else %}
+            <span class="badge bg-secondary">No tiene entrevista guardada</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold">
+          <i class="fa-solid fa-people-group me-2"></i>Referencias
+        </div>
+        <div class="card-body">
+          <div class="mb-2">
+            <strong>Laborales:</strong><br>
+            <span class="text-muted">{{ candidata.contactos_referencias_laborales or '—' }}</span>
+          </div>
+          <div>
+            <strong>Familiares:</strong><br>
+            <span class="text-muted">{{ candidata.referencias_familiares_detalle or '—' }}</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    {# Columna lateral: Documentos y relaciones #}
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header fw-semibold">
+          <i class="fa-solid fa-folder-open me-2"></i>Documentación
+        </div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-2">
+            <li>
+              {% if docs_info.tiene_cedula1 %}
+                ✅ Cédula frente
+              {% else %}
+                ❌ Cédula frente
+              {% endif %}
+            </li>
+            <li>
+              {% if docs_info.tiene_cedula2 %}
+                ✅ Cédula reverso
+              {% else %}
+                ❌ Cédula reverso
+              {% endif %}
+            </li>
+            <li>
+              {% if docs_info.tiene_perfil %}
+                ✅ Foto de perfil
+              {% else %}
+                ❌ Foto de perfil
+              {% endif %}
+            </li>
+            <li>
+              {% if docs_info.tiene_depuracion %}
+                ✅ Depuración
+              {% else %}
+                ❌ Depuración
+              {% endif %}
+            </li>
+          </ul>
+          <hr>
+          <p class="mb-1">
+            Completa para documentos:
+            {% if docs_info.documentos_completos %}
+              <span class="badge bg-success">Sí</span>
+            {% else %}
+              <span class="badge bg-secondary">No</span>
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold">
+          <i class="fa-solid fa-link me-2"></i>Relaciones
+        </div>
+        <div class="card-body">
+          <p class="mb-1">
+            Solicitudes vinculadas:
+            <span class="badge bg-info text-dark">{{ docs_info.solicitudes_count }}</span>
+          </p>
+          <p class="mb-0">
+            Llamadas registradas:
+            <span class="badge bg-info text-dark">{{ docs_info.llamadas_count }}</span>
+          </p>
+          <div class="form-text mt-2">
+            Al eliminar la candidata también se eliminan estas relaciones (por cascade).
+          </div>
+        </div>
+      </div>
+
+      {# Formulario de confirmación #}
+      <div class="card border-danger">
+        <div class="card-header bg-danger text-white fw-semibold">
+          Confirmar eliminación
+        </div>
+        <div class="card-body">
+          <p class="small">
+            Revisa bien los datos antes de continuar. Esta acción no se puede deshacer.
+          </p>
+          <form method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+            <input type="hidden" name="busqueda" value="{{ busqueda or '' }}">
+            <input type="hidden" name="confirmar_eliminacion" value="1">
+
+            <button type="submit" class="btn btn-danger w-100 mb-2"
+                    onclick="return confirm('¿Seguro que quieres eliminar DEFINITIVAMENTE a esta candidata?');">
+              🗑️ Eliminar definitivamente
+            </button>
+            <a href="{{ url_for('eliminar_candidata', busqueda=busqueda) }}"
+               class="btn btn-outline-secondary w-100">
+              Cancelar y volver a la lista
+            </a>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  {% endif %}
+
+</div>
+
+<style>
+  .card-header {
+    font-weight: 600;
+  }
+</style>
+{% endblock %}

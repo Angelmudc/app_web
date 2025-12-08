@@ -1,7 +1,7 @@
 # app_web/public/routes.py
 
 import base64
-from flask import render_template, abort, request
+from flask import render_template, abort, request, redirect
 from . import public_bp
 
 # IMPORTA TU MODELO DE CANDIDATA
@@ -9,6 +9,12 @@ try:
     from models import Candidata
 except ImportError:
     from app.models import Candidata
+
+
+# 🔌 SWITCH GENERAL: WEB PÚBLICA HABILITADA / DESHABILITADA
+PUBLIC_SITE_ENABLED = False
+# Cuando quieras volver a activarla en el futuro, solo cambia a:
+# PUBLIC_SITE_ENABLED = True
 
 
 def _foto_data_uri(candidata) -> str | None:
@@ -29,31 +35,53 @@ def _foto_data_uri(candidata) -> str | None:
 
 @public_bp.route("/")
 def index():
+    """
+    Raíz del sitio.
+
+    - Si la web pública está deshabilitada:
+        👉 redirige al login interno (/login).
+    - Si la web pública está habilitada:
+        👉 muestra el landing público normal.
+    """
+    if not PUBLIC_SITE_ENABLED:
+        # 🔴 Cambia "/login" por "/home" o la ruta que uses como inicio de sesión
+        return redirect("/login")
+
     return render_template("public/index.html")
 
 
 @public_bp.route("/servicios")
 def servicios():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
     return render_template("public/servicios.html")
 
 
 @public_bp.route("/sobre-nosotros")
 def sobre_nosotros():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
     return render_template("public/sobre_nosotros.html")
 
 
 @public_bp.route("/contacto")
 def contacto():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
     return render_template("public/contacto.html")
 
 
 @public_bp.route("/faq")
 def faq():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
     return render_template("public/faq.html")
 
 
 @public_bp.route("/gracias")
 def gracias():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
     return render_template("public/gracias.html")
 
 
@@ -64,6 +92,9 @@ def domesticas():
     NO filtramos por estado (ENUM) para evitar errores.
     No inventamos códigos: usamos solo la columna real `codigo`.
     """
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+
     page = request.args.get("page", 1, type=int)
     per_page = 9
 
@@ -130,6 +161,9 @@ def detalle_domestica(candidata_pk):
     Detalle de una doméstica específica.
     Usa la primary key (id o fila, según el modelo).
     """
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+
     c = Candidata.query.get(candidata_pk)
     if not c:
         abort(404)

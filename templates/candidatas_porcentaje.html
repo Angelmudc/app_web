@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}Candidatas con porcentaje pendiente{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h3 mb-1">Candidatas con porcentaje pendiente</h1>
+      <p class="text-muted mb-0">
+        Listado de todas las candidatas que tienen un porcentaje configurado en su sueldo.
+      </p>
+    </div>
+    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">
+      ← Volver al inicio
+    </a>
+  </div>
+
+  {% if candidatas %}
+    <div class="card shadow-sm border-0">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Modalidad</th>
+                <th>Fecha inicio</th>
+                <th>Fecha pago</th>
+                <th class="text-end">Monto total</th>
+                <th class="text-end">% Porciento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in candidatas %}
+                <tr>
+                  <td>{{ c.fila }}</td>
+                  <td>
+                    {% if c.codigo %}
+                      <span class="badge bg-dark">{{ c.codigo }}</span>
+                    {% else %}
+                      <span class="text-muted">Sin código</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ c.nombre }}</td>
+                  <td>{{ c.telefono or '-' }}</td>
+                  <td>{{ c.modalidad or '-' }}</td>
+                  <td>
+                    {% if c.fecha_inicio %}
+                      {{ c.fecha_inicio.strftime('%d/%m/%Y') }}
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if c.fecha_pago %}
+                      {{ c.fecha_pago.strftime('%d/%m/%Y') }}
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if c.monto_total %}
+                      RD$ {{ '{:,.2f}'.format(c.monto_total) }}
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if c.porciento %}
+                      {{ '{:,.2f}'.format(c.porciento) }}%
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paginación -->
+    {% if pagination.pages > 1 %}
+      <nav class="mt-3">
+        <ul class="pagination justify-content-center mb-0">
+          <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('candidatas_porcentaje', page=pagination.prev_num) }}" tabindex="-1">Anterior</a>
+          </li>
+
+          {% for p in range(1, pagination.pages + 1) %}
+            <li class="page-item {% if p == pagination.page %}active{% endif %}">
+              <a class="page-link" href="{{ url_for('candidatas_porcentaje', page=p) }}">{{ p }}</a>
+            </li>
+          {% endfor %}
+
+          <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('candidatas_porcentaje', page=pagination.next_num) }}">Siguiente</a>
+          </li>
+        </ul>
+      </nav>
+    {% endif %}
+
+  {% else %}
+    <div class="alert alert-info">
+      Por el momento ninguna candidata tiene porcentaje asignado.
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

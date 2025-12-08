@@ -19,7 +19,7 @@ from flask import (
     current_app, abort
 )
 
-from flask_login import login_user, logout_user, login_required, current_user
+from flask_login import login_user, logout_user, current_user
 
 from flask_caching import Cache   # si no lo usas directo aquí, igual se puede dejar
 from flask_migrate import Migrate
@@ -30,7 +30,7 @@ from sqlalchemy.orm import subqueryload, joinedload, load_only
 from sqlalchemy.exc import OperationalError, IntegrityError, DBAPIError
 from sqlalchemy.sql import text
 
-# 🔐 HASH DE CONTRASEÑAS (LO QUE FALTABA)
+# 🔐 HASH DE CONTRASEÑAS
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # App factory / DB / CSRF / usuarios en memoria
@@ -50,6 +50,7 @@ from models import (
 
 # Formularios
 from forms import LlamadaCandidataForm
+
 
 # PDF (fpdf2)
 try:
@@ -310,12 +311,18 @@ def robots_txt():
 #  - Endurecí el login: limpio inputs, corto longitud, y roto sesión al autenticar.
 #  - Si usas CSRF con Flask-WTF, asegúrate de incluir {{ csrf_token() }} en login.html.
 # -----------------------------------------------------------------------------
-@app.route('/')
+
+@app.route('/home')
+@roles_required('admin', 'secretaria')
 def home():
     if 'usuario' not in session:
         return redirect(url_for('login'))
     # Evita UTC si tu app es local/DR; suficiente con fecha local del servidor
-    return render_template('home.html', usuario=session['usuario'], current_year=date.today().year)
+    return render_template(
+        'home.html',
+        usuario=session['usuario'],
+        current_year=date.today().year
+    )
 
 
 from datetime import datetime
@@ -629,27 +636,80 @@ def buscar_candidata():
         if not candidata:
             mensaje = "⚠️ Candidata no encontrada."
 
-    # Búsqueda
+    # ================== BÚSQUEDA ==================
     if busqueda and not candidata:
         like = f"%{busqueda}%"
         try:
-            filtros = [
-                Candidata.nombre_completo.ilike(like),
-                cast(Candidata.edad, String).ilike(like),
-                Candidata.numero_telefono.ilike(like),
-                Candidata.direccion_completa.ilike(like),
-                Candidata.modalidad_trabajo_preferida.ilike(like),
-                Candidata.rutas_cercanas.ilike(like),
-                Candidata.empleo_anterior.ilike(like),
-                Candidata.anos_experiencia.ilike(like),
-                Candidata.areas_experiencia.ilike(like),
-                Candidata.contactos_referencias_laborales.ilike(like),
-                Candidata.referencias_familiares_detalle.ilike(like),
-                Candidata.cedula.ilike(like),
-            ]
-            resultados = Candidata.query.filter(or_(*filtros)).order_by(Candidata.nombre_completo.asc()).limit(300).all()
+            # 1) Intentar primero búsqueda EXACTA por código, flexible con espacios y mayúsculas
+            codigo_normalizado = busqueda.upper()
+
+            resultados = (
+                Candidata.query
+                .filter(
+                    Candidata.codigo.isnot(None),
+                    func.trim(func.upper(Candidata.codigo)) == codigo_normalizado
+                )
+                .order_by(Candidata.nombre_completo.asc())
+                .all()
+            )
+
+            # 2) Si no hay match exacto por código, probamos búsqueda flexible
+            if not resultados:
+                # Intento con unaccent (si la BD tiene la extensión habilitada)
+                try:
+                    filtros = [
+                        func.unaccent(Candidata.codigo).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.nombre_completo).ilike(func.unaccent(like)),
+                        func.unaccent(cast(Candidata.edad, String)).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.numero_telefono).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.direccion_completa).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.modalidad_trabajo_preferida).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.rutas_cercanas).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.empleo_anterior).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.anos_experiencia).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.areas_experiencia).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.contactos_referencias_laborales).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.referencias_familiares_detalle).ilike(func.unaccent(like)),
+                        func.unaccent(Candidata.cedula).ilike(func.unaccent(like)),
+                    ]
+
+                    resultados = (
+                        Candidata.query
+                        .filter(or_(*filtros))
+                        .order_by(Candidata.nombre_completo.asc())
+                        .limit(300)
+                        .all()
+                    )
+                except Exception:
+                    # Si falla unaccent (por extensión no instalada), fallback a ilike normal
+                    app.logger.warning("unaccent no disponible, usando búsqueda ilike normal")
+                    filtros = [
+                        Candidata.codigo.ilike(like),
+                        Candidata.nombre_completo.ilike(like),
+                        cast(Candidata.edad, String).ilike(like),
+                        Candidata.numero_telefono.ilike(like),
+                        Candidata.direccion_completa.ilike(like),
+                        Candidata.modalidad_trabajo_preferida.ilike(like),
+                        Candidata.rutas_cercanas.ilike(like),
+                        Candidata.empleo_anterior.ilike(like),
+                        Candidata.anos_experiencia.ilike(like),
+                        Candidata.areas_experiencia.ilike(like),
+                        Candidata.contactos_referencias_laborales.ilike(like),
+                        Candidata.referencias_familiares_detalle.ilike(like),
+                        Candidata.cedula.ilike(like),
+                    ]
+
+                    resultados = (
+                        Candidata.query
+                        .filter(or_(*filtros))
+                        .order_by(Candidata.nombre_completo.asc())
+                        .limit(300)
+                        .all()
+                    )
+
             if not resultados:
                 mensaje = "⚠️ No se encontraron coincidencias."
+
         except Exception:
             app.logger.exception("❌ Error buscando candidatas")
             mensaje = "❌ Ocurrió un error al buscar."
@@ -661,7 +721,6 @@ def buscar_candidata():
         candidata=candidata,
         mensaje=mensaje
     )
-
 
 # -----------------------------------------------------------------------------
 # FILTRAR
@@ -3490,7 +3549,7 @@ def compat_candidata():
 # ─────────────────────────────────────────────────────────────
 
 @app.route('/admin/candidatas_web', methods=['GET', 'POST'])
-@login_required
+@roles_required('admin', 'secretaria')
 def listar_candidatas_web():
 
     q = (request.form.get('q') or request.args.get('q') or '').strip()
@@ -3528,7 +3587,7 @@ def listar_candidatas_web():
 
 
 @app.route('/admin/candidatas_web/<int:fila>/editar', methods=['GET', 'POST'])
-@login_required
+@roles_required('admin', 'secretaria')
 def editar_candidata_web(fila):
     """
     Editar la ficha pública de una candidata:
@@ -3615,6 +3674,252 @@ def editar_candidata_web(fila):
     )
 
 
+from flask import render_template, session, redirect, url_for, request
+
+@app.route('/candidatas_porcentaje')
+@roles_required('admin', 'secretaria')
+def candidatas_porcentaje():
+    """
+    Lista todas las candidatas que tienen un porcentaje configurado.
+    Optimizado con:
+      - with_entities (solo columnas necesarias)
+      - paginación
+    """
+
+    # Proteger la vista: si no hay usuario logueado, mandar a login
+    if 'usuario' not in session:
+        return redirect(url_for('login'))
+
+    # Página actual (por defecto 1)
+    page = request.args.get('page', 1, type=int)
+    per_page = 50  # puedes subir o bajar este número
+
+    # Query optimizada: solo las columnas que usamos en la tabla
+    base_query = (
+        Candidata.query
+        .with_entities(
+            Candidata.fila,
+            Candidata.codigo,
+            Candidata.nombre_completo.label('nombre'),
+            Candidata.numero_telefono.label('telefono'),
+            Candidata.modalidad_trabajo_preferida.label('modalidad'),
+            Candidata.inicio.label('fecha_inicio'),
+            Candidata.fecha_de_pago.label('fecha_pago'),
+            Candidata.monto_total,
+            Candidata.porciento,
+        )
+        .filter(
+            Candidata.porciento.isnot(None),
+            Candidata.porciento > 0
+        )
+        .order_by(
+            Candidata.fecha_de_pago.asc().nullslast(),
+            Candidata.fila.asc()
+        )
+    )
+
+    pagination = base_query.paginate(page=page, per_page=per_page, error_out=False)
+    candidatas = pagination.items
+
+    return render_template(
+        'candidatas_porcentaje.html',
+        candidatas=candidatas,
+        pagination=pagination
+    )
+
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
+
+@app.route('/candidatas/eliminar', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def eliminar_candidata():
+    """
+    Pantalla para eliminar candidatas manualmente:
+    - Paso 1: Buscar por nombre, cédula, teléfono o código.
+    - Paso 2: Ver detalle completo (docs, entrevista, etc.).
+    - Paso 3: Confirmar eliminación definitiva.
+    SOLO se permitirá eliminar candidatas que no tengan historial
+    (sin solicitudes, sin llamadas, sin reemplazos).
+    """
+
+    # ----- Helper interno para armar info de documentos -----
+    def build_docs_info(c):
+        if not c:
+            return {
+                "tiene_cedula1": False,
+                "tiene_cedula2": False,
+                "tiene_perfil": False,
+                "tiene_depuracion": False,
+                "documentos_completos": False,
+                "entrevista_realizada": False,
+                "solicitudes_count": 0,
+                "llamadas_count": 0,
+                "reemplazos_count": 0,
+            }
+
+        tiene_cedula1 = bool(c.cedula1)
+        tiene_cedula2 = bool(c.cedula2)
+        tiene_perfil  = bool(c.perfil)
+        tiene_dep     = bool(c.depuracion)
+
+        documentos_completos = (
+            tiene_cedula1 and tiene_cedula2 and tiene_perfil and tiene_dep
+        )
+
+        entrevista_realizada = bool(
+            c.entrevista and str(c.entrevista).strip()
+        )
+
+        solicitudes_count = len(c.solicitudes or [])
+        llamadas_count    = len(c.llamadas or [])
+
+        # 🔍 Buscar registros en la tabla de reemplazos donde aparezca esta candidata
+        reemplazos_count = Reemplazo.query.filter(
+            or_(
+                Reemplazo.candidata_old_id == c.fila,
+                Reemplazo.candidata_new_id == c.fila
+            )
+        ).count()
+
+        return {
+            "tiene_cedula1": tiene_cedula1,
+            "tiene_cedula2": tiene_cedula2,
+            "tiene_perfil": tiene_perfil,
+            "tiene_depuracion": tiene_dep,
+            "documentos_completos": documentos_completos,
+            "entrevista_realizada": entrevista_realizada,
+            "solicitudes_count": solicitudes_count,
+            "llamadas_count": llamadas_count,
+            "reemplazos_count": reemplazos_count,
+        }
+
+    # --- Entrada de búsqueda (GET/POST normal) ---
+    if request.method == 'POST' and request.form.get('confirmar_eliminacion'):
+        # En el POST de confirmación la búsqueda no importa tanto, pero la mantenemos
+        busqueda = (request.form.get('busqueda') or '').strip()[:128]
+    else:
+        busqueda = (
+            (request.form.get('busqueda') if request.method == 'POST'
+             else request.args.get('busqueda')) or ''
+        ).strip()[:128]
+
+    resultados = []
+    candidata = None
+    mensaje = None
+    docs_info = build_docs_info(None)
+
+    # ─────────────────────────────────────────────
+    # 1) CONFIRMAR ELIMINACIÓN (POST)
+    # ─────────────────────────────────────────────
+    if request.method == 'POST' and request.form.get('confirmar_eliminacion'):
+        cid = (request.form.get('candidata_id') or '').strip()
+        if not cid.isdigit():
+            mensaje = "❌ ID de candidata inválido."
+        else:
+            obj = Candidata.query.get(int(cid))
+            if not obj:
+                mensaje = "⚠️ La candidata ya no existe en la base de datos."
+            else:
+                # Armamos info y verificamos si tiene historial
+                docs_info = build_docs_info(obj)
+
+                tiene_historial = (
+                    docs_info["solicitudes_count"] > 0
+                    or docs_info["llamadas_count"] > 0
+                    or docs_info["reemplazos_count"] > 0
+                )
+
+                if tiene_historial:
+                    # ❌ No permitimos borrar candidatas con historial
+                    mensaje = (
+                        "⚠️ No se puede eliminar esta candidata porque tiene "
+                        f"{docs_info['solicitudes_count']} solicitudes, "
+                        f"{docs_info['llamadas_count']} llamadas "
+                        f"y {docs_info['reemplazos_count']} reemplazos registrados. "
+                        "En estos casos se recomienda marcarla como inactiva / no disponible, "
+                        "pero no borrarla para no dañar el historial."
+                    )
+                    candidata = obj
+                else:
+                    # ✅ Candidata sin historial: intentamos borrar
+                    try:
+                        nombre_log = obj.nombre_completo
+                        cedula_log = obj.cedula
+                        codigo_log = obj.codigo
+
+                        db.session.delete(obj)
+                        db.session.commit()
+
+                        app.logger.info(
+                            "✅ Candidata eliminada manualmente: fila=%s, nombre=%s, cedula=%s, codigo=%s",
+                            cid, nombre_log, cedula_log, codigo_log
+                        )
+                        flash("✅ Candidata eliminada correctamente.", "success")
+                        # Luego de borrar, volvemos a la pantalla limpia de búsqueda
+                        return redirect(url_for('eliminar_candidata', busqueda=busqueda or ''))
+                    except IntegrityError:
+                        # Si por alguna razón aún hay FKs, prevenimos caída y avisamos
+                        db.session.rollback()
+                        app.logger.exception("❌ FK bloqueó la eliminación de la candidata.")
+                        mensaje = (
+                            "❌ La base de datos no permitió eliminarla porque está ligada "
+                            "a otros registros (por ejemplo reemplazos o movimientos). "
+                            "Para no dañar el historial, es mejor marcarla como no disponible."
+                        )
+                        candidata = obj
+                    except Exception:
+                        db.session.rollback()
+                        app.logger.exception("❌ Error al eliminar candidata manualmente")
+                        mensaje = "❌ Ocurrió un error al eliminar. Intenta de nuevo."
+                        candidata = obj
+
+    # ─────────────────────────────────────────────
+    # 2) CARGAR DETALLE (GET ?candidata_id=)
+    # ─────────────────────────────────────────────
+    if not candidata:
+        cid = (request.args.get('candidata_id') or '').strip()
+        if cid.isdigit():
+            candidata = Candidata.query.get(int(cid))
+            if not candidata:
+                mensaje = "⚠️ Candidata no encontrada."
+                docs_info = build_docs_info(None)
+            else:
+                docs_info = build_docs_info(candidata)
+
+    # ─────────────────────────────────────────────
+    # 3) BÚSQUEDA (lista de posibles candidatas)
+    # ─────────────────────────────────────────────
+    if busqueda and not candidata:
+        like = f"%{busqueda}%"
+        try:
+            resultados = (
+                Candidata.query
+                .filter(
+                    or_(
+                        Candidata.codigo.ilike(like),
+                        Candidata.nombre_completo.ilike(like),
+                        Candidata.cedula.ilike(like),
+                        Candidata.numero_telefono.ilike(like),
+                    )
+                )
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(100)
+                .all()
+            )
+            if not resultados:
+                mensaje = "⚠️ No se encontraron candidatas con ese dato."
+        except Exception:
+            app.logger.exception("❌ Error buscando candidatas para eliminar")
+            mensaje = "❌ Ocurrió un error al buscar."
+
+    return render_template(
+        'candidata_eliminar.html',
+        busqueda=busqueda,
+        resultados=resultados,
+        candidata=candidata,
+        mensaje=mensaje,
+        docs_info=docs_info,
+    )
 
 # -----------------------------------------------------------------------------
 # MAIN
