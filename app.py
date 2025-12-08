@@ -653,64 +653,37 @@ def buscar_candidata():
                 .all()
             )
 
-            # 2) Si no hay match exacto por código, probamos búsqueda flexible
+            # 2) Si no hay match exacto por código, probamos búsqueda flexible con ILIKE normal
             if not resultados:
-                # Intento con unaccent (si la BD tiene la extensión habilitada)
-                try:
-                    filtros = [
-                        func.unaccent(Candidata.codigo).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.nombre_completo).ilike(func.unaccent(like)),
-                        func.unaccent(cast(Candidata.edad, String)).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.numero_telefono).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.direccion_completa).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.modalidad_trabajo_preferida).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.rutas_cercanas).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.empleo_anterior).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.anos_experiencia).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.areas_experiencia).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.contactos_referencias_laborales).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.referencias_familiares_detalle).ilike(func.unaccent(like)),
-                        func.unaccent(Candidata.cedula).ilike(func.unaccent(like)),
-                    ]
+                filtros = [
+                    Candidata.codigo.ilike(like),
+                    Candidata.nombre_completo.ilike(like),
+                    cast(Candidata.edad, String).ilike(like),
+                    Candidata.numero_telefono.ilike(like),
+                    Candidata.direccion_completa.ilike(like),
+                    Candidata.modalidad_trabajo_preferida.ilike(like),
+                    Candidata.rutas_cercanas.ilike(like),
+                    Candidata.empleo_anterior.ilike(like),
+                    Candidata.anos_experiencia.ilike(like),
+                    Candidata.areas_experiencia.ilike(like),
+                    Candidata.contactos_referencias_laborales.ilike(like),
+                    Candidata.referencias_familiares_detalle.ilike(like),
+                    Candidata.cedula.ilike(like),
+                ]
 
-                    resultados = (
-                        Candidata.query
-                        .filter(or_(*filtros))
-                        .order_by(Candidata.nombre_completo.asc())
-                        .limit(300)
-                        .all()
-                    )
-                except Exception:
-                    # Si falla unaccent (por extensión no instalada), fallback a ilike normal
-                    app.logger.warning("unaccent no disponible, usando búsqueda ilike normal")
-                    filtros = [
-                        Candidata.codigo.ilike(like),
-                        Candidata.nombre_completo.ilike(like),
-                        cast(Candidata.edad, String).ilike(like),
-                        Candidata.numero_telefono.ilike(like),
-                        Candidata.direccion_completa.ilike(like),
-                        Candidata.modalidad_trabajo_preferida.ilike(like),
-                        Candidata.rutas_cercanas.ilike(like),
-                        Candidata.empleo_anterior.ilike(like),
-                        Candidata.anos_experiencia.ilike(like),
-                        Candidata.areas_experiencia.ilike(like),
-                        Candidata.contactos_referencias_laborales.ilike(like),
-                        Candidata.referencias_familiares_detalle.ilike(like),
-                        Candidata.cedula.ilike(like),
-                    ]
-
-                    resultados = (
-                        Candidata.query
-                        .filter(or_(*filtros))
-                        .order_by(Candidata.nombre_completo.asc())
-                        .limit(300)
-                        .all()
-                    )
+                resultados = (
+                    Candidata.query
+                    .filter(or_(*filtros))
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
 
             if not resultados:
                 mensaje = "⚠️ No se encontraron coincidencias."
 
         except Exception:
+            db.session.rollback()
             app.logger.exception("❌ Error buscando candidatas")
             mensaje = "❌ Ocurrió un error al buscar."
 
@@ -721,6 +694,7 @@ def buscar_candidata():
         candidata=candidata,
         mensaje=mensaje
     )
+
 
 # -----------------------------------------------------------------------------
 # FILTRAR
