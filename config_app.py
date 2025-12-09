@@ -36,7 +36,6 @@ csrf    = CSRFProtect()
 # ─────────────────────────────────────────────────────────────
 USUARIOS = {
     "Cruz":     {"pwd_hash": generate_password_hash("8998"),  "role": "admin"},
-    "Celina":   {"pwd_hash": generate_password_hash("1232"),  "role": "secretaria"},
     "vanina":   {"pwd_hash": generate_password_hash("2424"),  "role": "secretaria"},
 }
 
