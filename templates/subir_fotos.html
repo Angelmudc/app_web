@@ -105,6 +105,11 @@
           class="mt-3">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+      <div class="alert alert-info py-2 px-3 mb-3 small">
+        <i class="fa-solid fa-circle-info me-1"></i>
+        Puedes subir <strong>una, varias o todas</strong> las imágenes. Si luego quieres actualizar solo una (ej. cédula), puedes hacerlo sin tocar las demás.
+      </div>
+
       <div class="row g-3">
         {# ---- Depuración ---- #}
         <div class="col-12 col-lg-6">
@@ -112,11 +117,27 @@
             <div class="card-header d-flex align-items-center gap-2">
               <i class="fa-solid fa-shield-halved"></i>
               <span>Imagen de Depuración</span>
+              <span class="badge bg-light text-muted ms-auto small">Recomendada</span>
             </div>
             <div class="card-body">
+
+              {# Imagen guardada actualmente (depuración) #}
+              {% if tiene is defined and tiene['depuracion'] %}
+                <div class="mb-3">
+                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
+                    <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='depuracion') }}"
+                         alt="Depuración guardada"
+                         class="w-100 h-100 object-fit-cover">
+                  </div>
+                </div>
+              {% endif %}
+
               <div class="upload-zone border rounded-2 p-3 text-center"
                    data-target="depuracion"
-                   tabindex="0">
+                   tabindex="0"
+                   role="button"
+                   aria-label="Subir imagen de depuración (arrastrar o hacer clic)">
                 <div class="mb-2">
                   <i class="fa-solid fa-cloud-arrow-up fa-2x"></i>
                 </div>
@@ -126,8 +147,7 @@
                        type="file"
                        id="depuracion"
                        name="depuracion"
-                       accept="image/*"
-                       required>
+                       accept="image/*">
                 <div class="ratio ratio-4x3 mt-3 rounded overflow-hidden bg-light skeleton d-none" id="preview-wrap-depuracion">
                   <img id="preview-depuracion" alt="Vista previa depuración" class="w-100 h-100 object-fit-cover">
                 </div>
@@ -147,11 +167,27 @@
             <div class="card-header d-flex align-items-center gap-2">
               <i class="fa-solid fa-id-card-clip"></i>
               <span>Imagen de Perfil</span>
+              <span class="badge bg-light text-muted ms-auto small">Recomendada</span>
             </div>
             <div class="card-body">
+
+              {# Imagen guardada actualmente (perfil) #}
+              {% if tiene is defined and tiene['perfil'] %}
+                <div class="mb-3">
+                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
+                    <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='perfil') }}"
+                         alt="Perfil guardado"
+                         class="w-100 h-100 object-fit-cover">
+                  </div>
+                </div>
+              {% endif %}
+
               <div class="upload-zone border rounded-2 p-3 text-center"
                    data-target="perfil"
-                   tabindex="0">
+                   tabindex="0"
+                   role="button"
+                   aria-label="Subir imagen de perfil (arrastrar o hacer clic)">
                 <div class="mb-2">
                   <i class="fa-solid fa-cloud-arrow-up fa-2x"></i>
                 </div>
@@ -161,8 +197,7 @@
                        type="file"
                        id="perfil"
                        name="perfil"
-                       accept="image/*"
-                       required>
+                       accept="image/*">
                 <div class="ratio ratio-4x3 mt-3 rounded overflow-hidden bg-light skeleton d-none" id="preview-wrap-perfil">
                   <img id="preview-perfil" alt="Vista previa perfil" class="w-100 h-100 object-fit-cover">
                 </div>
@@ -182,11 +217,27 @@
             <div class="card-header d-flex align-items-center gap-2">
               <i class="fa-solid fa-id-card"></i>
               <span>Foto de cédula (frente)</span>
+              <span class="badge bg-light text-muted ms-auto small">Opcional</span>
             </div>
             <div class="card-body">
+
+              {# Imagen guardada actualmente (cedula1) #}
+              {% if tiene is defined and tiene['cedula1'] %}
+                <div class="mb-3">
+                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
+                    <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='cedula1') }}"
+                         alt="Cédula frente guardada"
+                         class="w-100 h-100 object-fit-cover">
+                  </div>
+                </div>
+              {% endif %}
+
               <div class="upload-zone border rounded-2 p-3 text-center"
                    data-target="cedula1"
-                   tabindex="0">
+                   tabindex="0"
+                   role="button"
+                   aria-label="Subir foto de cédula frente (arrastrar o hacer clic)">
                 <div class="mb-2">
                   <i class="fa-solid fa-cloud-arrow-up fa-2x"></i>
                 </div>
@@ -216,11 +267,27 @@
             <div class="card-header d-flex align-items-center gap-2">
               <i class="fa-solid fa-id-card"></i>
               <span>Foto de cédula (reverso)</span>
+              <span class="badge bg-light text-muted ms-auto small">Opcional</span>
             </div>
             <div class="card-body">
+
+              {# Imagen guardada actualmente (cedula2) #}
+              {% if tiene is defined and tiene['cedula2'] %}
+                <div class="mb-3">
+                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
+                    <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='cedula2') }}"
+                         alt="Cédula reverso guardada"
+                         class="w-100 h-100 object-fit-cover">
+                  </div>
+                </div>
+              {% endif %}
+
               <div class="upload-zone border rounded-2 p-3 text-center"
                    data-target="cedula2"
-                   tabindex="0">
+                   tabindex="0"
+                   role="button"
+                   aria-label="Subir foto de cédula reverso (arrastrar o hacer clic)">
                 <div class="mb-2">
                   <i class="fa-solid fa-cloud-arrow-up fa-2x"></i>
                 </div>
@@ -410,7 +477,24 @@
     // Estado de cargando al enviar el formulario de subida
     const uploadForm = document.getElementById('uploadForm');
     if (uploadForm){
-      uploadForm.addEventListener('submit', ()=>{
+      uploadForm.addEventListener('submit', (e)=>{
+        const dep   = $('depuracion');
+        const perf  = $('perfil');
+        const c1    = $('cedula1');
+        const c2    = $('cedula2');
+
+        const hasDep   = dep && dep.files && dep.files.length > 0;
+        const hasPerf  = perf && perf.files && perf.files.length > 0;
+        const hasC1    = c1 && c1.files && c1.files.length > 0;
+        const hasC2    = c2 && c2.files && c2.files.length > 0;
+
+        // Validación rápida: al menos una imagen seleccionada
+        if (!hasDep && !hasPerf && !hasC1 && !hasC2){
+          e.preventDefault();
+          alert('Debes seleccionar al menos una imagen para subir.');
+          return;
+        }
+
         const btn = document.getElementById('uploadBtn');
         if (btn){
           btn.disabled = true;

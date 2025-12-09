@@ -1313,7 +1313,7 @@ def reporte_pagos():
 # -----------------------------------------------------------------------------
 # SUBIR FOTOS (BINARIOS EN DB)
 # -----------------------------------------------------------------------------
-from flask import Blueprint
+from flask import Blueprint, Response, abort
 
 subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
 
@@ -1330,6 +1330,22 @@ def subir_fotos():
     accion = (request.args.get('accion') or 'buscar').strip()
     fila_id = request.args.get('fila', type=int)
     resultados = []
+
+    # Helper para saber qué campos tienen imagen guardada
+    def get_tiene(cand):
+        if not cand:
+            return {
+                'depuracion': False,
+                'perfil': False,
+                'cedula1': False,
+                'cedula2': False,
+            }
+        return {
+            'depuracion': bool(cand.depuracion),
+            'perfil': bool(cand.perfil),
+            'cedula1': bool(cand.cedula1),
+            'cedula2': bool(cand.cedula2),
+        }
 
     # ========================= MODO BUSCAR =========================
     if accion == 'buscar':
@@ -1381,9 +1397,15 @@ def subir_fotos():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-        # GET: mostrar formulario
+        # GET: mostrar formulario con info de qué imágenes tiene
         if request.method == 'GET':
-            return render_template('subir_fotos.html', accion='subir', fila=fila_id)
+            tiene = get_tiene(candidata)
+            return render_template(
+                'subir_fotos.html',
+                accion='subir',
+                fila=fila_id,
+                tiene=tiene
+            )
 
         # POST: guardar archivos
         files = {
@@ -1393,49 +1415,93 @@ def subir_fotos():
             'cedula2': request.files.get('cedula2'),
         }
 
-        # Depuración y perfil OBLIGATORIOS
-        required_campos = ['depuracion', 'perfil']
-        for campo in required_campos:
-            archivo = files.get(campo)
-            if not archivo or archivo.filename == '':
-                etiqueta = "depuración" if campo == "depuracion" else "perfil"
-                flash(f"❌ Falta el archivo de {etiqueta}.", "danger")
-                return render_template('subir_fotos.html', accion='subir', fila=fila_id)
+        # Filtrar solo los archivos realmente seleccionados (nombre no vacío)
+        archivos_validos = {}
+        for campo, archivo in files.items():
+            if archivo and archivo.filename:
+                archivos_validos[campo] = archivo
+
+        # Si no se seleccionó NINGÚN archivo
+        if not archivos_validos:
+            flash("⚠️ Debes seleccionar al menos una imagen para subir.", "warning")
+            tiene = get_tiene(candidata)
+            return render_template(
+                'subir_fotos.html',
+                accion='subir',
+                fila=fila_id,
+                tiene=tiene
+            )
 
         try:
-            # Siempre que venga archivo válido, se guarda
-            dep = files.get('depuracion')
-            if dep and dep.filename:
-                candidata.depuracion = dep.read()
+            # Guardar SOLO los campos que llegaron con archivo
+            for campo, archivo in archivos_validos.items():
+                try:
+                    data = archivo.read()
+                except Exception:
+                    app.logger.exception(f"❌ Error leyendo archivo {campo}")
+                    flash(f"❌ Error leyendo el archivo de {campo}. Intenta de nuevo.", "danger")
+                    tiene = get_tiene(candidata)
+                    return render_template(
+                        'subir_fotos.html',
+                        accion='subir',
+                        fila=fila_id,
+                        tiene=tiene
+                    )
 
-            perf = files.get('perfil')
-            if perf and perf.filename:
-                candidata.perfil = perf.read()
+                # Si por alguna razón viene vacío, se ignora sin romper
+                if not data:
+                    app.logger.warning(f"⚠️ Archivo vacío para campo {campo}, no se guardará.")
+                    continue
 
-            c1 = files.get('cedula1')
-            if c1 and c1.filename:
-                candidata.cedula1 = c1.read()
-
-            c2 = files.get('cedula2')
-            if c2 and c2.filename:
-                candidata.cedula2 = c2.read()
+                # Asignar el binario al campo correspondiente de la candidata
+                setattr(candidata, campo, data)
 
             db.session.commit()
-            flash("✅ Imágenes subidas y guardadas en la base de datos.", "success")
+            flash("✅ Imágenes subidas/actualizadas correctamente en la base de datos.", "success")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
         except Exception:
             db.session.rollback()
             app.logger.exception("❌ Error guardando imágenes en la BD")
-            flash("❌ Error guardando en la BD.", "danger")
-            return render_template('subir_fotos.html', accion='subir', fila=fila_id)
+            flash("❌ Ocurrió un error guardando en la base de datos.", "danger")
+            tiene = get_tiene(candidata)
+            return render_template(
+                'subir_fotos.html',
+                accion='subir',
+                fila=fila_id,
+                tiene=tiene
+            )
 
     # Si algo raro, mandamos a buscar de nuevo
     return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
 
+@subir_bp.route('/imagen/<int:fila>/<campo>')
+@roles_required('admin', 'secretaria')
+def ver_imagen(fila, campo):
+    """
+    Sirve la imagen guardada en la BD para depuración/perfil/cedula1/cedula2.
+    """
+    if campo not in ('depuracion', 'perfil', 'cedula1', 'cedula2'):
+        abort(404)
+
+    cand = Candidata.query.get_or_404(fila)
+    data = getattr(cand, campo, None)
+    if not data:
+        abort(404)
+
+    # Detección muy simple de tipo (PNG vs JPG) para el Content-Type
+    mimetype = 'image/jpeg'
+    if data[:4] == b'\x89PNG':
+        mimetype = 'image/png'
+
+    return Response(data, mimetype=mimetype)
+
+
 # Registrar blueprint
 app.register_blueprint(subir_bp)
+
+
 
 
 
