@@ -5,14 +5,16 @@ from flask import render_template, abort, request, redirect
 from . import public_bp
 
 # IMPORTA TU MODELO DE CANDIDATA
+# IMPORTA TUS MODELOS
 try:
-    from models import Candidata
+    from models import Candidata, CandidataWeb
 except ImportError:
-    from app.models import Candidata
+    from app.models import Candidata, CandidataWeb
+
 
 
 # 🔌 SWITCH GENERAL: WEB PÚBLICA HABILITADA / DESHABILITADA
-PUBLIC_SITE_ENABLED = False
+PUBLIC_SITE_ENABLED = True
 # Cuando quieras volver a activarla en el futuro, solo cambia a:
 # PUBLIC_SITE_ENABLED = True
 
@@ -89,8 +91,11 @@ def gracias():
 def domesticas():
     """
     Lista pública de domésticas con paginación.
-    NO filtramos por estado (ENUM) para evitar errores.
-    No inventamos códigos: usamos solo la columna real `codigo`.
+
+    - Solo muestra candidatas que tengan ficha web.
+    - Deben estar visibles y en estado 'disponible'.
+    - Usa los textos públicos de CandidataWeb.
+    - La foto sigue viniendo del perfil binario de Candidata.
     """
     if not PUBLIC_SITE_ENABLED:
         abort(404)
@@ -98,44 +103,59 @@ def domesticas():
     page = request.args.get("page", 1, type=int)
     per_page = 9
 
-    query = Candidata.query
-
-    # Ordenar (si existe id o fila)
-    if hasattr(Candidata, "id"):
-        query = query.order_by(Candidata.id.desc())
-    elif hasattr(Candidata, "fila"):
-        query = query.order_by(Candidata.fila.desc())
+    # Base: candidatas con ficha web visible y disponible
+    query = (
+        CandidataWeb.query
+        .join(Candidata, CandidataWeb.candidata_id == Candidata.fila)
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == 'disponible')
+        # Orden: primero orden manual, luego fecha de publicación
+        .order_by(
+            CandidataWeb.orden_lista.asc(),
+            CandidataWeb.fecha_publicacion.desc()
+        )
+        .add_entity(Candidata)  # devolvemos (ficha_web, candidata)
+    )
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    candidatas = pagination.items
+    filas = pagination.items  # [(ficha_web, candidata), ...]
 
     domesticas_data = []
-    for c in candidatas:
-        # PK: id o fila
-        pk = getattr(c, "id", None)
-        if pk is None:
-            pk = getattr(c, "fila", None)
+    for ficha, c in filas:
+        # PK para la URL de detalle (usa id o fila de Candidata)
+        pk = getattr(c, "id", None) or getattr(c, "fila", None)
 
-        modalidad = (
-            getattr(c, "modalidad_trabajo_preferida", None)
-            or getattr(c, "modalidad", None)
-            or ""
-        )
-        experiencia = (
-            getattr(c, "areas_experiencia", None)
-            or getattr(c, "empleo_anterior", None)
-            or ""
-        )
-        edad = getattr(c, "edad", None)
-
-        # ⚠️ AQUÍ: SOLO USAMOS EL CAMPO REAL `codigo`
-        codigo = getattr(c, "codigo", None)
-
+        # Nombre público (si no, nombre real)
         nombre = (
-            getattr(c, "nombre_completo", None)
+            ficha.nombre_publico
+            or getattr(c, "nombre_completo", None)
             or getattr(c, "nombre", None)
             or "Candidata"
         )
+
+        # Edad (texto público primero)
+        edad = ficha.edad_publica or getattr(c, "edad", None)
+
+        # Modalidad visible
+        modalidad = (
+            ficha.modalidad_publica
+            or getattr(c, "modalidad_trabajo_preferida", None)
+            or getattr(c, "modalidad", None)
+            or ""
+        )
+
+        # Experiencia (resumen público primero)
+        experiencia = (
+            ficha.experiencia_resumen
+            or getattr(c, "areas_experiencia", None)
+            or getattr(c, "empleo_anterior", None)
+            or ""
+        )
+
+        # Código real interno (seguimos usando el de Candidata)
+        codigo = getattr(c, "codigo", None)
+
+        # Foto: se mantiene igual, desde Candidata.perfil
         foto = _foto_data_uri(c)
 
         domesticas_data.append({
@@ -146,6 +166,17 @@ def domesticas():
             "modalidad": modalidad,
             "experiencia": experiencia,
             "foto": foto,
+
+            # Extras por si luego los usas en el template
+            "ciudad": ficha.ciudad_publica,
+            "sector": ficha.sector_publico,
+            "sueldo": ficha.sueldo_texto_publico,
+            "sueldo_desde": ficha.sueldo_desde,
+            "sueldo_hasta": ficha.sueldo_hasta,
+            "destacada": ficha.es_destacada,
+            "disponible_inmediato": ficha.disponible_inmediato,
+            "frase_destacada": ficha.frase_destacada,
+            "tags": ficha.tags_publicos,
         })
 
     return render_template(
@@ -158,34 +189,54 @@ def domesticas():
 @public_bp.route("/domesticas/<int:candidata_pk>")
 def detalle_domestica(candidata_pk):
     """
-    Detalle de una doméstica específica.
-    Usa la primary key (id o fila, según el modelo).
+    Detalle de una doméstica específica (vista pública).
+
+    - Carga la candidata interna por PK (id o fila, según el modelo).
+    - Usa su ficha web (CandidataWeb) para los textos públicos.
+    - La foto sigue viniendo del perfil binario de Candidata.
     """
     if not PUBLIC_SITE_ENABLED:
         abort(404)
 
-    c = Candidata.query.get(candidata_pk)
-    if not c:
+    # Candidata interna
+    c = Candidata.query.get_or_404(candidata_pk)
+
+    # Ficha web 1–1
+    ficha = getattr(c, "ficha_web", None)
+
+    # Si no tiene ficha web o no está visible/disponible, no se muestra
+    if not ficha or not ficha.visible or ficha.estado_publico != 'disponible':
         abort(404)
 
-    modalidad = (
-        getattr(c, "modalidad_trabajo_preferida", None)
-        or getattr(c, "modalidad", None)
-        or ""
-    )
-    experiencia = (
-        getattr(c, "areas_experiencia", None)
-        or getattr(c, "empleo_anterior", None)
-        or ""
-    )
-    edad = getattr(c, "edad", None)
-
-    codigo = getattr(c, "codigo", None)  # solo la columna real
+    # Nombre / edad / modalidad / experiencia desde la ficha web
     nombre = (
-        getattr(c, "nombre_completo", None)
+        ficha.nombre_publico
+        or getattr(c, "nombre_completo", None)
         or getattr(c, "nombre", None)
         or "Candidata"
     )
+
+    edad = ficha.edad_publica or getattr(c, "edad", None)
+
+    modalidad = (
+        ficha.modalidad_publica
+        or getattr(c, "modalidad_trabajo_preferida", None)
+        or getattr(c, "modalidad", None)
+        or ""
+    )
+
+    experiencia_resumen = (
+        ficha.experiencia_resumen
+        or getattr(c, "areas_experiencia", None)
+        or getattr(c, "empleo_anterior", None)
+        or ""
+    )
+
+    experiencia_detallada = ficha.experiencia_detallada or ""
+
+    codigo = getattr(c, "codigo", None)  # código interno real
+
+    # Foto: se mantiene solo desde el perfil binario
     foto = _foto_data_uri(c)
 
     detalle = {
@@ -193,8 +244,22 @@ def detalle_domestica(candidata_pk):
         "nombre": nombre,
         "edad": edad,
         "modalidad": modalidad,
-        "experiencia": experiencia,
+        "experiencia": experiencia_resumen,
+        "experiencia_detallada": experiencia_detallada,
         "foto": foto,
+
+        # Extras de la ficha web
+        "ciudad": ficha.ciudad_publica,
+        "sector": ficha.sector_publico,
+        "tipo_servicio": ficha.tipo_servicio_publico,
+        "anos_experiencia": ficha.anos_experiencia_publicos,
+        "sueldo": ficha.sueldo_texto_publico,
+        "sueldo_desde": ficha.sueldo_desde,
+        "sueldo_hasta": ficha.sueldo_hasta,
+        "disponible_inmediato": ficha.disponible_inmediato,
+        "tags": ficha.tags_publicos,
+        "frase_destacada": ficha.frase_destacada,
     }
 
     return render_template("public/detalle_domestica.html", candidata=detalle)
+

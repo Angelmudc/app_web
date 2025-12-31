@@ -1,0 +1,385 @@
+{# templates/clientes/_solicitud_form_fields.html
+   Renderiza TODOS los campos del SolicitudForm, pero:
+   - Mueve areas_comunes y area_otro justo debajo de banos.
+   - No inventa campos: todo se valida con "is defined".
+   - Evita duplicados (usa namespace para que el flag funcione bien).
+   - ✅ Mejora UX:
+       1) Campos "*_otro" se OCULTAN y solo aparecen cuando el usuario marca "Otro".
+       2) En áreas_comunes: si marcan "todas_anteriores" => marca todas menos "otro".
+          Y si desmarcan alguna => quita "todas_anteriores".
+#}
+
+{% set excluir = ['csrf_token', 'token', 'hp', 'codigo_cliente', 'nombre_cliente', 'email_cliente'] %}
+
+{# ✅ Flag persistente (no se pierde dentro del loop) #}
+{% set ns = namespace(areas_rendered=false) %}
+
+{# ─────────────────────────────────────────────
+   Macros: render de campos y errores
+   ───────────────────────────────────────────── #}
+{% macro render_errors(field) -%}
+  {% if field.errors %}
+    <div style="margin-top:6px;">
+      {% for e in field.errors %}
+        <small style="color:#d33; display:block;">{{ e }}</small>
+      {% endfor %}
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+{# Render normal de un field con wrapper opcional #}
+{% macro render_field(field, wrapper_id=None, wrapper_style=None, data_field=None, extra_class=None) -%}
+  {% if field is not defined or field is none %}
+    {# No hace nada si no existe #}
+  {% else %}
+    {% if field.type == 'HiddenField' %}
+      {{ field() }}
+    {% else %}
+      <div
+        class="form-group {{ extra_class or '' }}"
+        style="margin-top: 12px; {{ wrapper_style or '' }}"
+        {% if wrapper_id %}id="{{ wrapper_id }}"{% endif %}
+        {% if data_field %}data-field="{{ data_field }}"{% endif %}
+      >
+
+        {% if field.label %}
+          <label for="{{ field.id }}">{{ field.label.text }}</label>
+        {% endif %}
+
+        {% if field.type == 'TextAreaField' %}
+          {{ field(class="form-control", rows=4) }}
+
+        {% elif field.type == 'BooleanField' %}
+          <div style="display:flex; align-items:center; gap:10px;">
+            {{ field() }}
+            <span style="opacity:.9;">
+              {{ field.label.text if field.label else field.name }}
+            </span>
+          </div>
+
+        {% elif field.type == 'RadioField' %}
+          <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:6px;">
+            {% for sub in field %}
+              <label style="display:flex; align-items:center; gap:8px; margin:0;">
+                {{ sub() }}
+                <span>{{ sub.label.text }}</span>
+              </label>
+            {% endfor %}
+          </div>
+
+        {% elif field.type in ['SelectMultipleField', 'SelectField'] %}
+          {# OJO: si tu SelectMultipleField usa ListWidget (checkboxes),
+             WTForms igual lo renderiza como lista cuando haces {{ field() }} en vez de form-control.
+             Pero aquí lo dejamos como está para no romper lo que ya te funciona. #}
+          {{ field(class="form-control") }}
+
+        {% else %}
+          {{ field(class="form-control") }}
+        {% endif %}
+
+        {{ render_errors(field) }}
+      </div>
+    {% endif %}
+  {% endif %}
+{%- endmacro %}
+
+{# ─────────────────────────────────────────────
+   Render principal con reordenamiento + UX "Otro"
+   ───────────────────────────────────────────── #}
+
+{% for field in form %}
+  {% if field.name not in excluir %}
+
+    {# Sacamos areas_comunes y area_otro del flujo normal para imprimirlas debajo de banos #}
+    {% if field.name in ['areas_comunes', 'area_otro'] %}
+      {# no imprimir aquí #}
+
+    {% else %}
+
+      {# ✅ Ocultar campos *_otro por defecto (se muestran con JS al marcar "otro") #}
+      {% if field.name in ['edad_otro', 'funciones_otro', 'tipo_lugar_otro'] %}
+        {{ render_field(field, wrapper_id="wrap_" ~ field.name, wrapper_style="display:none;", data_field=field.name) }}
+      {% else %}
+        {{ render_field(field) }}
+      {% endif %}
+
+      {# ✅ Justo después de BAÑOS, metemos Áreas comunes UNA sola vez #}
+      {% if field.name == 'banos' and not ns.areas_rendered %}
+
+        {% if form.areas_comunes is defined %}
+          {# wrapper para que el JS encuentre el bloque de áreas_comunes #}
+          {{ render_field(form.areas_comunes, wrapper_id="wrap_areas_comunes", data_field="areas_comunes") }}
+        {% endif %}
+
+        {% if form.area_otro is defined %}
+          {# area_otro se oculta por defecto #}
+          {{ render_field(form.area_otro, wrapper_id="wrap_area_otro", wrapper_style="display:none;", data_field="area_otro") }}
+        {% endif %}
+
+        {% set ns.areas_rendered = true %}
+      {% endif %}
+
+    {% endif %}
+  {% endif %}
+{% endfor %}
+
+{# ✅ Fallback SOLO si no se imprimieron (por ejemplo si no existe 'banos') #}
+{% if not ns.areas_rendered %}
+  {% if form.areas_comunes is defined %}
+    {{ render_field(form.areas_comunes, wrapper_id="wrap_areas_comunes", data_field="areas_comunes") }}
+  {% endif %}
+  {% if form.area_otro is defined %}
+    {{ render_field(form.area_otro, wrapper_id="wrap_area_otro", wrapper_style="display:none;", data_field="area_otro") }}
+  {% endif %}
+{% endif %}
+
+{# ─────────────────────────────────────────────
+   JS: "Otro" dinámico + "todas_anteriores" áreas comunes
+   ───────────────────────────────────────────── #}
+<script>
+(function () {
+  function norm(v) {
+    return (v || "").toString().trim().toLowerCase();
+  }
+
+  function show(el) { if (el) el.style.display = ""; }
+  function hide(el) { if (el) el.style.display = "none"; }
+
+  function getWrap(id) {
+    return document.getElementById(id);
+  }
+
+  // Encuentra inputs/checkboxes de un grupo por wrapper (checkbox-list o select multiple)
+  function groupHasValue(wrapper, valueWanted) {
+    if (!wrapper) return false;
+    var wanted = norm(valueWanted);
+
+    // Caso 1: checkbox/radio list
+    var inputs = wrapper.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+    if (inputs && inputs.length) {
+      for (var i = 0; i < inputs.length; i++) {
+        var v = norm(inputs[i].value);
+        if (v === wanted && inputs[i].checked) return true;
+      }
+      return false;
+    }
+
+    // Caso 2: select multiple / select
+    var sel = wrapper.querySelector('select');
+    if (sel) {
+      if (sel.multiple) {
+        for (var j = 0; j < sel.options.length; j++) {
+          var opt = sel.options[j];
+          if (norm(opt.value) === wanted && opt.selected) return true;
+        }
+        return false;
+      } else {
+        return norm(sel.value) === wanted;
+      }
+    }
+
+    return false;
+  }
+
+  function clearTextInputs(wrapper) {
+    if (!wrapper) return;
+    var inputs = wrapper.querySelectorAll('input[type="text"], textarea');
+    inputs.forEach(function (inp) { inp.value = ""; });
+  }
+
+  // ✅ Toggle "Otro" fields
+  function syncOtro() {
+    // Edad
+    var wrapEdad = document.getElementById("wrap_edad_requerida") || document.getElementById("edad_requerida")?.closest(".form-group");
+    var wrapEdadOtro = getWrap("wrap_edad_otro");
+    if (wrapEdadOtro) {
+      if (groupHasValue(wrapEdad, "otro")) {
+        show(wrapEdadOtro);
+      } else {
+        hide(wrapEdadOtro);
+        clearTextInputs(wrapEdadOtro);
+      }
+    }
+
+    // Funciones
+    var wrapFun = document.getElementById("wrap_funciones") || document.getElementById("funciones")?.closest(".form-group");
+    var wrapFunOtro = getWrap("wrap_funciones_otro");
+    if (wrapFunOtro) {
+      if (groupHasValue(wrapFun, "otro")) {
+        show(wrapFunOtro);
+      } else {
+        hide(wrapFunOtro);
+        clearTextInputs(wrapFunOtro);
+      }
+    }
+
+    // Tipo lugar
+    var wrapTL = document.getElementById("wrap_tipo_lugar") || document.getElementById("tipo_lugar")?.closest(".form-group");
+    var wrapTLOtro = getWrap("wrap_tipo_lugar_otro");
+    if (wrapTLOtro) {
+      // En SelectField normalmente es value == 'otro'
+      if (groupHasValue(wrapTL, "otro")) {
+        show(wrapTLOtro);
+      } else {
+        hide(wrapTLOtro);
+        clearTextInputs(wrapTLOtro);
+      }
+    }
+
+    // Áreas comunes: area_otro depende de "otro" en areas_comunes
+    var wrapAreas = getWrap("wrap_areas_comunes");
+    var wrapAreaOtro = getWrap("wrap_area_otro");
+    if (wrapAreaOtro) {
+      if (groupHasValue(wrapAreas, "otro")) {
+        show(wrapAreaOtro);
+      } else {
+        hide(wrapAreaOtro);
+        clearTextInputs(wrapAreaOtro);
+      }
+    }
+  }
+
+  // ✅ Áreas comunes: "todas_anteriores" marca todas menos "otro"
+  function syncAreasTodas() {
+    var wrapAreas = getWrap("wrap_areas_comunes");
+    if (!wrapAreas) return;
+
+    // Caso checkbox-list
+    var inputs = wrapAreas.querySelectorAll('input[type="checkbox"]');
+    if (inputs && inputs.length) {
+      var todas = null;
+      inputs.forEach(function (inp) {
+        if (norm(inp.value) === "todas_anteriores") todas = inp;
+      });
+
+      if (!todas) return;
+
+      function setAllExceptOtro(checked) {
+        inputs.forEach(function (inp) {
+          var v = norm(inp.value);
+          if (v === "todas_anteriores") return;
+          if (v === "otro") {
+            inp.checked = false; // nunca marca "otro" con todas
+            return;
+          }
+          inp.checked = !!checked;
+        });
+      }
+
+      function anyUnchecked() {
+        for (var i = 0; i < inputs.length; i++) {
+          var v = norm(inputs[i].value);
+          if (v === "todas_anteriores" || v === "otro") continue;
+          if (!inputs[i].checked) return true;
+        }
+        return false;
+      }
+
+      // Si marcan TODAS
+      if (todas.checked) {
+        setAllExceptOtro(true);
+      } else {
+        // Si desmarcan alguna de las normales, tumba "todas_anteriores"
+        // (esto se maneja en el listener de cambios)
+      }
+
+      // Listeners
+      inputs.forEach(function (inp) {
+        inp.addEventListener("change", function () {
+          var v = norm(inp.value);
+
+          if (v === "todas_anteriores") {
+            if (inp.checked) {
+              setAllExceptOtro(true);
+            }
+          } else if (v === "otro") {
+            // si marcaron otro, tumba todas_anteriores
+            if (inp.checked) {
+              todas.checked = false;
+            }
+          } else {
+            // si quitaron una normal, tumba todas_anteriores
+            if (!inp.checked) {
+              todas.checked = false;
+            } else {
+              // si ya todas las normales están marcadas, puedes marcar "todas_anteriores"
+              // (opcional, pero útil)
+              if (!anyUnchecked()) {
+                todas.checked = true;
+                // y asegúrate que "otro" no se marque
+                inputs.forEach(function (x) { if (norm(x.value) === "otro") x.checked = false; });
+              }
+            }
+          }
+
+          // Luego sincroniza "otro" UI
+          syncOtro();
+        });
+      });
+
+      return;
+    }
+
+    // Caso select multiple (si lo usas así)
+    var sel = wrapAreas.querySelector("select");
+    if (sel && sel.multiple) {
+      sel.addEventListener("change", function () {
+        var selected = Array.from(sel.options).filter(o => o.selected).map(o => norm(o.value));
+        var hasTodas = selected.includes("todas_anteriores");
+
+        if (hasTodas) {
+          Array.from(sel.options).forEach(function (o) {
+            var v = norm(o.value);
+            if (v === "otro") {
+              o.selected = false;
+            } else if (v !== "todas_anteriores") {
+              o.selected = true;
+            }
+          });
+        } else {
+          // si seleccionan "otro", quitar todas_anteriores
+          if (selected.includes("otro")) {
+            Array.from(sel.options).forEach(function (o) {
+              if (norm(o.value) === "todas_anteriores") o.selected = false;
+            });
+          }
+        }
+
+        syncOtro();
+      });
+    }
+  }
+
+  // Listeners generales para cambios (edad, funciones, tipo_lugar)
+  function attachGeneralListeners() {
+    var ids = ["edad_requerida", "funciones", "tipo_lugar"];
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.addEventListener("change", syncOtro);
+      }
+
+      // si son checkbox-list, hay que enganchar los inputs
+      var wrap = document.getElementById("wrap_" + id) || el?.closest(".form-group");
+      if (wrap) {
+        var ins = wrap.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+        if (ins && ins.length) {
+          ins.forEach(function (inp) {
+            inp.addEventListener("change", syncOtro);
+          });
+        }
+      }
+    });
+
+    // áreas comunes se maneja aparte
+    syncAreasTodas();
+  }
+
+  // Init
+  document.addEventListener("DOMContentLoaded", function () {
+    attachGeneralListeners();
+    syncOtro();        // estado inicial
+    syncAreasTodas();  // estado inicial
+  });
+})();
+</script>

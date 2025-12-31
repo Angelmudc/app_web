@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, date
 from functools import wraps
+import re
 
 from flask import (
     render_template, redirect, url_for, flash,
-    request, abort, g, session
+    request, abort, g, session, current_app
 )
 from flask_login import (
     login_required, current_user, login_user, logout_user
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy.exc import SQLAlchemyError
+
+# ✅ FALTABAN ESTOS IMPORTS (TOKEN EN URL)
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from config_app import db
 from models import Cliente, Solicitud
@@ -19,16 +23,44 @@ from .forms import (
     ClienteLoginForm,
     ClienteCancelForm,
     SolicitudForm,
-    ClienteSolicitudForm  # puedes dejarlo por compatibilidad si no se usa aquí
+    ClienteSolicitudForm,  # compatibilidad
+    SolicitudPublicaForm   # ✅ SI YA LO CREASTE EN forms.py
 )
 
 # 🔹 Usa SIEMPRE el blueprint único definido en clientes/__init__.py
 from . import clientes_bp
 
-
 # ─────────────────────────────────────────────────────────────
 # Helpers básicos
 # ─────────────────────────────────────────────────────────────
+
+def _norm_email(v: str) -> str:
+    return (v or "").strip().lower()
+
+def _norm_text(v: str) -> str:
+    s = (v or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s.lower()
+
+def _public_link_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(
+        current_app.config["SECRET_KEY"],
+        salt="clientes-solicitud-publica"
+    )
+
+def generar_token_publico_cliente(cliente: Cliente) -> str:
+    """
+    Token firmado con info mínima:
+      - cliente_id
+      - codigo (extra seguridad)
+    """
+    ser = _public_link_serializer()
+    payload = {
+        "cliente_id": int(cliente.id),
+        "codigo": str(cliente.codigo).strip(),
+    }
+    return ser.dumps(payload)
+
 def _is_safe_next(next_url: str) -> bool:
     return bool(next_url) and next_url.startswith('/')
 
@@ -1017,3 +1049,169 @@ def compat_recalcular(solicitud_id):
         flash('No se pudo guardar el resultado del cálculo.', 'danger')
 
     return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
+
+
+
+@clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
+def solicitud_publica(token):
+    from flask import current_app
+    import re
+    from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
+    form = SolicitudPublicaForm()
+    form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+
+    # Iniciales como tu ruta de cliente
+    if request.method == 'GET':
+        if hasattr(form, 'token'):
+            form.token.data = token
+
+        if hasattr(form, 'funciones'):
+            form.funciones.data = form.funciones.data or []
+
+        if hasattr(form, 'areas_comunes'):
+            form.areas_comunes.data = form.areas_comunes.data or []
+
+        if hasattr(form, 'edad_requerida'):
+            form.edad_requerida.data = form.edad_requerida.data or []
+
+        if hasattr(form, 'dos_pisos') and form.dos_pisos.data is None:
+            form.dos_pisos.data = False
+
+        if hasattr(form, 'pasaje_aporte') and form.pasaje_aporte.data is None:
+            form.pasaje_aporte.data = False
+
+    # Anti-bot (honeypot)
+    if request.method == 'POST' and hasattr(form, 'hp'):
+        if (form.hp.data or '').strip():
+            abort(400)
+
+    # ── Validar token (protección por URL correcta)
+    try:
+        ser = URLSafeTimedSerializer(
+            current_app.config["SECRET_KEY"],
+            salt="clientes-solicitud-publica"
+        )
+        payload = ser.loads(token, max_age=60 * 60 * 24 * 30)  # 30 días
+        cliente_id = payload.get("cliente_id")
+        codigo_token = (payload.get("codigo") or "").strip()
+    except SignatureExpired:
+        flash("Este enlace expiró. Pide a la agencia que te envíe uno nuevo.", "warning")
+        return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+    except BadSignature:
+        flash("Enlace inválido. Verifica que sea el link correcto.", "danger")
+        return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+
+    c = Cliente.query.filter_by(id=cliente_id).first()
+    if not c or (c.codigo or '').strip() != codigo_token:
+        flash("Enlace no válido para ningún cliente. Contacta a la agencia.", "danger")
+        return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+
+    # ── POST: valida triple + guarda TODO
+    if form.validate_on_submit():
+        # token hidden check
+        if hasattr(form, 'token'):
+            if (form.token.data or '') != token:
+                flash("Token inválido.", "danger")
+                return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+
+        # Validación TRIPLE
+        def _norm_email(v):
+            return (v or "").strip().lower()
+
+        def _norm_text(v):
+            s = (v or "").strip()
+            s = re.sub(r"\s+", " ", s)
+            return s.lower()
+
+        # OJO: codigo es numérico a veces ("001"), no uses lower como requisito real
+        if _norm_text(getattr(form, 'codigo_cliente', type('x',(object,),{'data':''})) .data) != _norm_text(c.codigo):
+            flash("El código no coincide con este enlace.", "danger")
+            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+
+        if _norm_email(getattr(form, 'email_cliente', type('x',(object,),{'data':''})).data) != _norm_email(c.email):
+            flash("El Gmail no coincide con ese código.", "danger")
+            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+
+        if _norm_text(getattr(form, 'nombre_cliente', type('x',(object,),{'data':''})).data) != _norm_text(c.nombre_completo):
+            flash("El nombre no coincide con ese código.", "danger")
+            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+
+        try:
+            # Código único: NO usar count directo (puede chocar)
+            idx = Solicitud.query.filter_by(cliente_id=c.id).count()
+            while True:
+                codigo = f"{c.codigo}-{letra_por_indice(idx)}"
+                existe = Solicitud.query.filter_by(codigo_solicitud=codigo).first()
+                if not existe:
+                    break
+                idx += 1
+
+            s = Solicitud(
+                cliente_id=c.id,
+                fecha_solicitud=datetime.utcnow(),
+                codigo_solicitud=codigo
+            )
+
+            # Carga general desde WTForms (solo campos que existen en el form)
+            form.populate_obj(s)
+
+            # Normalizaciones (las mismas que ya usas)
+            s.funciones = _map_funciones(
+                getattr(form, 'funciones', type('x',(object,),{'data':[]})).data,
+                getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
+            )
+
+            s.areas_comunes = _clean_list(
+                getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data
+            ) or []
+
+            s.edad_requerida = _map_edad_choices(
+                getattr(form, 'edad_requerida', type('x',(object,),{'data':[]})).data,
+                getattr(getattr(form, 'edad_requerida', None), 'choices', []) if hasattr(form, 'edad_requerida') else [],
+                getattr(getattr(form, 'edad_otro', None), 'data', '') if hasattr(form, 'edad_otro') else ''
+            ) or []
+
+            s.tipo_lugar = _map_tipo_lugar(
+                getattr(s, 'tipo_lugar', ''),
+                getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+            )
+
+            # Campos extra con limpieza
+            if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
+                s.mascota = (form.mascota.data or '').strip() or None
+
+            if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
+                s.area_otro = (form.area_otro.data or '').strip() or ''
+
+            if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
+                s.nota_cliente = (form.nota_cliente.data or '').strip()
+
+            if hasattr(s, 'sueldo'):
+                s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x',(object,),{'data':None})).data)
+
+            if hasattr(s, 'fecha_ultima_modificacion'):
+                s.fecha_ultima_modificacion = datetime.utcnow()
+
+            db.session.add(s)
+
+            # Métricas cliente
+            c.total_solicitudes = (c.total_solicitudes or 0) + 1
+            c.fecha_ultima_solicitud = datetime.utcnow()
+            c.fecha_ultima_actividad = datetime.utcnow()
+
+            db.session.commit()
+            flash(f"Solicitud {codigo} enviada correctamente.", "success")
+            return redirect(url_for('clientes.solicitud_publica', token=token))
+
+        except Exception as e:
+            db.session.rollback()
+
+            # Aquí está la CLAVE: ver el error real
+            current_app.logger.exception("ERROR guardando solicitud pública")
+            flash(f"No se pudo enviar la solicitud. Error: {str(e)}", "danger")
+
+    elif request.method == 'POST':
+        flash('Revisa los campos marcados en rojo.', 'danger')
+
+    return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)

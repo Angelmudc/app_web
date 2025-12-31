@@ -20,11 +20,12 @@
     <div class="card mt-3">
       <div class="card-body">
         <form method="post"
-              action="{{ url_for('gestionar_archivos', accion='buscar') }}"
+              action="{{ url_for('gestionar_archivos') }}?accion=buscar"
               id="searchForm"
               class="row g-2 align-items-end"
               novalidate>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
           <div class="col-12 col-lg-9">
             <label for="buscar" class="form-label mb-1">Buscar por nombre, cédula o teléfono</label>
             <div class="input-group input-group-lg">
@@ -70,7 +71,7 @@
                   <td><span class="badge-soft">{{ cand.cedula }}</span></td>
                   <td>{{ cand.telefono or '—' }}</td>
                   <td class="text-center">
-                    <a href="{{ url_for('gestionar_archivos', accion='ver', fila=cand.fila) }}"
+                    <a href="{{ url_for('gestionar_archivos') }}?accion=ver&fila={{ cand.fila }}"
                        class="btn btn-sm btn-outline-primary">
                       <i class="fa-solid fa-folder-tree me-1"></i>Documentos
                     </a>
@@ -92,25 +93,32 @@
         <i class="fa-solid fa-file-shield"></i>
         Documentos de la Fila <span class="badge-soft">{{ fila }}</span>
       </h2>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('gestionar_archivos', accion='buscar') }}">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('gestionar_archivos') }}?accion=buscar">
         <i class="fa-solid fa-rotate-left me-1"></i>Volver a buscar
       </a>
     </div>
 
+    {# docs llega como dict desde backend #}
+    {% set dep = docs['depuracion'] if docs is defined and docs else None %}
+    {% set per = docs['perfil']     if docs is defined and docs else None %}
+    {% set c1  = docs['cedula1']    if docs is defined and docs else None %}
+    {% set c2  = docs['cedula2']    if docs is defined and docs else None %}
+    {% set ent = docs['entrevista'] if docs is defined and docs else "" %}
+
     {% if docs %}
       <div class="row g-3 mt-2">
 
-        {% macro download_card(label, available, icon, key) -%}
+        {% macro file_card(label, available, icon, key, preview=false) -%}
           <div class="col-12 col-md-6 col-lg-4">
             <div class="card h-100">
               <div class="card-body d-flex flex-column">
                 <div class="d-flex align-items-center gap-2">
                   <span class="fs-4"><i class="fa-solid {{ icon }}"></i></span>
-                  <div>
+                  <div class="flex-grow-1">
                     <div class="fw-semibold">{{ label }}</div>
                     {% if available %}
                       <div class="small text-success d-flex align-items-center gap-1">
-                        <i class="fa-solid fa-circle-check"></i> Disponible para descarga
+                        <i class="fa-solid fa-circle-check"></i> Disponible
                       </div>
                     {% else %}
                       <div class="small text-muted d-flex align-items-center gap-1">
@@ -120,12 +128,32 @@
                   </div>
                 </div>
 
+                {% if available and preview %}
+                  <div class="mt-3">
+                    <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
+                      <img
+                        src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo=key) }}"
+                        alt="{{ label }}"
+                        class="w-100 h-100 object-fit-cover">
+                    </div>
+                  </div>
+                {% endif %}
+
                 <div class="mt-3">
                   {% if available %}
-                    <a class="btn btn-primary w-100"
-                       href="{{ url_for('descargar_uno_db', id=fila, doc=key) }}">
-                      <i class="fa-solid fa-download me-1"></i>Descargar
-                    </a>
+                    <div class="d-grid gap-2">
+                      <a class="btn btn-primary"
+                         href="{{ url_for('descargar_uno_db', id=fila, doc=key) }}">
+                        <i class="fa-solid fa-download me-1"></i>Descargar
+                      </a>
+                      {% if preview %}
+                        <a class="btn btn-outline-secondary"
+                           target="_blank"
+                           href="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo=key) }}">
+                          <i class="fa-regular fa-eye me-1"></i>Ver grande
+                        </a>
+                      {% endif %}
+                    </div>
                   {% else %}
                     <button class="btn btn-outline-secondary w-100" disabled>
                       <i class="fa-regular fa-eye-slash me-1"></i>Sin archivo
@@ -137,20 +165,20 @@
           </div>
         {%- endmacro %}
 
-        {{ download_card('Depuración',        docs.depuracion, 'fa-shield-halved', 'depuracion') }}
-        {{ download_card('Perfil',            docs.perfil,     'fa-id-card-clip',  'perfil') }}
-        {{ download_card('Cédula (Frente)',   docs.cedula1,    'fa-address-card',  'cedula1') }}
-        {{ download_card('Cédula (Reverso)',  docs.cedula2,    'fa-address-book',  'cedula2') }}
+        {{ file_card('Depuración',        dep, 'fa-shield-halved', 'depuracion', true) }}
+        {{ file_card('Perfil',            per, 'fa-id-card-clip',  'perfil',     true) }}
+        {{ file_card('Cédula (Frente)',   c1,  'fa-address-card',  'cedula1',    true) }}
+        {{ file_card('Cédula (Reverso)',  c2,  'fa-address-book',  'cedula2',    true) }}
 
-        {# Entrevista: solo descargar PDF #}
+        {# Entrevista #}
         <div class="col-12 col-md-6 col-lg-4">
           <div class="card h-100">
             <div class="card-body d-flex flex-column">
               <div class="d-flex align-items-center gap-2">
                 <span class="fs-4"><i class="fa-solid fa-comments"></i></span>
-                <div>
+                <div class="flex-grow-1">
                   <div class="fw-semibold">Entrevista</div>
-                  {% if docs.entrevista %}
+                  {% if ent and ent|trim %}
                     <div class="small text-success d-flex align-items-center gap-1">
                       <i class="fa-solid fa-circle-check"></i> Registrada
                     </div>
@@ -163,11 +191,25 @@
               </div>
 
               <div class="mt-3">
-                {% if docs.entrevista %}
-                  <a class="btn btn-primary w-100"
-                     href="{{ url_for('generar_pdf_entrevista', fila=fila) }}">
-                    <i class="fa-solid fa-download me-1"></i>Descargar PDF
-                  </a>
+                {% if ent and ent|trim %}
+                  <div class="d-grid gap-2">
+                    <a class="btn btn-primary"
+                       href="{{ url_for('generar_pdf_entrevista', fila=fila) }}">
+                      <i class="fa-solid fa-download me-1"></i>Descargar PDF
+                    </a>
+                    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#previewEntrevista">
+                      <i class="fa-regular fa-eye me-1"></i>Vista rápida
+                    </button>
+                  </div>
+
+                  <div class="collapse mt-2" id="previewEntrevista">
+                    <div class="border rounded p-2 small bg-light" style="white-space: pre-wrap;">
+                      {{ ent[:1200] }}{% if ent|length > 1200 %}…{% endif %}
+                    </div>
+                    <div class="text-muted small mt-1">
+                      *Vista rápida muestra un resumen. El PDF sale completo.
+                    </div>
+                  </div>
                 {% else %}
                   <button class="btn btn-outline-secondary w-100" disabled>
                     <i class="fa-regular fa-file me-1"></i>Sin entrevista

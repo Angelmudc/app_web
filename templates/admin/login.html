@@ -4,143 +4,287 @@
 
 {% block head %}
 <style>
-  /* ===== Fondo y tipografía ===== */
-  body {
-    background: radial-gradient(circle at top, #0f172a 0%, #020617 100%);
-    font-family: 'Poppins', sans-serif;
-    min-height: 100vh;
+  :root{
+    --bg1:#020617;
+    --bg2:#0b1220;
+    --card: rgba(255,255,255,.06);
+    --card2: rgba(255,255,255,.09);
+    --stroke: rgba(255,255,255,.14);
+    --text:#e5e7eb;
+    --muted:#9ca3af;
+    --neon:#22d3ee;
+    --neon2:#3b82f6;
+    --danger:#ef4444;
+    --shadow: 0 20px 70px rgba(0,0,0,.55);
   }
 
-  /* ===== Contenedor centrado ===== */
-  .auth-wrap {
-    min-height: calc(100vh - 0px);
-    display: grid;
-    place-items: center;
-    padding: 2rem 1rem;
+  /* ===== Fondo futurista ===== */
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(900px 500px at 10% 10%, rgba(34,211,238,.20), transparent 55%),
+      radial-gradient(700px 500px at 90% 20%, rgba(59,130,246,.18), transparent 55%),
+      radial-gradient(900px 700px at 50% 110%, rgba(168,85,247,.12), transparent 60%),
+      linear-gradient(180deg, var(--bg2) 0%, var(--bg1) 100%);
+    font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    color: var(--text);
+    overflow-x:hidden;
   }
 
-  /* ===== Tarjeta glass ===== */
-  .glass-card {
-    width: 100%;
-    max-width: 420px;
-    color: #e2e8f0;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 1rem;
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
-    padding: 2.2rem;
+  /* Grid sutil */
+  body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(circle at 50% 40%, rgba(0,0,0,1), rgba(0,0,0,.2) 55%, transparent 75%);
+    opacity:.35;
+    pointer-events:none;
+    z-index:0;
   }
 
-  .auth-header {
-    display: grid;
-    place-items: center;
-    gap: .75rem;
-    margin-bottom: 1.5rem;
-    text-align: center;
+  /* Partículas glow */
+  .orb{
+    position:fixed;
+    width:420px;
+    height:420px;
+    border-radius:999px;
+    filter: blur(40px);
+    opacity:.35;
+    z-index:0;
+    pointer-events:none;
+    animation: float 7s ease-in-out infinite;
+  }
+  .orb.one{ left:-120px; top:120px; background: radial-gradient(circle at 30% 30%, rgba(34,211,238,.9), transparent 60%); }
+  .orb.two{ right:-140px; top:80px; background: radial-gradient(circle at 30% 30%, rgba(59,130,246,.9), transparent 60%); animation-delay: -2s; }
+  .orb.three{ left:20%; bottom:-220px; background: radial-gradient(circle at 30% 30%, rgba(168,85,247,.7), transparent 60%); animation-delay: -4s; }
+
+  @keyframes float{
+    0%,100%{ transform: translateY(0) translateX(0) scale(1); }
+    50%{ transform: translateY(-18px) translateX(10px) scale(1.03); }
   }
 
-  .login-icon {
-    width: 68px;
-    height: 68px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: linear-gradient(145deg, #38bdf8, #2563eb);
-    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
-  }
-  .login-icon svg { width: 32px; height: 32px; color: #fff; }
-
-  .auth-title {
-    margin: 0;
-    color: #fff;
-    font-weight: 600;
-    letter-spacing: .2px;
+  /* ===== Layout centrado ===== */
+  .auth-wrap{
+    position:relative;
+    z-index:1;
+    min-height:100vh;
+    display:grid;
+    place-items:center;
+    padding: 2.5rem 1rem;
   }
 
-  /* ===== Formularios ===== */
-  .form-label {
-    font-weight: 500;
-    color: #cbd5e1;
-    margin-bottom: 0.35rem;
+  /* ===== Card futurista ===== */
+  .glass-card{
+    width:100%;
+    max-width: 440px;
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border:1px solid var(--stroke);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    padding: 2.2rem 2.1rem 1.8rem;
+    position:relative;
+    overflow:hidden;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
   }
-  .form-control {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: #e2e8f0;
-    border-radius: 0.6rem;
-    padding: 0.7rem 1rem;
-    width: 100%;
-    transition: all 0.2s ease;
+
+  /* borde neon animado */
+  .glass-card::before{
+    content:"";
+    position:absolute;
+    inset:-2px;
+    background: conic-gradient(from 180deg, rgba(34,211,238,.0), rgba(34,211,238,.55), rgba(59,130,246,.55), rgba(168,85,247,.45), rgba(34,211,238,.0));
+    filter: blur(12px);
+    opacity:.55;
+    z-index:-1;
+    animation: spin 6s linear infinite;
   }
-  .form-control::placeholder { color: #94a3b8; }
-  .form-control:focus {
-    border-color: #38bdf8;
-    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
-    background: rgba(255, 255, 255, 0.08);
-    outline: none;
+  @keyframes spin{
+    to{ transform: rotate(360deg); }
+  }
+
+  /* brillo diagonal */
+  .glass-card::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background: linear-gradient(120deg, transparent 15%, rgba(255,255,255,.08) 35%, transparent 55%);
+    transform: translateX(-40%);
+    opacity:.65;
+    pointer-events:none;
+    animation: shimmer 5.5s ease-in-out infinite;
+  }
+  @keyframes shimmer{
+    0%,100%{ transform: translateX(-45%); }
+    50%{ transform: translateX(35%); }
+  }
+
+  .auth-header{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+    gap:.6rem;
+    margin-bottom: 1.4rem;
+    position:relative;
+  }
+
+  .login-icon{
+    width:72px;
+    height:72px;
+    border-radius:999px;
+    display:grid;
+    place-items:center;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(255,255,255,.22), transparent 55%),
+      linear-gradient(135deg, rgba(34,211,238,.9), rgba(59,130,246,.9));
+    border:1px solid rgba(255,255,255,.18);
+    box-shadow:
+      0 0 0 6px rgba(34,211,238,.12),
+      0 12px 30px rgba(34,211,238,.18);
+  }
+  .login-icon svg{ width:34px; height:34px; color:#fff; filter: drop-shadow(0 6px 10px rgba(0,0,0,.25)); }
+
+  .auth-title{
+    margin:0;
+    font-weight:700;
+    letter-spacing:.2px;
+    color:#fff;
+  }
+  .subtitle{
+    margin:0;
+    color: var(--muted);
+    font-size:.95rem;
+  }
+
+  /* ===== Inputs ===== */
+  .form-label{
+    font-weight:600;
+    color:#cbd5e1;
+    margin-bottom:.4rem;
+    font-size:.92rem;
+  }
+
+  .field{
+    position:relative;
+  }
+  .form-control{
+    width:100%;
+    background: rgba(2,6,23,.55);
+    border: 1px solid rgba(255,255,255,.12);
+    color: var(--text);
+    border-radius: 12px;
+    padding: .85rem 1rem .85rem 2.8rem;
+    outline:none;
+    transition: .2s ease;
+  }
+  .form-control::placeholder{ color:#94a3b8; }
+  .form-control:focus{
+    border-color: rgba(34,211,238,.65);
+    box-shadow: 0 0 0 4px rgba(34,211,238,.14);
+    background: rgba(2,6,23,.62);
+  }
+
+  .field .ico{
+    position:absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    color: rgba(229,231,235,.75);
+    pointer-events:none;
   }
 
   /* ===== Botón ===== */
-  .btn-primary {
-    background: linear-gradient(135deg, #38bdf8, #3b82f6);
-    border: none;
-    padding: 0.8rem;
-    font-weight: 600;
-    border-radius: 0.6rem;
-    color: #fff;
-    width: 100%;
-    transition: all 0.25s ease;
+  .btn-primary{
+    width:100%;
+    border:none;
+    border-radius: 12px;
+    padding: .9rem 1rem;
+    color:#fff;
+    font-weight:800;
+    letter-spacing:.2px;
+    background: linear-gradient(135deg, rgba(34,211,238,1), rgba(59,130,246,1));
+    box-shadow:
+      0 12px 28px rgba(59,130,246,.18),
+      0 0 0 6px rgba(34,211,238,.08);
+    transition: .2s ease;
   }
-  .btn-primary:hover {
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
+  .btn-primary:hover{
     transform: translateY(-1px);
+    filter: brightness(1.04);
+  }
+  .btn-primary:active{
+    transform: translateY(0px);
+    filter: brightness(.98);
   }
 
   /* ===== Alertas ===== */
-  .alert {
-    border-radius: 0.6rem;
-    padding: 0.75rem 1rem;
-    font-size: 0.92rem;
+  .alert{
+    border-radius: 12px;
+    padding: .85rem 1rem;
+    font-size: .92rem;
     margin-bottom: 1rem;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06);
   }
-  .alert-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.25);
-    color: #fca5a5;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .alert-danger svg { width: 18px; height: 18px; color: #f87171; }
 
-  /* ===== Utilidades ===== */
-  .text-muted { color: #94a3b8 !important; }
-  .small-note { margin-top: 1rem; font-size: .85rem; color: #94a3b8; text-align: center; }
+  .alert-danger{
+    border-color: rgba(239,68,68,.28);
+    background: rgba(239,68,68,.12);
+    color: #fecaca;
+    display:flex;
+    align-items:center;
+    gap:.55rem;
+  }
+  .alert-danger svg{
+    width:18px;
+    height:18px;
+    color:#f87171;
+  }
+
+  .small-note{
+    margin-top: 1.1rem;
+    font-size: .85rem;
+    color: #94a3b8;
+    text-align:center;
+  }
+
+  /* extra */
+  .divider{
+    height:1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent);
+    margin: 1.2rem 0 1.1rem;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="orb one"></div>
+<div class="orb two"></div>
+<div class="orb three"></div>
+
 <main class="auth-wrap">
   <section class="glass-card" role="form" aria-labelledby="authTitle">
     <header class="auth-header">
       <div class="login-icon" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-          stroke-width="1.5" stroke="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round"
             d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M9 12h12m0 0l-3 3m3-3l-3-3" />
         </svg>
       </div>
       <h1 id="authTitle" class="auth-title h4">Iniciar Sesión</h1>
-      <p class="text-muted m-0">Acceso administrativo</p>
+      <p class="subtitle">Acceso administrativo • Doméstica del Cibao A&amp;D</p>
     </header>
 
-    {# ——— Mensajes de error simples (variable `error`) ——— #}
     {% if error %}
       <div class="alert alert-danger" role="alert">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-          stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round"
             d="M12 9v2m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
         </svg>
@@ -148,7 +292,6 @@
       </div>
     {% endif %}
 
-    {# ——— Mensajes con flash (opcional) ——— #}
     {% with msgs = get_flashed_messages(with_categories=true) %}
       {% if msgs %}
         {% for category, msg in msgs %}
@@ -160,12 +303,15 @@
     {% endwith %}
 
     <form method="post" novalidate>
-      {% if csrf_token is defined %}
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {% endif %}
+      <!-- ✅ CSRF SIEMPRE -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-      <div class="mb-3">
+      <div class="mb-3 field">
         <label for="usuario" class="form-label">Usuario</label>
+        <svg class="ico" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 20.118a7.5 7.5 0 0115 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.5-1.632z" />
+        </svg>
         <input
           type="text"
           class="form-control"
@@ -177,8 +323,11 @@
           autofocus>
       </div>
 
-      <div class="mb-4">
+      <div class="mb-4 field">
         <label for="clave" class="form-label">Contraseña</label>
+        <svg class="ico" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 0h10.5a2.25 2.25 0 012.25 2.25v5.25A2.25 2.25 0 0117.25 20.25H6.75A2.25 2.25 0 014.5 18v-5.25A2.25 2.25 0 016.75 10.5z" />
+        </svg>
         <input
           type="password"
           class="form-control"
@@ -191,6 +340,7 @@
 
       <button type="submit" class="btn btn-primary">Entrar</button>
 
+      <div class="divider"></div>
       <p class="small-note">Protegido • Área solo para administradores</p>
     </form>
   </section>

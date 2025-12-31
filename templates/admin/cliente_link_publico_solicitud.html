@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 1100px; margin: 30px auto;">
+  <div class="card" style="padding: 22px;">
+
+    <h2 style="margin:0 0 8px 0;">Link público para crear solicitud</h2>
+
+    <p style="margin:0 0 16px 0; opacity:.85;">
+      Cliente: <b>{{ cliente.nombre_completo }}</b> — Código: <b>{{ cliente.codigo }}</b>
+    </p>
+
+    <label style="display:block; margin-bottom:6px;">Copia y pega este link:</label>
+
+    <input
+      id="linkPublico"
+      class="form-control"
+      type="text"
+      value="{{ link_publico }}"
+      readonly
+      style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
+    />
+
+    <div style="display:flex; gap:10px; margin-top: 12px;">
+      <button class="btn btn-primary" type="button" onclick="copyLink()">
+        Copiar link
+      </button>
+
+      <a class="btn btn-secondary" href="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}">
+        Volver
+      </a>
+    </div>
+
+    <small id="copyMsg" style="display:block; margin-top:10px; opacity:.8;"></small>
+
+  </div>
+</div>
+
+<script>
+  function copyLink() {
+    const input = document.getElementById('linkPublico');
+    input.select();
+    input.setSelectionRange(0, 999999);
+    document.execCommand('copy');
+    document.getElementById('copyMsg').innerText = 'Listo: link copiado ✅';
+  }
+</script>
+
+{% endblock %}

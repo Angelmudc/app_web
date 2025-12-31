@@ -4,37 +4,46 @@
 
 {% block hero %}
 <section class="hero-section text-center py-5"
-         style="background: linear-gradient(160deg, #e7ecfb 0%, #f4f7fc 50%, #ffffff 100%); border-bottom: 3px solid #dbe3f2; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+         style="background: linear-gradient(160deg, #e7ecfb 0%, #f4f7fc 50%, #ffffff 100%);
+                border-bottom: 3px solid #dbe3f2;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+
   <div class="container d-flex flex-column align-items-center justify-content-center position-relative">
 
     <!-- Botón modo noche -->
-    <button id="themeToggle" class="btn btn-sm position-absolute top-0 end-0 mt-2 me-3 shadow-sm"
-            style="border:none; background:#fff; color:#333; border-radius:50%; width:40px; height:40px;">
+    <button id="themeToggle"
+            class="btn btn-sm position-absolute top-0 end-0 mt-2 me-3 shadow-sm"
+            style="border:none; background:#fff; color:#333;
+                   border-radius:50%; width:40px; height:40px;">
       <i class="fa-solid fa-moon"></i>
     </button>
 
-    <!-- Logo Central -->
-    <img src="{{ url_for('static', filename='logo_nuevo.png') }}" 
+    <!-- Logo -->
+    <img src="{{ url_for('static', filename='logo_nuevo.png') }}"
          alt="Doméstica del Cibao A&D"
          class="img-fluid mb-4 animate-fade"
-         style="max-width: 640px; width: 90%; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15));">
+         style="max-width: 640px; width: 90%;
+                filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15));">
 
     <h1 class="fw-bold text-dark mb-2 animate-slide" style="font-size: 2rem;">
       Doméstica del Cibao A&D
     </h1>
+
     <p class="lead text-muted mb-4 animate-fade" style="font-size: 1.1rem;">
       Gestión profesional, moderna y confiable de empleadas domésticas.
     </p>
 
-    <!-- Botón de Ingreso -->
     {% set admin_login_url = url_for_safe('admin.login') %}
     {% set fallback_login_url = url_for_safe('login') %}
+
     {% if admin_login_url %}
-      <a href="{{ admin_login_url }}" class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
+      <a href="{{ admin_login_url }}"
+         class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
         <i class="fa-solid fa-key me-2"></i> Ingresar Administrador
       </a>
     {% elif fallback_login_url %}
-      <a href="{{ fallback_login_url }}" class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
+      <a href="{{ fallback_login_url }}"
+         class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
         <i class="fa-solid fa-key me-2"></i> Ingresar
       </a>
     {% endif %}
@@ -50,34 +59,40 @@
   </h1>
 
   {% set sections = [
+
     ('Gestión de Candidatas', 'fa-users', [
-      ('buscar_candidata', '🔍 Buscar / Editar', 'Busca cualquier candidata por nombre o cédula y edita sus datos inline.'),
-      ('inscripcion', '📝 Inscripción', 'Registra la inscripción de candidatas, asigna código, monto y fecha.'),
-      ('porciento', '💲 Porciento', 'Calcula los porcentajes pendientes de las candidatas y marca estado.'),
-      ('candidatas_porcentaje', '📋 Candidatas con porcentaje', 'Lista solo las candidatas que tienen un porcentaje configurado para cobrarles.'),
-      ('pagos', '💳 Pagos', 'Gestiona pagos pendientes, registra abonos y calificaciones.'),
-      ('filtrar', '🔎 Filtrar Candidatas', 'Filtra por ciudad, rutas, modalidad, experiencia y áreas.'),
-      ('dashboard_procesos', '📊 Dashboard Procesos', 'Totales, entradas diarias y desglose por estado.'),
-      ('finalizar_proceso', '✅ Finalizar Proceso', 'Completa el proceso: sube fotos, asigna grupos y actualiza estado.'),
-      ('eliminar_candidata', '🗑️ Eliminar Candidata', 'Elimina manualmente candidatas duplicadas luego de revisar sus documentos, entrevistas e historial.')
+      ('buscar_candidata', '🔍 Buscar / Editar', 'Busca cualquier candidata por nombre o cédula y edita sus datos.'),
+      ('inscripcion', '📝 Inscripción', 'Registra inscripción, asigna código, monto y fecha.'),
+      ('porciento', '💲 Porciento', 'Calcula porcentajes pendientes y estado.'),
+      ('candidatas_porcentaje', '📋 Candidatas con porcentaje', 'Lista candidatas con porcentaje activo.'),
+      ('pagos', '💳 Pagos', 'Gestiona pagos, abonos y calificaciones.'),
+      ('filtrar', '🔎 Filtrar Candidatas', 'Filtra por ciudad, rutas, modalidad y experiencia.'),
+      ('dashboard_procesos', '📊 Dashboard Procesos', 'Totales y métricas por estado.'),
+      ('finalizar_proceso', '✅ Finalizar Proceso', 'Sube fotos y finaliza procesos.'),
+      ('eliminar_candidata', '🗑️ Eliminar Candidata', 'Elimina candidatas duplicadas revisando documentos e historial.')
     ]),
+
     ('Solicitudes', 'fa-file-lines', [
-      ('secretarias_copiar_solicitudes', '📢 Publicar Hoy', 'Lista de solicitudes activas. Se ocultan hasta la 1:00 AM.'),
-      ('secretarias_buscar_solicitudes', '🔎 Buscar Solicitudes', 'Búsqueda con filtros y detalles expandibles.')
+      ('secretarias_copiar_solicitudes', '📢 Publicar Hoy', 'Solicitudes activas del día.'),
+      ('secretarias_buscar_solicitudes', '🔎 Buscar Solicitudes', 'Búsqueda avanzada de solicitudes.')
     ]),
+
     ('Reportes', 'fa-chart-line', [
-      ('reporte_inscripciones', '📈 Reporte Inscripciones', 'Filtra inscripciones por mes/año. Descarga o visualiza online.'),
-      ('reporte_pagos', '📄 Reporte Pagos', 'Genera PDF con los pagos pendientes de todas las candidatas.')
+      ('reporte_inscripciones', '📈 Reporte Inscripciones', 'Reporte mensual de inscripciones.'),
+      ('reporte_pagos', '📄 Reporte Pagos', 'Pagos pendientes en PDF.')
     ]),
+
     ('Sitio Público', 'fa-globe', [
-      ('registro_publico', '🗳️ Registro Público', 'Formulario público de registro/solicitud para clientes o candidatas.')
+      ('registro_publico', '🗳️ Registro Público', 'Formulario público de registro.')
     ]),
+
     ('Documentos', 'fa-folder-open', [
-      ('subir_fotos.subir_fotos', '📤 Subir Fotos', 'Sube imágenes de candidatas y guarda en la base de datos.'),
-      ('gestionar_archivos', '📥 Gestionar Archivos', 'Descarga o visualiza documentos y entrevistas de candidatas.'),
-      ('referencias', '🗂️ Referencias', 'Busca y edita las referencias laborales y familiares de una candidata.'),
-      ('entrevista', '📝 Entrevista', 'Realiza y guarda entrevistas directamente en la base de datos.')
+      ('subir_fotos.subir_fotos', '📤 Subir Fotos', 'Sube imágenes a la base de datos.'),
+      ('gestionar_archivos', '📥 Gestionar Archivos', 'Descarga documentos y entrevistas.'),
+      ('referencias', '🗂️ Referencias', 'Edita referencias laborales y familiares.'),
+      ('entrevista', '📝 Entrevista', 'Realiza y guarda entrevistas.')
     ])
+
   ] %}
 
   {% for section in sections %}
@@ -85,19 +100,20 @@
       <h2 class="section-title">
         <i class="fa-solid {{ section[1] }} me-2 text-primary"></i> {{ section[0] }}
       </h2>
+
       <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
         {% for item in section[2] %}
           {% set url = url_for_safe(item[0]) %}
           {% if url %}
-          <div class="col">
-            <div class="dashboard-card">
-              <h5>{{ item[1] }}</h5>
-              <p>{{ item[2] }}</p>
-              <a href="{{ url }}" class="btn btn-outline-primary w-100">
-                Ir a {{ item[1].split(' ', 1)[-1] }}
-              </a>
+            <div class="col">
+              <div class="dashboard-card">
+                <h5>{{ item[1] }}</h5>
+                <p>{{ item[2] }}</p>
+                <a href="{{ url }}" class="btn btn-outline-primary w-100">
+                  Ir a {{ item[1].split(' ', 1)[-1] }}
+                </a>
+              </div>
             </div>
-          </div>
           {% endif %}
         {% endfor %}
       </div>
@@ -105,131 +121,64 @@
   {% endfor %}
 </div>
 
-<!-- Estilos -->
 <style>
-  body {
-    background-color: #f2f5fa;
-    transition: background-color 0.4s, color 0.4s;
-  }
-
-  .dark-mode {
-    background-color: #1f242b !important;
-    color: #e5e5e5 !important;
-  }
-
-  .dark-mode .section-title {
-    color: #f8f9fa !important;
-    border-left-color: #5a79ff !important;
-  }
+  body { background-color:#f2f5fa; transition:.4s; }
+  .dark-mode { background:#1f242b!important; color:#e5e5e5!important; }
 
   .section-title {
-    font-weight: 600;
-    color: #2f3640;
-    border-left: 5px solid #4a69bd;
-    padding-left: 14px;
-    margin-bottom: 1.6rem;
-    transition: all 0.3s;
+    font-weight:600; color:#2f3640;
+    border-left:5px solid #4a69bd;
+    padding-left:14px; margin-bottom:1.6rem;
   }
 
   .dashboard-card {
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 2rem 1.7rem;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.07);
-    transition: all 0.35s ease;
-    position: relative;
-    overflow: hidden;
+    background:#fff; border-radius:16px;
+    padding:2rem 1.7rem;
+    box-shadow:0 4px 18px rgba(0,0,0,.07);
+    transition:.35s;
   }
 
   .dashboard-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 8px 22px rgba(74,105,189,0.2);
+    transform:translateY(-6px);
+    box-shadow:0 8px 22px rgba(74,105,189,.2);
   }
 
   .dark-mode .dashboard-card {
-    background: #2a2f38;
-    color: #dcdcdc;
-    box-shadow: 0 4px 15px rgba(255,255,255,0.05);
+    background:#2a2f38; color:#dcdcdc;
   }
 
-  .dashboard-card h5 {
-    font-weight: 600;
-    margin-bottom: .7rem;
-    color: #1e293b;
-  }
-
-  .dark-mode .dashboard-card h5 {
-    color: #fff;
-  }
-
-  .dashboard-card p {
-    color: #6b7280;
-    font-size: .96rem;
-    margin-bottom: 1.3rem;
-  }
-
-  .dark-mode .dashboard-card p {
-    color: #b7bcc4;
-  }
-
-  .btn-outline-primary {
-    border: 1px solid #4a69bd;
-    color: #4a69bd;
-    transition: all .25s ease;
-    border-radius: 10px;
-    font-weight: 500;
-  }
-
-  .btn-outline-primary:hover {
-    background: #4a69bd;
-    color: #fff;
-    box-shadow: 0 3px 10px rgba(74,105,189,0.3);
-  }
-
-  .dark-mode .btn-outline-primary {
-    color: #5a79ff;
-    border-color: #5a79ff;
-  }
-
-  .dark-mode .btn-outline-primary:hover {
-    background: #5a79ff;
-    color: #fff;
-    box-shadow: 0 4px 10px rgba(90,121,255,0.4);
-  }
-
-  /* Animaciones suaves */
   .animate-fade { animation: fadeIn 1.4s ease forwards; }
   .animate-slide { animation: slideUp 1.2s ease forwards; }
 
   @keyframes fadeIn {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+    from {opacity:0; transform:scale(.95)}
+    to {opacity:1; transform:scale(1)}
   }
 
   @keyframes slideUp {
-    from { opacity: 0; transform: translateY(25px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {opacity:0; transform:translateY(25px)}
+    to {opacity:1; transform:translateY(0)}
   }
 </style>
 
-<!-- Script Modo Noche -->
 <script>
-  document.addEventListener("DOMContentLoaded", function() {
+  document.addEventListener("DOMContentLoaded", () => {
     const toggle = document.getElementById("themeToggle");
     const icon = toggle.querySelector("i");
     const body = document.body;
 
     if (localStorage.getItem("theme") === "dark") {
       body.classList.add("dark-mode");
-      icon.classList.replace("fa-moon", "fa-sun");
+      icon.classList.replace("fa-moon","fa-sun");
     }
 
     toggle.addEventListener("click", () => {
       body.classList.toggle("dark-mode");
       const dark = body.classList.contains("dark-mode");
-      icon.classList.replace(dark ? "fa-moon" : "fa-sun", dark ? "fa-sun" : "fa-moon");
-      localStorage.setItem("theme", dark ? "dark" : "light");
+      icon.classList.replace(dark ? "fa-moon":"fa-sun", dark ? "fa-sun":"fa-moon");
+      localStorage.setItem("theme", dark ? "dark":"light");
     });
   });
 </script>
 {% endblock %}
+

@@ -21,9 +21,6 @@ from flask import (
 
 from flask_login import login_user, logout_user, current_user
 
-from flask_caching import Cache   # si no lo usas directo aquí, igual se puede dejar
-from flask_migrate import Migrate
-
 # SQLAlchemy
 from sqlalchemy import or_, cast, String, func, and_
 from sqlalchemy.orm import subqueryload, joinedload, load_only
@@ -33,8 +30,8 @@ from sqlalchemy.sql import text
 # 🔐 HASH DE CONTRASEÑAS
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# App factory / DB / CSRF / usuarios en memoria
-from config_app import create_app, db, csrf, USUARIOS
+# ✅ App factory / DB / CSRF / CACHE / usuarios en memoria
+from config_app import create_app, db, csrf, cache, USUARIOS
 
 # Decoradores
 from decorators import roles_required, admin_required
@@ -51,7 +48,6 @@ from models import (
 # Formularios
 from forms import LlamadaCandidataForm
 
-
 # PDF (fpdf2)
 try:
     from fpdf import FPDF  # fpdf2
@@ -63,8 +59,6 @@ except Exception:
 # APP BOOT
 # -----------------------------------------------------------------------------
 app = create_app()
-cache = Cache(app)
-migrate = Migrate(app, db)
 
 # Helper para verificar si un endpoint existe (usable desde Jinja)
 app.jinja_env.globals['has_endpoint'] = lambda name: name in app.view_functions
@@ -82,15 +76,6 @@ def _shutdown_session(exception=None):
         db.session.remove()
     except Exception:
         pass
-
-# -----------------------------------------------------------------------------
-# USUARIOS DE SESIÓN SENCILLA (panel interno)
-#  Nota: idealmente migrar a tabla/ORM + passwords via gestión real de usuarios.
-# -----------------------------------------------------------------------------
-USUARIOS = {
-    "Cruz":    {"pwd": generate_password_hash("8998"), "role": "admin"},
-    "vanina": {"pwd": generate_password_hash("2424"), "role": "secretaria"},
-}
 
 # -----------------------------------------------------------------------------
 # HELPERS
@@ -327,65 +312,128 @@ from datetime import datetime
 from flask import request, render_template, redirect, url_for, session
 from werkzeug.security import check_password_hash
 
+# ---- Anti-bruteforce settings (ajustables)
+LOGIN_MAX_INTENTOS = int(os.getenv("LOGIN_MAX_INTENTOS", "6"))   # intentos
+LOGIN_LOCK_MINUTOS = int(os.getenv("LOGIN_LOCK_MINUTOS", "10"))  # minutos
+LOGIN_KEY_PREFIX   = "panel_login"
+
+from flask import current_app  # <-- AGREGA ESTE IMPORT si no lo tienes
+
+def _client_ip() -> str:
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return (request.remote_addr or "0.0.0.0").strip()
+
+def _clear_security_layer_lock():
+    # Limpia el lock global por IP (security_layer.py), si existe
+    try:
+        clear_fn = current_app.extensions.get("clear_login_attempts")
+        if clear_fn:
+            clear_fn(_client_ip())
+    except Exception:
+        pass
+
+def _login_keys(usuario_norm: str):
+    ip = _client_ip()
+    base = f"{LOGIN_KEY_PREFIX}:{ip}:{usuario_norm}"
+    return {
+        "fail": f"{base}:fail",
+        "lock": f"{base}:lock",
+    }
+
+def _is_locked(usuario_norm: str) -> bool:
+    keys = _login_keys(usuario_norm)
+    return bool(cache.get(keys["lock"]))
+
+def _lock(usuario_norm: str):
+    keys = _login_keys(usuario_norm)
+    cache.set(keys["lock"], True, timeout=LOGIN_LOCK_MINUTOS * 60)
+
+def _fail_count(usuario_norm: str) -> int:
+    keys = _login_keys(usuario_norm)
+    return int(cache.get(keys["fail"]) or 0)
+
+def _register_fail(usuario_norm: str) -> int:
+    keys = _login_keys(usuario_norm)
+    n = _fail_count(usuario_norm) + 1
+    cache.set(keys["fail"], n, timeout=LOGIN_LOCK_MINUTOS * 60)
+    if n >= LOGIN_MAX_INTENTOS:
+        _lock(usuario_norm)
+    return n
+
+def _reset_fail(usuario_norm: str):
+    keys = _login_keys(usuario_norm)
+    cache.delete(keys["fail"])
+    cache.delete(keys["lock"])
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
 
     if request.method == 'POST':
-        # Lo que viene del form
-        usuario_raw = (request.form.get('usuario') or '').strip()[:64]
-        clave       = (request.form.get('clave')   or '').strip()[:128]
+        # (Opcional pero recomendado) Honeypot: si lo llenan, es bot
+        # Si tu login.html tiene input hidden name="website", deja esto:
+        if (request.form.get("website") or "").strip():
+            return "", 400
 
-        # Intentamos varias variantes del usuario
-        posibles_claves = [
-            usuario_raw,
-            usuario_raw.lower(),
-            usuario_raw.upper(),
-        ]
+        usuario_raw  = (request.form.get('usuario') or '').strip()[:64]
+        clave        = (request.form.get('clave')   or '').strip()[:128]
+        usuario_norm = usuario_raw.lower()
 
-        user = None
-        usuario_key = None
+        # 🔒 Bloqueo por intentos (tu bloqueo por usuario+IP)
+        if _is_locked(usuario_norm):
+            return render_template(
+                'login.html',
+                mensaje=f"Demasiados intentos. Bloqueado por {LOGIN_LOCK_MINUTOS} minutos."
+            ), 429
 
-        for k in posibles_claves:
-            if k in USUARIOS:
-                user = USUARIOS[k]
-                usuario_key = k
-                break
+        # ✅ Validación usando el USUARIOS importado desde config_app
+        user_data = (
+            USUARIOS.get(usuario_raw)
+            or USUARIOS.get(usuario_raw.lower())
+            or USUARIOS.get(usuario_raw.upper())
+        )
 
         ok = False
-        if user:
-            # Acepta tanto 'pwd_hash' como 'pwd'
-            stored = user.get('pwd_hash') or user.get('pwd')
-
+        if user_data:
+            stored = user_data.get("pwd_hash") or user_data.get("pwd")
             if stored:
                 try:
-                    # Si está hasheado, esto funciona
                     ok = check_password_hash(stored, clave)
                 except Exception:
-                    # Si NO es un hash, comparamos directo (texto plano)
                     ok = (stored == clave)
 
         if ok:
-            # Login correcto
+            # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global por IP
+            _reset_fail(usuario_norm)
+            _clear_security_layer_lock()
+
             session.clear()
-            session['usuario']   = usuario_key
-            session['role']      = user.get('role', 'admin')
+            session['usuario']   = usuario_raw
+            session['role']      = (user_data.get("role") or "admin")
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
 
             return redirect(url_for('home'))
 
-        # Si algo falla:
-        mensaje = "Usuario o clave incorrectos."
+        # ❌ Login incorrecto: registra intento
+        n = _register_fail(usuario_norm)
+
+        if _is_locked(usuario_norm):
+            return render_template(
+                'login.html',
+                mensaje=f"Demasiados intentos. Bloqueado por {LOGIN_LOCK_MINUTOS} minutos."
+            ), 429
+
+        restantes = max(0, LOGIN_MAX_INTENTOS - n)
+        mensaje = f"Usuario o clave incorrectos. Te quedan {restantes} intento(s)."
 
     return render_template('login.html', mensaje=mensaje)
-
-
 
 
 @app.route('/logout')
 @roles_required('admin', 'secretaria')
 def logout():
-    # Limpia toda la sesión
     session.clear()
     return redirect(url_for('login'))
 
@@ -1309,14 +1357,103 @@ def reporte_pagos():
         page=page, per_page=per_page, total=total, total_pages=total_pages
     )
 
+# -----------------------------------------------------------------------------
+# SUBIR FOTOS + GESTIONAR ARCHIVOS (BINARIOS EN DB)
+# -----------------------------------------------------------------------------
+
+from flask import (
+    Blueprint, Response, abort,
+    request, render_template, redirect, url_for, flash,
+    current_app, send_file
+)
+from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
+import io
+import os
+import re
+import unicodedata
+
+# OJO: asumo que ya tienes:
+# - db
+# - roles_required
+# - Candidata
+# - _retry_query (si no la tienes, te lo digo al final)
+# -----------------------------------------------------------------------------
+
+subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
+
+# =========================
+# Helpers comunes
+# =========================
+
+ALLOWED_IMG_FIELDS = ('depuracion', 'perfil', 'cedula1', 'cedula2')
+
+def _is_bytes(x):
+    return isinstance(x, (bytes, bytearray, memoryview))
+
+def _to_bytes(data):
+    if data is None:
+        return None
+    if isinstance(data, memoryview):
+        return data.tobytes()
+    if isinstance(data, (bytes, bytearray)):
+        return bytes(data)
+    try:
+        return bytes(data)
+    except Exception:
+        return None
+
+def _detect_mimetype_and_ext(data: bytes):
+    if not data:
+        return ("application/octet-stream", "bin")
+    head = data[:12]
+    if head.startswith(b"\x89PNG"):
+        return ("image/png", "png")
+    if head.startswith(b"\xFF\xD8\xFF"):
+        return ("image/jpeg", "jpg")
+    if head[:4] == b"GIF8":
+        return ("image/gif", "gif")
+    if head[:4] == b"%PDF":
+        return ("application/pdf", "pdf")
+    return ("application/octet-stream", "bin")
+
+def _get_candidata_by_fila_or_pk(fila_id: int):
+    """
+    Robustez:
+    - Primero intenta db.session.get (si fila es PK)
+    - Si no, cae a filter_by(fila=)
+    """
+    if not fila_id:
+        return None
+
+    cand = None
+    try:
+        cand = db.session.get(Candidata, fila_id)
+    except Exception:
+        cand = None
+
+    if cand:
+        return cand
+
+    try:
+        return Candidata.query.filter_by(fila=fila_id).first()
+    except Exception:
+        return None
+
+def _build_docs_flags(cand):
+    if not cand:
+        return {k: False for k in ALLOWED_IMG_FIELDS}
+    return {
+        'depuracion': bool(getattr(cand, 'depuracion', None)),
+        'perfil': bool(getattr(cand, 'perfil', None)),
+        'cedula1': bool(getattr(cand, 'cedula1', None)),
+        'cedula2': bool(getattr(cand, 'cedula2', None)),
+    }
 
 # -----------------------------------------------------------------------------
 # SUBIR FOTOS (BINARIOS EN DB)
 # -----------------------------------------------------------------------------
-from flask import Blueprint, Response, abort
-
-subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
-
 
 @subir_bp.route('', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
@@ -1331,22 +1468,6 @@ def subir_fotos():
     fila_id = request.args.get('fila', type=int)
     resultados = []
 
-    # Helper para saber qué campos tienen imagen guardada
-    def get_tiene(cand):
-        if not cand:
-            return {
-                'depuracion': False,
-                'perfil': False,
-                'cedula1': False,
-                'cedula2': False,
-            }
-        return {
-            'depuracion': bool(cand.depuracion),
-            'perfil': bool(cand.perfil),
-            'cedula1': bool(cand.cedula1),
-            'cedula2': bool(cand.cedula2),
-        }
-
     # ========================= MODO BUSCAR =========================
     if accion == 'buscar':
         if request.method == 'POST':
@@ -1359,16 +1480,18 @@ def subir_fotos():
             try:
                 filas = (
                     Candidata.query.filter(
-                        (Candidata.nombre_completo.ilike(like)) |
-                        (Candidata.cedula.ilike(like)) |
-                        (Candidata.numero_telefono.ilike(like))
+                        or_(
+                            Candidata.nombre_completo.ilike(like),
+                            Candidata.cedula.ilike(like),
+                            Candidata.numero_telefono.ilike(like),
+                        )
                     )
                     .order_by(Candidata.nombre_completo.asc())
                     .limit(300)
                     .all()
                 )
             except Exception:
-                app.logger.exception("❌ Error buscando en subir_fotos")
+                current_app.logger.exception("❌ Error buscando en subir_fotos")
                 filas = []
 
             if not filas:
@@ -1392,14 +1515,14 @@ def subir_fotos():
             flash("❌ Debes seleccionar primero una candidata.", "danger")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-        candidata = Candidata.query.get(fila_id)
+        candidata = _get_candidata_by_fila_or_pk(fila_id)
         if not candidata:
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
         # GET: mostrar formulario con info de qué imágenes tiene
         if request.method == 'GET':
-            tiene = get_tiene(candidata)
+            tiene = _build_docs_flags(candidata)
             return render_template(
                 'subir_fotos.html',
                 accion='subir',
@@ -1418,13 +1541,12 @@ def subir_fotos():
         # Filtrar solo los archivos realmente seleccionados (nombre no vacío)
         archivos_validos = {}
         for campo, archivo in files.items():
-            if archivo and archivo.filename:
+            if campo in ALLOWED_IMG_FIELDS and archivo and archivo.filename:
                 archivos_validos[campo] = archivo
 
-        # Si no se seleccionó NINGÚN archivo
         if not archivos_validos:
             flash("⚠️ Debes seleccionar al menos una imagen para subir.", "warning")
-            tiene = get_tiene(candidata)
+            tiene = _build_docs_flags(candidata)
             return render_template(
                 'subir_fotos.html',
                 accion='subir',
@@ -1433,46 +1555,33 @@ def subir_fotos():
             )
 
         try:
-            # Guardar SOLO los campos que llegaron con archivo
             for campo, archivo in archivos_validos.items():
                 try:
                     data = archivo.read()
                 except Exception:
-                    app.logger.exception(f"❌ Error leyendo archivo {campo}")
+                    current_app.logger.exception("❌ Error leyendo archivo %s", campo)
                     flash(f"❌ Error leyendo el archivo de {campo}. Intenta de nuevo.", "danger")
-                    tiene = get_tiene(candidata)
-                    return render_template(
-                        'subir_fotos.html',
-                        accion='subir',
-                        fila=fila_id,
-                        tiene=tiene
-                    )
+                    tiene = _build_docs_flags(candidata)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
 
-                # Si por alguna razón viene vacío, se ignora sin romper
                 if not data:
-                    app.logger.warning(f"⚠️ Archivo vacío para campo {campo}, no se guardará.")
+                    current_app.logger.warning("⚠️ Archivo vacío para %s, no se guardará.", campo)
                     continue
 
-                # Asignar el binario al campo correspondiente de la candidata
+                # Guardar binario
                 setattr(candidata, campo, data)
 
             db.session.commit()
-            flash("✅ Imágenes subidas/actualizadas correctamente en la base de datos.", "success")
+            flash("✅ Imágenes subidas/actualizadas correctamente.", "success")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
         except Exception:
             db.session.rollback()
-            app.logger.exception("❌ Error guardando imágenes en la BD")
+            current_app.logger.exception("❌ Error guardando imágenes en la BD")
             flash("❌ Ocurrió un error guardando en la base de datos.", "danger")
-            tiene = get_tiene(candidata)
-            return render_template(
-                'subir_fotos.html',
-                accion='subir',
-                fila=fila_id,
-                tiene=tiene
-            )
+            tiene = _build_docs_flags(candidata)
+            return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
 
-    # Si algo raro, mandamos a buscar de nuevo
     return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
 
@@ -1482,113 +1591,149 @@ def ver_imagen(fila, campo):
     """
     Sirve la imagen guardada en la BD para depuración/perfil/cedula1/cedula2.
     """
-    if campo not in ('depuracion', 'perfil', 'cedula1', 'cedula2'):
+    if campo not in ALLOWED_IMG_FIELDS:
         abort(404)
 
-    cand = Candidata.query.get_or_404(fila)
-    data = getattr(cand, campo, None)
+    cand = _get_candidata_by_fila_or_pk(fila)
+    if not cand:
+        abort(404)
+
+    data = _to_bytes(getattr(cand, campo, None))
     if not data:
         abort(404)
 
-    # Detección muy simple de tipo (PNG vs JPG) para el Content-Type
-    mimetype = 'image/jpeg'
-    if data[:4] == b'\x89PNG':
-        mimetype = 'image/png'
+    mt, _ext = _detect_mimetype_and_ext(data)
+    # Para seguridad: solo servir como imagen (si no es imagen, no servimos aquí)
+    if not mt.startswith("image/"):
+        abort(404)
 
-    return Response(data, mimetype=mimetype)
+    return Response(data, mimetype=mt)
 
-
-# Registrar blueprint
+# Registrar blueprint (hazlo una sola vez en tu app)
 app.register_blueprint(subir_bp)
 
-
-
-
-
 # -----------------------------------------------------------------------------
-# GESTIONAR ARCHIVOS / PDF (DB only)
+# GESTIONAR ARCHIVOS / PDF (DB only)  ✅ MEJORADO
 # -----------------------------------------------------------------------------
+from flask import render_template, redirect, url_for, request, flash
+from sqlalchemy import or_
+
 @app.route("/gestionar_archivos", methods=["GET", "POST"])
 @roles_required('admin', 'secretaria')
 def gestionar_archivos():
-    accion = (request.args.get("accion") or "buscar").strip()
+    accion = (request.args.get("accion") or "buscar").strip().lower()
     mensaje = None
     resultados = []
     docs = {}
     fila = (request.args.get("fila") or "").strip()
 
+    # ✅ Helper: NO pasar binarios al template, solo booleanos + entrevista
+    def build_docs_flags(c):
+        if not c:
+            return {
+                "depuracion": False,
+                "perfil": False,
+                "cedula1": False,
+                "cedula2": False,
+                "entrevista": "",
+            }
+
+        return {
+            "depuracion": bool(getattr(c, "depuracion", None)),
+            "perfil": bool(getattr(c, "perfil", None)),
+            "cedula1": bool(getattr(c, "cedula1", None)),
+            "cedula2": bool(getattr(c, "cedula2", None)),
+            # 👇 entrevista sí la pasamos (es texto, no pesado)
+            "entrevista": (getattr(c, "entrevista", "") or "").strip(),
+        }
+
+    # ========================= DESCARGAR (PDF) =========================
     if accion == "descargar":
-        doc = (request.args.get("doc") or "").strip()
+        doc = (request.args.get("doc") or "").strip().lower()
         if not fila.isdigit():
             return "Error: Fila inválida", 400
         idx = int(fila)
+
         if doc == "pdf":
+            # PDF entrevista
             return redirect(url_for("generar_pdf_entrevista", fila=idx))
+
         return "Documento no reconocido", 400
 
+    # ========================= BUSCAR =========================
     if accion == "buscar":
         if request.method == "POST":
             q = (request.form.get("busqueda") or "").strip()[:128]
-            if q:
-                like = f"%{q}%"
-                try:
-                    filas = (Candidata.query.filter(
-                        (Candidata.nombre_completo.ilike(like)) |
-                        (Candidata.cedula.ilike(like)) |
-                        (Candidata.numero_telefono.ilike(like))
-                    ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
-                except Exception:
-                    app.logger.exception("❌ Error buscando en gestionar_archivos")
-                    filas = []
+            if not q:
+                flash("⚠️ Ingresa algo para buscar.", "warning")
+                return redirect(url_for("gestionar_archivos", accion="buscar"))
 
+            like = f"%{q}%"
+            try:
+                filas = (
+                    Candidata.query
+                    .filter(
+                        or_(
+                            Candidata.nombre_completo.ilike(like),
+                            Candidata.cedula.ilike(like),
+                            Candidata.numero_telefono.ilike(like),
+                        )
+                    )
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
+            except Exception:
+                current_app.logger.exception("❌ Error buscando en gestionar_archivos")
+                filas = []
+
+            if filas:
                 resultados = [{
                     "fila": c.fila,
                     "nombre": c.nombre_completo,
                     "telefono": c.numero_telefono or "No especificado",
                     "cedula": c.cedula or "No especificado"
-                } for c in filas] if filas else []
+                } for c in filas]
+            else:
+                mensaje = "⚠️ No se encontraron candidatas."
 
-                if not resultados:
-                    mensaje = "⚠️ No se encontraron candidatas."
-        return render_template("gestionar_archivos.html",
-                               accion=accion,
-                               resultados=resultados,
-                               mensaje=mensaje)
+        return render_template(
+            "gestionar_archivos.html",
+            accion="buscar",
+            resultados=resultados,
+            mensaje=mensaje
+        )
 
+    # ========================= VER =========================
     if accion == "ver":
         if not fila.isdigit():
             mensaje = "Error: Fila inválida."
-            return render_template("gestionar_archivos.html",
-                                   accion="buscar",
-                                   mensaje=mensaje)
+            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
+
         idx = int(fila)
         c = Candidata.query.filter_by(fila=idx).first()
         if not c:
             mensaje = "⚠️ Candidata no encontrada."
-            return render_template("gestionar_archivos.html",
-                                   accion="buscar",
-                                   mensaje=mensaje)
+            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
 
-        # Pasamos los binarios como están (tu template actual puede revisarlos)
-        docs["depuracion"] = getattr(c, "depuracion", None)
-        docs["perfil"]     = getattr(c, "perfil", None)
-        docs["cedula1"]    = getattr(c, "cedula1", None)
-        docs["cedula2"]    = getattr(c, "cedula2", None)
-        docs["entrevista"] = getattr(c, "entrevista", "") or ""
+        docs = build_docs_flags(c)
 
-        return render_template("gestionar_archivos.html",
-                               accion=accion,
-                               fila=idx,
-                               docs=docs,
-                               mensaje=mensaje)
+        return render_template(
+            "gestionar_archivos.html",
+            accion="ver",
+            fila=idx,
+            docs=docs,
+            mensaje=mensaje
+        )
 
+    # Si viene una acción rara, volvemos a buscar
     return redirect(url_for("gestionar_archivos", accion="buscar"))
 
 
 @app.route('/generar_pdf_entrevista')
 @roles_required('admin', 'secretaria')
 def generar_pdf_entrevista():
-    # Asegura que usamos fpdf2
+    # Asegura fpdf2
     try:
         from fpdf import FPDF as _FPDF
         from fpdf.errors import FPDFException
@@ -1599,21 +1744,23 @@ def generar_pdf_entrevista():
     if not fila_index:
         return "Error: falta parámetro fila", 400
 
-    c = Candidata.query.get(fila_index)
-    if not c or not getattr(c, "entrevista", None):
+    c = _get_candidata_by_fila_or_pk(fila_index)
+    if not c:
+        return "Candidata no encontrada", 404
+
+    texto_entrevista = (getattr(c, "entrevista", None) or "").strip()
+    if not texto_entrevista:
         return "No hay entrevista registrada para esa fila", 404
 
-    texto_entrevista = c.entrevista or ""
-    ref_laborales    = getattr(c, "referencias_laboral", "") or ""
-    ref_familiares   = getattr(c, "referencias_familiares", "") or ""
+    # OJO: aquí estás usando nombres que tal vez no coincidan con tu modelo real.
+    # Si tus columnas se llaman diferente, se ajusta después.
+    ref_laborales  = (getattr(c, "referencias_laboral", "") or "").strip()
+    ref_familiares = (getattr(c, "referencias_familiares", "") or "").strip()
 
-    import os, io, re, unicodedata
+    BRAND = (0, 102, 204)
+    FAINT = (120, 120, 120)
+    GRID  = (210, 210, 210)
 
-    BRAND  = (0, 102, 204)
-    FAINT  = (120, 120, 120)
-    GRID   = (210, 210, 210)
-
-    # ── Helpers robustos ─────────────────────────────────────
     def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
         if unicode_ok:
             return s or ""
@@ -1640,16 +1787,15 @@ def generar_pdf_entrevista():
         try:
             pdf.set_font(font_name, font_style, font_size)
         except Exception:
-            # fallback duro
             try:
                 pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
             except Exception:
                 pdf.set_font("Arial", "", 10)
+
         try:
             pdf.multi_cell(pdf.epw, 7, txt, align=align)
             pdf.ln(line_space)
         except FPDFException:
-            # Fuerza cortes en palabras enormes
             txt2 = _wrap_unbreakables(txt, chunk=35)
             pdf.set_font(font_name, "", 10)
             pdf.multi_cell(pdf.epw, 7, txt2, align="L")
@@ -1661,39 +1807,37 @@ def generar_pdf_entrevista():
             self._logo_path   = None
             self._base_font   = "Arial"
             self._unicode_ok  = False
-            self._has_italic  = False  # para saber si podemos usar "I"
+            self._has_italic  = False
             self._has_bold    = False
             self._has_bi      = False
 
         def header(self):
             if self.page_no() == 1:
-                # Logo (solo primera página) + menos espacio
                 if self._logo_path and os.path.exists(self._logo_path):
-                    w = 92  # grande pero elegante
+                    w = 92
                     x = (self.w - w) / 2.0
                     self.image(self._logo_path, x=x, y=10, w=w)
                     y_line = 10 + (w * 0.38)
                     self.set_y(y_line)
                 else:
                     self.set_y(18)
-                # línea delgada
+
                 self.set_draw_color(*GRID)
                 self.set_line_width(0.6)
                 self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
-                self.ln(3)  # menos separación
+                self.ln(3)
 
-                # Título
                 try:
                     self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
                 except Exception:
                     self.set_font("Arial", "B", 18)
+
                 self.set_fill_color(*BRAND)
                 self.set_text_color(255, 255, 255)
                 self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
                 self.set_text_color(0, 0, 0)
                 self.ln(4)
             else:
-                # páginas siguientes: una línea fina arriba
                 self.set_y(14)
                 self.set_draw_color(*GRID)
                 self.set_line_width(0.4)
@@ -1702,7 +1846,6 @@ def generar_pdf_entrevista():
 
         def footer(self):
             self.set_y(-15)
-            # Intentar itálica; si no existe, caer a regular; si todo falla, Arial
             try:
                 if self._has_italic or self._has_bi:
                     self.set_font(self._base_font, "I", 9)
@@ -1713,6 +1856,7 @@ def generar_pdf_entrevista():
                     self.set_font("Arial", "I", 9)
                 except Exception:
                     self.set_font("Arial", "", 9)
+
             self.set_text_color(*FAINT)
             self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
 
@@ -1721,21 +1865,20 @@ def generar_pdf_entrevista():
         pdf.alias_nb_pages()
         pdf.set_auto_page_break(auto=True, margin=16)
         pdf.set_margins(16, 16, 16)
-        pdf._logo_path = os.path.join(app.root_path, "static", "logo_nuevo.png")
+        pdf._logo_path = os.path.join(current_app.root_path, "static", "logo_nuevo.png")
 
-        # ── Registro de fuentes ──
-        base_font   = "Arial"
-        unicode_ok  = False
-        has_bold    = False
-        has_italic  = False
-        has_bi      = False
+        base_font  = "Arial"
+        unicode_ok = False
+        has_bold   = False
+        has_italic = False
+        has_bi     = False
 
         try:
-            font_dir = os.path.join(app.root_path, "static", "fonts")
-            reg   = os.path.join(font_dir, "DejaVuSans.ttf")
-            bold  = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
-            it    = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")      # si existe
-            bi    = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")  # si existe
+            font_dir = os.path.join(current_app.root_path, "static", "fonts")
+            reg  = os.path.join(font_dir, "DejaVuSans.ttf")
+            bold = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+            it   = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")
+            bi   = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")
 
             if os.path.exists(reg):
                 pdf.add_font("DejaVuSans", "", reg, uni=True)
@@ -1751,10 +1894,9 @@ def generar_pdf_entrevista():
                 pdf.add_font("DejaVuSans", "BI", bi, uni=True)
                 has_bi = True
         except Exception:
-            # Si algo falla, Arial built-in
             base_font  = "Arial"
             unicode_ok = False
-            has_bold   = True  # Arial tiene B/I built-in
+            has_bold   = True
             has_italic = True
             has_bi     = True
 
@@ -1773,6 +1915,7 @@ def generar_pdf_entrevista():
             pdf.set_font(base_font, "B" if has_bold else "", 13)
         except Exception:
             pdf.set_font("Arial", "B", 13)
+
         pdf.set_text_color(*BRAND)
         pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
         pdf.set_text_color(0, 0, 0)
@@ -1785,42 +1928,15 @@ def generar_pdf_entrevista():
                 q = _collapse_ws(q)
                 a = _collapse_ws(a)
 
-                # Pregunta en negro (bold)
-                safe_multicell(
-                    pdf,
-                    (q + ":").strip(),
-                    base_font,
-                    "B" if has_bold else "",
-                    12,
-                    color=(0, 0, 0),
-                    align="L",
-                    line_space=1
-                )
-                # Respuesta en azul + bullet
+                safe_multicell(pdf, (q + ":").strip(), base_font, "B" if has_bold else "", 12,
+                               color=(0, 0, 0), align="L", line_space=1)
+
                 ans = _wrap_unbreakables(a, 60)
                 ans = (bullet + ans) if ans else ans
-                safe_multicell(
-                    pdf,
-                    ans,
-                    base_font,
-                    "",
-                    12,
-                    color=BRAND,
-                    align="J",
-                    line_space=2
-                )
+                safe_multicell(pdf, ans, base_font, "", 12, color=BRAND, align="J", line_space=2)
             else:
-                # Línea suelta (negro)
-                safe_multicell(
-                    pdf,
-                    _wrap_unbreakables(line, 60),
-                    base_font,
-                    "",
-                    12,
-                    color=(0, 0, 0),
-                    align="J",
-                    line_space=1.5
-                )
+                safe_multicell(pdf, _wrap_unbreakables(line, 60), base_font, "", 12,
+                               color=(0, 0, 0), align="J", line_space=1.5)
 
         pdf.ln(3)
 
@@ -1829,6 +1945,7 @@ def generar_pdf_entrevista():
             pdf.set_font(base_font, "B" if has_bold else "", 13)
         except Exception:
             pdf.set_font("Arial", "B", 13)
+
         pdf.set_text_color(*BRAND)
         pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias", ln=True)
         pdf.set_text_color(0, 0, 0)
@@ -1840,16 +1957,10 @@ def generar_pdf_entrevista():
         except Exception:
             pdf.set_font("Arial", "B", 12)
         pdf.cell(0, 7, "Laborales:", ln=True)
-        if ref_laborales.strip():
-            safe_multicell(
-                pdf,
-                _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
-                base_font,
-                "",
-                12,
-                color=BRAND,
-                align="J"
-            )
+
+        if ref_laborales:
+            safe_multicell(pdf, _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
+                           base_font, "", 12, color=BRAND, align="J")
         else:
             safe_multicell(pdf, "No hay referencias laborales.", base_font, "", 12, color=FAINT, align="L")
 
@@ -1859,44 +1970,49 @@ def generar_pdf_entrevista():
         except Exception:
             pdf.set_font("Arial", "B", 12)
         pdf.cell(0, 7, "Familiares:", ln=True)
-        if ref_familiares.strip():
-            safe_multicell(
-                pdf,
-                _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
-                base_font,
-                "",
-                12,
-                color=BRAND,
-                align="J"
-            )
+
+        if ref_familiares:
+            safe_multicell(pdf, _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
+                           base_font, "", 12, color=BRAND, align="J")
         else:
             safe_multicell(pdf, "No hay referencias familiares.", base_font, "", 12, color=FAINT, align="L")
 
-        # ── Salida ──
         raw = pdf.output(dest="S")
         pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
         buf = io.BytesIO(pdf_bytes); buf.seek(0)
-        return send_file(buf, mimetype="application/pdf", as_attachment=True,
-                         download_name=f"entrevista_candidata_{fila_index}.pdf")
+
+        return send_file(
+            buf,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"entrevista_candidata_{fila_index}.pdf"
+        )
 
     except Exception as e:
         current_app.logger.exception("❌ Error interno generando PDF")
         return f"Error interno generando PDF: {e}", 500
 
 
-
 @app.route("/gestionar_archivos/descargar_uno", methods=["GET"])
 @roles_required('admin', 'secretaria')
 def descargar_uno_db():
     cid = request.args.get("id", type=int)
-    doc = (request.args.get("doc") or "").strip()
-    if not cid or doc not in ("depuracion","perfil","cedula1","cedula2"):
+    doc = (request.args.get("doc") or "").strip().lower()
+
+    if not cid or doc not in ("depuracion", "perfil", "cedula1", "cedula2"):
         return "Error: parámetros inválidos", 400
 
-    # Cargar con reintento y API moderna
+    # ✅ Cargar candidata (con tu retry)
     def _load():
+        # SQLAlchemy moderno
         return db.session.get(Candidata, cid)
-    candidata = _retry_query(_load, retries=1, swallow=False)
+
+    try:
+        candidata = _retry_query(_load, retries=1, swallow=False)
+    except Exception:
+        current_app.logger.exception("❌ Error consultando candidata en descargar_uno_db")
+        candidata = None
+
     if not candidata:
         return "Candidata no encontrada", 404
 
@@ -1904,36 +2020,50 @@ def descargar_uno_db():
     if not data:
         return f"No hay archivo para {doc}", 404
 
-    # Asegura bytes (puede venir como memoryview en algunos backends)
+    # ✅ Asegurar bytes (puede venir memoryview)
     if isinstance(data, memoryview):
         data = data.tobytes()
-    elif not isinstance(data, (bytes, bytearray)):
+    elif isinstance(data, bytearray):
+        data = bytes(data)
+    elif not isinstance(data, (bytes,)):
         try:
             data = bytes(data)
         except Exception:
             return "Formato de archivo inválido.", 400
 
-    # Detectar mimetype por encabezado
-    head = data[:8]
+    # ✅ Detectar mimetype por encabezado
+    head = data[:12]
     if head.startswith(b"\x89PNG"):
         mt, ext = "image/png", "png"
     elif head.startswith(b"\xFF\xD8\xFF"):
         mt, ext = "image/jpeg", "jpg"
-    elif head[:4] == b"GIF8":
+    elif head.startswith(b"GIF87a") or head.startswith(b"GIF89a"):
         mt, ext = "image/gif", "gif"
-    elif head[:4] == b"%PDF":
+    elif head.startswith(b"%PDF"):
         mt, ext = "application/pdf", "pdf"
     else:
         mt, ext = "application/octet-stream", "bin"
 
-    bio = io.BytesIO(data); bio.seek(0)
+    # ✅ Nombre de archivo bonito y seguro
+    nombre = (getattr(candidata, "nombre_completo", "") or "").strip()
+    if not nombre:
+        nombre = f"fila_{cid}"
+
+    # sanitizar: letras/números/_/-
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", nombre)[:60].strip("_")
+    filename = f"{doc}_{safe_name}_{cid}.{ext}"
+
+    bio = io.BytesIO(data)
+    bio.seek(0)
+
+    current_app.logger.info("⬇️ Descargando doc=%s fila=%s nombre=%s", doc, cid, nombre)
+
     return send_file(
         bio,
         mimetype=mt,
         as_attachment=True,
-        download_name=f"{doc}.{ext}"
+        download_name=filename
     )
-
 
 
 # -----------------------------------------------------------------------------
@@ -3765,8 +3895,6 @@ def candidatas_porcentaje():
         pagination=pagination
     )
 
-from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
 
 @app.route('/candidatas/eliminar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
@@ -3776,11 +3904,49 @@ def eliminar_candidata():
     - Paso 1: Buscar por nombre, cédula, teléfono o código.
     - Paso 2: Ver detalle completo (docs, entrevista, etc.).
     - Paso 3: Confirmar eliminación definitiva.
-    SOLO se permitirá eliminar candidatas que no tengan historial
-    (sin solicitudes, sin llamadas, sin reemplazos).
+
+    ✅ SOLO se permite eliminar candidatas SIN historial:
+    - sin solicitudes
+    - sin llamadas
+    - sin reemplazos
     """
 
-    # ----- Helper interno para armar info de documentos -----
+    # ─────────────────────────────────────────────────────────────
+    # Helpers
+    # ─────────────────────────────────────────────────────────────
+    def _has_blob(v) -> bool:
+        """Soporta bytes, bytearray, memoryview o None."""
+        if v is None:
+            return False
+        if isinstance(v, memoryview):
+            try:
+                return len(v.tobytes()) > 0
+            except Exception:
+                return False
+        if isinstance(v, (bytes, bytearray)):
+            return len(v) > 0
+        try:
+            return bool(v)
+        except Exception:
+            return False
+
+    def _safe_len(rel):
+        """Cuenta relaciones sin explotar."""
+        try:
+            if rel is None:
+                return 0
+            return len(rel)
+        except Exception:
+            return 0
+
+    def _count_scalar(query):
+        """Devuelve el count como int seguro."""
+        try:
+            n = query.scalar()
+            return int(n or 0)
+        except Exception:
+            return 0
+
     def build_docs_info(c):
         if not c:
             return {
@@ -3793,31 +3959,52 @@ def eliminar_candidata():
                 "solicitudes_count": 0,
                 "llamadas_count": 0,
                 "reemplazos_count": 0,
+                "tiene_historial": False,
+                "puede_eliminar": False,
             }
 
-        tiene_cedula1 = bool(c.cedula1)
-        tiene_cedula2 = bool(c.cedula2)
-        tiene_perfil  = bool(c.perfil)
-        tiene_dep     = bool(c.depuracion)
+        # ── Documentos binarios
+        tiene_cedula1 = _has_blob(getattr(c, "cedula1", None))
+        tiene_cedula2 = _has_blob(getattr(c, "cedula2", None))
+        tiene_perfil  = _has_blob(getattr(c, "perfil", None))
+        tiene_dep     = _has_blob(getattr(c, "depuracion", None))
 
-        documentos_completos = (
-            tiene_cedula1 and tiene_cedula2 and tiene_perfil and tiene_dep
-        )
+        documentos_completos = (tiene_cedula1 and tiene_cedula2 and tiene_perfil and tiene_dep)
 
-        entrevista_realizada = bool(
-            c.entrevista and str(c.entrevista).strip()
-        )
+        # ── Entrevista (texto)
+        entrevista_txt = (getattr(c, "entrevista", "") or "")
+        entrevista_realizada = bool(str(entrevista_txt).strip())
 
-        solicitudes_count = len(c.solicitudes or [])
-        llamadas_count    = len(c.llamadas or [])
+        # ─────────────────────────────────────────
+        # ✅ RELACIONES (ARREGLO REAL)
+        # 1) Primero por relationship (lo más confiable)
+        # 2) Si por algo falla, fallback por DB
+        # ─────────────────────────────────────────
+        solicitudes_count = _safe_len(getattr(c, "solicitudes", None))
+        llamadas_count = _safe_len(getattr(c, "llamadas", None))
 
-        # 🔍 Buscar registros en la tabla de reemplazos donde aparezca esta candidata
-        reemplazos_count = Reemplazo.query.filter(
-            or_(
-                Reemplazo.candidata_old_id == c.fila,
-                Reemplazo.candidata_new_id == c.fila
+        if solicitudes_count == 0:
+            solicitudes_count = _count_scalar(
+                db.session.query(func.count(Solicitud.id)).filter(Solicitud.candidata_id == c.fila)
             )
-        ).count()
+
+        if llamadas_count == 0:
+            llamadas_count = _count_scalar(
+                db.session.query(func.count(LlamadaCandidata.id)).filter(LlamadaCandidata.candidata_id == c.fila)
+            )
+
+        # Reemplazos: siempre por DB (no tienes relación directa en Candidata)
+        reemplazos_count = _count_scalar(
+            db.session.query(func.count(Reemplazo.id)).filter(
+                or_(
+                    Reemplazo.candidata_old_id == c.fila,
+                    Reemplazo.candidata_new_id == c.fila
+                )
+            )
+        )
+
+        tiene_historial = (solicitudes_count > 0) or (llamadas_count > 0) or (reemplazos_count > 0)
+        puede_eliminar = not tiene_historial
 
         return {
             "tiene_cedula1": tiene_cedula1,
@@ -3826,14 +4013,17 @@ def eliminar_candidata():
             "tiene_depuracion": tiene_dep,
             "documentos_completos": documentos_completos,
             "entrevista_realizada": entrevista_realizada,
-            "solicitudes_count": solicitudes_count,
-            "llamadas_count": llamadas_count,
-            "reemplazos_count": reemplazos_count,
+            "solicitudes_count": int(solicitudes_count or 0),
+            "llamadas_count": int(llamadas_count or 0),
+            "reemplazos_count": int(reemplazos_count or 0),
+            "tiene_historial": tiene_historial,
+            "puede_eliminar": puede_eliminar,
         }
 
-    # --- Entrada de búsqueda (GET/POST normal) ---
+    # ─────────────────────────────────────────────────────────────
+    # Leer búsqueda
+    # ─────────────────────────────────────────────────────────────
     if request.method == 'POST' and request.form.get('confirmar_eliminacion'):
-        # En el POST de confirmación la búsqueda no importa tanto, pero la mantenemos
         busqueda = (request.form.get('busqueda') or '').strip()[:128]
     else:
         busqueda = (
@@ -3846,40 +4036,31 @@ def eliminar_candidata():
     mensaje = None
     docs_info = build_docs_info(None)
 
-    # ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────
     # 1) CONFIRMAR ELIMINACIÓN (POST)
-    # ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────
     if request.method == 'POST' and request.form.get('confirmar_eliminacion'):
         cid = (request.form.get('candidata_id') or '').strip()
+
         if not cid.isdigit():
             mensaje = "❌ ID de candidata inválido."
         else:
-            obj = Candidata.query.get(int(cid))
+            obj = db.session.get(Candidata, int(cid))
             if not obj:
                 mensaje = "⚠️ La candidata ya no existe en la base de datos."
             else:
-                # Armamos info y verificamos si tiene historial
                 docs_info = build_docs_info(obj)
 
-                tiene_historial = (
-                    docs_info["solicitudes_count"] > 0
-                    or docs_info["llamadas_count"] > 0
-                    or docs_info["reemplazos_count"] > 0
-                )
-
-                if tiene_historial:
-                    # ❌ No permitimos borrar candidatas con historial
+                if docs_info["tiene_historial"]:
                     mensaje = (
-                        "⚠️ No se puede eliminar esta candidata porque tiene "
+                        "⚠️ No se puede eliminar esta candidata porque tiene historial: "
                         f"{docs_info['solicitudes_count']} solicitudes, "
-                        f"{docs_info['llamadas_count']} llamadas "
-                        f"y {docs_info['reemplazos_count']} reemplazos registrados. "
-                        "En estos casos se recomienda marcarla como inactiva / no disponible, "
-                        "pero no borrarla para no dañar el historial."
+                        f"{docs_info['llamadas_count']} llamadas y "
+                        f"{docs_info['reemplazos_count']} reemplazos. "
+                        "Recomendación: marcarla como inactiva / no disponible, pero NO borrarla."
                     )
                     candidata = obj
                 else:
-                    # ✅ Candidata sin historial: intentamos borrar
                     try:
                         nombre_log = obj.nombre_completo
                         cedula_log = obj.cedula
@@ -3888,45 +4069,46 @@ def eliminar_candidata():
                         db.session.delete(obj)
                         db.session.commit()
 
-                        app.logger.info(
+                        current_app.logger.info(
                             "✅ Candidata eliminada manualmente: fila=%s, nombre=%s, cedula=%s, codigo=%s",
                             cid, nombre_log, cedula_log, codigo_log
                         )
                         flash("✅ Candidata eliminada correctamente.", "success")
-                        # Luego de borrar, volvemos a la pantalla limpia de búsqueda
                         return redirect(url_for('eliminar_candidata', busqueda=busqueda or ''))
+
                     except IntegrityError:
-                        # Si por alguna razón aún hay FKs, prevenimos caída y avisamos
                         db.session.rollback()
-                        app.logger.exception("❌ FK bloqueó la eliminación de la candidata.")
+                        current_app.logger.exception("❌ FK bloqueó la eliminación de la candidata.")
                         mensaje = (
-                            "❌ La base de datos no permitió eliminarla porque está ligada "
-                            "a otros registros (por ejemplo reemplazos o movimientos). "
+                            "❌ La base de datos no permitió eliminarla porque está ligada a otros registros. "
                             "Para no dañar el historial, es mejor marcarla como no disponible."
                         )
                         candidata = obj
+                        docs_info = build_docs_info(obj)
+
                     except Exception:
                         db.session.rollback()
-                        app.logger.exception("❌ Error al eliminar candidata manualmente")
+                        current_app.logger.exception("❌ Error al eliminar candidata manualmente")
                         mensaje = "❌ Ocurrió un error al eliminar. Intenta de nuevo."
                         candidata = obj
+                        docs_info = build_docs_info(obj)
 
-    # ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────
     # 2) CARGAR DETALLE (GET ?candidata_id=)
-    # ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────
     if not candidata:
         cid = (request.args.get('candidata_id') or '').strip()
         if cid.isdigit():
-            candidata = Candidata.query.get(int(cid))
+            candidata = db.session.get(Candidata, int(cid))
             if not candidata:
                 mensaje = "⚠️ Candidata no encontrada."
                 docs_info = build_docs_info(None)
             else:
                 docs_info = build_docs_info(candidata)
 
-    # ─────────────────────────────────────────────
-    # 3) BÚSQUEDA (lista de posibles candidatas)
-    # ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────
+    # 3) BÚSQUEDA (lista)
+    # ─────────────────────────────────────────────────────────────
     if busqueda and not candidata:
         like = f"%{busqueda}%"
         try:
@@ -3947,7 +4129,7 @@ def eliminar_candidata():
             if not resultados:
                 mensaje = "⚠️ No se encontraron candidatas con ese dato."
         except Exception:
-            app.logger.exception("❌ Error buscando candidatas para eliminar")
+            current_app.logger.exception("❌ Error buscando candidatas para eliminar")
             mensaje = "❌ Ocurrió un error al buscar."
 
     return render_template(
@@ -3959,8 +4141,10 @@ def eliminar_candidata():
         docs_info=docs_info,
     )
 
+
 # -----------------------------------------------------------------------------
 # MAIN
 # -----------------------------------------------------------------------------
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
+

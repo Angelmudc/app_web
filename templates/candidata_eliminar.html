@@ -50,18 +50,26 @@
             <label for="busqueda" class="form-label mb-1">Buscar candidata</label>
             <div class="input-group input-group-lg">
               <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-              <input id="busqueda" name="busqueda" class="form-control"
-                     placeholder="Nombre, cédula, teléfono o código (ej: CAN-000012)"
-                     value="{{ busqueda or '' }}">
+
+              <input
+                id="busqueda"
+                name="busqueda"
+                class="form-control"
+                placeholder="Nombre, cédula, teléfono o código (ej: CAN-000012)"
+                value="{{ busqueda or '' }}"
+              >
+
               {% if busqueda %}
                 <a href="{{ url_for('eliminar_candidata') }}" class="btn btn-outline-secondary" title="Limpiar">
                   <i class="fa-solid fa-eraser"></i>
                 </a>
               {% endif %}
+
               <button class="btn btn-danger" type="submit">
                 Buscar
               </button>
             </div>
+
             <div class="form-text">
               Se listan máximo 100 resultados. Revisa bien antes de eliminar.
             </div>
@@ -80,6 +88,7 @@
             {{ resultados|length }} candidata{{ resultados|length != 1 and 's' or '' }}
           </span>
         </div>
+
         <div class="card-body p-0">
           <div class="table-responsive">
             <table class="table table-hover mb-0 align-middle">
@@ -94,10 +103,12 @@
                   <th class="text-center" style="width: 150px;">Acción</th>
                 </tr>
               </thead>
+
               <tbody>
                 {% for c in resultados %}
                   <tr>
                     <td class="text-muted">{{ c.fila }}</td>
+
                     <td>
                       {% if c.codigo %}
                         <span class="badge bg-dark">{{ c.codigo }}</span>
@@ -105,9 +116,11 @@
                         <span class="text-muted">Sin código</span>
                       {% endif %}
                     </td>
+
                     <td>{{ c.nombre_completo }}</td>
                     <td>{{ c.cedula or '-' }}</td>
                     <td>{{ c.numero_telefono or '-' }}</td>
+
                     <td>
                       {% if c.estado == 'trabajando' %}
                         <span class="badge bg-success">Trabajando</span>
@@ -121,20 +134,25 @@
                         <span class="badge bg-secondary">{{ c.estado or 'N/D' }}</span>
                       {% endif %}
                     </td>
+
                     <td class="text-center">
-                      <a href="{{ url_for('eliminar_candidata', candidata_id=c.fila, busqueda=busqueda) }}"
-                         class="btn btn-sm btn-outline-danger">
+                      <a
+                        href="{{ url_for('eliminar_candidata', candidata_id=c.fila, busqueda=busqueda) }}"
+                        class="btn btn-sm btn-outline-danger"
+                      >
                         Ver para eliminar
                       </a>
                     </td>
                   </tr>
                 {% endfor %}
               </tbody>
+
             </table>
           </div>
         </div>
       </div>
     {% endif %}
+
   {% else %}
   {# ============================================================ #}
   {# ===============   PASO 2: REVISAR DETALLE   ================ #}
@@ -148,8 +166,22 @@
     </div>
   </div>
 
+  {# Bloque rápido de estado #}
+  <div class="alert {% if docs_info.puede_eliminar %}alert-success{% else %}alert-warning{% endif %} d-flex align-items-center mt-2" role="alert">
+    <i class="fa-solid {% if docs_info.puede_eliminar %}fa-circle-check{% else %}fa-shield-halved{% endif %} me-2"></i>
+    <div class="w-100">
+      {% if docs_info.puede_eliminar %}
+        <strong>Ok para eliminar:</strong> no se detectó historial vinculado (solicitudes/llamadas/reemplazos).
+      {% else %}
+        <strong>No se recomienda eliminar:</strong> esta candidata tiene historial vinculado.
+        <span class="ms-1">El botón igual aparece, pero tu ruta debe bloquearla si hay historial.</span>
+      {% endif %}
+    </div>
+  </div>
+
   <div class="row g-3 mt-2">
     <div class="col-lg-8">
+
       <div class="card mb-3">
         <div class="card-header fw-semibold">
           <i class="fa-solid fa-id-card me-2"></i>Datos principales
@@ -212,7 +244,6 @@
                 <span class="badge bg-secondary">No inscrita / incompleta</span>
               {% endif %}
             </dd>
-
           </dl>
         </div>
       </div>
@@ -256,6 +287,7 @@
 
     {# Columna lateral: Documentos y relaciones #}
     <div class="col-lg-4">
+
       <div class="card mb-3">
         <div class="card-header fw-semibold">
           <i class="fa-solid fa-folder-open me-2"></i>Documentación
@@ -291,7 +323,9 @@
               {% endif %}
             </li>
           </ul>
+
           <hr>
+
           <p class="mb-1">
             Completa para documentos:
             {% if docs_info.documentos_completos %}
@@ -303,21 +337,36 @@
         </div>
       </div>
 
+      {# Relaciones mejoradas #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold">
-          <i class="fa-solid fa-link me-2"></i>Relaciones
+        <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
+          <span><i class="fa-solid fa-link me-2"></i>Relaciones</span>
+          {% if docs_info.tiene_historial %}
+            <span class="badge bg-danger">Tiene historial</span>
+          {% else %}
+            <span class="badge bg-success">Sin historial</span>
+          {% endif %}
         </div>
+
         <div class="card-body">
-          <p class="mb-1">
-            Solicitudes vinculadas:
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span>Solicitudes vinculadas</span>
             <span class="badge bg-info text-dark">{{ docs_info.solicitudes_count }}</span>
-          </p>
-          <p class="mb-0">
-            Llamadas registradas:
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span>Llamadas registradas</span>
             <span class="badge bg-info text-dark">{{ docs_info.llamadas_count }}</span>
-          </p>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center">
+            <span>Reemplazos relacionados</span>
+            <span class="badge bg-info text-dark">{{ docs_info.reemplazos_count }}</span>
+          </div>
+
           <div class="form-text mt-2">
-            Al eliminar la candidata también se eliminan estas relaciones (por cascade).
+            Si eliminas la candidata, la BD intentará eliminar relaciones por cascade.
+            Si hay historial real, lo correcto es <strong>NO borrar</strong>.
           </div>
         </div>
       </div>
@@ -327,25 +376,44 @@
         <div class="card-header bg-danger text-white fw-semibold">
           Confirmar eliminación
         </div>
+
         <div class="card-body">
           <p class="small">
             Revisa bien los datos antes de continuar. Esta acción no se puede deshacer.
           </p>
+
+          {% if not docs_info.puede_eliminar %}
+            <div class="alert alert-warning small mb-2">
+              Esta candidata tiene historial. Tu ruta debería bloquear la eliminación.
+              Si aún así intentas eliminar, la BD puede impedirlo o podrías perder historial.
+            </div>
+          {% endif %}
+
           <form method="POST" autocomplete="off">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
             <input type="hidden" name="busqueda" value="{{ busqueda or '' }}">
             <input type="hidden" name="confirmar_eliminacion" value="1">
 
-            <button type="submit" class="btn btn-danger w-100 mb-2"
-                    onclick="return confirm('¿Seguro que quieres eliminar DEFINITIVAMENTE a esta candidata?');">
+            <button
+              type="submit"
+              class="btn btn-danger w-100 mb-2"
+              onclick="return confirm('¿Seguro que quieres eliminar DEFINITIVAMENTE a esta candidata?');"
+              {% if not docs_info.puede_eliminar %}disabled{% endif %}
+            >
               🗑️ Eliminar definitivamente
             </button>
-            <a href="{{ url_for('eliminar_candidata', busqueda=busqueda) }}"
-               class="btn btn-outline-secondary w-100">
+
+            <a href="{{ url_for('eliminar_candidata', busqueda=busqueda) }}" class="btn btn-outline-secondary w-100">
               Cancelar y volver a la lista
             </a>
           </form>
+
+          {% if not docs_info.puede_eliminar %}
+            <div class="form-text mt-2">
+              Botón bloqueado porque tiene historial. Marca “no disponible” en vez de borrar.
+            </div>
+          {% endif %}
         </div>
       </div>
 
@@ -357,8 +425,6 @@
 </div>
 
 <style>
-  .card-header {
-    font-weight: 600;
-  }
+  .card-header { font-weight: 600; }
 </style>
 {% endblock %}

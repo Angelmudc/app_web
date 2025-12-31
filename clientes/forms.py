@@ -9,7 +9,9 @@ from wtforms.validators import (
     DataRequired, Length, NumberRange, Optional, ValidationError
 )
 from wtforms.widgets import ListWidget, CheckboxInput
-
+# en clientes/forms.py
+from wtforms import StringField, HiddenField
+from wtforms.validators import DataRequired, Email
 # ─────────────────────────────────────────────────────────────
 # Utilidades
 # ─────────────────────────────────────────────────────────────
@@ -288,3 +290,23 @@ class SolicitudForm(FlaskForm):
     def validate_tipo_lugar(self, field):
         if field.data == 'otro' and not (self.tipo_lugar_otro.data and self.tipo_lugar_otro.data.strip()):
             raise ValidationError("Especifica el tipo de lugar cuando marcas 'Otro'.")
+
+# IMPORTANTE: esto asume que ya existe SolicitudForm en este mismo archivo.
+class SolicitudPublicaForm(SolicitudForm):
+    token = HiddenField(validators=[DataRequired()])
+
+    codigo_cliente = StringField(
+        "Código del cliente",
+        validators=[DataRequired(), Length(min=3, max=20)]
+    )
+    nombre_cliente = StringField(
+        "Nombre completo",
+        validators=[DataRequired(), Length(min=2, max=200)]
+    )
+    email_cliente = StringField(
+        "Gmail / Email",
+        validators=[DataRequired(), Email(), Length(max=100)]
+    )
+
+    # Anti-bot: debe venir vacío
+    hp = StringField("No llenar", validators=[Optional(), Length(max=10)])

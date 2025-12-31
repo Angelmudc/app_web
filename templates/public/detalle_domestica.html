@@ -10,37 +10,100 @@
     </a>
 
     <div class="detalle-card">
-      {# ===== FOTO PRINCIPAL ===== #}
+
       {% if candidata.foto %}
       <div class="detalle-avatar">
         <img
           src="{{ candidata.foto }}"
           alt="Foto de {{ candidata.nombre }}"
-          onclick="verImagenCompleta(this.src)"
         >
       </div>
       {% endif %}
 
-      {# ===== INFORMACIÓN ===== #}
       <div class="detalle-info">
+
         <h1 class="detalle-nombre">
-          {{ candidata.nombre }}{% if candidata.edad %}, {{ candidata.edad }} años{% endif %}
+          {{ candidata.nombre }}
         </h1>
+
+        {% if candidata.edad %}
+          <p class="detalle-edad text-muted">
+            {{ candidata.edad }}
+          </p>
+        {% endif %}
+
+        {% if candidata.frase_destacada %}
+          <p class="detalle-frase">
+            “{{ candidata.frase_destacada }}”
+          </p>
+        {% endif %}
 
         <div class="detalle-meta">
           {% if candidata.codigo %}
-            <p class="detalle-codigo">
-              <span class="badge badge-primario">Código: {{ candidata.codigo }}</span>
+            <span class="badge badge-primario">
+              Código: {{ candidata.codigo }}
+            </span>
+          {% endif %}
+
+          {% if candidata.tipo_servicio %}
+            <span class="badge badge-secundario">
+              {{ candidata.tipo_servicio }}
+            </span>
+          {% endif %}
+
+          {% if candidata.disponible_inmediato %}
+            <span class="badge badge-success">
+              Disponible para iniciar de inmediato
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="detalle-ubicacion">
+          {% if candidata.ciudad or candidata.sector %}
+            <p class="detalle-line">
+              <strong>Zona:</strong>
+              {% if candidata.ciudad %}{{ candidata.ciudad }}{% endif %}
+              {% if candidata.ciudad and candidata.sector %} – {% endif %}
+              {% if candidata.sector %}{{ candidata.sector }}{% endif %}
             </p>
           {% endif %}
 
           {% if candidata.modalidad %}
-            <p class="detalle-modalidad">
-              Modalidad preferida:
-              <strong>{{ candidata.modalidad }}</strong>
+            <p class="detalle-line">
+              <strong>Modalidad:</strong> {{ candidata.modalidad }}
+            </p>
+          {% endif %}
+
+          {% if candidata.anos_experiencia %}
+            <p class="detalle-line">
+              <strong>Experiencia:</strong> {{ candidata.anos_experiencia }}
             </p>
           {% endif %}
         </div>
+
+        {% if candidata.sueldo or candidata.sueldo_desde or candidata.sueldo_hasta %}
+        <div class="detalle-sueldo">
+          <h2>Sueldo de referencia</h2>
+          {% if candidata.sueldo %}
+            <p>{{ candidata.sueldo }}</p>
+          {% else %}
+            <p>
+              {% if candidata.sueldo_desde %}
+                Desde RD$ {{ candidata.sueldo_desde }}
+              {% endif %}
+              {% if candidata.sueldo_desde and candidata.sueldo_hasta %}
+                &nbsp;–&nbsp;
+              {% endif %}
+              {% if candidata.sueldo_hasta %}
+                hasta RD$ {{ candidata.sueldo_hasta }}
+              {% endif %}
+            </p>
+          {% endif %}
+          <p class="text-muted small">
+            *Montos orientativos, se confirman según horario y funciones.
+          </p>
+        </div>
+        {% endif %}
 
         {% if candidata.experiencia %}
         <div class="detalle-experiencia">
@@ -49,7 +112,29 @@
         </div>
         {% endif %}
 
-        {# ===== CTA: WHATSAPP ===== #}
+        {% if candidata.experiencia_detallada %}
+        <div class="detalle-experiencia-detallada">
+          <h2>Detalle de experiencia</h2>
+          <p>
+            {{ candidata.experiencia_detallada
+               |replace('\n', '<br>')|safe }}
+          </p>
+        </div>
+        {% endif %}
+
+        {% if candidata.tags %}
+        <div class="detalle-tags">
+          <h2>Habilidades y fortalezas</h2>
+          <div class="tags-list">
+            {% for tag in candidata.tags.split(',') %}
+              {% if tag.strip() %}
+                <span class="tag-item">{{ tag.strip() }}</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
         <div class="detalle-cta">
           <p class="detalle-cta-text">
             Si te interesa esta candidata, escríbenos por WhatsApp indicando el código
@@ -60,11 +145,11 @@
             {% endif %}
           </p>
 
-          {# Número de WhatsApp de la agencia (CAMBIA ESTE NÚMERO) #}
           {% set wa_number = '18090000000' %}
           {% set wa_text = (
             'Hola, me interesa la candidata ' ~ (candidata.nombre or '') ~
             (candidata.codigo and ' (código ' ~ candidata.codigo ~ ')' or '') ~
+            (candidata.ciudad and ' de ' ~ candidata.ciudad or '') ~
             '. Quiero más información, por favor.'
           ) %}
 
@@ -86,12 +171,13 @@
             </a>
           </div>
         </div>
+
       </div>
     </div>
   </div>
 </section>
 
-{# ===== MODAL PARA VER IMAGEN EN GRANDE ===== #}
+{# ===== MODAL PARA VER IMAGEN EN GRANDE (se conserva) ===== #}
 <div id="modalImagen" class="modal-imagen">
   <span class="cerrar-modal" onclick="cerrarImagen()">&times;</span>
   <img class="modal-contenido" id="imgModalGrande" alt="Foto candidata">
@@ -116,4 +202,5 @@
     }
   });
 </script>
+
 {% endblock %}

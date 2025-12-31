@@ -20,7 +20,7 @@
     <div class="card mt-3">
       <div class="card-body">
         <form method="post"
-              action="{{ url_for('subir_fotos.subir_fotos', accion='buscar') }}"
+              action="{{ url_for('subir_fotos.subir_fotos') }}?accion=buscar"
               id="searchForm"
               class="row g-2 align-items-end"
               novalidate>
@@ -71,7 +71,7 @@
                   <td><span class="badge-soft">{{ cand.cedula }}</span></td>
                   <td>{{ cand.telefono or '—' }}</td>
                   <td class="text-center">
-                    <a href="{{ url_for('subir_fotos.subir_fotos', accion='subir', fila=cand.fila) }}"
+                    <a href="{{ url_for('subir_fotos.subir_fotos') }}?accion=subir&fila={{ cand.fila }}"
                        class="btn btn-sm btn-outline-primary">
                       <i class="fa-solid fa-cloud-arrow-up me-1"></i>Seleccionar
                     </a>
@@ -93,13 +93,13 @@
         <i class="fa-solid fa-image"></i>
         Subir Imágenes para la Fila <span class="badge-soft">{{ fila }}</span>
       </h2>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('subir_fotos.subir_fotos', accion='buscar') }}">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('subir_fotos.subir_fotos') }}?accion=buscar">
         <i class="fa-solid fa-rotate-left me-1"></i>Volver a buscar
       </a>
     </div>
 
     <form method="post"
-          action="{{ url_for('subir_fotos.subir_fotos', accion='subir', fila=fila) }}"
+          action="{{ url_for('subir_fotos.subir_fotos') }}?accion=subir&fila={{ fila }}"
           enctype="multipart/form-data"
           id="uploadForm"
           class="mt-3">
@@ -121,10 +121,12 @@
             </div>
             <div class="card-body">
 
-              {# Imagen guardada actualmente (depuración) #}
               {% if tiene is defined and tiene['depuracion'] %}
                 <div class="mb-3">
-                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="d-flex align-items-center justify-content-between">
+                    <div class="text-muted small">Imagen guardada actualmente:</div>
+                    <span class="badge bg-success-subtle text-success small">Guardada</span>
+                  </div>
                   <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
                     <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='depuracion') }}"
                          alt="Depuración guardada"
@@ -155,6 +157,9 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" data-clear="depuracion">
                     <i class="fa-regular fa-trash-can me-1"></i>Quitar
                   </button>
+                  <span class="badge bg-info-subtle text-info align-self-center d-none" id="keep-depuracion">
+                    La guardada se mantiene
+                  </span>
                 </div>
               </div>
             </div>
@@ -171,10 +176,12 @@
             </div>
             <div class="card-body">
 
-              {# Imagen guardada actualmente (perfil) #}
               {% if tiene is defined and tiene['perfil'] %}
                 <div class="mb-3">
-                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="d-flex align-items-center justify-content-between">
+                    <div class="text-muted small">Imagen guardada actualmente:</div>
+                    <span class="badge bg-success-subtle text-success small">Guardada</span>
+                  </div>
                   <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
                     <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='perfil') }}"
                          alt="Perfil guardado"
@@ -205,13 +212,16 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" data-clear="perfil">
                     <i class="fa-regular fa-trash-can me-1"></i>Quitar
                   </button>
+                  <span class="badge bg-info-subtle text-info align-self-center d-none" id="keep-perfil">
+                    La guardada se mantiene
+                  </span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {# ---- Cédula frente (cedula1) ---- #}
+        {# ---- Cédula frente ---- #}
         <div class="col-12 col-lg-6">
           <div class="card h-100">
             <div class="card-header d-flex align-items-center gap-2">
@@ -221,10 +231,12 @@
             </div>
             <div class="card-body">
 
-              {# Imagen guardada actualmente (cedula1) #}
               {% if tiene is defined and tiene['cedula1'] %}
                 <div class="mb-3">
-                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="d-flex align-items-center justify-content-between">
+                    <div class="text-muted small">Imagen guardada actualmente:</div>
+                    <span class="badge bg-success-subtle text-success small">Guardada</span>
+                  </div>
                   <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
                     <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='cedula1') }}"
                          alt="Cédula frente guardada"
@@ -255,13 +267,16 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" data-clear="cedula1">
                     <i class="fa-regular fa-trash-can me-1"></i>Quitar
                   </button>
+                  <span class="badge bg-info-subtle text-info align-self-center d-none" id="keep-cedula1">
+                    La guardada se mantiene
+                  </span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {# ---- Cédula reverso (cedula2) ---- #}
+        {# ---- Cédula reverso ---- #}
         <div class="col-12 col-lg-6">
           <div class="card h-100">
             <div class="card-header d-flex align-items-center gap-2">
@@ -271,10 +286,12 @@
             </div>
             <div class="card-body">
 
-              {# Imagen guardada actualmente (cedula2) #}
               {% if tiene is defined and tiene['cedula2'] %}
                 <div class="mb-3">
-                  <div class="text-muted small mb-1">Imagen guardada actualmente:</div>
+                  <div class="d-flex align-items-center justify-content-between">
+                    <div class="text-muted small">Imagen guardada actualmente:</div>
+                    <span class="badge bg-success-subtle text-success small">Guardada</span>
+                  </div>
                   <div class="ratio ratio-4x3 rounded overflow-hidden bg-light">
                     <img src="{{ url_for('subir_fotos.ver_imagen', fila=fila, campo='cedula2') }}"
                          alt="Cédula reverso guardada"
@@ -305,6 +322,9 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" data-clear="cedula2">
                     <i class="fa-regular fa-trash-can me-1"></i>Quitar
                   </button>
+                  <span class="badge bg-info-subtle text-info align-self-center d-none" id="keep-cedula2">
+                    La guardada se mantiene
+                  </span>
                 </div>
               </div>
             </div>
@@ -314,7 +334,7 @@
       </div>
 
       <div class="d-flex justify-content-end gap-2 mt-3">
-        <a class="btn btn-outline-secondary" href="{{ url_for('subir_fotos.subir_fotos', accion='buscar') }}">
+        <a class="btn btn-outline-secondary" href="{{ url_for('subir_fotos.subir_fotos') }}?accion=buscar">
           Cancelar
         </a>
         <button type="submit" class="btn btn-primary btn-lg" id="uploadBtn">
@@ -371,6 +391,7 @@
       const wrap = $('preview-wrap-' + kind);
       const img  = $('preview-' + kind);
       const ctr  = $('controls-' + kind);
+      const keep = $('keep-' + kind);
       if (!wrap || !img || !ctr) return;
 
       const url = URL.createObjectURL(file);
@@ -378,6 +399,7 @@
       img.src = url;
       wrap.classList.remove('d-none');
       ctr.classList.remove('d-none');
+      if (keep) keep.classList.add('d-none'); // si hay preview nuevo, no mostramos "se mantiene"
     }
 
     function clearField(kind){
@@ -386,8 +408,29 @@
       input.value = "";
       const wrap = $('preview-wrap-' + kind);
       const ctr  = $('controls-' + kind);
+      const keep = $('keep-' + kind);
+
       if (wrap) wrap.classList.add('d-none');
-      if (ctr)  ctr.classList.add('d-none');
+      if (ctr)  ctr.classList.remove('d-none'); // se queda visible con el badge
+      if (keep) keep.classList.remove('d-none'); // si quitó el nuevo, la guardada sigue
+    }
+
+    function validImage(file){
+      if (!file.type || !file.type.startsWith('image/')) return "El archivo debe ser una imagen.";
+      if (file.size > MAX_BYTES) return `La imagen supera ${MAX_MB} MB. Por favor, selecciona otra.`;
+      return null;
+    }
+
+    function setInputFiles(input, file){
+      // Intento moderno: DataTransfer (funciona en la mayoría)
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        return true;
+      } catch (e) {
+        return false;
+      }
     }
 
     // Botones de limpiar
@@ -402,7 +445,6 @@
     document.querySelectorAll('.upload-zone').forEach(zone=>{
       const kind  = zone.getAttribute('data-target');
       const input = $(kind);
-
       if (!kind || !input) return;
 
       // Click para abrir selector
@@ -410,7 +452,7 @@
         if (e.target.tagName !== 'BUTTON') input.click();
       });
       zone.addEventListener('keypress', e=>{
-        if ((e.key === 'Enter' || e.key === ' ') && input) {
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           input.click();
         }
@@ -421,14 +463,10 @@
         const file = input.files && input.files[0];
         if (!file) return;
 
-        if (!file.type.startsWith('image/')){
-          alert('El archivo debe ser una imagen.');
-          clearField(kind);
-          return;
-        }
-        if (file.size > MAX_BYTES){
-          alert(`La imagen supera ${MAX_MB} MB. Por favor, selecciona otra.`);
-          clearField(kind);
+        const err = validImage(file);
+        if (err){
+          alert(err);
+          input.value = "";
           return;
         }
         showPreview(kind, file);
@@ -453,21 +491,18 @@
         if (!dt || !dt.files || !dt.files.length) return;
 
         const file = dt.files[0];
-
-        if (!file.type.startsWith('image/')){
-          alert('El archivo debe ser una imagen.');
-          return;
-        }
-        if (file.size > MAX_BYTES){
-          alert(`La imagen supera ${MAX_MB} MB. Por favor, selecciona otra.`);
+        const err = validImage(file);
+        if (err){
+          alert(err);
           return;
         }
 
-        // Asignamos directamente los archivos arrastrados al input
-        try {
-          input.files = dt.files;
-        } catch (err) {
-          console.warn('No se pudo asignar files al input directamente:', err);
+        const ok = setInputFiles(input, file);
+        if (!ok){
+          // si el navegador no deja, no falles en silencio
+          alert("Tu navegador bloqueó el drag & drop directo. Se abrirá el selector para que elijas la imagen.");
+          input.click();
+          return;
         }
 
         showPreview(kind, file);
@@ -488,7 +523,6 @@
         const hasC1    = c1 && c1.files && c1.files.length > 0;
         const hasC2    = c2 && c2.files && c2.files.length > 0;
 
-        // Validación rápida: al menos una imagen seleccionada
         if (!hasDep && !hasPerf && !hasC1 && !hasC2){
           e.preventDefault();
           alert('Debes seleccionar al menos una imagen para subir.');

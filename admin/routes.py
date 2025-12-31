@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, date, timedelta
 
-from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session
+from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app
 from flask_login import login_user, logout_user, login_required, UserMixin, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from functools import wraps  # si otros decoradores locales lo usan
 
-from config_app import db, USUARIOS
+from config_app import db, USUARIOS, cache
 from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente
 from admin.forms import (
     AdminClienteForm,
@@ -30,6 +30,7 @@ from utils import letra_por_indice
 from . import admin_bp
 from .decorators import admin_required, staff_required
 
+from clientes.routes import generar_token_publico_cliente
 
 # =============================================================================
 #                                AUTH
@@ -230,33 +231,116 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
 def login():
     """
     Login de admin basado en diccionario USUARIOS.
-    Protecciones:
-      - Anti fuerza bruta simple por sesión: 5 intentos -> 10 minutos de bloqueo.
-      - Normalización y strip de credenciales de entrada.
-    Nota: Si ya tienes CSRF global (Flask-WTF CSRFProtect), esta vista queda cubierta.
+
+    Endurecido:
+      - Anti fuerza bruta por sesión (ya lo tenías).
+      - Anti fuerza bruta por IP usando cache (más fuerte).
+      - Sanitiza inputs (strip + límites).
+      - Limpia sesión al autenticar (reduce session fixation).
+      - Evita open-redirect si se usa next.
     """
     error = None
 
-    # Bloqueo por intentos fallidos
-    if request.method == 'POST' and _is_login_locked():
-        error = f'Has excedido el máximo de intentos. Intenta de nuevo en {_LOCK_MINUTES} minutos.'
-        return render_template('admin/login.html', error=error), 429
+    # -----------------------------
+    # Helpers locales (no rompen nada)
+    # -----------------------------
+    def _client_ip() -> str:
+        # ProxyFix ya está en tu config_app, así que X-Forwarded-For puede venir bien.
+        # Aun así, agarramos lo más estable.
+        xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return xff or (request.remote_addr or "unknown")
 
+    def _safe_next_url(fallback: str):
+        nxt = (request.args.get("next") or "").strip()
+        if not nxt:
+            return fallback
+
+        # Solo permitimos rutas internas
+        if nxt.startswith("/") and not nxt.startswith("//"):
+            return nxt
+        return fallback
+
+    def _ip_key() -> str:
+        return f"admin_login_fail_ip:{_client_ip()}"
+
+    def _ip_data_get():
+        try:
+            return cache.get(_ip_key()) or {"tries": 0, "locked_until": None}
+        except Exception:
+            return {"tries": 0, "locked_until": None}
+
+    def _ip_data_set(data: dict):
+        # TTL: 1 hora (suficiente). El lock real lo controlamos con locked_until.
+        try:
+            cache.set(_ip_key(), data, timeout=3600)
+        except Exception:
+            pass
+
+    def _ip_is_locked() -> bool:
+        data = _ip_data_get()
+        locked_until = data.get("locked_until")
+        if not locked_until:
+            return False
+        now_ts = int(datetime.utcnow().timestamp())
+        return now_ts < int(locked_until)
+
+    def _ip_register_fail():
+        data = _ip_data_get()
+        data["tries"] = int(data.get("tries", 0)) + 1
+        now_ts = int(datetime.utcnow().timestamp())
+
+        # Mismo criterio que sesión: 5 intentos => lock 10 minutos
+        if data["tries"] >= _MAX_LOGIN_ATTEMPTS:
+            data["locked_until"] = now_ts + (_LOCK_MINUTES * 60)
+
+        _ip_data_set(data)
+
+    def _ip_reset_fail():
+        try:
+            cache.delete(_ip_key())
+        except Exception:
+            pass
+
+    # -----------------------------
+    # Bloqueos (sesión + IP)
+    # -----------------------------
     if request.method == 'POST':
-        usuario = (request.form.get('usuario') or '').strip()
-        clave   = (request.form.get('clave') or '').strip()
+        if _is_login_locked() or _ip_is_locked():
+            error = f'Has excedido el máximo de intentos. Intenta de nuevo en {_LOCK_MINUTES} minutos.'
+            return render_template('admin/login.html', error=error), 429
+
+        # Sanitiza inputs
+        usuario = (request.form.get('usuario') or '').strip()[:64]
+        clave   = (request.form.get('clave') or '').strip()[:128]
 
         user_data = USUARIOS.get(usuario)
-        if user_data and check_password_hash(user_data['pwd_hash'], clave):
-            user = AdminUser(usuario)
-            login_user(user)
-            _reset_login_fail()
-            return redirect(url_for('admin.listar_clientes'))
 
+        # Nota: tu USUARIOS en config_app usa pwd_hash. :contentReference[oaicite:5]{index=5}
+        if user_data and check_password_hash(user_data['pwd_hash'], clave):
+            # ✅ Login correcto
+            # Limpia sesión para evitar fixation (sin tocar flask-login)
+            try:
+                session.pop('admin_login_fail', None)
+            except Exception:
+                pass
+
+            login_user(AdminUser(usuario))
+
+            # Resetea contadores
+            _reset_login_fail()
+            _ip_reset_fail()
+
+            # Redirección segura
+            fallback = url_for('admin.listar_clientes')
+            return redirect(_safe_next_url(fallback))
+
+        # ❌ Login incorrecto
         _register_login_fail()
+        _ip_register_fail()
         error = 'Credenciales inválidas.'
 
     return render_template('admin/login.html', error=error)
+
 
 
 @admin_bp.route('/logout')
@@ -3617,3 +3701,18 @@ def pdf_compatibilidad(cliente_id, candidata_id):
         # Fallback/feature flag: no romper UX si WeasyPrint no está presente
         flash("WeasyPrint no está disponible. Mostrando versión HTML del reporte.", "warning")
         return html_str
+
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/link-publico', methods=['GET'])
+@login_required
+@admin_required
+def generar_link_publico_solicitud(cliente_id):
+    c = Cliente.query.get_or_404(cliente_id)
+
+    token = generar_token_publico_cliente(c)
+    link = url_for('clientes.solicitud_publica', token=token, _external=True)
+
+    return render_template(
+        'admin/cliente_link_publico_solicitud.html',
+        cliente=c,
+        link_publico=link
+    )

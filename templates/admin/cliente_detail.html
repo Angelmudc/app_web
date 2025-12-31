@@ -250,7 +250,15 @@
         </div>
       </div>
     </div>
+
+    <!-- ✅ ACCIONES HEADER (AQUÍ VA EL BOTÓN) -->
     <div class="d-flex flex-wrap gap-2">
+      <!-- ✅ NUEVO: Link público del cliente (para crear solicitud sin login) -->
+      <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
+         class="btn btn-info">
+        🔗 Link público
+      </a>
+
       <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
         ✏️ <i class="bi bi-pencil-fill ms-1"></i> Editar Cliente
       </a>
@@ -503,12 +511,12 @@
                 {% if s.fecha_solicitud %}
                   {{ s.fecha_solicitud.strftime('%Y-%m-%d') }}
                 {% else %}
-                  — 
+                  —
                 {% endif %}
               </td>
               <td>{{ s.ciudad_sector | default('—') }}</td>
 
-              <!-- ===== NUEVA COLUMNA: TIPO SERVICIO ===== -->
+              <!-- ===== TIPO SERVICIO ===== -->
               <td>
                 {% set ts = s.tipo_servicio or '' %}
                 {% if ts == 'NINERA' %}
@@ -523,10 +531,10 @@
                   {{ ts }}
                 {% endif %}
               </td>
-              <!-- ======================================== -->
 
               <td>{{ s.modalidad_trabajo | default('—') }}</td>
               <td>{{ s.tipo_plan | default('—') }}</td>
+
               <td>
                 {% set est = s.estado or '' %}
                 {% set badge_class =
@@ -539,13 +547,22 @@
                 %}
                 <span class="badge {{ badge_class }}">{{ s.estado | default('—') }}</span>
               </td>
+
               <td class="text-center">
-                <!-- Organización en grilla (icónica) -->
                 <div class="actions-grid">
                   <!-- Ver -->
                   <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
                      class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Ver detalle" aria-label="Ver detalle">
                     👁️ <i class="bi bi-eye-fill ms-1"></i><span class="sr-only">Ver</span>
+                  </a>
+
+                  <!-- ✅ NUEVO: Link público por solicitud (abre el generador y te devuelve el link del cliente) -->
+                  <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
+                     class="btn btn-sm btn-primary"
+                     data-bs-toggle="tooltip"
+                     title="Link público (crear solicitud sin login)"
+                     aria-label="Link público">
+                    🔗 <i class="bi bi-link-45deg ms-1"></i><span class="sr-only">Link público</span>
                   </a>
 
                   <!-- Editar -->
@@ -577,7 +594,7 @@
                     🔁 <i class="bi bi-arrow-repeat ms-1"></i><span class="sr-only">Activar reemplazo</span>
                   </a>
 
-                  <!-- Reemplazo: FIN (solo si está en estado reemplazo) -->
+                  <!-- Reemplazo: FIN -->
                   {% if s.estado == 'reemplazo' and s.reemplazos %}
                     {% set r_ultimo = s.reemplazos[-1] %}
                     <a href="{{ url_for('admin.finalizar_reemplazo', s_id=s.id, reemplazo_id=r_ultimo.id) }}"
@@ -590,12 +607,11 @@
                   {% endif %}
 
                   {% if s.candidata_id %}
-                    <!-- Compatibilidad admin -->
                     <a href="{{ url_for('admin.ver_compatibilidad', cliente_id=cliente.id, candidata_id=s.candidata_id) }}"
                        class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Ver compatibilidad (admin)" aria-label="Compatibilidad admin">
                       👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad admin</span>
                     </a>
-                    <!-- Test Secretarías -->
+
                     <a href="{{ url_for('compat_candidata', fila=s.candidata_id) }}"
                        class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Llenar/editar test (Secretarías)" aria-label="Test Secretarías">
                       ✅ <i class="bi bi-ui-checks-grid ms-1"></i><span class="sr-only">Test Secretarías</span>
@@ -610,7 +626,6 @@
                   {% endif %}
 
                   {% if s.estado in ['activa','proceso','reemplazo'] %}
-                    <!-- Cancelar rápido -->
                     <form method="post"
                           action="{{ url_for('admin.cancelar_solicitud_directa', id=s.id) }}?next={{ request.full_path | urlencode }}"
                           class="d-inline"
@@ -621,7 +636,6 @@
                       </button>
                     </form>
 
-                    <!-- Cancelar con motivo -->
                     <a class="btn btn-sm btn-danger"
                        href="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id, next=request.full_path) }}"
                        data-bs-toggle="tooltip" title="Cancelar con motivo" aria-label="Cancelar con motivo">

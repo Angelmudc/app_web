@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 1100px; margin: 30px auto;">
+  <div class="card" style="padding: 22px;">
+
+    <h2 style="margin:0 0 8px 0;">Crear solicitud</h2>
+    <p style="margin:0 0 18px 0; opacity:.85;">
+      Confirma tu <b>código</b>, <b>nombre</b> y <b>Gmail</b> para que tu solicitud se guarde en el cliente correcto.
+    </p>
+
+    <form method="POST" novalidate>
+      {{ form.hidden_tag() }}
+
+      {# ───────────── Honeypot anti-bot (no visible) ───────────── #}
+      {% if form.hp is defined %}
+        <div style="display:none;">
+          {{ form.hp() }}
+        </div>
+      {% endif %}
+
+      {# ───────────── Validación del cliente ───────────── #}
+      {% if form.codigo_cliente is defined and form.email_cliente is defined %}
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+
+        <div>
+          <label>{{ form.codigo_cliente.label }}</label>
+          {{ form.codigo_cliente(class="form-control") }}
+          {% for e in form.codigo_cliente.errors %}
+            <small style="color:#d33; display:block;">{{ e }}</small>
+          {% endfor %}
+        </div>
+
+        <div>
+          <label>{{ form.email_cliente.label }}</label>
+          {{ form.email_cliente(class="form-control") }}
+          {% for e in form.email_cliente.errors %}
+            <small style="color:#d33; display:block;">{{ e }}</small>
+          {% endfor %}
+        </div>
+
+      </div>
+      {% endif %}
+
+      {% if form.nombre_cliente is defined %}
+      <div style="margin-top: 12px;">
+        <label>{{ form.nombre_cliente.label }}</label>
+        {{ form.nombre_cliente(class="form-control") }}
+        {% for e in form.nombre_cliente.errors %}
+          <small style="color:#d33; display:block;">{{ e }}</small>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <hr style="margin: 20px 0; opacity:.2;">
+
+      {# ───────────── Campos reales de la solicitud ───────────── #}
+      {# Incluye TODOS los campos del SolicitudForm, con áreas comunes debajo de baños #}
+      {% include "clientes/_solicitud_form_fields.html" %}
+
+      <div style="margin-top: 22px;">
+        <button type="submit" class="btn btn-primary">
+          Enviar solicitud
+        </button>
+      </div>
+
+    </form>
+
+  </div>
+</div>
+
+{% endblock %}
