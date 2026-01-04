@@ -49,9 +49,9 @@ except ImportError:
 
 
 # 🔌 SWITCH GENERAL: WEB PÚBLICA HABILITADA / DESHABILITADA
-PUBLIC_SITE_ENABLED = True
-# Cuando quieras volver a activarla en el futuro, solo cambia a:
-# PUBLIC_SITE_ENABLED = True
+# ❌ DESACTIVADA TEMPORALMENTE (no accesible al público)
+PUBLIC_SITE_ENABLED = False
+# Para reactivar en el futuro, cambia a True
 
 
 def _foto_data_uri(candidata) -> Optional[str]:
