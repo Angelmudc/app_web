@@ -1,0 +1,184 @@
+
+
+/* ==========================================================
+   pages.css
+   Estilos ESPECÍFICOS por página
+   (No colocar estilos globales aquí)
+   ========================================================== */
+
+/* ----------------------------------------------------------
+   PAGE — LOGIN
+   ---------------------------------------------------------- */
+
+.page-login.login-stage{
+  position: relative;
+  min-height: 62vh;
+  display: grid;
+  place-items: center;
+}
+
+.page-login .blob{
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: .35;
+  pointer-events: none;
+}
+.page-login .b1{width:420px;height:420px;left:-120px;top:-80px;background: var(--brand-2);}
+.page-login .b2{width:460px;height:460px;right:-140px;top:-60px;background: var(--brand);}
+.page-login .b3{width:520px;height:520px;left:50%;bottom:-220px;transform:translateX(-50%);background:#22d3ee;opacity:.18}
+
+/* Card glass del login */
+.page-login .glass{
+  position: relative;
+  width: min(980px, 100%);
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+  box-shadow: 0 22px 60px rgba(15,23,42,.14);
+  overflow: hidden;
+  animation: loginGlassIn .45s ease both;
+}
+@keyframes loginGlassIn { from{opacity:0; transform: translateY(8px)} to{opacity:1; transform:none} }
+
+/* Borde con brillo */
+.page-login .glass::before{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from 0deg, #7aa2ff, #22d3ee, #34d399, #7aa2ff);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: loginSpinHue 6s linear infinite;
+  opacity: .35;
+}
+@keyframes loginSpinHue { to{ transform: rotate(360deg) } }
+
+.page-login .glass-row{display:grid; grid-template-columns: 1.1fr .9fr; gap: 0;}
+@media (max-width: 992px){ .page-login .glass-row{ grid-template-columns: 1fr; } }
+
+/* Columna marca */
+.page-login .brand-col{
+  padding: 40px 26px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brand-2) 12%, transparent), transparent);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  border-right: 1px solid var(--border);
+}
+@media (max-width: 992px){ .page-login .brand-col{ border-right:none; border-bottom:1px solid var(--border); } }
+
+.page-login .brand-logo{
+  width: min(260px, 70%);
+  height:auto;
+  display:block;
+  filter: drop-shadow(0 10px 24px rgba(15,23,42,.15));
+  animation: loginFloatY 5s ease-in-out infinite;
+}
+@keyframes loginFloatY{ 0%,100%{ transform: translateY(0)} 50%{ transform: translateY(-6px)} }
+
+.page-login .brand-title{font-family:'Rubik', system-ui; font-weight:800; letter-spacing:.2px; margin-top:18px;}
+.page-login .brand-sub{color: var(--muted); margin-top:4px}
+
+/* Columna formulario */
+.page-login .form-col{ padding: 22px; }
+
+.page-login .form-head{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
+.page-login .form-head .emoji{ font-size:1.35rem }
+.page-login .form-sub{ color: var(--muted); margin:0 0 6px 0 }
+
+.page-login .msg{
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color:#a52834;
+}
+html[data-theme="dark"] .page-login .msg{ background:#121a2a; border-color:#1e2636; color:#ffb3ba; }
+
+.page-login .input-icon{
+  position:absolute;
+  left:12px;
+  top:50%;
+  transform: translateY(-50%);
+  width:20px;
+  height:20px;
+  color:#7a8aa6;
+  opacity:.9;
+}
+
+.page-login .form-control.auth{
+  padding-left: 44px;
+  border-radius: 14px;
+  border: 1.9px solid #e2e8f6;
+  background: color-mix(in srgb, #ffffff 78%, transparent);
+}
+html[data-theme="dark"] .page-login .form-control.auth{
+  background: color-mix(in srgb, #0f1624 92%, transparent);
+  border-color:#1e2636;
+  color: var(--text);
+}
+
+.page-login .toggle-btn{
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  border:1px solid #e2e8f6;
+  background: var(--card);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+.page-login .toggle-btn i{
+  font-size: 14px;
+  line-height: 1;
+}
+
+.page-login .btn-auth{
+  width:100%;
+  border-radius:999px;
+  font-weight:900;
+  padding:.9rem 1rem;
+  letter-spacing:.2px;
+  border:none;
+  color: #fff;
+  background:
+    radial-gradient(120% 120% at 10% -10%, rgba(255,255,255,.25), transparent 35%),
+    linear-gradient(135deg, #3b82f6, var(--brand));
+  box-shadow: 0 14px 30px rgba(59,130,246,.22);
+}
+
+/* ----------------------------------------------------------
+   PAGE — ADMIN LOGIN (FIX ICONOS GRANDES)
+   ---------------------------------------------------------- */
+
+/* Ícono grande superior (login admin) */
+.auth-wrap .login-icon svg{
+  width: 42px;
+  height: 42px;
+}
+
+/* Íconos dentro de los campos (user / lock) */
+.auth-wrap .field svg,
+.auth-wrap .field .ico{
+  width: 18px;
+  height: 18px;
+}
+
+/* Evita que SVG herede font-size gigantes */
+.auth-wrap svg{
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* ----------------------------------------------------------
+   END
+   ---------------------------------------------------------- */

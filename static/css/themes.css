@@ -1,0 +1,55 @@
+/* static/css/themes.css
+   Variables por tema (light/dark)
+   Se controla con: <html data-theme="light|dark">
+*/
+html[data-theme="light"]{
+  --bg: #f6f8fc;
+  --panel: #ffffff;
+  --panel-2: #f1f5ff;
+
+  --text: #0f172a;
+  --muted: rgba(15, 23, 42, .72);
+  --muted-2: rgba(15, 23, 42, .55);
+
+  --border: rgba(15, 23, 42, .14);
+  --border-2: rgba(15, 23, 42, .10);
+
+  --link: #0b66ff;
+
+  --navbar-bg: rgba(255,255,255,.72);
+  --navbar-border: rgba(15,23,42,.12);
+
+  --input-bg: #ffffff;
+  --input-border: rgba(15,23,42,.18);
+  --input-text: #0f172a;
+  --placeholder: rgba(15,23,42,.45);
+
+  --table-head: #f3f6ff;
+  --row-hover: rgba(11,102,255,.06);
+}
+
+html[data-theme="dark"]{
+  --bg: #070b18;
+  --panel: rgba(255,255,255,.06);
+  --panel-2: rgba(255,255,255,.08);
+
+  --text: #eaf0ff;
+  --muted: rgba(234,240,255,.75);
+  --muted-2: rgba(234,240,255,.55);
+
+  --border: rgba(234,240,255,.14);
+  --border-2: rgba(234,240,255,.10);
+
+  --link: #7ab6ff;
+
+  --navbar-bg: rgba(7,11,24,.72);
+  --navbar-border: rgba(234,240,255,.12);
+
+  --input-bg: rgba(255,255,255,.06);
+  --input-border: rgba(234,240,255,.16);
+  --input-text: #eaf0ff;
+  --placeholder: rgba(234,240,255,.52);
+
+  --table-head: rgba(255,255,255,.06);
+  --row-hover: rgba(122,182,255,.10);
+}

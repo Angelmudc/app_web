@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="light">
+<html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="facebook-domain-verification" content="iw4sjki37enb1kv6qkrxb1tms5l9gl" />
@@ -26,291 +26,18 @@
   <!-- DataTables CSS -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
 
-  <!-- Estilos personalizados del proyecto -->
+  <!-- Modular CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/animations.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 
-  <style>
-    /* ======= PALETA CLARA (pastel) ======= */
-    :root{
-      --bg: #fafcff;           /* fondo casi blanco */
-      --bg-soft: #f2f6ff;      /* azul muy pálido */
-      --card: #ffffff;
-      --text: #0f172a;         /* gris-azul fuerte */
-      --muted:#606b85;         /* gris-azul medio */
-      --brand:#2563eb;         /* azul vivo pero amable */
-      --brand-2:#60a5fa;       /* azul claro */
-      --accent:#22c55e;        /* verde suave */
-      --danger:#ef4444;
-      --warning:#f59e0b;
-      --ok:#16a34a;
-      --ring: rgba(37,99,235,.22);
-      --border: #e6ebf5;
-      --navbar-h: 70px;
-      --shadow-1: 0 8px 24px rgba(15,23,42,.06);
-      --shadow-2: 0 18px 44px rgba(15,23,42,.10);
-      --radius: 16px;
-      --radius-sm: 12px;
-    }
-    /* Modo oscuro (opcional) */
-    html[data-theme="dark"]{
-      --bg: #0c111b;
-      --bg-soft: #101826;
-      --card: #121a2a;
-      --text: #e5e7eb;
-      --muted:#a3acc2;
-      --brand:#7aa2ff;
-      --brand-2:#9cc1ff;
-      --accent:#34d399;
-      --ring: rgba(122,162,255,.35);
-      --border: #1e2636;
-      --shadow-1: 0 10px 28px rgba(0,0,0,.45);
-      --shadow-2: 0 24px 60px rgba(0,0,0,.6);
-    }
-
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-      background:
-        radial-gradient(1200px 600px at -10% -20%, rgba(96,165,250,.20), transparent 40%),
-        radial-gradient(900px 500px at 110% -10%, rgba(34,197,94,.10), transparent 45%),
-        var(--bg);
-      color: var(--text);
-      margin:0;
-      line-height:1.6;
-      -webkit-font-smoothing:antialiased;
-      -moz-osx-font-smoothing:grayscale;
-    }
-
-    /* ======= NAVBAR GLASS LIGERA ======= */
-    .navbar{
-      position: sticky; top:0; z-index:1030;
-      backdrop-filter: saturate(140%) blur(10px);
-      -webkit-backdrop-filter: saturate(140%) blur(10px);
-      background: color-mix(in srgb, var(--card) 85%, transparent);
-      border-bottom: 1px solid var(--border);
-      box-shadow: var(--shadow-1);
-      min-height: var(--navbar-h);
-      transition: background .25s ease, box-shadow .25s ease, border-color .25s ease;
-    }
-    .navbar .navbar-brand{
-      font-family: 'Rubik', system-ui;
-      font-weight:700;
-      letter-spacing:.2px;
-      color: var(--text);
-      white-space: nowrap;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .nav-link{
-      color: var(--text) !important;
-      opacity:.9;
-      padding:.65rem .9rem;
-      border-radius:12px;
-      transition: .18s ease;
-    }
-    .nav-link:hover, .nav-link:focus{
-      background: #ecf2ff; /* muy claro */
-      color: var(--text) !important;
-      opacity:1;
-    }
-    .nav-link.active{
-      background: #e6eeff;
-      color: var(--brand) !important;
-      font-weight:600;
-      box-shadow: inset 0 0 0 1px rgba(37,99,235,.2);
-    }
-    /* Asegurar que el ícono del toggler siempre se vea (sin depender de navbar-light/dark) */
-    .navbar-toggler{
-      border-color: rgba(15,23,42,.15);
-    }
-    .navbar-toggler:focus{ box-shadow: 0 0 0 4px var(--ring); }
-    .navbar-toggler-icon{
-      background-image:
-        url("data:image/svg+xml;charset=utf8,%3Csvg viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke='rgba(15,23,42,0.85)' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
-    }
-    html[data-theme="dark"] .navbar-toggler-icon{
-      background-image:
-        url("data:image/svg+xml;charset=utf8,%3Csvg viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke='rgba(229,231,235,0.9)' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
-    }
-
-    /* ======= HERO ======= */
-    .hero-section{
-      padding: 54px 0 6px;
-      text-align:center;
-      animation: slideFade .5s ease both;
-    }
-    @keyframes slideFade{from{opacity:0; transform: translateY(-6px)} to{opacity:1; transform:none}}
-
-    /* ======= MAIN ======= */
-    main.container{
-      padding-top: 18px;
-      padding-bottom: 72px;
-      min-height: calc(100vh - var(--navbar-h) - 140px);
-    }
-
-    /* ======= CARDS ======= */
-    .card{
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-1);
-      transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
-    }
-    .card:hover{
-      transform: translateY(-1px);
-      box-shadow: var(--shadow-2);
-      border-color: #dbe7ff;
-    }
-    .card .card-title{font-weight:700}
-    .card .lead{color: var(--muted)}
-
-    /* ======= BOTONES ======= */
-    .btn{
-      border-radius: 999px;
-      padding:.62rem 1.05rem;
-      font-weight:600;
-      letter-spacing:.2px;
-      border: 1px solid transparent;
-      transition: transform .12s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease;
-    }
-    .btn:focus{box-shadow: 0 0 0 6px var(--ring) !important}
-    .btn-primary{
-      background: linear-gradient(135deg, #3b82f6, var(--brand));
-      border-color: transparent;
-      color: #fff;
-    }
-    .btn-primary:hover{
-      transform: translateY(-1px);
-      filter: brightness(.98);
-    }
-    .btn-outline-secondary{
-      color: var(--text); border-color: #dbe3f5; background: var(--card);
-    }
-    .btn-outline-secondary:hover{
-      border-color: #9db7ff;
-      color: #1d4ed8;
-      background: #eef3ff;
-    }
-    .btn-success{
-      background: linear-gradient(135deg, #34d399, #22c55e); border: none;
-    }
-
-    /* ======= FORMULARIOS ======= */
-    .form-control, .form-select, .select2-container .select2-selection--single{
-      border-radius: 14px !important;
-      border:1px solid #e2e8f6 !important;
-      background: #ffffff !important;
-      color: var(--text) !important;
-      transition: border-color .2s ease, box-shadow .2s ease;
-    }
-    .form-control:focus, .form-select:focus{
-      border-color: #9db7ff;
-      box-shadow: 0 0 0 6px rgba(157,183,255,.25);
-    }
-    label{font-weight:600; margin-bottom:.35rem}
-
-    /* ======= TABLAS ======= */
-    table.dataTable, .table{
-      background: var(--card);
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    .table thead th{
-      background: #f3f6ff;
-      color: var(--text);
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
-    .table-hover tbody tr:hover{background: #f7faff}
-
-    /* ======= ALERTS (toaster look) ======= */
-    .alert{
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-1);
-      background: #ffffff;
-    }
-
-    /* ======= FOOTER ======= */
-    footer{
-      background: linear-gradient(0deg, #f2f6ff, #f8fbff);
-      border-top: 1px solid var(--border);
-      color: var(--muted);
-      padding: 20px 0;
-    }
-
-    /* ======= Scroll to top ======= */
-    .scroll-top{
-      position: fixed;
-      right: 22px; bottom: 22px;
-      width: 46px; height: 46px;
-      border-radius: 50%;
-      display: grid; place-items:center;
-      background: #ffffff;
-      border: 1px solid #e1e8fb;
-      color: var(--text);
-      box-shadow: var(--shadow-1);
-      opacity: 0; visibility: hidden;
-      transform: translateY(10px);
-      transition: .2s ease;
-      z-index: 1031;
-    }
-    .scroll-top.show{opacity:1; visibility:visible; transform:none}
-    .scroll-top:hover{color: var(--brand); border-color: #cfe0ff; background:#f7faff}
-
-    /* ======= Skeleton ======= */
-    .skeleton{
-      background: linear-gradient(90deg, #eef3ff, #f7faff, #eef3ff);
-      background-size: 200% 100%;
-      animation: shimmer 1.2s infinite;
-      border-radius: 12px;
-    }
-    @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-
-    /* Pills suaves */
-    .badge-soft{
-      background: #eef3ff;
-      color: #1d4ed8;
-      border:1px solid #dbe7ff;
-      border-radius: 999px; padding:.35rem .6rem; font-weight:600;
-    }
-
-    /* ======= UTILIDADES RESPONSIVE GLOBALES ======= */
-    img, video, iframe{max-width:100%; height:auto}
-    /* Forzar scroll horizontal de tablas en móviles (sin tocar cada template) */
-    @media (max-width: 576px){
-      .table, table.dataTable{
-        display:block;
-        width:100%;
-        overflow-x:auto;
-        -webkit-overflow-scrolling:touch;
-        white-space:nowrap;
-      }
-      .dataTables_wrapper .dataTables_length,
-      .dataTables_wrapper .dataTables_filter{
-        width:100%;
-        display:block;
-        margin: .35rem 0;
-      }
-      .navbar .navbar-brand{max-width: 65vw;}
-      main.container{padding-left: 12px; padding-right: 12px;}
-      .nav-link{padding:.55rem .75rem}
-      /* Toaster ocupa ancho útil en móvil */
-      .toast{max-width: min(92vw, 420px);}
-    }
-
-    /* Accesibilidad: reduce motion */
-    @media (prefers-reduced-motion: reduce){
-      *{animation:none!important; transition:none!important}
-    }
-  </style>
-
-  {% block head %}{% endblock %}
+  {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body data-theme="light">
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg">
     <div class="container">
@@ -321,7 +48,7 @@
 
       <div class="d-flex align-items-center gap-2 order-lg-2">
         <!-- Theme toggle -->
-        <button id="themeToggle" class="btn btn-outline-secondary btn-sm" type="button" aria-label="Cambiar tema">
+        <button id="themeToggle" data-theme-toggle="true" data-no-loader="true" class="btn btn-outline-secondary btn-sm" type="button" aria-label="Cambiar tema">
           <i class="fa-solid fa-moon"></i>
         </button>
 
@@ -401,7 +128,7 @@
     <div class="container d-flex align-items-center justify-content-between flex-wrap gap-2">
       <small>&copy; {{ current_year or "2025" }} Doméstica del Cibao A&amp;D. Todos los derechos reservados.</small>
       <div class="d-flex align-items-center gap-2">
-        <span class="badge-soft">UI claro</span>
+        <span class="badge-soft" id="themeLabel">Theme</span>
         <a class="text-decoration-none" href="{{ url_for('home') }}"><i class="fa-solid fa-arrow-rotate-right"></i> Recargar</a>
       </div>
     </div>
@@ -421,58 +148,25 @@
   <!-- DataTables -->
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js" defer></script>
 
-  <script>
-    // ===== Tema persistente; default CLARO =====
-    (function(){
-      const root = document.documentElement;
-      const saved = localStorage.getItem('theme');
-      root.setAttribute('data-theme', saved || 'light');
-      const applyThemeMeta = () => {
-        const dark = root.getAttribute('data-theme') === 'dark';
-        const meta = document.querySelector('meta[name="theme-color"]');
-        if(meta) meta.setAttribute('content', dark ? '#0c111b' : '#ffffff');
-      };
-      applyThemeMeta();
-      window.addEventListener('DOMContentLoaded', function(){
-        const btn = document.getElementById('themeToggle');
-        if(btn){
-          btn.addEventListener('click', function(){
-            const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-            root.setAttribute('data-theme', next);
-            localStorage.setItem('theme', next);
-            applyThemeMeta();
-            this.innerHTML = next === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
-          });
-          const dark = root.getAttribute('data-theme') === 'dark';
-          btn.innerHTML = dark ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
-        }
-      });
-    })();
+  <!-- App JS (modular) -->
+  <!-- Core (helpers) -->
+  <script src="{{ url_for('static', filename='js/core/toast.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/modal.js') }}" defer></script>
 
-    // ===== Toaster auto-show =====
-    window.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('.toast').forEach(t => new bootstrap.Toast(t).show());
-    });
+  <!-- UI -->
+  <script src="{{ url_for('static', filename='js/ui/theme.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/ui/ui.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/ui/search.js') }}" defer></script>
 
-    // ===== Scroll to top =====
-    (function(){
-      const btn = document.getElementById('scrollTopBtn');
-      const onScroll = () => {
-        if (window.scrollY > 220) btn.classList.add('show');
-        else btn.classList.remove('show');
-      };
-      window.addEventListener('scroll', onScroll, {passive:true});
-      btn.addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
-      onScroll();
-    })();
+  <!-- Forms -->
+  <script src="{{ url_for('static', filename='js/forms/validate.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/forms/autosave.js') }}" defer></script>
 
-    // ===== Select2 ancho completo =====
-    document.addEventListener('DOMContentLoaded', function(){
-      if (window.$ && $.fn.select2){
-        $('.select2').select2({ width: '100%' });
-      }
-    });
-  </script>
+  <!-- Page modules -->
+  <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}" defer></script>
+
+  <!-- App bootstrap (detect page + init) -->
+  <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
 
   {% block scripts %}{% endblock %}
 </body>

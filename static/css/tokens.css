@@ -1,0 +1,39 @@
+/* static/css/tokens.css
+   Tokens base (no dependen del tema)
+*/
+:root{
+  /* Tipografía */
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: Rubik, Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Escala */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+
+  --shadow-sm: 0 6px 18px rgba(0,0,0,.10);
+  --shadow-md: 0 10px 28px rgba(0,0,0,.14);
+
+  --ring: 0 0 0 3px rgba(60,130,246,.25);
+
+  --sp-1: 6px;
+  --sp-2: 10px;
+  --sp-3: 14px;
+  --sp-4: 18px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --container-max: 1200px;
+
+  /* Transiciones */
+  --t-fast: 140ms;
+  --t-med: 220ms;
+  --e-out: cubic-bezier(.2,.8,.2,1);
+
+  /* Colores de marca (estables) */
+  --brand: #0b66ff;        /* azul */
+  --brand-2: #0aa2ff;      /* celeste */
+  --danger: #e11d48;
+  --warning: #f59e0b;
+  --success: #16a34a;
+}

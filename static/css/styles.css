@@ -1,259 +1,1959 @@
 /* static/css/styles.css */
+/* ======================================================================
+   DOMÉSTICA DEL CIBAO A&D — UI PRO (Futurista, legible, consistente)
+   - Objetivo: que TODO se vea CLARO y PRO en TODA la app.
+   - Sin depender de CSS inline en base.html.
+   - Compatible con clases comunes usadas en templates: .navbar, .card, .btn,
+     .table, .form-control, .alert, .container, etc.
+   - Incluye: dark + light (opcional), animaciones suaves, utilidades,
+     componentes (chips, badges, tabs, modal, toast, skeleton, etc.).
+   ====================================================================== */
 
-/* 1. Variables Globales */
-:root {
-  --primary-color: #1A5789;
-  --accent-color: #00AECF;
-  --secondary-color: #ffffff;
-  --background-color: #f4f7fb;
-  --text-color: #343a40;
-  --muted-color: #6c757d;
-  --border-radius: 0.5rem;
-  --transition-duration: 0.3s;
-  --font-family-base: 'Roboto', sans-serif;
+/* =========================
+   0) THEME TOKENS (ROOT)
+========================= */
+:root{
+  /* Brand */
+  --primary-color:#1A5789;
+  --accent-color:#00AECF;
+  --accent-2:#6c5cff;
+  --accent-3:#00f5d4;
+
+  /* Backgrounds */
+  --background-color:#0b1020;
+  --background-deep:#070a14;
+  --background-2:#0f1733;
+
+  /* Surfaces */
+  --surface:rgba(255,255,255,.06);
+  --surface-2:rgba(255,255,255,.08);
+  --surface-3:rgba(255,255,255,.10);
+  --surface-solid:#111a33;
+
+  /* Text (HIGH CONTRAST) */
+  --text-color:rgba(255,255,255,.92);
+  --text-strong:#ffffff;
+  --muted-color:rgba(255,255,255,.72);
+  --muted-2:rgba(255,255,255,.56);
+  --muted-3:rgba(255,255,255,.42);
+
+  /* Borders */
+  --border-color:rgba(255,255,255,.14);
+  --border-color-2:rgba(0,174,207,.30);
+  --border-strong:rgba(255,255,255,.22);
+
+  /* Shadows */
+  --shadow-xs:0 6px 18px rgba(0,0,0,.22);
+  --shadow-sm:0 10px 28px rgba(0,0,0,.28);
+  --shadow-md:0 18px 60px rgba(0,0,0,.36);
+  --shadow-lg:0 30px 90px rgba(0,0,0,.46);
+
+  /* Focus ring */
+  --ring:0 0 0 .24rem rgba(0,174,207,.32);
+
+  /* Radii */
+  --border-radius:14px;
+  --radius-sm:10px;
+  --radius-md:16px;
+  --radius-lg:20px;
+  --radius-xl:28px;
+
+  /* Typography */
+  --font-family-base: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-size-base: 1rem;
-  --font-size-lg: 1.25rem;
-  --font-size-xl: 1.5rem;
+
+  /* Motion */
+  --transition-duration:220ms;
+  --transition-fast:160ms;
+  --transition-slow:420ms;
+  --transition-ease:cubic-bezier(.2,.8,.2,1);
+
+  /* Layout */
+  --container-max:1100px;
+
+  /* Status */
+  --ok:#2ef9a0;
+  --warn:#ffcc00;
+  --danger:#ff4d6d;
+  --info:#62c1ff;
+
+  /* Gradients */
+  --g-brand: linear-gradient(135deg, rgba(0,174,207,.95), rgba(26,87,137,.95));
+  --g-brand-2: linear-gradient(135deg, rgba(108,92,255,.92), rgba(0,174,207,.90));
+  --g-soft: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.05));
+  --g-soft-2: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+
+  /* Sizing helpers */
+  --pad-page: 1rem;
+  --pad-card: 1.6rem;
 }
 
-/* 2. Reset y Global */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+/* Optional LIGHT theme (si en algún momento quieres activar)
+   <body data-theme="light"> ... */
+html[data-theme="light"],
+body[data-theme="light"]{
+  --background-color:#f6f8ff;
+  --background-deep:#eef2ff;
+  --background-2:#ffffff;
+
+  --surface:rgba(10,16,36,.05);
+  --surface-2:rgba(10,16,36,.07);
+  --surface-3:rgba(10,16,36,.10);
+  --surface-solid:#ffffff;
+
+  --text-color:rgba(10,16,36,.92);
+  --text-strong:#0a1024;
+  --muted-color:rgba(10,16,36,.68);
+  --muted-2:rgba(10,16,36,.56);
+  --muted-3:rgba(10,16,36,.44);
+
+  --border-color:rgba(10,16,36,.14);
+  --border-strong:rgba(10,16,36,.22);
+
+  --shadow-xs:0 6px 18px rgba(10,16,36,.10);
+  --shadow-sm:0 10px 28px rgba(10,16,36,.12);
+  --shadow-md:0 18px 60px rgba(10,16,36,.16);
+  --shadow-lg:0 30px 90px rgba(10,16,36,.18);
+
+  --ring:0 0 0 .24rem rgba(0,174,207,.22);
 }
-body {
-  margin: 0;
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-base);
-  line-height: 1.6;
-  color: var(--text-color);
-  background-color: var(--background-color);
-  scroll-behavior: smooth;
+
+/* =========================
+   LIGHT MODE READABILITY FIXES
+   - Evita "texto del mismo color del fondo" cuando el modo es light.
+   - Soporta data-theme en html o body.
+========================= */
+html[data-theme="light"] body,
+body[data-theme="light"]{
+  color: var(--text-color) !important;
 }
+
+html[data-theme="light"] a,
+body[data-theme="light"] a{ color: var(--text-strong); }
+
+
+html[data-theme="light"] .nav-link,
+body[data-theme="light"] .nav-link{ color: rgba(10,16,36,.82) !important; }
+
+/* Icons (FontAwesome/Bootstrap Icons/etc) en light: evita que queden blancos */
+html[data-theme="light"] i,
+html[data-theme="light"] .icon,
+html[data-theme="light"] .fa,
+html[data-theme="light"] .fas,
+html[data-theme="light"] .far,
+html[data-theme="light"] .fal,
+html[data-theme="light"] .fab,
+html[data-theme="light"] .bi,
+body[data-theme="light"] i,
+body[data-theme="light"] .icon,
+body[data-theme="light"] .fa,
+body[data-theme="light"] .fas,
+body[data-theme="light"] .far,
+body[data-theme="light"] .fal,
+body[data-theme="light"] .fab,
+body[data-theme="light"] .bi{
+  color: rgba(10,16,36,.88) !important;
+}
+
+/* SVG icons en light: usa currentColor para que hereden el color correcto */
+html[data-theme="light"] svg,
+body[data-theme="light"] svg{
+  color: rgba(10,16,36,.88) !important;
+}
+html[data-theme="light"] svg path,
+html[data-theme="light"] svg circle,
+html[data-theme="light"] svg rect,
+html[data-theme="light"] svg line,
+html[data-theme="light"] svg polyline,
+html[data-theme="light"] svg polygon,
+body[data-theme="light"] svg path,
+body[data-theme="light"] svg circle,
+body[data-theme="light"] svg rect,
+body[data-theme="light"] svg line,
+body[data-theme="light"] svg polyline,
+body[data-theme="light"] svg polygon{
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+/* Cards/panels/containers: fuerza contraste */
+html[data-theme="light"] .card,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .glass,
+body[data-theme="light"] .card,
+body[data-theme="light"] .panel,
+body[data-theme="light"] .glass{
+  color: rgba(10,16,36,.92) !important;
+}
+
+/* Botones en light: texto oscuro visible */
+html[data-theme="light"] .btn,
+body[data-theme="light"] .btn{
+  color: rgba(10,16,36,.90) !important;
+}
+html[data-theme="light"] .btn-primary,
+body[data-theme="light"] .btn-primary{
+  color: #fff !important;
+}
+
+/* Formularios: texto + placeholder siempre visibles */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .form-control,
+html[data-theme="light"] .form-select,
+body[data-theme="light"] input,
+body[data-theme="light"] select,
+body[data-theme="light"] textarea,
+body[data-theme="light"] .form-control,
+body[data-theme="light"] .form-select{
+  color: rgba(10,16,36,.92) !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder,
+body[data-theme="light"] input::placeholder,
+body[data-theme="light"] textarea::placeholder{
+  color: rgba(10,16,36,.52) !important;
+}
+
+/* Tablas: texto oscuro, header claro */
+html[data-theme="light"] .table,
+body[data-theme="light"] .table{
+  color: rgba(10,16,36,.88) !important;
+}
+html[data-theme="light"] .table td,
+html[data-theme="light"] .table th,
+body[data-theme="light"] .table td,
+body[data-theme="light"] .table th{
+  color: rgba(10,16,36,.88) !important;
+}
+
+/* Badges/chips: asegura contraste */
+html[data-theme="light"] .badge,
+html[data-theme="light"] .chip,
+body[data-theme="light"] .badge,
+body[data-theme="light"] .chip{
+  color: rgba(10,16,36,.90) !important;
+}
+
+/* =========================
+   DARK MODE READABILITY FIXES
+   - Asegura contraste en dark cuando algún inline/otro css pisa colores.
+   - Soporta data-theme="dark" en html o body.
+========================= */
+html[data-theme="dark"] body,
+body[data-theme="dark"]{
+  color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] a,
+body[data-theme="dark"] a{ color: rgba(255,255,255,.92); }
+
+html[data-theme="dark"] .nav-link,
+body[data-theme="dark"] .nav-link{ color: rgba(255,255,255,.88) !important; }
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .glass,
+body[data-theme="dark"] .card,
+body[data-theme="dark"] .panel,
+body[data-theme="dark"] .glass{
+  color: rgba(255,255,255,.92) !important;
+}
+
+html[data-theme="dark"] .table,
+body[data-theme="dark"] .table,
+html[data-theme="dark"] .table td,
+html[data-theme="dark"] .table th,
+body[data-theme="dark"] .table td,
+body[data-theme="dark"] .table th{
+  color: rgba(255,255,255,.90) !important;
+}
+
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .form-select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+body[data-theme="dark"] .form-control,
+body[data-theme="dark"] .form-select,
+body[data-theme="dark"] textarea,
+body[data-theme="dark"] input,
+body[data-theme="dark"] .form-select,
+body[data-theme="dark"] select{
+  color: rgba(255,255,255,.96) !important;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder,
+body[data-theme="dark"] input::placeholder,
+body[data-theme="dark"] textarea::placeholder{
+  color: rgba(255,255,255,.55) !important;
+}
+
+/* =========================
+   LIGHT BACKGROUND OVERRIDES
+   - Cuando se activa light, el fondo debe ser CLARO y el texto OSCURO.
+   - También baja la intensidad del grid/aurora para que no ensucie.
+   - Además, neutraliza wrappers que a veces vienen con fondo oscuro.
+========================= */
+html[data-theme="light"],
+body[data-theme="light"]{
+  /* ayuda a inputs/scrollbars/UA */
+  color-scheme: light;
+}
+html[data-theme="dark"],
+body[data-theme="dark"]{
+  color-scheme: dark;
+}
+
+/* Fondo global light: forzado */
+html[data-theme="light"] body,
+body[data-theme="light"]{
+  background-color: var(--background-color) !important;
+  background:
+    radial-gradient(1200px 700px at 10% 10%, rgba(0,174,207,.10), transparent 60%),
+    radial-gradient(900px 600px at 90% 20%, rgba(108,92,255,.08), transparent 60%),
+    linear-gradient(180deg, var(--background-deep), var(--background-color)) !important;
+}
+
+/* Si algún wrapper/página trae fondo oscuro, lo neutralizamos en light */
+html[data-theme="light"] main,
+html[data-theme="light"] .page,
+html[data-theme="light"] .container,
+html[data-theme="light"] .container-fluid,
+html[data-theme="light"] .content,
+html[data-theme="light"] .content-wrapper,
+html[data-theme="light"] .main,
+html[data-theme="light"] .app,
+html[data-theme="light"] .app-shell,
+body[data-theme="light"] main,
+body[data-theme="light"] .page,
+body[data-theme="light"] .container,
+body[data-theme="light"] .container-fluid,
+body[data-theme="light"] .content,
+body[data-theme="light"] .content-wrapper,
+body[data-theme="light"] .main,
+body[data-theme="light"] .app,
+body[data-theme="light"] .app-shell{
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Bootstrap utilities que suelen ensuciar el modo claro */
+html[data-theme="light"] .bg-dark,
+html[data-theme="light"] .bg-black,
+html[data-theme="light"] .text-white,
+body[data-theme="light"] .bg-dark,
+body[data-theme="light"] .bg-black{
+  background-color: transparent !important;
+}
+html[data-theme="light"] .text-white,
+body[data-theme="light"] .text-white{
+  color: var(--text-color) !important;
+}
+
+/* Baja intensidad del grid/aurora en light */
+html[data-theme="light"] body::before,
+body[data-theme="light"]::before{
+  opacity: .18;
+}
+html[data-theme="light"] body::after,
+body[data-theme="light"]::after{
+  opacity: .14;
+}
+
+/* Links en light: usa el primario para que se note */
+html[data-theme="light"] a,
+body[data-theme="light"] a{
+  color: var(--primary-color) !important;
+}
+html[data-theme="light"] a:hover,
+body[data-theme="light"] a:hover{
+  color: #0a1024 !important;
+}
+
+/* =========================
+   1) RESET + BASE
+========================= */
+*, *::before, *::after{ box-sizing:border-box; }
+html, body{ height:100%; }
+
+body{
+  margin:0;
+  font-family:var(--font-family-base);
+  font-size:var(--font-size-base);
+  line-height:1.6;
+  color:var(--text-color);
+  background:
+    radial-gradient(1200px 700px at 10% 10%, rgba(0,174,207,.18), transparent 60%),
+    radial-gradient(900px 600px at 90% 20%, rgba(108,92,255,.12), transparent 60%),
+    radial-gradient(900px 700px at 40% 110%, rgba(26,87,137,.18), transparent 60%),
+    linear-gradient(180deg, var(--background-deep), var(--background-color));
+  scroll-behavior:smooth;
+  overflow-x:hidden;
+}
+
+/* Garantía de legibilidad */
+p, li, label, span, small, div{ color: inherit; }
+
+img{ max-width:100%; height:auto; display:block; }
+
+ a{ color: var(--text-color); text-decoration:none; }
+ a:hover{ color: var(--text-strong); text-decoration: underline; }
+
+ /* En dark, links un poco más claros; en light los overrides arriba mandan */
+ body:not([data-theme="light"]) a{ color: rgba(255,255,255,.88); }
+
+::selection{ background: rgba(0,174,207,.28); color: #fff; }
+
 /* Scrollbar */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-thumb {
-  background-color: var(--accent-color);
-  border-radius: 4px;
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-track{ background: rgba(255,255,255,.04); }
+::-webkit-scrollbar-thumb{
+  background: linear-gradient(180deg, rgba(0,174,207,.85), rgba(26,87,137,.85));
+  border-radius:10px;
 }
-::-webkit-scrollbar-track { background: transparent; }
 
-/* 3. Tipografía */
-h1 { font-size: var(--font-size-xl); font-weight: 700; margin-bottom: 1rem; }
-h2 { font-size: var(--font-size-lg); font-weight: 600; margin-bottom: .75rem; }
-p { margin-bottom: 1rem; }
-.lead { font-size: 1.125rem; color: var(--muted-color); }
+/* Backdrop grid + aurora */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  opacity:.32;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,.04) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(700px 520px at 30% 30%, rgba(0,0,0,1), transparent 72%);
+  animation: gridDrift 16s linear infinite;
+}
+body::after{
+  content:"";
+  position:fixed;
+  inset:-150px;
+  pointer-events:none;
+  opacity:.22;
+  background:
+    radial-gradient(520px 280px at 20% 30%, rgba(0,174,207,.25), transparent 70%),
+    radial-gradient(520px 280px at 80% 40%, rgba(108,92,255,.18), transparent 70%),
+    radial-gradient(620px 320px at 60% 90%, rgba(26,87,137,.22), transparent 70%);
+  filter: blur(22px);
+  animation: aurora 14s ease-in-out infinite alternate;
+}
+@keyframes gridDrift{ from{ transform: translate3d(0,0,0); } to{ transform: translate3d(-42px,-42px,0); } }
+@keyframes aurora{ from{ transform: translate3d(0,0,0) scale(1); } to{ transform: translate3d(40px,-20px,0) scale(1.04); } }
 
-/* 4. Navbar */
-.navbar {
-  background-color: var(--primary-color) !important;
-  padding: 1rem 2rem;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+@media (prefers-reduced-motion: reduce){
+  *{ animation:none !important; transition:none !important; }
 }
-.navbar-brand {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  color: var(--secondary-color) !important;
-  transition: color var(--transition-duration);
-}
-.navbar-brand:hover { color: var(--accent-color) !important; }
-.nav-link {
-  color: var(--secondary-color) !important;
-  font-weight: 500;
-  margin-right: 1rem;
-  transition: color var(--transition-duration);
-}
-.nav-link:hover { color: var(--accent-color) !important; }
 
-/* 5. Hero */
-.hero-section {
-  background: linear-gradient(90deg, var(--primary-color), #005f7e);
-  color: var(--secondary-color);
-  padding: 4rem 1rem;
-  text-align: center;
+/* =========================
+   2) TYPOGRAPHY
+========================= */
+h1,h2,h3,h4,h5,h6{
+  margin:0 0 .75rem 0;
+  color: var(--text-strong);
+  letter-spacing:.2px;
+}
+h1{ font-size: clamp(1.85rem, 2.4vw, 2.5rem); font-weight: 950; }
+h2{ font-size: clamp(1.2rem, 1.6vw, 1.6rem); font-weight: 920; }
+h3{ font-size: 1.12rem; font-weight: 900; }
+
+p{ margin:0 0 1rem 0; color: var(--text-color); }
+small{ color: var(--muted-color); }
+.lead{ font-size:1.05rem; color: var(--muted-color); }
+
+hr{
+  border:none;
+  height:1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+  margin:1.25rem 0;
+}
+
+code, pre{ font-family: var(--font-family-mono); color: rgba(255,255,255,.92); }
+body[data-theme="light"] code,
+body[data-theme="light"] pre{ color: rgba(10,16,36,.92); }
+
+pre{
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(255,255,255,.10);
   border-radius: var(--border-radius);
-  margin-bottom: 2.5rem;
-  animation: fadeIn 1.2s ease-in-out;
-}
-.hero-section h1 { font-size: 2.5rem; }
-.hero-section p { font-size: 1.125rem; }
-
-/* 6. Cards */
-.card {
-  background: var(--secondary-color);
-  border: none;
-  border-radius: var(--border-radius);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  transition: transform var(--transition-duration), box-shadow var(--transition-duration);
-}
-.card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-}
-.card-body i {
-  font-size: 2.5rem;
-  color: var(--primary-color);
-  margin-bottom: 1rem;
-  transition: transform var(--transition-duration);
-}
-.card:hover .card-body i { transform: rotate(8deg); }
-.card-title { font-weight: 700; }
-.card-text { color: var(--muted-color); }
-
-/* 7. Buttons */
-.btn {
-  border-radius: .25rem;
-  font-weight: 600;
-  transition: background-color var(--transition-duration), transform var(--transition-duration);
-}
-.btn-primary {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
-}
-.btn-primary:hover {
-  background: #164870;
-  border-color: #164870;
-  transform: translateY(-2px);
-}
-.btn-accent {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-  color: #fff;
-}
-.btn-accent:hover {
-  background: #009aad;
-  border-color: #009aad;
-  transform: translateY(-2px);
-}
-
-/* 8. Forms */
-.form-control {
-  border-radius: var(--border-radius);
-  transition: border-color var(--transition-duration), box-shadow var(--transition-duration);
-}
-.form-control:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 0.2rem rgba(26,87,137,0.25);
-}
-.form-label { font-weight: 500; }
-
-/* 9. Tables */
-.table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-.table thead th {
-  background: var(--primary-color);
-  color: var(--secondary-color);
-  border: 0;
-}
-.table tbody tr:hover { background: #f1f7fc; }
-.table td, .table th {
-  padding: .75rem;
-  border-top: 0;
-}
-
-/* 10. Lists & Badges */
-.doc-list li {
-  padding: .75rem 1rem;
-  border-bottom: 1px solid #dee2e6;
-  transition: background var(--transition-duration);
-}
-.doc-list li:hover { background: #f1f1f1; }
-.badge {
-  padding: .35em .65em;
-  font-size: .75em;
-  font-weight: 700;
-  border-radius: .25rem;
-}
-.badge-primary { background: var(--primary-color); color: #fff; }
-.badge-accent { background: var(--accent-color); color: #fff; }
-
-/* 11. Footer */
-footer {
-  text-align: center;
-  padding: 1.5rem 1rem;
-  font-size: .875rem;
-  color: var(--muted-color);
-  background: var(--secondary-color);
-  border-top: 1px solid #ddd;
-}
-
-/* 12. Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* 13. Responsive */
-@media (max-width: 991px) {
-  .navbar { padding: .75rem 1rem; }
-  .hero-section { padding: 2.5rem 1rem; }
-}
-@media (max-width: 576px) {
-  .hero-section h1 { font-size: 2rem; }
-  .hero-section p { font-size: 1rem; }
-}
-
-/* Centrar y limitar ancho del contenido */
-.container-main {
-  max-width: 900px;
-  margin: 2rem auto;   /* Separación arriba/abajo y centrado horizontal */
-  padding: 0 1rem;     /* Espacio lateral */
-}
-.card {
-  max-width: 100%;
-}
-
-/* ============================= */
-/* 14. Layout de formulario grid */
-/* ============================= */
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1.5rem;
-}
-
-@media (max-width: 768px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Sección de campos: añade separación extra */
-.form-section {
-  margin-bottom: 1.5rem;
-}
-
-/* Ajustes de card-body para más espacio */
-.card-body {
-  padding: 2rem;
-}
-
-/* Títulos de sección dentro del formulario */
-.form-section-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-bottom: 0.75rem;
-  border-bottom: 2px solid var(--accent-color);
-  padding-bottom: 0.25rem;
-}
-/* styles.css */
-
-.form-section {
-  margin-bottom: 2rem;
   padding: 1rem;
-  background: #fff;
-  border-radius: .5rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  overflow:auto;
+}
+body[data-theme="light"] pre{
+  background: rgba(10,16,36,.05);
+  border-color: rgba(10,16,36,.10);
 }
 
-.form-section h3 {
-  color: #1A5789;
-  border-bottom: 2px solid #00AECF;
-  padding-bottom: .5rem;
+/* =========================
+   3) LAYOUT CONTAINERS
+========================= */
+.container, .container-main{
+  width:100%;
+  max-width: var(--container-max);
+  margin: 2rem auto;
+  padding: 0 var(--pad-page);
+  position:relative;
+  z-index:1;
+}
+.container-main{ max-width: 980px; }
+
+/* Sections */
+.section{ margin: 1.25rem 0 2rem; }
+.section-header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
+.section-header .subtitle{ color: var(--muted-color); font-weight: 700; }
+
+/* Smooth appear */
+.container, .container-main, .card, .panel{ animation: softAppear .55s var(--transition-ease) both; }
+@keyframes softAppear{ from{ opacity:0; transform: translateY(10px); } to{ opacity:1; transform: translateY(0); } }
+
+/* Grids */
+.grid{ display:grid; gap:1rem; }
+.grid-2{ grid-template-columns: repeat(2, 1fr); }
+.grid-3{ grid-template-columns: repeat(3, 1fr); }
+.grid-4{ grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 900px){ .grid-3, .grid-4{ grid-template-columns: 1fr; } }
+@media (max-width: 768px){ .grid-2{ grid-template-columns: 1fr; } }
+
+/* =========================
+   4) NAVBAR
+========================= */
+.navbar{
+  background: rgba(15,22,48,.60) !important;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: .9rem 1.2rem;
+  box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  position: sticky;
+  top:0;
+  z-index: 50;
+}
+body[data-theme="light"] .navbar{
+  background: rgba(255,255,255,.75) !important;
+  border-bottom: 1px solid rgba(10,16,36,.10);
+}
+.navbar::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background: linear-gradient(90deg, rgba(0,174,207,.18), transparent 45%, rgba(108,92,255,.12));
+  opacity:.85;
+}
+
+.navbar-brand{
+  font-size:1.05rem;
+  font-weight: 950;
+  color: var(--text-strong) !important;
+  letter-spacing:.6px;
+  text-transform: uppercase;
+  position:relative;
+  z-index:1;
+  text-decoration:none !important;
+}
+
+.navbar-brand img{ height: 34px; width:auto; filter: drop-shadow(0 10px 20px rgba(0,0,0,.25)); }
+
+.navbar-nav{ position:relative; z-index:1; }
+
+.nav-link{
+  color: rgba(255,255,255,.88) !important;
+  font-weight: 780;
+  margin-right: .95rem;
+  position:relative;
+  transition:
+    transform var(--transition-duration) var(--transition-ease),
+    color var(--transition-duration) var(--transition-ease);
+}
+body[data-theme="light"] .nav-link{ color: rgba(10,16,36,.82) !important; }
+.nav-link:hover{ color: var(--text-strong) !important; transform: translateY(-1px); }
+
+.nav-link::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:-8px;
+  width:0;
+  height:2px;
+  background: linear-gradient(90deg, var(--accent-color), rgba(108,92,255,.75));
+  transition: width var(--transition-duration) var(--transition-ease);
+  border-radius:2px;
+}
+.nav-link:hover::after{ width:100%; }
+
+/* =========================
+   5) HERO
+========================= */
+.hero-section{
+  color: var(--text-strong);
+  padding: 3.2rem 1.2rem;
+  text-align:center;
+  border-radius: var(--radius-xl);
+  margin: 1.5rem 0 2.2rem 0;
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(900px 420px at 10% 20%, rgba(0,174,207,.28), transparent 55%),
+    radial-gradient(700px 420px at 90% 0%, rgba(108,92,255,.18), transparent 60%),
+    linear-gradient(135deg, rgba(26,87,137,.55), rgba(8,12,25,.65));
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: var(--shadow-md);
+  animation: fadeInUp .85s var(--transition-ease) both;
+}
+body[data-theme="light"] .hero-section{
+  background:
+    radial-gradient(900px 420px at 10% 20%, rgba(0,174,207,.20), transparent 55%),
+    radial-gradient(700px 420px at 90% 0%, rgba(108,92,255,.14), transparent 60%),
+    linear-gradient(135deg, rgba(0,174,207,.14), rgba(255,255,255,.75));
+  border: 1px solid rgba(10,16,36,.10);
+}
+.hero-section::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background: linear-gradient(90deg, rgba(0,174,207,.45), rgba(108,92,255,.30), rgba(26,87,137,.40));
+  opacity:.22;
+  filter: blur(20px);
+}
+.hero-section h1{ margin-bottom:.6rem; position:relative; }
+.hero-section p{
+  font-size: 1.05rem;
+  color: rgba(255,255,255,.82);
+  margin: 0 auto;
+  max-width: 60ch;
+  position:relative;
+}
+body[data-theme="light"] .hero-section p{ color: rgba(10,16,36,.70); }
+@keyframes fadeInUp{ from{ opacity:0; transform: translateY(18px); } to{ opacity:1; transform: translateY(0); } }
+
+/* =========================
+   6) CARDS
+========================= */
+.card{
+  background: var(--g-soft);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    transform var(--transition-duration) var(--transition-ease),
+    box-shadow var(--transition-duration) var(--transition-ease),
+    border-color var(--transition-duration) var(--transition-ease);
+  max-width: 100%;
+  overflow:hidden;
+  position:relative;
+}
+body[data-theme="light"] .card{
+  background: var(--g-soft-2);
+  border: 1px solid rgba(10,16,36,.10);
+}
+.card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    radial-gradient(600px 220px at 20% 0%, rgba(0,174,207,.16), transparent 60%),
+    radial-gradient(500px 220px at 90% 10%, rgba(108,92,255,.12), transparent 65%);
+  opacity:.88;
+}
+.card:hover{
+  transform: translateY(-7px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(0,174,207,.32);
+}
+.card-body{ padding: var(--pad-card); position:relative; }
+.card-title{ font-weight: 950; color: var(--text-strong); margin-bottom: .35rem; }
+.card-text{ color: var(--muted-color); }
+
+/* Icon inside card */
+.card-body i{
+  font-size: 2.2rem;
+  color: var(--text-strong);
+  margin-bottom: .9rem;
+  filter: drop-shadow(0 10px 22px rgba(0,174,207,.18));
+  transition: transform var(--transition-duration) var(--transition-ease);
+}
+body[data-theme="light"] .card-body i{ color: rgba(10,16,36,.88); }
+.card:hover .card-body i{ transform: translateY(-2px) rotate(6deg); }
+
+/* Card header optional */
+.card-header{
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.05);
+  position:relative;
+}
+body[data-theme="light"] .card-header{ border-bottom-color: rgba(10,16,36,.10); }
+
+/* Section title helper */
+.section-title{
+  display:flex;
+  align-items:center;
+  gap:.75rem;
+  margin: 1rem 0 1.25rem;
+  color: var(--text-strong);
+  font-weight:950;
+}
+.section-title::before{
+  content:"";
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent-color), rgba(108,92,255,.7));
+  box-shadow: 0 0 0 6px rgba(0,174,207,.10);
+}
+
+/* =========================
+   7) PANELS / GLASS
+========================= */
+.panel{
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(10,16,36,.65);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+}
+body[data-theme="light"] .panel{ background: rgba(255,255,255,.75); border-color: rgba(10,16,36,.10); }
+
+.glass{
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.float-hover{
+  transition: transform var(--transition-duration) var(--transition-ease),
+              box-shadow var(--transition-duration) var(--transition-ease),
+              border-color var(--transition-duration) var(--transition-ease);
+}
+.float-hover:hover{
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(0,174,207,.30);
+}
+
+/* =========================
+   8) BUTTONS
+========================= */
+.btn{
+  border-radius: 12px;
+  font-weight: 900;
+  letter-spacing: .15px;
+  padding: .62rem 1rem;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.07);
+  color: rgba(255,255,255,.94);
+  transition:
+    transform var(--transition-fast) var(--transition-ease),
+    background var(--transition-duration) var(--transition-ease),
+    border-color var(--transition-duration) var(--transition-ease),
+    box-shadow var(--transition-duration) var(--transition-ease),
+    filter var(--transition-duration) var(--transition-ease);
+  text-decoration:none !important;
+  display:inline-flex;
+  align-items:center;
+  gap:.5rem;
+  cursor:pointer;
+  user-select:none;
+}
+body[data-theme="light"] .btn{ color: rgba(10,16,36,.90); border-color: rgba(10,16,36,.14); background: rgba(10,16,36,.05); }
+
+.btn:hover{
+  transform: translateY(-2px);
+  border-color: rgba(0,174,207,.38);
+  box-shadow: 0 16px 40px rgba(0,0,0,.22);
+}
+.btn:active{ transform: translateY(0); filter: brightness(.98); }
+.btn:focus{ outline:none; box-shadow: var(--ring); }
+
+.btn-primary{
+  background: var(--g-brand);
+  border-color: rgba(0,174,207,.35);
+  color:#fff !important;
+}
+.btn-primary:hover{
+  background: linear-gradient(135deg, rgba(0,174,207,1), rgba(108,92,255,.85));
+  border-color: rgba(108,92,255,.40);
+}
+
+.btn-outline, .btn-outline-primary{
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.24);
+  color: rgba(255,255,255,.92) !important;
+}
+body[data-theme="light"] .btn-outline, body[data-theme="light"] .btn-outline-primary{
+  border-color: rgba(10,16,36,.22);
+  color: rgba(10,16,36,.90) !important;
+}
+.btn-outline:hover, .btn-outline-primary:hover{ background: rgba(255,255,255,.10); }
+body[data-theme="light"] .btn-outline:hover, body[data-theme="light"] .btn-outline-primary:hover{ background: rgba(10,16,36,.06); }
+
+.btn-danger{
+  background: linear-gradient(135deg, rgba(255,77,109,.92), rgba(180,40,70,.92));
+  border-color: rgba(255,77,109,.35);
+  color:#fff !important;
+}
+.btn-success{
+  background: linear-gradient(135deg, rgba(34,197,94,.90), rgba(16,140,85,.90));
+  border-color: rgba(34,197,94,.35);
+  color:#fff !important;
+}
+.btn-warning{
+  background: linear-gradient(135deg, rgba(255,204,0,.92), rgba(245,158,11,.90));
+  border-color: rgba(255,204,0,.30);
+  color: rgba(10,16,36,.92) !important;
+}
+
+.btn-sm{ padding: .45rem .75rem; border-radius: 10px; font-weight: 900; }
+.btn-lg{ padding: .85rem 1.2rem; border-radius: 14px; }
+
+.btn-glow{ position:relative; }
+.btn-glow::after{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(0,174,207,.55), rgba(108,92,255,.40), rgba(0,174,207,.55));
+  opacity:0;
+  filter: blur(12px);
+  transition: opacity var(--transition-duration) var(--transition-ease);
+  z-index:-1;
+}
+.btn-glow:hover::after{ opacity:.95; }
+
+.btn-icon{
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 14px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.btn-group{ display:inline-flex; gap:.5rem; flex-wrap:wrap; }
+
+/* =========================
+   9) FORMS (anti “texto del mismo color del fondo”)
+========================= */
+.form-label{ font-weight: 900; color: rgba(255,255,255,.90) !important; }
+body[data-theme="light"] .form-label{ color: rgba(10,16,36,.88) !important; }
+
+.form-control,
+.form-select,
+textarea,
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="date"],
+input[type="time"],
+input[type="search"],
+select{
+  width:100%;
+  color: rgba(255,255,255,.96) !important;
+  background: rgba(255,255,255,.08) !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+  border-radius: 14px !important;
+  padding: .72rem .9rem !important;
+  outline:none;
+  transition:
+    border-color var(--transition-duration) var(--transition-ease),
+    box-shadow var(--transition-duration) var(--transition-ease),
+    background var(--transition-duration) var(--transition-ease);
+}
+body[data-theme="light"] .form-control,
+body[data-theme="light"] .form-select,
+body[data-theme="light"] textarea,
+body[data-theme="light"] input,
+body[data-theme="light"] select{
+  color: rgba(10,16,36,.92) !important;
+  background: rgba(10,16,36,.05) !important;
+  border-color: rgba(10,16,36,.14) !important;
+}
+
+.form-control::placeholder,
+textarea::placeholder{
+  color: rgba(255,255,255,.55) !important;
+}
+body[data-theme="light"] .form-control::placeholder,
+body[data-theme="light"] textarea::placeholder{
+  color: rgba(10,16,36,.52) !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+textarea:focus,
+input:focus,
+select:focus{
+  border-color: rgba(0,174,207,.55) !important;
+  box-shadow: var(--ring) !important;
+  background: rgba(255,255,255,.10) !important;
+}
+body[data-theme="light"] .form-control:focus,
+body[data-theme="light"] textarea:focus,
+body[data-theme="light"] input:focus,
+body[data-theme="light"] select:focus{
+  background: rgba(255,255,255,.90) !important;
+}
+
+.form-text{ color: var(--muted-2) !important; }
+
+input[type="checkbox"],
+input[type="radio"]{ accent-color: var(--accent-color); }
+
+.form-row{ display:grid; gap:1rem; grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 768px){ .form-row{ grid-template-columns: 1fr; } }
+
+.form-section{
+  margin-bottom: 1.6rem;
+  padding: 1.15rem;
+  background: var(--g-soft);
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: var(--shadow-xs);
+  position:relative;
+  overflow:hidden;
+}
+body[data-theme="light"] .form-section{ background: var(--g-soft-2); border-color: rgba(10,16,36,.10); }
+
+.form-section::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background: radial-gradient(520px 240px at 18% 0%, rgba(0,174,207,.16), transparent 60%);
+  opacity:.9;
+  pointer-events:none;
+}
+
+.form-section h3{
+  margin:0 0 1rem 0;
+  color: rgba(255,255,255,.98) !important;
+  font-weight: 950;
+  letter-spacing:.2px;
+  border-bottom: 1px solid rgba(255,255,255,.14);
+  padding-bottom:.7rem;
+  position:relative;
+}
+body[data-theme="light"] .form-section h3{ color: rgba(10,16,36,.92) !important; border-bottom-color: rgba(10,16,36,.10); }
+
+.is-invalid{ border-color: rgba(255,77,109,.70) !important; box-shadow: 0 0 0 .24rem rgba(255,77,109,.18) !important; }
+.is-valid{ border-color: rgba(34,197,94,.60) !important; box-shadow: 0 0 0 .24rem rgba(34,197,94,.16) !important; }
+
+/* Input group helpers */
+.input-group{ display:flex; gap:.6rem; align-items:stretch; }
+.input-group .form-control{ flex: 1 1 auto; }
+
+/* =========================
+   10) ALERTS / FLASH
+========================= */
+.alert{
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.08);
+  padding: .95rem 1rem;
+  color: rgba(255,255,255,.96);
+  box-shadow: var(--shadow-xs);
+}
+body[data-theme="light"] .alert{ color: rgba(10,16,36,.92); border-color: rgba(10,16,36,.12); background: rgba(255,255,255,.80); }
+
+.alert-success{ border-color: rgba(34,197,94,.35); }
+.alert-danger{ border-color: rgba(255,77,109,.35); }
+.alert-warning{ border-color: rgba(245,158,11,.35); }
+.alert-info{ border-color: rgba(98,193,255,.35); }
+
+/* =========================
+   11) TABLES
+========================= */
+.table{
+  width:100%;
+  border-collapse: separate;
+  border-spacing:0;
+  overflow:hidden;
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  box-shadow: var(--shadow-xs);
+}
+body[data-theme="light"] .table{ background: rgba(255,255,255,.88); border-color: rgba(10,16,36,.10); }
+
+.table thead th{
+  background: linear-gradient(135deg, rgba(0,174,207,.55), rgba(26,87,137,.45));
+  color: rgba(255,255,255,.98);
+  border:0;
+  padding: .85rem;
+  font-weight: 950;
+  letter-spacing:.25px;
+}
+body[data-theme="light"] .table thead th{
+  background: linear-gradient(135deg, rgba(0,174,207,.18), rgba(108,92,255,.10));
+  color: rgba(10,16,36,.92);
+}
+
+.table td, .table th{
+  padding: .8rem;
+  border-top: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,255,255,.90);
+}
+body[data-theme="light"] .table td, body[data-theme="light"] .table th{
+  border-top-color: rgba(10,16,36,.08);
+  color: rgba(10,16,36,.88);
+}
+
+.table tbody tr{ transition: background var(--transition-fast) var(--transition-ease); }
+.table tbody tr:hover{ background: rgba(0,174,207,.10); }
+body[data-theme="light"] .table tbody tr:hover{ background: rgba(0,174,207,.08); }
+
+.table-actions{ display:flex; gap:.5rem; flex-wrap:wrap; }
+
+/* =========================
+   11.1) TABLES (DataTables / Bootstrap) — FIX DARK CONTRAST
+   - Soluciona el caso: fondo blanco en modo oscuro + texto claro.
+   - Aplica tanto si usas Bootstrap `.table` como si usas DataTables.
+========================= */
+
+/* Regla base: si NO es light, jamás dejes fondo blanco en tablas */
+html:not([data-theme="light"]) table,
+body:not([data-theme="light"]) table{
+  color: rgba(255,255,255,.90);
+}
+
+/* Bootstrap table hardening (dark) */
+html:not([data-theme="light"]) .table,
+body:not([data-theme="light"]) .table{
+  background: rgba(255,255,255,.05) !important;
+}
+
+html:not([data-theme="light"]) .table thead,
+html:not([data-theme="light"]) .table thead th,
+body:not([data-theme="light"]) .table thead,
+body:not([data-theme="light"]) .table thead th{
+  background: linear-gradient(135deg, rgba(0,174,207,.55), rgba(26,87,137,.45)) !important;
+  color: rgba(255,255,255,.98) !important;
+}
+
+html:not([data-theme="light"]) .table tbody,
+body:not([data-theme="light"]) .table tbody{
+  background: rgba(255,255,255,.04) !important;
+}
+
+html:not([data-theme="light"]) .table tbody tr,
+body:not([data-theme="light"]) .table tbody tr{
+  background: transparent !important;
+}
+
+html:not([data-theme="light"]) .table td,
+html:not([data-theme="light"]) .table th,
+body:not([data-theme="light"]) .table td,
+body:not([data-theme="light"]) .table th{
+  color: rgba(255,255,255,.92) !important;
+  background-color: transparent !important;
+}
+
+/* Si Bootstrap/DT mete `bg-white` o `table-light`, lo neutralizamos en dark */
+html:not([data-theme="light"]) .bg-white,
+html:not([data-theme="light"]) .table-light,
+html:not([data-theme="light"]) .table-white,
+body:not([data-theme="light"]) .bg-white,
+body:not([data-theme="light"]) .table-light,
+body:not([data-theme="light"]) .table-white{
+  background-color: rgba(255,255,255,.05) !important;
+  color: rgba(255,255,255,.92) !important;
+}
+
+/* DataTables: wrapper + table */
+html:not([data-theme="light"]) .dataTables_wrapper,
+body:not([data-theme="light"]) .dataTables_wrapper{
+  color: rgba(255,255,255,.90) !important;
+}
+
+html:not([data-theme="light"]) table.dataTable,
+body:not([data-theme="light"]) table.dataTable{
+  background: rgba(255,255,255,.05) !important;
+  border-color: rgba(255,255,255,.12) !important;
+}
+
+html:not([data-theme="light"]) table.dataTable thead th,
+body:not([data-theme="light"]) table.dataTable thead th{
+  background: linear-gradient(135deg, rgba(0,174,207,.55), rgba(26,87,137,.45)) !important;
+  color: rgba(255,255,255,.98) !important;
+  border-bottom: 0 !important;
+}
+
+html:not([data-theme="light"]) table.dataTable tbody,
+body:not([data-theme="light"]) table.dataTable tbody{
+  background: rgba(255,255,255,.04) !important;
+}
+
+html:not([data-theme="light"]) table.dataTable tbody td,
+body:not([data-theme="light"]) table.dataTable tbody td{
+  color: rgba(255,255,255,.92) !important;
+  background-color: transparent !important;
+  border-top-color: rgba(255,255,255,.10) !important;
+}
+
+/* Hover / striped en dark */
+html:not([data-theme="light"]) .table-hover tbody tr:hover,
+html:not([data-theme="light"]) table.dataTable tbody tr:hover,
+body:not([data-theme="light"]) .table-hover tbody tr:hover,
+body:not([data-theme="light"]) table.dataTable tbody tr:hover{
+  background: rgba(0,174,207,.10) !important;
+}
+
+html:not([data-theme="light"]) .table-striped tbody tr:nth-of-type(odd),
+body:not([data-theme="light"]) .table-striped tbody tr:nth-of-type(odd){
+  background: rgba(255,255,255,.03) !important;
+}
+
+/* DataTables controls: search / length / info / paginate */
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_filter label,
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_length label,
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_info,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_filter label,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_length label,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_info{
+  color: rgba(255,255,255,.82) !important;
+}
+
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_filter input,
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_length select,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_filter input,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_length select{
+  color: rgba(255,255,255,.92) !important;
+  background: rgba(255,255,255,.08) !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+  border-radius: 12px !important;
+  padding: .45rem .6rem !important;
+  outline: none;
+}
+
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button{
+  color: rgba(255,255,255,.90) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  background: rgba(255,255,255,.06) !important;
+  border-radius: 12px !important;
+  padding: .35rem .65rem !important;
+  margin: 0 .15rem !important;
+}
+
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button.current,
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button.current,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover{
+  background: rgba(0,174,207,.18) !important;
+  border-color: rgba(0,174,207,.35) !important;
+  color: rgba(255,255,255,.98) !important;
+}
+
+html:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button:hover,
+body:not([data-theme="light"]) .dataTables_wrapper .dataTables_paginate .paginate_button:hover{
+  background: rgba(0,174,207,.12) !important;
+  border-color: rgba(0,174,207,.30) !important;
+}
+
+/* Por si el plugin mete fondo blanco al wrapper */
+html:not([data-theme="light"]) .dataTables_wrapper .row,
+html:not([data-theme="light"]) .dataTables_wrapper .col,
+body:not([data-theme="light"]) .dataTables_wrapper .row,
+body:not([data-theme="light"]) .dataTables_wrapper .col{
+  background: transparent !important;
+}
+
+/* Garantía final: celdas nunca “blanco sobre blanco” */
+html:not([data-theme="light"]) .table td *,
+html:not([data-theme="light"]) table.dataTable td *,
+body:not([data-theme="light"]) .table td *,
+body:not([data-theme="light"]) table.dataTable td *{
+  color: inherit !important;
+}
+
+/* =========================
+   12) BADGES / CHIPS
+========================= */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:.4rem;
+  padding:.32rem .6rem;
+  border-radius: 999px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.92);
+}
+body[data-theme="light"] .badge{ border-color: rgba(10,16,36,.12); background: rgba(10,16,36,.05); color: rgba(10,16,36,.90); }
+.badge-primary{ border-color: rgba(0,174,207,.32); background: rgba(0,174,207,.12); }
+.badge-success{ border-color: rgba(34,197,94,.32); background: rgba(34,197,94,.10); }
+.badge-danger{ border-color: rgba(255,77,109,.32); background: rgba(255,77,109,.10); }
+.badge-warning{ border-color: rgba(255,204,0,.30); background: rgba(255,204,0,.12); }
+.badge-info{ border-color: rgba(98,193,255,.30); background: rgba(98,193,255,.10); }
+
+.chips{ display:flex; flex-wrap:wrap; gap:.5rem; }
+.chip{
+  padding:.45rem .7rem;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.90);
+  font-weight: 900;
+}
+body[data-theme="light"] .chip{ border-color: rgba(10,16,36,.12); background: rgba(10,16,36,.05); color: rgba(10,16,36,.88); }
+.chip-primary{ border-color: rgba(0,174,207,.35); background: rgba(0,174,207,.12); }
+.chip-danger{ border-color: rgba(255,77,109,.35); background: rgba(255,77,109,.10); }
+.chip-success{ border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.10); }
+
+/* =========================
+   13) TABS / NAV PILLS
+========================= */
+.tabs{
+  display:flex;
+  gap:.5rem;
+  padding:.35rem;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  width: fit-content;
+}
+body[data-theme="light"] .tabs{ background: rgba(10,16,36,.05); border-color: rgba(10,16,36,.10); }
+
+.tab{
+  padding: .45rem .75rem;
+  border-radius: 999px;
+  font-weight: 950;
+  color: rgba(255,255,255,.86);
+  border: 1px solid transparent;
+  transition: background var(--transition-duration) var(--transition-ease),
+              border-color var(--transition-duration) var(--transition-ease),
+              transform var(--transition-fast) var(--transition-ease);
+}
+body[data-theme="light"] .tab{ color: rgba(10,16,36,.82); }
+
+.tab:hover{ background: rgba(255,255,255,.08); transform: translateY(-1px); }
+body[data-theme="light"] .tab:hover{ background: rgba(10,16,36,.06); }
+
+.tab.active{
+  background: rgba(0,174,207,.18);
+  border-color: rgba(0,174,207,.35);
+  color: var(--text-strong);
+}
+
+/* =========================
+   14) DIVIDERS / UTILITIES
+========================= */
+.divider{ height:1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent); }
+
+.text-muted{ color: var(--muted-color) !important; }
+.text-muted-2{ color: var(--muted-2) !important; }
+.text-center{ text-align:center !important; }
+.text-right{ text-align:right !important; }
+.text-strong{ color: var(--text-strong) !important; font-weight: 950 !important; }
+
+.mt-0{margin-top:0!important;} .mt-1{margin-top:.25rem!important;} .mt-2{margin-top:.5rem!important;} .mt-3{margin-top:1rem!important;} .mt-4{margin-top:1.5rem!important;} .mt-5{margin-top:2rem!important;}
+.mb-0{margin-bottom:0!important;} .mb-1{margin-bottom:.25rem!important;} .mb-2{margin-bottom:.5rem!important;} .mb-3{margin-bottom:1rem!important;} .mb-4{margin-bottom:1.5rem!important;} .mb-5{margin-bottom:2rem!important;}
+.p-1{padding:.25rem!important;} .p-2{padding:.5rem!important;} .p-3{padding:1rem!important;} .p-4{padding:1.5rem!important;} .p-5{padding:2rem!important;}
+
+.rounded{ border-radius: var(--border-radius) !important; }
+.rounded-lg{ border-radius: var(--radius-lg) !important; }
+.shadow-xs{ box-shadow: var(--shadow-xs) !important; }
+.shadow-sm{ box-shadow: var(--shadow-sm) !important; }
+.shadow-md{ box-shadow: var(--shadow-md) !important; }
+.shadow-lg{ box-shadow: var(--shadow-lg) !important; }
+
+/* =========================
+   15) FOOTER
+========================= */
+footer{
+  text-align:center;
+  padding: 1.25rem 1rem;
+  font-size: .9rem;
+  color: var(--muted-color);
+  background: rgba(255,255,255,.05);
+  border-top: 1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+body[data-theme="light"] footer{ background: rgba(255,255,255,.85); border-top-color: rgba(10,16,36,.10); }
+
+/* =========================
+   16) EXTRA COMPONENTS (pro)
+========================= */
+
+/* Progress */
+.progress{
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  overflow:hidden;
+}
+body[data-theme="light"] .progress{ background: rgba(10,16,36,.06); border-color: rgba(10,16,36,.10); }
+.progress-bar{
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, rgba(0,174,207,1), rgba(108,92,255,.85));
+  border-radius: inherit;
+  transition: width var(--transition-slow) var(--transition-ease);
+}
+
+/* Divider title */
+.divider-title{
+  display:flex;
+  align-items:center;
+  gap:.8rem;
+  margin: 1.25rem 0;
+  font-weight: 950;
+  color: var(--text-strong);
+}
+.divider-title::before,
+.divider-title::after{
+  content:"";
+  height:1px;
+  flex: 1 1 auto;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+}
+
+/* Toast */
+.toast{
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  min-width: 280px;
+  max-width: 380px;
+  z-index: 999;
+  background: rgba(10,16,36,.78);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  padding: .9rem 1rem;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: rgba(255,255,255,.94);
+  animation: toastIn .4s var(--transition-ease) both;
+}
+@keyframes toastIn{ from{ opacity:0; transform: translateY(12px); } to{ opacity:1; transform: translateY(0); } }
+.toast .title{ font-weight: 950; margin-bottom: .2rem; }
+.toast .msg{ color: var(--muted-color); }
+
+/* Skeleton loading */
+.skeleton{
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.10), rgba(255,255,255,.06));
+  background-size: 220% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+@keyframes shimmer{ 0%{ background-position: 0% 0; } 100%{ background-position: 220% 0; } }
+
+/* Modal (CSS only; si usas Bootstrap modal, esto solo mejora look) */
+.modal-content{
+  background: rgba(10,16,36,.92) !important;
+  color: rgba(255,255,255,.94) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--shadow-lg);
+}
+body[data-theme="light"] .modal-content{ background: rgba(255,255,255,.98) !important; color: rgba(10,16,36,.92) !important; border-color: rgba(10,16,36,.12) !important; }
+
+.modal-header, .modal-footer{ border-color: rgba(255,255,255,.10) !important; }
+body[data-theme="light"] .modal-header, body[data-theme="light"] .modal-footer{ border-color: rgba(10,16,36,.10) !important; }
+
+/* Dropdown (Bootstrap-friendly) */
+.dropdown-menu{
+  background: rgba(10,16,36,.92) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-md);
+  padding: .5rem;
+}
+.dropdown-item{
+  border-radius: 12px;
+  color: rgba(255,255,255,.90) !important;
+  padding: .55rem .7rem;
+  font-weight: 800;
+}
+.dropdown-item:hover{ background: rgba(0,174,207,.14) !important; color: #fff !important; }
+
+/* Pagination */
+.pagination{ display:flex; gap:.4rem; flex-wrap:wrap; }
+.page-link{
+  border-radius: 12px !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  background: rgba(255,255,255,.06) !important;
+  color: rgba(255,255,255,.92) !important;
+  font-weight: 900;
+}
+.page-link:hover{ background: rgba(0,174,207,.12) !important; border-color: rgba(0,174,207,.30) !important; }
+
+/* =========================
+   17) RESPONSIVE
+========================= */
+@media (max-width: 991px){
+  .navbar{ padding:.75rem 1rem; }
+  .nav-link{ margin-right:.65rem; }
+  .hero-section{ padding: 2.6rem 1rem; }
+}
+@media (max-width: 576px){
+  .btn{ width:100%; justify-content:center; }
+  .table-actions .btn{ width:auto; }
+  .navbar-brand{ font-size: 1rem; }
+}
+
+/* =========================
+   18) PRINT (para que si imprimes algo se vea limpio)
+========================= */
+@media print{
+  body{ background:#fff !important; color:#000 !important; }
+  body::before, body::after, .navbar::after{ display:none !important; }
+  .navbar, footer{ display:none !important; }
+  .card, .panel, .table{ box-shadow:none !important; }
+  .card, .panel{ border: 1px solid #ddd !important; background:#fff !important; }
+  .table{ border: 1px solid #ddd !important; }
+  .table thead th{ background:#f2f2f2 !important; color:#000 !important; }
+}
+
+
+/* =========================
+   17.5) PAGES “HUÉRFANAS” (LISTAS / ENTREVISTAS / BÚSQUEDAS)
+   - Para templates que quedaron simples y no estaban agarrando estilo.
+   - Usa clases suaves: .page, .page-header, .page-title, .page-subtitle,
+     .toolbar, .search, .list, .list-item, .meta, .actions, .kpi.
+   - Si el HTML no tiene clases, también mejora elementos básicos.
+========================= */
+
+/* Contenedor base para páginas simples */
+.page{
+  max-width: var(--container-max);
+  margin: 2rem auto;
+  padding: 0 var(--pad-page);
+  position: relative;
+  z-index: 1;
+}
+
+.page-header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap: 1rem;
+  margin: 0 0 1rem 0;
+}
+
+.page-title{
+  margin: 0;
+  font-size: clamp(1.2rem, 1.6vw, 1.7rem);
+  font-weight: 950;
+  color: var(--text-strong);
+  letter-spacing: .2px;
+}
+
+.page-subtitle{
+  margin: .25rem 0 0 0;
+  color: var(--muted-color);
+  font-weight: 700;
+}
+
+/* Barra de herramientas */
+.toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem 0;
+}
+
+/* Buscador genérico */
+.search{
+  display:flex;
+  gap: .6rem;
+  align-items:center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.search .form-control,
+.search input[type="text"],
+.search input[type="search"]{
+  min-width: 240px;
+}
+
+/* KPIs / pequeñas tarjetas */
+.kpis{ display:grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin: 0 0 1rem 0; }
+@media (max-width: 900px){ .kpis{ grid-template-columns: 1fr; } }
+
+.kpi{
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255,255,255,.12);
+  background: var(--g-soft);
+  box-shadow: var(--shadow-xs);
+  padding: .9rem 1rem;
+  position: relative;
+  overflow:hidden;
+}
+body[data-theme="light"] .kpi{ background: var(--g-soft-2); border-color: rgba(10,16,36,.10); }
+
+.kpi .label{ color: var(--muted-color); font-weight: 900; font-size: .85rem; text-transform: uppercase; letter-spacing: .8px; }
+.kpi .value{ color: var(--text-strong); font-weight: 980; font-size: 1.15rem; margin-top: .25rem; }
+
+/* Lista moderna (sin tabla) */
+.list{
+  display:flex;
+  flex-direction: column;
+  gap: .75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list-item{
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  box-shadow: var(--shadow-xs);
+  padding: 1rem 1.1rem;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 1rem;
+  position: relative;
+  overflow:hidden;
+}
+body[data-theme="light"] .list-item{ background: rgba(255,255,255,.88); border-color: rgba(10,16,36,.10); }
+
+.list-item::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  pointer-events:none;
+  background: radial-gradient(520px 240px at 12% 0%, rgba(0,174,207,.14), transparent 60%);
+  opacity: .85;
+}
+
+.list-item:hover{
+  border-color: rgba(0,174,207,.30);
+  box-shadow: var(--shadow-sm);
+}
+
+.list-main{ position: relative; }
+
+.list-title{
+  font-weight: 950;
+  color: var(--text-strong);
+  margin: 0 0 .25rem 0;
+}
+
+.list-meta{
+  color: var(--muted-color);
+  font-weight: 750;
+  display:flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+
+.list-meta .pill{
+  display:inline-flex;
+  align-items:center;
+  gap:.35rem;
+  padding:.28rem .55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.90);
+  font-weight: 900;
+}
+body[data-theme="light"] .list-meta .pill{
+  border-color: rgba(10,16,36,.12);
+  background: rgba(10,16,36,.05);
+  color: rgba(10,16,36,.88);
+}
+
+.list-actions{ position: relative; display:flex; gap:.5rem; flex-wrap: wrap; justify-content:flex-end; }
+
+/* Estado vacío */
+.empty{
+  border-radius: var(--border-radius);
+  border: 1px dashed rgba(255,255,255,.18);
+  background: rgba(255,255,255,.05);
+  padding: 1.2rem;
+  color: var(--muted-color);
+  text-align:center;
+}
+body[data-theme="light"] .empty{ border-color: rgba(10,16,36,.18); background: rgba(10,16,36,.04); }
+
+/* Mejoras para HTML ultra simple (sin clases) */
+main{ display:block; }
+main > h1, main > h2{ margin-top: 0; }
+
+/* Links sueltos tipo “Volver” */
+.page a.link,
+.page a.back,
+.page a.volver{
+  display:inline-flex;
+  align-items:center;
+  gap:.5rem;
+  padding: .5rem .75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  font-weight: 900;
+}
+body[data-theme="light"] .page a.link,
+body[data-theme="light"] .page a.back,
+body[data-theme="light"] .page a.volver{
+  border-color: rgba(10,16,36,.12);
+  background: rgba(10,16,36,.05);
+}
+
+.page a.link:hover,
+.page a.back:hover,
+.page a.volver:hover{
+  border-color: rgba(0,174,207,.30);
+  box-shadow: var(--shadow-xs);
+  transform: translateY(-1px);
+}
+
+/* Si el template usa .card-actions, lo reforzamos */
+.card-actions{ display:flex; gap:.5rem; flex-wrap: wrap; justify-content:flex-end; }
+
+/* Ajustes responsive */
+@media (max-width: 576px){
+  .list-item{ flex-direction: column; align-items: stretch; }
+  .list-actions{ justify-content: flex-start; }
+  .search .form-control,
+  .search input[type="text"],
+  .search input[type="search"]{ min-width: 100%; }
+}
+
+/* =========================
+   99) FINAL HARDENING — DARK MODE
+   - Evita "cuadros blancos" y texto invisible cuando estás en dark.
+   - Neutraliza utilidades Bootstrap (bg-white, text-dark, etc.)
+========================= */
+
+html[data-theme="dark"],
+body[data-theme="dark"],
+html.dark,
+body.dark,
+html.theme-dark,
+body.theme-dark{
+  color-scheme: dark;
+}
+
+/* Si algo trae bg-white/bg-light en dark, lo apagamos */
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-light,
+html[data-theme="dark"] .table-light,
+html[data-theme="dark"] .card.bg-white,
+html[data-theme="dark"] .card.bg-light,
+body[data-theme="dark"] .bg-white,
+body[data-theme="dark"] .bg-light,
+body[data-theme="dark"] .table-light,
+body[data-theme="dark"] .card.bg-white,
+body[data-theme="dark"] .card.bg-light,
+html.dark .bg-white,
+html.dark .bg-light,
+html.dark .table-light,
+body.dark .bg-white,
+body.dark .bg-light,
+body.dark .table-light{
+  background-color: rgba(255,255,255,.06) !important;
+}
+
+/* Si algo trae text-dark en dark, forzamos color claro */
+html[data-theme="dark"] .text-dark,
+body[data-theme="dark"] .text-dark,
+html.dark .text-dark,
+body.dark .text-dark{
+  color: rgba(255,255,255,.92) !important;
+}
+
+/* Cards/tiles/panels en dark: nunca fondo blanco */
+html[data-theme="dark"] :where(.card,.panel,.glass,.tile,.box,[class*="card"],[class*="panel"],[class*="tile"]),
+body[data-theme="dark"] :where(.card,.panel,.glass,.tile,.box,[class*="card"],[class*="panel"],[class*="tile"]),
+html.dark :where(.card,.panel,.glass,.tile,.box,[class*="card"],[class*="panel"],[class*="tile"]),
+body.dark :where(.card,.panel,.glass,.tile,.box,[class*="card"],[class*="panel"],[class*="tile"]){
+  background-color: transparent; /* mantiene tus gradientes */
+  color: rgba(255,255,255,.92) !important;
+}
+
+/* Iconos/SVG: heredan el color correcto */
+i, .icon, svg{ color: currentColor; fill: currentColor; }
+svg :where(path,circle,rect,line,polyline,polygon){ fill: currentColor; stroke: currentColor; }
+
+/* =========================
+   100) FINAL HARDENING — LIGHT MODE (ANTI TEXTO BLANCO)
+   - Capa extra por si algún CSS externo pisa colores.
+========================= */
+
+html[data-theme="light"] :where(.text-white,.bg-dark,.bg-black),
+body[data-theme="light"] :where(.text-white,.bg-dark,.bg-black),
+html.light :where(.text-white,.bg-dark,.bg-black),
+body.light :where(.text-white,.bg-dark,.bg-black){
+  background-color: transparent !important;
+}
+
+html[data-theme="light"] .text-white,
+body[data-theme="light"] .text-white,
+html.light .text-white,
+body.light .text-white{
+  color: rgba(10,16,36,.92) !important;
+}
+
+/* =========================
+   19) PAGE FIX — ENTREVISTAS LISTA (sin CSS en el HTML)
+   - Evita “cuadros blancos” en dark y asegura contraste en light.
+   - Aplica aunque el template sea simple.
+   - Si en algún template existe una clase en el body o wrapper, también la soporta.
+========================= */
+
+/* Hook opcional (si algún template ya lo trae): body.page-entrevistas-lista / .page-entrevistas-lista */
+.page-entrevistas-lista,
+body.page-entrevistas-lista{ color: var(--text-color); }
+
+/* Tarjetas / paneles dentro de la lista */
+.page-entrevistas-lista .card,
+body.page-entrevistas-lista .card,
+.page-entrevistas-lista .panel,
+body.page-entrevistas-lista .panel,
+.page-entrevistas-lista .glass,
+body.page-entrevistas-lista .glass,
+/* fallback por si el HTML no tiene clases específicas */
+main .card,
+main .panel,
+main .glass{
+  background: var(--g-soft) !important;
+  border-color: rgba(255,255,255,.12) !important;
+  color: var(--text-color) !important;
+}
+
+/* Títulos y texto dentro de cards/panels */
+.page-entrevistas-lista .card * ,
+body.page-entrevistas-lista .card * ,
+.page-entrevistas-lista .panel * ,
+body.page-entrevistas-lista .panel * ,
+main .card * ,
+main .panel *{
+  color: inherit;
+}
+
+/* TABLA (si la lista usa tabla) — nunca blanco sobre blanco */
+.page-entrevistas-lista .table,
+body.page-entrevistas-lista .table,
+main .table{
+  background: rgba(255,255,255,.06) !important;
+  border-color: rgba(255,255,255,.12) !important;
+  color: rgba(255,255,255,.90) !important;
+}
+
+.page-entrevistas-lista .table td,
+.page-entrevistas-lista .table th,
+body.page-entrevistas-lista .table td,
+body.page-entrevistas-lista .table th,
+main .table td,
+main .table th{
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+/* Badges/labels dentro de listas */
+.page-entrevistas-lista .badge,
+body.page-entrevistas-lista .badge,
+main .badge{
+  background: rgba(255,255,255,.06) !important;
+  border-color: rgba(255,255,255,.16) !important;
+  color: rgba(255,255,255,.92) !important;
+}
+
+/* LIGHT: ajusta fondos y textos para que se vean (sin meter CSS en HTML) */
+html[data-theme="light"] .page-entrevistas-lista .card,
+html[data-theme="light"] body.page-entrevistas-lista .card,
+body[data-theme="light"] .page-entrevistas-lista .card,
+body[data-theme="light"] body.page-entrevistas-lista .card,
+html[data-theme="light"] main .card,
+body[data-theme="light"] main .card{
+  background: rgba(255,255,255,.92) !important;
+  border-color: rgba(10,16,36,.10) !important;
+  color: rgba(10,16,36,.92) !important;
+}
+
+html[data-theme="light"] .page-entrevistas-lista .panel,
+html[data-theme="light"] body.page-entrevistas-lista .panel,
+body[data-theme="light"] .page-entrevistas-lista .panel,
+body[data-theme="light"] body.page-entrevistas-lista .panel,
+html[data-theme="light"] main .panel,
+body[data-theme="light"] main .panel{
+  background: rgba(255,255,255,.92) !important;
+  border-color: rgba(10,16,36,.10) !important;
+  color: rgba(10,16,36,.92) !important;
+}
+
+html[data-theme="light"] .page-entrevistas-lista .table,
+html[data-theme="light"] body.page-entrevistas-lista .table,
+body[data-theme="light"] .page-entrevistas-lista .table,
+body[data-theme="light"] body.page-entrevistas-lista .table,
+html[data-theme="light"] main .table,
+body[data-theme="light"] main .table{
+  background: rgba(255,255,255,.94) !important;
+  border-color: rgba(10,16,36,.10) !important;
+  color: rgba(10,16,36,.90) !important;
+}
+
+html[data-theme="light"] .page-entrevistas-lista .badge,
+html[data-theme="light"] body.page-entrevistas-lista .badge,
+body[data-theme="light"] .page-entrevistas-lista .badge,
+body[data-theme="light"] body.page-entrevistas-lista .badge,
+html[data-theme="light"] main .badge,
+body[data-theme="light"] main .badge{
+  background: rgba(10,16,36,.06) !important;
+  border-color: rgba(10,16,36,.12) !important;
+  color: rgba(10,16,36,.90) !important;
+}
+
+/* Si alguna clase/utility mete bg-white en esa vista, neutralízala según el tema */
+html:not([data-theme="light"]) .page-entrevistas-lista .bg-white,
+body:not([data-theme="light"]) .page-entrevistas-lista .bg-white,
+html:not([data-theme="light"]) main .bg-white,
+body:not([data-theme="light"]) main .bg-white{
+  background-color: rgba(255,255,255,.05) !important;
+}
+
+html[data-theme="light"] .page-entrevistas-lista .bg-white,
+body[data-theme="light"] .page-entrevistas-lista .bg-white,
+html[data-theme="light"] main .bg-white,
+body[data-theme="light"] main .bg-white{
+  background-color: rgba(255,255,255,.94) !important;
+}
+
+
+/* =========================
+   98) FINAL HARDENING — LIGHT MODE
+   - Última capa de seguridad para que NUNCA queden textos/íconos blancos
+     cuando el tema es claro.
+   - Soporta: html[data-theme="light"], body[data-theme="light"],
+     y también clases comunes por si tu JS usa class en vez de data-theme.
+========================= */
+
+html[data-theme="light"],
+body[data-theme="light"],
+html.light,
+body.light,
+html.theme-light,
+body.theme-light{
+  color-scheme: light;
+}
+
+/* Color base de texto en light (forzado) */
+html[data-theme="light"] body,
+body[data-theme="light"],
+html.light body,
+body.light,
+html.theme-light body,
+body.theme-light{
+  color: rgba(10,16,36,.92) !important;
+}
+
+/* Todo texto común hereda oscuro en light */
+html[data-theme="light"] :where(h1,h2,h3,h4,h5,h6,p,li,span,small,label,div,td,th,caption),
+body[data-theme="light"] :where(h1,h2,h3,h4,h5,h6,p,li,span,small,label,div,td,th,caption),
+html.light :where(h1,h2,h3,h4,h5,h6,p,li,span,small,label,div,td,th,caption),
+body.light :where(h1,h2,h3,h4,h5,h6,p,li,span,small,label,div,td,th,caption),
+html.theme-light :where(h1,h2,h3,h4,h5,h6,p,li,span,small,label,div,td,th,caption),
+body.theme-light :where(h1,h2,h3,h4,h5,h6,p,li,span,small,label,div,td,th,caption){
+  color: inherit !important;
+}
+
+/* Enlaces: visibles en light */
+html[data-theme="light"] a,
+body[data-theme="light"] a,
+html.light a,
+body.light a,
+html.theme-light a,
+body.theme-light a{
+  color: var(--primary-color) !important;
+}
+html[data-theme="light"] a:hover,
+body[data-theme="light"] a:hover,
+html.light a:hover,
+body.light a:hover,
+html.theme-light a:hover,
+body.theme-light a:hover{
+  color: rgba(10,16,36,.95) !important;
+}
+
+/* Títulos fuertes (evita blanco) */
+html[data-theme="light"] :where(.card-title,.page-title,.section-title,.navbar-brand),
+body[data-theme="light"] :where(.card-title,.page-title,.section-title,.navbar-brand),
+html.light :where(.card-title,.page-title,.section-title,.navbar-brand),
+body.light :where(.card-title,.page-title,.section-title,.navbar-brand),
+html.theme-light :where(.card-title,.page-title,.section-title,.navbar-brand),
+body.theme-light :where(.card-title,.page-title,.section-title,.navbar-brand){
+  color: rgba(10,16,36,.95) !important;
+}
+
+/* Íconos: jamás blancos en light */
+html[data-theme="light"] :where(i,.icon,.fa,.fas,.far,.fal,.fab,.bi),
+body[data-theme="light"] :where(i,.icon,.fa,.fas,.far,.fal,.fab,.bi),
+html.light :where(i,.icon,.fa,.fas,.far,.fal,.fab,.bi),
+body.light :where(i,.icon,.fa,.fas,.far,.fal,.fab,.bi),
+html.theme-light :where(i,.icon,.fa,.fas,.far,.fal,.fab,.bi),
+body.theme-light :where(i,.icon,.fa,.fas,.far,.fal,.fab,.bi){
+  color: rgba(10,16,36,.88) !important;
+}
+
+/* SVG íconos: fuerza herencia por currentColor */
+html[data-theme="light"] svg,
+body[data-theme="light"] svg,
+html.light svg,
+body.light svg,
+html.theme-light svg,
+body.theme-light svg{
+  color: rgba(10,16,36,.88) !important;
+}
+html[data-theme="light"] svg :where(path,circle,rect,line,polyline,polygon),
+body[data-theme="light"] svg :where(path,circle,rect,line,polyline,polygon),
+html.light svg :where(path,circle,rect,line,polyline,polygon),
+body.light svg :where(path,circle,rect,line,polyline,polygon),
+html.theme-light svg :where(path,circle,rect,line,polyline,polygon),
+body.theme-light svg :where(path,circle,rect,line,polyline,polygon){
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+/* Componentes típicos con texto/íconos blancos por estilos externos */
+html[data-theme="light"] :where(.btn,.nav-link,.dropdown-item,.badge,.chip,.toast,.modal-content),
+body[data-theme="light"] :where(.btn,.nav-link,.dropdown-item,.badge,.chip,.toast,.modal-content),
+html.light :where(.btn,.nav-link,.dropdown-item,.badge,.chip,.toast,.modal-content),
+body.light :where(.btn,.nav-link,.dropdown-item,.badge,.chip,.toast,.modal-content),
+html.theme-light :where(.btn,.nav-link,.dropdown-item,.badge,.chip,.toast,.modal-content),
+body.theme-light :where(.btn,.nav-link,.dropdown-item,.badge,.chip,.toast,.modal-content){
+  color: rgba(10,16,36,.90) !important;
+}
+
+/* Respeta botones primarios: texto blanco */
+html[data-theme="light"] .btn-primary,
+body[data-theme="light"] .btn-primary,
+html.light .btn-primary,
+body.light .btn-primary,
+html.theme-light .btn-primary,
+body.theme-light .btn-primary{
+  color: #fff !important;
+}
+
+/* =========================
+   END
+========================= */
 

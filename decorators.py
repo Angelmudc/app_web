@@ -4,18 +4,59 @@
 from functools import wraps
 from flask import abort, flash, redirect, request, session, url_for
 
-# Intentamos usar flask-login si existe (tu proyecto lo usa en admin y clientes)
+# ─────────────────────────────────────────────────────────────
+# flask-login (carga segura)
+# ─────────────────────────────────────────────────────────────
 try:
     from flask_login import current_user
 except Exception:
     current_user = None
 
 
-def _is_logged_flask_login():
-    return bool(current_user and getattr(current_user, "is_authenticated", False))
+# ─────────────────────────────────────────────────────────────
+# Helpers internos (NO exportar)
+# ─────────────────────────────────────────────────────────────
+
+def _is_authenticated():
+    """
+    Verificación robusta de autenticación con flask-login.
+    Evita AnonymousUser y objetos manipulados.
+    """
+    try:
+        return bool(
+            current_user
+            and hasattr(current_user, "is_authenticated")
+            and current_user.is_authenticated
+        )
+    except Exception:
+        return False
 
 
-def _get_role_flask_login():
+def _safe_next():
+    """
+    Previene open-redirect.
+    Solo permite rutas internas del mismo dominio.
+    """
+    nxt = request.full_path or request.path or "/"
+    if isinstance(nxt, str) and nxt.startswith("/"):
+        return nxt
+    return "/"
+
+
+def _redirect_login(endpoint: str):
+    """
+    Redirección segura al login correspondiente.
+    """
+    try:
+        return redirect(url_for(endpoint, next=_safe_next()))
+    except Exception:
+        abort(401)
+
+
+def _get_role():
+    """
+    Obtiene y normaliza el rol del usuario.
+    """
     if not current_user:
         return ""
     role = (
@@ -26,42 +67,33 @@ def _get_role_flask_login():
     return str(role).strip().lower()
 
 
-def _is_admin_flask_login():
+def _is_admin():
+    """
+    Determina si el usuario es admin de forma segura.
+    """
     if not current_user:
         return False
-    role = _get_role_flask_login()
-    is_admin_flag = bool(getattr(current_user, "is_admin", False))
-    return is_admin_flag or role == "admin"
+    return bool(
+        getattr(current_user, "is_admin", False)
+        or _get_role() == "admin"
+    )
 
 
-def _redirect_to_login(login_endpoint: str):
-    # next: siempre mejor con request.full_path o request.url
-    nxt = request.url
-    try:
-        return redirect(url_for(login_endpoint, next=nxt))
-    except Exception:
-        # Si por alguna razón falla el endpoint, abort 401
-        return abort(401)
-
-
-# =============================================================================
-# ✅ Decorators para ADMIN / STAFF usando flask-login
-# =============================================================================
+# ─────────────────────────────────────────────────────────────
+# DECORATORS ADMIN / STAFF
+# ─────────────────────────────────────────────────────────────
 
 def admin_required(view_func):
     """
-    Solo Admin.
-    - Requiere flask-login.
-    - Acepta: current_user.role == 'admin' o current_user.is_admin == True
-    - Redirige al login admin si no está autenticado.
+    Acceso SOLO admin.
     """
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if not _is_logged_flask_login():
+        if not _is_authenticated():
             flash("Debes iniciar sesión.", "warning")
-            return _redirect_to_login("admin.login")
+            return _redirect_login("admin.login")
 
-        if not _is_admin_flask_login():
+        if not _is_admin():
             abort(403)
 
         return view_func(*args, **kwargs)
@@ -70,54 +102,48 @@ def admin_required(view_func):
 
 def staff_required(view_func):
     """
-    Admin + Secretaria.
-    - Requiere flask-login.
-    - Permite role: admin, secretaria o is_admin True.
+    Acceso admin + secretaria.
     """
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if not _is_logged_flask_login():
+        if not _is_authenticated():
             flash("Debes iniciar sesión.", "warning")
-            return _redirect_to_login("admin.login")
+            return _redirect_login("admin.login")
 
-        role = _get_role_flask_login()
-        if role not in ("admin", "secretaria") and not _is_admin_flask_login():
+        role = _get_role()
+        if role not in ("admin", "secretaria") and not _is_admin():
             abort(403)
 
         return view_func(*args, **kwargs)
     return wrapper
 
 
-# =============================================================================
-# ✅ Decorators para CLIENTES usando flask-login (con check robusto)
-# =============================================================================
+# ─────────────────────────────────────────────────────────────
+# DECORATORS CLIENTES
+# ─────────────────────────────────────────────────────────────
 
 def cliente_required(view_func):
     """
-    Requiere que el usuario autenticado sea un Cliente.
-    - Por defecto redirige a clientes.login
-    - Evita romper si Cliente no se puede importar (carga perezosa).
+    Requiere login válido y que el usuario sea un Cliente real.
+    Evita acceso por role inyectado o sesión manipulada.
     """
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if not _is_logged_flask_login():
-            return _redirect_to_login("clientes.login")
+        if not _is_authenticated():
+            return _redirect_login("clientes.login")
 
-        # Import perezoso para evitar imports circulares
         try:
-            from models import Cliente  # <-- tu clase Cliente en models.py
+            from models import Cliente
         except Exception:
             Cliente = None
 
         if Cliente is not None:
             if not isinstance(current_user, Cliente):
-                return _redirect_to_login("clientes.login")
+                abort(403)
         else:
-            # Fallback si no podemos importar Cliente:
-            # intentamos detectar por atributos típicos
-            role = _get_role_flask_login()
-            if role not in ("cliente", "client"):
-                return _redirect_to_login("clientes.login")
+            # Fallback defensivo si el modelo no está disponible
+            if _get_role() != "cliente":
+                abort(403)
 
         return view_func(*args, **kwargs)
     return wrapper
@@ -125,44 +151,41 @@ def cliente_required(view_func):
 
 def politicas_requeridas(view_func):
     """
-    Obliga a que el cliente haya aceptado políticas.
-    Depende de que ya esté logueado como cliente.
+    Obliga a que el cliente haya aceptado las políticas.
     """
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if not _is_logged_flask_login():
-            return _redirect_to_login("clientes.login")
+        if not _is_authenticated():
+            return _redirect_login("clientes.login")
 
         if not getattr(current_user, "acepto_politicas", False):
             flash("Debes aceptar las políticas para continuar.", "warning")
-            return redirect(url_for("clientes.politicas", next=request.url))
+            return redirect(url_for("clientes.politicas", next=_safe_next()))
 
         return view_func(*args, **kwargs)
     return wrapper
 
 
-# =============================================================================
-# ✅ Decorator LEGACY por session (para tu decorators.py viejo)
-# =============================================================================
+# ─────────────────────────────────────────────────────────────
+# LEGACY (session-based) — NO TOCAR
+# ─────────────────────────────────────────────────────────────
 
 def roles_required(*permitted_roles):
     """
-    Decorador por session (legacy):
-      - Usa session['usuario']
-      - Usa session['role']
-    Ideal para rutas antiguas que todavía no migraste a flask-login.
+    Decorador legacy por session.
+    Mantener solo para rutas antiguas.
     """
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(*args, **kwargs):
             if "usuario" not in session:
-                return abort(401)
+                abort(401)
             if session.get("role") not in permitted_roles:
-                return abort(403)
+                abort(403)
             return view_func(*args, **kwargs)
         return wrapped
     return decorator
 
 
-# Alias legacy: solo admin por session
+# Alias legacy
 admin_required_session = roles_required("admin")

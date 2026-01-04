@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Entrevistas{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <div class="card">
+
+    <div class="card-header">
+      <div class="header-left">
+        <h1 class="card-title">
+          Gestión de Entrevistas
+        </h1>
+
+        {% if candidata %}
+          <p class="card-meta">
+            <strong>Candidata:</strong> {{ candidata.nombre_completo or '-' }}
+            {% if candidata.codigo %}
+              · <strong>Código:</strong> {{ candidata.codigo }}
+            {% endif %}
+            {% if candidata.cedula %}
+              · <strong>Cédula:</strong> {{ candidata.cedula }}
+            {% endif %}
+          </p>
+        {% else %}
+          <p class="card-meta"><strong>Candidata:</strong> —</p>
+        {% endif %}
+      </div>
+
+      <div class="header-actions">
+        {% if candidata %}
+          <a class="btn btn-primary"
+             href="{{ url_for('entrevista_nueva_db', fila=candidata.fila, tipo='domestica') }}">
+            + Doméstica
+          </a>
+          <a class="btn btn-outline"
+             href="{{ url_for('entrevista_nueva_db', fila=candidata.fila, tipo='enfermera') }}">
+            + Enfermera
+          </a>
+          <a class="btn btn-outline"
+             href="{{ url_for('entrevista_nueva_db', fila=candidata.fila, tipo='empleo_general') }}">
+            + General
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    {% if entrevistas %}
+      <div class="list">
+        {% for e in entrevistas %}
+          <div class="list-item card-subtle">
+
+            <div class="list-main">
+              <div class="list-title">
+                {{ (e.tipo or 'Entrevista')|replace('_',' ')|title }}
+                {% if e.estado %}
+                  <span class="badge">{{ e.estado }}</span>
+                {% endif %}
+              </div>
+
+              <div class="list-meta">
+                <span>ID: {{ e.id }}</span>
+                {% if e.creada_en %}
+                  <span>· {{ e.creada_en.strftime('%Y-%m-%d %H:%M') }}</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="list-actions">
+              <a class="btn btn-outline btn-sm"
+                 href="{{ url_for('entrevista_editar_db', entrevista_id=e.id) }}">
+                Editar
+              </a>
+
+              <a class="btn btn-primary btn-sm"
+                 href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=e.id) }}">
+                PDF
+              </a>
+            </div>
+
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-muted">
+        No hay entrevistas registradas para esta candidata.
+      </div>
+    {% endif %}
+
+    <div class="card-footer">
+      <a class="btn btn-outline" href="{{ url_for('entrevistas_buscar') }}">
+        ← Buscar otra candidata
+      </a>
+      <a class="btn btn-outline" href="{{ url_for('home') }}">
+        Inicio
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

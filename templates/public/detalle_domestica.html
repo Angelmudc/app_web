@@ -16,6 +16,10 @@
         <img
           src="{{ candidata.foto }}"
           alt="Foto de {{ candidata.nombre }}"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          onclick="verImagenCompleta(this.src)"
+          style="cursor: zoom-in;"
         >
       </div>
       {% endif %}
@@ -145,11 +149,18 @@
             {% endif %}
           </p>
 
-          {% set wa_number = '18090000000' %}
+          {# WhatsApp oficial (mismo que usas en la lista) #}
+          {% set wa_number = '18094296892' %}
+
+          {# ✅ El código SIEMPRE debe ir en el mensaje #}
+          {% set codigo_txt = (candidata.codigo or 'Código no disponible') %}
+          {% set nombre_txt = (candidata.nombre or '') %}
+          {% set ciudad_txt = (candidata.ciudad or '') %}
+
           {% set wa_text = (
-            'Hola, me interesa la candidata ' ~ (candidata.nombre or '') ~
-            (candidata.codigo and ' (código ' ~ candidata.codigo ~ ')' or '') ~
-            (candidata.ciudad and ' de ' ~ candidata.ciudad or '') ~
+            'Hola, me interesa la candidata (CÓDIGO: ' ~ codigo_txt ~ ')' ~
+            (nombre_txt and ' ' ~ nombre_txt or '') ~
+            (ciudad_txt and ' de ' ~ ciudad_txt or '') ~
             '. Quiero más información, por favor.'
           ) %}
 

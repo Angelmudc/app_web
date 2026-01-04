@@ -3,6 +3,7 @@ from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Date,
     Enum as SAEnum, Float, text, LargeBinary
 )
+from typing import Optional, Dict
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from flask_login import UserMixin
@@ -172,12 +173,161 @@ class Candidata(db.Model):
         back_populates='candidata',
         cascade='all, delete-orphan'
     )
+# ─────────────────────────────────────────────────────────────
+# ENTREVISTAS ESTRUCTURADAS (NUEVO – NO ROMPE LO EXISTENTE)
+# ─────────────────────────────────────────────────────────────
+
+class Entrevista(db.Model):
+    __tablename__ = 'entrevistas'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    candidata_id = db.Column(
+        db.Integer,
+        db.ForeignKey('candidatas.fila'),
+        nullable=False,
+        index=True
+    )
+
+    estado = db.Column(
+        db.String(20),
+        nullable=False,
+        default='completa',
+        comment="Estado de la entrevista: completa / borrador"
+    )
+
+    creada_en = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow
+    )
+
+    actualizada_en = db.Column(
+        db.DateTime,
+        nullable=True,
+        onupdate=datetime.utcnow
+    )
+
+    candidata = db.relationship(
+        'Candidata',
+        backref=db.backref(
+            'entrevistas_nuevas',
+            lazy='dynamic',
+            cascade='all, delete-orphan'
+        )
+    )
+
+    def __repr__(self):
+        return f"<Entrevista {self.id} candidata_id={self.candidata_id}>"
 
 
-from datetime import datetime
-from flask_login import UserMixin
-from sqlalchemy.orm import synonym as orm_synonym
-from config_app import db
+
+class EntrevistaPregunta(db.Model):
+    __tablename__ = 'entrevista_preguntas'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    clave = db.Column(
+        db.String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Clave interna: ej. tiene_hijos, sabe_cocinar"
+    )
+
+    texto = db.Column(
+        db.String(255),
+        nullable=False,
+        comment="Texto visible de la pregunta"
+    )
+
+    # ✅ NUEVO
+    tipo = db.Column(
+        db.String(30),
+        nullable=False,
+        server_default=text("'texto'"),
+        comment="Tipo de campo: texto, texto_largo, radio, etc."
+    )
+
+    # ✅ NUEVO
+    opciones = db.Column(
+        JSONB,
+        nullable=True,
+        comment="Opciones para tipo=radio (lista). Ej: ['Sí','No']"
+    )
+
+    orden = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0
+    )
+
+    activa = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True
+    )
+
+    creada_en = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return f"<EntrevistaPregunta {self.clave}>"
+
+
+class EntrevistaRespuesta(db.Model):
+    __tablename__ = 'entrevista_respuestas'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    entrevista_id = db.Column(
+        db.Integer,
+        db.ForeignKey('entrevistas.id'),
+        nullable=False,
+        index=True
+    )
+
+    pregunta_id = db.Column(
+        db.Integer,
+        db.ForeignKey('entrevista_preguntas.id'),
+        nullable=False,
+        index=True
+    )
+
+    respuesta = db.Column(
+        db.Text,
+        nullable=True
+    )
+
+    creada_en = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow
+    )
+
+    actualizada_en = db.Column(
+        db.DateTime,
+        nullable=True,
+        onupdate=datetime.utcnow
+    )
+
+    entrevista = db.relationship(
+        'Entrevista',
+        backref=db.backref(
+            'respuestas',
+            cascade='all, delete-orphan'
+        )
+    )
+
+    pregunta = db.relationship('EntrevistaPregunta')
+
+    def __repr__(self):
+        return f"<EntrevistaRespuesta entrevista={self.entrevista_id} pregunta={self.pregunta_id}>"
+
+
 
 
 class Cliente(UserMixin, db.Model):
@@ -203,7 +353,7 @@ class Cliente(UserMixin, db.Model):
 
     # Nombre (principal) y alias compatible
     nombre_completo            = db.Column(db.String(200), nullable=False)
-    nombre                     = orm_synonym('nombre_completo')
+    nombre                     = synonym('nombre_completo')
 
     # Contacto
     email                      = db.Column(db.String(100), nullable=False, unique=True, index=True)
@@ -465,7 +615,7 @@ class Solicitud(db.Model):
     # LÓGICA DE PRIORIDAD / SEGUIMIENTO (SOLO CÁLCULO)
     # ─────────────────────────────────────────────────────────────
     @property
-    def dias_desde_creacion(self) -> int | None:
+    def dias_desde_creacion(self) -> Optional[int]:
         """
         Días desde que se creó la solicitud (histórico).
         Esto NO se usa para prioridad, solo referencia general.
@@ -476,7 +626,7 @@ class Solicitud(db.Model):
         return delta.days
 
     @property
-    def dias_en_seguimiento(self) -> int | None:
+    def dias_en_seguimiento(self) -> Optional[int]:
         """
         Días contando desde fecha_inicio_seguimiento.
         Si no tiene fecha_inicio_seguimiento, cae a fecha_solicitud como backup.
@@ -574,7 +724,7 @@ class Solicitud(db.Model):
         # Garantizamos que siempre sea dict
         return data if isinstance(data, dict) else {}
 
-    def _set_detalles_bloque(self, bloque: str, data: dict | None) -> None:
+    def  _set_detalles_bloque(self, bloque: str, data: Optional[dict]) -> None:
         """
         Actualiza un bloque específico dentro de detalles_servicio.
         Si data es None o {}, borra el bloque.
@@ -587,30 +737,30 @@ class Solicitud(db.Model):
         self.detalles_servicio = base or None
 
     @property
-    def detalles_ninera(self) -> dict:
+    def detalles_ninera(self) -> Dict:
         """Acceso directo al bloque de niñera dentro de detalles_servicio."""
         return self._get_detalles_bloque("ninera")
 
     @detalles_ninera.setter
-    def detalles_ninera(self, value: dict | None) -> None:
+    def detalles_ninera(self, value: Optional[Dict]) -> None:
         self._set_detalles_bloque("ninera", value)
 
     @property
-    def detalles_enfermera(self) -> dict:
+    def detalles_enfermera(self) -> Dict:
         """Acceso directo al bloque de enfermera/cuidadora dentro de detalles_servicio."""
         return self._get_detalles_bloque("enfermera")
 
     @detalles_enfermera.setter
-    def detalles_enfermera(self, value: dict | None) -> None:
+    def detalles_enfermera(self, value: Optional[Dict]) -> None:
         self._set_detalles_bloque("enfermera", value)
 
     @property
-    def detalles_chofer(self) -> dict:
+    def detalles_chofer(self) -> Dict:
         """Acceso directo al bloque de chofer dentro de detalles_servicio."""
         return self._get_detalles_bloque("chofer")
 
     @detalles_chofer.setter
-    def detalles_chofer(self, value: dict | None) -> None:
+    def detalles_chofer(self, value: Optional[Dict]) -> None:
         self._set_detalles_bloque("chofer", value)
 
     # ─────────────────────────────────────────────────────────
@@ -717,7 +867,7 @@ class Reemplazo(db.Model):
         return self.fecha_inicio_reemplazo is not None and self.fecha_fin_reemplazo is None
 
     @property
-    def dias_en_reemplazo(self) -> int | None:
+    def dias_en_reemplazo(self) -> Optional[int]:
         """
         Devuelve cuántos días lleva o duró el reemplazo:
         - Si está activo  -> desde fecha_inicio_reemplazo hasta ahora.
@@ -745,7 +895,7 @@ class Reemplazo(db.Model):
         self.fecha_fin_reemplazo = None
         self.oportunidad_nueva = True
 
-    def cerrar_reemplazo(self, candidata_nueva_id: int | None = None):
+    def cerrar_reemplazo(self, candidata_nueva_id: Optional[int] = None):
         """
         Marca el FIN del reemplazo:
         - Coloca fecha_fin_reemplazo con la hora actual.

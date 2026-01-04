@@ -29,13 +29,8 @@
       {% for d in domesticas %}
       <div class="card card-domestica">
 
-        <!-- Encabezado: código y estado -->
+        <!-- Encabezado: solo estado disponible -->
         <div class="card-domestica-header">
-          {% if d.codigo %}
-            <span class="badge badge-primario">Código: {{ d.codigo }}</span>
-          {% else %}
-            <span class="badge badge-secondary">Sin código asignado</span>
-          {% endif %}
           <span class="badge badge-success">Disponible</span>
         </div>
 
@@ -45,6 +40,8 @@
           <img
             src="{{ d.foto }}"
             alt="Foto de {{ d.nombre }}"
+            loading="lazy"
+            referrerpolicy="no-referrer"
             onclick="verImagenCompleta(this.src)"
           >
         </div>
@@ -54,6 +51,13 @@
         <h3 class="card-domestica-nombre">
           {{ d.nombre }}{% if d.edad %}, {{ d.edad }} años{% endif %}
         </h3>
+
+        <!-- Código (identificador interno visible para el cliente) -->
+        {% if d.codigo %}
+        <p class="card-domestica-codigo">
+          <span class="badge badge-dark">Código: {{ d.codigo }}</span>
+        </p>
+        {% endif %}
 
         <!-- Modalidad / ciudad corta -->
         <p class="card-domestica-meta">
@@ -69,18 +73,25 @@
 
         <!-- Acciones principales -->
         <div class="card-domestica-actions">
-          {% if d.pk %}
+          {# Asegura el id para el detalle aunque el dict venga con otro nombre.
+             Nota: la ruta `public.detalle_domestica` responde en /domesticas/<int:candidata_pk>. #}
+          {% set detalle_id = d.pk or d.public_id or d.id %}
+
+          {% if detalle_id %}
           <a
-            href="{{ url_for('public.detalle_domestica', candidata_pk=d.pk) }}"
+            href="/domesticas/{{ detalle_id }}"
             class="btn btn-outline btn-ver-detalle"
+            rel="nofollow"
           >
             Ver detalles
           </a>
           {% endif %}
+
           <button
+            type="button"
             class="btn btn-secondary btn-oferta"
-            data-codigo="{{ d.codigo }}"
-            data-nombre="{{ d.nombre }}"
+            data-codigo="{{ d.codigo or '' }}"
+            onclick="ofrecerEmpleo(this)"
           >
             Ofrecer empleo
           </button>
@@ -98,7 +109,7 @@
     {% if pagination and pagination.pages > 1 %}
     <nav class="pagination">
       {% if pagination.has_prev %}
-        <a href="{{ url_for('public.domesticas', page=pagination.prev_num) }}" class="page-link">
+        <a href="{{ url_for('public.domesticas', page=pagination.prev_num) }}" class="page-link" rel="nofollow">
           ← Anterior
         </a>
       {% endif %}
@@ -106,7 +117,7 @@
         Página {{ pagination.page }} de {{ pagination.pages }}
       </span>
       {% if pagination.has_next %}
-        <a href="{{ url_for('public.domesticas', page=pagination.next_num) }}" class="page-link">
+        <a href="{{ url_for('public.domesticas', page=pagination.next_num) }}" class="page-link" rel="nofollow">
           Siguiente → 
         </a>
       {% endif %}
@@ -156,5 +167,33 @@
       modal.style.display = 'none';
     }
   });
+</script>
+<script>
+  function ofrecerEmpleo(elOrCodigo) {
+    // Soporta: ofrecerEmpleo(this)  ó  ofrecerEmpleo('COD-123')
+    let codigo = "";
+
+    if (typeof elOrCodigo === "string") {
+      codigo = elOrCodigo;
+    } else if (elOrCodigo && elOrCodigo.dataset) {
+      codigo = elOrCodigo.dataset.codigo || "";
+    }
+
+    codigo = (codigo || "").toString().trim();
+
+    if (!codigo) {
+      alert("Código de candidata no disponible.");
+      return;
+    }
+
+    const mensaje = encodeURIComponent(
+      `Hola, me interesa la candidata con el código ${codigo}. Quisiera ofrecer un empleo y recibir más información.`
+    );
+
+    const telefono = "18094296892"; // WhatsApp oficial
+    const url = `https://wa.me/${telefono}?text=${mensaje}`;
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 </script>
 {% endblock %}

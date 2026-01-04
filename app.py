@@ -2,6 +2,8 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+from typing import Optional
+from urllib.parse import urlparse
 import io
 import os
 import re
@@ -18,6 +20,9 @@ from flask import (
     session, send_file, send_from_directory, flash, jsonify,
     current_app, abort
 )
+
+from jinja2 import TemplateNotFound
+from flask_wtf.csrf import generate_csrf
 
 from flask_login import login_user, logout_user, current_user
 
@@ -43,6 +48,9 @@ from models import (
     CandidataWeb,
     Solicitud,
     Reemplazo,
+    Entrevista,
+    EntrevistaPregunta,
+    EntrevistaRespuesta,
 )
 
 # Formularios
@@ -83,6 +91,33 @@ def _shutdown_session(exception=None):
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
 
 
+# ----------------------------------------------------------------------------
+# Seguridad: redirects seguros (evita open-redirect con ?next=...)
+# ----------------------------------------------------------------------------
+
+def _is_safe_next(target: str) -> bool:
+    """Permite solo redirects internos (sin dominio externo)."""
+    if not target:
+        return False
+    try:
+        ref = urlparse(request.host_url)
+        test = urlparse(target)
+        # Permite rutas relativas ("/home") o URLs del mismo host
+        if not test.netloc and test.path.startswith("/"):
+            return True
+        return (test.scheme, test.netloc) == (ref.scheme, ref.netloc)
+    except Exception:
+        return False
+
+
+def safe_redirect_next(default_endpoint: str, **default_values):
+    """Redirect a ?next=... si es seguro; si no, usa un endpoint interno."""
+    nxt = (request.args.get("next") or request.form.get("next") or "").strip()
+    if _is_safe_next(nxt):
+        return redirect(nxt)
+    return redirect(url_for(default_endpoint, **default_values))
+
+
 def _get_engine():
     """Compatibilidad: usa db.engine (v3) o db.get_engine() (v2)."""
     try:
@@ -102,7 +137,6 @@ def _handle_operational_error(e):
     except Exception:
         pass
     try:
-        # cierra conexiones del pool para forzar reconexión limpia
         _get_engine().dispose()
     except Exception:
         pass
@@ -113,8 +147,7 @@ def _handle_operational_error(e):
 
 def _db_retry(fn, *args, **kwargs):
     """
-    Ejecuta fn y, si la conexión está rota (SSL / bad record mac / connection reset),
-    hace remove() y reintenta UNA vez.
+    Ejecuta fn y, si la conexión está rota, hace remove() y reintenta UNA vez.
     """
     try:
         return fn(*args, **kwargs)
@@ -136,12 +169,12 @@ def _db_retry(fn, *args, **kwargs):
                 db.session.remove()
             except Exception:
                 pass
-            return fn(*args, **kwargs)  # segundo intento
+            return fn(*args, **kwargs)
         raise
 
 
 def _get_candidata_safe_by_pk(fila: int):
-    """Carga Candidata por PK con un retry si la conexión está rota."""
+    """Carga Candidata por PK con retry."""
     def _load():
         return Candidata.query.get(fila)
     return _db_retry(_load)
@@ -149,8 +182,7 @@ def _get_candidata_safe_by_pk(fila: int):
 
 def _fetch_image_bytes_safe(fila: int):
     """
-    Saca los bytes de imagen directamente con conexión cruda (más tolerante),
-    probando primero foto_perfil y luego perfil.
+    Saca los bytes de imagen directamente con conexión cruda.
     """
     engine = _get_engine()
 
@@ -175,10 +207,9 @@ def _fetch_image_bytes_safe(fila: int):
     return _db_retry(_load)
 
 
-def run_db_safely(fn, *, retry_once: bool = True, fallback=None):
+def run_db_safely(fn, retry_once: bool = True, fallback=None):
     """
-    Ejecuta una función que toca la DB. Si hay OperationalError (conexión rota),
-    hace rollback/cierra y reintenta UNA vez.
+    Ejecuta una función que toca la DB con retry controlado.
     """
     try:
         return fn()
@@ -195,8 +226,11 @@ def run_db_safely(fn, *, retry_once: bool = True, fallback=None):
         return fallback
 
 
-def normalize_cedula(raw: str):
-    """Normaliza cédula a 11 dígitos con guiones. Devuelve None si no es válida."""
+# -----------------------------------------------------------------------------
+# Normalizadores
+# -----------------------------------------------------------------------------
+
+def normalize_cedula(raw: str) -> Optional[str]:
     digits = re.sub(r'\D', '', raw or '')
     if not CEDULA_PATTERN.fullmatch(digits):
         return None
@@ -204,7 +238,6 @@ def normalize_cedula(raw: str):
 
 
 def normalize_nombre(raw: str) -> str:
-    """Quita acentos y caracteres raros; deja letras, espacios y guiones."""
     if not raw:
         return ''
     nfkd = unicodedata.normalize('NFKD', raw)
@@ -212,30 +245,23 @@ def normalize_nombre(raw: str) -> str:
     return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
 
 
-def parse_date(s: str):
-    """YYYY-MM-DD → date | None."""
+def parse_date(s: str) -> Optional[date]:
     try:
         return datetime.strptime(s or "", "%Y-%m-%d").date()
     except Exception:
         return None
 
 
-def parse_decimal(s: str):
-    """Convierte string a Decimal (admite coma). Devuelve None si falla."""
+def parse_decimal(s: str) -> Optional[Decimal]:
     try:
         return Decimal((s or "").replace(',', '.'))
     except Exception:
         return None
 
 
-def get_date_bounds(period: str, date_str: str | None = None):
+def get_date_bounds(period: str, date_str: Optional[str] = None):
     """
-    Devuelve (start_dt, end_dt):
-      - 'day'   → últimas 24h
-      - 'week'  → 7 días
-      - 'month' → 30 días
-      - 'date'  → fecha exacta (YYYY-MM-DD)
-      - otro    → (None, None)
+    Devuelve (start_dt, end_dt)
     """
     hoy = date.today()
     if period == 'day':
@@ -250,15 +276,16 @@ def get_date_bounds(period: str, date_str: str | None = None):
     return None, None
 
 
-def get_start_date(period: str, date_str: str | None = None):
+def get_start_date(period: str, date_str: Optional[str] = None):
     start, _ = get_date_bounds(period, date_str)
     return start
 
+
 # -----------------------------------------------------------------------------
-# CARGA CONFIG DE ENTREVISTAS (JSON local)
+# CONFIG ENTREVISTAS
 # -----------------------------------------------------------------------------
+
 def load_entrevistas_config():
-    """Carga config JSON local para entrevistas."""
     try:
         cfg_path = os.path.join(app.root_path, 'config', 'config_entrevistas.json')
         with open(cfg_path, encoding='utf-8') as f:
@@ -273,20 +300,20 @@ app.config['ENTREVISTAS_CONFIG'] = load_entrevistas_config()
 # -----------------------------------------------------------------------------
 # ERRORES / STATIC
 # -----------------------------------------------------------------------------
+
 @app.errorhandler(403)
 def forbidden(e):
     return render_template('errors/403.html'), 403
 
+
 @app.route('/static/<path:filename>')
 def static_files(filename):
-    """Sirve archivos estáticos desde /static (controlado)."""
     return send_from_directory(os.path.join(app.root_path, 'static'), filename)
+
 
 @app.route('/robots.txt')
 def robots_txt():
-    """Archivo robots.txt (si no existe, devolvería 404 estándar)."""
     return send_from_directory(app.static_folder, "robots.txt")
-
 
 # -----------------------------------------------------------------------------
 # AUTH (panel interno por sesión simple)
@@ -322,8 +349,8 @@ from flask import current_app  # <-- AGREGA ESTE IMPORT si no lo tienes
 def _client_ip() -> str:
     xff = request.headers.get("X-Forwarded-For", "")
     if xff:
-        return xff.split(",")[0].strip()
-    return (request.remote_addr or "0.0.0.0").strip()
+        return xff.split(",")[0].strip()[:64]
+    return (request.remote_addr or "0.0.0.0").strip()[:64]
 
 def _clear_security_layer_lock():
     # Limpia el lock global por IP (security_layer.py), si existe
@@ -370,6 +397,8 @@ def _reset_fail(usuario_norm: str):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
+    # Mantener sesión como permanente según tu TTL en config_app
+    session.permanent = True
 
     if request.method == 'POST':
         # (Opcional pero recomendado) Honeypot: si lo llenan, es bot
@@ -414,7 +443,7 @@ def login():
             session['role']      = (user_data.get("role") or "admin")
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
 
-            return redirect(url_for('home'))
+            return safe_redirect_next('home')
 
         # ❌ Login incorrecto: registra intento
         n = _register_fail(usuario_norm)
@@ -435,7 +464,7 @@ def login():
 @roles_required('admin', 'secretaria')
 def logout():
     session.clear()
-    return redirect(url_for('login'))
+    return safe_redirect_next('login')
 
 
 # -----------------------------------------------------------------------------
@@ -625,6 +654,726 @@ def entrevista():
 
     # Fallback
     return redirect(url_for('entrevista'))
+
+
+
+# -----------------------------------------------------------------------------
+# ENTREVISTAS (DB) - HELPERS
+# -----------------------------------------------------------------------------
+
+def _get_preguntas_db_por_tipo(tipo: str):
+    """Devuelve preguntas activas para un tipo (domestica/enfermera/empleo_general)."""
+    tipo = (tipo or "").strip().lower()
+    if not tipo:
+        return []
+
+    # Clave: "domestica.xxx" | "enfermera.xxx" | "empleo_general.xxx"
+    return (
+        EntrevistaPregunta.query
+        .filter(EntrevistaPregunta.activa.is_(True))
+        .filter(EntrevistaPregunta.clave.like(f"{tipo}.%"))
+        .order_by(EntrevistaPregunta.orden.asc(), EntrevistaPregunta.id.asc())
+        .all()
+    )
+
+
+def _safe_setattr(obj, name: str, value):
+    """Setea un atributo solo si existe en el modelo (para no romper si no está)."""
+    if hasattr(obj, name):
+        try:
+            setattr(obj, name, value)
+            return True
+        except Exception:
+            return False
+    return False
+
+# -----------------------------------------------------------------------------
+# ENTREVISTAS (DB) - Secretarias/Admin
+#   Usa EntrevistaPregunta (sembradas) + Entrevista + EntrevistaRespuesta
+# -----------------------------------------------------------------------------
+
+
+# === Entry routes for NUEVAS entrevistas (DB) ===
+@app.route('/entrevistas')
+@roles_required('admin', 'secretaria')
+def entrevistas_index():
+    """Entrada principal a las entrevistas NUEVAS (DB)."""
+    return redirect(url_for('entrevistas_buscar'))
+
+
+@app.route('/entrevistas/buscar', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def entrevistas_buscar():
+    """Busca una candidata y te manda a la lista de entrevistas de esa candidata."""
+    q = (request.form.get('busqueda') or request.args.get('q') or '').strip()[:128]
+    resultados = []
+    mensaje = None
+
+    if request.method == 'POST':
+        if not q:
+            flash('⚠️ Escribe algo para buscar.', 'warning')
+            return redirect(url_for('entrevistas_buscar'))
+
+    if q:
+        like = f"%{q}%"
+        try:
+            filas = (
+                Candidata.query
+                .filter(or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.numero_telefono.ilike(like),
+                ))
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(200)
+                .all()
+            )
+            resultados = filas or []
+            if not resultados:
+                mensaje = '⚠️ No se encontraron candidatas.'
+        except Exception:
+            current_app.logger.exception('❌ Error buscando candidatas (entrevistas_buscar)')
+            mensaje = '❌ Error al buscar. Intenta de nuevo.'
+
+    # Si existe template dedicado lo usamos; si no, fallback simple para probar.
+    try:
+        return render_template('entrevistas/buscar.html', q=q, resultados=resultados, mensaje=mensaje)
+    except TemplateNotFound:
+        token = generate_csrf()
+        html = [
+            '<h2>Entrevistas (NUEVAS - DB) · Buscar candidata</h2>',
+            '<form method="POST">',
+            f'<input type="hidden" name="csrf_token" value="{token}">',
+            f'<input name="busqueda" placeholder="Nombre / Cédula / Teléfono" style="width:320px" value="{q or ""}">',
+            '<button type="submit">Buscar</button>',
+            '</form>',
+        ]
+        if mensaje:
+            html.append(f"<p>{mensaje}</p>")
+        if resultados:
+            html.append('<hr><ul>')
+            for c in resultados:
+                html.append(
+                    f"<li><b>{(c.nombre_completo or '').strip()}</b> · {c.cedula or ''} · {c.numero_telefono or ''} "
+                    f"— <a href=\"{url_for('entrevistas_de_candidata', fila=c.fila)}\">Ver entrevistas</a> "
+                    f"— <a href=\"{url_for('entrevista_nueva_db', fila=c.fila, tipo='domestica')}\">Nueva doméstica</a> "
+                    f"— <a href=\"{url_for('entrevista_nueva_db', fila=c.fila, tipo='enfermera')}\">Nueva enfermera</a>"
+                    f"</li>"
+                )
+            html.append('</ul>')
+        html.append('<hr><p><a href="/home">Volver a Home</a></p>')
+        return "\n".join(html)
+
+
+@app.route('/entrevistas/lista')
+@roles_required('admin', 'secretaria')
+def entrevistas_lista():
+    """Lista rápida de las últimas entrevistas NUEVAS guardadas (debug/QA)."""
+    try:
+        q = Entrevista.query
+        if hasattr(Entrevista, 'id'):
+            q = q.order_by(Entrevista.id.desc())
+        entrevistas = q.limit(50).all()
+    except Exception:
+        current_app.logger.exception('❌ Error cargando entrevistas (lista)')
+        entrevistas = []
+
+    # ✅ Usa un template que NO depende de 'candidata'
+    try:
+        current_app.logger.info('✅ Render entrevistas/lista.html (entrevistas_lista)')
+        return render_template('entrevistas/lista.html', entrevistas=entrevistas)
+    except TemplateNotFound:
+        # Fallback seguro para no quedar en blanco si el template no está donde se espera
+        current_app.logger.exception('❌ TemplateNotFound: entrevistas/lista.html')
+        html = ['<h2>Entrevistas (NUEVAS - DB) · Últimas 50</h2>']
+        html.append('<p><a href="/entrevistas/buscar">Buscar candidata</a></p>')
+        if not entrevistas:
+            html.append('<p>No hay entrevistas aún.</p>')
+        else:
+            html.append('<ul>')
+            for e in entrevistas:
+                fila = getattr(e, 'candidata_id', None)
+                tipo = getattr(e, 'tipo', None) if hasattr(e, 'tipo') else None
+                eid = getattr(e, 'id', None)
+
+                link_cand = f' — <a href="{url_for("entrevistas_de_candidata", fila=fila)}">ver candidata</a>' if fila else ''
+                link_edit = f' — <a href="{url_for("entrevista_editar_db", entrevista_id=eid)}">editar</a>' if eid else ''
+
+                html.append(f"<li>ID: {eid or ''} · candidata_id: {fila or ''} · tipo: {tipo or ''}{link_cand}{link_edit}</li>")
+            html.append('</ul>')
+
+        html.append('<hr><p><a href="/home">Volver a Home</a></p>')
+        return "\n".join(html)
+
+@app.route("/entrevistas/candidata/<int:fila>")
+@roles_required('admin', 'secretaria')
+def entrevistas_de_candidata(fila):
+    candidata = _get_candidata_safe_by_pk(fila)
+    if not candidata:
+        flash("⚠️ Candidata no encontrada.", "warning")
+        return redirect(url_for('entrevistas_buscar'))
+
+    entrevistas = (
+        Entrevista.query
+        .filter_by(candidata_id=fila)
+        .order_by(Entrevista.id.desc())
+        .all()
+    )
+
+    return render_template(
+        "entrevistas/entrevistas_lista.html",
+        candidata=candidata,
+        entrevistas=entrevistas
+    )
+
+
+@app.route("/entrevistas/nueva/<int:fila>/<string:tipo>", methods=["GET", "POST"])
+@roles_required('admin', 'secretaria')
+def entrevista_nueva_db(fila, tipo):
+    candidata = _get_candidata_safe_by_pk(fila)
+    if not candidata:
+        flash("⚠️ Candidata no encontrada.", "warning")
+        return redirect(url_for('entrevistas_buscar'))
+
+    preguntas = _get_preguntas_db_por_tipo(tipo)
+    if not preguntas:
+        flash("⚠️ No hay preguntas configuradas para ese tipo de entrevista.", "warning")
+        return redirect(url_for('entrevistas_de_candidata', fila=fila))
+
+    if request.method == "POST":
+        try:
+            entrevista = Entrevista(candidata_id=fila)
+            _safe_setattr(entrevista, 'estado', 'completa')
+            _safe_setattr(entrevista, 'creada_en', datetime.utcnow())
+            _safe_setattr(entrevista, 'actualizada_en', None)
+            _safe_setattr(entrevista, 'tipo', (tipo or '').strip().lower())
+
+            db.session.add(entrevista)
+            db.session.flush()  # para obtener entrevista.id
+
+            for p in preguntas:
+                field = f"q_{p.id}"
+                valor = (request.form.get(field) or "").strip()
+
+                r = EntrevistaRespuesta(
+                    entrevista_id=entrevista.id,
+                    pregunta_id=p.id,
+                    respuesta=valor if valor else None,
+                )
+                _safe_setattr(r, 'creada_en', datetime.utcnow())
+                db.session.add(r)
+
+            db.session.commit()
+            flash("✅ Entrevista guardada.", "success")
+            return redirect(url_for('entrevistas_de_candidata', fila=fila))
+
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("❌ Error guardando entrevista (DB)")
+            flash("❌ Error al guardar la entrevista.", "danger")
+            return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo))
+
+    return render_template(
+        "entrevistas/entrevista_form.html",
+        modo="nueva",
+        tipo=(tipo or '').strip().lower(),
+        candidata=candidata,
+        preguntas=preguntas,
+        respuestas_por_pregunta={},
+        entrevista=None
+    )
+
+# Compatibilidad: soporta links viejos tipo /entrevistas/editar?id=123 o ?entrevista_id=123
+@app.route('/entrevistas/editar', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def entrevista_editar_redirect():
+    """Compat: soporta links viejos tipo /entrevistas/editar?id=123 o ?entrevista_id=123"""
+    eid = (request.args.get('entrevista_id', type=int)
+           or request.args.get('id', type=int))
+    if not eid:
+        abort(404)
+    return redirect(url_for('entrevista_editar_db', entrevista_id=eid))
+
+
+@app.route("/entrevistas/editar/<int:entrevista_id>", methods=["GET", "POST"])
+@roles_required('admin', 'secretaria')
+def entrevista_editar_db(entrevista_id):
+    entrevista = Entrevista.query.get_or_404(entrevista_id)
+    fila = getattr(entrevista, 'candidata_id', None)
+
+    candidata = _get_candidata_safe_by_pk(fila) if fila else None
+    if not candidata:
+        flash("⚠️ Candidata no encontrada.", "warning")
+        return redirect(url_for('entrevistas_buscar'))
+
+    # Cargar respuestas actuales
+    respuestas = (
+        EntrevistaRespuesta.query
+        .filter_by(entrevista_id=entrevista.id)
+        .all()
+    )
+    respuestas_por_pregunta = {r.pregunta_id: (r.respuesta or "") for r in respuestas}
+
+    # Detectar tipo:
+    tipo = None
+    if hasattr(entrevista, 'tipo') and getattr(entrevista, 'tipo', None):
+        tipo = (getattr(entrevista, 'tipo') or '').strip().lower()
+
+    if not tipo and respuestas:
+        p0 = EntrevistaPregunta.query.get(respuestas[0].pregunta_id)
+        if p0 and p0.clave and "." in p0.clave:
+            tipo = p0.clave.split(".", 1)[0]
+
+    tipo = tipo or "domestica"
+
+    preguntas = _get_preguntas_db_por_tipo(tipo)
+    if not preguntas:
+        flash("⚠️ No hay preguntas configuradas para este tipo.", "warning")
+        return redirect(url_for('entrevistas_de_candidata', fila=fila))
+
+    if request.method == "POST":
+        try:
+            for p in preguntas:
+                field = f"q_{p.id}"
+                valor = (request.form.get(field) or "").strip()
+
+                r = (
+                    EntrevistaRespuesta.query
+                    .filter_by(entrevista_id=entrevista.id, pregunta_id=p.id)
+                    .first()
+                )
+
+                if not r:
+                    r = EntrevistaRespuesta(
+                        entrevista_id=entrevista.id,
+                        pregunta_id=p.id,
+                    )
+                    _safe_setattr(r, 'creada_en', datetime.utcnow())
+                    db.session.add(r)
+
+                r.respuesta = valor if valor else None
+                _safe_setattr(r, 'actualizada_en', datetime.utcnow())
+
+            _safe_setattr(entrevista, 'actualizada_en', datetime.utcnow())
+            _safe_setattr(entrevista, 'estado', 'completa')
+            _safe_setattr(entrevista, 'tipo', tipo)
+
+            db.session.commit()
+            flash("✅ Entrevista actualizada.", "success")
+            return redirect(url_for('entrevistas_de_candidata', fila=fila))
+
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("❌ Error actualizando entrevista (DB)")
+            flash("❌ Error al actualizar la entrevista.", "danger")
+            return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id))
+
+    return render_template(
+        "entrevistas/entrevista_form.html",
+        modo="editar",
+        tipo=tipo,
+        candidata=candidata,
+        preguntas=preguntas,
+        respuestas_por_pregunta=respuestas_por_pregunta,
+        entrevista=entrevista
+    )
+
+# -----------------------------------------------------------------------------
+# PDF ENTREVISTA (NUEVAS - DB)
+#   - NO toca ni reemplaza el PDF viejo (/generar_pdf_entrevista)
+#   - Exporta una entrevista guardada en tablas Entrevista/EntrevistaRespuesta
+# -----------------------------------------------------------------------------
+
+@app.route('/entrevistas/pdf/<int:entrevista_id>')
+@roles_required('admin', 'secretaria')
+def generar_pdf_entrevista_db(entrevista_id: int):
+    # Asegura fpdf2
+    try:
+        from fpdf import FPDF as _FPDF
+        from fpdf.errors import FPDFException
+    except Exception:
+        return "❌ fpdf2 no está instalado. Ejecuta: pip uninstall -y fpdf && pip install -U fpdf2", 500
+
+    entrevista = Entrevista.query.get_or_404(entrevista_id)
+
+    fila = getattr(entrevista, 'candidata_id', None)
+    candidata = _get_candidata_safe_by_pk(int(fila)) if fila else None
+    if not candidata:
+        return "Candidata no encontrada", 404
+
+    # Respuestas + preguntas
+    respuestas = (
+        EntrevistaRespuesta.query
+        .filter_by(entrevista_id=entrevista.id)
+        .all()
+    )
+    if not respuestas:
+        return "No hay respuestas registradas para esta entrevista.", 404
+
+    pregunta_ids = [r.pregunta_id for r in respuestas if r.pregunta_id]
+    preguntas = (
+        EntrevistaPregunta.query
+        .filter(EntrevistaPregunta.id.in_(pregunta_ids))
+        .order_by(EntrevistaPregunta.orden.asc(), EntrevistaPregunta.id.asc())
+        .all()
+    )
+
+    respuestas_por_pregunta = {r.pregunta_id: (r.respuesta or "").strip() for r in respuestas}
+
+    # ⚠️ IMPORTANTE (clientes): NO incluimos datos personales en el PDF.
+    # NO incluimos nombre, cedula, telefono, direccion, modalidad, ni fecha en el PDF.
+    tipo = (getattr(entrevista, 'tipo', None) or '').strip().lower()
+
+    # Referencias (si existen en tu modelo)
+    ref_laborales = (
+        (getattr(candidata, 'contactos_referencias_laborales', None) or '').strip()
+        or (getattr(candidata, 'referencias_laboral', None) or '').strip()
+        or ""
+    )
+    ref_familiares = (
+        (getattr(candidata, 'referencias_familiares_detalle', None) or '').strip()
+        or (getattr(candidata, 'referencias_familiares', None) or '').strip()
+        or ""
+    )
+
+    BRAND = (0, 102, 204)
+    FAINT = (120, 120, 120)
+    GRID  = (210, 210, 210)
+
+    def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
+        if unicode_ok:
+            return s or ""
+        s = s or ""
+        nfkd = unicodedata.normalize("NFKD", s)
+        return "".join(ch for ch in nfkd if not unicodedata.combining(ch) and ord(ch) < 0x2500)
+
+    def _collapse_ws(s: str) -> str:
+        return re.sub(r"[ \t]+", " ", (s or "").strip())
+
+    def _humanize_clave(clave: str) -> str:
+        """Convierte `domestica.tienes_hijos` -> `Tienes hijos` (fallback)."""
+        clave = (clave or '').strip()
+        if not clave:
+            return ''
+        if '.' in clave:
+            _, tail = clave.split('.', 1)
+        else:
+            tail = clave
+        tail = tail.replace('_', ' ').strip()
+        tail = re.sub(r'\s+', ' ', tail)
+        tail = tail[:1].upper() + tail[1:] if tail else tail
+        return tail
+
+    _LABELS = {
+        'tienes_hijos': '¿Tiene hijos?',
+        'numero_hijos': '¿Cuántos hijos tiene?',
+        'edades_hijos': 'Edades de los hijos',
+        'quien_cuida': '¿Con quién deja a los niños?',
+        'descripcion_personal': 'Descripción personal',
+        'fuerte': 'Fortalezas',
+        'razon_trabajo': 'Motivo para trabajar',
+        'labores_anteriores': 'Experiencia / trabajos anteriores',
+        'tiempo_ultimo_trabajo': 'Tiempo en el último trabajo',
+        'razon_salida': 'Motivo de salida del último trabajo',
+        'situacion_dificil': '¿Ha tenido situaciones difíciles?',
+        'manejo_situacion': '¿Cómo manejó la situación?',
+        'manejo_reclamo': '¿Cómo maneja un reclamo?',
+        'uniforme': 'Uso de uniforme',
+        'dias_feriados': 'Disponibilidad en días feriados',
+        'revision_salida': 'Revisión al salir',
+        'colaboracion': 'Trabajo en equipo / colaboración',
+        'tipo_familia': 'Tipo de familia',
+        'cuidado_ninos': 'Cuidado de niños',
+        'sabes_cocinar': '¿Sabe cocinar?',
+        'gusta_cocinar': '¿Le gusta cocinar?',
+        'que_cocinas': '¿Qué cocina?',
+        'postres': 'Postres',
+        'tareas_casa': 'Tareas del hogar',
+        'electrodomesticos': 'Manejo de electrodomésticos',
+        'planchar': '¿Sabe planchar?',
+        'actividad_principal': 'Actividad principal',
+        'nivel_academico': 'Nivel académico',
+        'condiciones_salud': 'Condiciones de salud',
+        'alergico': 'Alergias',
+        'medicamentos': 'Medicamentos',
+        'seguro_medico': 'Seguro médico',
+        'pruebas_medicas': 'Pruebas médicas',
+        'vacunas_covid': 'Vacunas COVID',
+        'tomas_alcohol': 'Consumo de alcohol',
+        'fumas': '¿Fuma?',
+        'tatuajes_piercings': 'Tatuajes / piercings',
+    }
+
+    def _pretty_question(pregunta) -> str:
+        """Prioriza enunciado/etiqueta, y si no hay, humaniza la clave."""
+        for attr in ('enunciado','pregunta','texto_pregunta','texto','label','etiqueta','titulo','nombre','descripcion'):
+            v = (getattr(pregunta, attr, None) or '').strip()
+            if v:
+                return v
+
+        clave = (getattr(pregunta, 'clave', None) or '').strip()
+        tail = clave.split('.', 1)[1] if (clave and '.' in clave) else clave
+        tail_key = (tail or '').strip().lower()
+        if tail_key in _LABELS:
+            return _LABELS[tail_key]
+
+        return _humanize_clave(clave) or 'Pregunta'
+
+    def _wrap_unbreakables(s: str, chunk=60) -> str:
+        out = []
+        for w in (s or "").split(" "):
+            if len(w) > chunk:
+                out.extend([w[i:i+chunk] for i in range(0, len(w), chunk)])
+            else:
+                out.append(w)
+        return " ".join(out)
+
+    def safe_multicell(pdf, txt, font_name, font_style, font_size, color=None, align="J", line_space=1.2):
+        pdf.set_x(pdf.l_margin)
+        if color:
+            pdf.set_text_color(*color)
+        try:
+            pdf.set_font(font_name, font_style, font_size)
+        except Exception:
+            try:
+                pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
+            except Exception:
+                pdf.set_font("Arial", "", 10)
+
+        try:
+            pdf.multi_cell(pdf.epw, 7, txt, align=align)
+            pdf.ln(line_space)
+        except FPDFException:
+            txt2 = _wrap_unbreakables(txt, chunk=35)
+            pdf.set_font(font_name, "", 10)
+            pdf.multi_cell(pdf.epw, 7, txt2, align="L")
+            pdf.ln(line_space)
+
+    class InterviewPDF(_FPDF):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._logo_path   = None
+            self._base_font   = "Arial"
+            self._unicode_ok  = False
+            self._has_italic  = False
+            self._has_bold    = False
+            self._has_bi      = False
+
+        def header(self):
+            if self.page_no() == 1:
+                if self._logo_path and os.path.exists(self._logo_path):
+                    w = 92
+                    x = (self.w - w) / 2.0
+                    self.image(self._logo_path, x=x, y=10, w=w)
+                    y_line = 10 + (w * 0.38)
+                    self.set_y(y_line)
+                else:
+                    self.set_y(18)
+
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.6)
+                self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+                self.ln(3)
+
+                try:
+                    self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
+                except Exception:
+                    self.set_font("Arial", "B", 18)
+
+                # Barra azul con título (como el PDF viejo)
+                self.set_fill_color(*BRAND)
+                self.set_text_color(255, 255, 255)
+                self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
+                self.set_text_color(0, 0, 0)
+                self.ln(4)
+            else:
+                self.set_y(14)
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.4)
+                self.line(self.l_margin, 14, self.w - self.r_margin, 14)
+                self.ln(7)
+
+        def footer(self):
+            self.set_y(-15)
+            try:
+                if self._has_italic or self._has_bi:
+                    self.set_font(self._base_font, "I", 9)
+                else:
+                    self.set_font(self._base_font, "", 9)
+            except Exception:
+                try:
+                    self.set_font("Arial", "I", 9)
+                except Exception:
+                    self.set_font("Arial", "", 9)
+
+            self.set_text_color(*FAINT)
+            self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
+
+    try:
+        pdf = InterviewPDF(format="A4")
+        pdf.alias_nb_pages()
+        pdf.set_auto_page_break(auto=True, margin=16)
+        pdf.set_margins(16, 16, 16)
+        pdf._logo_path = os.path.join(current_app.root_path, "static", "logo_nuevo.png")
+
+        base_font  = "Arial"
+        unicode_ok = False
+        has_bold   = False
+        has_italic = False
+        has_bi     = False
+
+        try:
+            font_dir = os.path.join(current_app.root_path, "static", "fonts")
+            reg  = os.path.join(font_dir, "DejaVuSans.ttf")
+            bold = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+            it   = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")
+            bi   = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")
+
+            if os.path.exists(reg):
+                pdf.add_font("DejaVuSans", "", reg, uni=True)
+                base_font  = "DejaVuSans"
+                unicode_ok = True
+            if os.path.exists(bold):
+                pdf.add_font("DejaVuSans", "B", bold, uni=True)
+                has_bold = True
+            if os.path.exists(it):
+                pdf.add_font("DejaVuSans", "I", it, uni=True)
+                has_italic = True
+            if os.path.exists(bi):
+                pdf.add_font("DejaVuSans", "BI", bi, uni=True)
+                has_bi = True
+        except Exception:
+            base_font  = "Arial"
+            unicode_ok = False
+            has_bold   = True
+            has_italic = True
+            has_bi     = True
+
+        pdf._base_font  = base_font
+        pdf._unicode_ok = unicode_ok
+        pdf._has_bold   = has_bold
+        pdf._has_italic = has_italic
+        pdf._has_bi     = has_bi
+
+        pdf.add_page()
+
+        bullet = "• " if unicode_ok else "- "
+
+        # ===== ENTREVISTA =====
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
+        except Exception:
+            pdf.set_font("Arial", "B", 13)
+
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+        for p in preguntas:
+            q_txt = _pretty_question(p)
+            ans = (respuestas_por_pregunta.get(p.id) or '').strip()
+
+            q_line = _collapse_ws(_ascii_if_needed(q_txt, unicode_ok))
+            a_line = _wrap_unbreakables(_collapse_ws(_ascii_if_needed(ans, unicode_ok)), 80)
+
+            # Pregunta (negro)
+            safe_multicell(
+                pdf,
+                (q_line + ":").strip(),
+                base_font,
+                "B" if has_bold else "",
+                12,
+                color=(0, 0, 0),
+                align="L",
+                line_space=1,
+            )
+
+            # Respuesta (azul)
+            if a_line:
+                a_out = (bullet + a_line).strip()
+            else:
+                a_out = (bullet + "—").strip()
+
+            safe_multicell(
+                pdf,
+                a_out,
+                base_font,
+                "",
+                12,
+                color=BRAND,
+                align="J",
+                line_space=2,
+            )
+
+        pdf.ln(3)
+
+        # ===== REFERENCIAS =====
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
+        except Exception:
+            pdf.set_font("Arial", "B", 13)
+
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+        # Laborales
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 12)
+        except Exception:
+            pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 7, "Laborales:", ln=True)
+
+        if ref_laborales:
+            safe_multicell(
+                pdf,
+                _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
+                base_font,
+                "",
+                12,
+                color=BRAND,
+                align="J",
+            )
+        else:
+            safe_multicell(pdf, "No hay referencias laborales.", base_font, "", 12, color=FAINT, align="L")
+
+        # Familiares
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 12)
+        except Exception:
+            pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 7, "Familiares:", ln=True)
+
+        if ref_familiares:
+            safe_multicell(
+                pdf,
+                _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
+                base_font,
+                "",
+                12,
+                color=BRAND,
+                align="J",
+            )
+        else:
+            safe_multicell(pdf, "No hay referencias familiares.", base_font, "", 12, color=FAINT, align="L")
+
+        raw = pdf.output(dest="S")
+        pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
+        buf = io.BytesIO(pdf_bytes)
+        buf.seek(0)
+
+        return send_file(
+            buf,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"entrevista_{(tipo or 'general')}_{entrevista.id}.pdf"
+        )
+
+    except Exception as e:
+        current_app.logger.exception("❌ Error interno generando PDF entrevista (DB)")
+        return f"Error interno generando PDF: {e}", 500
 
 # -----------------------------------------------------------------------------
 # BÚSQUEDA / EDICIÓN BÁSICA
@@ -1555,6 +2304,9 @@ def subir_fotos():
             )
 
         try:
+            # Límite por archivo (extra) para evitar cargas enormes aunque MAX_CONTENT_LENGTH exista
+            max_file = int(os.getenv("MAX_IMAGE_BYTES", str(3 * 1024 * 1024)))  # 3MB por archivo
+
             for campo, archivo in archivos_validos.items():
                 try:
                     data = archivo.read()
@@ -1567,6 +2319,18 @@ def subir_fotos():
                 if not data:
                     current_app.logger.warning("⚠️ Archivo vacío para %s, no se guardará.", campo)
                     continue
+
+                if len(data) > max_file:
+                    flash(f"❌ La imagen de {campo} es demasiado grande. Máximo {max_file // (1024*1024)}MB.", "danger")
+                    tiene = _build_docs_flags(candidata)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+
+                # Validar que realmente sea imagen por magic-bytes
+                mt, _ext = _detect_mimetype_and_ext(data)
+                if not mt.startswith("image/"):
+                    flash(f"❌ El archivo de {campo} no parece ser una imagen válida.", "danger")
+                    tiene = _build_docs_flags(candidata)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
 
                 # Guardar binario
                 setattr(candidata, campo, data)
@@ -1609,8 +2373,9 @@ def ver_imagen(fila, campo):
 
     return Response(data, mimetype=mt)
 
-# Registrar blueprint (hazlo una sola vez en tu app)
-app.register_blueprint(subir_bp)
+# Registrar blueprint (evita doble registro en reload)
+if 'subir_fotos' not in app.blueprints:
+    app.register_blueprint(subir_bp)
 
 # -----------------------------------------------------------------------------
 # GESTIONAR ARCHIVOS / PDF (DB only)  ✅ MEJORADO
@@ -1728,6 +2493,7 @@ def gestionar_archivos():
 
     # Si viene una acción rara, volvemos a buscar
     return redirect(url_for("gestionar_archivos", accion="buscar"))
+
 
 
 @app.route('/generar_pdf_entrevista')
@@ -1991,6 +2757,364 @@ def generar_pdf_entrevista():
     except Exception as e:
         current_app.logger.exception("❌ Error interno generando PDF")
         return f"Error interno generando PDF: {e}", 500
+
+# -----------------------------------------------------------------------------
+# NUEVO PDF (ENTREVISTAS NUEVAS EN BD)  ✅ NO BORRA LO VIEJO
+# -----------------------------------------------------------------------------
+
+@app.route('/entrevistas/pdf/<int:entrevista_id>', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def generar_pdf_entrevista_nueva_db(entrevista_id: int):
+    """Genera PDF para entrevista del sistema nuevo (BD), usando el MISMO estilo visual del PDF viejo.
+
+    - No toca /generar_pdf_entrevista (lo viejo se queda igual).
+    - NO incluye datos personales (cédula/teléfono/dirección) ni fechas.
+    - Muestra solo el encabezado + preguntas y respuestas.
+    """
+
+    # Asegura fpdf2
+    try:
+        from fpdf import FPDF as _FPDF
+        from fpdf.errors import FPDFException
+    except Exception:
+        return "❌ fpdf2 no está instalado. Ejecuta: pip uninstall -y fpdf && pip install -U fpdf2", 500
+
+    # Intentar obtener modelos sin asumir imports rígidos (robusto)
+    EntrevistaModel = globals().get('Entrevista')
+    RespModel = globals().get('EntrevistaRespuesta') or globals().get('EntrevistaRespuestas')
+    PregModel = globals().get('EntrevistaPregunta') or globals().get('EntrevistaPreguntas')
+
+    if EntrevistaModel is None:
+        return "❌ No se encontró el modelo 'Entrevista' en el proyecto. Revisa models/imports.", 500
+
+    # Cargar entrevista
+    try:
+        entrevista = db.session.get(EntrevistaModel, entrevista_id)
+    except Exception:
+        entrevista = None
+
+    if not entrevista:
+        return "Entrevista no encontrada", 404
+
+    # ----------------------------
+    # Helpers de texto (igual al PDF viejo)
+    # ----------------------------
+    BRAND = (0, 102, 204)
+    FAINT = (120, 120, 120)
+    GRID  = (210, 210, 210)
+
+    def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
+        if unicode_ok:
+            return s or ""
+        s = s or ""
+        nfkd = unicodedata.normalize("NFKD", s)
+        return "".join(ch for ch in nfkd if not unicodedata.combining(ch) and ord(ch) < 0x2500)
+
+    def _collapse_ws(s: str) -> str:
+        return re.sub(r"[ \t]+", " ", (s or "").strip())
+
+    def _wrap_unbreakables(s: str, chunk=60) -> str:
+        out = []
+        for w in (s or "").split(" "):
+            if len(w) > chunk:
+                out.extend([w[i:i+chunk] for i in range(0, len(w), chunk)])
+            else:
+                out.append(w)
+        return " ".join(out)
+
+    def safe_multicell(pdf, txt, font_name, font_style, font_size, color=None, align="J", line_space=1.2):
+        pdf.set_x(pdf.l_margin)
+        if color:
+            pdf.set_text_color(*color)
+        try:
+            pdf.set_font(font_name, font_style, font_size)
+        except Exception:
+            try:
+                pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
+            except Exception:
+                pdf.set_font("Arial", "", 10)
+
+        try:
+            pdf.multi_cell(pdf.epw, 7, txt, align=align)
+            pdf.ln(line_space)
+        except FPDFException:
+            txt2 = _wrap_unbreakables(txt, chunk=35)
+            pdf.set_font(font_name, "", 10)
+            pdf.multi_cell(pdf.epw, 7, txt2, align="L")
+            pdf.ln(line_space)
+
+    # ----------------------------
+    # PDF Class (igual al PDF viejo)
+    # ----------------------------
+    class InterviewPDF(_FPDF):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._logo_path   = None
+            self._base_font   = "Arial"
+            self._unicode_ok  = False
+            self._has_italic  = False
+            self._has_bold    = False
+            self._has_bi      = False
+
+        def header(self):
+            if self.page_no() == 1:
+                if self._logo_path and os.path.exists(self._logo_path):
+                    w = 92
+                    x = (self.w - w) / 2.0
+                    self.image(self._logo_path, x=x, y=10, w=w)
+                    y_line = 10 + (w * 0.38)
+                    self.set_y(y_line)
+                else:
+                    self.set_y(18)
+
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.6)
+                self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+                self.ln(3)
+
+                try:
+                    self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
+                except Exception:
+                    self.set_font("Arial", "B", 18)
+
+                self.set_fill_color(*BRAND)
+                self.set_text_color(255, 255, 255)
+                self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
+                self.set_text_color(0, 0, 0)
+                self.ln(4)
+            else:
+                self.set_y(14)
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.4)
+                self.line(self.l_margin, 14, self.w - self.r_margin, 14)
+                self.ln(7)
+
+        def footer(self):
+            self.set_y(-15)
+            try:
+                if self._has_italic or self._has_bi:
+                    self.set_font(self._base_font, "I", 9)
+                else:
+                    self.set_font(self._base_font, "", 9)
+            except Exception:
+                try:
+                    self.set_font("Arial", "I", 9)
+                except Exception:
+                    self.set_font("Arial", "", 9)
+
+            self.set_text_color(*FAINT)
+            self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
+
+    # ----------------------------
+    # Extraer preguntas/respuestas del sistema nuevo
+    # ----------------------------
+    qa_pairs = []
+
+    # 1) Relación directa
+    respuestas_rel = getattr(entrevista, 'respuestas', None)
+    if respuestas_rel is not None:
+        try:
+            for r in respuestas_rel:
+                qtxt = (getattr(r, 'pregunta_texto', None) or getattr(r, 'pregunta', None) or getattr(r, 'texto_pregunta', None) or '').strip()
+                atxt = (getattr(r, 'respuesta', None) or getattr(r, 'valor', None) or getattr(r, 'texto_respuesta', None) or '').strip()
+                if qtxt or atxt:
+                    qa_pairs.append((qtxt, atxt))
+        except Exception:
+            pass
+
+    # 2) Query por modelos
+    if (not qa_pairs) and RespModel is not None:
+        try:
+            q = db.session.query(RespModel)
+            if hasattr(RespModel, 'entrevista_id'):
+                q = q.filter(RespModel.entrevista_id == entrevista_id)
+            rows = q.all()
+
+            preg_map = {}
+            if PregModel is not None:
+                try:
+                    pregs = db.session.query(PregModel).all()
+                    for p in pregs:
+                        pid = getattr(p, 'id', None)
+                        txt = (getattr(p, 'texto', None) or getattr(p, 'pregunta', None) or '').strip()
+                        if pid is not None:
+                            preg_map[int(pid)] = txt
+                except Exception:
+                    preg_map = {}
+
+            for r in rows:
+                pid = getattr(r, 'pregunta_id', None)
+                qtxt = (getattr(r, 'pregunta_texto', None) or getattr(r, 'texto_pregunta', None) or '').strip()
+                if (not qtxt) and pid is not None:
+                    qtxt = (preg_map.get(int(pid), '') or '').strip()
+                atxt = (getattr(r, 'respuesta', None) or getattr(r, 'valor', None) or getattr(r, 'texto_respuesta', None) or '').strip()
+                if qtxt or atxt:
+                    qa_pairs.append((qtxt, atxt))
+        except Exception:
+            pass
+
+    # 3) Campo texto grande
+    if not qa_pairs:
+        blob = (getattr(entrevista, 'contenido', None)
+                or getattr(entrevista, 'texto', None)
+                or getattr(entrevista, 'entrevista_texto', None)
+                or getattr(entrevista, 'resumen', None)
+                or '').strip()
+        if blob:
+            for raw in blob.splitlines():
+                line = _collapse_ws(raw)
+                if ":" in line:
+                    qtxt, atxt = line.split(":", 1)
+                    qa_pairs.append((_collapse_ws(qtxt), _collapse_ws(atxt)))
+                else:
+                    qa_pairs.append(("", line))
+
+    if not qa_pairs:
+        return "No hay respuestas registradas para esta entrevista", 404
+
+    # ----------------------------
+    # Construcción del PDF (igual al viejo)
+    # ----------------------------
+    try:
+        pdf = InterviewPDF(format="A4")
+        pdf.alias_nb_pages()
+        pdf.set_auto_page_break(auto=True, margin=16)
+        pdf.set_margins(16, 16, 16)
+        pdf._logo_path = os.path.join(current_app.root_path, "static", "logo_nuevo.png")
+
+        base_font  = "Arial"
+        unicode_ok = False
+        has_bold   = False
+        has_italic = False
+        has_bi     = False
+
+        try:
+            font_dir = os.path.join(current_app.root_path, "static", "fonts")
+            reg  = os.path.join(font_dir, "DejaVuSans.ttf")
+            bold = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+            it   = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")
+            bi   = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")
+
+            if os.path.exists(reg):
+                pdf.add_font("DejaVuSans", "", reg, uni=True)
+                base_font  = "DejaVuSans"
+                unicode_ok = True
+            if os.path.exists(bold):
+                pdf.add_font("DejaVuSans", "B", bold, uni=True)
+                has_bold = True
+            if os.path.exists(it):
+                pdf.add_font("DejaVuSans", "I", it, uni=True)
+                has_italic = True
+            if os.path.exists(bi):
+                pdf.add_font("DejaVuSans", "BI", bi, uni=True)
+                has_bi = True
+        except Exception:
+            base_font  = "Arial"
+            unicode_ok = False
+            has_bold   = True
+            has_italic = True
+            has_bi     = True
+
+        pdf._base_font  = base_font
+        pdf._unicode_ok = unicode_ok
+        pdf._has_bold   = has_bold
+        pdf._has_italic = has_italic
+        pdf._has_bi     = has_bi
+
+        pdf.add_page()
+
+        bullet = "• " if unicode_ok else "- "
+
+        # ===== ENTREVISTA =====
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
+        except Exception:
+            pdf.set_font("Arial", "B", 13)
+
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+        # Pintar Q/A en el mismo formato del PDF viejo
+        for i, (qtxt, atxt) in enumerate(qa_pairs, start=1):
+            qtxt = _collapse_ws(_ascii_if_needed(qtxt, unicode_ok))
+            atxt = _collapse_ws(_ascii_if_needed(atxt, unicode_ok))
+
+            # Si no tenemos texto de pregunta, intentamos no inventar: solo mostramos la línea como texto
+            if qtxt and atxt:
+                safe_multicell(
+                    pdf,
+                    (qtxt + ":").strip(),
+                    base_font,
+                    "B" if has_bold else "",
+                    12,
+                    color=(0, 0, 0),
+                    align="L",
+                    line_space=1
+                )
+                ans = _wrap_unbreakables(atxt, 60)
+                ans = (bullet + ans) if ans else ans
+                safe_multicell(pdf, ans, base_font, "", 12, color=BRAND, align="J", line_space=2)
+            else:
+                # Línea suelta
+                line = (qtxt or atxt or "").strip()
+                if line:
+                    safe_multicell(pdf, _wrap_unbreakables(line, 60), base_font, "", 12, color=(0, 0, 0), align="J", line_space=1.5)
+
+        raw = pdf.output(dest="S")
+        pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
+        buf = io.BytesIO(pdf_bytes)
+        buf.seek(0)
+
+        return send_file(
+            buf,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"entrevista_{entrevista_id}.pdf"
+        )
+
+    except Exception as e:
+        current_app.logger.exception("❌ Error interno generando PDF (nuevo estilo viejo)")
+        return f"Error interno generando PDF: {e}", 500
+
+
+@app.route('/entrevistas/candidata/<int:fila>/pdf', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def generar_pdf_ultima_entrevista_candidata(fila: int):
+    """Acceso rápido: genera el PDF de la última entrevista (nuevo sistema) de una candidata por fila."""
+
+    EntrevistaModel = globals().get('Entrevista')
+    if EntrevistaModel is None:
+        return "❌ No se encontró el modelo 'Entrevista' en el proyecto.", 500
+
+    # Buscar última entrevista por candidata
+    try:
+        q = db.session.query(EntrevistaModel)
+        # campo típico
+        if hasattr(EntrevistaModel, 'candidata_id'):
+            q = q.filter(EntrevistaModel.candidata_id == fila)
+        elif hasattr(EntrevistaModel, 'fila'):
+            q = q.filter(EntrevistaModel.fila == fila)
+        elif hasattr(EntrevistaModel, 'candidata_fila'):
+            q = q.filter(EntrevistaModel.candidata_fila == fila)
+
+        # ordenar por fecha/id
+        if hasattr(EntrevistaModel, 'actualizada_en'):
+            q = q.order_by(EntrevistaModel.actualizada_en.desc())
+        elif hasattr(EntrevistaModel, 'creada_en'):
+            q = q.order_by(EntrevistaModel.creada_en.desc())
+        else:
+            q = q.order_by(EntrevistaModel.id.desc())
+
+        last = q.first()
+    except Exception:
+        last = None
+
+    if not last:
+        return "No hay entrevistas nuevas registradas para esa candidata", 404
+
+    return redirect(url_for('generar_pdf_entrevista_nueva_db', entrevista_id=int(getattr(last, 'id', 0))))
 
 
 @app.route("/gestionar_archivos/descargar_uno", methods=["GET"])
@@ -4140,6 +5264,173 @@ def eliminar_candidata():
         mensaje=mensaje,
         docs_info=docs_info,
     )
+
+import click
+from config_app import db
+from models import EntrevistaPregunta
+
+ENTREVISTAS_BANCO = {
+  "domestica": {
+    "titulo": "Entrevista para Doméstica",
+    "descripcion": "Preguntas específicas para empleadas domésticas.",
+    "preguntas": [
+      { "id": "nombre", "enunciado": "Nombre completo", "tipo": "texto" },
+      { "id": "nacionalidad", "enunciado": "Nacionalidad", "tipo": "texto" },
+      { "id": "edad", "enunciado": "Edad", "tipo": "texto" },
+      { "id": "direccion", "enunciado": "Dirección", "tipo": "texto_largo" },
+      { "id": "estado_civil", "enunciado": "Estado civil", "tipo": "texto" },
+      { "id": "tienes_hijos", "enunciado": "¿Tienes hijos?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "numero_hijos", "enunciado": "Número de hijos", "tipo": "texto" },
+      { "id": "edades_hijos", "enunciado": "Edades de los hijos", "tipo": "texto" },
+      { "id": "quien_cuida", "enunciado": "¿Quién cuida a sus hijos?", "tipo": "texto" },
+      { "id": "descripcion_personal", "enunciado": "¿Cómo te describes como persona?", "tipo": "texto_largo" },
+      { "id": "fuerte", "enunciado": "¿Cuál es tu fuerte?", "tipo": "texto" },
+      { "id": "modalidad", "enunciado": "Modalidad de trabajo", "tipo": "texto" },
+      { "id": "razon_trabajo", "enunciado": "¿Por qué eliges trabajar en una casa de familia?", "tipo": "texto_largo" },
+      { "id": "labores_anteriores", "enunciado": "Labores desempeñadas en trabajos anteriores", "tipo": "texto_largo" },
+      { "id": "tiempo_ultimo_trabajo", "enunciado": "Tiempo desde el último trabajo", "tipo": "texto" },
+      { "id": "razon_salida", "enunciado": "¿Por qué saliste de tu último trabajo?", "tipo": "texto_largo" },
+      { "id": "situacion_dificil", "enunciado": "¿Has enfrentado situaciones difíciles en el trabajo?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "manejo_situacion", "enunciado": "¿Cómo manejaste esa situación?", "tipo": "texto" },
+      { "id": "manejo_reclamo", "enunciado": "¿Cómo manejarías reclamos o malos tratos del jefe?", "tipo": "texto_largo" },
+      { "id": "uniforme", "enunciado": "¿Trabajas con uniforme?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "dias_feriados", "enunciado": "¿Trabajas días feriados?", "tipo": "radio", "opciones": ["Sí", "No", "Sí lo pagan"] },
+      { "id": "revision_salida", "enunciado": "¿Puedes ser revisada a la salida?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "colaboracion", "enunciado": "¿Estás dispuesta a colaborar en lo que el jefe necesite?", "tipo": "texto" },
+      { "id": "tipo_familia", "enunciado": "¿Con qué tipo de familia has trabajado anteriormente?", "tipo": "texto_largo" },
+      { "id": "cuidado_ninos", "enunciado": "¿Has cuidado niños y de qué edad?", "tipo": "texto_largo" },
+      { "id": "sabes_cocinar", "enunciado": "¿Sabes cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "gusta_cocinar", "enunciado": "¿Te gusta cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "que_cocinas", "enunciado": "¿Qué sabes cocinar?", "tipo": "texto_largo" },
+      { "id": "postres", "enunciado": "¿Haces postres?", "tipo": "texto_largo" },
+      { "id": "tareas_casa", "enunciado": "¿Qué tareas de la casa te gustan y cuáles no?", "tipo": "texto_largo" },
+      { "id": "electrodomesticos", "enunciado": "¿Sabes usar electrodomésticos modernos?", "tipo": "texto" },
+      { "id": "planchar", "enunciado": "¿Sabes planchar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "actividad_principal", "enunciado": "¿Tienes alguna actividad principal (trabajo/estudio)?", "tipo": "texto" },
+      { "id": "afiliacion_religiosa", "enunciado": "Afiliación religiosa", "tipo": "texto" },
+      { "id": "cursos_domesticos", "enunciado": "¿Tienes cursos en el área doméstica?", "tipo": "texto" },
+      { "id": "nivel_academico", "enunciado": "Nivel académico", "tipo": "texto" },
+      { "id": "condiciones_salud", "enunciado": "¿Tienes condiciones de salud?", "tipo": "texto" },
+      { "id": "alergico", "enunciado": "¿Eres alérgica a algo?", "tipo": "texto" },
+      { "id": "medicamentos", "enunciado": "¿Tomas medicamentos?", "tipo": "texto" },
+      { "id": "seguro_medico", "enunciado": "¿Tienes seguro médico?", "tipo": "texto" },
+      { "id": "pruebas_medicas", "enunciado": "¿Aceptas hacer pruebas médicas si se solicita?", "tipo": "texto" },
+      { "id": "vacunas_covid", "enunciado": "¿Cuántas vacunas del COVID tienes?", "tipo": "radio", "opciones": ["Dosis 1", "Dosis 2", "Dosis 3", "No tengo ninguna vacuna"] },
+      { "id": "tomas_alcohol", "enunciado": "¿Tomas alcohol?", "tipo": "radio", "opciones": ["Sí", "No", "A veces"] },
+      { "id": "fumas", "enunciado": "¿Fumas?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "texto" }
+    ]
+  },
+
+  "enfermera": {
+    "titulo": "Entrevista para Enfermera Domiciliaria",
+    "descripcion": "Preguntas específicas para profesionales de enfermería que brindan cuidado a domicilio en casas de familia.",
+    "preguntas": [
+      { "id": "nombre", "enunciado": "Nombre completo", "tipo": "texto" },
+      { "id": "nacionalidad", "enunciado": "Nacionalidad", "tipo": "texto" },
+      { "id": "edad", "enunciado": "Edad", "tipo": "texto" },
+      { "id": "direccion", "enunciado": "Dirección", "tipo": "texto_largo" },
+      { "id": "estado_civil", "enunciado": "Estado civil", "tipo": "texto" },
+      { "id": "tienes_hijos", "enunciado": "¿Tienes hijos?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "numero_hijos", "enunciado": "Número de hijos", "tipo": "texto" },
+      { "id": "edades_hijos", "enunciado": "Edades de los hijos", "tipo": "texto" },
+      { "id": "experiencia", "enunciado": "Años de experiencia en enfermería", "tipo": "texto" },
+      { "id": "licencia", "enunciado": "¿Posees licencia de enfermería?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "especialidad", "enunciado": "Especialidad o área de mayor experiencia", "tipo": "texto" },
+      { "id": "tipo_cuidado", "enunciado": "¿Tienes experiencia en cuidados a domicilio?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "disponibilidad", "enunciado": "Disponibilidad de turno y horarios", "tipo": "radio", "opciones": ["Diurno", "Nocturno", "Ambos"] },
+      { "id": "modalidad_trabajo", "enunciado": "¿Trabajarías con salida diaria o dormida?", "tipo": "radio", "opciones": ["Salida diaria", "Dormida", "Ambos"] },
+      { "id": "manejo_emergencias", "enunciado": "¿Tienes experiencia en manejo de emergencias en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "signos_vitales", "enunciado": "¿Sabes medir la presión arterial y tomar signos vitales?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "metodo_presion", "enunciado": "¿Con qué método mides la presión arterial?", "tipo": "radio", "opciones": ["Digital", "Manual", "No sé"] },
+      { "id": "manejo_medicacion", "enunciado": "¿Consideras que tienes buen manejo en la administración de medicación?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "adaptacion_entorno", "enunciado": "¿Cómo te adaptas a trabajar en entornos familiares?", "tipo": "texto_largo" },
+      { "id": "tiempo_ultimo_trabajo", "enunciado": "¿Cuánto tiempo ha pasado desde tu último trabajo?", "tipo": "texto" },
+      { "id": "razon_salida", "enunciado": "¿Por qué saliste de tu último trabajo?", "tipo": "texto_largo" },
+      { "id": "manejo_reclamo", "enunciado": "¿Cómo manejarías reclamos o malos tratos del jefe?", "tipo": "texto_largo" },
+      { "id": "dias_feriados", "enunciado": "¿Trabajas días feriados?", "tipo": "radio", "opciones": ["Sí", "No", "Sí, se lo pagan"] },
+      { "id": "revision_salida", "enunciado": "¿Puedes ser revisada a la salida?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "colaboracion", "enunciado": "¿Estás dispuesta a colaborar en lo que el jefe necesite?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "actividad_principal", "enunciado": "¿Tienes alguna actividad principal (trabajo/estudio)?", "tipo": "texto" },
+      { "id": "afiliacion_religiosa", "enunciado": "Afiliación religiosa", "tipo": "texto" },
+      { "id": "pruebas_medicas", "enunciado": "¿Aceptas hacer pruebas médicas si se solicita?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "vacunas_covid", "enunciado": "¿Cuántas vacunas del COVID tienes?", "tipo": "radio", "opciones": ["Dosis 1", "Dosis 2", "Dosis 3"] },
+      { "id": "idiomas", "enunciado": "Idiomas que hablas", "tipo": "texto" },
+      { "id": "motivacion", "enunciado": "¿Por qué eliges trabajar en cuidados domiciliarios?", "tipo": "texto_largo" },
+      { "id": "fortalezas", "enunciado": "¿Cuáles consideras que son tus fortalezas profesionales?", "tipo": "texto_largo" },
+      { "id": "situacion_dificil", "enunciado": "Describe una situación difícil en el cuidado domiciliario y cómo la resolviste", "tipo": "texto_largo" },
+      { "id": "tecnologia", "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] }
+    ]
+  },
+
+  "empleo_general": {
+    "titulo": "Entrevista de Empleo General",
+    "descripcion": "Preguntas generales para cualquier tipo de empleo.",
+    "preguntas": [
+      { "id": "nombre", "enunciado": "Nombre del candidato", "tipo": "texto" }
+    ]
+  }
+}
+
+
+@app.cli.command("seed-entrevista")
+def seed_entrevista():
+    """
+    Crea/actualiza el banco de preguntas.
+    Uso:
+      flask seed-entrevista
+    """
+    total_creadas = 0
+    total_actualizadas = 0
+
+    orden_global = 1
+
+    for categoria, data in ENTREVISTAS_BANCO.items():
+        preguntas = data.get("preguntas", [])
+        for p in preguntas:
+            clave = f"{categoria}.{p['id']}"   # ✅ clave única por categoría
+            texto = p.get("enunciado", "").strip()
+            tipo = (p.get("tipo") or "texto").strip()
+            opciones = p.get("opciones")
+
+            q = EntrevistaPregunta.query.filter_by(clave=clave).first()
+            if not q:
+                q = EntrevistaPregunta(
+                    clave=clave,
+                    texto=texto[:255],
+                    tipo=tipo,
+                    opciones=opciones,
+                    orden=orden_global,
+                    activa=True
+                )
+                db.session.add(q)
+                total_creadas += 1
+            else:
+                cambio = False
+                if (q.texto or "") != texto[:255]:
+                    q.texto = texto[:255]
+                    cambio = True
+                if (q.tipo or "texto") != tipo:
+                    q.tipo = tipo
+                    cambio = True
+                if q.opciones != opciones:
+                    q.opciones = opciones
+                    cambio = True
+                if (q.orden or 0) != orden_global:
+                    q.orden = orden_global
+                    cambio = True
+                if q.activa is False:
+                    q.activa = True
+                    cambio = True
+
+                if cambio:
+                    total_actualizadas += 1
+
+            orden_global += 1
+
+    db.session.commit()
+    click.echo(f"OK ✅ Preguntas creadas: {total_creadas} | actualizadas: {total_actualizadas}")
 
 
 # -----------------------------------------------------------------------------

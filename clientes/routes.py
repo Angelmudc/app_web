@@ -2,6 +2,7 @@
 from datetime import datetime, date
 from functools import wraps
 import re
+from typing import Optional  # ✅ PARA PYTHON 3.9
 
 from flask import (
     render_template, redirect, url_for, flash,
@@ -770,20 +771,20 @@ def _list_from_form(name: str):
     vals = request.form.getlist(name)
     return [v.strip() for v in vals if v and v.strip()]
 
-def _norm_ritmo(v: str | None):
+def _norm_ritmo(v: Optional[str]):
     v = (v or '').strip().lower().replace(' ', '_')
     v = v.replace('muyactivo', 'muy_activo')
     return v if v in _RITMOS else None
 
-def _norm_estilo(v: str | None):
+def _norm_estilo(v: Optional[str]):
     v = (v or '').strip().lower().replace(' ', '_')
     return _ESTILOS.get(v)
 
-def _norm_level(v: str | None):
+def _norm_level(v: Optional[str]):
     v = (v or '').strip().lower()
     return v if v in _LEVELS else None
 
-def _parse_int_1a5(v: str | None):
+def _parse_int_1a5(v: Optional[str]):
     try:
         n = int(str(v).strip())
         return n if 1 <= n <= 5 else None
@@ -835,7 +836,7 @@ def _save_compat_cliente(s: Solicitud, payload_dict: dict) -> str:
     session['compat_tests_cliente'][f"{current_user.id}:{s.id}"] = payload_dict
     return 'session'
 
-def _load_compat_cliente(s: Solicitud) -> dict | None:
+def _load_compat_cliente(s: Solicitud) -> Optional[dict]:
     # 1) JSON nativo
     if hasattr(s, 'compat_test_cliente_json') and getattr(s, 'compat_test_cliente_json', None):
         return getattr(s, 'compat_test_cliente_json')

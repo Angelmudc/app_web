@@ -5,12 +5,14 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
+from typing import Optional
+
 from flask import Flask, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
 from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf import CSRFProtect
 
@@ -35,8 +37,8 @@ csrf = CSRFProtect()
 # Usuarios en memoria (para login admin/secretaria)
 # ─────────────────────────────────────────────────────────────
 USUARIOS = {
-    "Cruz": {"pwd_hash": generate_password_hash("8998"), "role": "admin"},
-    "vanina": {"pwd_hash": generate_password_hash("2424"), "role": "secretaria"},
+    "Cruz": {"pwd_hash": generate_password_hash("8998", method="pbkdf2:sha256"), "role": "admin"},
+    "vanina": {"pwd_hash": generate_password_hash("2424", method="pbkdf2:sha256"), "role": "secretaria"},
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -45,7 +47,7 @@ USUARIOS = {
 CEDULA_PATTERN = re.compile(r"^\d{11}$")
 
 
-def normalize_cedula(raw: str) -> str | None:
+def normalize_cedula(raw: str) -> Optional[str]:
     digits = re.sub(r"\D", "", raw or "")
     return digits if CEDULA_PATTERN.fullmatch(digits) else None
 
@@ -80,8 +82,14 @@ def create_app():
     app = Flask(__name__, instance_relative_config=False)
 
     # ── Seguridad de sesión/cookies
-    env = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production")).lower()
+    # En local, si no defines nada, asumimos DEVELOPMENT para que no rompa cookies/CSRF.
+    env = (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development").lower()
     prod = env in ("prod", "production")
+
+    # Si estás en localhost (127.0.0.1 / localhost), NO forces cookies secure aunque env diga production.
+    # Esto evita el error: "The CSRF session token is missing" en http local.
+    host = (os.getenv("FLASK_RUN_HOST") or "").strip().lower()
+    is_localhost = host in ("127.0.0.1", "localhost") or host == ""
 
     default_secret = "cambia_esta_clave_a_una_muy_segura"
     app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", default_secret)
@@ -92,9 +100,10 @@ def create_app():
         {
             "SESSION_COOKIE_HTTPONLY": True,
             "SESSION_COOKIE_SAMESITE": "Lax",
-            "SESSION_COOKIE_SECURE": prod,  # True si usas HTTPS
+            "SESSION_COOKIE_DOMAIN": None,
+            "SESSION_COOKIE_SECURE": (prod and not is_localhost),  # True solo en HTTPS real
             "REMEMBER_COOKIE_HTTPONLY": True,
-            "REMEMBER_COOKIE_SECURE": prod,
+            "REMEMBER_COOKIE_SECURE": (prod and not is_localhost),
             "PERMANENT_SESSION_LIFETIME": int(
                 os.getenv("SESSION_TTL_SECONDS", "2592000")
             ),  # 30 días

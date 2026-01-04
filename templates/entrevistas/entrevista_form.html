@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Entrevista{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 980px; margin: 24px auto;">
+  <div class="card" style="padding: 18px;">
+    <h2 style="margin:0 0 6px 0;">
+      {% if modo == "editar" %}Editar entrevista{% else %}Nueva entrevista{% endif %}
+    </h2>
+
+    <p style="margin:0 0 18px 0; opacity:.85;">
+      <b>Candidata:</b> {{ candidata.nombre_completo }}
+      {% if candidata.codigo %} · <b>Código:</b> {{ candidata.codigo }}{% endif %}
+      {# Nota: datos sensibles como cédula NO se muestran aquí #}
+    </p>
+
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="grid" style="display:grid; gap:14px;">
+
+        {% for p in preguntas %}
+          <div class="field" style="padding:12px; border:1px solid rgba(0,0,0,.08); border-radius:12px;">
+            <label style="display:block; font-weight:700; margin-bottom:8px;">
+              {{ p.texto }}
+            </label>
+
+            {% set value = respuestas_por_pregunta.get(p.id, "") %}
+
+            {% if p.tipo == "texto_largo" %}
+              <textarea
+                name="q_{{ p.id }}"
+                rows="4"
+                style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.15);"
+              >{{ value }}</textarea>
+
+            {% elif p.tipo == "radio" %}
+              <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                {% for opt in (p.opciones or []) %}
+                  <label style="display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid rgba(0,0,0,.12); border-radius:999px; cursor:pointer;">
+                    <input
+                      type="radio"
+                      name="q_{{ p.id }}"
+                      value="{{ opt }}"
+                      {% if value == opt %}checked{% endif %}
+                    >
+                    <span>{{ opt }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+
+            {% else %}
+              <input
+                type="text"
+                name="q_{{ p.id }}"
+                value="{{ value }}"
+                style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.15);"
+              >
+            {% endif %}
+          </div>
+        {% endfor %}
+
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="btn btn-primary" type="submit">
+          {% if modo == "editar" %}Guardar cambios{% else %}Guardar entrevista{% endif %}
+        </button>
+
+        <a class="btn btn-outline" href="{{ url_for('entrevistas_de_candidata', fila=candidata.fila) }}">
+          Volver
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

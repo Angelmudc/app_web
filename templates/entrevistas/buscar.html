@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 1100px; margin: 28px auto; padding: 0 14px;">
+
+  <div class="card" style="padding: 18px 18px 14px 18px; margin-bottom: 14px;">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2 style="margin:0; line-height:1.2;">Entrevistas (Nuevo)</h2>
+        <p style="margin:6px 0 0 0; opacity:.85;">
+          Busca una candidata y abre la entrevista nueva (desde la base de datos).
+        </p>
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn btn-outline" href="/home">← Home</a>
+        <a class="btn" href="/entrevistas/lista">Ver últimas</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding: 18px; margin-bottom: 14px;">
+    <form method="POST" novalidate style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div style="flex: 1 1 380px;">
+        <label style="display:block; font-weight:700; margin:0 0 6px 0;">Buscar</label>
+        <input
+          type="text"
+          name="busqueda"
+          value="{{ q or '' }}"
+          placeholder="Nombre / Cédula / Teléfono"
+          style="width:100%;"
+        >
+      </div>
+
+      <div>
+        <button class="btn" type="submit" style="min-width:140px;">Buscar</button>
+      </div>
+    </form>
+
+    {% if mensaje %}
+      <div class="card" style="padding: 12px; margin-top: 12px; border: 1px solid rgba(255,255,255,.10);">
+        {{ mensaje }}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="padding: 18px;">
+    <h3 style="margin:0 0 10px 0;">Resultados</h3>
+
+    {% if resultados and resultados|length > 0 %}
+      <div style="overflow:auto;">
+        <table class="table" style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:10px;">Nombre</th>
+              <th style="text-align:left; padding:10px;">Cédula</th>
+              <th style="text-align:left; padding:10px;">Teléfono</th>
+              <th style="text-align:left; padding:10px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in resultados %}
+              <tr>
+                <td style="padding:10px;"><b>{{ c.nombre_completo }}</b></td>
+                <td style="padding:10px;">{{ c.cedula or '' }}</td>
+                <td style="padding:10px;">{{ c.numero_telefono or '' }}</td>
+                <td style="padding:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                  <a class="btn btn-outline" href="{{ url_for('entrevistas_de_candidata', fila=c.fila) }}">
+                    Ver entrevistas
+                  </a>
+                  <a class="btn" href="{{ url_for('entrevista_nueva_db', fila=c.fila, tipo='domestica') }}">
+                    Nueva doméstica
+                  </a>
+                  <a class="btn" href="{{ url_for('entrevista_nueva_db', fila=c.fila, tipo='enfermera') }}">
+                    Nueva enfermera
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p style="opacity:.8; margin: 0;">Todavía no hay resultados. Haz una búsqueda arriba.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}

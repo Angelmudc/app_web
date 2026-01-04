@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Entrevistas (DB){% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="card">
+    <div class="card-header card-header--split">
+      <div>
+        <h1 class="card-title">Entrevistas · Últimas 50</h1>
+        <p class="card-meta">
+          Lista interna para <b>admin/secretaria</b> (QA / seguimiento).
+        </p>
+      </div>
+
+      <div class="card-actions">
+        <a class="btn btn-primary" href="{{ url_for('entrevistas_buscar') }}">Buscar candidata</a>
+        <a class="btn btn-outline" href="{{ url_for('home') }}">Inicio</a>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    {% if not entrevistas %}
+      <div class="alert alert-muted">No hay entrevistas guardadas todavía.</div>
+    {% else %}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Candidata (fila)</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in entrevistas %}
+              {% set fila = e.candidata_id|default(None) %}
+              <tr>
+                <td><b>{{ e.id }}</b></td>
+
+                <td>
+                  {% if fila %}
+                    {{ fila }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if e.tipo %}
+                    {{ e.tipo|replace('_',' ')|title }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if e.estado %}
+                    <span class="badge">{{ e.estado }}</span>
+                  {% else %}
+                    <span class="badge badge-muted">—</span>
+                  {% endif %}
+                </td>
+
+                <td>
+                  <div class="btn-row">
+                    {% if fila %}
+                      <a class="btn btn-outline btn-sm" href="{{ url_for('entrevistas_de_candidata', fila=fila) }}">Ver candidata</a>
+                    {% endif %}
+
+                    <a class="btn btn-primary btn-sm" href="{{ url_for('entrevista_editar_db', entrevista_id=e.id) }}">Editar</a>
+
+                    {# PDF opcional: solo muestra el botón si la ruta existe #}
+                    {% if current_app and 'generar_pdf_entrevista_db' in current_app.view_functions %}
+                      <a class="btn btn-outline btn-sm" href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=e.id) }}">PDF</a>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
