@@ -428,7 +428,9 @@ body::before{
     linear-gradient(to right, rgba(255,255,255,.04) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255,255,255,.04) 1px, transparent 1px);
   background-size: 42px 42px;
+  -webkit-mask-image: radial-gradient(700px 520px at 30% 30%, rgba(0,0,0,1), transparent 72%);
   mask-image: radial-gradient(700px 520px at 30% 30%, rgba(0,0,0,1), transparent 72%);
+  mask: radial-gradient(700px 520px at 30% 30%, rgba(0,0,0,1), transparent 72%);
   animation: gridDrift 16s linear infinite;
 }
 body::after{
@@ -449,6 +451,35 @@ body::after{
 
 @media (prefers-reduced-motion: reduce){
   *{ animation:none !important; transition:none !important; }
+}
+
+/* =========================
+   1.1) PERFORMANCE MODE (PC gama baja)
+   - No cambia el diseño base; solo baja efectos pesados cuando el dispositivo es lento.
+   - Reduce blur/backdrop y animaciones de fondo para mejorar fluidez.
+========================= */
+@media (update: slow), (prefers-reduced-transparency: reduce){
+  body::before,
+  body::after{
+    animation: none !important;
+    filter: none !important;
+  }
+
+  /* Evita que el blur mate el rendimiento */
+  .navbar,
+  .card,
+  .panel,
+  .glass,
+  .toast,
+  .modal-content,
+  footer{
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Sombras más ligeras */
+  .navbar{ box-shadow: 0 8px 22px rgba(0,0,0,.18) !important; }
+  .card{ box-shadow: var(--shadow-xs) !important; }
 }
 
 /* =========================
