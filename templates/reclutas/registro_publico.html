@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_public.html" %}
 {% block content %}
 
 <div class="container" style="max-width: 980px; margin: 26px auto;">
@@ -6,19 +6,12 @@
 
     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
       <div>
-        {% if modo == 'editar' %}
-          <h2 style="margin:0;">Editar perfil</h2>
-        {% else %}
-          <h2 style="margin:0;">Nuevo perfil</h2>
-          <p style="margin:6px 0 0 0; opacity:.8;">
-            Reclutamiento general (no doméstica)
-          </p>
-        {% endif %}
+        <h2 style="margin:0;">Registro de candidatos</h2>
+        <p style="margin:6px 0 0 0; opacity:.8;">
+          Completa los datos y envía tu perfil.
+        </p>
       </div>
 
-      <div style="display:flex; gap:8px;">
-        <a class="btn btn-ghost" href="{{ url_for('reclutas.lista') }}">Volver</a>
-      </div>
     </div>
 
     <hr style="margin:16px 0; opacity:.15;">
@@ -58,7 +51,7 @@
             <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.sexo.label.text }}</label>
             {{ form.sexo(class_="input", style="width:100%;") }}
             <div id="sexo_otro_wrap" style="display:none; margin-top:8px;">
-              <input class="input" style="width:100%;" type="text" name="sexo_otro" placeholder="Especifica (otro)">
+              <input class="input" style="width:100%;" type="text" name="sexo_otro" placeholder="Especifica (otros)">
             </div>
           </div>
 
@@ -113,7 +106,7 @@
             <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.modalidad.label.text }}</label>
             {{ form.modalidad(class_="input", style="width:100%;") }}
             <div id="modalidad_otro_wrap" style="display:none; margin-top:8px;">
-              <input class="input" style="width:100%;" type="text" name="modalidad_otro" placeholder="Especifica (otro)">
+              <input class="input" style="width:100%;" type="text" name="modalidad_otro" placeholder="Especifica (otros)">
             </div>
           </div>
         </div>
@@ -136,9 +129,9 @@
           </label>
           {{ form.tipos_empleo_busca(class_="input", style="width:100%; min-height: 120px;") }}
           <div id="tipos_empleo_busca_otro_wrap" style="display:none; margin-top:8px;">
-            <input class="input" style="width:100%;" type="text" name="tipos_empleo_busca_otro" placeholder="Especifica (otro)">
+            <input class="input" style="width:100%;" type="text" name="tipos_empleo_busca_otro" placeholder="Especifica (otros)">
             <div style="opacity:.7; font-size:.85rem; margin-top:6px;">
-              Si marcaste “Otro”, escribe aquí qué tipo de empleo es.
+              Si marcaste “Otros”, escribe aquí qué tipo de empleo es.
             </div>
           </div>
           <div style="opacity:.7; font-size:.85rem; margin-top:6px;">
@@ -230,15 +223,7 @@
         </div>
       </div>
 
-      <!-- Bloque: Interno -->
-      <div class="card" style="padding:14px; margin-bottom:14px;">
-        <h3 style="margin:0 0 10px 0;">Observaciones internas</h3>
-        <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.observaciones_internas.label.text }}</label>
-        {{ form.observaciones_internas(class_="input", style="width:100%; min-height:120px;", placeholder="Notas internas (no público)") }}
-      </div>
-
       <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
-        <a href="{{ url_for('reclutas.lista') }}" class="btn btn-ghost">Cancelar</a>
         {{ form.submit(class_="btn btn-primary") }}
       </div>
 

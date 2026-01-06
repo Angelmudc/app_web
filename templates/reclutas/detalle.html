@@ -7,9 +7,6 @@
     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
       <div>
         <h2 style="margin:0;">Detalle del perfil</h2>
-        <p style="margin:6px 0 0 0; opacity:.8;">
-          Código: <b>{{ recluta.codigo }}</b>
-        </p>
       </div>
 
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
@@ -31,22 +28,6 @@
           <button class="btn btn-ghost" type="submit">Reset</button>
         </form>
 
-        {% if not recluta.codigo %}
-        <form method="POST" action="{{ url_for('reclutas.inscribir', recluta_id=recluta.id) }}" style="display:inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="monto" value="500">
-
-          <select name="via" required style="padding:6px; border-radius:6px;">
-            <option value="">Vía</option>
-            <option value="oficina">Oficina</option>
-            <option value="transferencia">Transferencia</option>
-          </select>
-
-          <button class="btn btn-success" type="submit">
-            Inscribir · RD$500
-          </button>
-        </form>
-        {% endif %}
       </div>
     </div>
 
@@ -74,7 +55,6 @@
 
     <div class="card" style="padding:14px; margin-top:12px;">
       <h3 style="margin:0 0 10px 0;">Laboral</h3>
-      <div><b>Empleo principal:</b> {{ (recluta.empleo_principal or '—')|replace('_',' ')|title }}</div>
       <div><b>Busca:</b> {% if recluta.tipos_empleo_busca %}{{ recluta.tipos_empleo_busca|join(', ') }}{% else %}—{% endif %}</div>
       <div><b>Modalidad:</b> {{ (recluta.modalidad or '—')|replace('_',' ')|title }}</div>
       <div><b>Horario:</b> {{ recluta.horario_disponible or '—' }}</div>

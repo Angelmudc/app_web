@@ -84,7 +84,6 @@
       <table style="width:100%; border-collapse:collapse; min-width: 980px;">
         <thead>
           <tr style="text-align:left; opacity:.85;">
-            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Código</th>
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Nombre</th>
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Cédula</th>
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Teléfono</th>
@@ -98,7 +97,7 @@
         <tbody>
           {% if reclutas|length == 0 %}
             <tr>
-              <td colspan="8" style="padding:14px; opacity:.75;">
+              <td colspan="7" style="padding:14px; opacity:.75;">
                 No hay perfiles con esos filtros.
               </td>
             </tr>
@@ -106,10 +105,6 @@
 
           {% for r in reclutas %}
             <tr>
-              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
-                <b>{{ r.codigo }}</b>
-              </td>
-
               <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
                 {{ r.nombre_completo }}
                 {% if r.edad %}
@@ -162,11 +157,6 @@
 
                   <a class="btn btn-ghost" href="{{ url_for('reclutas.detalle', recluta_id=r.id) }}">Detalle</a>
                   <a class="btn btn-ghost" href="{{ url_for('reclutas.editar', recluta_id=r.id) }}">Editar</a>
-                  {% if not r.inscrito %}
-                    <a class="btn btn-primary" href="{{ url_for('reclutas.inscribir', recluta_id=r.id) }}">
-                      Inscribir
-                    </a>
-                  {% endif %}
 
                   <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=r.id, nuevo_estado='aprobado') }}" style="display:inline;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -181,6 +171,15 @@
                   <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=r.id, nuevo_estado='nuevo') }}" style="display:inline;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button class="btn btn-ghost" type="submit">Reset</button>
+                  </form>
+                  <form method="POST"
+                        action="{{ url_for('reclutas.eliminar', recluta_id=r.id) }}"
+                        style="display:inline;"
+                        onsubmit="return confirm('¿Seguro que deseas eliminar este perfil? Esta acción no se puede deshacer.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-danger" type="submit">
+                      Eliminar
+                    </button>
                   </form>
                 </div>
               </td>

@@ -1188,9 +1188,6 @@ class ReclutaPerfil(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Código interno (ej: REC-000001).
-    # ⚠️ IMPORTANTE: NO se genera al crear el perfil. Se asigna al INSCRIBIR.
-    codigo = db.Column(db.String(30), unique=True, index=True, nullable=True)
 
     # Estado interno del perfil
     estado = db.Column(
@@ -1202,36 +1199,6 @@ class ReclutaPerfil(db.Model):
         comment="Estado interno del perfil reclutado"
     )
 
-    # ─────────────────────────────────────────────
-    # INSCRIPCIÓN (SE ASIGNA DESPUÉS DE APROBAR)
-    # - Cuando se inscribe: se genera `codigo`, se registra pago, fecha y vía.
-    # ─────────────────────────────────────────────
-    inscrito = db.Column(
-        db.Boolean,
-        nullable=False,
-        default=False,
-        server_default=text('false'),
-        index=True,
-        comment="True si ya fue inscrito (pagó inscripción y se le asignó código)."
-    )
-
-    inscripcion_monto = db.Column(
-        db.Numeric(12, 2),
-        nullable=True,
-        comment="Monto pagado por inscripción (ej: 500.00)."
-    )
-
-    inscripcion_fecha = db.Column(
-        db.Date,
-        nullable=True,
-        comment="Fecha en que se realizó la inscripción."
-    )
-
-    inscripcion_via = db.Column(
-        SAEnum('oficina', 'transferencia', name='recluta_inscripcion_via_enum'),
-        nullable=True,
-        comment="Vía de inscripción: oficina o transferencia."
-    )
 
     # Auditoría simple (texto para no amarrarnos a otro modelo)
     creado_por = db.Column(
@@ -1384,7 +1351,7 @@ class ReclutaPerfil(db.Model):
     observaciones_internas = db.Column(db.Text, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<ReclutaPerfil {self.id} codigo={self.codigo} inscrito={self.inscrito} cedula={self.cedula}>"
+        return f"<ReclutaPerfil {self.id} estado={self.estado} cedula={self.cedula}>"
 
 
 class ReclutaCambio(db.Model):

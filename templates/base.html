@@ -83,11 +83,13 @@
           <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.listar_solicitudes') }}">Solicitudes</a></li>
           {% endif %}
 
-          {% if has_endpoint('admin.acciones_solicitudes_proceso') %}
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('admin.acciones_solicitudes_proceso') }}">Acciones Rápidas</a>
-          </li>
-          {% endif %}
+          {% block quick_actions_nav %}
+            {% if has_endpoint('admin.acciones_solicitudes_proceso') and current_user.is_authenticated %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('admin.acciones_solicitudes_proceso') }}">Acciones Rápidas</a>
+            </li>
+            {% endif %}
+          {% endblock %}
 
           {% if has_endpoint('otros_listar') %}
           <li class="nav-item"><a class="nav-link" href="{{ url_for('otros_listar') }}">Otros Empleos</a></li>

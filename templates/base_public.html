@@ -1,0 +1,73 @@
+
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Doméstica del Cibao A&D{% endblock %}</title>
+
+  {# ─── CSS base (mismos archivos que el privado) ─── #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/animations.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+
+  {# Iconos #}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" referrerpolicy="no-referrer" />
+
+  {% block extra_css %}{% endblock %}
+</head>
+
+<body class="public-layout">
+
+  {# ─────────────────────────────────────────────
+     HEADER PÚBLICO (simple, limpio, profesional)
+  ───────────────────────────────────────────── #}
+  <header class="public-header">
+    <div class="container" style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&D" style="height:44px;">
+        <strong style="font-size:1.05rem; color:#1f2937;">Doméstica del Cibao A&D</strong>
+      </div>
+
+      <div style="font-size:.9rem; color:#6b7280;">
+        Reclutamiento y gestión profesional
+      </div>
+    </div>
+  </header>
+
+  {# ─────────────────────────────────────────────
+     CONTENIDO
+  ───────────────────────────────────────────── #}
+  <main style="min-height: calc(100vh - 140px);">
+    {% block content %}{% endblock %}
+  </main>
+
+  {# ─────────────────────────────────────────────
+     FOOTER PÚBLICO
+  ───────────────────────────────────────────── #}
+  <footer class="public-footer">
+    <div class="container" style="display:flex; flex-direction:column; gap:10px; text-align:center;">
+      <div style="font-weight:500;">© {{ current_year if current_year is defined else '' }} Doméstica del Cibao A&D</div>
+      <div style="font-size:.85rem; color:#6b7280;">
+        Este formulario es público. La información enviada será utilizada únicamente para fines de reclutamiento.
+      </div>
+    </div>
+  </footer>
+
+  {# ─── JS base (los mismos que el privado, sin lógica interna) ─── #}
+  <script src="{{ url_for('static', filename='js/core/loader.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/core/modal.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/core/toast.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/ui/ui.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/ui/theme.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/forms/validate.js') }}"></script>
+
+  {% block extra_js %}{% endblock %}
+
+</body>
+</html>

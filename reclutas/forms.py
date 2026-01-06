@@ -12,10 +12,13 @@ from wtforms.validators import DataRequired, Optional
 from models import TIPOS_EMPLEO_GENERAL
 
 
+# ======================================================
+# FORMULARIO PRIVADO (Admins / Secretarias)
+# ======================================================
 class ReclutaForm(FlaskForm):
     """
-    Formulario corto e inteligente para reclutamiento general (NO doméstica).
-    Diseñado para secretarias y admins.
+    Formulario para reclutamiento general (NO doméstica).
+    Uso interno: admins y secretarias.
     """
 
     # ─────────────────────────────────────────────
@@ -86,15 +89,20 @@ class ReclutaForm(FlaskForm):
     # ─────────────────────────────────────────────
     tipos_empleo_busca = SelectMultipleField(
         'Tipos de empleo que busca',
-        choices=[(t, t.replace('_', ' ').title()) for t in TIPOS_EMPLEO_GENERAL],
+        choices=(
+            [
+                (
+                    t,
+                    'Secretario' if t == 'oficina' else t.replace('_', ' ').title()
+                )
+                for t in TIPOS_EMPLEO_GENERAL
+                if t not in ('otro', 'otros')
+            ]
+            + [('panadero', 'Panadero'), ('pintor', 'Pintor')]
+            + [('otros', 'Otros')]
+        ),
         validators=[Optional()],
         description="Puede marcar varios"
-    )
-
-    empleo_principal = SelectField(
-        'Empleo principal',
-        choices=[('', 'Seleccionar')] + [(t, t.replace('_', ' ').title()) for t in TIPOS_EMPLEO_GENERAL],
-        validators=[Optional()]
     )
 
     modalidad = SelectField(
@@ -132,8 +140,7 @@ class ReclutaForm(FlaskForm):
 
     experiencia_resumen = StringField(
         'Experiencia resumida',
-        validators=[Optional()],
-        description="Resumen corto"
+        validators=[Optional()]
     )
 
     nivel_educativo = StringField(
@@ -148,29 +155,29 @@ class ReclutaForm(FlaskForm):
     )
 
     # ─────────────────────────────────────────────
-    # Condiciones rápidas
+    # Condiciones
     # ─────────────────────────────────────────────
     documentos_al_dia = BooleanField('Documentos al día')
 
-    disponible_fines_o_noches = BooleanField('Disponible fines de semana o noches')
+    disponible_fines_o_noches = BooleanField(
+        'Disponible fines de semana o noches'
+    )
 
     # ─────────────────────────────────────────────
     # Referencias
     # ─────────────────────────────────────────────
     referencias_laborales = TextAreaField(
         'Referencias laborales',
-        validators=[Optional()],
-        description="Nombres, teléfonos y relación (si aplica)"
+        validators=[Optional()]
     )
 
     referencias_familiares = TextAreaField(
         'Referencias familiares',
-        validators=[Optional()],
-        description="Nombres, teléfonos y relación (si aplica)"
+        validators=[Optional()]
     )
 
     # ─────────────────────────────────────────────
-    # Interno
+    # Interno (SOLO PRIVADO)
     # ─────────────────────────────────────────────
     observaciones_internas = TextAreaField(
         'Observaciones internas',
@@ -178,3 +185,19 @@ class ReclutaForm(FlaskForm):
     )
 
     submit = SubmitField('Guardar perfil')
+
+
+# ======================================================
+# FORMULARIO PÚBLICO
+# ======================================================
+class ReclutaPublicForm(ReclutaForm):
+    """
+    Versión pública del formulario.
+    Mismos campos que el privado, SIN observaciones internas.
+    """
+
+    # En público no existe el campo interno
+    observaciones_internas = None
+
+    # Texto del botón en público
+    submit = SubmitField('Enviar')
