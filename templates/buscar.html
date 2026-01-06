@@ -227,8 +227,9 @@
             <label class="form-label" for="edad">Edad</label>
             <div class="input-group">
               <span class="input-group-text"><i class="fa-solid fa-hashtag"></i></span>
-              <input id="edad" name="edad" type="number" inputmode="numeric"
-                     class="form-control track-change" value="{{ candidata.edad or '' }}">
+              <input id="edad" name="edad" type="text" inputmode="numeric"
+                     class="form-control track-change" value="{{ candidata.edad or '' }}"
+                     placeholder="Ej: 30, 30-40, 45+">
             </div>
           </div>
           <div class="col-md-4">
@@ -312,7 +313,7 @@
           <div class="col-md-6">
             <div class="form-check">
               <input id="acepta_porcentaje" class="form-check-input track-change" type="checkbox" name="acepta_porcentaje"
-                     {% if candidata.acepta_porcentaje_sueldo == 1 %}checked{% endif %}>
+                     value="si" {% if candidata.acepta_porcentaje_sueldo %}checked{% endif %}>
               <label class="form-check-label" for="acepta_porcentaje">Acepta porcentaje</label>
             </div>
           </div>
@@ -344,7 +345,7 @@
 
     {# --- ACCIONES --- #}
     <div class="d-flex gap-2">
-      <button class="btn btn-success" id="btnGuardar">
+      <button class="btn btn-success" type="submit">
         💾 Guardar
       </button>
       <a href="{{ url_for('buscar_candidata') }}" class="btn btn-outline-secondary">
@@ -440,12 +441,16 @@
     tracked.forEach(el=>{
       const initial = (el.type === 'checkbox') ? el.checked : (el.value ?? '');
       el.dataset.initial = initial;
+
       const dirty = () => {
         const now = (el.type === 'checkbox') ? el.checked : (el.value ?? '');
         const changed = String(now) !== String(el.dataset.initial);
         el.classList.toggle('is-dirty', changed); // estilo de "pendiente", NO error
-        if(changed) hasChanges = true;
+
+        // Recalcula si existe AL MENOS un campo sucio
+        hasChanges = Array.from(tracked).some(x => x.classList.contains('is-dirty'));
       };
+
       el.addEventListener('input', dirty);
       el.addEventListener('change', dirty);
     });

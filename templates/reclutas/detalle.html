@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 980px; margin: 26px auto;">
+  <div class="card" style="padding: 18px;">
+
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2 style="margin:0;">Detalle del perfil</h2>
+        <p style="margin:6px 0 0 0; opacity:.8;">
+          Código: <b>{{ recluta.codigo }}</b>
+        </p>
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <a class="btn btn-ghost" href="{{ url_for('reclutas.lista') }}">Volver</a>
+        <a class="btn btn-primary" href="{{ url_for('reclutas.editar', recluta_id=recluta.id) }}">Editar</a>
+
+        <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=recluta.id, nuevo_estado='aprobado') }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-secondary" type="submit">Aprobar</button>
+        </form>
+
+        <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=recluta.id, nuevo_estado='rechazado') }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-danger" type="submit">Rechazar</button>
+        </form>
+
+        <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=recluta.id, nuevo_estado='nuevo') }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-ghost" type="submit">Reset</button>
+        </form>
+
+        {% if not recluta.codigo %}
+        <form method="POST" action="{{ url_for('reclutas.inscribir', recluta_id=recluta.id) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="monto" value="500">
+
+          <select name="via" required style="padding:6px; border-radius:6px;">
+            <option value="">Vía</option>
+            <option value="oficina">Oficina</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+
+          <button class="btn btn-success" type="submit">
+            Inscribir · RD$500
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <hr style="margin:16px 0; opacity:.15;">
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      <div class="card" style="padding:14px;">
+        <h3 style="margin:0 0 10px 0;">Datos</h3>
+        <div><b>Nombre:</b> {{ recluta.nombre_completo }}</div>
+        <div><b>Cédula:</b> {{ recluta.cedula }}</div>
+        <div><b>Edad:</b> {{ recluta.edad or '—' }}</div>
+        <div><b>Sexo:</b> {{ recluta.sexo or '—' }}</div>
+        <div><b>Nacionalidad:</b> {{ recluta.nacionalidad or '—' }}</div>
+      </div>
+
+      <div class="card" style="padding:14px;">
+        <h3 style="margin:0 0 10px 0;">Contacto</h3>
+        <div><b>Teléfono:</b> {{ recluta.telefono }}</div>
+        <div><b>Email:</b> {{ recluta.email or '—' }}</div>
+        <div><b>Dirección:</b> {{ recluta.direccion_completa or '—' }}</div>
+        <div><b>Ciudad:</b> {{ recluta.ciudad or '—' }}</div>
+        <div><b>Sector:</b> {{ recluta.sector or '—' }}</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px; margin-top:12px;">
+      <h3 style="margin:0 0 10px 0;">Laboral</h3>
+      <div><b>Empleo principal:</b> {{ (recluta.empleo_principal or '—')|replace('_',' ')|title }}</div>
+      <div><b>Busca:</b> {% if recluta.tipos_empleo_busca %}{{ recluta.tipos_empleo_busca|join(', ') }}{% else %}—{% endif %}</div>
+      <div><b>Modalidad:</b> {{ (recluta.modalidad or '—')|replace('_',' ')|title }}</div>
+      <div><b>Horario:</b> {{ recluta.horario_disponible or '—' }}</div>
+      <div><b>Sueldo:</b> {{ recluta.sueldo_esperado or '—' }}</div>
+    </div>
+
+
+    <div class="card" style="padding:14px; margin-top:12px;">
+      <h3 style="margin:0 0 10px 0;">Experiencia / Educación</h3>
+      <div><b>Experiencia:</b> {{ 'Sí' if recluta.tiene_experiencia else 'No' }}</div>
+      <div><b>Años:</b> {{ recluta.anos_experiencia or '—' }}</div>
+      <div><b>Resumen:</b> {{ recluta.experiencia_resumen or '—' }}</div>
+      <div><b>Nivel educativo:</b> {{ recluta.nivel_educativo or '—' }}</div>
+      <div><b>Habilidades:</b> {{ recluta.habilidades or '—' }}</div>
+    </div>
+
+    <div class="card" style="padding:14px; margin-top:12px;">
+      <h3 style="margin:0 0 10px 0;">Referencias</h3>
+
+      <div style="margin-bottom:8px;">
+        <b>Referencias laborales:</b>
+        <div style="opacity:.9; margin-top:4px;">
+          {{ recluta.referencias_laborales or '—' }}
+        </div>
+      </div>
+
+      <div>
+        <b>Referencias familiares:</b>
+        <div style="opacity:.9; margin-top:4px;">
+          {{ recluta.referencias_familiares or '—' }}
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px; margin-top:12px;">
+      <h3 style="margin:0 0 10px 0;">Interno</h3>
+      <div><b>Estado:</b> {{ recluta.estado }}</div>
+      <div><b>Docs al día:</b> {{ 'Sí' if recluta.documentos_al_dia else 'No' }}</div>
+      <div><b>Fines/noches:</b> {{ 'Sí' if recluta.disponible_fines_o_noches else 'No' }}</div>
+      <div style="margin-top:8px;"><b>Observaciones:</b></div>
+      <div style="opacity:.9;">{{ recluta.observaciones_internas or '—' }}</div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

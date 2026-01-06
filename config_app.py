@@ -176,6 +176,12 @@ def create_app():
     cache.init_app(app)
     migrate.init_app(app, db)
 
+    # Importar modelos para que SQLAlchemy registre todas las tablas (necesario para Alembic/Migrate)
+    try:
+        import models  # noqa: F401
+    except Exception:
+        pass
+
     # ── Capa de seguridad extra (headers + anti brute-force login)
     # Requiere: utils/security_layer.py
     from utils.security_layer import init_security
@@ -270,6 +276,11 @@ def create_app():
     from public import public_bp
 
     app.register_blueprint(public_bp)  # sin prefix: responde en "/"
+
+    # ── Reclutamiento general (NO doméstica)
+    from reclutas import reclutas_bp
+
+    app.register_blueprint(reclutas_bp)  # ya trae url_prefix="/reclutas"
 
     # Config de entrevistas (si existe)
     try:

@@ -1405,11 +1405,23 @@ def buscar_candidata():
                 obj.empleo_anterior                  = (request.form.get('empleo_anterior') or '').strip()[:150] or obj.empleo_anterior
                 obj.anos_experiencia                 = (request.form.get('anos_experiencia') or '').strip()[:50] or obj.anos_experiencia
                 obj.areas_experiencia                = (request.form.get('areas_experiencia') or '').strip()[:200] or obj.areas_experiencia
-                obj.sabe_planchar                    = (request.form.get('sabe_planchar') == 'si')
                 obj.contactos_referencias_laborales  = (request.form.get('contactos_referencias_laborales') or '').strip()[:250] or obj.contactos_referencias_laborales
                 obj.referencias_familiares_detalle   = (request.form.get('referencias_familiares_detalle') or '').strip()[:250] or obj.referencias_familiares_detalle
                 obj.cedula                           = (request.form.get('cedula') or '').strip()[:20] or obj.cedula
-                obj.acepta_porcentaje_sueldo         = 1 if request.form.get('acepta_porcentaje') else 0
+                # ⚠️ IMPORTANTE:
+                # Los campos booleanos NO deben resetearse a False si el formulario no los trae.
+                # (Checkboxes no marcados a veces NO se envían; eso estaba borrando valores.)
+
+                # Sabe planchar: solo actualizar si el form trae el campo
+                if 'sabe_planchar' in request.form:
+                    v_planchar = (request.form.get('sabe_planchar') or '').strip().lower()
+                    # Acepta varios formatos: 'si', 'sí', 'true', '1', 'on'
+                    obj.sabe_planchar = v_planchar in ('si', 'sí', 'true', '1', 'on')
+
+                # Acepta porcentaje: solo actualizar si el form trae el campo
+                if 'acepta_porcentaje' in request.form:
+                    v_pct = (request.form.get('acepta_porcentaje') or '').strip().lower()
+                    obj.acepta_porcentaje_sueldo = v_pct in ('si', 'sí', 'true', '1', 'on')
 
                 try:
                     db.session.commit()

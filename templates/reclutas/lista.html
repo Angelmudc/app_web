@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 1200px; margin: 26px auto;">
+  <div class="card" style="padding: 18px;">
+
+    <div style="display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+      <div>
+        <h2 style="margin:0;">Reclutamiento General</h2>
+        <p style="margin:6px 0 0 0; opacity:.8;">
+          Talentos para empleos generales (no doméstica)
+        </p>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center;">
+        <a href="{{ url_for('reclutas.nuevo') }}" class="btn btn-primary">
+          + Nuevo perfil
+        </a>
+      </div>
+    </div>
+
+    <hr style="margin:16px 0; opacity:.15;">
+
+    <!-- Filtros -->
+    <form method="GET" action="{{ url_for('reclutas.lista') }}" style="display:grid; grid-template-columns: 1.2fr 1fr 1fr 1fr auto; gap:10px; align-items:end;">
+      <div>
+        <label style="display:block; font-size:.9rem; opacity:.8; margin-bottom:6px;">Buscar</label>
+        <input
+          type="text"
+          name="q"
+          value="{{ request.args.get('q','') }}"
+          placeholder="Nombre, cédula o teléfono"
+          class="input"
+          style="width:100%;"
+        >
+      </div>
+
+      <div>
+        <label style="display:block; font-size:.9rem; opacity:.8; margin-bottom:6px;">Estado</label>
+        <select name="estado" class="input" style="width:100%;">
+          {% set estado_sel = request.args.get('estado','') %}
+          <option value="" {% if estado_sel=='' %}selected{% endif %}>Todos</option>
+          <option value="nuevo" {% if estado_sel=='nuevo' %}selected{% endif %}>Nuevo</option>
+          <option value="aprobado" {% if estado_sel=='aprobado' %}selected{% endif %}>Aprobado</option>
+          <option value="rechazado" {% if estado_sel=='rechazado' %}selected{% endif %}>Rechazado</option>
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block; font-size:.9rem; opacity:.8; margin-bottom:6px;">Empleo</label>
+        <select name="empleo" class="input" style="width:100%;">
+          {% set empleo_sel = request.args.get('empleo','') %}
+          <option value="" {% if empleo_sel=='' %}selected{% endif %}>Todos</option>
+          {% for t in tipos_empleo %}
+            <option value="{{ t }}" {% if empleo_sel==t %}selected{% endif %}>
+              {{ t.replace('_',' ').title() }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block; font-size:.9rem; opacity:.8; margin-bottom:6px;">Ciudad</label>
+        <input
+          type="text"
+          name="ciudad"
+          value="{{ request.args.get('ciudad','') }}"
+          placeholder="Ej: Santiago"
+          class="input"
+          style="width:100%;"
+        >
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-secondary" type="submit">Filtrar</button>
+        <a class="btn btn-ghost" href="{{ url_for('reclutas.lista') }}">Limpiar</a>
+      </div>
+    </form>
+
+    <hr style="margin:16px 0; opacity:.15;">
+
+    <!-- Tabla -->
+    <div style="overflow:auto;">
+      <table style="width:100%; border-collapse:collapse; min-width: 980px;">
+        <thead>
+          <tr style="text-align:left; opacity:.85;">
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Código</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Nombre</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Cédula</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Teléfono</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Empleo</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Modalidad</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Estado</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12); text-align:right;">Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% if reclutas|length == 0 %}
+            <tr>
+              <td colspan="8" style="padding:14px; opacity:.75;">
+                No hay perfiles con esos filtros.
+              </td>
+            </tr>
+          {% endif %}
+
+          {% for r in reclutas %}
+            <tr>
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                <b>{{ r.codigo }}</b>
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                {{ r.nombre_completo }}
+                {% if r.edad %}
+                  <div style="opacity:.75; font-size:.85rem;">Edad: {{ r.edad }}</div>
+                {% endif %}
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                {{ r.cedula }}
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                {{ r.telefono }}
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                {% if r.empleo_principal %}
+                  {{ r.empleo_principal.replace('_',' ').title() }}
+                {% else %}
+                  <span style="opacity:.7;">—</span>
+                {% endif %}
+
+                {% if r.tipos_empleo_busca and r.tipos_empleo_busca|length > 0 %}
+                  <div style="opacity:.75; font-size:.85rem;">
+                    Busca: {{ r.tipos_empleo_busca|join(', ') }}
+                  </div>
+                {% endif %}
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                {% if r.modalidad %}
+                  {{ r.modalidad.replace('_',' ').title() }}
+                {% else %}
+                  <span style="opacity:.7;">—</span>
+                {% endif %}
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                {% if r.estado == 'aprobado' %}
+                  <span class="badge badge-success">Aprobado</span>
+                {% elif r.estado == 'rechazado' %}
+                  <span class="badge badge-danger">Rechazado</span>
+                {% else %}
+                  <span class="badge badge-warning">Nuevo</span>
+                {% endif %}
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08); text-align:right;">
+                <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+
+                  <a class="btn btn-ghost" href="{{ url_for('reclutas.detalle', recluta_id=r.id) }}">Detalle</a>
+                  <a class="btn btn-ghost" href="{{ url_for('reclutas.editar', recluta_id=r.id) }}">Editar</a>
+                  {% if not r.inscrito %}
+                    <a class="btn btn-primary" href="{{ url_for('reclutas.inscribir', recluta_id=r.id) }}">
+                      Inscribir
+                    </a>
+                  {% endif %}
+
+                  <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=r.id, nuevo_estado='aprobado') }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-secondary" type="submit">Aprobar</button>
+                  </form>
+
+                  <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=r.id, nuevo_estado='rechazado') }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-danger" type="submit">Rechazar</button>
+                  </form>
+
+                  <form method="POST" action="{{ url_for('reclutas.cambiar_estado', recluta_id=r.id, nuevo_estado='nuevo') }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-ghost" type="submit">Reset</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+
+      </table>
+    </div>
+
+    <div style="margin-top:14px; opacity:.75; font-size:.9rem;">
+      Total: <b>{{ reclutas|length }}</b>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

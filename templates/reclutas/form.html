@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 980px; margin: 26px auto;">
+  <div class="card" style="padding: 18px;">
+
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        {% if modo == 'editar' %}
+          <h2 style="margin:0;">Editar perfil</h2>
+          <p style="margin:6px 0 0 0; opacity:.8;">
+            Código: <b>{{ recluta.codigo }}</b>
+          </p>
+        {% else %}
+          <h2 style="margin:0;">Nuevo perfil</h2>
+          <p style="margin:6px 0 0 0; opacity:.8;">
+            Reclutamiento general (no doméstica)
+          </p>
+        {% endif %}
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <a class="btn btn-ghost" href="{{ url_for('reclutas.lista') }}">Volver</a>
+      </div>
+    </div>
+
+    <hr style="margin:16px 0; opacity:.15;">
+
+    <form method="POST" novalidate>
+      {{ form.hidden_tag() }}
+
+      <!-- Bloque: Datos personales -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Datos personales</h3>
+
+        <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.nombre_completo.label.text }}</label>
+            {{ form.nombre_completo(class_="input", style="width:100%;") }}
+            {% for e in form.nombre_completo.errors %}
+              <div class="text-danger" style="margin-top:6px;">{{ e }}</div>
+            {% endfor %}
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.cedula.label.text }}</label>
+            {{ form.cedula(class_="input", style="width:100%;") }}
+            {% for e in form.cedula.errors %}
+              <div class="text-danger" style="margin-top:6px;">{{ e }}</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-top:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.edad.label.text }}</label>
+            {{ form.edad(class_="input", style="width:100%;", placeholder="Ej: 25 o 30-35") }}
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.sexo.label.text }}</label>
+            {{ form.sexo(class_="input", style="width:100%;") }}
+            <div id="sexo_otro_wrap" style="display:none; margin-top:8px;">
+              <input class="input" style="width:100%;" type="text" name="sexo_otro" placeholder="Especifica (otro)">
+            </div>
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.nacionalidad.label.text }}</label>
+            {{ form.nacionalidad(class_="input", style="width:100%;", placeholder="Ej: Dominicana") }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Bloque: Contacto -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Contacto</h3>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.telefono.label.text }}</label>
+            {{ form.telefono(class_="input", style="width:100%;") }}
+            {% for e in form.telefono.errors %}
+              <div class="text-danger" style="margin-top:6px;">{{ e }}</div>
+            {% endfor %}
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.email.label.text }}</label>
+            {{ form.email(class_="input", style="width:100%;", placeholder="Opcional") }}
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:10px; margin-top:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.direccion_completa.label.text }}</label>
+            {{ form.direccion_completa(class_="input", style="width:100%;", placeholder="Ciudad / sector / referencia") }}
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.ciudad.label.text }}</label>
+            {{ form.ciudad(class_="input", style="width:100%;", placeholder="Opcional") }}
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.sector.label.text }}</label>
+            {{ form.sector(class_="input", style="width:100%;", placeholder="Opcional") }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Bloque: Perfil laboral -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Perfil laboral</h3>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.empleo_principal.label.text }}</label>
+            {{ form.empleo_principal(class_="input", style="width:100%;") }}
+            <div id="empleo_principal_otro_wrap" style="display:none; margin-top:8px;">
+              <input class="input" style="width:100%;" type="text" name="empleo_principal_otro" placeholder="Especifica (otro)">
+            </div>
+            <div style="opacity:.7; font-size:.85rem; margin-top:6px;">
+              Elige el principal.
+            </div>
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.modalidad.label.text }}</label>
+            {{ form.modalidad(class_="input", style="width:100%;") }}
+            <div id="modalidad_otro_wrap" style="display:none; margin-top:8px;">
+              <input class="input" style="width:100%;" type="text" name="modalidad_otro" placeholder="Especifica (otro)">
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.horario_disponible.label.text }}</label>
+            {{ form.horario_disponible(class_="input", style="width:100%;", placeholder="Ej: 8am-5pm") }}
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.sueldo_esperado.label.text }}</label>
+            {{ form.sueldo_esperado(class_="input", style="width:100%;", placeholder="Ej: RD$25,000 / A discutir") }}
+          </div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <label style="display:block; margin-bottom:6px; opacity:.85;">
+            {{ form.tipos_empleo_busca.label.text }}
+          </label>
+          {{ form.tipos_empleo_busca(class_="input", style="width:100%; min-height: 120px;") }}
+          <div id="tipos_empleo_busca_otro_wrap" style="display:none; margin-top:8px;">
+            <input class="input" style="width:100%;" type="text" name="tipos_empleo_busca_otro" placeholder="Especifica (otro)">
+            <div style="opacity:.7; font-size:.85rem; margin-top:6px;">
+              Si marcaste “Otro”, escribe aquí qué tipo de empleo es.
+            </div>
+          </div>
+          <div style="opacity:.7; font-size:.85rem; margin-top:6px;">
+            Puedes marcar varios (Ctrl/Cmd + click).
+          </div>
+        </div>
+      </div>
+
+      <!-- Bloque: Experiencia -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Experiencia</h3>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; align-items:center;">
+          <div style="display:flex; gap:10px; align-items:center;">
+            {{ form.tiene_experiencia() }}
+            <label style="margin:0; opacity:.9;">{{ form.tiene_experiencia.label.text }}</label>
+          </div>
+
+          <div id="anos_experiencia_wrap" style="display:none;">
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.anos_experiencia.label.text }}</label>
+            {{ form.anos_experiencia(class_="input", style="width:100%;", placeholder="Ej: 2") }}
+          </div>
+        </div>
+
+        <div id="experiencia_resumen_wrap" style="display:none; margin-top:10px;">
+          <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.experiencia_resumen.label.text }}</label>
+          {{ form.experiencia_resumen(class_="input", style="width:100%;", placeholder="Resumen corto (1-2 líneas)") }}
+        </div>
+      </div>
+
+      <!-- Bloque: Educación y habilidades -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Educación y habilidades</h3>
+
+        <div style="display:grid; grid-template-columns: 1fr 1.5fr; gap:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.nivel_educativo.label.text }}</label>
+            {{ form.nivel_educativo(class_="input", style="width:100%;", placeholder="Ej: secundaria") }}
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.habilidades.label.text }}</label>
+            {{ form.habilidades(class_="input", style="width:100%;", placeholder="Ej: computadora, caja, servicio al cliente") }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Bloque: Condiciones -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Condiciones</h3>
+
+        <div style="display:flex; gap:22px; flex-wrap:wrap;">
+          <div style="display:flex; gap:10px; align-items:center;">
+            {{ form.documentos_al_dia() }}
+            <label style="margin:0; opacity:.9;">{{ form.documentos_al_dia.label.text }}</label>
+          </div>
+
+          <div style="display:flex; gap:10px; align-items:center;">
+            {{ form.disponible_fines_o_noches() }}
+            <label style="margin:0; opacity:.9;">{{ form.disponible_fines_o_noches.label.text }}</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bloque: Referencias -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Referencias</h3>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.referencias_laborales.label.text }}</label>
+            {{ form.referencias_laborales(class_="input", style="width:100%; min-height:120px;", placeholder="Ej: Nombre, relación, teléfono, empresa / puesto") }}
+            {% for e in form.referencias_laborales.errors %}
+              <div class="text-danger" style="margin-top:6px;">{{ e }}</div>
+            {% endfor %}
+          </div>
+
+          <div>
+            <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.referencias_familiares.label.text }}</label>
+            {{ form.referencias_familiares(class_="input", style="width:100%; min-height:120px;", placeholder="Ej: Nombre, parentesco, teléfono") }}
+            {% for e in form.referencias_familiares.errors %}
+              <div class="text-danger" style="margin-top:6px;">{{ e }}</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div style="opacity:.7; font-size:.85rem; margin-top:8px;">
+          Nota: Si no tiene referencias, puede dejarlo vacío.
+        </div>
+      </div>
+
+      <!-- Bloque: Interno -->
+      <div class="card" style="padding:14px; margin-bottom:14px;">
+        <h3 style="margin:0 0 10px 0;">Observaciones internas</h3>
+        <label style="display:block; margin-bottom:6px; opacity:.85;">{{ form.observaciones_internas.label.text }}</label>
+        {{ form.observaciones_internas(class_="input", style="width:100%; min-height:120px;", placeholder="Notas internas (no público)") }}
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+        <a href="{{ url_for('reclutas.lista') }}" class="btn btn-ghost">Cancelar</a>
+        {{ form.submit(class_="btn btn-primary") }}
+      </div>
+
+    </form>
+
+  </div>
+</div>
+
+<script>
+  (function(){
+    function isOtroValue(v){
+      if(!v) return false;
+      v = String(v).toLowerCase().trim();
+      return (v === 'otro' || v === 'otros' || v === 'other');
+    }
+
+    function toggleWrap(selectEl, wrapId){
+      var wrap = document.getElementById(wrapId);
+      if(!selectEl || !wrap) return;
+
+      var show = false;
+      if(selectEl.multiple){
+        var selected = Array.from(selectEl.options).filter(o => o.selected).map(o => o.value);
+        show = selected.some(isOtroValue);
+      } else {
+        show = isOtroValue(selectEl.value);
+      }
+
+      wrap.style.display = show ? 'block' : 'none';
+
+      // si se oculta, limpia el input para que no mande basura
+      if(!show){
+        var inp = wrap.querySelector('input,textarea');
+        if(inp) inp.value = '';
+      }
+    }
+
+    // Buscar selects por name (WTForms)
+    var sexo = document.querySelector('[name="sexo"]');
+    var empleo = document.querySelector('[name="empleo_principal"]');
+    var modalidad = document.querySelector('[name="modalidad"]');
+    var tipos = document.querySelector('[name="tipos_empleo_busca"]');
+    var tieneExp = document.querySelector('[name="tiene_experiencia"]');
+
+    function toggleExperiencia(){
+      var anosWrap = document.getElementById('anos_experiencia_wrap');
+      var resWrap = document.getElementById('experiencia_resumen_wrap');
+      if(!anosWrap || !resWrap) return;
+
+      var checked = !!(tieneExp && tieneExp.checked);
+      anosWrap.style.display = checked ? 'block' : 'none';
+      resWrap.style.display = checked ? 'block' : 'none';
+
+      // Si no tiene experiencia, limpia los campos
+      if(!checked){
+        var anosInp = anosWrap.querySelector('input,textarea');
+        var resInp = resWrap.querySelector('input,textarea');
+        if(anosInp) anosInp.value = '';
+        if(resInp) resInp.value = '';
+      }
+    }
+
+    function refreshAll(){
+      toggleWrap(sexo, 'sexo_otro_wrap');
+      toggleWrap(empleo, 'empleo_principal_otro_wrap');
+      toggleWrap(modalidad, 'modalidad_otro_wrap');
+      toggleWrap(tipos, 'tipos_empleo_busca_otro_wrap');
+      toggleExperiencia();
+    }
+
+    [sexo, empleo, modalidad, tipos, tieneExp].forEach(function(el){
+      if(!el) return;
+      el.addEventListener('change', refreshAll);
+    });
+
+    // Inicial
+    refreshAll();
+  })();
+</script>
+
+{% endblock %}

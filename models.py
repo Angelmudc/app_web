@@ -1135,3 +1135,300 @@ class CandidataWeb(db.Model):
 
     def __repr__(self) -> str:
         return f"<CandidataWeb {self.id} – candidata_id={self.candidata_id}>"
+
+
+# ─────────────────────────────────────────────────────────────
+# RECLUTAMIENTO GENERAL (NO DOMÉSTICA) – NUEVO MÓDULO
+# - No toca candidatas (domésticas) ni rompe lo existente.
+# - Pensado para secretarias y admin (control interno).
+# ─────────────────────────────────────────────────────────────
+
+# Tipos de empleo generales (EXCLUYE DOMÉSTICA)
+# Nota: esto se guarda como texto/enum para filtrar rápido.
+TIPOS_EMPLEO_GENERAL = (
+    'seguridad',
+    'chofer',
+    'recepcionista',
+    'cajero',
+    'oficina',
+    'ventas',
+    'call_center',
+    'almacen',
+    'mensajeria',
+    'tecnico',
+    'obrero',
+    'salud',
+    'hoteleria',
+    'educacion',
+    'otro'
+)
+
+
+class ReclutaPerfil(db.Model):
+    """
+    Perfil de talento reclutado para empleos generales (NO doméstica).
+
+    Formulario corto (secretaria):
+    - nombre, cédula, edad, sexo, nacionalidad
+    - teléfono, ubicación (dirección), email (opcional)
+    - tipo(s) de empleo que busca + empleo principal
+    - modalidad, horario, sueldo esperado
+    - experiencia (sí/no), años, resumen
+    - nivel educativo, habilidades
+    - documentos al día (sí/no)
+    - disponibilidad especial (fines de semana/noches) (sí/no)
+    - observaciones internas + estado
+
+    Importante:
+    - NO usa FK a tabla de usuarios para evitar romper tu login actual.
+      Guardamos `creado_por` / `actualizado_por` como texto.
+    """
+
+    __tablename__ = 'reclutas_perfiles'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Código interno (ej: REC-000001).
+    # ⚠️ IMPORTANTE: NO se genera al crear el perfil. Se asigna al INSCRIBIR.
+    codigo = db.Column(db.String(30), unique=True, index=True, nullable=True)
+
+    # Estado interno del perfil
+    estado = db.Column(
+        SAEnum('nuevo', 'aprobado', 'rechazado', name='estado_recluta_enum'),
+        nullable=False,
+        default='nuevo',
+        server_default=text("'nuevo'"),
+        index=True,
+        comment="Estado interno del perfil reclutado"
+    )
+
+    # ─────────────────────────────────────────────
+    # INSCRIPCIÓN (SE ASIGNA DESPUÉS DE APROBAR)
+    # - Cuando se inscribe: se genera `codigo`, se registra pago, fecha y vía.
+    # ─────────────────────────────────────────────
+    inscrito = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=text('false'),
+        index=True,
+        comment="True si ya fue inscrito (pagó inscripción y se le asignó código)."
+    )
+
+    inscripcion_monto = db.Column(
+        db.Numeric(12, 2),
+        nullable=True,
+        comment="Monto pagado por inscripción (ej: 500.00)."
+    )
+
+    inscripcion_fecha = db.Column(
+        db.Date,
+        nullable=True,
+        comment="Fecha en que se realizó la inscripción."
+    )
+
+    inscripcion_via = db.Column(
+        SAEnum('oficina', 'transferencia', name='recluta_inscripcion_via_enum'),
+        nullable=True,
+        comment="Vía de inscripción: oficina o transferencia."
+    )
+
+    # Auditoría simple (texto para no amarrarnos a otro modelo)
+    creado_por = db.Column(
+        db.String(100),
+        nullable=True,
+        comment="Usuario/Nombre (admin o secretaria) que creó el perfil"
+    )
+    actualizado_por = db.Column(
+        db.String(100),
+        nullable=True,
+        comment="Usuario/Nombre (admin o secretaria) que actualizó por última vez"
+    )
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # ─────────────────────────────────────────────
+    # Datos personales (corto)
+    # ─────────────────────────────────────────────
+    nombre_completo = db.Column(db.String(200), nullable=False, index=True)
+    cedula = db.Column(db.String(50), nullable=False, index=True)
+
+    # Guardamos edad directo (más rápido y práctico para secretarias).
+    edad = db.Column(db.String(20), nullable=True, comment="Edad en texto: '25', '30-35', etc")
+
+    sexo = db.Column(
+        SAEnum('masculino', 'femenino', 'otro', name='sexo_recluta_enum'),
+        nullable=True
+    )
+
+    nacionalidad = db.Column(db.String(80), nullable=True)
+
+    # ─────────────────────────────────────────────
+    # Contacto / Ubicación (SIN repetir)
+    # - `direccion_completa` es un solo campo que incluye ciudad/sector.
+    # - Opcionales `ciudad` y `sector` para facilitar filtros (no obligatorios en el form).
+    # ─────────────────────────────────────────────
+    telefono = db.Column(db.String(50), nullable=False, index=True)
+    email = db.Column(db.String(120), nullable=True, index=True)
+
+    direccion_completa = db.Column(
+        db.String(300),
+        nullable=True,
+        comment="Dirección completa (incluye ciudad/sector si aplica)"
+    )
+    ciudad = db.Column(db.String(120), nullable=True, index=True)
+    sector = db.Column(db.String(120), nullable=True, index=True)
+
+    # ─────────────────────────────────────────────
+    # Referencias
+    # ─────────────────────────────────────────────
+    referencias_laborales = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Referencias laborales: nombres, teléfonos y relación."
+    )
+
+    referencias_familiares = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Referencias familiares: nombres, teléfonos y relación."
+    )
+
+    # ─────────────────────────────────────────────
+    # Perfil laboral
+    # ─────────────────────────────────────────────
+    # Selección múltiple (para búsqueda/filtrado)
+    tipos_empleo_busca = db.Column(
+        ARRAY(db.String(50)),
+        nullable=True,
+        server_default=text("ARRAY[]::VARCHAR[]"),
+        comment="Lista de tipos de empleo que busca (NO doméstica)"
+    )
+
+    # Principal (uno)
+    empleo_principal = db.Column(
+        db.String(50),
+        nullable=True,
+        index=True,
+        comment="Tipo de empleo principal preferido (NO doméstica)"
+    )
+
+    modalidad = db.Column(
+        SAEnum('tiempo_completo', 'medio_tiempo', 'por_dias', 'por_horas', name='modalidad_recluta_enum'),
+        nullable=True,
+        index=True
+    )
+
+    horario_disponible = db.Column(db.String(120), nullable=True)
+
+    sueldo_esperado = db.Column(
+        db.String(80),
+        nullable=True,
+        comment="Texto libre: 'RD$25,000', 'a discutir', 'por día', etc"
+    )
+
+    # ─────────────────────────────────────────────
+    # Experiencia / Educación / Habilidades
+    # ─────────────────────────────────────────────
+    tiene_experiencia = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=text('false'),
+        index=True
+    )
+
+    anos_experiencia = db.Column(db.String(20), nullable=True)
+
+    experiencia_resumen = db.Column(
+        db.String(300),
+        nullable=True,
+        comment="Resumen corto (1-2 líneas)"
+    )
+
+    nivel_educativo = db.Column(
+        db.String(80),
+        nullable=True,
+        comment="Ej: primaria, secundaria, técnico, universitario"
+    )
+
+    habilidades = db.Column(
+        db.String(300),
+        nullable=True,
+        comment="Ej: computadora, caja, servicio al cliente, Excel, etc"
+    )
+
+    # ─────────────────────────────────────────────
+    # Condiciones rápidas
+    # ─────────────────────────────────────────────
+    documentos_al_dia = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=text('false'),
+        comment="Si tiene documentos al día (según verificación rápida)"
+    )
+
+    disponible_fines_o_noches = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=text('false'),
+        comment="Si puede fines de semana o noches"
+    )
+
+    # ─────────────────────────────────────────────
+    # Interno
+    # ─────────────────────────────────────────────
+    observaciones_internas = db.Column(db.Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<ReclutaPerfil {self.id} codigo={self.codigo} inscrito={self.inscrito} cedula={self.cedula}>"
+
+
+class ReclutaCambio(db.Model):
+    """Historial simple de cambios (auditoría) para reclutas (opcional pero útil)."""
+
+    __tablename__ = 'reclutas_cambios'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    recluta_id = db.Column(
+        db.Integer,
+        db.ForeignKey('reclutas_perfiles.id'),
+        nullable=False,
+        index=True
+    )
+
+    accion = db.Column(
+        db.String(50),
+        nullable=False,
+        comment="Ej: creado, editado, aprobado, rechazado"
+    )
+
+    usuario = db.Column(
+        db.String(100),
+        nullable=True,
+        comment="Usuario/Nombre que realizó el cambio"
+    )
+
+    nota = db.Column(db.Text, nullable=True)
+
+    creado_en = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    recluta = db.relationship(
+        'ReclutaPerfil',
+        backref=db.backref('cambios', cascade='all, delete-orphan', lazy='dynamic')
+    )
+
+    def __repr__(self) -> str:
+        return f"<ReclutaCambio {self.id} recluta_id={self.recluta_id} accion={self.accion}>"
+
+
+# ─────────────────────────────────────────────────────────────
+# NOTA PARA RUTAS / VALIDACIONES (no rompe nada):
+# - En el formulario, valida que `empleo_principal` y `tipos_empleo_busca`
+#   NO contengan 'domestica'.
+# - Usa los valores de TIPOS_EMPLEO_GENERAL.
+# ─────────────────────────────────────────────────────────────
