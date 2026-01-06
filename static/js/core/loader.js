@@ -108,9 +108,12 @@
           return;
         }
 
-        // Escape hatch
-        const noLoader = e.target && (e.target.closest ? e.target.closest('[data-no-loader="true"]') : null);
-        if (noLoader) return;
+        // Escape hatch (acepta true / 1)
+        const noLoaderEl = e.target && (e.target.closest ? e.target.closest('[data-no-loader]') : null);
+        if (noLoaderEl) {
+          const v = String(noLoaderEl.getAttribute('data-no-loader') || '').toLowerCase().trim();
+          if (v === '' || v === 'true' || v === '1' || v === 'yes') return;
+        }
 
         // Solo links
         const a = e.target && (e.target.closest ? e.target.closest("a") : null);
@@ -118,6 +121,14 @@
 
         const href = a.getAttribute("href");
         if (!href || href === "#" || href.startsWith("javascript:")) return;
+
+        const hrefLower = String(href).toLowerCase();
+
+        // Mail/Tel y anclas internas
+        if (hrefLower.startsWith('mailto:') || hrefLower.startsWith('tel:')) return;
+
+        // PDFs / descargas típicas (evita loader que se queda pegado)
+        if (hrefLower.endsWith('.pdf') || hrefLower.includes('/pdf') || hrefLower.includes('pdf=')) return;
 
         // Nueva pestaña / descarga
         const target = a.getAttribute("target");
@@ -128,6 +139,12 @@
         if (a.hasAttribute("data-confirm")) return;
 
         show("Cargando...");
+
+        // Failsafe: si por alguna razón no hubo navegación real (descarga/stream), quita el loader solo
+        window.clearTimeout(window.__coreLoaderFailsafe);
+        window.__coreLoaderFailsafe = window.setTimeout(() => {
+          hideAll();
+        }, 1800);
       },
       true
     );
@@ -145,10 +162,17 @@
           return;
         }
 
-        const noLoader = submitter && (submitter.closest ? submitter.closest('[data-no-loader="true"]') : null);
-        if (noLoader) return;
+        const noLoaderEl = submitter && (submitter.closest ? submitter.closest('[data-no-loader]') : null);
+        if (noLoaderEl) {
+          const v = String(noLoaderEl.getAttribute('data-no-loader') || '').toLowerCase().trim();
+          if (v === '' || v === 'true' || v === '1' || v === 'yes') return;
+        }
 
         show("Cargando...");
+        window.clearTimeout(window.__coreLoaderFailsafe);
+        window.__coreLoaderFailsafe = window.setTimeout(() => {
+          hideAll();
+        }, 2500);
       },
       true
     );

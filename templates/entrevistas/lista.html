@@ -74,7 +74,10 @@
 
                     {# PDF opcional: solo muestra el botón si la ruta existe #}
                     {% if current_app and 'generar_pdf_entrevista_db' in current_app.view_functions %}
-                      <a class="btn btn-outline btn-sm" href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=e.id) }}">PDF</a>
+                      <a class="btn btn-outline btn-sm"
+                         href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=e.id) }}"
+                         target="_blank" rel="noopener"
+                         data-no-loader="1">PDF</a>
                     {% endif %}
                   </div>
                 </td>
@@ -86,5 +89,15 @@
     {% endif %}
   </div>
 </div>
+<script>
+  // Evita el "loader" global en links de descarga / nueva pestaña
+  (function(){
+    document.addEventListener('click', function(e){
+      var a = e.target && e.target.closest ? e.target.closest('a[data-no-loader="1"]') : null;
+      if(!a) return;
+      // Si hay un loader global escuchando clicks, esto lo corta
+      e.stopImmediatePropagation();
+    }, true); // capture
+  })();
+</script>
 {% endblock %}
-

@@ -1,4 +1,4 @@
-{# templates/gestionar_archivos.html #}
+<file name=0 path=/Users/angeldelacruz/Proyectos/app_web/templates/gestionar_archivos.html>{# templates/gestionar_archivos.html #}
 {% extends "base.html" %}
 
 {% block title %}Gestionar Archivos - Doméstica del Cibao A&amp;D{% endblock %}
@@ -143,7 +143,8 @@
                   {% if available %}
                     <div class="d-grid gap-2">
                       <a class="btn btn-primary"
-                         href="{{ url_for('descargar_uno_db', id=fila, doc=key) }}">
+                         href="{{ url_for('descargar_uno_db', id=fila, doc=key) }}"
+                         data-no-loader="1">
                         <i class="fa-solid fa-download me-1"></i>Descargar
                       </a>
                       {% if preview %}
@@ -194,7 +195,8 @@
                 {% if ent and ent|trim %}
                   <div class="d-grid gap-2">
                     <a class="btn btn-primary"
-                       href="{{ url_for('generar_pdf_entrevista', fila=fila) }}">
+                       href="{{ url_for('generar_pdf_entrevista', fila=fila) }}"
+                       data-no-loader="1">
                       <i class="fa-solid fa-download me-1"></i>Descargar PDF
                     </a>
                     <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#previewEntrevista">
@@ -266,4 +268,21 @@
     }
   });
 </script>
-{% endblock %}
+{% endblock %}</file>
+
+<file name=loader.js path=/Users/angeldelacruz/Proyectos/app_web/static/js/core/loader.js>document.addEventListener('click', function(e) {
+  // Find the closest anchor or button element
+  let linkEl = e.target.closest('a,button');
+  if (!linkEl) return;
+
+  // No-loader cases: downloads / new tabs / explicit opt-out
+  if (linkEl && (linkEl.hasAttribute('data-no-loader') || linkEl.hasAttribute('download') || linkEl.target === '_blank')) {
+    return;
+  }
+  if (linkEl && linkEl.dataset && (linkEl.dataset.noLoader === '1' || linkEl.dataset.noLoader === 'true')) return;
+
+  // Show loading overlay/spinner here
+  // (existing loader code continues below)
+  showLoadingOverlay();
+});
+</file>
