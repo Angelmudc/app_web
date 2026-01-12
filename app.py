@@ -77,13 +77,6 @@ def url_for_safe(endpoint: str, **values):
 
 app.jinja_env.globals['url_for_safe'] = url_for_safe
 
-@app.teardown_appcontext
-def _shutdown_session(exception=None):
-    """Cierra/limpia la sesión SIEMPRE al final del request."""
-    try:
-        db.session.remove()
-    except Exception:
-        pass
 
 # -----------------------------------------------------------------------------
 # HELPERS
@@ -224,6 +217,15 @@ def run_db_safely(fn, retry_once: bool = True, fallback=None):
                 db.session.close()
                 return fallback
         return fallback
+
+
+# -----------------------------------------------------------------------------
+# Helpers de queries (evita NameError de safe_all)
+# -----------------------------------------------------------------------------
+
+def safe_all(query):
+    """Ejecuta query.all() con retry (y fallback a lista vacía)."""
+    return run_db_safely(lambda: query.all(), retry_once=True, fallback=[])
 
 
 # -----------------------------------------------------------------------------
@@ -2144,6 +2146,11 @@ import unicodedata
 
 subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
 
+# Registrar blueprint (IMPORTANTE): se registra AL FINAL del archivo, luego de declarar todas las rutas.
+# Si se registra aquí y luego declaras @subir_bp.route(...) más abajo, Flask lanza:
+# AssertionError: blueprint already registered.
+_DEFER_REGISTER_SUBIR_BP = True
+
 # =========================
 # Helpers comunes
 # =========================
@@ -2385,7 +2392,9 @@ def ver_imagen(fila, campo):
 
     return Response(data, mimetype=mt)
 
-# Registrar blueprint (evita doble registro en reload)
+
+# ✅ IMPORTANTE (la causa del error):
+# Estas 2 líneas TIENEN que estar al FINAL DE app.py, después del ÚLTIMO @subir_bp.route(...)
 if 'subir_fotos' not in app.blueprints:
     app.register_blueprint(subir_bp)
 
