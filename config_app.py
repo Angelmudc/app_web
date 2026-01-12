@@ -16,6 +16,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf import CSRFProtect
 
+from app import app
+
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 
