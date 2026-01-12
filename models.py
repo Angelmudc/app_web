@@ -1,15 +1,12 @@
-﻿from datetime import datetime, date
-from sqlalchemy import (
-    Column, Integer, String, DateTime, Text, Date,
-    Enum as SAEnum, Float, text, LargeBinary
-)
+﻿from datetime import datetime
 from typing import Optional, Dict
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.orm import relationship
+
 from flask_login import UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
-from config_app import db
+from sqlalchemy import Enum as SAEnum, LargeBinary, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import synonym
+
+from config_app import db
 
 
 
@@ -509,7 +506,7 @@ class Solicitud(db.Model):
                              )
 
     funciones_otro         = db.Column(
-                                String(200),
+                                db.String(200),
                                 nullable=True
                              )
 
@@ -912,30 +909,32 @@ class Reemplazo(db.Model):
 class LlamadaCandidata(db.Model):
     __tablename__ = 'llamadas_candidatas'
 
-    id                = Column(Integer, primary_key=True)
-    candidata_id      = Column(Integer, db.ForeignKey('candidatas.fila'), nullable=False, index=True)
-    agente            = Column(String(100), nullable=False, index=True)      # quién hace la llamada
-    fecha_llamada     = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-    duracion_segundos = Column(Integer, nullable=True)                       # duración real
-    resultado = Column(
+    id = db.Column(db.Integer, primary_key=True)
+    candidata_id = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=False, index=True)
+    agente = db.Column(db.String(100), nullable=False, index=True)  # quién hace la llamada
+    fecha_llamada = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    duracion_segundos = db.Column(db.Integer, nullable=True)  # duración real
+
+    resultado = db.Column(
         SAEnum(
             'no_contesta',
             'inscripcion',
             'rechaza',
             'voicemail',
-            'informada',   # nueva opción
-            'exitosa',     # nueva opción
+            'informada',
+            'exitosa',
             'otro',
             name='resultado_enum'
         ),
         nullable=False,
         index=True
     )
-    notas             = Column(Text, nullable=True)
-    proxima_llamada   = Column(Date, nullable=True, index=True)             # siguiente llamada sugerida
-    created_at        = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    candidata         = relationship('Candidata', back_populates='llamadas')
+    notas = db.Column(db.Text, nullable=True)
+    proxima_llamada = db.Column(db.Date, nullable=True, index=True)  # siguiente llamada sugerida
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    candidata = db.relationship('Candidata', back_populates='llamadas')
 
 
 class CandidataWeb(db.Model):

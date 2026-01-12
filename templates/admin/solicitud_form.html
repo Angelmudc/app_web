@@ -1,152 +1,21 @@
 {% extends 'base.html' %}
 {% block title %}{{ 'Nueva Solicitud' if nuevo else ('Solicitud ' ~ solicitud.codigo_solicitud) }} | Doméstica del Cibao A&D{% endblock %}
 
-{% block head %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-
-<style>
-  body {
-    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
-    font-family: 'Poppins', sans-serif;
-    color: #e2e8f0;
-  }
-
-  h1, h2 {
-    color: #fff;
-    font-weight: 600;
-  }
-
-  .form-card {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 1.2rem;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-  }
-
-  .section-title {
-    font-weight: 600;
-    color: #93c5fd;
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-  }
-
-  .hint {
-    font-size: .85rem;
-    color: #94a3b8;
-  }
-
-  .divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.12);
-    margin: 2rem 0;
-  }
-
-  .form-control, .form-select, textarea {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    color: #f8fafc;
-    border-radius: 10px;
-  }
-
-  .form-control:focus, .form-select:focus {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: #38bdf8;
-    box-shadow: 0 0 6px #38bdf8;
-  }
-
-  label {
-    color: #f1f5f9;
-    font-weight: 500;
-  }
-
-  .required::after {
-    content: " *";
-    color: #ef4444;
-  }
-
-  .alert-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #fecaca;
-  }
-
-  .btn-primary {
-    background: linear-gradient(135deg, #1d4ed8, #3b82f6);
-    border: none;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-  }
-
-  .btn-primary:hover {
-    background: linear-gradient(135deg, #2563eb, #60a5fa);
-    transform: translateY(-1px);
-  }
-
-  .btn-outline-secondary {
-    border-color: rgba(255, 255, 255, 0.25);
-    color: #e2e8f0;
-  }
-
-  .btn-outline-secondary:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: .35rem;
-    background: rgba(56, 189, 248, 0.15);
-    color: #38bdf8;
-    border-radius: 999px;
-    padding: .25rem .6rem;
-    font-size: .825rem;
-  }
-
-  .sticky-actions {
-    position: sticky;
-    bottom: 0;
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), #0f172a 40px);
-    padding-top: 16px;
-    z-index: 5;
-  }
-
-  .form-check-label {
-    color: #e2e8f0;
-  }
-
-  .input-group-text {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #e2e8f0;
-  }
-
-  .badge-tipo {
-    font-size: .75rem;
-    padding: .2rem .6rem;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(148, 163, 184, 0.6);
-    color: #e5e7eb;
-  }
-</style>
-{% endblock %}
+{% block extra_head %}{% endblock %}
 
 {% block content %}
-<div class="container py-5" style="max-width: 1100px;">
-  <div class="form-card p-4 p-md-5">
+<div class="py-4">
+  <div class="glass-card p-3 p-md-4">
 
     <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
       <div>
         <h1 class="h4 mb-1">{{ '📝 Nueva Solicitud' if nuevo else ('🗂️ Solicitud ' ~ solicitud.codigo_solicitud) }}</h1>
         <div class="text-muted small">
-          Completa los campos y guarda. <span class="chip"><i class="bi bi-shield-check"></i> Datos cifrados</span>
+          Completa los campos y guarda. <span class="badge-soft"><i class="fa-solid fa-shield-check"></i> Datos cifrados</span>
         </div>
       </div>
       <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left-circle me-1"></i> Volver
+        <i class="fa-solid fa-circle-arrow-left me-1"></i> Volver
       </a>
     </div>
 
@@ -156,7 +25,7 @@
       {% if form.errors %}
         <div class="alert alert-danger border-0 mb-4">
           <div class="d-flex">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <i class="fa-solid fa-triangle-exclamation me-2"></i>
             <div>
               <strong>Revisa los campos con errores:</strong>
               <ul class="mb-0 mt-1">
@@ -172,8 +41,8 @@
       {% endif %}
 
       <!-- SECCIÓN 0: TIPO DE SOLICITUD -->
-      <h2 class="section-title h5 mb-3">
-        <i class="bi bi-ui-checks-grid text-warning"></i> Tipo de solicitud
+      <h2 class="h5 fw-semibold mb-3">
+        <i class="fa-solid fa-list-check text-warning"></i> Tipo de solicitud
       </h2>
       <div class="row g-4 mb-3">
         <div class="col-md-6">
@@ -186,7 +55,7 @@
         <div class="col-md-6 d-flex align-items-end justify-content-md-end">
           {% if not nuevo and solicitud is defined %}
             <span class="badge-tipo">
-              <i class="bi bi-info-circle me-1"></i>
+              <i class="fa-solid fa-circle-info me-1"></i>
               Tipo actual: {{ solicitud.tipo_servicio_label if solicitud.tipo_servicio_label else 'Doméstica general' }}
             </span>
           {% endif %}
@@ -196,7 +65,7 @@
       <div class="divider"></div>
 
       <!-- SECCIÓN 1: UBICACIÓN -->
-      <h2 class="section-title h5 mb-3"><i class="bi bi-geo-alt-fill text-info"></i> Ubicación y rutas</h2>
+      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-location-dot text-info"></i> Ubicación y rutas</h2>
       <div class="row g-4">
         <div class="col-md-7">
           <label class="form-label required">{{ form.ciudad_sector.label.text }}</label>
@@ -211,7 +80,7 @@
       <div class="divider"></div>
 
       <!-- SECCIÓN 2: DETALLES DE LA OFERTA -->
-      <h2 class="section-title h5 mb-3"><i class="bi bi-card-checklist text-primary"></i> Detalles de la oferta</h2>
+      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-clipboard-list text-primary"></i> Detalles de la oferta</h2>
       <div class="row g-4">
         <div class="col-md-6">
           <label class="form-label required">{{ form.modalidad_trabajo.label.text }}</label>
@@ -245,7 +114,7 @@
           </div>
           {% endfor %}
         </div>
-        <div id="wrap-funciones-otro" class="mt-2" style="{% if form.funciones.data and ('otro' in form.funciones.data) %}{% else %}display:none{% endif %};">
+        <div id="wrap-funciones-otro" class="mt-2 {{ 'd-block' if (form.funciones.data and ('otro' in form.funciones.data)) else 'd-none' }}">
           <label class="form-label">{{ form.funciones_otro.label.text }}</label>
           {{ form.funciones_otro(class="form-control", placeholder="Puedes separar varias por coma") }}
         </div>
@@ -261,7 +130,7 @@
           </div>
           {% endfor %}
         </div>
-        <div id="wrap-edad-otro" class="mt-2" style="{% if form.edad_requerida.data and ('otro' in form.edad_requerida.data) %}{% else %}display:none{% endif %};">
+        <div id="wrap-edad-otro" class="mt-2 {{ 'd-block' if (form.edad_requerida.data and ('otro' in form.edad_requerida.data)) else 'd-none' }}">
           <label class="form-label">{{ form.edad_otro.label.text }}</label>
           {{ form.edad_otro(class="form-control", placeholder="Ej. 30 a 40, 20-30…") }}
           <div class="hint">Si elegiste “Otro”, especifica aquí el rango.</div>
@@ -270,12 +139,12 @@
 
       <!-- SECCIÓN 2.1: DETALLES ESPECÍFICOS SEGÚN TIPO -->
       <div class="divider"></div>
-      <h2 class="section-title h5 mb-3">
-        <i class="bi bi-person-gear text-warning"></i> Detalles específicos según el tipo
+      <h2 class="h5 fw-semibold mb-3">
+        <i class="fa-solid fa-user-gear text-warning"></i> Detalles específicos según el tipo
       </h2>
 
       <!-- BLOQUE NIÑERA -->
-      <div id="bloque-ninera" style="{% if form.tipo_servicio.data == 'NINERA' %}{% else %}display:none{% endif %};">
+      <div id="bloque-ninera" class="{{ 'd-block' if (form.tipo_servicio.data == 'NINERA') else 'd-none' }}">
         <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>niñera</strong>.</div>
         <div class="row g-4">
           <div class="col-md-3">
@@ -299,7 +168,7 @@
             </div>
             {% endfor %}
           </div>
-          <div id="wrap-ninera-tareas-otro" class="mt-2" style="{% if form.ninera_tareas.data and ('otro' in form.ninera_tareas.data) %}{% else %}display:none{% endif %};">
+          <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-block' if (form.ninera_tareas.data and ('otro' in form.ninera_tareas.data)) else 'd-none' }}">
             <label class="form-label">{{ form.ninera_tareas_otro.label.text }}</label>
             {{ form.ninera_tareas_otro(class="form-control", placeholder="Especifica otras tareas") }}
           </div>
@@ -312,7 +181,7 @@
       </div>
 
       <!-- BLOQUE ENFERMERA / CUIDADORA -->
-      <div id="bloque-enfermera" style="{% if form.tipo_servicio.data == 'ENFERMERA' %}{% else %}display:none{% endif %};">
+      <div id="bloque-enfermera" class="{{ 'd-block' if (form.tipo_servicio.data == 'ENFERMERA') else 'd-none' }}">
         <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>enfermera o cuidadora</strong>.</div>
         <div class="row g-4">
           <div class="col-md-6">
@@ -340,7 +209,7 @@
             </div>
             {% endfor %}
           </div>
-          <div id="wrap-enf-tareas-otro" class="mt-2" style="{% if form.enf_tareas.data and ('otro' in form.enf_tareas.data) %}{% else %}display:none{% endif %};">
+          <div id="wrap-enf-tareas-otro" class="mt-2 {{ 'd-block' if (form.enf_tareas.data and ('otro' in form.enf_tareas.data)) else 'd-none' }}">
             <label class="form-label">{{ form.enf_tareas_otro.label.text }}</label>
             {{ form.enf_tareas_otro(class="form-control", placeholder="Especifica otras tareas de cuidado") }}
           </div>
@@ -348,7 +217,7 @@
       </div>
 
       <!-- BLOQUE CHOFER -->
-      <div id="bloque-chofer" style="{% if form.tipo_servicio.data == 'CHOFER' %}{% else %}display:none{% endif %};">
+      <div id="bloque-chofer" class="{{ 'd-block' if (form.tipo_servicio.data == 'CHOFER') else 'd-none' }}">
         <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>chofer</strong>.</div>
         <div class="row g-4">
           <div class="col-md-6">
@@ -365,7 +234,7 @@
           <div class="col-md-6">
             <label class="form-label">{{ form.chofer_tipo_vehiculo.label.text }}</label>
             {{ form.chofer_tipo_vehiculo(class="form-select", id=form.chofer_tipo_vehiculo.id) }}
-            <div id="wrap-chofer-tipo-otro" class="mt-2" style="{% if form.chofer_tipo_vehiculo.data == 'otro' %}{% else %}display:none{% endif %};">
+            <div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if (form.chofer_tipo_vehiculo.data == 'otro') else 'd-none' }}">
               <label class="form-label">{{ form.chofer_tipo_vehiculo_otro.label.text }}</label>
               {{ form.chofer_tipo_vehiculo_otro(class="form-control", placeholder="Ej. Minibús, camión ligero…") }}
             </div>
@@ -398,12 +267,12 @@
 
       <!-- SECCIÓN 3: HOGAR (se oculta para CHOFER y NIÑERA) -->
       <div id="bloque-hogar">
-        <h2 class="section-title h5 mb-3"><i class="bi bi-building text-info"></i> Tipo de lugar</h2>
+        <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-building text-info"></i> Tipo de lugar</h2>
         <div class="row g-4">
           <div class="col-md-6">
             <label class="form-label required">{{ form.tipo_lugar.label.text }}</label>
             {{ form.tipo_lugar(class="form-select", id=form.tipo_lugar.id) }}
-            <div id="wrap-tipo-lugar-otro" class="mt-2" style="{% if form.tipo_lugar.data == 'otro' %}{% else %}display:none{% endif %};">
+            <div id="wrap-tipo-lugar-otro" class="mt-2 {{ 'd-block' if (form.tipo_lugar.data == 'otro') else 'd-none' }}">
               <label class="form-label">{{ form.tipo_lugar_otro.label.text }}</label>
               {{ form.tipo_lugar_otro(class="form-control", placeholder="Ej. Local comercial, villa…") }}
             </div>
@@ -439,7 +308,7 @@
             {% endfor %}
           </div>
           {% if form.area_otro is defined %}
-          <div id="wrap-areas-otro" class="mt-2" style="{% if form.areas_comunes.data and ('otro' in form.areas_comunes.data) %}{% else %}display:none{% endif %};">
+          <div id="wrap-areas-otro" class="mt-2 {{ 'd-block' if (form.areas_comunes.data and ('otro' in form.areas_comunes.data)) else 'd-none' }}">
             <label class="form-label">{{ form.area_otro.label.text if form.area_otro.label else 'Otra área' }}</label>
             {{ form.area_otro(class="form-control", placeholder="Ej. Balcón, cuarto de juegos…") }}
             <div class="hint">Si elegiste “Otro”, especifica aquí el área adicional.</div>
@@ -453,7 +322,7 @@
 
       <!-- SECCIÓN 4: OCUPANTES (se oculta solo para CHOFER) -->
       <div id="bloque-ocupantes">
-        <h2 class="section-title h5 mb-3"><i class="bi bi-people-fill text-primary"></i> Ocupantes</h2>
+        <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-people-group text-primary"></i> Ocupantes</h2>
         <div class="row g-4">
           <div class="col-md-3">
             <label class="form-label">{{ form.adultos.label.text }}</label>
@@ -479,7 +348,7 @@
       <div class="divider"></div>
 
       <!-- SECCIÓN 5: COMPENSACIÓN -->
-      <h2 class="section-title h5 mb-3"><i class="bi bi-currency-dollar text-success"></i> Compensación</h2>
+      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-dollar-sign text-success"></i> Compensación</h2>
       <div class="row g-4">
         <div class="col-md-6">
           <label class="form-label required">{{ form.sueldo.label.text }}</label>
@@ -505,7 +374,7 @@
       <div class="divider"></div>
 
       <!-- SECCIÓN 6: NOTA -->
-      <h2 class="section-title h5 mb-3"><i class="bi bi-chat-text-fill text-info"></i> Nota adicional</h2>
+      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-comment-dots text-info"></i> Nota adicional</h2>
       <div class="mb-3">
         <label class="form-label">{{ form.nota_cliente.label.text }}</label>
         {{ form.nota_cliente(rows=3, class="form-control", maxlength="1000") }}
@@ -517,10 +386,10 @@
       <div class="sticky-actions mt-4">
         <div class="d-flex gap-2 justify-content-end">
           <a href="{{ url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
-            <i class="bi bi-x-circle me-1"></i> Cancelar
+            <i class="fa-solid fa-circle-xmark me-1"></i> Cancelar
           </a>
           <button type="submit" class="btn btn-primary px-4">
-            <i class="bi bi-save-fill me-1"></i> {{ 'Crear' if nuevo else 'Actualizar' }}
+            <i class="fa-solid fa-floppy-disk me-1"></i> {{ 'Crear' if nuevo else 'Actualizar' }}
           </button>
         </div>
       </div>
@@ -533,6 +402,11 @@
 {% block scripts %}
 <script>
 (function(){
+  function setVisible(el, show){
+    if(!el) return;
+    el.classList.toggle('d-none', !show);
+    el.classList.toggle('d-block', !!show);
+  }
   const exp = document.getElementById("{{ form.experiencia.id }}");
   const nota = document.getElementById("{{ form.nota_cliente.id }}");
 
@@ -549,31 +423,36 @@
   const funcWrap = document.getElementById('wrap-funciones-otro');
   const funcChecks = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
   funcChecks.forEach(ch => ch.addEventListener('change', () => {
-    funcWrap.style.display = [...funcChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
+    setVisible(funcWrap, [...funcChecks].some(c => c.value === 'otro' && c.checked));
   }));
+  setVisible(funcWrap, [...funcChecks].some(c => c.value === 'otro' && c.checked));
 
   // Edad requerida -> Otro
   const edadWrap = document.getElementById('wrap-edad-otro');
   const edadChecks = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
   edadChecks.forEach(ch => ch.addEventListener('change', () => {
-    edadWrap.style.display = [...edadChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
+    setVisible(edadWrap, [...edadChecks].some(c => c.value === 'otro' && c.checked));
   }));
+  setVisible(edadWrap, [...edadChecks].some(c => c.value === 'otro' && c.checked));
 
   // Tipo de lugar -> Otro
   const tipoSel = document.getElementById('{{ form.tipo_lugar.id }}');
   const tipoWrap = document.getElementById('wrap-tipo-lugar-otro');
   if (tipoSel) tipoSel.addEventListener('change', () => {
-    tipoWrap.style.display = tipoSel.value === 'otro' ? '' : 'none';
+    setVisible(tipoWrap, tipoSel.value === 'otro');
   });
+  setVisible(tipoWrap, tipoSel && tipoSel.value === 'otro');
 
   // Áreas comunes -> Otro (descripciones del hogar)
-  {% if form.areas_comunes is defined and form.area_otro is defined %}
   const areasWrap = document.getElementById('wrap-areas-otro');
-  const areasChecks = document.querySelectorAll('input[name="{{ form.areas_comunes.name }}"]');
-  areasChecks.forEach(ch => ch.addEventListener('change', () => {
-    areasWrap.style.display = [...areasChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
-  }));
-  {% endif %}
+  const areasChecks = document.querySelectorAll('input[name="{{ form.areas_comunes.name if form.areas_comunes is defined else "" }}"]');
+  if (areasWrap && areasChecks && areasChecks.length) {
+    const updateAreas = () => {
+      setVisible(areasWrap, [...areasChecks].some(c => c.value === 'otro' && c.checked));
+    };
+    areasChecks.forEach(ch => ch.addEventListener('change', updateAreas));
+    updateAreas();
+  }
 
   // Tipo de servicio -> mostrar/ocultar bloques específicos
   const tipoServicioSel   = document.getElementById('{{ form.tipo_servicio.id }}');
@@ -589,22 +468,22 @@
     const val = tipoServicioSel.value;
 
     // Bloques específicos
-    if (bloqueNinera)    bloqueNinera.style.display    = (val === 'NINERA')    ? '' : 'none';
-    if (bloqueEnfermera) bloqueEnfermera.style.display = (val === 'ENFERMERA') ? '' : 'none';
-    if (bloqueChofer)    bloqueChofer.style.display    = (val === 'CHOFER')    ? '' : 'none';
+    setVisible(bloqueNinera,    val === 'NINERA');
+    setVisible(bloqueEnfermera, val === 'ENFERMERA');
+    setVisible(bloqueChofer,    val === 'CHOFER');
 
     // Lógica casa / funciones / ocupantes
     const esChofer       = (val === 'CHOFER');
     const ocultarHogar   = (val === 'CHOFER' || val === 'NINERA');
 
     // Funciones generales solo se esconden para chofer
-    if (bloqueFunciones) bloqueFunciones.style.display = esChofer ? 'none' : '';
+    setVisible(bloqueFunciones, !esChofer);
 
     // Hogar (tipo de lugar, habitaciones, baños, áreas comunes)
-    if (bloqueHogar)     bloqueHogar.style.display     = ocultarHogar ? 'none' : '';
+    setVisible(bloqueHogar, !ocultarHogar);
 
     // Ocupantes solo se esconden para chofer (para niñera se quedan porque son los niños)
-    if (bloqueOcupantes) bloqueOcupantes.style.display = esChofer ? 'none' : '';
+    setVisible(bloqueOcupantes, !esChofer);
   }
 
   if (tipoServicioSel) {
@@ -616,22 +495,24 @@
   const ninTareasWrap  = document.getElementById('wrap-ninera-tareas-otro');
   const ninTareasChecks = document.querySelectorAll('input[name="{{ form.ninera_tareas.name }}"]');
   ninTareasChecks.forEach(ch => ch.addEventListener('change', () => {
-    ninTareasWrap.style.display = [...ninTareasChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
+    setVisible(ninTareasWrap, [...ninTareasChecks].some(c => c.value === 'otro' && c.checked));
   }));
+  setVisible(ninTareasWrap, [...ninTareasChecks].some(c => c.value === 'otro' && c.checked));
 
   // Enfermera tareas -> Otro
   const enfTareasWrap  = document.getElementById('wrap-enf-tareas-otro');
   const enfTareasChecks = document.querySelectorAll('input[name="{{ form.enf_tareas.name }}"]');
   enfTareasChecks.forEach(ch => ch.addEventListener('change', () => {
-    enfTareasWrap.style.display = [...enfTareasChecks].some(c => c.value === 'otro' && c.checked) ? '' : 'none';
+    setVisible(enfTareasWrap, [...enfTareasChecks].some(c => c.value === 'otro' && c.checked));
   }));
+  setVisible(enfTareasWrap, [...enfTareasChecks].some(c => c.value === 'otro' && c.checked));
 
   // Chofer tipo_vehiculo -> "otro"
   const choferTipoSelect  = document.getElementById('{{ form.chofer_tipo_vehiculo.id }}');
   const choferTipoWrap    = document.getElementById('wrap-chofer-tipo-otro');
   if (choferTipoSelect && choferTipoWrap) {
     const updateChoferTipo = () => {
-      choferTipoWrap.style.display = choferTipoSelect.value === 'otro' ? '' : 'none';
+      setVisible(choferTipoWrap, choferTipoSelect.value === 'otro');
     };
     choferTipoSelect.addEventListener('change', updateChoferTipo);
     updateChoferTipo();

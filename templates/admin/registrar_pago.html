@@ -2,316 +2,351 @@
 {% block title %}Registrar Pago{% endblock %}
 
 {% block content %}
-<style>
-  body {
-    background: radial-gradient(circle at top left, #0f172a, #020617 90%);
-    font-family: 'Poppins', sans-serif;
-    color: #e2e8f0;
-  }
-
-  .glass-card {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 1rem;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-    /* IMPORTANTE: permitir que el dropdown se vea sin empujar el layout */
-    overflow: visible;
-  }
-
-  .card-header-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: .75rem;
-    padding: .25rem 0 0 0;
-  }
-
-  h1 {
-    color: #fff;
-    font-weight: 600;
-  }
-
-  .meta {
-    display: inline-flex;
-    align-items: center;
-    gap: .5rem;
-    background: rgba(56, 189, 248, 0.15);
-    color: #93c5fd;
-    border: 1px solid rgba(56, 189, 248, 0.25);
-    padding: .25rem .55rem;
-    border-radius: .5rem;
-    font-size: .85rem;
-  }
-
-  .divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.12);
-    margin: 1.25rem 0;
-  }
-
-  label {
-    font-weight: 500;
-    color: #f1f5f9;
-    margin-bottom: .4rem;
-  }
-
-  .form-text { color: #94a3b8; }
-
-  .form-control, .form-select, .select2-selection {
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    color: #f8fafc !important;
-    min-height: 44px;
-  }
-  .form-control:focus, .form-select:focus, .select2-selection:focus {
-    border-color: #38bdf8 !important;
-    box-shadow: 0 0 6px #38bdf8 !important;
-    background: rgba(255, 255, 255, 0.12) !important;
-  }
-
-  .alert-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #fecaca;
-  }
-
-  .btn {
-    border-radius: 0.6rem;
-    font-weight: 500;
-    transition: all 0.3s ease;
-  }
-
-  .btn-success {
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-    border: none;
-  }
-  .btn-success:hover {
-    background: linear-gradient(135deg, #4ade80, #15803d);
-  }
-
-  .btn-outline-secondary {
-    border-color: rgba(255, 255, 255, 0.2);
-    color: #e2e8f0;
-  }
-  .btn-outline-secondary:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  /* ===== Select2 (dark + z-index alto + buscador legible) ===== */
-  .select2-container { width: 100% !important; z-index: 9999 !important; }
-  .select2-dropdown {
-    background: rgba(17, 24, 39, 0.98) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    color: #f8fafc !important;
-    z-index: 9999 !important;
-  }
-  .select2-results__option--highlighted {
-    background: rgba(56, 189, 248, 0.25) !important;
-    color: #e2e8f0 !important;
-  }
-  .select2-container--default .select2-selection--single .select2-selection__rendered {
-    color: #e2e8f0 !important;
-    line-height: 44px !important;
-  }
-  .select2-container--default .select2-selection--single {
-    height: 44px !important;
-  }
-  .select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 44px !important;
-  }
-  .select2-container--default .select2-selection--single .select2-selection__arrow b {
-    border-color: #38bdf8 transparent transparent transparent !important;
-  }
-  .select2-search--dropdown .select2-search__field {
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    color: #f8fafc !important;
-  }
-  .select2-search--dropdown .select2-search__field::placeholder {
-    color: #94a3b8 !important;
-  }
-
-  /* ===== Footer sticky dentro de la tarjeta ===== */
-  .card-actions {
-    position: sticky;
-    bottom: 0;
-    margin-top: 1rem;
-    padding-top: .75rem;
-    background: linear-gradient(180deg, rgba(15,23,42,0.2), rgba(15,23,42,0.65) 24px, rgba(15,23,42,1) 48px);
-  }
-</style>
-
 <div class="container py-5" style="max-width: 880px;">
-  <div class="glass-card p-4 p-md-5" id="card-root">
+  <div class="card shadow-sm">
+    <div class="card-body p-4 p-md-5">
 
-    <!-- Header alineado -->
-    <div class="card-header-bar mb-3">
-      <div>
-        <h1 class="h4 mb-1">💰 Registrar Pago</h1>
-        <div class="meta"><i class="bi bi-hash"></i> Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong></div>
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h1 class="h4 mb-1">💰 Registrar Pago</h1>
+          <div class="text-muted small">Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong></div>
+        </div>
+        <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left-circle me-1"></i> Volver
+        </a>
       </div>
-      <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left-circle me-1"></i> Volver
-      </a>
-    </div>
 
-    <div class="divider"></div>
+      <hr class="my-4">
 
-    <form method="POST" id="pago-form" novalidate>
-      {{ form.hidden_tag() }}
+      <form method="POST" id="pago-form" novalidate>
+        {{ form.hidden_tag() }}
 
-      {% if form.errors %}
-        <div class="alert alert-danger mb-4">
-          <div class="d-flex">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i>
-            <div>
-              <strong>Revisa los campos con error:</strong>
-              <ul class="mb-0 mt-1">
-                {% for field_name, errs in form.errors.items() %}
-                  {% for e in errs %}
-                    <li><strong>{{ getattr(form, field_name).label.text }}:</strong> {{ e }}</li>
+        {% if form.errors %}
+          <div class="alert alert-danger mb-4">
+            <div class="d-flex">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              <div>
+                <strong>Revisa los campos con error:</strong>
+                <ul class="mb-0 mt-1">
+                  {% for field_name, errs in form.errors.items() %}
+                    {% for e in errs %}
+                      <li><strong>{{ getattr(form, field_name).label.text }}:</strong> {{ e }}</li>
+                    {% endfor %}
                   {% endfor %}
-                {% endfor %}
-              </ul>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
-      {% endif %}
+        {% endif %}
 
-      <!-- Grid de campos, ordenado -->
-      <div class="row g-4">
-        <!-- Candidata -->
-        <div class="col-12 col-md-7">
-          <label class="form-label">
-            <i class="bi bi-person-fill text-info me-1"></i> {{ form.candidata_id.label.text }} <span class="text-danger">*</span>
-          </label>
-
-          {# Aseguramos opción vacía para placeholder #}
-          {% set _has_empty = false %}
-          {% for opt in form.candidata_id %}
-            {% if opt.data|string == '' %}
-              {% set _has_empty = true %}
+        <div class="row g-4">
+          <div class="col-12 col-md-7">
+            {% if form.domestica_id is defined %}
+              {% set pick_field = form.domestica_id %}
+              {% set pick_id = 'domestica_id' %}
+              {% set pick_label = 'Doméstica' %}
+              {% set pick_placeholder = 'Buscar doméstica por nombre, cédula o teléfono…' %}
+              {% set pick_help = 'Escribe arriba para filtrar y luego selecciona una doméstica.' %}
+            {% else %}
+              {% set pick_field = form.candidata_id %}
+              {% set pick_id = 'candidata_id' %}
+              {% set pick_label = 'Candidata' %}
+              {% set pick_placeholder = 'Buscar candidata por nombre, cédula o teléfono…' %}
+              {% set pick_help = 'Escribe arriba para filtrar y luego selecciona una candidata.' %}
             {% endif %}
-          {% endfor %}
-          {% if not _has_empty %}
-            <select id="candidata-select" name="{{ form.candidata_id.name }}" class="form-select">
-              <option value=""></option>
-            </select>
-          {% else %}
-            {{ form.candidata_id(class="form-select", id="candidata-select") }}
-          {% endif %}
 
-          <div class="form-text mt-1">Escribe para buscar y seleccionar una candidata.</div>
-        </div>
+            <label class="form-label">
+              <i class="bi bi-person-fill text-info me-1"></i>
+              {{ pick_field.label.text if pick_field.label is defined else pick_label }} <span class="text-danger">*</span>
+            </label>
 
-        <!-- Monto -->
-        <div class="col-12 col-md-5">
-          <label class="form-label">
-            <i class="bi bi-cash-stack text-success me-1"></i> {{ form.monto_pagado.label.text }} <span class="text-danger">*</span>
-          </label>
-          <div class="input-group">
-            <span class="input-group-text">RD$</span>
-            {{ form.monto_pagado(class="form-control", id="monto-pagado", placeholder="Ej. 10,000") }}
+            <input
+              type="text"
+              id="candidata-search"
+              class="form-control mb-2"
+              placeholder="{{ pick_placeholder }}"
+              autocomplete="off"
+              data-search-url="{{ buscar_candidatas_url }}"
+            >
+
+            {{ pick_field(class="form-select", id=pick_id) }}
+            <div class="form-text mt-1">{{ pick_help }}</div>
+            <div id="candidata-empty" class="form-text mt-1 text-danger d-none">No hay coincidencias con esa búsqueda.</div>
           </div>
-          <div class="form-text mt-1">Solo números. Se formatea automáticamente.</div>
-        </div>
-      </div>
 
-      <!-- Acciones -->
-      <div class="card-actions">
+          <div class="col-12 col-md-5">
+            <label class="form-label">
+              <i class="bi bi-cash-stack text-success me-1"></i> {{ form.monto_pagado.label.text }} <span class="text-danger">*</span>
+            </label>
+            <div class="input-group">
+              <span class="input-group-text">RD$</span>
+              {{ form.monto_pagado(class="form-control", placeholder="Ej. 10000") }}
+            </div>
+            <div class="form-text mt-1">Solo números.</div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+
         <div class="d-flex justify-content-end gap-2">
           <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-outline-secondary">
             <i class="bi bi-x-circle me-1"></i> Cancelar
           </a>
-          <button type="submit" class="btn btn-success" id="btn-submit">
+          <button type="submit" class="btn btn-success">
             <i class="bi bi-save-fill me-1"></i> {{ form.submit.label.text }}
           </button>
         </div>
-      </div>
-    </form>
+
+      </form>
+
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-  <!-- jQuery (requerido por Select2) -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"
-          integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
-          crossorigin="anonymous"></script>
-
-  <!-- Select2 -->
-  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
+  {{ super() }}
   <script>
-  (function(){
-    const $cand = $('#candidata-select');
+    (function () {
+      'use strict';
 
-    // Usamos el body para el dropdown para evitar reflow dentro de contenedores sticky/overflow
-    $cand.select2({
-      width: '100%',
-      placeholder: '🔍 Buscar candidata…',
-      allowClear: true,
-      minimumInputLength: 1,
-      dropdownParent: $(document.body),
-      ajax: {
-        delay: 200,
-        url: "{{ url_for('admin.api_candidatas') }}",
-        dataType: 'json',
-        data: params => ({ q: params.term || '' }),
-        processResults: data => ({
-          results: (data.results || []).map(i => ({ id: i.id, text: i.text }))
-        })
+      function normalize(str) {
+        return (str || '')
+          .toString()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim();
       }
-    });
 
-    // Asegura opción vacía para placeholder (sin marcarla seleccionada)
-    if ($cand.find('option[value=""]').length === 0) {
-      $cand.prepend(new Option('', '', false, false));
-    }
+      function splitTokens(q) {
+        const n = normalize(q);
+        if (!n) return [];
+        return n.split(/\s+/g).filter(Boolean);
+      }
 
-    // Enfocar el input del buscador al abrir sin saltos
-    $cand.on('select2:open', () => {
-      setTimeout(() => {
-        const inp = document.querySelector('.select2-container--open .select2-search__field');
-        if (inp) inp.focus({ preventScroll: true });
-      }, 0);
-    });
+      function debounce(fn, wait) {
+        let t;
+        return function (...args) {
+          clearTimeout(t);
+          t = setTimeout(() => fn.apply(this, args), wait);
+        };
+      }
 
-    // Preselección si viene del servidor
-    {% if form.candidata_id.data %}
-      (function(){
-        const preId = "{{ form.candidata_id.data }}";
-        const preText =
-          $("#candidata-select option[value='" + preId + "']").text() ||
-          $("#candidata-select option:selected").text() || "Seleccionada";
-        if (preId) {
-          const option = new Option(preText, preId, true, true);
-          $cand.append(option).trigger('change');
+      function initPickSearch() {
+        const input = document.getElementById('candidata-search');
+        const select = document.getElementById('domestica_id') || document.getElementById('candidata_id');
+        const emptyMsg = document.getElementById('candidata-empty');
+        if (!input || !select) return;
+
+        // Evitar doble inicialización
+        if (input.dataset.bound === '1') return;
+        input.dataset.bound = '1';
+
+        // Placeholder (1er option con value vacío/0)
+        function isPlaceholderOption(opt) {
+          const txt = normalize(opt.textContent || opt.text || '');
+          return (opt.value === '' || opt.value === '0') && txt.length > 0;
         }
-      })();
-    {% endif %}
 
-    // Formateo de monto mientras escribe (solo dígitos y separador de miles)
-    const monto = document.getElementById('monto-pagado');
-    if (monto) {
-      monto.addEventListener('input', () => {
-        let v = monto.value.replace(/[^\d]/g, '');
-        if (!v) { monto.value = ''; return; }
-        monto.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-      });
-    }
+        function getPlaceholderOption() {
+          const opts = Array.from(select.options);
+          return opts.find(isPlaceholderOption) || null;
+        }
 
-    // Antes de enviar, quitamos comas para back-end
-    const form = document.getElementById('pago-form');
-    const btn = document.getElementById('btn-submit');
-    form.addEventListener('submit', () => {
-      if (monto) monto.value = monto.value.replace(/,/g, '');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
-    });
-  })();
+        // === 1) Modo: búsqueda en BD (ruta del backend) ===
+        // La ruta viene desde Flask en: data-search-url="{{ buscar_candidatas_url }}"
+        // (y así evitamos errores con /admin, blueprints, etc.)
+        const searchUrl = input.dataset.searchUrl;
+        if (!searchUrl) {
+          // Sin ruta, no podemos buscar en BD. Al menos deja el filtro local.
+          // (No rompemos la página.)
+          input.addEventListener('input', debounce(() => {
+            const tokens = splitTokens(input.value);
+            filterClientSide(tokens);
+          }, 160));
+          return;
+        }
+
+        // Guarda el último dataset cargado, para poder filtrar en cliente si el usuario sigue escribiendo rápido
+        let lastServerRows = null;
+        let lastServerQ = '';
+        let loading = false;
+
+        function setLoading(v) {
+          loading = !!v;
+          // sin CSS extra: solo atributo para debug
+          input.setAttribute('aria-busy', loading ? 'true' : 'false');
+        }
+
+        function parseServerPayload(payload) {
+          // Soporta varios formatos:
+          // 1) [{id, label, text, nombre, cedula, telefono}, ...]
+          // 2) {results: [...]}
+          // 3) {items: [...]}
+          const rows = Array.isArray(payload)
+            ? payload
+            : (payload && (payload.results || payload.items || payload.data)) || [];
+
+          if (!Array.isArray(rows)) return [];
+
+          return rows.map((r) => {
+            const id = (r && (r.id ?? r.value ?? r.domestica_id ?? r.candidata_id)) ?? '';
+            // label preferido
+            const label = (r && (r.label || r.text || r.nombre_completo || r.nombre)) || '';
+            // extras para búsqueda
+            const cedula = (r && (r.cedula || r.cedula_numero || r.documento)) || '';
+            const telefono = (r && (r.telefono || r.numero_telefono || r.celular)) || '';
+            const extra = [cedula, telefono].filter(Boolean).join(' · ');
+
+            const finalLabel = extra ? `${label} — ${extra}` : label;
+            return { id: String(id), label: String(finalLabel) };
+          }).filter(x => x.id && x.label);
+        }
+
+        function rebuildSelectFromRows(rows) {
+          const placeholderOpt = getPlaceholderOption();
+          const keepPlaceholder = placeholderOpt ? { value: placeholderOpt.value, text: placeholderOpt.textContent || placeholderOpt.text || '' } : null;
+
+          // Guardar selección actual
+          const currentValue = select.value;
+
+          // Limpiar options
+          select.innerHTML = '';
+
+          // Reinsertar placeholder
+          if (keepPlaceholder) {
+            const opt = document.createElement('option');
+            opt.value = keepPlaceholder.value;
+            opt.textContent = keepPlaceholder.text;
+            select.appendChild(opt);
+          }
+
+          // Insertar nuevas
+          for (const row of rows) {
+            const opt = document.createElement('option');
+            opt.value = row.id;
+            opt.textContent = row.label;
+            // cache de búsqueda por si hacemos filtro local rápido
+            opt.dataset.searchCache = normalize(row.label) + ' ' + normalize(row.id);
+            select.appendChild(opt);
+          }
+
+          // Intentar mantener selección previa si existe todavía
+          if (currentValue && Array.from(select.options).some(o => o.value === currentValue)) {
+            select.value = currentValue;
+          } else if (keepPlaceholder) {
+            select.value = keepPlaceholder.value;
+          }
+        }
+
+        function filterClientSide(tokens) {
+          // Filtra options actuales (sin duplicar ni reconstruir) usando hidden
+          const placeholderOpt = getPlaceholderOption();
+          let visible = 0;
+
+          Array.from(select.options).forEach((opt) => {
+            if (placeholderOpt && opt === placeholderOpt) {
+              opt.hidden = false;
+              return;
+            }
+            const cache = opt.dataset.searchCache || normalize(opt.textContent || opt.text || '') + ' ' + normalize(opt.value || '');
+            const ok = tokens.every(t => cache.includes(t));
+            opt.hidden = !ok;
+            if (ok && !opt.disabled) visible++;
+          });
+
+          const selected = select.options[select.selectedIndex];
+          if (selected && selected.hidden) {
+            if (placeholderOpt) select.value = placeholderOpt.value;
+            else select.selectedIndex = 0;
+          }
+
+          if (emptyMsg) {
+            if (visible === 0) emptyMsg.classList.remove('d-none');
+            else emptyMsg.classList.add('d-none');
+          }
+        }
+
+        async function fetchFromServer(q) {
+          // No hagas llamadas por 1 letra
+          const tokens = splitTokens(q);
+          if (tokens.length === 0) {
+            // Si no hay query, mostrar todo sin ocultar
+            if (emptyMsg) emptyMsg.classList.add('d-none');
+            Array.from(select.options).forEach((opt) => (opt.hidden = false));
+            return;
+          }
+          if (normalize(q).length < 2) {
+            // con 1 char mejor filtrar local
+            filterClientSide(tokens);
+            return;
+          }
+
+          // Si ya tenemos dataset del server y el usuario sigue escribiendo, filtra local primero para sensación rápida
+          if (lastServerRows && normalize(q).startsWith(normalize(lastServerQ))) {
+            filterClientSide(tokens);
+          }
+
+          setLoading(true);
+          try {
+            const url = new URL(searchUrl, window.location.origin);
+            url.searchParams.set('q', q);
+
+            const res = await fetch(url.toString(), {
+              method: 'GET',
+              headers: { 'Accept': 'application/json' },
+              credentials: 'same-origin'
+            });
+
+            if (!res.ok) {
+              // Si la ruta no existe / falla, cae a filtro local y ya
+              setLoading(false);
+              filterClientSide(tokens);
+              return;
+            }
+
+            const payload = await res.json();
+            const rows = parseServerPayload(payload);
+
+            lastServerRows = rows;
+            lastServerQ = q;
+
+            // Rebuild del select con resultados del servidor
+            rebuildSelectFromRows(rows);
+
+            // Aplicar filtro final por tokens (por si el server devolvió más)
+            filterClientSide(tokens);
+          } catch (e) {
+            // Si algo falla, cae a filtro local
+            filterClientSide(tokens);
+          } finally {
+            setLoading(false);
+          }
+        }
+
+        const onInput = debounce(() => {
+          fetchFromServer(input.value);
+        }, 220);
+
+        input.addEventListener('input', onInput);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            select.focus();
+          }
+        });
+        input.addEventListener('paste', () => setTimeout(() => fetchFromServer(input.value), 0));
+
+        // Inicial
+        fetchFromServer(input.value);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPickSearch);
+      } else {
+        initPickSearch();
+      }
+    })();
   </script>
 {% endblock %}

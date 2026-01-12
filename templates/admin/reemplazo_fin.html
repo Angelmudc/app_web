@@ -1,119 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Finalizar Reemplazo{% endblock %}
 
-{% block head %}
-  <style>
-    body {
-      background: radial-gradient(circle at top left, #0f172a, #020617 90%);
-      font-family: 'Poppins', sans-serif;
-      color: #e2e8f0;
-    }
-
-    .glass-card {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 1rem;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-      padding: 2rem;
-      overflow: visible;
-    }
-
-    h1 {
-      color: #fff;
-      font-weight: 600;
-    }
-
-    label {
-      font-weight: 500;
-      color: #f1f5f9;
-    }
-
-    .form-control, .form-select {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      color: #f8fafc;
-      min-height: 44px;
-    }
-
-    .form-control:focus, .form-select:focus {
-      border-color: #38bdf8;
-      box-shadow: 0 0 6px #38bdf8;
-      background: rgba(255, 255, 255, 0.12);
-    }
-
-    .btn {
-      border-radius: 0.6rem;
-      font-weight: 500;
-      transition: all 0.3s ease;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #22c55e, #16a34a);
-      border: none;
-    }
-    .btn-primary:hover {
-      background: linear-gradient(135deg, #4ade80, #15803d);
-    }
-
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.15);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: #e2e8f0;
-    }
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.25);
-    }
-
-    .alert-danger {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      color: #fecaca;
-    }
-
-    .form-text { color: #94a3b8; }
-
-    /* ===== Select2 (dark) ===== */
-    .select2-container { width: 100% !important; z-index: 9999 !important; }
-    .select2-dropdown {
-      background: rgba(17, 24, 39, 0.98) !important;
-      border: 1px solid rgba(255, 255, 255, 0.15) !important;
-      color: #f8fafc !important;
-      z-index: 9999 !important;
-    }
-    .select2-results__option--highlighted {
-      background: rgba(56, 189, 248, 0.25) !important;
-      color: #e2e8f0 !important;
-    }
-    .select2-container--default .select2-selection--single .select2-selection__rendered {
-      color: #e2e8f0 !important;
-      line-height: 44px !important;
-    }
-    .select2-container--default .select2-selection--single {
-      height: 44px !important;
-      background: rgba(255, 255, 255, 0.08) !important;
-      border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    }
-    .select2-container--default .select2-selection--single .select2-selection__arrow {
-      height: 44px !important;
-    }
-    .select2-container--default .select2-selection--single .select2-selection__arrow b {
-      border-color: #38bdf8 transparent transparent transparent !important;
-    }
-    .select2-search--dropdown .select2-search__field {
-      background: rgba(255, 255, 255, 0.08) !important;
-      border: 1px solid rgba(255, 255, 255, 0.15) !important;
-      color: #f8fafc !important;
-    }
-    .select2-search--dropdown .select2-search__field::placeholder {
-      color: #94a3b8 !important;
-    }
-
-    .emoji-title { font-size: 1.5rem; }
-  </style>
-{% endblock %}
-
 {% block content %}
 <div class="container py-5" style="max-width: 700px;">
   <div class="d-flex justify-content-between align-items-center mb-4">
@@ -236,16 +123,12 @@
       });
 
       // Preseleccionar si el form ya trae algo cargado (ej. error de validación)
-      {% if form.candidata_new_id.data %}
-      (function () {
-        const preId = "{{ form.candidata_new_id.data }}";
-        const preText = "{{ form.candidata_new_name.data or '' }}";
-        if (preId && preText) {
-          const option = new Option(preText, preId, true, true);
-          $select.append(option).trigger('change');
-        }
-      })();
-      {% endif %}
+      const preId = "{{ form.candidata_new_id.data or '' }}";
+      const preText = "{{ form.candidata_new_name.data or '' }}";
+      if (preId && preText) {
+        const option = new Option(preText, preId, true, true);
+        $select.append(option).trigger('change');
+      }
 
       // Cuando seleccionas una candidata del dropdown
       $select.on('select2:select', function (e) {

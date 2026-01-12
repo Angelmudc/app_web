@@ -2,214 +2,45 @@
 {% block title %}Clientes{% endblock %}
 
 {% block content %}
+
 <style>
-  :root{
-    --bg-color:#0f172a;
-    --card-bg:rgba(255,255,255,0.06);
-    --text-color:#e2e8f0;
-    --accent:#38bdf8;
-    --border-color:rgba(255,255,255,0.12);
-    --btn-radius:.6rem;
-
-    /* Menú de interacción: SÓLIDO (sin glass) */
-    --menu-bg:#0b1220;
-    --menu-text:#e2e8f0;
-    --menu-border:#1f2937;
-    --menu-hover:#2563eb;
-  }
-  body.light-mode{
-    --bg-color:#f3f4f6;
-    --card-bg:#ffffff;
-    --text-color:#1e293b;
-    --accent:#2563eb;
-    --border-color:rgba(0,0,0,.1);
-
-    --menu-bg:#ffffff;
-    --menu-text:#111827;
-    --menu-border:#e5e7eb;
-    --menu-hover:#2563eb;
-  }
-
-  body{
-    background:var(--bg-color);
-    font-family:'Poppins',sans-serif;
-    color:var(--text-color);
-  }
-
-  .container{max-width:98%}
-  h1{font-weight:600}
-
-  /* Card sin blur */
-  .glass-card{
-    background:var(--card-bg);
-    border:1px solid var(--border-color);
-    border-radius:1rem;
-    box-shadow:0 6px 14px rgba(0,0,0,.25);
-    padding:1.25rem;
-  }
-
-  /* Botón modo */
-  .mode-toggle{
-    width:45px;height:45px;border-radius:50%;
-    display:flex;align-items:center;justify-content:center;
-    background:var(--card-bg);
-    border:1px solid var(--border-color);
-    color:var(--text-color);
-    cursor:pointer;
-  }
-
-  /* Tabla escritorio */
-  .table{width:100%;border-collapse:collapse;font-size:.98rem;color:var(--text-color)}
-  thead th{
-    background:rgba(255,255,255,.08);
-    border-bottom:2px solid var(--border-color);
-    text-align:center;padding:1rem;font-weight:600;
-  }
-  tbody tr{background:rgba(255,255,255,.03)}
-  tbody tr:hover{background:rgba(56,189,248,.12)}
-  td{padding:1rem;text-align:center;border-bottom:1px solid var(--border-color)}
-
-  /* Botones */
-  .btn{border-radius:var(--btn-radius);font-weight:500}
-  .btn-sm{padding:.4rem .7rem}
-  .btn-success{background:#10b981;border:none;color:#fff}
-  .btn-success:hover{background:#059669}
-  .btn-primary{background:#2563eb;border:none;color:#fff}
-  .btn-primary:hover{background:#1d4ed8}
-  .btn-warning{background:#facc15;border:none;color:#000}
-  .btn-warning:hover{background:#eab308}
-  .btn-info{background:#0ea5e9;border:none;color:#fff}
-  .btn-info:hover{background:#0284c7}
-  .btn-outline-secondary{border:1px solid var(--border-color);color:var(--text-color)}
-  .btn-outline-secondary:hover{background:var(--accent);color:#fff;border-color:transparent}
-  .btn-danger{background:#ef4444;border:none;color:#fff}
-  .btn-danger:hover{background:#dc2626}
-
-  /* Para el dropdown portal que sacamos fuera del flujo */
-  .table-responsive{overflow:visible !important; position:relative; z-index:1;}
-
-  /* Menú base — SIEMPRE sólido */
-  .dropdown-menu{
-    min-width:210px;
-    font-size:.95rem;
-    background:var(--menu-bg) !important;
-    color:var(--menu-text) !important;
-    border:1px solid var(--menu-border) !important;
-    border-radius:.8rem;
-    display:none;
-    position:absolute; top:110%; right:0;
-    box-shadow:0 12px 28px rgba(0,0,0,.45);
-    pointer-events:auto;
-  }
-  .dropdown-menu.show{display:block}
-  .dropdown-item{
-    color:var(--menu-text) !important;
-    padding:.55rem .9rem;
-    display:block;
-    text-decoration:none;
-    background:transparent !important;
-  }
-  .dropdown-item:hover{
-    background:var(--menu-hover) !important;
-    color:#fff !important;
-  }
-  .dropdown-divider{
-    margin:.35rem 0;
-    border-top:1px solid var(--menu-border) !important;
-  }
-  .dropdown-toggle::after{display:none}
-
-  /* PORTAL: contenedor fijo sobre todo */
-  #dropdown-portal{
-    position:fixed;
-    inset:0;
-    pointer-events:none;
-    z-index:2147483647;
-  }
-  #dropdown-portal .portal-menu{
-    position:fixed;
-    background:var(--menu-bg);
-    color:var(--menu-text);
-    border:1px solid var(--menu-border);
-    border-radius:.8rem;
-    box-shadow:0 12px 28px rgba(0,0,0,.55);
-    min-width:210px;
-    max-height:60vh;
-    overflow:auto;
-    pointer-events:auto;
-  }
-
-  /* ======= Overrides críticos para móvil (<576px) ======= */
-  @media (max-width: 576px){
-    .glass-card{padding:.85rem}
-    .table, table.dataTable{
-      white-space:normal !important;
-      overflow-x:visible !important;
-    }
-    .table td{padding:.65rem .75rem; font-size:.95rem}
-    .btn-group .btn{padding:.5rem .6rem}
-    .container{max-width:100%}
-  }
-
-  /* ======= Tabla “apilada” en móvil/tabla <=768px ======= */
-  @media (max-width: 768px){
-    thead{display:none}
-    .table, .table tbody, .table tr, .table td{display:block; width:100%}
-    .table tr{margin-bottom:.9rem; border:1px solid var(--border-color); border-radius:.8rem; overflow:hidden}
-    .table td{
-      text-align:left; border:none; border-bottom:1px solid var(--border-color);
-      padding:.75rem .9rem; background:rgba(255,255,255,.03);
-      display:flex; justify-content:space-between; gap:.75rem;
-    }
-    .table td:last-child{border-bottom:none}
-    .table td::before{
-      content:attr(data-label);
-      font-weight:600; opacity:.85;
-      margin-right:.75rem;
-      flex: 1 1 auto;
-    }
-    .table td > *:not(.badge){max-width:60%; word-break:break-word;}
-    .btn-group{width:100%}
-    .btn-group .btn{width:100%}
-    .mode-toggle{width:40px;height:40px}
-  }
-
-  /* Paginación simple */
-  .pagination-sm .page-link{border-radius:.6rem}
+  /* Caja central para esta página */
+  .clientes-shell{ max-width: 1600px; margin: 0 auto; }
 </style>
 
+{# ──────────────────────────────────────────────────────────────
+   Paginación y slice (se calcula aquí porque la ruta solo envía `clientes` y `q`)
+────────────────────────────────────────────────────────────── #}
 {% set page = (request.args.get('page','1')|int if request.args.get('page') else 1) %}
 {% set per_page = (request.args.get('per_page','25')|int if request.args.get('per_page') else 25) %}
-{% set items = (clientes|sort(attribute='fecha_registro', reverse=True) if clientes is iterable else clientes) %}
-{% set total = items|length if items is iterable else 0 %}
+{% set items = (clientes|list if clientes is iterable else []) %}
+{% set total = items|length %}
 {% set start = (page-1) * per_page %}
 {% set end = start + per_page %}
-{% set slice = items[start:end] if items is iterable else [] %}
-{% set last_page = ( (total-1)//per_page + 1 ) if total > 0 else 1 %}
+{% set slice = items[start:end] %}
+{% set last_page = (((total-1)//per_page) + 1) if total > 0 else 1 %}
 
-<div class="container py-4">
+<div class="py-4 clientes-shell">
+  <div class="glass-card p-3 p-md-4">
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h1 class="h3 mb-0">👥 Clientes</h1>
     <div class="d-flex align-items-center gap-3">
       <div class="btn-group" role="group">
         <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-success">
-          <i class="bi bi-person-plus-fill"></i> Nuevo
+          <i class="fa-solid fa-user-plus"></i> Nuevo
         </a>
         <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary">
-          <i class="bi bi-card-list"></i> Solicitudes
+          <i class="fa-solid fa-rectangle-list"></i> Solicitudes
         </a>
         <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="btn btn-warning text-dark">
-          <i class="bi bi-lightning-fill"></i> Pendientes ⚡
+          <i class="fa-solid fa-bolt"></i> Pendientes ⚡
         </a>
         <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="btn btn-danger">
-          <i class="bi bi-exclamation-triangle-fill"></i> Prioritarias 🔥
+          <i class="fa-solid fa-triangle-exclamation"></i> Prioritarias 🔥
         </a>
         <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="btn btn-info">
-          <i class="bi bi-calendar-day-fill"></i> Resumen Hoy 📅
+          <i class="fa-solid fa-calendar-day"></i> Resumen Hoy 📅
         </a>
-      </div>
-      <div class="mode-toggle" id="modeToggle" title="Cambiar modo">
-        <i class="bi bi-sun-fill" id="modeIcon"></i>
       </div>
     </div>
   </div>
@@ -227,15 +58,15 @@
     </div>
     <div class="col-6 col-md-auto">
       <button class="btn btn-outline-secondary w-100">
-        <i class="bi bi-search"></i> Buscar
+        <i class="fa-solid fa-magnifying-glass"></i> Buscar
       </button>
     </div>
   </form>
 
   {% if clientes %}
-  <div class="glass-card">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle">
+  <div class="mt-3">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
             <th>#</th>
@@ -271,29 +102,25 @@
               {% endif %}
             </td>
             <td data-label="Acciones">
-              <div class="btn-group">
-                <button type="button"
-                        class="btn btn-sm btn-primary elegir-btn"
-                        data-id="{{ c.id }}"
-                        aria-haspopup="true"
-                        aria-expanded="false">
-                  Elegir
+              <div class="dropdown">
+                <button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  Acciones
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end" id="menu-{{ c.id }}" role="menu" tabindex="-1" aria-label="Acciones de cliente">
+                <ul class="dropdown-menu dropdown-menu-end">
                   <li>
                     <a class="dropdown-item" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}">
-                      <i class="bi bi-eye-fill text-info me-2"></i>Ver Detalle
+                      <i class="fa-solid fa-eye text-info me-2"></i>Ver Detalle
                     </a>
                   </li>
                   <li>
                     <a class="dropdown-item" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">
-                      <i class="bi bi-pencil-fill text-warning me-2"></i>Editar
+                      <i class="fa-solid fa-pen-to-square text-warning me-2"></i>Editar
                     </a>
                   </li>
                   <li><hr class="dropdown-divider"></li>
                   <li>
-                    <a class="dropdown-item text-danger" href="#" onclick="if(confirm('¿Eliminar cliente #{{ c.id }}?')) document.getElementById('del-{{c.id}}').submit();">
-                      <i class="bi bi-trash-fill me-2"></i>Eliminar
+                    <a class="dropdown-item text-danger" href="#" onclick="if(confirm('¿Eliminar cliente #{{ c.id }}?')) document.getElementById('del-{{c.id}}').submit(); return false;">
+                      <i class="fa-solid fa-trash me-2"></i>Eliminar
                     </a>
                     <form id="del-{{c.id}}" method="post" action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}" style="display:none">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -306,7 +133,7 @@
           {% endfor %}
         </tbody>
       </table>
-    </div>
+      </div>
 
     <!-- Paginación -->
     <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
@@ -331,102 +158,11 @@
     </div>
   </div>
   {% else %}
-  <div class="alert alert-info glass-card mt-4 text-center p-4">
-    <i class="bi bi-info-circle-fill me-2"></i>No se encontraron clientes en la base de datos.
+  <div class="alert alert-info mt-4 text-center p-4 shadow-sm">
+    <i class="fa-solid fa-circle-info me-2"></i>No se encontraron clientes en la base de datos.
   </div>
   {% endif %}
+  </div>
 </div>
 
-<!-- Portal fijo (vacío al inicio) -->
-<div id="dropdown-portal" aria-hidden="true"></div>
-
-<script>
-  // MODO CLARO/OSCURO (local a esta página)
-  (function(){
-    const t=document.getElementById('modeToggle');
-    const i=document.getElementById('modeIcon');
-    t&&t.addEventListener('click',()=>{
-      document.body.classList.toggle('light-mode');
-      i.classList.toggle('bi-sun-fill');
-      i.classList.toggle('bi-moon-fill');
-    });
-  })();
-
-  // DROPDOWNS — usando PORTAL AL BODY
-  (function(){
-    const portal = document.getElementById('dropdown-portal');
-    let openState = null;
-
-    function closeAll(){
-      if(!openState) return;
-      const {menu, placeholder, originGroup, btn} = openState;
-      try{
-        menu.classList.remove('show');
-        menu.removeAttribute('style');
-        menu.classList.remove('portal-menu');
-        originGroup.replaceChild(menu, placeholder);
-      }catch(e){}
-      portal.innerHTML = '';
-      portal.setAttribute('aria-hidden','true');
-      openState = null;
-      btn && btn.setAttribute('aria-expanded','false');
-    }
-
-    function openMenu(btn, menu){
-      closeAll();
-      const placeholder = document.createComment('menu-anchor');
-      const originGroup = menu.parentNode;
-      originGroup.replaceChild(placeholder, menu);
-
-      btn.setAttribute('aria-expanded','true');
-
-      menu.classList.add('portal-menu','show');
-      portal.innerHTML = '';
-      portal.appendChild(menu);
-      portal.setAttribute('aria-hidden','false');
-
-      const r = btn.getBoundingClientRect();
-      const menuRect = {width: Math.max(210, menu.offsetWidth || 210)};
-      let top = r.bottom + 8;
-      let left = r.right - menuRect.width;
-
-      const vw = window.innerWidth, vh = window.innerHeight;
-      if(left + menuRect.width > vw - 8) left = vw - menuRect.width - 8;
-      if(left < 8) left = 8;
-
-      const estimatedHeight = Math.min(menu.scrollHeight, vh * 0.6);
-      if(top + estimatedHeight > vh - 8){ top = r.top - 8 - estimatedHeight; }
-      if(top < 8) top = 8;
-
-      menu.style.left = left + 'px';
-      menu.style.top  = top  + 'px';
-      menu.style.maxHeight = '60vh';
-
-      openState = {btn, menu, placeholder, originGroup};
-      menu.setAttribute('tabindex','-1');
-      menu.focus();
-    }
-
-    document.querySelectorAll('.btn-group').forEach(group=>{
-      const btn = group.querySelector('.elegir-btn');
-      const menu = group.querySelector('.dropdown-menu');
-      if(!btn || !menu) return;
-      btn.addEventListener('click', (e)=>{
-        e.stopPropagation();
-        if(openState && openState.menu === menu){ closeAll(); return; }
-        openMenu(btn, menu);
-      });
-    });
-
-    document.addEventListener('click', (e)=>{
-      if(openState){
-        const isInside = e.target.closest('.portal-menu') || e.target.closest('.elegir-btn');
-        if(!isInside) closeAll();
-      }
-    });
-    document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeAll(); });
-    window.addEventListener('scroll', closeAll, {passive:true});
-    window.addEventListener('resize', closeAll);
-  })();
-</script>
 {% endblock %}
