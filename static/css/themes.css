@@ -2,6 +2,10 @@
    Variables por tema (light/dark)
    Se controla con: <html data-theme="light|dark">
 */
+
+/* =========================
+   LIGHT THEME
+========================= */
 html[data-theme="light"]{
   --bg: #f6f8fc;
   --panel: #ffffff;
@@ -28,10 +32,13 @@ html[data-theme="light"]{
   --row-hover: rgba(11,102,255,.06);
 }
 
+/* =========================
+   DARK THEME
+========================= */
 html[data-theme="dark"]{
   --bg: #070b18;
-  --panel: rgba(255,255,255,.06);
-  --panel-2: rgba(255,255,255,.08);
+  --panel: rgba(255,255,255,.08);
+  --panel-2: rgba(255,255,255,.12);
 
   --text: #eaf0ff;
   --muted: rgba(234,240,255,.75);
@@ -42,14 +49,71 @@ html[data-theme="dark"]{
 
   --link: #7ab6ff;
 
-  --navbar-bg: rgba(7,11,24,.72);
+  --navbar-bg: rgba(7,11,24,.85);
   --navbar-border: rgba(234,240,255,.12);
 
-  --input-bg: rgba(255,255,255,.06);
-  --input-border: rgba(234,240,255,.16);
+  --input-bg: rgba(255,255,255,.08);
+  --input-border: rgba(234,240,255,.18);
   --input-text: #eaf0ff;
   --placeholder: rgba(234,240,255,.52);
 
-  --table-head: rgba(255,255,255,.06);
-  --row-hover: rgba(122,182,255,.10);
+  --table-head: rgba(255,255,255,.08);
+  --row-hover: rgba(122,182,255,.12);
+}
+
+/* =========================
+   BOOTSTRAP FIX (CLAVE)
+   Evita blanco sobre blanco
+========================= */
+
+html[data-theme="dark"] body{
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* Fondo de cards, listas y paneles */
+html[data-theme="dark"] .bg-body,
+html[data-theme="dark"] .list-group-item,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .glass-card{
+  background-color: var(--panel) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Texto */
+html[data-theme="dark"] .text-body{
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .text-body-secondary{
+  color: var(--muted) !important;
+}
+
+/* Bordes */
+html[data-theme="dark"] .border,
+html[data-theme="dark"] .border-bottom,
+html[data-theme="dark"] .border-top{
+  border-color: var(--border) !important;
+}
+
+/* Inputs */
+html[data-theme="dark"] .form-control{
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  border-color: var(--input-border);
+}
+
+html[data-theme="dark"] .form-control::placeholder{
+  color: var(--placeholder);
+}
+
+/* Links */
+html[data-theme="dark"] a{
+  color: var(--link);
+}
+
+/* Hover filas */
+html[data-theme="dark"] .list-group-item:hover{
+  background-color: var(--row-hover);
 }

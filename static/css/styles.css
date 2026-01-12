@@ -1015,7 +1015,7 @@ body[data-theme="light"] .alert{ color: rgba(10,16,36,.92); border-color: rgba(1
   width:100%;
   border-collapse: separate;
   border-spacing:0;
-  overflow:hidden;
+  overflow: visible; /* permite dropdowns/menus dentro de tablas */
   border-radius: var(--border-radius);
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(255,255,255,.06);
@@ -1409,6 +1409,7 @@ body[data-theme="light"] .modal-header, body[data-theme="light"] .modal-footer{ 
   border: 1px solid rgba(255,255,255,.14) !important;
   border-radius: 16px !important;
   box-shadow: var(--shadow-md);
+  z-index: 2000; /* asegura que el menú quede por encima de cards/tablas */
   padding: .5rem;
 }
 .dropdown-item{

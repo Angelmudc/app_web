@@ -42,6 +42,14 @@
 .card{ padding: var(--sp-5); }
 .panel{ padding: var(--sp-4); }
 
+/* ⚠️ MUY IMPORTANTE:
+   Si un contenedor padre tiene overflow hidden, los dropdowns se CORTAN.
+   Aquí blindamos para que el menú de Acciones no se buguee/corte. */
+.card,
+.panel{
+  overflow: visible;
+}
+
 /* Badges */
 .badge-soft{
   display:inline-flex;
@@ -99,17 +107,42 @@ label.form-label{
 .table{
   color: var(--text);
 }
+
+/* ✅ Esto ayuda a que la tabla no se “rompa” rara y sea scrolleable */
+.table td, .table th{
+  border-color: var(--border) !important;
+  vertical-align: middle;
+}
+
+/* Encabezado */
 .table thead th{
   background: var(--table-head);
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-weight: 700;
 }
-.table td, .table th{
-  border-color: var(--border) !important;
-}
+
+/* Hover */
 .table tbody tr:hover{
   background: var(--row-hover);
+}
+
+/* ✅ Solución real para pantallas pequeñas:
+   - La tabla mantiene un ancho mínimo y la envoltura hace scroll */
+.table-responsive{
+  overflow-x: auto !important;
+  overflow-y: visible !important; /* clave para dropdowns */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* La tabla dentro de responsive: ancho mínimo para forzar scroll en pantallas pequeñas */
+.table-responsive > .table{
+  min-width: 1100px; /* ajusta el mínimo; esto evita que el botón quede inaccesible */
+}
+
+/* Evita que textos largos estiren raro columnas */
+.table td, .table th{
+  white-space: nowrap;
 }
 
 /* Footer */
@@ -141,4 +174,19 @@ footer{
   border: 1px solid var(--border) !important;
   border-radius: 14px !important;
   box-shadow: var(--shadow-md);
+}
+
+/* ✅ Dropdowns (Acciones) — FIX:
+   - z-index alto para que no quede detrás
+   - asegura posicionamiento normal de bootstrap */
+.dropdown{
+  position: relative;
+}
+.dropdown-menu{
+  z-index: 2000;
+}
+
+/* En tablas, el td no debe recortar el menú */
+.table td{
+  overflow: visible;
 }
