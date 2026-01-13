@@ -170,6 +170,44 @@ class Candidata(db.Model):
         back_populates='candidata',
         cascade='all, delete-orphan'
     )
+
+    # Entrevistas estructuradas (nuevo módulo)
+    # Nota: esto NO elimina datos; solo crea una relación ORM.
+    entrevistas_nuevas = db.relationship(
+        'Entrevista',
+        back_populates='candidata',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+        single_parent=True
+    )
+
+    # ─────────────────────────────────────────────
+    # Compatibilidad con columnas duplicadas de referencias
+    # (NO borra datos, solo unifica lectura/escritura)
+    # ─────────────────────────────────────────────
+    @property
+    def referencias_laborales_texto(self) -> str:
+        """Devuelve referencias laborales priorizando el campo nuevo."""
+        return (self.contactos_referencias_laborales or self.referencias_laboral or '')
+
+    @referencias_laborales_texto.setter
+    def referencias_laborales_texto(self, value: str) -> None:
+        val = (value or '').strip()
+        self.contactos_referencias_laborales = val or None
+        # Mantener compatibilidad con el campo antiguo
+        self.referencias_laboral = val or None
+
+    @property
+    def referencias_familiares_texto(self) -> str:
+        """Devuelve referencias familiares priorizando el campo nuevo."""
+        return (self.referencias_familiares_detalle or self.referencias_familiares or '')
+
+    @referencias_familiares_texto.setter
+    def referencias_familiares_texto(self, value: str) -> None:
+        val = (value or '').strip()
+        self.referencias_familiares_detalle = val or None
+        # Mantener compatibilidad con el campo antiguo
+        self.referencias_familiares = val or None
 # ─────────────────────────────────────────────────────────────
 # ENTREVISTAS ESTRUCTURADAS (NUEVO – NO ROMPE LO EXISTENTE)
 # ─────────────────────────────────────────────────────────────
@@ -207,11 +245,13 @@ class Entrevista(db.Model):
 
     candidata = db.relationship(
         'Candidata',
-        backref=db.backref(
-            'entrevistas_nuevas',
-            lazy='dynamic',
-            cascade='all, delete-orphan'
-        )
+        back_populates='entrevistas_nuevas'
+    )
+
+    respuestas = db.relationship(
+        'EntrevistaRespuesta',
+        back_populates='entrevista',
+        cascade='all, delete-orphan'
     )
 
     def __repr__(self):
@@ -313,10 +353,7 @@ class EntrevistaRespuesta(db.Model):
 
     entrevista = db.relationship(
         'Entrevista',
-        backref=db.backref(
-            'respuestas',
-            cascade='all, delete-orphan'
-        )
+        back_populates='respuestas'
     )
 
     pregunta = db.relationship('EntrevistaPregunta')
@@ -370,6 +407,10 @@ class Cliente(UserMixin, db.Model):
     # ----- Ubicación -----
     ciudad                     = db.Column(db.String(100))
     sector                     = db.Column(db.String(100))
+
+    # Alias (por si decides ocultar ciudad/sector en UI pero mantener BD)
+    ciudad_texto = synonym('ciudad')
+    sector_texto = synonym('sector')
 
     # ----- Métricas de solicitudes -----
     total_solicitudes          = db.Column(db.Integer,  nullable=False, default=0)

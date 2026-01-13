@@ -3,6 +3,7 @@
 // - Sin loops
 // - Sin loaders eternos
 // - El botón de tema JAMÁS activa loader
+// - Anti-shortcuts: permite escribir SIEMPRE en inputs/Select2
 
 (function () {
   "use strict";
@@ -12,6 +13,56 @@
   window.__uiCoreLoaded = true;
 
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  /* ─────────────────────────────────────────────
+     ANTI-SHORTCUTS / ANTI-BLOCK: ESCRITURA SIEMPRE
+     (Esto mata el bug de "no me deja escribir")
+  ───────────────────────────────────────────── */
+  function isTypingTarget(el) {
+    if (!el) return false;
+
+    // Si estás escribiendo en un input normal
+    const tag = (el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+
+    // Contenteditable
+    if (el.isContentEditable) return true;
+
+    // Select2 (search input y dropdown)
+    if (el.closest?.(".select2-container, .select2-dropdown")) return true;
+
+    // Elementos con role textbox
+    if (el.getAttribute?.("role") === "textbox") return true;
+
+    return false;
+  }
+
+  function bootTypingShield() {
+    if (window.__typingShieldBound) return;
+    window.__typingShieldBound = true;
+
+    // Captura primero y corta la propagación para que ningún atajo global te bloquee
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (!isTypingTarget(e.target)) return;
+        // OJO: NO usamos preventDefault() para no romper el typing.
+        // Solo evitamos que otros listeners globales intercepten.
+        e.stopImmediatePropagation();
+      },
+      true
+    );
+
+    // Extra: algunos scripts usan keypress
+    document.addEventListener(
+      "keypress",
+      (e) => {
+        if (!isTypingTarget(e.target)) return;
+        e.stopImmediatePropagation();
+      },
+      true
+    );
+  }
 
   /* ─────────────────────────────────────────────
      TOASTS (Bootstrap)
@@ -83,7 +134,9 @@
           const ok = await window.AppModal.confirm({ message: msg });
           if (!ok) return;
           const target = a.getAttribute("target");
-          target && target !== "_self" ? window.open(a.href, target) : (window.location.href = a.href);
+          target && target !== "_self"
+            ? window.open(a.href, target)
+            : (window.location.href = a.href);
         } catch (_) {}
       },
       true
@@ -101,13 +154,16 @@
 
     el = document.createElement("div");
     el.id = LOADER_ID;
-    el.style.cssText = "position:fixed;inset:0;display:none;z-index:9999;background:rgba(0,0,0,.35);backdrop-filter:blur(3px);align-items:center;justify-content:center";
+    el.style.cssText =
+      "position:fixed;inset:0;display:none;z-index:9999;background:rgba(0,0,0,.35);backdrop-filter:blur(3px);align-items:center;justify-content:center";
 
     const box = document.createElement("div");
-    box.style.cssText = "background:#0a1024;color:#fff;padding:14px 18px;border-radius:14px;display:flex;gap:10px;align-items:center;font-weight:600";
+    box.style.cssText =
+      "background:#0a1024;color:#fff;padding:14px 18px;border-radius:14px;display:flex;gap:10px;align-items:center;font-weight:600";
 
     const spin = document.createElement("div");
-    spin.style.cssText = "width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin .8s linear infinite";
+    spin.style.cssText =
+      "width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin .8s linear infinite";
 
     const txt = document.createElement("div");
     txt.textContent = "Cargando...";
@@ -190,6 +246,7 @@
      INIT
   ───────────────────────────────────────────── */
   function init() {
+    bootTypingShield();   // ✅ LO NUEVO (lo que arregla el bug)
     bootToasts();
     bootScrollTop();
     bootConfirmLinks();

@@ -1,7 +1,51 @@
 {% extends 'base.html' %}
 {% block title %}Activar Reemplazo{% endblock %}
 
-{% block head %}
+{% block extra_head %}
+  <style>
+    /* Asegura que Select2 se vea y se pueda escribir bien */
+    .select2-container{ width:100% !important; }
+
+    /* IMPORTANTE: que el dropdown quede por arriba de cards/nav */
+    .select2-container--open{ z-index: 2000 !important; }
+    .select2-dropdown{ z-index: 2000 !important; }
+
+    .select2-container--default .select2-selection--single{
+      height: calc(2.375rem + 2px);
+      padding: .375rem .75rem;
+      border: 1px solid var(--input-border, rgba(15,23,42,.18));
+      border-radius: 12px;
+      background: var(--input-bg, #fff);
+      display:flex;
+      align-items:center;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__rendered{
+      color: var(--input-text, #0f172a);
+      padding-left: 0;
+      line-height: 1.2;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__arrow{
+      height: 100%;
+      right: 8px;
+    }
+    .select2-container--default .select2-search--dropdown .select2-search__field{
+      width: 100% !important;
+      padding: .5rem .75rem;
+      border-radius: 10px;
+      border: 1px solid var(--input-border, rgba(15,23,42,.18));
+      background: var(--input-bg, #fff);
+      color: var(--input-text, #0f172a);
+      outline: none;
+    }
+    html[data-theme="dark"] .select2-container--default .select2-dropdown{
+      background: var(--panel, rgba(255,255,255,.06));
+      border-color: var(--border, rgba(234,240,255,.14));
+      color: var(--text, #eaf0ff);
+    }
+    html[data-theme="dark"] .select2-container--default .select2-results__option{
+      color: var(--text, #eaf0ff);
+    }
+  </style>
 {% endblock %}
 
 {% block content %}
@@ -97,29 +141,34 @@
 {% endblock %}
 
 {% block scripts %}
-  <!-- jQuery -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"
-          integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
-          crossorigin="anonymous"></script>
+<script>
+(function(){
+  function initSelect2(){
+    if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2) {
+      return false;
+    }
 
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    const $sel = jQuery('#candidata-old-select');
+    const $idField   = jQuery('#candidata_old_id');
+    const $nameField = jQuery('#candidata_old_name');
 
-  <script>
-  (function(){
-    const $sel = $('#candidata-old-select');
-    const $idField   = $('#candidata_old_id');
-    const $nameField = $('#candidata_old_name');
+    // Evita doble init
+    if ($sel.data('select2')) return true;
 
     $sel.select2({
       width: '100%',
       placeholder: '🔍 Buscar candidata que falló…',
       allowClear: true,
       minimumInputLength: 1,
-      dropdownParent: $(document.body),
+
+      // CLAVE: para que el input de búsqueda NO quede “bloqueado”
+      dropdownParent: jQuery(document.body),
+
       ajax: {
         delay: 200,
         url: "{{ url_for('admin.api_candidatas') }}",
         dataType: 'json',
+        cache: true,
         data: params => ({ q: params.term || '' }),
         processResults: data => ({
           results: (data.results || []).map(i => ({ id: i.id, text: i.text }))
@@ -127,7 +176,6 @@
       }
     });
 
-    // Cuando seleccionas una candidata, rellenamos los campos ocultos
     $sel.on('select2:select', function(e){
       const data = e.params.data || {};
       if (data.id) {
@@ -136,31 +184,45 @@
       }
     });
 
-    // Si limpias el select, limpiamos los hidden
     $sel.on('select2:clear', function(){
       $idField.val('');
       $nameField.val('');
     });
 
-    // Preselección si viene del servidor (evita tags Jinja dentro del JS)
-    (function(){
-      const preId   = "{{ form.candidata_old_id.data or '' }}";
-      const preText = "{{ (form.candidata_old_name.data or '')|e }}";
-      if (preId) {
-        const option = new Option(preText || 'Seleccionada', preId, true, true);
-        $sel.append(option).trigger('change');
-        $idField.val(preId);
-        $nameField.val(preText);
-      }
-    })();
+    // Preselección si viene del servidor
+    const preId   = "{{ form.candidata_old_id.data or '' }}";
+    const preText = "{{ (form.candidata_old_name.data or '')|e }}";
+    if (preId) {
+      const option = new Option(preText || 'Seleccionada', preId, true, true);
+      $sel.append(option).trigger('change');
+      $idField.val(preId);
+      $nameField.val(preText);
+    }
 
-    // Spinner al enviar formulario
+    // Spinner al enviar
     const form = document.getElementById('reemplazoForm');
     const btn  = document.getElementById('btn-submit');
-    form.addEventListener('submit', () => {
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
-    });
-  })();
-  </script>
+    if (form && btn) {
+      form.addEventListener('submit', () => {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+      });
+    }
+
+    return true;
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    // Intento #1
+    if (initSelect2()) return;
+
+    // Reintentos (por si algo carga un chin tarde)
+    let tries = 0;
+    const t = setInterval(() => {
+      tries++;
+      if (initSelect2() || tries >= 20) clearInterval(t);
+    }, 150);
+  });
+})();
+</script>
 {% endblock %}

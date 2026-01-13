@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app
 from flask_login import login_user, logout_user, login_required, UserMixin, current_user
@@ -315,7 +316,7 @@ def login():
 
         user_data = USUARIOS.get(usuario)
 
-        # Nota: tu USUARIOS en config_app usa pwd_hash. :contentReference[oaicite:5]{index=5}
+        # Nota: tu USUARIOS en config_app usa pwd_hash.
         if user_data and check_password_hash(user_data['pwd_hash'], clave):
             # ✅ Login correcto
             # Limpia sesión para evitar fixation (sin tocar flask-login)
@@ -829,7 +830,6 @@ def detalle_cliente(cliente_id):
     - Línea de tiempo simple de eventos (creación, publicaciones, pagos, cancelaciones, reemplazos)
     - Tareas de seguimiento del cliente
     """
-    from decimal import Decimal  # por si no está arriba
 
     cliente = Cliente.query.get_or_404(cliente_id)
 
@@ -1572,48 +1572,83 @@ def editar_solicitud_admin(cliente_id, id):
     )
 
 
-from decimal import Decimal, InvalidOperation
 
 # ─────────────────────────────────────────────────────────────
 # Helpers de apoyo (dinero, choices)
 # ─────────────────────────────────────────────────────────────
-def _parse_money_to_decimal_str(raw: str) -> str:
-    """
-    Convierte entradas como: "RD$ 1,234.50", "$1200", "1200,50", "  5000  "
-    a string canónica con punto decimal y 2 dígitos: "1234.50".
+def _parse_money_to_decimal_str(raw: str, places: int = 2) -> str:
+    """Convierte entradas humanas a string decimal normalizado con punto y N decimales.
+
+    Acepta formatos comunes:
+      - "RD$ 1,234.50", "$1200", "1200,50", "  5000  "
+      - "1,500" (miles), "1.500" (miles), "1.500,50" (EU), "1,500.50" (US)
+
+    Retorna string canónica: "1234.56".
     Lanza ValueError si no se puede parsear.
     """
     if raw is None:
         raise ValueError("Monto vacío")
+
     s = str(raw).strip()
     if not s:
         raise ValueError("Monto vacío")
-    # quita símbolos comunes y espacios
+
+    # quitar símbolos y espacios
     s = s.replace("RD$", "").replace("$", "").replace(" ", "")
-    # normaliza separadores: si hay comas y punto, asumimos coma miles y punto decimal.
-    # si hay solo coma, asumimos coma decimal -> reemplazar por punto.
-    if "," in s and "." in s:
-        s = s.replace(",", "")
-    elif "," in s and "." not in s:
-        s = s.replace(",", ".")
-    # ahora s debe lucir como 1234.56 o 1234
+
+    # Caso mixto: tiene punto y coma
+    if "." in s and "," in s:
+        # Si la última coma está a la derecha del último punto -> coma es decimal (EU)
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            # Punto decimal, coma miles (US)
+            s = s.replace(",", "")
+    else:
+        # Solo comas -> puede ser decimal con coma o miles con coma
+        if "," in s:
+            parts = s.split(",")
+            if len(parts) > 2:
+                # 1,234,567 -> miles
+                s = "".join(parts)
+            else:
+                # Ambiguo: si hay 1-2 dígitos al final asumimos decimales
+                if len(parts[-1]) in (1, 2):
+                    s = s.replace(",", ".")
+                else:
+                    s = s.replace(",", "")
+
+        # Solo puntos -> puede ser miles con punto o decimal con punto
+        elif "." in s:
+            parts = s.split(".")
+            if len(parts) > 2:
+                # 1.234.567,89 o 1.234.567 -> asumimos miles
+                s = "".join(parts[:-1]) + "." + parts[-1]
+
     try:
         val = Decimal(s)
     except InvalidOperation:
         raise ValueError("Monto inválido")
-    # No negativos
+
     if val < 0:
         raise ValueError("Monto negativo no permitido")
-    # 2 decimales como estándar
-    val = val.quantize(Decimal("0.01"))
-    return format(val, "f")  # "1234.56"
+
+    q = Decimal(10) ** -int(places)
+    val = val.quantize(q)
+    return f"{val:.{places}f}"
 
 def _choice_codes(choices):
-    """Devuelve set de códigos válidos de un SelectField/RadioField."""
-    try:
-        return {str(v) for v, _ in (choices or [])}
-    except Exception:
-        return set()
+    """Devuelve set de códigos válidos de choices [(code,label), ...]."""
+    out = set()
+    for c in (choices or []):
+        try:
+            out.add(str(c[0]).strip())
+        except Exception:
+            try:
+                out.add(str(c).strip())
+            except Exception:
+                pass
+    return {x for x in out if x}
 
 # ─────────────────────────────────────────────────────────────
 # ADMIN: Eliminar solicitud (seguro)
@@ -1659,81 +1694,12 @@ def eliminar_solicitud_admin(cliente_id, id):
 # ─────────────────────────────────────────────────────────────
 # ADMIN: Gestionar plan (valida choices y abono OBLIGATORIO)
 # ─────────────────────────────────────────────────────────────
-from decimal import Decimal, InvalidOperation
-from datetime import datetime
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from flask import render_template, request, redirect, url_for, flash
-
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/plan', methods=['GET','POST'])
 @login_required
 @admin_required
 def gestionar_plan(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminGestionPlanForm(obj=s)
-
-    # --- helpers locales y seguros ---
-    def _choice_codes(choices):
-        """
-        choices puede venir como [('Básico','Básico'), ...] o [("Básico","Básico")].
-        Devuelve solo los códigos (primer elemento).
-        """
-        out = []
-        for c in choices or []:
-            try:
-                out.append(str(c[0]))
-            except Exception:
-                pass
-        return set(out)
-
-    def _parse_money_to_decimal_str(raw: str, places=2) -> str:
-        """
-        Convierte entrada humana a string decimal normalizado con punto y N decimales:
-        '1500'        -> '1500.00'
-        '1,500'       -> '1500.00'
-        '1.500'       -> '1500.00'
-        '1,500.50'    -> '1500.50'
-        '1.500,50'    -> '1500.50'
-        """
-        if raw is None:
-            raise ValueError("vacío")
-        s = str(raw).strip()
-        if not s:
-            raise ValueError("vacío")
-
-        # quitar símbolos y espacios
-        s = s.replace("RD$", "").replace("$", "").replace(" ", "")
-
-        # caso mixto: tiene punto y coma
-        if "." in s and "," in s:
-            # si la última coma está a la derecha del último punto -> coma es decimal
-            if s.rfind(",") > s.rfind("."):
-                s = s.replace(".", "").replace(",", ".")
-            else:
-                # punto decimal, coma miles
-                s = s.replace(",", "")
-        else:
-            # solo comas -> asumir decimal con coma
-            if "," in s:
-                parts = s.split(",")
-                if len(parts) > 2:
-                    s = "".join(parts[:-1]) + "." + parts[-1]
-                else:
-                    s = s.replace(",", ".")
-            # solo puntos -> si hay varios, últimos 2 dígitos suelen ser decimales
-            elif "." in s:
-                parts = s.split(".")
-                if len(parts) > 2:
-                    s = "".join(parts[:-1]) + "." + parts[-1]
-                # con un solo punto lo aceptamos tal cual
-
-        try:
-            val = Decimal(s)
-        except InvalidOperation:
-            raise ValueError("formato inválido")
-
-        q = Decimal(10) ** -places
-        norm = val.quantize(q)
-        return f"{norm:.{places}f}"
 
     if form.validate_on_submit():
         try:
@@ -1894,8 +1860,7 @@ def registrar_pago(cliente_id, id):
     )
 
 
-from decimal import Decimal
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import selectinload
 
 # ============================================================
 # Helpers comunes (UTC, validaciones, sumas)
@@ -1943,7 +1908,7 @@ def nuevo_reemplazo(s_id):
     if request.method == 'POST':
         if sol.estado == 'cancelada':
             flash('No puedes crear reemplazos en una solicitud cancelada.', 'warning')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id, id=sol.id))
+            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
 
     form = AdminReemplazoForm()
 
@@ -2012,7 +1977,7 @@ def nuevo_reemplazo(s_id):
 
             db.session.commit()
             flash('Reemplazo activado y solicitud marcada como reemplazo.', 'success')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id, id=sol.id))
+            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
 
         except IntegrityError:
             db.session.rollback()

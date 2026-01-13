@@ -50,6 +50,14 @@
   overflow: visible;
 }
 
+/* Otros wrappers usados en el proyecto (ej. glass-card) también deben permitir dropdowns */
+.glass-card,
+.glass,
+.card-body,
+.panel-body{
+  overflow: visible;
+}
+
 /* Badges */
 .badge-soft{
   display:inline-flex;
@@ -131,13 +139,23 @@ label.form-label{
    - La tabla mantiene un ancho mínimo y la envoltura hace scroll */
 .table-responsive{
   overflow-x: auto !important;
-  overflow-y: visible !important; /* clave para dropdowns */
+  overflow-y: visible !important;
   -webkit-overflow-scrolling: touch;
+  position: relative; /* ayuda a cálculos, sin recortar */
 }
 
-/* La tabla dentro de responsive: ancho mínimo para forzar scroll en pantallas pequeñas */
-.table-responsive > .table{
-  min-width: 1100px; /* ajusta el mínimo; esto evita que el botón quede inaccesible */
+/* En algunos navegadores, cualquier overflow distinto de visible puede recortar el dropdown.
+   Forzamos que el menú se renderice por encima del scroll container. */
+.table-responsive .dropdown-menu{
+  position: fixed !important;
+}
+
+/* La tabla solo fuerza scroll en pantallas medianas/pequeñas.
+   En pantallas grandes NO forzamos min-width para que no se desalineen acciones. */
+@media (max-width: 992px){
+  .table-responsive > .table{
+    min-width: 1100px;
+  }
 }
 
 /* Evita que textos largos estiren raro columnas */
@@ -176,17 +194,64 @@ footer{
   box-shadow: var(--shadow-md);
 }
 
-/* ✅ Dropdowns (Acciones) — FIX:
+/* ✅ Dropdowns (Acciones) — FIX + MEJOR USABILIDAD
    - z-index alto para que no quede detrás
-   - asegura posicionamiento normal de bootstrap */
+   - no se corta dentro de cards/tabla
+   - botón más grande
+   - menú más ancho y con items más grandes (mejor en pantallas pequeñas)
+*/
 .dropdown{
   position: relative;
 }
-.dropdown-menu{
-  z-index: 2000;
+
+/* En tablas, ninguna celda debe recortar el menú (incluye th por si acaso) */
+.table td,
+.table th{
+  overflow: visible;
 }
 
-/* En tablas, el td no debe recortar el menú */
-.table td{
-  overflow: visible;
+/* El menú por encima de todo */
+.dropdown-menu{
+  z-index: 3000;
+  min-width: 240px;           /* ✅ más ancho */
+  padding: 10px 10px;         /* ✅ más espacio */
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--shadow-md);
+}
+
+/* Items más grandes */
+.dropdown-menu .dropdown-item{
+  padding: 10px 12px;         /* ✅ más alto y cómodo */
+  border-radius: 10px;
+  color: var(--text);
+  font-weight: 600;
+}
+.dropdown-menu .dropdown-item:hover{
+  background: var(--panel-2);
+}
+
+/* Divisor */
+.dropdown-divider{
+  border-top: 1px solid var(--border);
+  opacity: 1;
+}
+
+/* Botón “Acciones” más grande */
+.dropdown-toggle.btn{
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* En pantallas pequeñas, evita que el menú se vaya raro */
+@media (max-width: 576px){
+  .dropdown-menu{
+    min-width: 220px;
+  }
+  .dropdown-toggle.btn{
+    width: 100%;              /* ✅ fácil de tocar */
+  }
 }

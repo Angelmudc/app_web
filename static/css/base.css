@@ -1,21 +1,54 @@
 /* static/css/base.css
    Reglas globales / layout
 */
+
 *{ box-sizing:border-box; }
 html, body{ height:100%; }
 html{ scroll-behavior:smooth; }
+
 body{
   margin:0;
   font-family: var(--font-sans);
   background: var(--bg);
   color: var(--text);
+  max-width: 100%;
+  overflow-x: hidden; /* evita scroll horizontal por layouts anchos */
 }
 
 a{ color: var(--link); }
 a:hover{ opacity:.9; }
 
+/* ==========================================================
+   CONTAINER — Responsive real (para TODAS las páginas)
+   ========================================================== */
 .container{
-  max-width: var(--container-max) !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+@media (min-width: 768px){
+  .container{
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+@media (min-width: 1200px){
+  .container{
+    max-width: 1840px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+
+@media (min-width: 1600px){
+  .container{
+    max-width: 96vw !important;
+  }
 }
 
 main.container{
@@ -31,4 +64,51 @@ hr{
 
 ::selection{
   background: rgba(11,102,255,.22);
+}
+
+/* ==========================================================
+   FIX GLOBAL — Select2 / Inputs que "no dejan escribir"
+   (pasa cuando un overlay/pseudo-element se queda arriba)
+   ========================================================== */
+
+/* Si tus cards usan overlays con ::before/::after, que NO bloqueen clics */
+.glass-card,
+.card,
+.panel{
+  position: relative;
+}
+
+.glass-card::before,
+.glass-card::after,
+.card::before,
+.card::after,
+.panel::before,
+.panel::after{
+  pointer-events: none !important;
+}
+
+/* A veces el card tiene overflow hidden y tapa el dropdown */
+.glass-card{
+  overflow: visible;
+}
+
+/* Z-index alto para que el dropdown y el buscador queden por arriba */
+.select2-container{ 
+  width: 100% !important;
+  z-index: 3000;
+}
+
+/* El dropdown de Select2 necesita z-index aún más alto */
+.select2-dropdown{
+  z-index: 3050 !important;
+}
+
+/* Asegura que el campo de búsqueda sea “clickeable” y visible */
+.select2-container--default .select2-search--dropdown .select2-search__field{
+  pointer-events: auto !important;
+  background: var(--input-bg) !important;
+  color: var(--input-text, var(--text)) !important;
+  border: 1px solid var(--input-border, var(--border)) !important;
+  border-radius: 10px !important;
+  outline: none !important;
 }

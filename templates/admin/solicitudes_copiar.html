@@ -181,6 +181,12 @@ document.addEventListener('DOMContentLoaded', () => {
         text = btn.dataset.orderText || '';
       }
 
+      // Normaliza para que "Dominicana" SIEMPRE quede en una línea aparte
+      // 1) Si ya venía con salto antes, limpia espacios
+      text = text.replace(/\n\s*Dominicana\b/g, '\nDominicana');
+      // 2) Si venía pegado en la misma línea (ej: "Edad: ... Dominicana"), lo baja a la línea siguiente
+      text = text.replace(/[\t ]+Dominicana\b/g, '\nDominicana');
+
       // Copia robusta
       let copied = false;
       if (navigator.clipboard && window.isSecureContext) {

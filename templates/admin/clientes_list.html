@@ -3,11 +3,6 @@
 
 {% block content %}
 
-<style>
-  /* Caja central para esta página */
-  .clientes-shell{ max-width: 1600px; margin: 0 auto; }
-</style>
-
 {# ──────────────────────────────────────────────────────────────
    Paginación y slice (se calcula aquí porque la ruta solo envía `clientes` y `q`)
 ────────────────────────────────────────────────────────────── #}
@@ -20,7 +15,7 @@
 {% set slice = items[start:end] %}
 {% set last_page = (((total-1)//per_page) + 1) if total > 0 else 1 %}
 
-<div class="py-4 clientes-shell">
+<div class="py-1 clientes-shell">
   <div class="glass-card p-3 p-md-4">
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h1 class="h3 mb-0">👥 Clientes</h1>
@@ -74,8 +69,6 @@
             <th>👤 Nombre</th>
             <th>📧 Email</th>
             <th>📞 Teléfono</th>
-            <th>🏙️ Ciudad</th>
-            <th>📍 Sector</th>
             <th>📋 Solicitudes</th>
             <th>📅 Registro</th>
             <th>⚙️ Acciones</th>
@@ -89,8 +82,6 @@
             <td data-label="Nombre">{{ c.nombre_completo }}</td>
             <td data-label="Email">{{ c.email }}</td>
             <td data-label="Teléfono">{{ c.telefono }}</td>
-            <td data-label="Ciudad">{{ c.ciudad or '—' }}</td>
-            <td data-label="Sector">{{ c.sector or '—' }}</td>
             <td data-label="Solicitudes">
               <span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span>
             </td>
