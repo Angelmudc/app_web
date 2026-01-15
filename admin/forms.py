@@ -484,10 +484,20 @@ class AdminSolicitudForm(FlaskForm):
     # ─────────────────────────────────────────────
     # COMPENSACIÓN
     # ─────────────────────────────────────────────
+    _strip = lambda v: v.strip() if isinstance(v, str) else v
+    _digits_only = lambda v: ''.join(ch for ch in v if ch.isdigit()) if isinstance(v, str) else v
     sueldo = StringField(
         'Sueldo',
-        validators=[DataRequired("Indica el sueldo.")],
-        render_kw={"placeholder": "Ej. 23,000 mensual"}
+        validators=[
+            DataRequired("Indica el sueldo."),
+            Regexp(r'^\d+$', message='El sueldo debe contener solo números (sin RD$, sin comas).')
+        ],
+        filters=[_strip, _digits_only],
+        render_kw={
+            "placeholder": "Ej. 23000",
+            "inputmode": "numeric",
+            "autocomplete": "off"
+        }
     )
     pasaje_aporte = RadioField(
         '¿Aporta pasaje?',
@@ -597,27 +607,38 @@ class AdminPagoForm(FlaskForm):
     submit = SubmitField('Registrar pago')
 
 
+
+
 # =============================================================================
 #                                REEMPLAZO
 # =============================================================================
+
+
 class AdminReemplazoForm(FlaskForm):
-    # ID de la candidata que falló (se pasa oculto desde la vista)
-    candidata_old_id = HiddenField(validators=[DataRequired()])
+    """Iniciar reemplazo (SIN búsqueda).
 
-    # Nombre solo para mostrarlo en el formulario
-    candidata_old_name = StringField(
-        'Candidata que falló',
-        validators=[DataRequired("Indica la candidata."), Length(max=200)]
-    )
+    La candidata que falló se toma automáticamente desde la solicitud:
+    - sol.candidata / sol.candidata_id
 
-    # Motivo por el cual se activa el reemplazo
+    `candidata_old_id` se mantiene como HiddenField para poder enviar/guardar el id,
+    pero la regla real se valida en la ruta.
+    """
+
+    # ✅ Ahora no es SelectField. No necesita choices.
+    candidata_old_id = HiddenField()
+
+    # ✅ Opcional: para rehidratar UI si quieres mostrar el nombre sin otra consulta
+    candidata_old_name = HiddenField(validators=[Optional(), Length(max=200)])
+
     motivo_fallo = TextAreaField(
         'Motivo del fallo',
-        validators=[DataRequired("Indica el motivo."), Length(max=500)],
-        render_kw={"rows": 3}
+        validators=[DataRequired(message="Indica el motivo."), Length(max=500)],
+        render_kw={
+            "rows": 3,
+            "placeholder": "Describe brevemente el motivo del reemplazo..."
+        }
     )
 
-    # Nota interna opcional (se guarda en Reemplazo.nota_adicional si la usas)
     nota_adicional = TextAreaField(
         'Nota interna (opcional)',
         validators=[Optional(), Length(max=1000)],
@@ -631,29 +652,20 @@ class AdminReemplazoForm(FlaskForm):
 
 
 class AdminReemplazoFinForm(FlaskForm):
-    """
-    Formulario para FINALIZAR el reemplazo:
-    - Seleccionar la nueva candidata enviada.
-    - Guardar nota opcional sobre el reemplazo.
+    """Finalizar reemplazo.
+
+    Este flujo usa un SELECT visible manejado por JS y envía el ID real
+    en un hidden field (`candidata_new_id`).
     """
 
-    # ID de la nueva candidata (viaja oculto, se llena desde búsqueda/autocomplete)
+    # ✅ ID real seleccionado en el SELECT visible (JS lo setea)
     candidata_new_id = HiddenField(
-        'ID nueva candidata',
         validators=[DataRequired(message='Debes seleccionar la nueva candidata.')]
     )
 
-    # Nombre de la nueva candidata: aquí TIENES que poder escribir para buscar
-    candidata_new_name = StringField(
-        'Nueva candidata seleccionada',
-        validators=[DataRequired(message='Escribe o selecciona la nueva candidata.')],
-        render_kw={
-            "placeholder": "Buscar nueva candidata..."
-            # OJO: NADA de readonly aquí
-        }
-    )
+    # ✅ Nombre/label seleccionado (opcional, para rehidratar UI en errores)
+    candidata_new_name = HiddenField(validators=[Optional(), Length(max=200)])
 
-    # Nota opcional sobre el reemplazo
     nota_adicional = TextAreaField(
         'Notas sobre el reemplazo',
         validators=[Optional(), Length(max=1000)],

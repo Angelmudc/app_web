@@ -40,6 +40,7 @@ USUARIOS = {
     "Cruz": {"pwd_hash": generate_password_hash("8998", method="pbkdf2:sha256"), "role": "admin"},
     "Karla": {"pwd_hash": generate_password_hash("9989", method="pbkdf2:sha256"), "role": "secretaria"},
     "vanina": {"pwd_hash": generate_password_hash("2424", method="pbkdf2:sha256"), "role": "secretaria"},
+    "Nicole": {"pwd_hash": generate_password_hash("0928", method="pbkdf2:sha256"), "role": "secretaria"},
 }
 
 # ─────────────────────────────────────────────────────────────

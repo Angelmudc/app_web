@@ -1,53 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Activar Reemplazo{% endblock %}
 
-{% block extra_head %}
-  <style>
-    /* Asegura que Select2 se vea y se pueda escribir bien */
-    .select2-container{ width:100% !important; }
-
-    /* IMPORTANTE: que el dropdown quede por arriba de cards/nav */
-    .select2-container--open{ z-index: 2000 !important; }
-    .select2-dropdown{ z-index: 2000 !important; }
-
-    .select2-container--default .select2-selection--single{
-      height: calc(2.375rem + 2px);
-      padding: .375rem .75rem;
-      border: 1px solid var(--input-border, rgba(15,23,42,.18));
-      border-radius: 12px;
-      background: var(--input-bg, #fff);
-      display:flex;
-      align-items:center;
-    }
-    .select2-container--default .select2-selection--single .select2-selection__rendered{
-      color: var(--input-text, #0f172a);
-      padding-left: 0;
-      line-height: 1.2;
-    }
-    .select2-container--default .select2-selection--single .select2-selection__arrow{
-      height: 100%;
-      right: 8px;
-    }
-    .select2-container--default .select2-search--dropdown .select2-search__field{
-      width: 100% !important;
-      padding: .5rem .75rem;
-      border-radius: 10px;
-      border: 1px solid var(--input-border, rgba(15,23,42,.18));
-      background: var(--input-bg, #fff);
-      color: var(--input-text, #0f172a);
-      outline: none;
-    }
-    html[data-theme="dark"] .select2-container--default .select2-dropdown{
-      background: var(--panel, rgba(255,255,255,.06));
-      border-color: var(--border, rgba(234,240,255,.14));
-      color: var(--text, #eaf0ff);
-    }
-    html[data-theme="dark"] .select2-container--default .select2-results__option{
-      color: var(--text, #eaf0ff);
-    }
-  </style>
-{% endblock %}
-
 {% block content %}
 <div class="container py-5" style="max-width: 700px;">
   <div class="d-flex justify-content-between align-items-center mb-4">
@@ -80,27 +33,30 @@
         </div>
       {% endif %}
 
-      <!-- Candidata que falló -->
       <div class="mb-4">
         <label class="form-label">
           <i class="bi bi-person-x-fill text-danger me-1"></i>
-          {{ form.candidata_old_name.label.text }}
+          {{ form.candidata_old_id.label.text }}
         </label>
 
-        {# Select2 para buscar la candidata que falló #}
-        <select id="candidata-old-select" class="form-select">
-          <option value=""></option>
-        </select>
+        {# Guardamos el id (HiddenField) y mostramos solo lectura #}
+        {{ form.candidata_old_id() }}
+        {% if form.candidata_old_name %}
+          {{ form.candidata_old_name() }}
+        {% endif %}
 
-        {# Hidden fields que realmente se envían al backend (WTForms) #}
-        {{ form.candidata_old_id(id="candidata_old_id") }}
-        <input type="hidden"
-               id="candidata_old_name"
-               name="{{ form.candidata_old_name.name }}"
-               value="{{ form.candidata_old_name.data or '' }}"/>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-person-check"></i></span>
+          <input
+            type="text"
+            class="form-control"
+            value="{{ (solicitud.candidata.nombre_completo if solicitud.candidata else '') }}"
+            readonly
+          >
+        </div>
 
-        <div class="form-text">
-          Escribe para buscar y seleccionar la candidata que falló.
+        <div class="form-text mt-2">
+          Se toma automáticamente la candidata asignada a esta solicitud.
         </div>
       </div>
 
@@ -141,88 +97,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-(function(){
-  function initSelect2(){
-    if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2) {
-      return false;
-    }
-
-    const $sel = jQuery('#candidata-old-select');
-    const $idField   = jQuery('#candidata_old_id');
-    const $nameField = jQuery('#candidata_old_name');
-
-    // Evita doble init
-    if ($sel.data('select2')) return true;
-
-    $sel.select2({
-      width: '100%',
-      placeholder: '🔍 Buscar candidata que falló…',
-      allowClear: true,
-      minimumInputLength: 1,
-
-      // CLAVE: para que el input de búsqueda NO quede “bloqueado”
-      dropdownParent: jQuery(document.body),
-
-      ajax: {
-        delay: 200,
-        url: "{{ url_for('admin.api_candidatas') }}",
-        dataType: 'json',
-        cache: true,
-        data: params => ({ q: params.term || '' }),
-        processResults: data => ({
-          results: (data.results || []).map(i => ({ id: i.id, text: i.text }))
-        })
-      }
-    });
-
-    $sel.on('select2:select', function(e){
-      const data = e.params.data || {};
-      if (data.id) {
-        $idField.val(data.id);
-        $nameField.val(data.text || '');
-      }
-    });
-
-    $sel.on('select2:clear', function(){
-      $idField.val('');
-      $nameField.val('');
-    });
-
-    // Preselección si viene del servidor
-    const preId   = "{{ form.candidata_old_id.data or '' }}";
-    const preText = "{{ (form.candidata_old_name.data or '')|e }}";
-    if (preId) {
-      const option = new Option(preText || 'Seleccionada', preId, true, true);
-      $sel.append(option).trigger('change');
-      $idField.val(preId);
-      $nameField.val(preText);
-    }
-
-    // Spinner al enviar
-    const form = document.getElementById('reemplazoForm');
-    const btn  = document.getElementById('btn-submit');
-    if (form && btn) {
-      form.addEventListener('submit', () => {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
-      });
-    }
-
-    return true;
-  }
-
-  document.addEventListener('DOMContentLoaded', function(){
-    // Intento #1
-    if (initSelect2()) return;
-
-    // Reintentos (por si algo carga un chin tarde)
-    let tries = 0;
-    const t = setInterval(() => {
-      tries++;
-      if (initSelect2() || tries >= 20) clearInterval(t);
-    }, 150);
-  });
-})();
-</script>
+  {{ super() }}
 {% endblock %}

@@ -181,3 +181,35 @@ html[data-theme="dark"] .page-login .form-control.auth{
 /* ----------------------------------------------------------
    END
    ---------------------------------------------------------- */
+
+/* ----------------------------------------------------------
+   PAGE — PAGOS
+   ---------------------------------------------------------- */
+
+.page-pagos .sticky-bar{
+  position: sticky;
+  top: calc(var(--navbar-h, 64px) + 6px);
+  z-index: 10;
+}
+
+.page-pagos .table-nowrap td,
+.page-pagos .table-nowrap th{
+  white-space: nowrap;
+}
+
+.page-pagos .btn-xxs{
+  --bs-btn-padding-y:.15rem;
+  --bs-btn-padding-x:.35rem;
+  --bs-btn-font-size:.7rem;
+  border-radius: 999px;
+}
+
+/* “Cambios pendientes” (no error) */
+.page-pagos .is-dirty{
+  border-color: rgba(255,193,7,.75) !important;
+  box-shadow: 0 0 0 6px rgba(255,193,7,.18) !important;
+}
+
+/* ----------------------------------------------------------
+   END — PAGOS
+   ---------------------------------------------------------- */

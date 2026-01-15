@@ -1793,11 +1793,75 @@ def porciento():
 
     return render_template("porciento.html", resultados=resultados, candidata=candidata)
 
+from decimal import Decimal, InvalidOperation
+from datetime import date
+from sqlalchemy import or_
 
 @app.route('/pagos', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def pagos():
     resultados, candidata = [], None
+
+    def _parse_money_to_decimal(raw: str) -> Decimal:
+        """
+        Acepta:
+          - 10000
+          - 10,000
+          - 10.000
+          - 10,000.50
+          - 10.000,50
+        Devuelve Decimal con 2 decimales.
+        """
+        s = (raw or "").strip()
+        if not s:
+            raise ValueError("Monto vacío")
+
+        # deja solo dígitos y separadores comunes
+        allowed = "0123456789.,"
+        s = "".join(ch for ch in s if ch in allowed)
+
+        if not s or not any(ch.isdigit() for ch in s):
+            raise ValueError("Monto inválido")
+
+        # Caso: tiene . y ,  -> el último separador es el decimal, el otro son miles
+        if "." in s and "," in s:
+            if s.rfind(",") > s.rfind("."):
+                # 10.000,50 -> decimal=,
+                s = s.replace(".", "")
+                s = s.replace(",", ".")
+            else:
+                # 10,000.50 -> decimal=.
+                s = s.replace(",", "")
+        else:
+            # Caso: solo tiene una coma -> puede ser miles o decimal
+            if "," in s:
+                # si tiene 1 coma y al final hay 1-2 dígitos, asumimos decimal (100,50)
+                parts = s.split(",")
+                if len(parts) == 2 and parts[1].isdigit() and 1 <= len(parts[1]) <= 2:
+                    s = s.replace(",", ".")
+                else:
+                    # si no, asumimos miles (10,000)
+                    s = s.replace(",", "")
+
+            # Caso: solo tiene puntos -> puede ser miles o decimal
+            if "." in s:
+                parts = s.split(".")
+                if len(parts) == 2 and parts[1].isdigit() and 1 <= len(parts[1]) <= 2:
+                    # decimal: 100.50 (se deja)
+                    pass
+                else:
+                    # miles: 10.000 o 1.000.000
+                    s = s.replace(".", "")
+
+        try:
+            val = Decimal(s)
+        except InvalidOperation:
+            raise ValueError("Monto inválido")
+
+        if val <= Decimal("0"):
+            raise ValueError("El monto debe ser mayor que 0")
+
+        return val.quantize(Decimal("0.01"))
 
     if request.method == 'POST':
         fila = request.form.get('fila', type=int)
@@ -1809,9 +1873,9 @@ def pagos():
             return redirect(url_for('pagos'))
 
         try:
-            monto_pagado = Decimal(monto_str.replace(',', '.'))
-        except Exception:
-            flash("❌ Monto inválido.", "danger")
+            monto_pagado = _parse_money_to_decimal(monto_str)
+        except Exception as e:
+            flash(f"❌ Monto inválido: {e}", "danger")
             return redirect(url_for('pagos'))
 
         obj = Candidata.query.get(fila)
@@ -1819,17 +1883,25 @@ def pagos():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for('pagos'))
 
-        # Asegura Decimal y evita negativos
-        actual = obj.porciento if isinstance(obj.porciento, Decimal) else (parse_decimal(str(obj.porciento)) if obj.porciento is not None else Decimal('0'))
-        if actual is None:
-            actual = Decimal('0')
+        # En PostgreSQL Numeric normalmente ya viene Decimal; esto lo deja seguro
+        actual = obj.porciento if obj.porciento is not None else Decimal("0.00")
+        try:
+            actual = Decimal(str(actual))
+        except Exception:
+            actual = Decimal("0.00")
 
         nuevo = actual - monto_pagado
-        if nuevo < Decimal('0'):
-            nuevo = Decimal('0')
+        if nuevo < Decimal("0"):
+            nuevo = Decimal("0.00")
 
-        obj.porciento = nuevo.quantize(Decimal('0.01'))
+        obj.porciento = nuevo.quantize(Decimal("0.01"))
         obj.calificacion = calificacion
+
+        # auditoría simple (opcional pero útil)
+        try:
+            obj.fecha_de_pago = date.today()
+        except Exception:
+            pass
 
         try:
             db.session.commit()
@@ -1849,21 +1921,26 @@ def pagos():
     if q:
         like = f"%{q}%"
         try:
-            filas = (Candidata.query.filter(
-                or_(
-                    Candidata.nombre_completo.ilike(like),
-                    Candidata.cedula.ilike(like),
-                    Candidata.codigo.ilike(like),
+            filas = (
+                Candidata.query
+                .filter(
+                    or_(
+                        Candidata.nombre_completo.ilike(like),
+                        Candidata.cedula.ilike(like),
+                        Candidata.codigo.ilike(like),
+                    )
                 )
-            ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(300)
+                .all()
+            )
 
-            for c in filas:
-                resultados.append({
-                    'fila':     c.fila,
-                    'nombre':   c.nombre_completo,
-                    'cedula':   c.cedula,
-                    'telefono': c.numero_telefono or 'No especificado',
-                })
+            resultados = [{
+                'fila':     c.fila,
+                'nombre':   c.nombre_completo,
+                'cedula':   c.cedula,
+                'telefono': c.numero_telefono or 'No especificado',
+            } for c in filas]
 
             if not resultados:
                 flash("⚠️ No se encontraron coincidencias.", "warning")
@@ -2058,33 +2135,29 @@ def reporte_inscripciones():
     )
 
 
+from sqlalchemy import func
+
 @app.route('/reporte_pagos', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def reporte_pagos():
     """
     Reporte de pagos pendientes (porciento > 0).
-    - Visualización paginada (page/per_page).
-    Robusto frente a fallos de conexión con reintentos y rollback.
     """
     page     = max(1, request.args.get('page', default=1, type=int))
     per_page = min(200, max(1, request.args.get('per_page', default=20, type=int)))
 
     def _fetch_page():
-        # Solo selecciona columnas necesarias
         q = (
             db.session.query(
                 Candidata.nombre_completo,
                 Candidata.cedula,
                 Candidata.codigo,
-                Candidata.direccion_completa,
-                Candidata.monto_total,
-                Candidata.porciento,
-                Candidata.inicio,
-                Candidata.fecha_de_pago
+                Candidata.porciento
             )
             .filter(Candidata.porciento > 0)
-            .order_by(Candidata.fecha_de_pago.asc().nullsfirst(), Candidata.nombre_completo.asc())
+            .order_by(Candidata.nombre_completo.asc())
         )
+
         total = q.count()
         items = q.offset((page - 1) * per_page).limit(per_page).all()
         return total, items
@@ -2103,11 +2176,7 @@ def reporte_pagos():
         'nombre':               r[0] or "",
         'cedula':               r[1] or "",
         'codigo':               r[2] or "No especificado",
-        'ciudad':               r[3] or "No especificado",
-        'monto_total':          float(r[4] or 0),
-        'porcentaje_pendiente': float(r[5] or 0),
-        'fecha_inicio':         r[6].strftime("%Y-%m-%d") if r[6] else "No registrada",
-        'fecha_pago':           r[7].strftime("%Y-%m-%d") if r[7] else "No registrada",
+        'porcentaje_pendiente': float(r[3] or 0),
     } for r in rows]
 
     mensaje = None if pagos_pendientes else "⚠️ No se encontraron pagos pendientes."
@@ -2117,9 +2186,11 @@ def reporte_pagos():
         'reporte_pagos.html',
         pagos_pendientes=pagos_pendientes,
         mensaje=mensaje,
-        page=page, per_page=per_page, total=total, total_pages=total_pages
+        page=page,
+        per_page=per_page,
+        total=total,
+        total_pages=total_pages
     )
-
 # -----------------------------------------------------------------------------
 # SUBIR FOTOS + GESTIONAR ARCHIVOS (BINARIOS EN DB)
 # -----------------------------------------------------------------------------

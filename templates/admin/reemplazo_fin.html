@@ -13,11 +13,32 @@
   <div class="glass-card">
     <p class="mb-4 text-muted">
       Selecciona la nueva candidata que se enviará al cliente para cerrar este reemplazo.
-      El sistema registrará la fecha de cierre automáticamente.
     </p>
+
+    <form method="GET" class="mb-4">
+      <div class="d-flex gap-2 flex-wrap">
+        <input type="text"
+               name="q"
+               value="{{ q or '' }}"
+               class="form-control"
+               placeholder="Buscar candidata por nombre, cédula, código o teléfono…"
+               autocomplete="off">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-search me-1"></i> Buscar
+        </button>
+        <a href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
+           class="btn btn-outline-secondary">
+          Limpiar
+        </a>
+      </div>
+      <div class="form-text mt-1">
+        Escribe y presiona <strong>Buscar</strong>. Se cargarán resultados en el selector.
+      </div>
+    </form>
 
     <form method="POST" id="reemplazoFinForm" novalidate>
       {{ form.csrf_token }}
+      <input type="hidden" name="q" value="{{ q or '' }}">
 
       {% if form.errors %}
         <div class="alert alert-danger">
@@ -33,131 +54,38 @@
         </div>
       {% endif %}
 
-      <!-- NUEVA CANDIDATA (Select2 + hidden fields del form) -->
+      <!-- NUEVA CANDIDATA -->
       <div class="mb-4">
         <label class="form-label">
           <i class="bi bi-person-check-fill text-success me-1"></i>
-          {{ form.candidata_new_name.label.text }}
-          <span class="text-danger">*</span>
+          {{ form.candidata_new_id.label.text }} <span class="text-danger">*</span>
         </label>
-
-        <!-- Select visible con buscador -->
-        <select id="candidata-new-select" class="form-select">
-          <option value=""></option>
-        </select>
-
-        <!-- Campos reales del WTForms (se llenan por JS) -->
-        {{ form.candidata_new_id(id="candidata_new_id") }}
-        <input type="hidden"
-               id="candidata_new_name"
-               name="{{ form.candidata_new_name.name }}"
-               value="{{ form.candidata_new_name.data or '' }}">
-
+        {{ form.candidata_new_id(class="form-select") }}
         <div class="form-text">
-          Escribe para buscar por nombre y selecciona una candidata de la lista.
+          Selecciona la candidata encontrada en la búsqueda.
         </div>
       </div>
 
-      <!-- Nota interna opcional -->
+      <!-- Nota interna -->
       {% if form.nota_adicional %}
       <div class="mb-4">
         <label class="form-label">
           <i class="bi bi-journal-text text-info me-1"></i>
           {{ form.nota_adicional.label.text }}
         </label>
-        {{ form.nota_adicional(class="form-control", rows=3, placeholder="Notas internas sobre este cierre de reemplazo (opcional)...") }}
-        <div class="form-text">Puedes anotar detalles importantes del caso para futuras referencias.</div>
+        {{ form.nota_adicional(class="form-control", rows=3) }}
       </div>
       {% endif %}
 
       <div class="d-flex justify-content-end gap-2 mt-4">
         <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
-          <i class="bi bi-x-circle me-1"></i> Cancelar
+          Cancelar
         </a>
         <button type="submit" class="btn btn-primary" id="btn-submit">
-          <i class="bi bi-check2-circle me-1"></i> {{ form.submit.label.text }}
+          {{ form.submit.label.text }}
         </button>
       </div>
     </form>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-  <!-- jQuery -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"
-          integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
-          crossorigin="anonymous"></script>
-
-  <!-- Select2 -->
-  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
-  <script>
-    (function () {
-      const $select = $('#candidata-new-select');
-      const $idHidden = $('#candidata_new_id');
-      const $nameHidden = $('#candidata_new_name');
-
-      $select.select2({
-        width: '100%',
-        placeholder: '🔍 Buscar candidata…',
-        allowClear: true,
-        minimumInputLength: 1,
-        dropdownParent: $(document.body),
-        ajax: {
-          delay: 200,
-          url: "{{ url_for('admin.api_candidatas') }}",
-          dataType: 'json',
-          data: function (params) {
-            return { q: params.term || '' };
-          },
-          processResults: function (data) {
-            return {
-              results: (data.results || []).map(function (item) {
-                return { id: item.id, text: item.text };
-              })
-            };
-          }
-        }
-      });
-
-      // Preseleccionar si el form ya trae algo cargado (ej. error de validación)
-      const preId = "{{ form.candidata_new_id.data or '' }}";
-      const preText = "{{ form.candidata_new_name.data or '' }}";
-      if (preId && preText) {
-        const option = new Option(preText, preId, true, true);
-        $select.append(option).trigger('change');
-      }
-
-      // Cuando seleccionas una candidata del dropdown
-      $select.on('select2:select', function (e) {
-        const data = e.params.data || {};
-        $idHidden.val(data.id || '');
-        $nameHidden.val(data.text || '');
-      });
-
-      // Cuando limpias el select
-      $select.on('select2:clear', function () {
-        $idHidden.val('');
-        $nameHidden.val('');
-      });
-
-      // Forzar foco al buscador al abrir, sin que salte la pantalla
-      $select.on('select2:open', function () {
-        setTimeout(function () {
-          const inp = document.querySelector('.select2-container--open .select2-search__field');
-          if (inp) inp.focus({ preventScroll: true });
-        }, 0);
-      });
-
-      // Spinner al enviar
-      const form = document.getElementById('reemplazoFinForm');
-      const btn = document.getElementById('btn-submit');
-      form.addEventListener('submit', function () {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
-      });
-    })();
-  </script>
 {% endblock %}

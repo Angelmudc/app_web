@@ -393,9 +393,28 @@ def listar_clientes():
 # =============================================================================
 #                       HELPERS DE LIMPIEZA / NORMALIZACIÓN
 # =============================================================================
+
 def _only_digits(text: str) -> str:
     """Retorna solo dígitos de un texto (para teléfonos, etc.)."""
     return re.sub(r"\D+", "", text or "")
+
+
+# Nuevo helper: normalizar strings numéricos (para sueldo, etc.)
+def _norm_numeric_str(value) -> str | None:
+    """Normaliza strings numéricos para campos como sueldo.
+
+    - Acepta: "30000", "RD$ 30,000", "30.000", "30 000"
+    - Retorna SOLO dígitos (sin decimales) o None si queda vacío.
+
+    Importante: esto NO toca lo ya guardado en BD; solo normaliza lo que entra por formularios.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    s = _only_digits(s)
+    return s or None
 
 def _normalize_email(value: str) -> str:
     """Email normalizado (lower + strip)."""
@@ -1315,6 +1334,14 @@ def nueva_solicitud_admin(cliente_id):
             # Carga general desde WTForms
             form.populate_obj(s)
 
+            # Sueldo (solo números): normaliza para evitar guardar "RD$", comas, etc.
+            if hasattr(form, 'sueldo'):
+                try:
+                    s.sueldo = _norm_numeric_str(form.sueldo.data)
+                except Exception:
+                    # No rompemos la creación por un formato raro; se validará en el form
+                    pass
+
             # Tipo de servicio
             if hasattr(form, 'tipo_servicio'):
                 s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
@@ -1495,6 +1522,13 @@ def editar_solicitud_admin(cliente_id, id):
             # Carga general
             form.populate_obj(s)
 
+            # Sueldo (solo números): normaliza para evitar guardar "RD$", comas, etc.
+            if hasattr(form, 'sueldo'):
+                try:
+                    s.sueldo = _norm_numeric_str(form.sueldo.data)
+                except Exception:
+                    pass
+
             # Tipo de servicio
             if hasattr(form, 'tipo_servicio'):
                 s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
@@ -1572,6 +1606,58 @@ def editar_solicitud_admin(cliente_id, id):
     )
 
 
+
+# ─────────────────────────────────────────────────────────────
+# Helpers: Autocomplete/Select de candidatas (para reemplazos, pagos, etc.)
+# ─────────────────────────────────────────────────────────────
+
+def _load_candidatas_choices(q: str, limit: int = 50):
+    """Devuelve lista de tuples (id, label) para WTForms SelectField.
+
+    Se usa en pantallas con barra de búsqueda por querystring `?q=...`.
+    Busca por: nombre, cédula, código y teléfono.
+
+    NOTA: Si `q` viene vacío, devolvemos [] para evitar cargar 50 candidatas sin necesidad.
+    """
+    q = (q or '').strip()
+    if not q:
+        return []
+
+    like = f"%{q}%"
+
+    candidatas = (
+        Candidata.query
+        .filter(
+            or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+                Candidata.numero_telefono.ilike(like),
+            )
+        )
+        .order_by(Candidata.nombre_completo.asc())
+        .limit(int(limit))
+        .all()
+    )
+
+    choices = []
+    for c in candidatas:
+        nombre = (c.nombre_completo or '').strip()
+        ced = (c.cedula or '').strip()
+        tel = (c.numero_telefono or '').strip()
+
+        extra = ""
+        if ced and tel:
+            extra = f" — {ced} — {tel}"
+        elif ced:
+            extra = f" — {ced}"
+        elif tel:
+            extra = f" — {tel}"
+
+        label = f"{nombre}{extra}".strip() if nombre else f"ID {c.fila}{extra}".strip()
+        choices.append((c.fila, label))
+
+    return choices
 
 # ─────────────────────────────────────────────────────────────
 # Helpers de apoyo (dinero, choices)
@@ -1775,59 +1861,161 @@ def registrar_pago(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminPagoForm()
 
-    # GET: precarga solo la candidata ya asociada (si existe)
-    if request.method == 'GET':
-        if s.candidata_id:
-            cand = Candidata.query.get(s.candidata_id)
-            if cand:
-                form.candidata_id.choices = [(cand.fila, cand.nombre_completo)]
-                form.candidata_id.data = cand.fila
-            else:
-                form.candidata_id.choices = []
-        else:
-            form.candidata_id.choices = []
+    # Buscar candidata sin JS:
+    # - GET ?q=... recarga dropdown con resultados
+    # - POST conserva q para re-render si hay errores
 
-    # POST: inyecta la opción seleccionada para que WTForms valide el valor
-    if request.method == 'POST':
-        raw_id = request.form.get('candidata_id', type=int)
-        if raw_id:
-            cand = Candidata.query.get(raw_id)
-            if cand:
-                form.candidata_id.choices = [(cand.fila, cand.nombre_completo)]
-            else:
-                form.candidata_id.choices = []
-        else:
-            form.candidata_id.choices = []
+    q = (request.args.get('q') or request.form.get('q') or '').strip()
+
+    def _build_candidata_choices(search_text: str):
+        query = Candidata.query
+
+        if search_text:
+            like = f"%{search_text}%"
+            query = query.filter(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.codigo.ilike(like),
+                    Candidata.numero_telefono.ilike(like),
+                )
+            )
+
+        candidatas = (
+            query.order_by(Candidata.nombre_completo.asc())
+            .limit(50)
+            .all()
+        )
+
+        choices = []
+        for c in candidatas:
+            ced = (c.cedula or '').strip()
+            tel = (c.numero_telefono or '').strip()
+            extra = ""
+            if ced and tel:
+                extra = f" — {ced} — {tel}"
+            elif ced:
+                extra = f" — {ced}"
+            elif tel:
+                extra = f" — {tel}"
+
+            choices.append((c.fila, f"{(c.nombre_completo or '').strip()}{extra}".strip()))
+
+        # Si la solicitud ya tiene candidata, la ponemos arriba (para no perderla)
+        if s.candidata_id:
+            cand_actual = Candidata.query.get(s.candidata_id)
+            if cand_actual:
+                ced = (cand_actual.cedula or '').strip()
+                tel = (cand_actual.numero_telefono or '').strip()
+                extra = ""
+                if ced and tel:
+                    extra = f" — {ced} — {tel}"
+                elif ced:
+                    extra = f" — {ced}"
+                elif tel:
+                    extra = f" — {tel}"
+
+                top = (cand_actual.fila, f"{(cand_actual.nombre_completo or '').strip()}{extra}".strip())
+
+                # Evitar duplicados y subirla arriba
+                if top[0] in [x[0] for x in choices]:
+                    choices = [top] + [x for x in choices if x[0] != top[0]]
+                else:
+                    choices.insert(0, top)
+
+        return choices
+
+    # SIEMPRE setear choices antes del validate (WTForms lo exige)
+    form.candidata_id.choices = _build_candidata_choices(q)
+
+    # GET: precargar candidata asignada (si existe)
+    if request.method == 'GET' and s.candidata_id:
+        form.candidata_id.data = s.candidata_id
 
     if form.validate_on_submit():
         # Reglas de negocio
         if s.estado == 'cancelada':
             flash('No puedes registrar pago de una solicitud cancelada.', 'warning')
-            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s)
+            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
+
         if s.estado == 'pagada':
             flash('La solicitud ya está pagada.', 'info')
-            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s)
+            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
 
         try:
             # 1) Validar candidata
             if not form.candidata_id.data:
                 flash('Debes seleccionar una candidata.', 'danger')
-                return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s)
+                return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
 
             cand = Candidata.query.get(form.candidata_id.data)
             if not cand:
                 flash('La candidata seleccionada no existe.', 'danger')
-                return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s)
+                return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
 
             s.candidata_id = cand.fila
 
-            # 2) Parseo de monto en formato canónico "1234.56"
+            # Guardar también la relación navegable si tu modelo la usa (no rompe si no existe)
+            try:
+                s.candidata = cand
+            except Exception:
+                pass
+
+            # 2) Monto pagado (lo que nos debe por la búsqueda / servicio)
             raw = (form.monto_pagado.data or "").strip()
             monto_canon = _parse_money_to_decimal_str(raw)
-            # Guarda canónico (sirve para tus consultas con CAST a Numeric)
             s.monto_pagado = monto_canon
 
-            # 3) Estado + timestamps
+            # 3) Si la candidata acepta porcentaje, calcular 25% del sueldo de la solicitud
+            #    (OJO: sueldo NO viene del formulario de pago; se toma de Solicitud.sueldo)
+            try:
+                acepta = bool(
+                    getattr(cand, 'acepta_porcentaje_sueldo', False)
+                    or getattr(cand, 'acepta_porcentaje', False)
+                )
+
+                if acepta:
+                    # Sueldo guardado en Solicitud.sueldo (debe ser numérico / solo dígitos)
+                    sueldo_digits = None
+                    if hasattr(s, 'sueldo'):
+                        sueldo_digits = _norm_numeric_str(getattr(s, 'sueldo', None))
+
+                    if sueldo_digits:
+                        sueldo_val = Decimal(sueldo_digits).quantize(Decimal('0.01'))
+                        sueldo_canon = f"{sueldo_val:.2f}"
+
+                        porc_val = (sueldo_val * Decimal('0.25')).quantize(Decimal('0.01'))
+                        porc_canon = f"{porc_val:.2f}"
+
+                        # Guardar en la candidata SOLO si esos campos existen (no rompe si no están)
+                        if hasattr(cand, 'monto_total'):
+                            cand.monto_total = sueldo_canon
+                        if hasattr(cand, 'porcentaje'):
+                            cand.porcentaje = porc_canon
+                        if hasattr(cand, 'porciento'):
+                            cand.porciento = porc_canon
+
+                        # Fecha de pago: si existe el campo y no viene ya seteado, lo ponemos hoy
+                        hoy = datetime.utcnow().date()
+                        if hasattr(cand, 'fecha_de_pago') and not getattr(cand, 'fecha_de_pago', None):
+                            cand.fecha_de_pago = hoy
+                        if hasattr(cand, 'fecha_pago') and not getattr(cand, 'fecha_pago', None):
+                            cand.fecha_pago = hoy
+
+                        # Opcional: marca como actualizado si existe
+                        if hasattr(cand, 'fecha_ultima_modificacion'):
+                            cand.fecha_ultima_modificacion = datetime.utcnow()
+                    else:
+                        # Acepta porcentaje pero la solicitud no tiene sueldo
+                        flash(
+                            'La candidata acepta porcentaje, pero esta solicitud no tiene sueldo. Completa el sueldo en la solicitud para calcular el 25%.',
+                            'warning'
+                        )
+            except Exception:
+                # Si algo raro pasa con el cálculo, no tumbamos el pago
+                pass
+
+            # 4) Estado + timestamps (para la solicitud)
             s.estado = 'pagada'
             s.fecha_ultima_actividad = datetime.utcnow()
             s.fecha_ultima_modificacion = datetime.utcnow()
@@ -1856,226 +2044,271 @@ def registrar_pago(cliente_id, id):
         'admin/registrar_pago.html',
         form=form,
         cliente_id=cliente_id,
-        solicitud=s
+        solicitud=s,
+        q=q
     )
-
 
 from sqlalchemy.orm import selectinload
 
-# ============================================================
-# Helpers comunes (UTC, validaciones, sumas)
-# ============================================================
-def _now_utc() -> datetime:
-    return datetime.utcnow()
+from datetime import datetime
+from flask import request, render_template, redirect, url_for, flash
+from flask_login import login_required
+from sqlalchemy.orm import joinedload
 
-def _today_utc_bounds():
-    """Devuelve (inicio_utc, fin_utc) del día actual en UTC."""
-    today = datetime.utcnow().date()
-    start = datetime(today.year, today.month, today.day)
-    end = start + timedelta(days=1)
-    return start, end
-
-def _safe_bool(val, default=False):
-    try:
-        return bool(val)
-    except Exception:
-        return default
-
-def _nonempty_str(x: str) -> str:
-    return (x or '').strip()
-
-# ============================================================
-#                           REEMPLAZOS
-# ============================================================
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def nuevo_reemplazo(s_id):
-    """
-    INICIO del reemplazo:
-    - Marca la solicitud en estado 'reemplazo'.
-    - Registra candidata que falló + motivo.
-    - Fecha de inicio del reemplazo se marca automáticamente (ahora).
-    """
-    # Cargamos la solicitud con reemplazos para que la plantilla tenga todo
     sol = (
         Solicitud.query
-        .options(joinedload(Solicitud.reemplazos))
+        .options(joinedload(Solicitud.reemplazos), joinedload(Solicitud.candidata))
         .get_or_404(s_id)
     )
 
-    # Regla: no permitir reemplazo SOLO si está cancelada
-    if request.method == 'POST':
-        if sol.estado == 'cancelada':
-            flash('No puedes crear reemplazos en una solicitud cancelada.', 'warning')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
-
     form = AdminReemplazoForm()
 
-    # Prefill en GET: si la solicitud tiene candidata, la ponemos como "candidata que falló"
-    if request.method == 'GET' and sol.candidata:
+    # ✅ SIEMPRE usar la candidata asignada originalmente a la solicitud (por relación)
+    assigned_id = getattr(sol, 'candidata_id', None)
+
+    # Si no hay candidata asignada, no se puede iniciar reemplazo
+    if not assigned_id or not getattr(sol, 'candidata', None):
+        flash(
+            'Esta solicitud no tiene candidata asignada. Primero asigna una candidata (por pago/asignación) antes de iniciar un reemplazo.',
+            'danger'
+        )
+        return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
+
+    # Prefill (por si tu form/template muestra campos)
+    # No hay búsqueda ni selección manual: todo viene de sol.candidata
+    try:
         if hasattr(form, 'candidata_old_id'):
-            form.candidata_old_id.data = sol.candidata.fila
+            form.candidata_old_id.data = str(int(assigned_id))
+    except Exception:
+        pass
+
+    try:
         if hasattr(form, 'candidata_old_name'):
-            form.candidata_old_name.data = sol.candidata.nombre_completo or ''
+            form.candidata_old_name.data = (sol.candidata.nombre_completo or '').strip()
+    except Exception:
+        pass
 
     if form.validate_on_submit():
         try:
-            # Candidata que falló
-            cand_old_id = form.candidata_old_id.data
-            cand_old = Candidata.query.get(cand_old_id) if cand_old_id else None
+            # ✅ Candidata anterior: SIEMPRE la asignada actual
+            cand_old = sol.candidata
             if not cand_old:
-                flash('La candidata anterior no existe.', 'danger')
-                return render_template(
-                    'admin/reemplazo_inicio.html',
-                    form=form,
-                    solicitud=sol
-                )
+                flash('No se encontró la candidata asignada a esta solicitud.', 'danger')
+                return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
 
-            # Creamos el registro de reemplazo
             r = Reemplazo(
-                solicitud_id     = sol.id,
-                candidata_old_id = cand_old_id,
-                motivo_fallo     = _nonempty_str(form.motivo_fallo.data),
+                solicitud_id=sol.id,
+                candidata_old_id=cand_old.fila,
+                motivo_fallo=(form.motivo_fallo.data or '').strip(),
             )
 
-            # 🔹 INICIO DEL REEMPLAZO:
-            # Se marca automáticamente con la fecha y hora actual
-            # y oportunidad_nueva = True (método helper del modelo)
-            if hasattr(r, 'iniciar_reemplazo'):
-                r.iniciar_reemplazo()
-            else:
-                # fallback por si no existe el helper
-                ahora = _now_utc()
-                r.fecha_fallo            = ahora
-                r.fecha_inicio_reemplazo = ahora
-                r.oportunidad_nueva      = True
+            ahora = datetime.utcnow()
+            r.fecha_fallo = ahora
+            r.fecha_inicio_reemplazo = ahora
+            r.oportunidad_nueva = True
+
+            sol.estado = 'reemplazo'
+            sol.fecha_ultima_actividad = ahora
+            sol.fecha_ultima_modificacion = ahora
 
             db.session.add(r)
-
-            # 🔹 ESTADO DE LA SOLICITUD:
-            # La solicitud pasa a estado "reemplazo" aunque antes estuviera pagada o activa
-            sol.estado = 'reemplazo'
-
-            # Reiniciamos el seguimiento de prioridad (cuenta desde ahora)
-            if hasattr(sol, 'marcar_activada'):
-                sol.marcar_activada()
-            else:
-                # fallback mínimo: marcar fechas si tienes los campos nuevos
-                ahora = _now_utc()
-                if hasattr(sol, 'fecha_inicio_seguimiento') and not sol.fecha_inicio_seguimiento:
-                    sol.fecha_inicio_seguimiento = ahora
-                if hasattr(sol, 'fecha_ultimo_estado'):
-                    sol.fecha_ultimo_estado = ahora
-
-            # Actualizamos marcas de actividad/modificación si existen en el modelo
-            ahora2 = _now_utc()
-            if hasattr(sol, 'fecha_ultima_actividad'):
-                sol.fecha_ultima_actividad = ahora2
-            if hasattr(sol, 'fecha_ultima_modificacion'):
-                sol.fecha_ultima_modificacion = ahora2
-
             db.session.commit()
-            flash('Reemplazo activado y solicitud marcada como reemplazo.', 'success')
+
+            flash('Reemplazo iniciado correctamente.', 'success')
             return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
 
-        except IntegrityError:
-            db.session.rollback()
-            flash('No se pudo crear el reemplazo por conflicto de datos.', 'danger')
-        except SQLAlchemyError:
-            db.session.rollback()
-            flash('Error de base de datos al crear el reemplazo.', 'danger')
         except Exception:
             db.session.rollback()
-            flash('Ocurrió un error al crear el reemplazo.', 'danger')
+            flash('Error al iniciar el reemplazo.', 'danger')
 
-    # Usamos el HTML NUEVO
-    return render_template(
-        'admin/reemplazo_inicio.html',
-        form=form,
-        solicitud=sol
-    )
+    # 👇 Ya no se manda "q" porque eliminamos búsqueda
+    return render_template('admin/reemplazo_inicio.html', form=form, solicitud=sol)
 
 
-
-@admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/finalizar', methods=['GET', 'POST'])
+@admin_bp.route(
+    '/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/finalizar',
+    methods=['GET', 'POST']
+)
 @login_required
 @admin_required
 def finalizar_reemplazo(s_id, reemplazo_id):
-    """
-    FIN de reemplazo:
-    - Registra la nueva candidata que se envió.
-    - Marca fecha_fin_reemplazo.
-    - Vuelve a poner la solicitud en 'pagada' con la nueva candidata
-      para que NO se siga publicando.
-    """
     sol = (
         Solicitud.query
         .options(
             joinedload(Solicitud.reemplazos),
-            joinedload(Solicitud.cliente)
+            joinedload(Solicitud.candidata)
         )
         .get_or_404(s_id)
     )
 
-    r = (
-        Reemplazo.query
-        .filter_by(id=reemplazo_id, solicitud_id=s_id)
-        .first_or_404()
-    )
+    r = Reemplazo.query.filter_by(
+        id=reemplazo_id,
+        solicitud_id=s_id
+    ).first_or_404()
 
     form = AdminReemplazoFinForm()
 
-    # Prefill si ya tenía candidata_new (por si reabren el form)
-    if request.method == 'GET' and r.candidata_new:
-        form.candidata_new_id.data   = r.candidata_new_id
-        form.candidata_new_name.data = r.candidata_new.nombre_completo or ''
+    # ─────────────────────────────────────────
+    # 🔎 BÚSQUEDA SERVER-SIDE (IGUAL A PAGO)
+    # ─────────────────────────────────────────
+    q = (request.args.get('q') or request.form.get('q') or '').strip()
 
+    def _build_candidata_choices(search_text: str):
+        query = Candidata.query
+
+        if search_text:
+            like = f"%{search_text}%"
+            query = query.filter(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.codigo.ilike(like),
+                    Candidata.numero_telefono.ilike(like),
+                )
+            )
+
+        candidatas = (
+            query
+            .order_by(Candidata.nombre_completo.asc())
+            .limit(50)
+            .all()
+        )
+
+        choices = []
+        for c in candidatas:
+            ced = (c.cedula or '').strip()
+            tel = (c.numero_telefono or '').strip()
+            extra = ""
+            if ced and tel:
+                extra = f" — {ced} — {tel}"
+            elif ced:
+                extra = f" — {ced}"
+            elif tel:
+                extra = f" — {tel}"
+
+            choices.append(
+                (c.fila, f"{(c.nombre_completo or '').strip()}{extra}".strip())
+            )
+
+        return choices
+
+    # WTForms exige choices siempre
+    form.candidata_new_id.choices = _build_candidata_choices(q)
+
+    # Prefill si ya hubo intento previo
+    if request.method == 'GET' and r.candidata_new_id:
+        try:
+            form.candidata_new_id.data = int(r.candidata_new_id)
+        except Exception:
+            pass
+
+    # ─────────────────────────────────────────
+    # POST
+    # ─────────────────────────────────────────
     if form.validate_on_submit():
         try:
-            cand_new_id = form.candidata_new_id.data
+            # 1) Validar candidata nueva
+            try:
+                cand_new_id = int(form.candidata_new_id.data)
+            except Exception:
+                cand_new_id = None
 
-            cand_new = Candidata.query.get(cand_new_id) if cand_new_id else None
-            if not cand_new:
-                flash('La nueva candidata seleccionada no existe.', 'danger')
+            if not cand_new_id:
+                flash('Debes seleccionar la nueva candidata.', 'danger')
                 return render_template(
                     'admin/reemplazo_fin.html',
                     form=form,
                     solicitud=sol,
-                    reemplazo=r
+                    reemplazo=r,
+                    q=q
                 )
 
-            ahora = _now_utc()
+            cand_new = Candidata.query.get(cand_new_id)
+            if not cand_new:
+                flash('La candidata seleccionada no existe.', 'danger')
+                return render_template(
+                    'admin/reemplazo_fin.html',
+                    form=form,
+                    solicitud=sol,
+                    reemplazo=r,
+                    q=q
+                )
 
-            # Actualizar reemplazo
-            r.candidata_new_id    = cand_new_id
-            r.fecha_fin_reemplazo = ahora
+            ahora = datetime.utcnow()
+
+            # 2) Guardar reemplazo
+            r.candidata_new_id = cand_new.fila
+            r.oportunidad_nueva = False
+
             if hasattr(form, 'nota_adicional'):
-                r.nota_adicional = _nonempty_str(form.nota_adicional.data)
+                r.nota_adicional = (form.nota_adicional.data or '').strip() or None
 
-            # Actualizar solicitud con la nueva candidata
-            sol.candidata_id              = cand_new_id
-            sol.estado                    = 'pagada'          # <-- aquí el cambio
-            sol.fecha_ultimo_estado       = ahora
+            if hasattr(r, 'fecha_fin_reemplazo'):
+                r.fecha_fin_reemplazo = ahora
+            elif hasattr(r, 'fecha_fin'):
+                r.fecha_fin = ahora
+
+            # 3) Reasignar solicitud
+            sol.candidata_id = cand_new.fila
+            sol.estado = 'pagada'
+            sol.fecha_ultima_actividad = ahora
             sol.fecha_ultima_modificacion = ahora
 
-            db.session.commit()
-            flash('Reemplazo finalizado y nueva candidata asignada.', 'success')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
+            # 4) 🔥 CALCULAR PORCENTAJE (MISMA LÓGICA QUE PAGO)
+            try:
+                acepta = bool(
+                    getattr(cand_new, 'acepta_porcentaje_sueldo', False)
+                    or getattr(cand_new, 'acepta_porcentaje', False)
+                )
 
-        except SQLAlchemyError:
+                if acepta:
+                    sueldo_digits = None
+                    if hasattr(sol, 'sueldo'):
+                        sueldo_digits = _norm_numeric_str(getattr(sol, 'sueldo', None))
+
+                    if sueldo_digits:
+                        sueldo_val = Decimal(sueldo_digits).quantize(Decimal('0.01'))
+                        porc_val = (sueldo_val * Decimal('0.25')).quantize(Decimal('0.01'))
+
+                        if hasattr(cand_new, 'monto_total'):
+                            cand_new.monto_total = f"{sueldo_val:.2f}"
+                        if hasattr(cand_new, 'porcentaje'):
+                            cand_new.porcentaje = f"{porc_val:.2f}"
+                        if hasattr(cand_new, 'porciento'):
+                            cand_new.porciento = f"{porc_val:.2f}"
+
+                        hoy = ahora.date()
+                        if hasattr(cand_new, 'fecha_de_pago') and not getattr(cand_new, 'fecha_de_pago', None):
+                            cand_new.fecha_de_pago = hoy
+                        if hasattr(cand_new, 'fecha_pago') and not getattr(cand_new, 'fecha_pago', None):
+                            cand_new.fecha_pago = hoy
+
+                        if hasattr(cand_new, 'fecha_ultima_modificacion'):
+                            cand_new.fecha_ultima_modificacion = ahora
+            except Exception:
+                pass
+
+            db.session.commit()
+            flash('Reemplazo finalizado correctamente.', 'success')
+            return redirect(
+                url_for('admin.detalle_cliente', cliente_id=sol.cliente_id)
+            )
+
+        except Exception:
             db.session.rollback()
-            flash('Ocurrió un error al finalizar el reemplazo.', 'danger')
+            flash('Error al finalizar el reemplazo.', 'danger')
 
     return render_template(
         'admin/reemplazo_fin.html',
         form=form,
         solicitud=sol,
-        reemplazo=r
+        reemplazo=r,
+        q=q
     )
-
-
-
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
@@ -2181,43 +2414,95 @@ def solicitudes_prioridad():
 # ============================================================
 #                                   API
 # ============================================================
+from flask import request, jsonify
+from sqlalchemy import or_, and_
+
 @admin_bp.route('/api/candidatas', methods=['GET'])
 @login_required
 @admin_required
 def api_candidatas():
     """
-    API sencilla para autocomplete de candidatas.
+    API para autocomplete de candidatas.
 
-    - Busca por nombre (coincidencia parcial, case-insensitive).
-    - Si no se envía 'q', devuelve hasta 50 candidatas.
-    - Formato de respuesta compatible con el autocomplete del front.
+    - Si no hay 'q', devuelve hasta 50 candidatas ordenadas por nombre.
+    - Respuesta: {"results":[{"id":..., "text":...}, ...]}
+
+    - Busca por nombre, cédula, teléfono y código (coincidencia parcial, case-insensitive)
+    - Soporta múltiples palabras/tokens
+    - Devuelve texto: "Nombre — Cédula — Teléfono" (según aplique)
+
+    IMPORTANTE:
+    - Fuerza NO-CACHE para evitar respuestas 304 que rompen el fetch/json en el front.
     """
     term = (request.args.get('q') or '').strip()
 
     query = Candidata.query
 
+    def _norm_tokens(s: str):
+        s = (s or '').strip()
+        if not s:
+            return []
+        return [t for t in s.split() if t]
+
+    def _label(c: Candidata) -> str:
+        nombre = (c.nombre_completo or '').strip()
+        ced = (c.cedula or '').strip()
+        tel = (c.numero_telefono or '').strip()
+        cod = (c.codigo or '').strip()
+
+        extra_parts = []
+        if ced:
+            extra_parts.append(ced)
+        if tel:
+            extra_parts.append(tel)
+        # Si quieres mostrar el código también, descomenta:
+        # if cod:
+        #     extra_parts.append(cod)
+
+        extra = ""
+        if extra_parts:
+            extra = " — " + " — ".join(extra_parts)
+
+        if nombre:
+            return f"{nombre}{extra}".strip()
+
+        base = f"ID {c.fila}"
+        return f"{base}{extra}".strip()
+
     if term:
-        # Coincidencia parcial por nombre
-        like = f"%{term}%"
-        query = query.filter(Candidata.nombre_completo.ilike(like))
+        tokens = _norm_tokens(term)
+
+        filters = []
+        for t in tokens:
+            like = f"%{t}%"
+            filters.append(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.numero_telefono.ilike(like),
+                    Candidata.codigo.ilike(like),
+                )
+            )
+
+        query = query.filter(and_(*filters))
 
     candidatas = (
         query
-        .order_by(Candidata.nombre_completo.asc())
+        .order_by(Candidata.nombre_completo.asc(), Candidata.fila.asc())
         .limit(50)
         .all()
     )
 
-    results = [
-        {
-            "id": c.fila,                     # el ID que usas en otras partes
-            "text": c.nombre_completo or ""   # lo que se muestra en el autocomplete
-        }
-        for c in candidatas
-    ]
+    results = [{"id": int(c.fila), "text": _label(c)} for c in candidatas]
 
-    return jsonify({"results": results})
+    resp = jsonify({"results": results})
 
+    # ✅ Anti-cache duro (evita 304 y respuestas “sin body”)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+
+    return resp
 
 
 # ============================================================
