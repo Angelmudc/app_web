@@ -654,16 +654,18 @@ class AdminReemplazoForm(FlaskForm):
 class AdminReemplazoFinForm(FlaskForm):
     """Finalizar reemplazo.
 
-    Este flujo usa un SELECT visible manejado por JS y envía el ID real
-    en un hidden field (`candidata_new_id`).
+    Este flujo es server-side (SIN JS):
+    - La ruta arma `choices` según ?q= (igual que en pago)
+    - El usuario selecciona en un <select>
     """
 
-    # ✅ ID real seleccionado en el SELECT visible (JS lo setea)
-    candidata_new_id = HiddenField(
+    candidata_new_id = SelectField(
+        'Asignar candidata (reemplazo)',
+        coerce=int,
         validators=[DataRequired(message='Debes seleccionar la nueva candidata.')]
     )
 
-    # ✅ Nombre/label seleccionado (opcional, para rehidratar UI en errores)
+    # (Opcional) se puede seguir usando para rehidratar UI o logs, pero NO es obligatorio
     candidata_new_name = HiddenField(validators=[Optional(), Length(max=200)])
 
     nota_adicional = TextAreaField(

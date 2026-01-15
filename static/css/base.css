@@ -112,3 +112,48 @@ hr{
   border-radius: 10px !important;
   outline: none !important;
 }
+
+/* ==========================================================
+   ✅ FIX DEFINITIVO — SELECT / FORM-SELECT “no deja seleccionar”
+   ========================================================== */
+
+/* 1) Si es Select2: sin position, el z-index no manda */
+.select2-container{
+  position: relative !important;
+}
+
+.select2-container--open{
+  z-index: 99999 !important;
+}
+
+.select2-dropdown{
+  position: absolute !important;
+  z-index: 99999 !important;
+}
+
+/* 2) Si es select normal (Bootstrap form-select) y hay overlay arriba */
+select,
+.form-select{
+  position: relative !important;
+  z-index: 50 !important;
+  pointer-events: auto !important;
+}
+
+/* 3) Evita que un contenedor con overflow hidden te “tape” el dropdown */
+.card,
+.panel{
+  overflow: visible !important;
+}
+
+/* 4) Si tienes algún overlay fijo por arriba (nav/side) esto evita que capture clicks */
+header,
+.navbar,
+.sidebar,
+.topbar{
+  pointer-events: auto;
+}
+
+/* 5) Ultra-fallback: si alguna capa invisible está arriba dentro del card */
+.card *{
+  pointer-events: auto;
+}

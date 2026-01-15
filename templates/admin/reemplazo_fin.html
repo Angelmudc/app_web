@@ -2,90 +2,178 @@
 {% block title %}Finalizar Reemplazo{% endblock %}
 
 {% block content %}
-<div class="container py-5" style="max-width: 700px;">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="emoji-title">✅ Finalizar Reemplazo</h1>
-    <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
-      <i class="bi bi-arrow-left me-1"></i> Volver
-    </a>
-  </div>
+<div class="container py-5" style="max-width: 980px;">
+  <div class="card shadow-sm">
+    <div class="card-body p-4 p-md-5">
 
-  <div class="glass-card">
-    <p class="mb-4 text-muted">
-      Selecciona la nueva candidata que se enviará al cliente para cerrar este reemplazo.
-    </p>
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h1 class="h4 mb-1">🔁 Finalizar Reemplazo</h1>
+          <div class="text-muted small">
+            Solicitud <strong>{{ solicitud.codigo_solicitud if solicitud.codigo_solicitud else solicitud.id }}</strong>
+          </div>
+        </div>
 
-    <form method="GET" class="mb-4">
-      <div class="d-flex gap-2 flex-wrap">
-        <input type="text"
-               name="q"
-               value="{{ q or '' }}"
-               class="form-control"
-               placeholder="Buscar candidata por nombre, cédula, código o teléfono…"
-               autocomplete="off">
-        <button type="submit" class="btn btn-primary">
-          <i class="bi bi-search me-1"></i> Buscar
-        </button>
-        <a href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
-           class="btn btn-outline-secondary">
-          Limpiar
+        <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left-circle me-1"></i> Volver
         </a>
       </div>
-      <div class="form-text mt-1">
-        Escribe y presiona <strong>Buscar</strong>. Se cargarán resultados en el selector.
-      </div>
-    </form>
 
-    <form method="POST" id="reemplazoFinForm" novalidate>
-      {{ form.csrf_token }}
-      <input type="hidden" name="q" value="{{ q or '' }}">
+      <hr class="my-4">
 
-      {% if form.errors %}
-        <div class="alert alert-danger">
-          <i class="bi bi-exclamation-triangle-fill me-2"></i>
-          <strong>Revisa los campos con error:</strong>
-          <ul class="mb-0 mt-1">
-            {% for field, errors in form.errors.items() %}
-              {% for error in errors %}
-                <li><strong>{{ form[field].label.text }}:</strong> {{ error }}</li>
+      <!-- 🔎 BÚSQUEDA server-side (sin JS) -->
+      <form method="GET"
+            action="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
+            class="mb-3">
+        <div class="d-flex gap-2 flex-wrap">
+          <input type="text"
+                 name="q"
+                 value="{{ q or '' }}"
+                 class="form-control"
+                 placeholder="Buscar doméstica por nombre, cédula, código o teléfono…"
+                 autocomplete="off">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-search me-1"></i> Buscar
+          </button>
+          <a href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
+             class="btn btn-outline-secondary">
+            Limpiar
+          </a>
+        </div>
+        <div class="form-text mt-1">
+          Escribe y presiona <strong>Buscar</strong>. Verás la lista abajo y también se llenará el selector.
+        </div>
+      </form>
+
+      <!-- 📋 LISTA visible -->
+      {% if q %}
+        {% if candidatas and candidatas|length > 0 %}
+          <div class="table-responsive mb-4">
+            <table class="table table-sm align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Nombre</th>
+                  <th>Cédula</th>
+                  <th>Teléfono</th>
+                  <th>Código</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for c in candidatas %}
+                  <tr>
+                    <td class="fw-semibold">{{ c.nombre_completo or '' }}</td>
+                    <td>{{ c.cedula or '' }}</td>
+                    <td>{{ c.numero_telefono or '' }}</td>
+                    <td>{{ c.codigo or '' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-4">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            No se encontraron domésticas con “<strong>{{ q }}</strong>”.
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="alert alert-info mb-4">
+          <i class="bi bi-info-circle me-1"></i>
+          Escribe una búsqueda arriba para cargar domésticas.
+        </div>
+      {% endif %}
+
+      <form method="POST"
+            action="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id, q=(q or '')) }}"
+            novalidate>
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="q" value="{{ q or '' }}">
+
+        {% if form.errors %}
+          <div class="alert alert-danger mb-4">
+            <strong>Revisa los campos con error:</strong>
+            <ul class="mb-0 mt-2">
+              {% for field_name, errs in form.errors.items() %}
+                {% for e in errs %}
+                  <li><strong>{{ form[field_name].label.text }}:</strong> {{ e }}</li>
+                {% endfor %}
               {% endfor %}
-            {% endfor %}
-          </ul>
+            </ul>
+          </div>
+        {% endif %}
+
+        <div class="row g-4">
+          <div class="col-12 col-md-8">
+            {# ✅ Renderizar el field correcto según pick_name #}
+            {% if pick_name == 'domestica_id' %}
+              {% set pick_field = form.domestica_id %}
+            {% elif pick_name == 'candidata_new_id' %}
+              {% set pick_field = form.candidata_new_id %}
+            {% else %}
+              {% set pick_field = form.candidata_id %}
+            {% endif %}
+
+            <label class="form-label">
+              <i class="bi bi-person-fill text-info me-1"></i>
+              {{ pick_field.label.text }} <span class="text-danger">*</span>
+            </label>
+
+            {# ✅ FIX: contenedor arriba en z-index para que NADA tape el select #}
+            <div style="position: relative; z-index: 2;">
+              {# ✅ FIX: is-invalid si tiene error + pointer-events auto por si un CSS lo bloquea #}
+              {% set sel_class = "form-select" %}
+              {% if pick_field.errors %}
+                {% set sel_class = "form-select is-invalid" %}
+              {% endif %}
+
+              {{ pick_field(class=sel_class, id=pick_name, style="pointer-events:auto;") }}
+
+              {% if pick_field.errors %}
+                <div class="invalid-feedback d-block">
+                  {% for e in pick_field.errors %}
+                    <div>{{ e }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+            {% if not q %}
+              <div class="form-text mt-1 text-warning">
+                Primero haz una búsqueda arriba para cargar opciones en el selector.
+              </div>
+            {% else %}
+              <div class="form-text mt-1">Selecciona una doméstica de la lista filtrada.</div>
+            {% endif %}
+          </div>
+
+          <div class="col-12 col-md-4">
+            {% if form.nota_adicional is defined %}
+              <label class="form-label">
+                <i class="bi bi-chat-left-text me-1"></i> {{ form.nota_adicional.label.text }}
+              </label>
+              {{ form.nota_adicional(class="form-control", rows="3", placeholder="Opcional…") }}
+            {% endif %}
+          </div>
         </div>
-      {% endif %}
 
-      <!-- NUEVA CANDIDATA -->
-      <div class="mb-4">
-        <label class="form-label">
-          <i class="bi bi-person-check-fill text-success me-1"></i>
-          {{ form.candidata_new_id.label.text }} <span class="text-danger">*</span>
-        </label>
-        {{ form.candidata_new_id(class="form-select") }}
-        <div class="form-text">
-          Selecciona la candidata encontrada en la búsqueda.
+        <hr class="my-4">
+
+        <div class="d-flex justify-content-end gap-2">
+          <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-outline-secondary">
+            Cancelar
+          </a>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check-circle me-1"></i> Finalizar reemplazo
+          </button>
         </div>
-      </div>
 
-      <!-- Nota interna -->
-      {% if form.nota_adicional %}
-      <div class="mb-4">
-        <label class="form-label">
-          <i class="bi bi-journal-text text-info me-1"></i>
-          {{ form.nota_adicional.label.text }}
-        </label>
-        {{ form.nota_adicional(class="form-control", rows=3) }}
-      </div>
-      {% endif %}
+      </form>
 
-      <div class="d-flex justify-content-end gap-2 mt-4">
-        <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
-          Cancelar
-        </a>
-        <button type="submit" class="btn btn-primary" id="btn-submit">
-          {{ form.submit.label.text }}
-        </button>
-      </div>
-    </form>
+    </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
 {% endblock %}

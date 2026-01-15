@@ -2,6 +2,8 @@
 {% block title %}Registrar Pago{% endblock %}
 
 {% block content %}
+{# Fallback seguro: si no llega cliente_id desde la ruta, usar el de la solicitud #}
+{% set _cliente_id = (cliente_id | default(None)) or (solicitud.cliente_id if solicitud is defined and solicitud is not none else none) %}
 <div class="container py-5" style="max-width: 880px;">
   <div class="card shadow-sm">
     <div class="card-body p-4 p-md-5">
@@ -11,16 +13,22 @@
           <h1 class="h4 mb-1">💰 Registrar Pago</h1>
           <div class="text-muted small">Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong></div>
         </div>
-        <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-outline-secondary">
-          <i class="bi bi-arrow-left-circle me-1"></i> Volver
-        </a>
+        {% if _cliente_id %}
+          <a href="{{ url_for('admin.detalle_cliente', cliente_id=_cliente_id) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left-circle me-1"></i> Volver
+          </a>
+        {% else %}
+          <a href="{{ url_for('admin.clientes') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left-circle me-1"></i> Volver
+          </a>
+        {% endif %}
       </div>
 
       <hr class="my-4">
 
       <!-- Barra de búsqueda (server-side, sin JS) -->
       <form method="GET"
-            action="{{ url_for('admin.registrar_pago', cliente_id=cliente_id, id=solicitud.id) }}"
+            action="{{ url_for('admin.registrar_pago', cliente_id=_cliente_id, id=solicitud.id) if _cliente_id else url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id) }}"
             class="mb-4">
         <div class="d-flex gap-2 flex-wrap">
           <input type="text"
@@ -32,7 +40,7 @@
           <button type="submit" class="btn btn-primary">
             <i class="bi bi-search me-1"></i> Buscar
           </button>
-          <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente_id, id=solicitud.id) }}"
+          <a href="{{ url_for('admin.registrar_pago', cliente_id=_cliente_id, id=solicitud.id) if _cliente_id else url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id) }}"
              class="btn btn-outline-secondary">
             Limpiar
           </a>
@@ -104,9 +112,15 @@
         <hr class="my-4">
 
         <div class="d-flex justify-content-end gap-2">
-          <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-outline-secondary">
-            <i class="bi bi-x-circle me-1"></i> Cancelar
-          </a>
+          {% if _cliente_id %}
+            <a href="{{ url_for('admin.detalle_cliente', cliente_id=_cliente_id) }}" class="btn btn-outline-secondary">
+              <i class="bi bi-x-circle me-1"></i> Cancelar
+            </a>
+          {% else %}
+            <a href="{{ url_for('admin.clientes') }}" class="btn btn-outline-secondary">
+              <i class="bi bi-x-circle me-1"></i> Cancelar
+            </a>
+          {% endif %}
           <button type="submit" class="btn btn-success">
             <i class="bi bi-save-fill me-1"></i> {{ form.submit.label.text }}
           </button>

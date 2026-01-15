@@ -75,6 +75,9 @@ def _register_login_fail() -> None:
 def _reset_login_fail() -> None:
     session.pop('admin_login_fail', None)
 
+
+
+
 def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     """
     Arma un resumen limpio y entendible de la solicitud para compartir con el cliente.
@@ -389,6 +392,20 @@ def listar_clientes():
     clientes = query.order_by(Cliente.fecha_registro.desc()).all()
     return render_template('admin/clientes_list.html', clientes=clientes, q=q)
 
+
+# ─────────────────────────────────────────────────────────────
+# Helpers de fecha (UTC) para listados/filtrado
+# ─────────────────────────────────────────────────────────────
+def _today_utc_bounds():
+    """Devuelve (start_utc, end_utc) del día actual en UTC como datetimes NAIVE.
+
+    Se usa para filtros por rango diario sin depender de timezone-aware datetimes,
+    manteniendo consistencia con columnas típicamente naive en Postgres.
+    """
+    now_utc = datetime.utcnow()
+    start = datetime(now_utc.year, now_utc.month, now_utc.day)
+    end = start + timedelta(days=1)
+    return start, end
 
 # =============================================================================
 #                       HELPERS DE LIMPIEZA / NORMALIZACIÓN
@@ -1723,6 +1740,76 @@ def _parse_money_to_decimal_str(raw: str, places: int = 2) -> str:
     val = val.quantize(q)
     return f"{val:.{places}f}"
 
+def _to_decimal_safe(value) -> Decimal:
+    """Convierte un valor (None/Decimal/int/float/str) a Decimal(0.01) de forma segura.
+
+    - Si el valor no se puede convertir, devuelve 0.00
+    - Limpia strings raros (RD$, comas, espacios) y deja solo dígitos y punto.
+    """
+    if value is None:
+        return Decimal('0.00')
+
+    if isinstance(value, Decimal):
+        return value.quantize(Decimal('0.01'))
+
+    # si viene como int/float
+    if isinstance(value, (int, float)):
+        return Decimal(str(value)).quantize(Decimal('0.01'))
+
+    # si viene string
+    txt = str(value).strip()
+    if not txt:
+        return Decimal('0.00')
+
+    # Dejar solo dígitos y punto (quitamos RD$, comas, letras, etc.)
+    cleaned = ''.join(ch for ch in txt if ch.isdigit() or ch == '.')
+    if cleaned.count('.') > 1:
+        parts = cleaned.split('.')
+        cleaned = parts[0] + '.' + ''.join(parts[1:])
+
+    if cleaned in ('', '.'):
+        return Decimal('0.00')
+
+    try:
+        return Decimal(cleaned).quantize(Decimal('0.01'))
+    except InvalidOperation:
+        return Decimal('0.00')
+
+
+
+def _sum_decimal_fields(current_value, add_value_decimal: Decimal) -> Decimal:
+    """Suma segura para campos Numeric/String mezclados.
+
+    - current_value puede venir como None, Decimal, número o string viejo.
+    - add_value_decimal debe venir como Decimal ya calculado.
+    """
+    actual = _to_decimal_safe(current_value)
+    total = (actual + add_value_decimal).quantize(Decimal('0.01'))
+    return total
+
+
+def _clamp_decimal(value: Decimal, min_v: Decimal, max_v: Decimal) -> Decimal:
+    """Limita un Decimal entre min_v y max_v (ambos inclusive)."""
+    v = _to_decimal_safe(value)
+    if v < min_v:
+        return min_v
+    if v > max_v:
+        return max_v
+    return v
+
+
+def _percent_paid(monto_total, monto_pagado) -> Decimal:
+    """Calcula porcentaje pagado (0–100) a partir de total vs pagado."""
+    total = _to_decimal_safe(monto_total)
+    pagado = _to_decimal_safe(monto_pagado)
+
+    if total <= Decimal('0.00'):
+        return Decimal('0.00')
+
+    pct = (pagado / total) * Decimal('100.00')
+    pct = _clamp_decimal(pct, Decimal('0.00'), Decimal('100.00'))
+    return pct.quantize(Decimal('0.01'))
+
 def _choice_codes(choices):
     """Devuelve set de códigos válidos de choices [(code,label), ...]."""
     out = set()
@@ -1861,15 +1948,10 @@ def registrar_pago(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminPagoForm()
 
-    # Buscar candidata sin JS:
-    # - GET ?q=... recarga dropdown con resultados
-    # - POST conserva q para re-render si hay errores
-
     q = (request.args.get('q') or request.form.get('q') or '').strip()
 
-    def _build_candidata_choices(search_text: str):
+    def _build_candidata_choices(search_text):
         query = Candidata.query
-
         if search_text:
             like = f"%{search_text}%"
             query = query.filter(
@@ -1881,164 +1963,93 @@ def registrar_pago(cliente_id, id):
                 )
             )
 
-        candidatas = (
-            query.order_by(Candidata.nombre_completo.asc())
-            .limit(50)
-            .all()
-        )
+        candidatas = query.order_by(Candidata.nombre_completo.asc()).limit(50).all()
+        choices = [(c.fila, c.nombre_completo) for c in candidatas]
 
-        choices = []
-        for c in candidatas:
-            ced = (c.cedula or '').strip()
-            tel = (c.numero_telefono or '').strip()
-            extra = ""
-            if ced and tel:
-                extra = f" — {ced} — {tel}"
-            elif ced:
-                extra = f" — {ced}"
-            elif tel:
-                extra = f" — {tel}"
-
-            choices.append((c.fila, f"{(c.nombre_completo or '').strip()}{extra}".strip()))
-
-        # Si la solicitud ya tiene candidata, la ponemos arriba (para no perderla)
         if s.candidata_id:
             cand_actual = Candidata.query.get(s.candidata_id)
-            if cand_actual:
-                ced = (cand_actual.cedula or '').strip()
-                tel = (cand_actual.numero_telefono or '').strip()
-                extra = ""
-                if ced and tel:
-                    extra = f" — {ced} — {tel}"
-                elif ced:
-                    extra = f" — {ced}"
-                elif tel:
-                    extra = f" — {tel}"
-
-                top = (cand_actual.fila, f"{(cand_actual.nombre_completo or '').strip()}{extra}".strip())
-
-                # Evitar duplicados y subirla arriba
-                if top[0] in [x[0] for x in choices]:
-                    choices = [top] + [x for x in choices if x[0] != top[0]]
-                else:
-                    choices.insert(0, top)
+            if cand_actual and cand_actual.fila not in [x[0] for x in choices]:
+                choices.insert(0, (cand_actual.fila, cand_actual.nombre_completo))
 
         return choices
 
-    # SIEMPRE setear choices antes del validate (WTForms lo exige)
     form.candidata_id.choices = _build_candidata_choices(q)
 
-    # GET: precargar candidata asignada (si existe)
     if request.method == 'GET' and s.candidata_id:
         form.candidata_id.data = s.candidata_id
 
     if form.validate_on_submit():
-        # Reglas de negocio
-        if s.estado == 'cancelada':
-            flash('No puedes registrar pago de una solicitud cancelada.', 'warning')
+
+        if s.estado in ('cancelada', 'pagada'):
+            flash('Esta solicitud no admite pagos.', 'warning')
             return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
 
-        if s.estado == 'pagada':
-            flash('La solicitud ya está pagada.', 'info')
+        cand = Candidata.query.get(form.candidata_id.data)
+        if not cand:
+            flash('Candidata inválida.', 'danger')
             return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
+
+        s.candidata_id = cand.fila
+
+        # Monto pagado
+        s.monto_pagado = _parse_money_to_decimal_str(form.monto_pagado.data)
+
+        # Siempre calculamos el 25% si hay sueldo en la solicitud.
+        # Si una candidata no acepta porcentaje, por requisito queda descalificada antes,
+        # así que aquí no validamos esa columna.
+        if s.sueldo:
+            try:
+                sueldo = Decimal(_parse_money_to_decimal_str(s.sueldo))
+                monto_25 = (sueldo * Decimal('0.25')).quantize(Decimal('0.01'))
+
+                # Guardamos el total (si existe el campo)
+                # ✅ Si ya tenía un monto_total previo, lo acumulamos.
+                if hasattr(cand, 'monto_total'):
+                    try:
+                        cand.monto_total = _sum_decimal_fields(getattr(cand, 'monto_total', None), sueldo)
+                    except Exception:
+                        cand.monto_total = sueldo
+
+                # ✅ Guardar MONTO del 25% (en dinero), no el número 25.
+                # Nota: si tu BD tenía un CHECK que obliga 0–100, ese CHECK debe ajustarse
+                # para permitir montos (>= 0). En código, aquí guardamos el monto real.
+                if hasattr(cand, 'porciento'):
+                    try:
+                        cand.porciento = _sum_decimal_fields(getattr(cand, 'porciento', None), monto_25)
+                    except Exception:
+                        cand.porciento = monto_25
+
+                # Fecha de pago (si existe)
+                if hasattr(cand, 'fecha_de_pago') and not getattr(cand, 'fecha_de_pago', None):
+                    cand.fecha_de_pago = datetime.utcnow().date()
+
+                db.session.add(cand)
+            except Exception:
+                # Si el sueldo viene raro, no rompemos el pago
+                pass
+
+        s.estado = 'pagada'
+        s.fecha_ultima_modificacion = datetime.utcnow()
 
         try:
-            # 1) Validar candidata
-            if not form.candidata_id.data:
-                flash('Debes seleccionar una candidata.', 'danger')
-                return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
-
-            cand = Candidata.query.get(form.candidata_id.data)
-            if not cand:
-                flash('La candidata seleccionada no existe.', 'danger')
-                return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
-
-            s.candidata_id = cand.fila
-
-            # Guardar también la relación navegable si tu modelo la usa (no rompe si no existe)
-            try:
-                s.candidata = cand
-            except Exception:
-                pass
-
-            # 2) Monto pagado (lo que nos debe por la búsqueda / servicio)
-            raw = (form.monto_pagado.data or "").strip()
-            monto_canon = _parse_money_to_decimal_str(raw)
-            s.monto_pagado = monto_canon
-
-            # 3) Si la candidata acepta porcentaje, calcular 25% del sueldo de la solicitud
-            #    (OJO: sueldo NO viene del formulario de pago; se toma de Solicitud.sueldo)
-            try:
-                acepta = bool(
-                    getattr(cand, 'acepta_porcentaje_sueldo', False)
-                    or getattr(cand, 'acepta_porcentaje', False)
-                )
-
-                if acepta:
-                    # Sueldo guardado en Solicitud.sueldo (debe ser numérico / solo dígitos)
-                    sueldo_digits = None
-                    if hasattr(s, 'sueldo'):
-                        sueldo_digits = _norm_numeric_str(getattr(s, 'sueldo', None))
-
-                    if sueldo_digits:
-                        sueldo_val = Decimal(sueldo_digits).quantize(Decimal('0.01'))
-                        sueldo_canon = f"{sueldo_val:.2f}"
-
-                        porc_val = (sueldo_val * Decimal('0.25')).quantize(Decimal('0.01'))
-                        porc_canon = f"{porc_val:.2f}"
-
-                        # Guardar en la candidata SOLO si esos campos existen (no rompe si no están)
-                        if hasattr(cand, 'monto_total'):
-                            cand.monto_total = sueldo_canon
-                        if hasattr(cand, 'porcentaje'):
-                            cand.porcentaje = porc_canon
-                        if hasattr(cand, 'porciento'):
-                            cand.porciento = porc_canon
-
-                        # Fecha de pago: si existe el campo y no viene ya seteado, lo ponemos hoy
-                        hoy = datetime.utcnow().date()
-                        if hasattr(cand, 'fecha_de_pago') and not getattr(cand, 'fecha_de_pago', None):
-                            cand.fecha_de_pago = hoy
-                        if hasattr(cand, 'fecha_pago') and not getattr(cand, 'fecha_pago', None):
-                            cand.fecha_pago = hoy
-
-                        # Opcional: marca como actualizado si existe
-                        if hasattr(cand, 'fecha_ultima_modificacion'):
-                            cand.fecha_ultima_modificacion = datetime.utcnow()
-                    else:
-                        # Acepta porcentaje pero la solicitud no tiene sueldo
-                        flash(
-                            'La candidata acepta porcentaje, pero esta solicitud no tiene sueldo. Completa el sueldo en la solicitud para calcular el 25%.',
-                            'warning'
-                        )
-            except Exception:
-                # Si algo raro pasa con el cálculo, no tumbamos el pago
-                pass
-
-            # 4) Estado + timestamps (para la solicitud)
-            s.estado = 'pagada'
-            s.fecha_ultima_actividad = datetime.utcnow()
-            s.fecha_ultima_modificacion = datetime.utcnow()
-
             db.session.commit()
-            flash('Pago registrado y solicitud marcada como pagada.', 'success')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+        except IntegrityError as e:
+            db.session.rollback()
+            msg = str(getattr(e, "orig", e))
+            # Caso: constraint viejo que obliga porciento entre 0 y 100
+            if "chk_porciento" in msg:
+                flash(
+                    "Tu BD tiene un CHECK (chk_porciento) que obliga 'porciento' a estar entre 0 y 100. "
+                    "Ahora estás guardando el MONTO del 25% (ej: 16000.00), por eso falla. "
+                    "Solución: cambia ese constraint para permitir montos (porciento >= 0) o guarda 25 (porcentaje) en vez del monto.",
+                    "danger"
+                )
+            else:
+                flash('No se pudo registrar el pago por un conflicto de datos en la base de datos.', 'danger')
+            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
 
-        except ValueError as e:
-            db.session.rollback()
-            flash(f'Monto inválido: {e}', 'danger')
-        except IntegrityError:
-            db.session.rollback()
-            flash('No se pudo registrar el pago por conflicto de datos.', 'danger')
-        except SQLAlchemyError:
-            db.session.rollback()
-            flash('Error de base de datos al registrar el pago.', 'danger')
-        except Exception:
-            db.session.rollback()
-            flash('Ocurrió un error al registrar el pago.', 'danger')
-
-    elif request.method == 'POST':
-        flash('Revisa los campos marcados en rojo.', 'danger')
+        flash('Pago registrado correctamente.', 'success')
+        return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
     return render_template(
         'admin/registrar_pago.html',
@@ -2048,12 +2059,6 @@ def registrar_pago(cliente_id, id):
         q=q
     )
 
-from sqlalchemy.orm import selectinload
-
-from datetime import datetime
-from flask import request, render_template, redirect, url_for, flash
-from flask_login import login_required
-from sqlalchemy.orm import joinedload
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET', 'POST'])
 @login_required
@@ -2136,7 +2141,7 @@ def nuevo_reemplazo(s_id):
 @login_required
 @admin_required
 def finalizar_reemplazo(s_id, reemplazo_id):
-    sol = (
+    s = (
         Solicitud.query
         .options(
             joinedload(Solicitud.reemplazos),
@@ -2145,24 +2150,35 @@ def finalizar_reemplazo(s_id, reemplazo_id):
         .get_or_404(s_id)
     )
 
-    r = Reemplazo.query.filter_by(
-        id=reemplazo_id,
-        solicitud_id=s_id
-    ).first_or_404()
-
+    r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
     form = AdminReemplazoFinForm()
 
-    # ─────────────────────────────────────────
-    # 🔎 BÚSQUEDA SERVER-SIDE (IGUAL A PAGO)
-    # ─────────────────────────────────────────
+    # ✅ Igual que PAGO
     q = (request.args.get('q') or request.form.get('q') or '').strip()
 
-    def _build_candidata_choices(search_text: str):
-        query = Candidata.query
+    # ✅ Detectar el field real que existe en el form
+    if hasattr(form, 'domestica_id'):
+        pick_field = form.domestica_id
+        pick_name = 'domestica_id'
+    elif hasattr(form, 'candidata_new_id'):
+        pick_field = form.candidata_new_id
+        pick_name = 'candidata_new_id'
+    elif hasattr(form, 'candidata_id'):
+        pick_field = form.candidata_id
+        pick_name = 'candidata_id'
+    else:
+        flash('Error: el formulario no tiene un campo para seleccionar candidata.', 'danger')
+        return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
 
-        if search_text:
-            like = f"%{search_text}%"
-            query = query.filter(
+    def _query_candidatas(search_text: str):
+        # ✅ Si no hay búsqueda, NO cargamos nada
+        if not search_text:
+            return []
+
+        like = f"%{search_text}%"
+        return (
+            Candidata.query
+            .filter(
                 or_(
                     Candidata.nombre_completo.ilike(like),
                     Candidata.cedula.ilike(like),
@@ -2170,18 +2186,19 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     Candidata.numero_telefono.ilike(like),
                 )
             )
-
-        candidatas = (
-            query
             .order_by(Candidata.nombre_completo.asc())
             .limit(50)
             .all()
         )
 
-        choices = []
-        for c in candidatas:
+    def _build_choices_from_list(items):
+        """✅ Para SelectField(coerce=int): value SIEMPRE int (nunca '' / None)."""
+        out = []
+        for c in items:
+            nombre = (c.nombre_completo or '').strip()
             ced = (c.cedula or '').strip()
             tel = (c.numero_telefono or '').strip()
+
             extra = ""
             if ced and tel:
                 extra = f" — {ced} — {tel}"
@@ -2190,41 +2207,83 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             elif tel:
                 extra = f" — {tel}"
 
-            choices.append(
-                (c.fila, f"{(c.nombre_completo or '').strip()}{extra}".strip())
+            label = f"{nombre}{extra}".strip() if nombre else f"ID {c.fila}{extra}".strip()
+
+            try:
+                out.append((int(c.fila), label))
+            except Exception:
+                continue
+
+        return out
+
+    # ✅ RESULTADOS (para tabla) + CHOICES (para select)
+    candidatas = _query_candidatas(q)
+    choices = _build_choices_from_list(candidatas)
+
+    # ✅ Si ya hay candidata guardada en el reemplazo, subirla arriba (aunque no esté en búsqueda)
+    cand_actual_id = getattr(r, 'candidata_new_id', None)
+    try:
+        cand_actual_id_int = int(cand_actual_id) if cand_actual_id else None
+    except Exception:
+        cand_actual_id_int = None
+
+    if cand_actual_id_int:
+        cand_actual = Candidata.query.get(cand_actual_id_int)
+        if cand_actual:
+            nombre = (cand_actual.nombre_completo or '').strip()
+            ced = (cand_actual.cedula or '').strip()
+            tel = (cand_actual.numero_telefono or '').strip()
+
+            extra = ""
+            if ced and tel:
+                extra = f" — {ced} — {tel}"
+            elif ced:
+                extra = f" — {ced}"
+            elif tel:
+                extra = f" — {tel}"
+
+            top = (
+                int(cand_actual.fila),
+                f"{nombre}{extra}".strip() if nombre else f"ID {cand_actual.fila}{extra}".strip()
             )
 
-        return choices
+            ids = [x[0] for x in choices]
+            if top[0] in ids:
+                choices = [top] + [x for x in choices if x[0] != top[0]]
+            else:
+                choices.insert(0, top)
 
-    # WTForms exige choices siempre
-    form.candidata_new_id.choices = _build_candidata_choices(q)
+    # ✅ Placeholder arriba (OJO: value int=0, NO '')
+    pick_field.choices = [(0, '— Selecciona una doméstica —')] + choices
 
-    # Prefill si ya hubo intento previo
-    if request.method == 'GET' and r.candidata_new_id:
-        try:
-            form.candidata_new_id.data = int(r.candidata_new_id)
-        except Exception:
-            pass
+    # ✅ GET: precargar si ya existe candidata_new_id en el reemplazo
+    if request.method == 'GET':
+        if cand_actual_id_int:
+            try:
+                pick_field.data = int(cand_actual_id_int)
+            except Exception:
+                pick_field.data = 0
+        else:
+            pick_field.data = 0
 
-    # ─────────────────────────────────────────
-    # POST
-    # ─────────────────────────────────────────
     if form.validate_on_submit():
         try:
-            # 1) Validar candidata nueva
+            # ✅ leer id seleccionado (int)
             try:
-                cand_new_id = int(form.candidata_new_id.data)
+                cand_new_id = int(pick_field.data or 0)
             except Exception:
-                cand_new_id = None
+                cand_new_id = 0
 
-            if not cand_new_id:
+            if cand_new_id <= 0:
                 flash('Debes seleccionar la nueva candidata.', 'danger')
                 return render_template(
                     'admin/reemplazo_fin.html',
                     form=form,
-                    solicitud=sol,
+                    solicitud=s,
                     reemplazo=r,
-                    q=q
+                    q=q,
+                    pick_name=pick_name,
+                    candidatas=candidatas
                 )
 
             cand_new = Candidata.query.get(cand_new_id)
@@ -2233,16 +2292,17 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                 return render_template(
                     'admin/reemplazo_fin.html',
                     form=form,
-                    solicitud=sol,
+                    solicitud=s,
                     reemplazo=r,
-                    q=q
+                    q=q,
+                    pick_name=pick_name,
+                    candidatas=candidatas
                 )
 
             ahora = datetime.utcnow()
 
-            # 2) Guardar reemplazo
+            # Guardar reemplazo
             r.candidata_new_id = cand_new.fila
-            r.oportunidad_nueva = False
 
             if hasattr(form, 'nota_adicional'):
                 r.nota_adicional = (form.nota_adicional.data or '').strip() or None
@@ -2252,64 +2312,75 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             elif hasattr(r, 'fecha_fin'):
                 r.fecha_fin = ahora
 
-            # 3) Reasignar solicitud
-            sol.candidata_id = cand_new.fila
-            sol.estado = 'pagada'
-            sol.fecha_ultima_actividad = ahora
-            sol.fecha_ultima_modificacion = ahora
+            # Reasignar solicitud (mantener pagada)
+            s.candidata_id = cand_new.fila
+            s.estado = 'pagada'
 
-            # 4) 🔥 CALCULAR PORCENTAJE (MISMA LÓGICA QUE PAGO)
-            try:
-                acepta = bool(
-                    getattr(cand_new, 'acepta_porcentaje_sueldo', False)
-                    or getattr(cand_new, 'acepta_porcentaje', False)
-                )
+            # ✅ Timestamps (solo si existen en tu modelo)
+            if hasattr(s, 'fecha_ultima_actividad'):
+                s.fecha_ultima_actividad = ahora
+            if hasattr(s, 'fecha_ultima_modificacion'):
+                s.fecha_ultima_modificacion = ahora
 
-                if acepta:
-                    sueldo_digits = None
-                    if hasattr(sol, 'sueldo'):
-                        sueldo_digits = _norm_numeric_str(getattr(sol, 'sueldo', None))
+            # Porcentaje (MISMA lógica que PAGO)
+            if getattr(s, 'sueldo', None):
+                try:
+                    sueldo = Decimal(_parse_money_to_decimal_str(s.sueldo))
+                    monto_25 = (sueldo * Decimal('0.25')).quantize(Decimal('0.01'))
 
-                    if sueldo_digits:
-                        sueldo_val = Decimal(sueldo_digits).quantize(Decimal('0.01'))
-                        porc_val = (sueldo_val * Decimal('0.25')).quantize(Decimal('0.01'))
+                    # ✅ Si ya tenía un monto_total previo, lo acumulamos.
+                    if hasattr(cand_new, 'monto_total'):
+                        try:
+                            cand_new.monto_total = _sum_decimal_fields(getattr(cand_new, 'monto_total', None), sueldo)
+                        except Exception:
+                            cand_new.monto_total = sueldo
 
-                        if hasattr(cand_new, 'monto_total'):
-                            cand_new.monto_total = f"{sueldo_val:.2f}"
-                        if hasattr(cand_new, 'porcentaje'):
-                            cand_new.porcentaje = f"{porc_val:.2f}"
-                        if hasattr(cand_new, 'porciento'):
-                            cand_new.porciento = f"{porc_val:.2f}"
+                    # ✅ Guardar MONTO del 25% (en dinero), igual que en PAGO.
+                    if hasattr(cand_new, 'porciento'):
+                        try:
+                            cand_new.porciento = _sum_decimal_fields(getattr(cand_new, 'porciento', None), monto_25)
+                        except Exception:
+                            cand_new.porciento = monto_25
 
-                        hoy = ahora.date()
-                        if hasattr(cand_new, 'fecha_de_pago') and not getattr(cand_new, 'fecha_de_pago', None):
-                            cand_new.fecha_de_pago = hoy
-                        if hasattr(cand_new, 'fecha_pago') and not getattr(cand_new, 'fecha_pago', None):
-                            cand_new.fecha_pago = hoy
+                    # Fecha de pago (si existe)
+                    if hasattr(cand_new, 'fecha_de_pago') and not getattr(cand_new, 'fecha_de_pago', None):
+                        cand_new.fecha_de_pago = datetime.utcnow().date()
 
-                        if hasattr(cand_new, 'fecha_ultima_modificacion'):
-                            cand_new.fecha_ultima_modificacion = ahora
-            except Exception:
-                pass
+                    if hasattr(cand_new, 'fecha_ultima_modificacion'):
+                        cand_new.fecha_ultima_modificacion = ahora
+
+                    db.session.add(cand_new)
+                except Exception:
+                    # Si el sueldo viene raro, no rompemos el flujo
+                    pass
 
             db.session.commit()
             flash('Reemplazo finalizado correctamente.', 'success')
-            return redirect(
-                url_for('admin.detalle_cliente', cliente_id=sol.cliente_id)
-            )
+            return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
 
-        except Exception:
+        except Exception as e:
             db.session.rollback()
+            # ✅ Mostrar el error real en terminal para poder corregirlo de una vez
+            try:
+                import traceback
+                print('ERROR finalizar_reemplazo:', repr(e))
+                traceback.print_exc()
+            except Exception:
+                pass
             flash('Error al finalizar el reemplazo.', 'danger')
+
+    elif request.method == 'POST':
+        flash('Revisa los campos marcados en rojo.', 'danger')
 
     return render_template(
         'admin/reemplazo_fin.html',
         form=form,
-        solicitud=sol,
+        solicitud=s,
         reemplazo=r,
-        q=q
+        q=q,
+        pick_name=pick_name,
+        candidatas=candidatas
     )
-
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
 @login_required

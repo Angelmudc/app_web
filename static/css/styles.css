@@ -654,6 +654,7 @@ body[data-theme="light"] .hero-section{
   content:"";
   position:absolute;
   inset:-2px;
+  pointer-events:none;
   background: linear-gradient(90deg, rgba(0,174,207,.45), rgba(108,92,255,.30), rgba(26,87,137,.40));
   opacity:.22;
   filter: blur(20px);
