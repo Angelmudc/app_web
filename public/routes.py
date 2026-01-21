@@ -52,7 +52,7 @@ except ImportError:
 
 # 🔌 SWITCH GENERAL: WEB PÚBLICA HABILITADA / DESHABILITADA
 # ❌ DESACTIVADA TEMPORALMENTE (no accesible al público)
-PUBLIC_SITE_ENABLED = True
+PUBLIC_SITE_ENABLED = False
 # Para reactivar en el futuro, cambia a True
 
 
