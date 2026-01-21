@@ -5,50 +5,96 @@
 {% block content %}
 <section class="section">
   <div class="container">
-    <h1 class="section-title">Contacto</h1>
-    <p class="section-subtitle">Llena este formulario o escríbenos directo a WhatsApp.</p>
+    <h1 class="section-title">Contáctanos</h1>
+    <p class="section-subtitle">
+      Estamos listos para orientarte y ayudarte a encontrar el personal ideal según tu necesidad.
+    </p>
 
     <div class="grid-2">
-      <form class="contact-form">
+
+      <!-- FORMULARIO -->
+      <form class="contact-form card" style="padding:24px;">
+        <h3 style="margin-bottom:10px;">Formulario de contacto</h3>
+        <p class="info-text" style="margin-bottom:16px;">
+          Completa este formulario y te atenderemos de forma rápida por WhatsApp.
+        </p>
+
         <div class="form-group">
           <label for="nombre">Nombre completo</label>
-          <input type="text" id="nombre" name="nombre" placeholder="Tu nombre" required>
+          <input type="text" id="nombre" name="nombre" placeholder="Tu nombre completo" required>
         </div>
+
         <div class="form-group">
-          <label for="telefono">Teléfono</label>
-          <input type="tel" id="telefono" name="telefono" placeholder="Tu número de WhatsApp" required>
+          <label for="telefono">Teléfono / WhatsApp</label>
+          <input type="tel" id="telefono" name="telefono" placeholder="Ej. 809-000-0000" required>
         </div>
+
         <div class="form-group">
-          <label for="ciudad">Ciudad / sector</label>
-          <input type="text" id="ciudad" name="ciudad" placeholder="Ej. Santiago, La Trinitaria">
+          <label for="ciudad">Ciudad o sector</label>
+          <input type="text" id="ciudad" name="ciudad" placeholder="Ej. Santiago, Moca, La Vega">
         </div>
+
         <div class="form-group">
-          <label for="servicio">¿Qué servicio buscas?</label>
+          <label for="servicio">Servicio que necesitas</label>
           <select id="servicio" name="servicio">
             <option value="">Selecciona una opción</option>
             <option value="con-dormida">Doméstica con dormida</option>
             <option value="sin-dormida">Doméstica sin dormida</option>
-            <option value="por-dias">Por días / por horas</option>
+            <option value="por-dias">Por días / por horas / temporal</option>
             <option value="ninera">Niñera</option>
             <option value="adulto-mayor">Cuidado de adulto mayor</option>
-            <option value="otro">Otro</option>
+            <option value="otro">Otro servicio</option>
           </select>
         </div>
+
         <div class="form-group">
-          <label for="mensaje">Cuéntanos qué necesitas</label>
-          <textarea id="mensaje" name="mensaje" rows="4" placeholder="Ej: necesito una doméstica con dormida para familia de 4 personas..."></textarea>
+          <label for="mensaje">Cuéntanos tu necesidad</label>
+          <textarea id="mensaje" name="mensaje" rows="4" placeholder="Ej: Busco una doméstica con dormida para familia de 4 personas en Santiago..."></textarea>
         </div>
-        <button type="button" class="btn btn-primary" id="enviarContacto">Enviar por WhatsApp</button>
+
+        <button type="button" class="btn btn-primary" id="enviarContacto">
+          Enviar solicitud por WhatsApp
+        </button>
+
+        <p class="info-text" style="margin-top:12px;">
+          *La información se envía directamente a nuestro WhatsApp para atención inmediata.
+        </p>
       </form>
 
-      <div>
+      <!-- INFO DE CONTACTO -->
+      <div class="card" style="padding:24px;">
         <h3>Datos de contacto</h3>
-        <p>📞 <a href="tel:+18094296892">+1 (809) 429-6892</a></p>
-        <p>📧 <a href="mailto:info@domesticadelcibao.com">info@domesticadelcibao.com</a></p>
-        <p>🕒 Lunes a viernes · 8:00 a.m. - 5:00 p.m.</p>
-        <p>📍 Cibao, República Dominicana</p>
-        <p class="info-text">*Por ahora este formulario envía la información directo a WhatsApp para que la atención sea rápida.</p>
+
+        <div style="margin-top:14px; line-height:1.8;">
+          <p>📞 <strong>Teléfono:</strong><br>
+            <a href="tel:+18094296892">+1 (809) 429-6892</a>
+          </p>
+
+          <p>📧 <strong>Correo:</strong><br>
+            <a href="mailto:info@domesticadelcibao.com">info@domesticadelcibao.com</a>
+          </p>
+
+          <p>🕒 <strong>Horario de atención:</strong><br>
+            Lunes a viernes · 8:00 a.m. - 5:00 p.m.
+          </p>
+
+          <p>📍 <strong>Zona de cobertura:</strong><br>
+            Región del Cibao y zona norte de República Dominicana
+          </p>
+        </div>
+
+        <hr style="margin:20px 0; opacity:.12;">
+
+        <h4>Atención directa</h4>
+        <p class="info-text">
+          También puedes escribirnos directamente por WhatsApp para una atención más rápida.
+        </p>
+
+        <a href="https://wa.me/18094296892" target="_blank" class="btn btn-secondary" style="margin-top:10px;">
+          Escribir por WhatsApp
+        </a>
       </div>
+
     </div>
   </div>
 </section>

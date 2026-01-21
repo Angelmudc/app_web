@@ -4,8 +4,10 @@ import base64
 import hashlib
 from typing import Optional
 
-from flask import render_template, abort, request, redirect
+from flask import render_template, abort, request, redirect, jsonify, make_response
 from . import public_bp
+
+from datetime import datetime
 
 # Límite de paginación pública
 PUBLIC_MAX_PAGE = 50
@@ -50,8 +52,127 @@ except ImportError:
 
 # 🔌 SWITCH GENERAL: WEB PÚBLICA HABILITADA / DESHABILITADA
 # ❌ DESACTIVADA TEMPORALMENTE (no accesible al público)
-PUBLIC_SITE_ENABLED = False
+PUBLIC_SITE_ENABLED = True
 # Para reactivar en el futuro, cambia a True
+
+
+def _json_no_cache(payload: dict, status: int = 200):
+    """JSON response con headers anti-cache para refresco silencioso."""
+    resp = make_response(jsonify(payload), status)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
+
+@public_bp.route('/ping', methods=['GET'])
+def public_ping():
+    """Endpoint liviano para saber si el servidor está vivo (público)."""
+    return _json_no_cache({
+        'ok': True,
+        'public_enabled': bool(PUBLIC_SITE_ENABLED),
+        'server_time': datetime.utcnow().isoformat() + 'Z',
+    })
+
+
+@public_bp.route('/domesticas/live', methods=['GET'])
+def public_domesticas_live():
+    """Snapshot mínimo para refrescar el listado público sin recargar la página."""
+    if not PUBLIC_SITE_ENABLED:
+        return _json_no_cache({
+            'ok': False,
+            'public_enabled': False,
+            'server_time': datetime.utcnow().isoformat() + 'Z',
+            'items': [],
+            'count': 0,
+            'reason': 'public_site_disabled'
+        }, 200)
+
+    q = (request.args.get('q') or '').strip()
+    page = _safe_page(request.args.get('page', 1))
+    limit = request.args.get('limit', 9, type=int)
+    limit = max(1, min(limit, 50))
+
+    # Base: candidatas con ficha web visible y disponible
+    query = (
+        CandidataWeb.query
+        .join(Candidata, CandidataWeb.candidata_id == Candidata.fila)
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == 'disponible')
+    )
+
+    # Búsqueda simple (nombre/ciudad/sector/tags)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            CandidataWeb.nombre_publico.ilike(like)
+            | CandidataWeb.ciudad_publica.ilike(like)
+            | CandidataWeb.sector_publico.ilike(like)
+            | CandidataWeb.tags_publicos.ilike(like)
+        )
+
+    query = query.order_by(
+        CandidataWeb.orden_lista.asc(),
+        CandidataWeb.fecha_publicacion.desc()
+    ).add_entity(Candidata)
+
+    pagination = query.paginate(page=page, per_page=limit, error_out=False)
+    filas = pagination.items  # [(ficha_web, candidata), ...]
+
+    items = []
+    for ficha, c in filas:
+        public_id = _public_id(c)
+        if public_id is None:
+            continue
+
+        nombre = (
+            ficha.nombre_publico
+            or getattr(c, 'nombre_completo', None)
+            or getattr(c, 'nombre', None)
+            or 'Candidata'
+        )
+        edad = ficha.edad_publica or getattr(c, 'edad', None)
+        modalidad = (
+            ficha.modalidad_publica
+            or getattr(c, 'modalidad_trabajo_preferida', None)
+            or getattr(c, 'modalidad', None)
+            or ''
+        )
+        experiencia = (
+            ficha.experiencia_resumen
+            or getattr(c, 'areas_experiencia', None)
+            or getattr(c, 'empleo_anterior', None)
+            or ''
+        )
+
+        items.append({
+            'public_id': public_id,
+            'nombre': nombre,
+            'edad': edad,
+            'modalidad': modalidad,
+            'experiencia': experiencia,
+            'foto': _foto_data_uri(c),
+            'ciudad': ficha.ciudad_publica,
+            'sector': ficha.sector_publico,
+            'sueldo': ficha.sueldo_texto_publico,
+            'destacada': ficha.es_destacada,
+            'disponible_inmediato': ficha.disponible_inmediato,
+            'frase_destacada': ficha.frase_destacada,
+            'tags': ficha.tags_publicos,
+        })
+
+    return _json_no_cache({
+        'ok': True,
+        'public_enabled': True,
+        'server_time': datetime.utcnow().isoformat() + 'Z',
+        'q': q,
+        'page': int(page),
+        'pages': int(getattr(pagination, 'pages', 1) or 1),
+        'has_next': bool(getattr(pagination, 'has_next', False)),
+        'has_prev': bool(getattr(pagination, 'has_prev', False)),
+        'count': int(getattr(pagination, 'total', len(items)) or len(items)),
+        'items': items,
+    })
 
 
 def _foto_data_uri(candidata) -> Optional[str]:

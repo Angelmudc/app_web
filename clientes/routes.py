@@ -6,7 +6,7 @@ from typing import Optional  # ✅ PARA PYTHON 3.9
 
 from flask import (
     render_template, redirect, url_for, flash,
-    request, abort, g, session, current_app
+    request, abort, g, session, current_app, jsonify, make_response
 )
 from flask_login import (
     login_required, current_user, login_user, logout_user
@@ -142,8 +142,32 @@ def login():
             flash('Cuenta inactiva. Contacta soporte.', 'warning')
             return redirect(url_for('clientes.login'))
 
-        # Login OK
-        login_user(user)
+        # Login OK (rotación de sesión para evitar session fixation)
+        try:
+            session.clear()
+        except Exception:
+            pass
+
+        try:
+            session.permanent = True
+        except Exception:
+            pass
+
+        login_user(user, remember=False)
+
+        # ✅ Limpia también los contadores globales (IP + endpoint + usuario)
+        # (viene de utils/security_layer.py, lo registramos en app.extensions)
+        try:
+            clear_fn = current_app.extensions.get("clear_login_attempts")
+            if callable(clear_fn):
+                # Usamos IP local; en producción el bloqueo sigue funcionando igual.
+                ip = (request.remote_addr or "").strip()
+                # Username real si existe, si no el identificador usado.
+                uname = (getattr(user, "username", "") or identificador or "").strip()
+                clear_fn(ip, "/clientes/login", uname)
+        except Exception:
+            pass
+
         flash('Bienvenido.', 'success')
         return redirect(next_url if _is_safe_next(next_url) else url_for('clientes.dashboard'))
 
@@ -156,6 +180,10 @@ def login():
 @cliente_required
 def logout():
     logout_user()
+    try:
+        session.clear()
+    except Exception:
+        pass
     flash('Has cerrado sesión correctamente.', 'success')
     return redirect(url_for('clientes.login'))
 
@@ -246,6 +274,96 @@ def planes():
 def ayuda():
     whatsapp = "+1 809 429 6892"  # reemplaza por el real
     return render_template('clientes/ayuda.html', whatsapp=whatsapp)
+
+
+# ─────────────────────────────────────────────────────────────
+# Keep-alive / refresh silencioso (cliente)
+# ─────────────────────────────────────────────────────────────
+
+def _json_no_cache(payload: dict, status: int = 200):
+    """JSON response con headers anti-cache para refresco silencioso."""
+    resp = make_response(jsonify(payload), status)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
+
+@clientes_bp.route('/ping', methods=['GET'])
+@login_required
+@cliente_required
+def clientes_ping():
+    """Endpoint liviano para saber si la sesión sigue activa."""
+    return _json_no_cache({
+        'ok': True,
+        'server_time': datetime.utcnow().isoformat() + 'Z',
+        'cliente_id': int(getattr(current_user, 'id', 0) or 0),
+    })
+
+
+@clientes_bp.route('/solicitudes/live', methods=['GET'])
+@login_required
+@cliente_required
+def clientes_solicitudes_live():
+    """Snapshot mínimo para refrescar listados sin recargar toda la página."""
+    q = (request.args.get('q') or '').strip()
+    estado = (request.args.get('estado') or '').strip()
+    limit = request.args.get('limit', 20, type=int)
+    limit = max(1, min(limit, 50))
+
+    query = Solicitud.query.filter(Solicitud.cliente_id == current_user.id)
+
+    if estado:
+        query = query.filter(Solicitud.estado == estado)
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(
+                Solicitud.codigo_solicitud.ilike(like),
+                getattr(Solicitud, 'ciudad', db.literal('')).ilike(like),
+                getattr(Solicitud, 'descripcion', db.literal('')).ilike(like)
+            )
+        )
+
+    items = (
+        query.order_by(Solicitud.fecha_solicitud.desc())
+        .limit(limit)
+        .all()
+    )
+
+    data = []
+    for s in items:
+        data.append({
+            'id': int(s.id),
+            'codigo_solicitud': getattr(s, 'codigo_solicitud', None),
+            'estado': getattr(s, 'estado', None),
+            'fecha_solicitud': (getattr(s, 'fecha_solicitud', None).isoformat() + 'Z') if getattr(s, 'fecha_solicitud', None) else None,
+            'fecha_ultima_modificacion': (getattr(s, 'fecha_ultima_modificacion', None).isoformat() + 'Z') if getattr(s, 'fecha_ultima_modificacion', None) else None,
+            'monto_pagado': str(getattr(s, 'monto_pagado', '') or ''),
+            'saldo_pendiente': str(getattr(s, 'saldo_pendiente', '') or ''),
+        })
+
+    # Conteo por estado para badges
+    try:
+        counts = (
+            db.session.query(Solicitud.estado, db.func.count(Solicitud.id))
+            .filter(Solicitud.cliente_id == current_user.id)
+            .group_by(Solicitud.estado)
+            .all()
+        )
+        counts = {(k or 'sin_definir'): int(v) for k, v in counts}
+    except Exception:
+        counts = {}
+
+    return _json_no_cache({
+        'ok': True,
+        'server_time': datetime.utcnow().isoformat() + 'Z',
+        'q': q,
+        'estado': estado,
+        'count_by_estado': counts,
+        'items': data,
+    })
 
 
 # ─────────────────────────────────────────────────────────────
@@ -729,14 +847,7 @@ def rechazar_politicas():
 # Solo Premium/VIP. Persistencia en DB (JSONB) con versión y timestamp.
 # Incluye recálculo básico de score si hay candidata asignada.
 # ─────────────────────────────────────────────────────────────
-from datetime import datetime
 from json import dumps, loads
-from flask import request, session, flash, redirect, url_for, render_template
-from flask_login import login_required, current_user
-
-from config_app import db
-from models import Solicitud
-from . import clientes_bp
 # Usa tus decoradores existentes:
 #   - cliente_required
 #   - politicas_requeridas
@@ -1055,6 +1166,9 @@ def compat_recalcular(solicitud_id):
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 def solicitud_publica(token):
+    # 🔒 DESACTIVADA TEMPORALMENTE (no usada por ahora)
+    abort(404)
+
     from flask import current_app
     import re
     from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired

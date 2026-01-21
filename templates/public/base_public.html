@@ -10,6 +10,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- ICONOS (Font Awesome) -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4C9h1Y+4z2Z4xXr2d2xKg=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
 </head>
 <body>
 
@@ -76,14 +85,14 @@
     <div class="container footer-grid">
       <div>
         <h3>Doméstica del Cibao A&D</h3>
-        <p>Agencia especializada en selección y gestión de trabajadoras domésticas en el Cibao.</p>
+        <p>Agencia profesional dedicada a la selección, verificación y gestión de personal doméstico y de apoyo, con cobertura principal en el Cibao y atención a otras zonas del país según disponibilidad.</p>
       </div>
 
       <div>
         <h4>Contacto</h4>
         <p>📞 <a href="tel:+18094296892">+1 (809) 429-6892</a></p>
         <p>📧 <a href="mailto:info@domesticadelcibao.com">info@domesticadelcibao.com</a></p>
-        <p>🕒 Lunes a sábado · 9:00 a.m. - 6:00 p.m.</p>
+        <p>🕒 Lunes a viernes · 8:00 a.m. - 5:00 p.m.</p>
       </div>
 
       <div>
@@ -102,7 +111,61 @@
     </div>
   </footer>
 
-  <script src="{{ url_for('static', filename='public/js/main.js') }}"></script>
+
+  <script src="{{ url_for('static', filename='public/js/main.js') }}" defer></script>
+
+  <!-- AUTO-REFRESH SUAVE (solo cuando el usuario está inactivo) -->
+  <script>
+    (function () {
+      // Intervalo de intento de refresco (ms)
+      const REFRESH_EVERY_MS = 60000; // 60 segundos
+
+      // Tiempo mínimo sin actividad para permitir refresco
+      const IDLE_REQUIRED_MS = 4000; // 4 segundos
+
+      let lastAction = Date.now();
+
+      // Detectar actividad del usuario
+      ["scroll", "mousemove", "keydown", "touchstart", "click"].forEach(evt => {
+        window.addEventListener(evt, () => {
+          lastAction = Date.now();
+        }, { passive: true });
+      });
+
+      function softReloadIfIdle() {
+        const idleFor = Date.now() - lastAction;
+
+        // Si el usuario está activo, no recargar
+        if (idleFor < IDLE_REQUIRED_MS) return;
+
+        // Evitar refresco si hay modales visibles
+        const openModal = document.querySelector(".modal.show, .modal[style*='display: block']");
+        if (openModal) return;
+
+        // Efecto visual mínimo (casi imperceptible)
+        document.documentElement.style.transition = "opacity 140ms ease";
+        document.documentElement.style.opacity = "0.92";
+
+        // Forzar recarga fresca evitando cache
+        setTimeout(() => {
+          const url = new URL(window.location.href);
+          url.searchParams.set("_ts", Date.now());
+          window.location.replace(url.toString());
+        }, 160);
+      }
+
+      setInterval(softReloadIfIdle, REFRESH_EVERY_MS);
+    })();
+  </script>
+
+  <script>
+    // Año automático del footer
+    const y = document.getElementById("year");
+    if (y) y.textContent = new Date().getFullYear();
+
+    // Fallback simple por si los iconos no cargan
+    document.documentElement.classList.add("icons-ready");
+  </script>
 
 </body>
 </html>

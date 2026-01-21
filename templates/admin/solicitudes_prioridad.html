@@ -5,27 +5,85 @@
 <div class="container my-4">
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h2 class="mb-0">
-      🔥 Solicitudes prioritarias
-    </h2>
+    <div>
+      <h2 class="mb-0">🔥 Solicitudes prioritarias</h2>
+      <div class="text-muted small mt-1">
+        {% set _dias = dias if dias is defined and dias else 7 %}
+        Mostrando solicitudes con seguimiento de <strong>{{ _dias }}</strong> días o más.
+        {% if total is defined %}
+          <span class="ms-2">Total: <strong>{{ total }}</strong></span>
+        {% endif %}
+      </div>
+    </div>
+
     <div class="d-flex gap-2">
-      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary btn-sm">
-        Volver a clientes
-      </a>
-      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary btn-sm">
-        Ver todas las solicitudes
-      </a>
+      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary btn-sm">Volver a clientes</a>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary btn-sm">Ver todas las solicitudes</a>
     </div>
   </div>
 
-  <!-- 🔥 Texto nuevo, claro y profesional para secretarias -->
   <p class="text-muted">
-    Aquí se muestran las solicitudes que llevan varios días activas sin recibir una candidata. 
-    Estas solicitudes necesitan seguimiento rápido para evitar atrasos y mantener al cliente satisfecho.
+    Aquí se muestran las solicitudes que llevan varios días activas sin resolverse.
+    Estas necesitan seguimiento rápido para evitar atrasos y mantener al cliente satisfecho.
   </p>
 
-  {% if solicitudes|length == 0 %}
-    <div class="alert alert-success">
+  {# =====================
+     FILTROS
+     ===================== #}
+  <form method="GET" class="card card-body p-3 mb-3">
+    {% set _q = q if q is defined else request.args.get('q','') %}
+    {% set _estado = estado if estado is defined else request.args.get('estado','') %}
+    {% set _dias = dias if dias is defined and dias else request.args.get('dias', 7) %}
+    {% set _per_page = per_page if per_page is defined and per_page else request.args.get('per_page', 25) %}
+
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1">Buscar</label>
+        <input type="text" name="q" value="{{ _q }}" class="form-control form-control-sm" placeholder="Código, cliente, ciudad, sector...">
+      </div>
+
+      <div class="col-6 col-md-3">
+        <label class="form-label mb-1">Estado</label>
+        <select name="estado" class="form-select form-select-sm">
+          <option value="" {% if not _estado %}selected{% endif %}>Todos</option>
+          <option value="proceso" {% if _estado == 'proceso' %}selected{% endif %}>proceso</option>
+          <option value="activa" {% if _estado == 'activa' %}selected{% endif %}>activa</option>
+          <option value="reemplazo" {% if _estado == 'reemplazo' %}selected{% endif %}>reemplazo</option>
+        </select>
+      </div>
+
+      <div class="col-3 col-md-2">
+        <label class="form-label mb-1">Días</label>
+        <input type="number" name="dias" value="{{ _dias }}" class="form-control form-control-sm" min="1" max="60">
+      </div>
+
+      <div class="col-3 col-md-2">
+        <label class="form-label mb-1">Por página</label>
+        <select name="per_page" class="form-select form-select-sm">
+          {% for n in [10, 25, 50, 100] %}
+            <option value="{{ n }}" {% if _per_page|string == n|string %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-1 d-grid">
+        <button class="btn btn-sm btn-dark">Filtrar</button>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for(request.endpoint) }}">Limpiar</a>
+      {% if page is defined %}
+        <span class="text-muted small align-self-center">Página {{ page }}</span>
+      {% endif %}
+    </div>
+  </form>
+
+  {# =====================
+     TABLA
+     ===================== #}
+  {% if solicitudes is not defined or solicitudes|length == 0 %}
+    <div class="alert alert-success mb-0">
       No hay solicitudes prioritarias ahora mismo. ✅
     </div>
   {% else %}
@@ -49,16 +107,12 @@
             {% set row_class = '' %}
             {% if s.nivel_prioridad == 'media' %}
               {% set row_class = 'table-warning' %}
-            {% elif s.nivel_prioridad == 'alta' %}
-              {% set row_class = 'table-danger' %}
-            {% elif s.nivel_prioridad == 'critica' %}
+            {% elif s.nivel_prioridad in ['alta','critica'] %}
               {% set row_class = 'table-danger' %}
             {% endif %}
 
             <tr class="{{ row_class }}">
-              <td>
-                <strong>{{ s.codigo_solicitud }}</strong>
-              </td>
+              <td><strong>{{ s.codigo_solicitud }}</strong></td>
               <td>
                 {% if s.cliente %}
                   {{ s.cliente.nombre_completo }}<br>
@@ -67,39 +121,25 @@
                   <span class="text-muted">Sin cliente vinculado</span>
                 {% endif %}
               </td>
+              <td>{{ s.ciudad_sector or '—' }}</td>
               <td>
-                {{ s.ciudad_sector or '—' }}
-              </td>
-              <td>
-                <span class="badge bg-secondary text-uppercase">
-                  {{ s.estado }}
-                </span>
+                <span class="badge bg-secondary text-uppercase">{{ s.estado }}</span>
               </td>
               <td>
                 {{ s.fecha_solicitud.strftime('%d/%m/%Y %H:%M') if s.fecha_solicitud }}
               </td>
-              <td>
-                {{ s.dias_en_seguimiento or '-' }}
-              </td>
+              <td>{{ s.dias_en_seguimiento or '-' }}</td>
               <td>
                 {% if s.es_prioritaria %}
                   {% if s.nivel_prioridad == 'critica' %}
-                    <span class="badge bg-danger">
-                      🚨 CRÍTICA
-                    </span>
+                    <span class="badge bg-danger">🚨 CRÍTICA</span>
                   {% elif s.nivel_prioridad == 'alta' %}
-                    <span class="badge bg-danger">
-                      🔥 ALTA
-                    </span>
+                    <span class="badge bg-danger">🔥 ALTA</span>
                   {% else %}
-                    <span class="badge bg-warning text-dark">
-                      ⚠️ MEDIA
-                    </span>
+                    <span class="badge bg-warning text-dark">⚠️ MEDIA</span>
                   {% endif %}
                 {% else %}
-                  <span class="badge bg-success">
-                    Normal
-                  </span>
+                  <span class="badge bg-success">Normal</span>
                 {% endif %}
               </td>
               <td>
@@ -110,10 +150,7 @@
                 {% endif %}
               </td>
               <td class="text-end">
-                <a
-                  href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}"
-                  class="btn btn-sm btn-primary"
-                >
+                <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-primary">
                   Ver detalle
                 </a>
               </td>
@@ -122,6 +159,33 @@
         </tbody>
       </table>
     </div>
+
+    {# =====================
+       PAGINACION
+       ===================== #}
+    {% if page is defined and per_page is defined %}
+      {% set _page = page|int %}
+      {% set _per = per_page|int %}
+      {% set _total = total|int if total is defined else 0 %}
+      {% set _pages = (_total // _per) + (1 if (_total % _per) else 0) if _total else _page %}
+
+      <nav class="mt-3" aria-label="Paginación">
+        <ul class="pagination pagination-sm mb-0 flex-wrap">
+          <li class="page-item {% if _page <= 1 %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for(request.endpoint, q=_q, estado=_estado, dias=_dias, per_page=_per, page=_page-1) }}">Anterior</a>
+          </li>
+
+          <li class="page-item disabled">
+            <span class="page-link">Página {{ _page }}{% if _total %} / {{ _pages }}{% endif %}</span>
+          </li>
+
+          <li class="page-item {% if has_more is defined and not has_more %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for(request.endpoint, q=_q, estado=_estado, dias=_dias, per_page=_per, page=_page+1) }}">Siguiente</a>
+          </li>
+        </ul>
+      </nav>
+    {% endif %}
+
   {% endif %}
 </div>
 {% endblock %}

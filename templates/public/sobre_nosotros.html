@@ -2,6 +2,7 @@
 {% block title %}Sobre nosotros - Doméstica del Cibao A&D{% endblock %}
 
 {% block content %}
+
 <section class="section">
   <div class="container">
     <h1 class="section-title">Sobre Doméstica del Cibao A&amp;D</h1>
@@ -11,22 +12,30 @@
     </p>
 
     <div class="grid-2">
-      <!-- Columna izquierda: Historia / quiénes somos -->
+      <!-- Columna izquierda: Historia / fundadora -->
       <div class="card">
-        <h2 style="font-size:1.1rem; margin-bottom:0.6rem;">Quiénes somos</h2>
+        <h2 style="font-size:1.1rem; margin-bottom:0.6rem;">Nuestra fundadora</h2>
+
         <p style="font-size:0.9rem; color:var(--color-texto-suave); margin-bottom:0.8rem;">
-          Doméstica del Cibao A&amp;D nace como una agencia familiar, dirigida por una licenciada
-          en el área humana y con años de experiencia reclutando, filtrando y acompañando
-          tanto a empleadas domésticas como a familias.
+          Doméstica del Cibao A&amp;D nace de una historia real: una madre trabajadora que, sin una red de apoyo,
+          necesitaba una solución segura y humana para su hogar.
         </p>
+
+        <ul class="card-list" style="margin-bottom:0.8rem;">
+          <li><strong>40 años</strong>, madre de <strong>4 hijos</strong> y esposa, con la familia como motor principal.</li>
+          <li>Formación en <strong>Psicología Clínica</strong> y maestría en <strong>Terapia Familiar y de Pareja</strong>.</li>
+          <li>Vocación de <strong>servicio comunitario</strong> y enfoque en relaciones laborales saludables.</li>
+        </ul>
+
         <p style="font-size:0.9rem; color:var(--color-texto-suave); margin-bottom:0.8rem;">
-          Nuestro enfoque es simple: <strong>cuidar tu hogar como si fuera el nuestro</strong>.
-          Por eso cada candidata pasa por un proceso de entrevistas, verificación y
-          seguimiento, antes de ser presentada a los clientes.
+          Desde muy joven aprendió a trabajar con disciplina y propósito. Con el tiempo, un momento difícil
+          —una empleada que abandonó el puesto en una situación médica delicada— le mostró una necesidad clara en el Cibao:
+          <strong>faltaba comunicación, acompañamiento y un proceso de selección serio</strong>.
         </p>
+
         <p style="font-size:0.9rem; color:var(--color-texto-suave);">
-          Trabajamos principalmente en el Cibao, pero podemos coordinar servicios para otras
-          provincias según disponibilidad y tipo de solicitud.
+          Hoy, esa experiencia se convierte en un servicio: ser mediadores, orientar a ambas partes y ayudar a construir
+          acuerdos claros, estables y respetuosos.
         </p>
       </div>
 
@@ -34,8 +43,8 @@
       <div class="card">
         <h2 style="font-size:1.1rem; margin-bottom:0.6rem;">Nuestra misión</h2>
         <p style="font-size:0.9rem; color:var(--color-texto-suave); margin-bottom:0.8rem;">
-          Conectar familias responsables con domésticas confiables, comprometidas y bien
-          evaluadas, creando relaciones de trabajo estables, respetuosas y de largo plazo.
+          Conectar familias responsables con domésticas confiables y bien evaluadas, cuidando la comunicación,
+          los acuerdos y el seguimiento para crear relaciones laborales estables y humanas.
         </p>
 
         <h3 style="font-size:0.98rem; margin:0.6rem 0 0.3rem;">Visión</h3>
@@ -71,7 +80,9 @@
           <li>Formulario completo de inscripción.</li>
           <li>Entrevista personal y telefónica.</li>
           <li>Verificación de referencias laborales y familiares.</li>
+          <li>Depuración policial completa en todos los departamentos de la Policía.</li>
           <li>Evaluación de experiencia y habilidades de la candidata.</li>
+          <li>Orientación sobre comunicación y acuerdos desde el inicio.</li>
         </ul>
       </div>
 
@@ -86,12 +97,13 @@
       </div>
 
       <div class="card">
-        <h3>Reemplazos y soporte</h3>
+        <h3>Reemplazo y soporte</h3>
         <ul class="card-list">
-          <li>Política clara de reemplazos según el servicio contratado.</li>
-          <li>Atención rápida en caso de que algo no funcione.</li>
-          <li>Comunicación directa por WhatsApp y llamadas.</li>
-          <li>Registro interno del historial de cada solicitud.</li>
+          <li>Acompañamiento durante el período de prueba.</li>
+          <li>Soporte para aclarar funciones, horarios y acuerdos.</li>
+          <li>Orientación para manejar comunicación y límites de forma sana.</li>
+          <li>Seguimiento después de la colocación para asegurar estabilidad.</li>
+          <li>Reemplazo según condiciones del servicio y disponibilidad.</li>
         </ul>
       </div>
     </div>
@@ -102,31 +114,86 @@
   <div class="container">
     <div class="grid-2">
       <div>
-        <h2 class="section-title">Zonas de cobertura</h2>
-        <p class="section-subtitle">
-          Principalmente trabajamos en la zona norte del país. Según el caso, podemos evaluar
-          solicitudes para otras provincias.
-        </p>
-        <ul class="card-list">
-          <li>Puerto Plata y zonas cercanas.</li>
-          <li>Santiago y municipios aledaños.</li>
-          <li>Otros pueblos del Cibao según disponibilidad.</li>
-        </ul>
+        <div class="card" style="margin-top:14px;">
+          <h3>Algunos datos de nuestro trabajo</h3>
+          <ul class="card-list">
+            <li>Atención personalizada a familias y candidatas, con enfoque humano y responsable.</li>
+            <li>Domésticas con experiencia en limpieza, cocina, cuidado de niños y adultos.</li>
+            <li>Proceso organizado para seguimiento de pagos, pruebas y reemplazos.</li>
+            <li>Sistema digital interno para manejar candidatas y solicitudes.</li>
+          </ul>
+          <p class="info-text">
+            Si quieres saber cómo podemos ayudarte en tu caso específico, contáctanos y te
+            orientamos sin compromiso.
+          </p>
+          <a href="{{ url_for('public.contacto') }}" class="btn btn-primary" style="margin-top:12px;">Hablar con la agencia</a>
+        </div>
       </div>
 
       <div class="card">
-        <h3>Algunos datos de nuestro trabajo</h3>
-        <ul class="card-list">
-          <li>+ decenas de familias atendidas a lo largo de los años.</li>
-          <li>Domésticas con experiencia en limpieza, cocina, cuidado de niños y adultos.</li>
-          <li>Proceso organizado para seguimiento de pagos, pruebas y reemplazos.</li>
-          <li>Sistema digital interno para manejar candidatas y solicitudes.</li>
-        </ul>
-        <p class="info-text">
-          Si quieres saber cómo podemos ayudarte en tu caso específico, contáctanos y te
-          orientamos sin compromiso.
-        </p>
-        <a href="{{ url_for('public.contacto') }}" class="btn btn-primary">Hablar con la agencia</a>
+        <h2 class="section-title" style="margin-bottom:0.8rem;">Zonas de cobertura</h2>
+        <h3 style="margin-bottom:0.5rem;">Mapa de cobertura (RD)</h3>
+
+        <div style="border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.02);">
+          <img src="{{ url_for('static', filename='images/mapa_rd.png') }}" 
+               alt="Mapa de cobertura República Dominicana" 
+               style="width:100%; height:auto; display:block;" />
+        </div>
+
+        <div style="margin-top:10px; font-size:.85rem; color:var(--color-texto-suave);">
+          <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center;">
+            <span style="display:inline-flex; align-items:center; gap:8px;">
+              <span style="width:12px; height:12px; border-radius:50%; background:#ef4444;"></span>
+              Zonas donde damos servicio
+            </span>
+            <span style="display:inline-flex; align-items:center; gap:8px;">
+              <span style="width:12px; height:12px; border-radius:6px; background:#0ea5e9;"></span>
+              Nuestras oficinas
+            </span>
+          </div>
+
+          <div style="margin-top:14px;">
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; font-size:.88rem; color:var(--color-texto-suave);">
+
+              <div>
+                <strong style="color:var(--color-texto);">Zona Norte</strong>
+                <ul style="margin:6px 0 0; padding-left:16px;">
+                  <li>Monte Cristi</li>
+                  <li>Mao</li>
+                  <li>Santiago Rodríguez</li>
+                  <li>Puerto Plata</li>
+                </ul>
+              </div>
+
+              <div>
+                <strong style="color:var(--color-texto);">Región del Cibao</strong>
+                <ul style="margin:6px 0 0; padding-left:16px;">
+                  <li>Santiago</li>
+                  <li>Navarrete</li>
+                  <li>Moca</li>
+                  <li>La Vega</li>
+                  <li>Constanza</li>
+                  <li>Bonao</li>
+                  <li>Cotuí</li>
+                  <li>San Francisco</li>
+                </ul>
+              </div>
+
+              <div>
+                <strong style="color:var(--color-texto);">Zona Central</strong>
+                <ul style="margin:6px 0 0; padding-left:16px;">
+                  <li>Villa Altagracia</li>
+                  <li>Santo Domingo</li>
+                </ul>
+              </div>
+
+            </div>
+          </div>
+          
+          <p class="info-text" style="margin:10px 0 0; font-size:.82rem;">
+            Nota: la cobertura puede variar según disponibilidad y distancia.
+          </p>
+        </div>
       </div>
     </div>
   </div>

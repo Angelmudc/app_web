@@ -56,6 +56,13 @@ from models import (
 # Formularios
 from forms import LlamadaCandidataForm
 
+# Utils locales
+from utils_codigo import generar_codigo_unico  # tu función optimizada
+
+# Data / reportes
+import pandas as pd
+
+
 # PDF (fpdf2)
 try:
     from fpdf import FPDF  # fpdf2
@@ -308,10 +315,7 @@ def forbidden(e):
     return render_template('errors/403.html'), 403
 
 
-@app.route('/static/<path:filename>')
-def static_files(filename):
-    return send_from_directory(os.path.join(app.root_path, 'static'), filename)
-
+ # Nota: Flask ya sirve `/static/...` automáticamente (app.static_folder). Evitamos duplicar esa ruta.
 
 @app.route('/robots.txt')
 def robots_txt():
@@ -337,29 +341,44 @@ def home():
     )
 
 
-from datetime import datetime
-from flask import request, render_template, redirect, url_for, session
-from werkzeug.security import check_password_hash
-
+ 
 # ---- Anti-bruteforce settings (ajustables)
 LOGIN_MAX_INTENTOS = int(os.getenv("LOGIN_MAX_INTENTOS", "6"))   # intentos
 LOGIN_LOCK_MINUTOS = int(os.getenv("LOGIN_LOCK_MINUTOS", "10"))  # minutos
 LOGIN_KEY_PREFIX   = "panel_login"
 
-from flask import current_app  # <-- AGREGA ESTE IMPORT si no lo tienes
 
 def _client_ip() -> str:
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()[:64]
+    """Obtiene la IP del cliente.
+    - En local: NO confía en X-Forwarded-For.
+    - En producción detrás de proxy: solo confía si TRUST_XFF=1.
+    """
+    trust_xff = (os.getenv("TRUST_XFF", "0").strip() == "1")
+    if trust_xff:
+        xff = (request.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip()[:64]
     return (request.remote_addr or "0.0.0.0").strip()[:64]
 
-def _clear_security_layer_lock():
-    # Limpia el lock global por IP (security_layer.py), si existe
+def _clear_security_layer_lock(endpoint: str = "/login", usuario: str = ""):
+    """Limpia el lock global (utils/security_layer.py) si está registrado.
+    Soporta limpiar por IP + endpoint + usuario.
+    """
     try:
         clear_fn = current_app.extensions.get("clear_login_attempts")
-        if clear_fn:
-            clear_fn(_client_ip())
+        if callable(clear_fn):
+            ip = _client_ip()
+            ep = (endpoint or "/login").strip() or "/login"
+            uname = (usuario or "").strip()
+            # Si el helper soporta (ip, endpoint, username) lo usamos.
+            try:
+                if uname:
+                    clear_fn(ip, ep, uname)
+                else:
+                    clear_fn(ip, ep)
+            except TypeError:
+                # Fallback para versiones antiguas que solo aceptan ip
+                clear_fn(ip)
     except Exception:
         pass
 
@@ -436,9 +455,9 @@ def login():
                     ok = (stored == clave)
 
         if ok:
-            # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global por IP
+            # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global (IP+endpoint+usuario)
             _reset_fail(usuario_norm)
-            _clear_security_layer_lock()
+            _clear_security_layer_lock("/login", usuario_norm)
 
             session.clear()
             session['usuario']   = usuario_raw
@@ -533,131 +552,6 @@ def list_candidatas_db():
         app.logger.exception("❌ Error leyendo candidatas desde la DB")
         # No exponemos el error real al cliente
         return jsonify({"error": "Error al consultar la base de datos."}), 500
-
-
-# -----------------------------------------------------------------------------
-# ENTREVISTA (usa JSON local de config)
-# -----------------------------------------------------------------------------
-@app.route('/entrevista', methods=['GET', 'POST'])
-@roles_required('admin', 'secretaria')
-def entrevista():
-    # Sanitiza y normaliza parámetros
-    tipo = (request.values.get('tipo') or '').strip().lower()[:64]
-    fila = request.values.get('fila', type=int)
-    config = current_app.config.get('ENTREVISTAS_CONFIG') or {}
-
-    # Guardar respuestas
-    if request.method == 'POST' and tipo and fila:
-        cfg_tipo = config.get(tipo) or {}
-        preguntas = cfg_tipo.get('preguntas') or []
-
-        if not isinstance(preguntas, list) or not preguntas:
-            flash("Configuración de entrevista inválida.", "danger")
-            return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
-
-        # Acumular respuestas; limitar tamaño para evitar payloads gigantes
-        respuestas = []
-        faltan = []
-        for p in preguntas:
-            pid = (p.get('id') or '').strip()
-            enunciado = (p.get('enunciado') or '').strip()
-            if not pid:
-                continue  # pregunta mal definida en JSON
-
-            valor = (request.form.get(pid) or '').strip()
-            if not valor:
-                faltan.append(pid)
-
-            # Limita cada respuesta a 1000 chars por seguridad
-            valor = valor[:1000]
-            respuestas.append(f"{enunciado}: {valor}")
-
-        if faltan:
-            flash("Por favor completa todos los campos.", "warning")
-            return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
-
-        # Guardar en la fila correspondiente
-        candidata = _get_candidata_safe_by_pk(fila)
-        if not candidata:
-            flash("⚠️ Candidata no encontrada.", "warning")
-            return redirect(url_for('entrevista'))
-
-        candidata.entrevista = "\n".join(respuestas)
-
-        try:
-            db.session.commit()
-            flash("✅ Entrevista guardada.", "success")
-        except (IntegrityError, OperationalError, DBAPIError):
-            app.logger.exception("❌ Error al guardar entrevista")
-            db.session.rollback()
-            flash("❌ Error al guardar.", "danger")
-
-        return redirect(url_for('entrevista') + f"?fila={fila}&tipo={tipo}")
-
-    # Buscar candidata (sin fila)
-    if not fila:
-        resultados = []
-        if request.method == 'POST':
-            q = (request.form.get('busqueda') or '').strip()[:128]
-            if q:
-                like = f"%{q}%"
-                try:
-                    resultados = (Candidata.query
-                                  .filter(or_(
-                                      Candidata.nombre_completo.ilike(like),
-                                      Candidata.cedula.ilike(like)
-                                  ))
-                                  .order_by(Candidata.nombre_completo.asc())
-                                  .all())
-                    if not resultados:
-                        flash("⚠️ No se encontraron candidatas.", "info")
-                except Exception:
-                    app.logger.exception("❌ Error buscando candidatas para entrevista")
-                    flash("Ocurrió un error al buscar candidatas.", "danger")
-            else:
-                flash("⚠️ Ingresa un término de búsqueda.", "warning")
-
-        return render_template('entrevista.html', etapa='buscar', resultados=resultados)
-
-    # Elegir tipo (con fila, sin tipo)
-    if fila and not tipo:
-        candidata = _get_candidata_safe_by_pk(fila)
-        if not candidata:
-            flash("⚠️ Candidata no encontrada.", "warning")
-            return redirect(url_for('entrevista'))
-
-        # Lista de tipos disponibles a partir del JSON
-        tipos = [(k, (v or {}).get('titulo', k)) for k, v in (config.items() if isinstance(config, dict) else [])]
-        return render_template('entrevista.html',
-                               etapa='elegir_tipo',
-                               candidata=candidata,
-                               tipos=tipos)
-
-    # Form dinámico (con fila y tipo)
-    if fila and tipo:
-        candidata = _get_candidata_safe_by_pk(fila)
-        cfg = config.get(tipo) if isinstance(config, dict) else None
-
-        if not cfg or not candidata:
-            flash("⚠️ Parámetros inválidos.", "danger")
-            return redirect(url_for('entrevista'))
-
-        return render_template(
-            'entrevista.html',
-            etapa='formulario',
-            candidata=candidata,
-            tipo=tipo,
-            preguntas=(cfg.get('preguntas') or []),
-            titulo=cfg.get('titulo'),
-            datos={},
-            mensaje=None,
-            focus_field=None
-        )
-
-    # Fallback
-    return redirect(url_for('entrevista'))
-
-
 
 # -----------------------------------------------------------------------------
 # ENTREVISTAS (DB) - HELPERS
@@ -1613,7 +1507,6 @@ def filtrar():
 # -----------------------------------------------------------------------------
 # INSCRIPCIÓN / PORCENTAJE / PAGOS / REPORTE PAGOS
 # -----------------------------------------------------------------------------
-from utils_codigo import generar_codigo_unico  # tu función optimizada
 
 @app.route('/inscripcion', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
@@ -1793,9 +1686,6 @@ def porciento():
 
     return render_template("porciento.html", resultados=resultados, candidata=candidata)
 
-from decimal import Decimal, InvalidOperation
-from datetime import date
-from sqlalchemy import or_
 
 @app.route('/pagos', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
@@ -2135,7 +2025,6 @@ def reporte_inscripciones():
     )
 
 
-from sqlalchemy import func
 
 @app.route('/reporte_pagos', methods=['GET'])
 @roles_required('admin', 'secretaria')
@@ -4928,135 +4817,6 @@ def compat_candidata():
                            mensaje=mensaje,
                            q=q)
 
-# ─────────────────────────────────────────────────────────────
-# ADMIN / SECRETARÍA – GESTIÓN DE CANDIDATAS PARA LA WEB
-# ─────────────────────────────────────────────────────────────
-
-@app.route('/admin/candidatas_web', methods=['GET', 'POST'])
-@roles_required('admin', 'secretaria')
-def listar_candidatas_web():
-
-    q = (request.form.get('q') or request.args.get('q') or '').strip()
-
-    # BASE: TODAS las candidatas
-    query = (
-        db.session.query(Candidata, CandidataWeb)
-        .outerjoin(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
-    )
-
-    # 🔍 BÚSQUEDA SOLO EN CANDIDATA (donde están los datos reales)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            or_(
-                Candidata.nombre_completo.ilike(like),
-                Candidata.cedula.ilike(like),
-                Candidata.codigo.ilike(like),
-                Candidata.numero_telefono.ilike(like),
-            )
-        )
-
-    # Orden limpio y lógico
-    query = query.order_by(
-        Candidata.nombre_completo.asc()
-    )
-
-    resultados = query.all()  # [(candidata, ficha_web), ...]
-
-    return render_template(
-        'candidatas_web_list.html',
-        resultados=resultados,
-        q=q
-    )
-
-
-@app.route('/admin/candidatas_web/<int:fila>/editar', methods=['GET', 'POST'])
-@roles_required('admin', 'secretaria')
-def editar_candidata_web(fila):
-    """
-    Editar la ficha pública de una candidata:
-    - Lee los datos internos desde Candidata (nombre_completo, etc.).
-    - Guarda todo lo que es de la web en CandidataWeb.
-    """
-    # 'fila' = identificador interno de la candidata
-    cand = Candidata.query.filter_by(fila=fila).first_or_404()
-
-    # Buscar ficha web; si no existe, crearla en memoria
-    ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
-    if not ficha:
-        ficha = CandidataWeb(
-            candidata_id=cand.fila,
-            visible=True,
-            estado_publico='disponible',
-        )
-        db.session.add(ficha)
-        db.session.flush()  # la deja lista sin hacer commit todavía
-
-    if request.method == 'POST':
-        # Checkboxes
-        ficha.visible = bool(request.form.get('visible'))
-        ficha.es_destacada = bool(request.form.get('es_destacada'))
-        ficha.disponible_inmediato = bool(request.form.get('disponible_inmediato'))
-
-        # Estado público (select con opciones válidas)
-        estado = (request.form.get('estado_publico') or '').strip()
-        if estado in ['disponible', 'reservada', 'no_disponible']:
-            ficha.estado_publico = estado
-
-        # Orden manual
-        orden_raw = (request.form.get('orden_lista') or '').strip()
-        if orden_raw:
-            try:
-                ficha.orden_lista = int(orden_raw)
-            except ValueError:
-                flash("⚠️ El orden debe ser un número entero.", "warning")
-        else:
-            ficha.orden_lista = None
-
-        # Textos públicos
-        ficha.nombre_publico = (request.form.get('nombre_publico') or '').strip()[:200] or None
-        ficha.edad_publica = (request.form.get('edad_publica') or '').strip()[:50] or None
-        ficha.ciudad_publica = (request.form.get('ciudad_publica') or '').strip()[:120] or None
-        ficha.sector_publico = (request.form.get('sector_publico') or '').strip()[:120] or None
-        ficha.modalidad_publica = (request.form.get('modalidad_publica') or '').strip()[:120] or None
-        ficha.tipo_servicio_publico = (request.form.get('tipo_servicio_publico') or '').strip()[:50] or None
-        ficha.anos_experiencia_publicos = (request.form.get('anos_experiencia_publicos') or '').strip()[:50] or None
-
-        ficha.experiencia_resumen = (request.form.get('experiencia_resumen') or '').strip() or None
-        ficha.experiencia_detallada = (request.form.get('experiencia_detallada') or '').strip() or None
-        ficha.tags_publicos = (request.form.get('tags_publicos') or '').strip()[:255] or None
-        ficha.frase_destacada = (request.form.get('frase_destacada') or '').strip()[:200] or None
-
-        # Sueldo y foto
-        sueldo_desde_raw = (request.form.get('sueldo_desde') or '').strip()
-        sueldo_hasta_raw = (request.form.get('sueldo_hasta') or '').strip()
-
-        ficha.sueldo_desde = int(sueldo_desde_raw) if sueldo_desde_raw.isdigit() else None
-        ficha.sueldo_hasta = int(sueldo_hasta_raw) if sueldo_hasta_raw.isdigit() else None
-
-        ficha.sueldo_texto_publico = (request.form.get('sueldo_texto_publico') or '').strip()[:120] or None
-        ficha.foto_publica_url = (request.form.get('foto_publica_url') or '').strip()[:255] or None
-
-        # Fecha de publicación la primera vez que se marca visible
-        if ficha.visible and ficha.fecha_publicacion is None:
-            ficha.fecha_publicacion = datetime.utcnow()
-
-        try:
-            db.session.commit()
-            flash("✅ Ficha para la web actualizada correctamente.", "success")
-            # Para que no se ponga lento, volvemos a la misma ficha en vez de cargar el listado completo
-            return redirect(url_for('editar_candidata_web', fila=cand.fila))
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception("Error guardando ficha web de candidata")
-            flash("❌ Ocurrió un error guardando los cambios.", "danger")
-
-    return render_template(
-        'candidata_web_form.html',
-        cand=cand,
-        ficha=ficha,
-    )
-
 
 from flask import render_template, session, redirect, url_for, request
 
@@ -5466,64 +5226,107 @@ ENTREVISTAS_BANCO = {
 }
 
 
+import click
+from flask.cli import with_appcontext
+from sqlalchemy.exc import SQLAlchemyError
+
 @app.cli.command("seed-entrevista")
+@with_appcontext
 def seed_entrevista():
     """
-    Crea/actualiza el banco de preguntas.
+    Crea/actualiza el banco de preguntas desde la config JSON.
     Uso:
       flask seed-entrevista
     """
+
+    # ✅ Usa tu config real (la que ya cargas arriba)
+    banco = current_app.config.get("ENTREVISTAS_CONFIG") or {}
+    if not isinstance(banco, dict) or not banco:
+        click.echo("❌ No hay configuración cargada en ENTREVISTAS_CONFIG.")
+        return
+
     total_creadas = 0
     total_actualizadas = 0
-
     orden_global = 1
 
-    for categoria, data in ENTREVISTAS_BANCO.items():
-        preguntas = data.get("preguntas", [])
-        for p in preguntas:
-            clave = f"{categoria}.{p['id']}"   # ✅ clave única por categoría
-            texto = p.get("enunciado", "").strip()
-            tipo = (p.get("tipo") or "texto").strip()
-            opciones = p.get("opciones")
+    try:
+        for categoria, data in banco.items():
+            data = data or {}
+            preguntas = data.get("preguntas") or []
+            if not isinstance(preguntas, list):
+                continue
 
-            q = EntrevistaPregunta.query.filter_by(clave=clave).first()
-            if not q:
-                q = EntrevistaPregunta(
-                    clave=clave,
-                    texto=texto[:255],
-                    tipo=tipo,
-                    opciones=opciones,
-                    orden=orden_global,
-                    activa=True
-                )
-                db.session.add(q)
-                total_creadas += 1
-            else:
-                cambio = False
-                if (q.texto or "") != texto[:255]:
-                    q.texto = texto[:255]
-                    cambio = True
-                if (q.tipo or "texto") != tipo:
-                    q.tipo = tipo
-                    cambio = True
-                if q.opciones != opciones:
-                    q.opciones = opciones
-                    cambio = True
-                if (q.orden or 0) != orden_global:
-                    q.orden = orden_global
-                    cambio = True
-                if q.activa is False:
-                    q.activa = True
-                    cambio = True
+            for p in preguntas:
+                p = p or {}
+                pid = (p.get("id") or "").strip()
+                if not pid:
+                    # Si una pregunta viene mal definida, no rompemos el comando
+                    continue
 
-                if cambio:
-                    total_actualizadas += 1
+                clave = f"{categoria}.{pid}"  # ✅ clave única por categoría
+                texto = (p.get("enunciado") or "").strip()
+                tipo = (p.get("tipo") or "texto").strip()
+                opciones = p.get("opciones")
 
-            orden_global += 1
+                # ✅ Opciones: deben ser lista o None (para JSONB)
+                if opciones is not None and not isinstance(opciones, (list, tuple)):
+                    opciones = None
 
-    db.session.commit()
-    click.echo(f"OK ✅ Preguntas creadas: {total_creadas} | actualizadas: {total_actualizadas}")
+                q = EntrevistaPregunta.query.filter_by(clave=clave).first()
 
+                if not q:
+                    q = EntrevistaPregunta(
+                        clave=clave,
+                        texto=texto[:255],
+                        tipo=tipo[:30],
+                        opciones=list(opciones) if isinstance(opciones, (list, tuple)) else None,
+                        orden=orden_global,
+                        activa=True
+                    )
+                    db.session.add(q)
+                    total_creadas += 1
+
+                else:
+                    cambio = False
+
+                    if (q.texto or "") != texto[:255]:
+                        q.texto = texto[:255]
+                        cambio = True
+
+                    if (q.tipo or "texto") != tipo[:30]:
+                        q.tipo = tipo[:30]
+                        cambio = True
+
+                    nuevas_opciones = list(opciones) if isinstance(opciones, (list, tuple)) else None
+                    if q.opciones != nuevas_opciones:
+                        q.opciones = nuevas_opciones
+                        cambio = True
+
+                    if (q.orden or 0) != orden_global:
+                        q.orden = orden_global
+                        cambio = True
+
+                    if q.activa is False:
+                        q.activa = True
+                        cambio = True
+
+                    if cambio:
+                        total_actualizadas += 1
+
+                orden_global += 1
+
+        db.session.commit()
+        click.echo(f"OK ✅ Preguntas creadas: {total_creadas} | actualizadas: {total_actualizadas}")
+
+    except SQLAlchemyError:
+        db.session.rollback()
+        click.echo("❌ Error de base de datos guardando preguntas.")
+        raise
+
+    except Exception:
+        db.session.rollback()
+        click.echo("❌ Error inesperado ejecutando seed-entrevista.")
+        raise
 
 # -----------------------------------------------------------------------------
 # MAIN

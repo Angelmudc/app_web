@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 
 from typing import Optional
 
-from flask import Flask, request, redirect, url_for
+from flask import Flask, request, redirect, url_for, abort
+# Para manejo correcto de tiempo de sesión
+from datetime import timedelta
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
 from flask_migrate import Migrate
@@ -104,11 +106,17 @@ def create_app():
             "SESSION_COOKIE_SAMESITE": "Lax",
             "SESSION_COOKIE_DOMAIN": None,
             "SESSION_COOKIE_SECURE": (prod and not is_localhost),  # True solo en HTTPS real
+            "SESSION_REFRESH_EACH_REQUEST": False,
             "REMEMBER_COOKIE_HTTPONLY": True,
             "REMEMBER_COOKIE_SECURE": (prod and not is_localhost),
-            "PERMANENT_SESSION_LIFETIME": int(
-                os.getenv("SESSION_TTL_SECONDS", "2592000")
-            ),  # 30 días
+            # Sesión (Flask espera timedelta, no int)
+            "PERMANENT_SESSION_LIFETIME": timedelta(
+                seconds=int(os.getenv("SESSION_TTL_SECONDS", "2592000"))
+            ),  # 30 días por defecto
+
+            # Cookies (más control)
+            "SESSION_COOKIE_NAME": os.getenv("SESSION_COOKIE_NAME", "app_web_session"),
+            "REMEMBER_COOKIE_SAMESITE": "Lax",
         }
     )
 
@@ -119,6 +127,11 @@ def create_app():
 
     # CSRF
     app.config["WTF_CSRF_ENABLED"] = True
+    # CSRF: en producción exige HTTPS real
+    app.config["WTF_CSRF_SSL_STRICT"] = (prod and not is_localhost)
+    app.config["WTF_CSRF_TIME_LIMIT"] = int(os.getenv("WTF_CSRF_TIME_LIMIT", "7200"))  # 2 horas
+    app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken", "X-CSRF-Token"]
+    app.config["WTF_CSRF_CHECK_DEFAULT"] = True
     csrf.init_app(app)
 
     # Si deployas detrás de proxy (Render, Fly, etc.)
@@ -201,31 +214,42 @@ def create_app():
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com https://cdn.datatables.net; "
         "connect-src 'self'; "
         "form-action 'self'; "
-        "upgrade-insecure-requests; "
     )
+
+    # En producción con HTTPS real, forzamos que el navegador suba a HTTPS cuando vea HTTP.
+    if prod and not is_localhost:
+        csp += "upgrade-insecure-requests; "
 
     @app.after_request
     def _set_security_headers(resp):
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        resp.headers["X-Frame-Options"] = "SAMEORIGIN"
-        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        resp.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+        # No sobreescribir si ya existe (por capas)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        resp.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
         )
 
-        # CSP (enforcing)
-        resp.headers["Content-Security-Policy"] = csp
+        # CSP (enforcing) - no pisar si ya fue seteada antes
+        resp.headers.setdefault("Content-Security-Policy", csp)
 
-        # HSTS SOLO en producción (requiere HTTPS)
+        # HSTS SOLO en producción (requiere HTTPS). No pisar si ya existe.
         if prod:
-            resp.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
+            resp.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
             )
 
-        # Buenas prácticas cross-origin
-        resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-        resp.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+        # Cross-origin isolation (COOP/COEP/CORP)
+        # ⚠️ Esto puede romper CDNs (fonts, DataTables, jQuery, etc.) si no tienen los headers adecuados.
+        # Por defecto lo dejamos APAGADO incluso en producción para evitar que el sitio se rompa.
+        # Si más adelante self-hosteas TODO (css/js/fonts) y necesitas crossOriginIsolated,
+        # activa ENABLE_CROSS_ORIGIN_ISOLATION=true en tu .env.
+        enable_xoi = (os.getenv("ENABLE_CROSS_ORIGIN_ISOLATION", "").strip().lower() in ("1", "true", "yes", "on"))
+        if prod and enable_xoi:
+            resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+            resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+            resp.headers.setdefault("Cross-Origin-Embedder-Policy", "require-corp")
 
         return resp
 
@@ -238,6 +262,7 @@ def create_app():
     # ── Login manager (usuarios en memoria + clientes)
     login_manager = LoginManager()
     login_manager.init_app(app)
+    login_manager.session_protection = "strong"
 
     @login_manager.unauthorized_handler
     def unauthorized_callback():
@@ -269,6 +294,12 @@ def create_app():
     from admin.routes import admin_bp
 
     app.register_blueprint(admin_bp, url_prefix="/admin")
+
+    # ── Web admin (panel para gestionar contenido público)
+    from webadmin import webadmin_bp
+
+    # Panel separado (no cuelga de /admin)
+    app.register_blueprint(webadmin_bp, url_prefix="/webadmin")
 
     from clientes import clientes_bp
 

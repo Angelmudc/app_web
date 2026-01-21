@@ -10,22 +10,12 @@
       Estas candidatas se cargan directamente desde nuestro sistema interno. Cuando actualizamos en la oficina, se actualiza aquí también.
     </p>
 
-    <!-- FILTROS (solo visual por ahora) -->
-    <div class="filters">
-      <select>
-        <option>Ciudad</option>
-        <option>Santiago</option>
-        <option>Puerto Plata</option>
-      </select>
-      <select>
-        <option>Modalidad</option>
-        <option>Con dormida</option>
-        <option>Sin dormida</option>
-        <option>Por días</option>
-      </select>
+    <!-- Estado silencioso de actualización (modo pro) -->
+    <div id="liveStatus" style="display:none; margin:10px 0; color:#667085; font-size:14px;">
+      Actualizando listado...
     </div>
 
-    <div class="grid-3">
+    <div id="domesticasGrid" class="grid-3">
       {% for d in domesticas %}
       <div class="card card-domestica">
 

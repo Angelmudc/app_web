@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app
-from flask_login import login_user, logout_user, login_required, UserMixin, current_user
+from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from sqlalchemy import or_, func, cast, desc
@@ -36,11 +36,28 @@ from clientes.routes import generar_token_publico_cliente
 # =============================================================================
 #                                AUTH
 # =============================================================================
-class AdminUser(UserMixin):
+class AdminUser:
     """Wrapper mínimo para flask-login basado en USUARIOS del config."""
+
     def __init__(self, username: str):
         self.id = username
-        self.role = USUARIOS[username]['role']
+        self.role = USUARIOS[username]["role"]
+
+    # Flask-Login interface mínima
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+    @property
+    def is_active(self) -> bool:
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        return False
+
+    def get_id(self) -> str:
+        return str(self.id)
 
 
 # —— Anti fuerza-bruta por sesión (simple, sin dependencias externas) ——
@@ -75,7 +92,23 @@ def _register_login_fail() -> None:
 def _reset_login_fail() -> None:
     session.pop('admin_login_fail', None)
 
+def _reset_inicio_seguimiento_si_reactiva(s, now: datetime):
+    """
+    Si una solicitud se (re)activa para seguimiento, reinicia fecha_inicio_seguimiento.
+    Esto evita que solicitudes viejas “arrastren” días viejos al reactivarlas.
+    """
+    if not hasattr(s, 'fecha_inicio_seguimiento'):
+        return
 
+    # si viene cancelada/pagada y se reactiva, reinicia sí o sí
+    estado = (getattr(s, 'estado', '') or '').strip().lower()
+
+    # Estados que cuentan como "seguimiento"
+    tracking_states = {'proceso', 'activa', 'reemplazo'}
+
+    if estado in tracking_states:
+        # si está en tracking, pero es reactivación o quieres reset siempre que se vuelva tracking:
+        s.fecha_inicio_seguimiento = now
 
 
 def build_resumen_cliente_solicitud(s: Solicitud) -> str:
@@ -322,17 +355,35 @@ def login():
         # Nota: tu USUARIOS en config_app usa pwd_hash.
         if user_data and check_password_hash(user_data['pwd_hash'], clave):
             # ✅ Login correcto
-            # Limpia sesión para evitar fixation (sin tocar flask-login)
+
+            # Rotación simple de sesión (reduce session fixation).
+            # Mantiene la petición estable y fuerza nueva cookie.
             try:
+                session.clear()
+            except Exception:
+                # si por alguna razón falla, al menos limpia los contadores
                 session.pop('admin_login_fail', None)
+
+            # Sesión permanente (respeta PERMANENT_SESSION_LIFETIME)
+            try:
+                session.permanent = True
             except Exception:
                 pass
 
-            login_user(AdminUser(usuario))
+            login_user(AdminUser(usuario), remember=False)
 
             # Resetea contadores
             _reset_login_fail()
             _ip_reset_fail()
+
+            # ✅ Limpia también los contadores globales (IP + endpoint + usuario)
+            # (viene de utils/security_layer.py, lo registramos en app.extensions)
+            try:
+                clear_fn = current_app.extensions.get("clear_login_attempts")
+                if callable(clear_fn):
+                    clear_fn(_client_ip(), "/admin/login", usuario)
+            except Exception:
+                pass
 
             # Redirección segura
             fallback = url_for('admin.listar_clientes')
@@ -352,6 +403,10 @@ def login():
 def logout():
     """Cerrar sesión siempre debe estar disponible para cualquier usuario autenticado."""
     logout_user()
+    try:
+        session.clear()
+    except Exception:
+        pass
     return redirect(url_for('admin.login'))
 
 
@@ -396,6 +451,7 @@ def listar_clientes():
 # ─────────────────────────────────────────────────────────────
 # Helpers de fecha (UTC) para listados/filtrado
 # ─────────────────────────────────────────────────────────────
+
 def _today_utc_bounds():
     """Devuelve (start_utc, end_utc) del día actual en UTC como datetimes NAIVE.
 
@@ -406,6 +462,112 @@ def _today_utc_bounds():
     start = datetime(now_utc.year, now_utc.month, now_utc.day)
     end = start + timedelta(days=1)
     return start, end
+
+
+# ─────────────────────────────────────────────────────────────
+# Endpoint liviano para auto-refresh (JSON)
+# ─────────────────────────────────────────────────────────────
+
+def _dt_iso(d) -> str | None:
+    """Convierte date/datetime a ISO string (naive) para JSON."""
+    if not d:
+        return None
+    try:
+        return d.isoformat()
+    except Exception:
+        return str(d)
+
+
+def _solicitudes_live_payload(limit: int = 50) -> dict:
+    """Snapshot compacto de solicitudes para refresco silencioso en UI."""
+    try:
+        limit = int(limit)
+    except Exception:
+        limit = 50
+    limit = max(1, min(limit, 200))
+
+    # Cargamos relaciones básicas para evitar N+1
+    solicitudes = (
+        Solicitud.query
+        .options(
+            joinedload(Solicitud.cliente),
+            joinedload(Solicitud.candidata),
+        )
+        .order_by(Solicitud.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+    rows = []
+    last_ts = None
+
+    for s in solicitudes:
+        # timestamps relevantes
+        ts = getattr(s, 'fecha_ultima_modificacion', None) or getattr(s, 'fecha_solicitud', None)
+        if ts and (last_ts is None or ts > last_ts):
+            last_ts = ts
+
+        cli = getattr(s, 'cliente', None)
+        cand = getattr(s, 'candidata', None)
+
+        rows.append({
+            "id": s.id,
+            "codigo_solicitud": (getattr(s, 'codigo_solicitud', None) or '').strip() or None,
+            "estado": (getattr(s, 'estado', None) or '').strip() or None,
+            "sueldo": (getattr(s, 'sueldo', None) or '').strip() if getattr(s, 'sueldo', None) is not None else None,
+            "monto_pagado": (getattr(s, 'monto_pagado', None) or '').strip() if getattr(s, 'monto_pagado', None) is not None else None,
+            "cliente": {
+                "id": getattr(cli, 'id', None),
+                "nombre": (getattr(cli, 'nombre_completo', None) or '').strip() or None,
+                "codigo": (getattr(cli, 'codigo', None) or '').strip() or None,
+            } if cli else None,
+            "candidata": {
+                "id": getattr(cand, 'fila', None),
+                "nombre": (getattr(cand, 'nombre_completo', None) or '').strip() or None,
+                "codigo": (getattr(cand, 'codigo', None) or '').strip() or None,
+            } if cand else None,
+            "fecha_solicitud": _dt_iso(getattr(s, 'fecha_solicitud', None)),
+            "fecha_ultima_modificacion": _dt_iso(getattr(s, 'fecha_ultima_modificacion', None)),
+        })
+
+    return {
+        "ok": True,
+        "count": len(rows),
+        "last_updated": _dt_iso(last_ts) or _dt_iso(datetime.utcnow()),
+        "rows": rows,
+    }
+
+
+@admin_bp.route('/solicitudes/live')
+@login_required
+@staff_required
+def solicitudes_live():
+    """Endpoint JSON para refrescar la lista de solicitudes sin recargar la página.
+
+    Uso típico en el front:
+      GET /admin/solicitudes/live?limit=50
+
+    Devuelve:
+      { ok, count, last_updated, rows: [...] }
+    """
+    limit = request.args.get('limit', 50)
+    payload = _solicitudes_live_payload(limit=limit)
+
+    # Cache-control: evita que el navegador lo guarde; siempre trae lo más nuevo
+    resp = jsonify(payload)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
+
+
+@admin_bp.route('/ping')
+@login_required
+def admin_ping():
+    """Ping simple para saber si la sesión sigue viva (útil para UI)."""
+    resp = jsonify({"ok": True, "utc": datetime.utcnow().isoformat()})
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 # =============================================================================
 #                       HELPERS DE LIMPIEZA / NORMALIZACIÓN
@@ -1901,10 +2063,13 @@ def gestionar_plan(cliente_id, id):
                 flash(f'Abono inválido: {e}. Formatos válidos: 1500, 1,500, 1.500,50', 'danger')
                 return render_template('admin/gestionar_plan.html', form=form, cliente_id=cliente_id, solicitud=s)
 
-            # Si tu columna s.abono es Numeric(10,2), puedes guardar Decimal(s_abono) en su lugar.
+            # Guardar abono
             s.abono = s_abono
 
             # --- Estado ---
+            # Guardamos el estado anterior para detectar reactivación real
+            estado_anterior = (s.estado or '').strip().lower()
+
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
             s.estado = 'activa'
             s.fecha_cancelacion = None
@@ -1912,6 +2077,18 @@ def gestionar_plan(cliente_id, id):
 
             # --- Timestamps ---
             now = datetime.utcnow()
+
+            # ✅ REGLA CLAVE:
+            # Si estaba cancelada o pagada y vuelve a activa, reiniciamos seguimiento.
+            # Así NO arrastra días viejos en solicitudes/prioridad.
+            if hasattr(s, 'fecha_inicio_seguimiento'):
+                if estado_anterior in ('cancelada', 'pagada'):
+                    s.fecha_inicio_seguimiento = now
+
+                # Opcional (recomendado): si nunca se ha seteado, setéala ahora
+                elif not getattr(s, 'fecha_inicio_seguimiento', None):
+                    s.fecha_inicio_seguimiento = now
+
             s.fecha_ultima_actividad = now
             s.fecha_ultima_modificacion = now
 
@@ -1925,7 +2102,7 @@ def gestionar_plan(cliente_id, id):
         except SQLAlchemyError:
             db.session.rollback()
             flash('Error de base de datos al guardar el plan.', 'danger')
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash('Ocurrió un error al guardar el plan.', 'danger')
 
@@ -2443,41 +2620,222 @@ from sqlalchemy import func
 @admin_required
 def solicitudes_prioridad():
     """
-    Lista TODAS las solicitudes prioritarias del sistema.
+    Lista solicitudes prioritarias (robusto y consistente con tu plantilla).
 
-    Criterio SQL:
-    - estado en ('proceso', 'activa', 'reemplazo')
-    - COALESCE(fecha_inicio_seguimiento, fecha_solicitud) <= hoy - 7 días
+    Criterio BASE (SQL):
+      - estado in ('proceso', 'activa', 'reemplazo')
+      - COALESCE(fecha_inicio_seguimiento, fecha_solicitud) <= (UTC ahora - dias)
 
-    Luego, en Python, usamos las propiedades del modelo para mostrar
-    días en seguimiento, nivel de prioridad, etc.
+    Extra (para que de verdad sean “prioritarias”):
+      - Por defecto NO muestra solicitudes con candidata asignada (porque ya no son “sin candidata”)
+        Puedes verlas con ?incluye_asignadas=1
+
+    Niveles (para tu template: s.nivel_prioridad):
+      - media:  dias_en_seguimiento >= dias_media (default 7)
+      - alta:   dias_en_seguimiento >= dias_alta  (default 10)
+      - critica:dias_en_seguimiento >= dias_critica (default 14)
+
+    Params:
+      - q=...         búsqueda
+      - estado=...    filtra por estado (si es válido)
+      - dias=7        umbral mínimo para entrar en “prioritarias”
+      - dias_media=7  umbral badge MEDIA
+      - dias_alta=10  umbral badge ALTA
+      - dias_critica=14 umbral badge CRITICA
+      - page=1, per_page=50
+      - incluye_asignadas=1  para incluir solicitudes con candidata asignada
     """
-    hoy = datetime.utcnow()
-    limite_fecha = hoy - timedelta(days=7)
 
-    base_date = func.coalesce(Solicitud.fecha_inicio_seguimiento,
-                              Solicitud.fecha_solicitud)
+    # -------------------------
+    # View model (clave para no romper con @property sin setter)
+    # -------------------------
+    class _SolicitudVM:
+        __slots__ = ("_s", "dias_en_seguimiento", "nivel_prioridad", "es_prioritaria")
 
-    solicitudes = (
+        def __init__(self, s, dias: int, nivel: str, es: bool):
+            self._s = s
+            self.dias_en_seguimiento = dias
+            self.nivel_prioridad = nivel
+            self.es_prioritaria = es
+
+        def __getattr__(self, name):
+            # delega todo lo demás al modelo real (cliente, candidata, codigo_solicitud, etc.)
+            return getattr(self._s, name)
+
+    # -------------------------
+    # Params
+    # -------------------------
+    q = (request.args.get('q') or '').strip()
+    estado = (request.args.get('estado') or '').strip().lower()
+
+    def _as_int(name, default, lo=None, hi=None):
+        try:
+            v = int(request.args.get(name, default) or default)
+        except Exception:
+            v = default
+        if lo is not None:
+            v = max(lo, v)
+        if hi is not None:
+            v = min(hi, v)
+        return v
+
+    dias = _as_int('dias', 7, lo=1, hi=90)
+
+    dias_media = _as_int('dias_media', 7, lo=1, hi=365)
+    dias_alta = _as_int('dias_alta', 10, lo=1, hi=365)
+    dias_critica = _as_int('dias_critica', 14, lo=1, hi=365)
+
+    # coherencia (critica >= alta >= media)
+    dias_media = max(1, dias_media)
+    dias_alta = max(dias_media, dias_alta)
+    dias_critica = max(dias_alta, dias_critica)
+
+    page = _as_int('page', 1, lo=1, hi=10_000)
+    per_page = _as_int('per_page', 50, lo=10, hi=200)
+
+    incluye_asignadas = (request.args.get('incluye_asignadas') or '').strip() in ('1', 'true', 'True', 'yes', 'si')
+
+    ahora = datetime.utcnow()
+    limite_fecha = ahora - timedelta(days=dias)
+
+    base_date = func.coalesce(
+        Solicitud.fecha_inicio_seguimiento,
+        Solicitud.fecha_solicitud
+    )
+
+    # -------------------------
+    # Estados permitidos
+    # -------------------------
+    allowed_states = {'proceso', 'activa', 'reemplazo'}
+    estados_filtrados = [estado] if (estado and estado in allowed_states) else list(allowed_states)
+
+    # -------------------------
+    # Query base
+    # -------------------------
+    query = (
         Solicitud.query
         .options(
             joinedload(Solicitud.cliente),
-            joinedload(Solicitud.candidata)
+            joinedload(Solicitud.candidata),
         )
         .filter(
-            Solicitud.estado.in_(['proceso', 'activa', 'reemplazo']),
-            base_date <= limite_fecha
+            Solicitud.estado.in_(estados_filtrados),
+            base_date.isnot(None),
+            base_date <= limite_fecha,
         )
-        .order_by(base_date.asc())
-        .all()
     )
 
-    # Por si quieres filtrar extra en Python (usa la lógica de es_prioritaria):
-    solicitudes = [s for s in solicitudes if s.es_prioritaria]
+    # Por defecto: solo “sin candidata asignada”
+    if not incluye_asignadas:
+        if hasattr(Solicitud, 'candidata_id'):
+            query = query.filter(or_(Solicitud.candidata_id.is_(None), Solicitud.candidata_id == 0))
+
+    # -------------------------
+    # Búsqueda
+    # -------------------------
+    if q:
+        like = f"%{q}%"
+        filtros = []
+
+        for attr in ('codigo_solicitud', 'ciudad_sector', 'rutas_cercanas', 'modalidad_trabajo', 'horario'):
+            if hasattr(Solicitud, attr):
+                filtros.append(getattr(Solicitud, attr).ilike(like))
+
+        try:
+            if hasattr(Cliente, 'nombre_completo'):
+                filtros.append(Cliente.nombre_completo.ilike(like))
+            if hasattr(Cliente, 'codigo'):
+                filtros.append(Cliente.codigo.ilike(like))
+            if hasattr(Cliente, 'telefono'):
+                filtros.append(Cliente.telefono.ilike(like))
+        except Exception:
+            pass
+
+        try:
+            if hasattr(Candidata, 'nombre_completo'):
+                filtros.append(Candidata.nombre_completo.ilike(like))
+            if hasattr(Candidata, 'cedula'):
+                filtros.append(Candidata.cedula.ilike(like))
+            if hasattr(Candidata, 'codigo'):
+                filtros.append(Candidata.codigo.ilike(like))
+            if hasattr(Candidata, 'numero_telefono'):
+                filtros.append(Candidata.numero_telefono.ilike(like))
+        except Exception:
+            pass
+
+        if filtros:
+            try:
+                query = query.join(Cliente, Solicitud.cliente_id == Cliente.id)
+            except Exception:
+                pass
+            try:
+                if hasattr(Solicitud, 'candidata_id') and hasattr(Candidata, 'fila'):
+                    query = query.outerjoin(Candidata, Solicitud.candidata_id == Candidata.fila)
+            except Exception:
+                pass
+
+            query = query.filter(or_(*filtros))
+
+    query = query.order_by(base_date.asc(), Solicitud.id.asc())
+
+    total = query.count()
+    solicitudes = (
+        query.offset((page - 1) * per_page)
+             .limit(per_page)
+             .all()
+    )
+
+    # -------------------------
+    # Helpers (para tu template)
+    # -------------------------
+    def _to_dt(d):
+        if not d:
+            return None
+        if isinstance(d, datetime):
+            return d
+        try:
+            return datetime(d.year, d.month, d.day)
+        except Exception:
+            return None
+
+    def _dias_en_seguimiento(s) -> int:
+        d = getattr(s, 'fecha_inicio_seguimiento', None) or getattr(s, 'fecha_solicitud', None)
+        dt = _to_dt(d)
+        if not dt:
+            return 0
+        return max(0, int((ahora - dt).total_seconds() // 86400))
+
+    def _nivel_por_dias(n: int) -> str:
+        if n >= dias_critica:
+            return 'critica'
+        if n >= dias_alta:
+            return 'alta'
+        if n >= dias_media:
+            return 'media'
+        return 'normal'
+
+    # ✅ Envolver para que el HTML siga usando s.dias_en_seguimiento, s.nivel_prioridad, s.es_prioritaria
+    wrapped = []
+    for s in (solicitudes or []):
+        n = _dias_en_seguimiento(s)
+        nivel = _nivel_por_dias(n)
+        es = n >= dias_media
+        wrapped.append(_SolicitudVM(s, dias=n, nivel=nivel, es=es))
 
     return render_template(
         'admin/solicitudes_prioridad.html',
-        solicitudes=solicitudes
+        solicitudes=wrapped,
+        q=q,
+        estado=estado,
+        dias=dias,
+        dias_media=dias_media,
+        dias_alta=dias_alta,
+        dias_critica=dias_critica,
+        page=page,
+        per_page=per_page,
+        total=total,
+        has_more=(page * per_page) < total,
+        incluye_asignadas=incluye_asignadas
     )
 
 

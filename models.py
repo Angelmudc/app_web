@@ -212,6 +212,14 @@ class Candidata(db.Model):
 # ENTREVISTAS ESTRUCTURADAS (NUEVO – NO ROMPE LO EXISTENTE)
 # ─────────────────────────────────────────────────────────────
 
+from datetime import datetime
+from sqlalchemy.sql import text
+from sqlalchemy.dialects.postgresql import JSONB
+
+# Asegúrate de que db viene de tu config habitual:
+# from config_app import db   (o donde lo tengas)
+
+
 class Entrevista(db.Model):
     __tablename__ = 'entrevistas'
 
@@ -222,6 +230,16 @@ class Entrevista(db.Model):
         db.ForeignKey('candidatas.fila'),
         nullable=False,
         index=True
+    )
+
+    # ✅ NUEVO (alineado con tus rutas: entrevista.tipo)
+    # No elimina nada, solo agrega y deja default.
+    tipo = db.Column(
+        db.String(30),
+        nullable=False,
+        server_default=text("'domestica'"),
+        index=True,
+        comment="Tipo de entrevista: domestica / enfermera / empleo_general"
     )
 
     estado = db.Column(
@@ -255,8 +273,7 @@ class Entrevista(db.Model):
     )
 
     def __repr__(self):
-        return f"<Entrevista {self.id} candidata_id={self.candidata_id}>"
-
+        return f"<Entrevista {self.id} candidata_id={self.candidata_id} tipo={getattr(self, 'tipo', None)}>"
 
 
 class EntrevistaPregunta(db.Model):
@@ -264,12 +281,14 @@ class EntrevistaPregunta(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    # ✅ Ajuste seguro: 50 se queda corto para claves tipo "domestica.algo_largo"
+    # Esto NO borra nada, solo amplía.
     clave = db.Column(
-        db.String(50),
+        db.String(120),
         unique=True,
         nullable=False,
         index=True,
-        comment="Clave interna: ej. tiene_hijos, sabe_cocinar"
+        comment="Clave interna: ej. domestica.tiene_hijos, enfermera.experiencia, etc."
     )
 
     texto = db.Column(
@@ -360,7 +379,6 @@ class EntrevistaRespuesta(db.Model):
 
     def __repr__(self):
         return f"<EntrevistaRespuesta entrevista={self.entrevista_id} pregunta={self.pregunta_id}>"
-
 
 
 

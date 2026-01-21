@@ -165,6 +165,44 @@
       </div>
     </div>
   </div>
+
+  {# ─────────────────────────────────────────────
+     WEB ADMIN – FORMULARIOS PÚBLICOS (NUEVO)
+  ───────────────────────────────────────────── #}
+  <div class="mb-5">
+    <h2 class="section-title">
+      <i class="fa-solid fa-globe me-2 text-primary"></i> Web Admin – Formularios Públicos
+    </h2>
+    <p style="margin-top:-6px; color:#667085;">
+      Gestión de candidatas registradas desde el sitio web público.
+    </p>
+
+    {% set web_list_url = url_for_safe('webadmin.listar_candidatas_web') %}
+
+    <div class="row row-cols-1 row-cols-lg-2 g-4">
+      <div class="col">
+        <div class="dashboard-card" style="border:1px solid rgba(74,105,189,.18);">
+          <h5>📋 Candidatas registradas por la Web</h5>
+          <p>
+            Entra al listado para ver, filtrar y <b>editar</b> las candidatas que llegaron desde el formulario público.
+          </p>
+
+          {% if web_list_url %}
+            <a href="{{ web_list_url }}" class="btn btn-primary w-100">
+              Abrir listado
+            </a>
+            <small class="d-block mt-2" style="color:#667085;">
+              Nota: la edición se hace dentro del listado (botón “Editar” por cada candidata).
+            </small>
+          {% else %}
+            <div class="alert alert-warning mb-0">
+              La ruta del listado no está registrada: <b>webadmin.listar_candidatas_web</b>.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
