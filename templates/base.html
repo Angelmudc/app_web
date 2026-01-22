@@ -2,33 +2,47 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="facebook-domain-verification" content="iw4sjki37enb1kv6qkrxb1tms5l9gl" />
+
   <title>{% block title %}Mi Aplicación{% endblock %}</title>
+
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
+
+  {#
+    ✅ Base sólida y segura para producción (sin romper CDNs)
+    - Scripts externos con `defer` para no bloquear render
+    - `crossorigin`/`referrerpolicy` consistentes
+    - Orden correcto: jQuery -> plugins -> tu app
+    - Mantiene tus bloques y tu navbar tal cual
+  #}
 
   <!-- Performance -->
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link rel="preconnect" href="https://code.jquery.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.datatables.net" crossorigin>
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rubik:wght@500;700&display=swap" rel="stylesheet">
 
   <!-- Bootstrap CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+
   <!-- Bootstrap Icons (para <i class="bi bi-...">) -->
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 
   <!-- Font Awesome (para <i class="fa-...">) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
-  <!-- ✅ SELECT2 CSS (ANTES FALTABA) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/css/select2.min.css"/>
+  <!-- Select2 CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/css/select2.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <!-- DataTables CSS -->
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <!-- Modular CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
@@ -38,12 +52,22 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/animations.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/performance.css') }}">
 
+  {# Bloques extra en el <head> (deja los dos por compatibilidad con templates viejos) #}
   {% block extra_head %}{% endblock %}
   {% block head %}{% endblock %}
 </head>
 
-<body data-theme="light">
+<body data-theme="light" class="{{ body_class|default('') }}">
+
+  <noscript>
+    <div class="container mt-3">
+      <div class="alert alert-warning" role="alert">
+        Esta web necesita JavaScript habilitado para funcionar correctamente.
+      </div>
+    </div>
+  </noscript>
 
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg navbar-light">
@@ -55,8 +79,16 @@
 
       <div class="d-flex align-items-center gap-2 order-lg-2">
         <button id="themeToggle" data-theme-toggle="true" data-no-loader="true"
-                class="btn btn-outline-secondary btn-sm" type="button">
+                class="btn btn-outline-secondary btn-sm" type="button" aria-label="Cambiar tema">
           <i class="fa-solid fa-moon"></i>
+        </button>
+
+        <button id="perfToggle"
+                class="btn btn-outline-secondary btn-sm"
+                type="button"
+                aria-label="Modo rendimiento"
+                title="Modo rendimiento">
+          <i class="fa-solid fa-gauge-high"></i>
         </button>
 
         <button class="navbar-toggler ms-2" type="button"
@@ -150,7 +182,7 @@
             <div class="d-flex">
               <div class="toast-body">{{ text }}</div>
               <button type="button" class="btn-close btn-close-white me-2 m-auto"
-                      data-bs-dismiss="toast"></button>
+                      data-bs-dismiss="toast" aria-label="Cerrar"></button>
             </div>
           </div>
           {% endfor %}
@@ -163,7 +195,7 @@
 
   <footer class="text-center">
     <div class="container d-flex justify-content-between flex-wrap gap-2">
-      <small>&copy; {{ current_year or "2025" }} Doméstica del Cibao A&amp;D.</small>
+      <small>&copy; {{ current_year or "2026" }} Doméstica del Cibao A&amp;D.</small>
       <div class="d-flex gap-2">
         <span class="badge-soft">Theme</span>
         <a href="{{ url_for('home') }}"><i class="fa-solid fa-rotate"></i> Recargar</a>
@@ -171,21 +203,21 @@
     </div>
   </footer>
 
-  <button class="scroll-top" id="scrollTopBtn">
+  <button class="scroll-top" id="scrollTopBtn" type="button" aria-label="Subir">
     <i class="fa-solid fa-arrow-up"></i>
   </button>
 
-  <!-- Bootstrap -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Vendor JS (defer para no bloquear) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- jQuery -->
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js" crossorigin="anonymous"></script>
+  <!-- jQuery (requerido por Select2 y DataTables) -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- ✅ SELECT2 JS (ANTES FALTABA) -->
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/js/select2.min.js"></script>
+  <!-- Select2 -->
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/js/select2.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- DataTables -->
-  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- App JS -->
   <script src="{{ url_for('static', filename='js/core/toast.js') }}" defer></script>
@@ -199,6 +231,27 @@
   <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
 
-  {% block scripts %}{% endblock %}
+</body>
+<script defer>
+  (function(){
+    const KEY = 'perf_mode';
+    const body = document.body;
+    const btn = document.getElementById('perfToggle');
+    if(!btn) return;
+
+    // restore
+    if (localStorage.getItem(KEY) === 'on') {
+      body.classList.add('perf');
+      btn.classList.add('active');
+    }
+
+    btn.addEventListener('click', function(){
+      const on = body.classList.toggle('perf');
+      localStorage.setItem(KEY, on ? 'on' : 'off');
+      btn.classList.toggle('active', on);
+    });
+  })();
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,122 @@
+/* static/css/performance.css
+   Overrides de rendimiento — sin tumbar el estilo
+*/
+
+/* 0) FORZAR MODO RENDIMIENTO (manual)
+   - Úsalo si quieres que SIEMPRE vaya liviano en cualquier PC.
+   - En base.html: <body class="perf"> (o agrega/quita la clase cuando quieras)
+*/
+body.perf::before{
+  animation: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  mask: none !important;
+  opacity: .12 !important;
+  background-size: 64px 64px !important;
+}
+
+body.perf::after{
+  animation: none !important;
+  filter: none !important;
+  opacity: .10 !important;
+}
+
+body.perf .navbar,
+body.perf .card,
+body.perf .glass,
+body.perf .toast,
+body.perf .modal-content,
+body.perf footer{
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.perf .navbar{ box-shadow: 0 8px 18px rgba(0,0,0,.16) !important; }
+body.perf .card,
+body.perf .panel,
+body.perf .toast,
+body.perf .modal-content{ box-shadow: var(--shadow-xs) !important; }
+
+body.perf .card:hover,
+body.perf .float-hover:hover,
+body.perf .btn:hover{ transform: none !important; }
+
+body.perf .skeleton{ animation: none !important; background-size: auto !important; }
+
+/* 1) Auto: PCs lentas / usuarios que piden menos efectos */
+@media (update: slow), (prefers-reduced-data: reduce), (prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce) {
+  html{ scroll-behavior: auto !important; }
+
+  /* Mata lo más caro: mask + blur + animación en fondos */
+  body::before{
+    animation: none !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    mask: none !important;
+    opacity: .12 !important;
+    background-size: 64px 64px !important;
+  }
+
+  body::after{
+    animation: none !important;
+    filter: none !important;
+    opacity: .10 !important;
+  }
+
+  /* Quita glass blur */
+  .navbar,
+  .card,
+  .glass,
+  .toast,
+  .modal-content,
+  footer{
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Reduce sombras y filtros caros */
+  .navbar{ box-shadow: 0 8px 18px rgba(0,0,0,.16) !important; }
+  .card, .panel, .toast, .modal-content{ box-shadow: var(--shadow-xs) !important; }
+
+  .hero-section::before,
+  .btn-glow::after{
+    filter: none !important;
+  }
+
+  /* Quita transform hover (repaint) */
+  .card:hover, .float-hover:hover, .btn:hover{
+    transform: none !important;
+  }
+
+  /* Quita shimmer */
+  .skeleton{
+    animation: none !important;
+    background-size: auto !important;
+  }
+
+  /* Reduce animación de aparición */
+  .container, .container-main, .card, .panel{
+    animation: none !important;
+  }
+}
+
+/* 2) Universal: en equipos sin hover real (muchos laptops/trackpads viejos) o pantallas pequeñas
+      -> baja efectos en general para estabilidad */
+@media (hover: none), (pointer: coarse), (max-width: 1024px){
+  html{ scroll-behavior: auto !important; }
+
+  body::before{ animation: none !important; opacity: .14 !important; }
+  body::after{ animation: none !important; filter: none !important; opacity: .12 !important; }
+
+  .navbar,
+  .card,
+  .glass,
+  .toast,
+  .modal-content,
+  footer{
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .card:hover, .btn:hover{ transform: none !important; }
+}
