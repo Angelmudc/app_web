@@ -455,17 +455,30 @@ body::after{
 
 /* =========================
    1.1) PERFORMANCE MODE (PC gama baja)
-   - No cambia el diseño base; solo baja efectos pesados cuando el dispositivo es lento.
-   - Reduce blur/backdrop y animaciones de fondo para mejorar fluidez.
+   - Mantiene el look, pero apaga lo que más frisa en PCs flojas (Windows suele sufrir con blur/mask/filters).
+   - Se activa en dispositivos con refresh lento o cuando el usuario pide reducir transparencias/movimiento.
 ========================= */
-@media (update: slow), (prefers-reduced-transparency: reduce){
-  body::before,
+@media (update: slow), (prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce){
+  /* Fondo animado: esto es lo más caro (mask + blur + animación) */
+  body::before{
+    animation: none !important;
+    /* El mask es costoso: lo desactivamos y bajamos intensidad */
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    mask: none !important;
+    opacity: .14 !important;
+    /* Grid más "barato" */
+    background-size: 56px 56px !important;
+  }
+
   body::after{
     animation: none !important;
     filter: none !important;
+    opacity: .12 !important;
+    /* Mantiene el aura sin blur */
   }
 
-  /* Evita que el blur mate el rendimiento */
+  /* Evita blur/backdrop-filter (carísimo en muchos PCs) */
   .navbar,
   .card,
   .panel,
@@ -477,9 +490,33 @@ body::after{
     -webkit-backdrop-filter: none !important;
   }
 
-  /* Sombras más ligeras */
-  .navbar{ box-shadow: 0 8px 22px rgba(0,0,0,.18) !important; }
-  .card{ box-shadow: var(--shadow-xs) !important; }
+  /* Quita filtros pesados puntuales */
+  .hero-section::before,
+  .btn-glow::after{
+    filter: none !important;
+  }
+
+  /* Reduce sombras grandes (render cost) */
+  .navbar{ box-shadow: 0 8px 20px rgba(0,0,0,.18) !important; }
+  .card,
+  .panel,
+  .toast,
+  .modal-content{
+    box-shadow: var(--shadow-xs) !important;
+  }
+
+  /* En PCs lentas: menos transforms en hover = más fluido */
+  .card:hover,
+  .float-hover:hover,
+  .btn:hover{
+    transform: none !important;
+  }
+
+  /* Si hay shimmer infinito, lo apagamos */
+  .skeleton{
+    animation: none !important;
+    background-size: auto !important;
+  }
 }
 
 /* =========================
