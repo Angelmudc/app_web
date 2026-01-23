@@ -1092,17 +1092,11 @@ def generar_pdf_entrevista_db(entrevista_id: int):
     # NO incluimos nombre, cedula, telefono, direccion, modalidad, ni fecha en el PDF.
     tipo = (getattr(entrevista, 'tipo', None) or '').strip().lower()
 
-    # Referencias (si existen en tu modelo)
-    ref_laborales = (
-        (getattr(candidata, 'contactos_referencias_laborales', None) or '').strip()
-        or (getattr(candidata, 'referencias_laboral', None) or '').strip()
-        or ""
-    )
-    ref_familiares = (
-        (getattr(candidata, 'referencias_familiares_detalle', None) or '').strip()
-        or (getattr(candidata, 'referencias_familiares', None) or '').strip()
-        or ""
-    )
+    # Referencias (SOLO las columnas oficiales del modelo)
+    # ✅ NO usamos `contactos_referencias_laborales` ni `referencias_familiares_detalle`
+    # porque son otros campos y podrían mezclar información.
+    ref_laborales = (getattr(candidata, 'referencias_laboral', None) or '').strip()
+    ref_familiares = (getattr(candidata, 'referencias_familiares', None) or '').strip()
 
     BRAND = (0, 102, 204)
     FAINT = (120, 120, 120)
