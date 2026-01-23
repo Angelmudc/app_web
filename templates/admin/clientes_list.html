@@ -64,10 +64,8 @@
         <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
-            <th>#</th>
             <th>🆔 Código</th>
             <th>👤 Nombre</th>
-            <th>📧 Email</th>
             <th>📞 Teléfono</th>
             <th>📋 Solicitudes</th>
             <th>📅 Registro</th>
@@ -77,10 +75,8 @@
         <tbody>
           {% for c in slice %}
           <tr>
-            <td data-label="#"> {{ c.id }} </td>
             <td data-label="Código">{{ c.codigo }}</td>
             <td data-label="Nombre">{{ c.nombre_completo }}</td>
-            <td data-label="Email">{{ c.email }}</td>
             <td data-label="Teléfono">{{ c.telefono }}</td>
             <td data-label="Solicitudes">
               <span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span>
