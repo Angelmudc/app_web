@@ -69,8 +69,57 @@
   --transition-slow:420ms;
   --transition-ease:cubic-bezier(.2,.8,.2,1);
 
-  /* Layout */
-  --container-max:1100px;
+  /* Layout (responsive) */
+  --container-max: clamp(980px, 92vw, 1200px);
+  --container-wide: clamp(1100px, 94vw, 1440px);
+/* =========================
+   0.9) RESPONSIVE FOUNDATIONS
+   - Asegura que TODO se adapte a móvil/tablet/desktop/ultrawide sin verse raro.
+========================= */
+
+/* Evita zoom raro en iOS / móviles y controla overflow horizontal */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: hidden;
+}
+
+/* Media siempre responsivo */
+img, video, canvas, svg{
+  max-width: 100%;
+  height: auto;
+}
+
+/* Tablas: si no caben, que hagan scroll horizontal de forma limpia */
+.table-responsive,
+.table-responsive-sm,
+.table-responsive-md,
+.table-responsive-lg,
+.table-responsive-xl{
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Inputs/botones: evita que se desborden por contenido largo */
+input, select, textarea, button{
+  max-width: 100%;
+}
+
+/* Ultra-wide: permite un layout más amplio sin “islas” en el centro */
+@media (min-width: 1400px){
+  .container, .container-main, .page{
+    max-width: var(--container-wide);
+  }
+}
+
+/* Ajuste de espaciado en pantallas pequeñas */
+@media (max-width: 576px){
+  :root{
+    --pad-page: .85rem;
+    --pad-card: 1.15rem;
+  }
+}
 
   /* Status */
   --ok:#2ef9a0;
@@ -562,14 +611,14 @@ body[data-theme="light"] pre{
    3) LAYOUT CONTAINERS
 ========================= */
 .container, .container-main{
-  width:100%;
+  width: 100%;
   max-width: var(--container-max);
-  margin: 2rem auto;
+  margin: clamp(1rem, 2vw, 2rem) auto;
   padding: 0 var(--pad-page);
-  position:relative;
-  z-index:1;
+  position: relative;
+  z-index: 1;
 }
-.container-main{ max-width: 980px; }
+.container-main{ max-width: clamp(860px, 92vw, 980px); }
 
 /* Sections */
 .section{ margin: 1.25rem 0 2rem; }
@@ -666,10 +715,10 @@ body[data-theme="light"] .nav-link{ color: rgba(10,16,36,.82) !important; }
 ========================= */
 .hero-section{
   color: var(--text-strong);
-  padding: 3.2rem 1.2rem;
+  padding: clamp(2rem, 3vw, 3.2rem) clamp(.9rem, 2vw, 1.2rem);
   text-align:center;
   border-radius: var(--radius-xl);
-  margin: 1.5rem 0 2.2rem 0;
+  margin: clamp(1rem, 2vw, 1.5rem) 0 clamp(1.4rem, 2.6vw, 2.2rem) 0;
   position:relative;
   overflow:hidden;
   background:
@@ -1481,6 +1530,9 @@ body[data-theme="light"] .modal-header, body[data-theme="light"] .modal-footer{ 
   .btn{ width:100%; justify-content:center; }
   .table-actions .btn{ width:auto; }
   .navbar-brand{ font-size: 1rem; }
+  .navbar{ position: sticky; top: 0; }
+  .hero-section{ border-radius: 18px; }
+  .card{ border-radius: 16px; }
 }
 
 /* =========================
