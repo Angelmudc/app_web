@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+
+{% block title %}Registro Interno de Candidata{% endblock %}
+
+{% block content %}
+<main class="container" style="max-width: 980px; margin: 0 auto; padding: 18px 14px;">
+  <header style="display:flex; gap:12px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0; font-size: 1.6rem;">🗂️ Registro interno de candidata</h1>
+      <p style="margin:6px 0 0; opacity:.85;">
+        Solo para oficina (admin/secretaria). Llena los mismos datos del formulario público.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <a href="{{ url_for('registro_interno') }}" class="btn btn-secondary" style="text-decoration:none;">
+        ➕ Nuevo formulario
+      </a>
+      <a href="{{ url_for('home') }}" class="btn btn-outline" style="text-decoration:none;">
+        🏠 Volver a Home
+      </a>
+    </div>
+  </header>
+
+  <hr style="margin: 14px 0 16px; opacity:.25;"/>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}" role="alert">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% set f = request.form %}
+  {% set f_areas = request.form.getlist('areas_experiencia') %}
+
+  <form method="post" action="{{ url_for('registro_interno') }}" autocomplete="on" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- ===================== Identidad ===================== -->
+    <section class="card" style="padding:14px; margin-bottom:14px;">
+      <h2 style="margin:0 0 10px; font-size:1.15rem;">🪪 Identidad</h2>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+        <div style="grid-column: 1 / -1;">
+          <label for="nombre_completo"><b>Nombre completo *</b></label>
+          <input
+            type="text"
+            id="nombre_completo"
+            name="nombre_completo"
+            value="{{ f.get('nombre_completo','') }}"
+            maxlength="150"
+            required
+            class="form-control"
+            placeholder="Ej: María Pérez"
+          >
+        </div>
+
+        <div>
+          <label for="edad"><b>Edad *</b></label>
+          <input
+            type="number"
+            id="edad"
+            name="edad"
+            value="{{ f.get('edad','') }}"
+            maxlength="10"
+            required
+            class="form-control"
+            placeholder="Ej: 28"
+            inputmode="numeric"
+          >
+          <small style="opacity:.75;">Debe estar entre 16 y 75.</small>
+        </div>
+
+        <div>
+          <label for="numero_telefono"><b>Número de teléfono *</b></label>
+          <input
+            type="tel"
+            id="numero_telefono"
+            name="numero_telefono"
+            value="{{ f.get('numero_telefono','') }}"
+            maxlength="30"
+            required
+            class="form-control"
+            placeholder="Ej: 809-000-0000"
+          >
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="direccion_completa"><b>Dirección completa *</b></label>
+          <textarea
+            id="direccion_completa"
+            name="direccion_completa"
+            rows="2"
+            maxlength="250"
+            required
+            class="form-control"
+            placeholder="Ej: Santiago, Los Jardines, Calle 10 #12"
+          >{{ f.get('direccion_completa','') }}</textarea>
+        </div>
+
+        <div>
+          <label for="cedula"><b>Cédula *</b></label>
+          <input
+            type="text"
+            id="cedula"
+            name="cedula"
+            value="{{ f.get('cedula','') }}"
+            maxlength="20"
+            required
+            class="form-control"
+            placeholder="000-0000000-0"
+          >
+          <small style="opacity:.75;">Se valida como 11 dígitos.</small>
+        </div>
+
+        <div>
+          <div class="alert alert-info" style="margin: 22px 0 0;">
+            🔒 Registro interno. Guardado en base de datos.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== Preferencias ===================== -->
+    <section class="card" style="padding:14px; margin-bottom:14px;">
+      <h2 style="margin:0 0 10px; font-size:1.15rem;">💼 Preferencias de trabajo</h2>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+        <div style="grid-column: 1 / -1;">
+          <b>Modalidad de trabajo preferida *</b>
+          <div style="display:flex; gap:14px; margin-top:8px; flex-wrap:wrap;">
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input
+                type="radio"
+                name="modalidad_trabajo_preferida"
+                value="Salida diaria"
+                required
+                {% if f.get('modalidad_trabajo_preferida')=='Salida diaria' %}checked{% endif %}
+              >
+              <span>Salida diaria</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input
+                type="radio"
+                name="modalidad_trabajo_preferida"
+                value="Dormida"
+                {% if f.get('modalidad_trabajo_preferida')=='Dormida' %}checked{% endif %}
+              >
+              <span>Dormida</span>
+            </label>
+          </div>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="rutas_cercanas"><b>Rutas cercanas *</b></label>
+          <input
+            type="text"
+            id="rutas_cercanas"
+            name="rutas_cercanas"
+            value="{{ f.get('rutas_cercanas','') }}"
+            maxlength="150"
+            required
+            class="form-control"
+            placeholder="Ej: Ruta A, Av. Principal"
+          >
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="empleo_anterior"><b>¿Qué hacías en tu empleo anterior? *</b></label>
+          <textarea
+            id="empleo_anterior"
+            name="empleo_anterior"
+            rows="2"
+            maxlength="150"
+            required
+            class="form-control"
+            placeholder="Ej: Limpieza profunda y cocina básica"
+          >{{ f.get('empleo_anterior','') }}</textarea>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <b>¿Cuántos años de experiencia laboral tienes? *</b>
+          <div style="display:grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap:10px; margin-top:10px;">
+            {% set opt = f.get('anos_experiencia','') %}
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="radio" name="anos_experiencia" value="1 año" required {% if opt=='1 año' %}checked{% endif %}>
+              <span>1 año</span>
+            </label>
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="radio" name="anos_experiencia" value="2 años" {% if opt=='2 años' %}checked{% endif %}>
+              <span>2 años</span>
+            </label>
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="radio" name="anos_experiencia" value="3 años o más" {% if opt=='3 años o más' %}checked{% endif %}>
+              <span>3 años o más</span>
+            </label>
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="radio" name="anos_experiencia" value="Sin experiencia" {% if opt=='Sin experiencia' %}checked{% endif %}>
+              <span>Sin experiencia</span>
+            </label>
+          </div>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <b>Áreas de experiencia *</b>
+          <small style="display:block; opacity:.75; margin:6px 0 10px;">(marca todas las que correspondan)</small>
+
+          <div style="display:grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap:10px;">
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" name="areas_experiencia" value="Limpieza" {% if 'Limpieza' in f_areas %}checked{% endif %}>
+              <span>Limpieza</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" name="areas_experiencia" value="Cocina" {% if 'Cocina' in f_areas %}checked{% endif %}>
+              <span>Cocina</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" name="areas_experiencia" value="Niñera" {% if 'Niñera' in f_areas %}checked{% endif %}>
+              <span>Niñera</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" name="areas_experiencia" value="Cuidado de ancianos" {% if 'Cuidado de ancianos' in f_areas %}checked{% endif %}>
+              <span>Cuidado de ancianos</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" name="areas_experiencia" value="Enfermería" {% if 'Enfermería' in f_areas %}checked{% endif %}>
+              <span>Enfermería</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" name="areas_experiencia" value="Todas las anteriores" {% if 'Todas las anteriores' in f_areas %}checked{% endif %}>
+              <span>Todas las anteriores</span>
+            </label>
+          </div>
+          <small style="display:block; opacity:.75; margin-top:8px;">
+            Nota: el backend ahora mismo no obliga a seleccionar al menos una casilla, pero es recomendable marcarla.
+          </small>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <b>¿Sabes planchar? *</b>
+          <div style="display:flex; gap:14px; margin-top:8px; flex-wrap:wrap;">
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input
+                type="radio"
+                name="sabe_planchar"
+                value="si"
+                required
+                {% if f.get('sabe_planchar')=='si' %}checked{% endif %}
+              >
+              <span>Sí</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input
+                type="radio"
+                name="sabe_planchar"
+                value="no"
+                {% if f.get('sabe_planchar')=='no' %}checked{% endif %}
+              >
+              <span>No</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== Referencias ===================== -->
+    <section class="card" style="padding:14px; margin-bottom:14px;">
+      <h2 style="margin:0 0 10px; font-size:1.15rem;">👥 Referencias</h2>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+        <div style="grid-column: 1 / -1;">
+          <label for="contactos_referencias_laborales"><b>Dos contactos de referencias laborales *</b></label>
+          <textarea
+            id="contactos_referencias_laborales"
+            name="contactos_referencias_laborales"
+            rows="3"
+            maxlength="500"
+            required
+            class="form-control"
+            placeholder="Ej: Juan Díaz - 8090000000 - Jefe en XYZ&#10;Ana Rojas - 8091112222 - Coordinadora en ABC"
+          >{{ f.get('contactos_referencias_laborales','') }}</textarea>
+          <small style="opacity:.75;">Pon nombre, teléfono y relación laboral. Cada referencia en una línea.</small>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="referencias_familiares_detalle"><b>Dos referencias familiares *</b></label>
+          <textarea
+            id="referencias_familiares_detalle"
+            name="referencias_familiares_detalle"
+            rows="3"
+            maxlength="500"
+            required
+            class="form-control"
+            placeholder="Ej: Pedro Pérez - 8093334444 - Hermano&#10;María Gómez - 8095556666 - Madre"
+          >{{ f.get('referencias_familiares_detalle','') }}</textarea>
+          <small style="opacity:.75;">Solo familiares (no vecinos ni amigos).</small>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <b>¿Acepta que cobremos un % de su sueldo como honorarios? *</b>
+          <div style="display:flex; gap:14px; margin-top:8px; flex-wrap:wrap;">
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input
+                type="radio"
+                name="acepta_porcentaje_sueldo"
+                value="1"
+                required
+                {% if f.get('acepta_porcentaje_sueldo')=='1' %}checked{% endif %}
+              >
+              <span>Sí, acepta</span>
+            </label>
+
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input
+                type="radio"
+                name="acepta_porcentaje_sueldo"
+                value="0"
+                {% if f.get('acepta_porcentaje_sueldo')=='0' %}checked{% endif %}
+              >
+              <span>No</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== Acciones ===================== -->
+    <section class="card" style="padding:14px;">
+      <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap;">
+        <a href="{{ url_for('registro_interno') }}" class="btn btn-secondary" style="text-decoration:none;">
+          🔄 Limpiar / Nuevo
+        </a>
+
+        <button type="submit" class="btn btn-primary">
+          ✅ Guardar candidata
+        </button>
+      </div>
+
+      <p style="margin:10px 0 0; opacity:.75;">
+        Al guardar, se valida cédula y duplicados. Si falta algo, te avisa arriba sin perder los datos.
+      </p>
+    </section>
+  </form>
+</main>
+{% endblock %}

@@ -84,6 +84,9 @@ def _normalize_db_url(url: str) -> str:
 # ─────────────────────────────────────────────────────────────
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
+    # ✅ Permite que las rutas funcionen con y sin slash final.
+    # Ej: /registro y /registro/ (evita 404 por trailing slash)
+    app.url_map.strict_slashes = False
 
     # ── Seguridad de sesión/cookies
     # En local, si no defines nada, asumimos DEVELOPMENT para que no rompa cookies/CSRF.
@@ -308,6 +311,12 @@ def create_app():
     from public import public_bp
 
     app.register_blueprint(public_bp)  # sin prefix: responde en "/"
+
+    # ── Registro público de candidatas (formulario interno de la app)
+    from registro.routes import registro_bp
+
+    # Prefijo claro y consistente, igual que los demás módulos
+    app.register_blueprint(registro_bp, url_prefix="/registro")
 
     # ── Reclutamiento general (NO doméstica)
     from reclutas import reclutas_bp

@@ -1,0 +1,33 @@
+{% extends "registro/base_registro.html" %}
+
+{% block title %}Gracias{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="card__header center">
+      <h1 class="h1">¡Registro recibido!</h1>
+    </div>
+
+    <div class="card__body center">
+      <div style="font-size:42px;margin-bottom:12px;">✅</div>
+
+      <p class="text-lg">
+        Tu registro fue enviado correctamente.
+      </p>
+
+      <p class="muted">
+        Para continuar con el proceso, por favor avísanos por <strong>WhatsApp</strong> indicando que ya completaste el formulario de registro.
+      </p>
+
+      <p class="muted">
+        Esto nos permitirá validar tu información y darte seguimiento más rápido.
+      </p>
+
+      <div class="notice" style="margin-top:24px;">
+        <p class="text-sm muted">
+          Puedes cerrar esta página con tranquilidad. Nuestro equipo revisará tu información y te contactará directamente.
+        </p>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+
+  <title>{% block title %}Registro{% endblock %} | Doméstica del Cibao A&amp;D</title>
+
+  <!-- CSS SOLO REGISTRO -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='registro/css/registro.css') }}">
+
+  {% block head_extra %}{% endblock %}
+</head>
+
+<body class="registro-page registro-scope">
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand" role="banner" aria-label="Doméstica del Cibao A&amp;D — Registro de candidatas">
+        <img class="brand__logo" src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&amp;D" />
+        <div class="brand__text">
+          <div class="brand__name">Doméstica del Cibao A&amp;D</div>
+          <div class="brand__tag">Registro de candidatas</div>
+        </div>
+      </div>
+
+      <div class="topbar__actions">
+        {% block top_actions %}{% endblock %}
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="page__container">
+      <!-- Flash messages (estilo propio, NO Bootstrap) -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="alerts" role="region" aria-label="Mensajes del sistema">
+            {% for category, msg in messages %}
+              {% set cat = category if category in ['success','warning','danger','info'] else 'info' %}
+              <div class="alert alert--{{ cat }}">
+                <div class="alert__icon">
+                  {% if cat == 'success' %}✅{% elif cat == 'warning' %}⚠️{% elif cat == 'danger' %}⛔{% else %}ℹ️{% endif %}
+                </div>
+                <div class="alert__text">{{ msg }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="footer__left">
+        <strong>Doméstica del Cibao A&amp;D</strong>
+        <span class="muted">• Registro web</span>
+      </div>
+      <div class="footer__right muted">
+        © 2026
+      </div>
+    </div>
+  </footer>
+
+  <!-- JS SOLO REGISTRO -->
+  <script src="{{ url_for('static', filename='registro/js/registro.js') }}"></script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -79,8 +79,9 @@
       ('reporte_pagos', '📄 Reporte Pagos', 'Pagos pendientes en PDF.')
     ]),
 
-    ('Sitio Público', 'fa-globe', [
-      ('registro_publico', '🗳️ Registro Público', 'Formulario público de registro.')
+
+    ('Registro Interno', 'fa-user-lock', [
+      ('registro_interno', '🗂️ Registro Interno', 'Formulario interno para registrar candidatas desde oficina.')
     ]),
 
     ('Documentos', 'fa-folder-open', [
@@ -100,6 +101,12 @@
       <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
         {% for item in section[2] %}
           {% set url = url_for_safe(item[0]) %}
+
+          {# Fallbacks para endpoints que a veces no resuelven en url_for_safe #}
+          {% if not url and item[0] == 'registro_interno' %}
+            {% set url = '/registro_interno/' %}
+          {% endif %}
+
           {% if url %}
             <div class="col">
               <div class="dashboard-card">
@@ -191,7 +198,7 @@
             <a href="{{ web_list_url }}" class="btn btn-primary w-100">
               Abrir listado
             </a>
-            <small class="d-block mt-2" style="color:#667085;">
+            <small class="d-block mt-2\" style="color:#667085;">
               Nota: la edición se hace dentro del listado (botón “Editar” por cada candidata).
             </small>
           {% else %}

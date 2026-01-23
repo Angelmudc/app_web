@@ -105,6 +105,9 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_bruteforce_login():
+        # Permitir siempre archivos estáticos (CSS, JS, imágenes, etc.)
+        if request.path.startswith("/static/"):
+            return
         if request.method != "POST":
             return
 
