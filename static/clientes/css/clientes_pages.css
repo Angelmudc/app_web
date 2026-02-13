@@ -1,0 +1,1581 @@
+
+
+/* =====================================================================
+   clientes_pages.css
+   Estilos de PÁGINA para el portal de clientes (profesional y consistente)
+   - Diseñado para NO romper el admin.
+   - Se activa cuando el contenedor/bod y tenga una de estas llaves:
+       body.clientes  OR  .clientes  OR  [data-portal="clientes"]
+   - Recomendación: en templates/clientes/base.html pon <body class="clientes">.
+   ===================================================================== */
+
+/* ---------------------------
+   1) Scope / Variables
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) {
+  --c-bg: #0b1220;
+  --c-surface: rgba(255, 255, 255, 0.06);
+  --c-surface-2: rgba(255, 255, 255, 0.09);
+  --c-border: rgba(255, 255, 255, 0.12);
+  --c-border-strong: rgba(255, 255, 255, 0.18);
+  --c-text: rgba(255, 255, 255, 0.92);
+  --c-text-muted: rgba(255, 255, 255, 0.72);
+  --c-text-soft: rgba(255, 255, 255, 0.58);
+
+  --c-primary: #4f8cff;
+  --c-primary-2: #2f6cff;
+  --c-success: #22c55e;
+  --c-warning: #f59e0b;
+  --c-danger: #ef4444;
+  --c-info: #38bdf8;
+
+  --c-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+  --c-shadow-soft: 0 10px 25px rgba(0, 0, 0, 0.22);
+
+  --c-radius: 16px;
+  --c-radius-sm: 12px;
+  --c-radius-lg: 22px;
+
+  --c-gap: 16px;
+  --c-gap-lg: 22px;
+
+  --c-font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+
+  color: var(--c-text);
+  font-family: var(--c-font);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) a:hover {
+  opacity: 0.95;
+}
+
+/* Fondo general solo para portal (no toca admin) */
+
+:where(body.clientes) {
+  background:
+    radial-gradient(1200px 800px at 12% 10%, rgba(79, 140, 255, 0.20), transparent 55%),
+    radial-gradient(1000px 750px at 88% 18%, rgba(56, 189, 248, 0.16), transparent 52%),
+    radial-gradient(900px 700px at 50% 92%, rgba(34, 197, 94, 0.10), transparent 56%),
+    var(--c-bg);
+  min-height: 100vh;
+}
+
+/* ---------------------------
+   2.1) Contención de imágenes (evita logos/fotos gigantes)
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Logos / marcas dentro del portal (topbar, header, nav) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) header img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-topbar img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-nav img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .brand img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .logo img,
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar-brand img {
+  max-height: 44px;
+  width: auto;
+}
+
+/* Navbar brand: evita que el logo se vea cortado */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .navbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .navbar-brand img {
+  height: 44px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar {
+  overflow: visible;
+}
+
+/* Asegura que NINGÚN logo/imagen de marca se dispare por fuera de header/nav */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .site-logo img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .footer img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-footer img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) img.logo,
+:where(body.clientes, .clientes, [data-portal="clientes"]) img.brand,
+:where(body.clientes, .clientes, [data-portal="clientes"]) img.nav-logo {
+  max-height: 44px;
+  width: auto;
+}
+
+/* Corrige fondos blancos heredados de la web pública */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .section {
+  background: transparent;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .container {
+  max-width: 1180px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .section-title {
+  color: rgba(255,255,255,.95);
+  margin: 0 0 6px;
+  font-size: clamp(20px, 2.2vw, 28px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .section-subtitle,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .info-text {
+  color: rgba(255,255,255,.72);
+  margin: 0 0 16px;
+  line-height: 1.45;
+}
+
+/* ===== Botones (compatibles con los nombres del public) ===== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn:active {
+  transform: translateY(1px);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-primary {
+  background: linear-gradient(180deg, rgba(79, 140, 255, 0.96), rgba(47, 108, 255, 0.96));
+  color: #0b1220;
+  box-shadow: 0 12px 22px rgba(79, 140, 255, 0.22);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-primary:hover {
+  box-shadow: 0 14px 26px rgba(79, 140, 255, 0.30);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-outline {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.14);
+  color: rgba(255,255,255,.92);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-outline:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.20);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-secondary {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.14);
+  color: rgba(255,255,255,.92);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-secondary:hover {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(255,255,255,0.20);
+}
+
+/* ===== Badges (compatibles con los nombres del public) ===== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,.92);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .badge-success {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.25);
+  color: rgba(255,255,255,.95);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .badge-dark {
+  background: rgba(15, 23, 42, 0.65);
+  border-color: rgba(255,255,255,0.14);
+  color: rgba(255,255,255,.95);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .badge-primario {
+  background: rgba(79, 140, 255, 0.18);
+  border-color: rgba(79, 140, 255, 0.35);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .badge-secundario {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+/* ===== Paginación (compat) ===== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .page-link {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,.92);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .page-link:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.20);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .page-info {
+  color: rgba(255,255,255,.70);
+  font-weight: 800;
+}
+
+/* Tags del detalle */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .tag-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,.90);
+  font-weight: 800;
+  font-size: 12px;
+}
+
+/* CTA section (si existe en templates) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cta-section {
+  margin-top: 26px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cta-inner {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Cards de domésticas (mismo layout que público) */
+/* === Card Doméstica Avatar === */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica-avatar {
+  /* Foto FULL-BLEED: sin aire arriba y 100% alineada al card */
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  height: auto;
+
+  margin: 0 0 10px 0;
+  padding: 0;
+
+  /* El card ya tiene border-radius/overflow hidden, aquí no hace falta */
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+
+  background: rgba(0, 0, 0, 0.18);
+  display: block;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica-avatar img {
+  width: 100%;
+  height: 100%;
+
+  /* Se ve COMPLETA, centrada y sin recortar */
+  object-fit: contain;
+  object-position: center;
+
+  /* Mata el gap raro de imágenes inline */
+  display: block;
+
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* ✅ elimina el “aire” arriba: el avatar queda pegado al borde superior del card */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.card-domestica .card-domestica-avatar {
+  margin-top: 0 !important;
+}
+
+/* === Card Doméstica: Full-bleed avatar, padding only for content === */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.card-domestica {
+  /* Card contenedor: sin padding para que la foto quede pegada al borde */
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  box-sizing: border-box;
+  position: relative; /* necesario para el badge */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Re-aplica padding SOLO al contenido (no a la foto ni al badge) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.card-domestica > :not(.card-domestica-avatar):not(.card-domestica-header) {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* Espacio inferior bonito para el último bloque de texto/botones */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.card-domestica > :not(.card-domestica-avatar):not(.card-domestica-header):last-child {
+  padding-bottom: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.card-domestica * {
+  box-sizing: border-box;
+}
+
+/* ---------------------------
+   2.2) Grid de domésticas: SIEMPRE 3 por fila (desktop)
+   - sin barra de búsqueda
+   - responsive a 2 y 1 en pantallas pequeñas
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .grid-3,
+:where(body.clientes, .clientes, [data-portal="clientes"]) #domesticasGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+@media (max-width: 980px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .grid-3,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) #domesticasGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .grid-3,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) #domesticasGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card base tipo "público" para clientes */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.card-domestica {
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.28);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica-header {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0;
+  margin: 0;
+  pointer-events: none; /* el badge no estorba clicks */
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica-header .badge {
+  pointer-events: auto;
+}
+
+/* ---------------------------
+   2.3) Detalle de candidata (layout igual al público)
+   - foto a la izquierda (cuadrada, sin recortar)
+   - contenido a la derecha
+   - responsive: se apila
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-candidata {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255,255,255,.80);
+  margin: 6px 0 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 18px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  box-shadow: 0 16px 40px rgba(0,0,0,.30);
+}
+
+@media (max-width: 980px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Contenedor de foto: CUADRADO y alineado al card */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-avatar {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.22);
+  display: grid;
+  place-items: center;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* ✅ se ve completa */
+  display: block;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-info {
+  min-width: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-nombre {
+  margin: 0;
+  font-size: clamp(22px, 2.6vw, 30px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-edad {
+  margin: 6px 0 0;
+  color: rgba(255,255,255,.70);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-frase {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.05);
+  color: rgba(255,255,255,.86);
+  font-weight: 650;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-line {
+  margin: 6px 0 0;
+  color: rgba(255,255,255,.84);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-sueldo,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-experiencia,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-experiencia-detallada,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-tags,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-cta {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.10);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-cta-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+
+/* ---------------------------
+   2) Layout base de páginas
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px 18px 44px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-page--wide {
+  max-width: 1320px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--c-gap);
+  margin-bottom: 18px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-title {
+  margin: 0;
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-subtitle {
+  margin: 6px 0 0;
+  color: var(--c-text-muted);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ---------------------------
+   3) Cards / Panels
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-card {
+  background: linear-gradient(180deg, var(--c-surface), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  box-shadow: var(--c-shadow-soft);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-card__head {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-card__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-card__body {
+  padding: 16px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-card__foot {
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ---------------------------
+   4) Dashboard: grid de métricas
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--c-gap);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-col-12 { grid-column: span 12; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-col-8  { grid-column: span 8; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-col-6  { grid-column: span 6; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-col-4  { grid-column: span 4; }
+
+@media (max-width: 980px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .c-col-8,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .c-col-6,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .c-col-4 {
+    grid-column: span 12;
+  }
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-metric {
+  position: relative;
+  padding: 16px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-metric::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(600px 280px at 18% 20%, rgba(79, 140, 255, 0.18), transparent 55%);
+  opacity: 0.7;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-metric__label {
+  position: relative;
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-metric__value {
+  position: relative;
+  margin: 8px 0 0;
+  font-size: clamp(22px, 2.5vw, 32px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-metric__hint {
+  position: relative;
+  margin: 6px 0 0;
+  color: var(--c-text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* ---------------------------
+   5) Formularios (look premium)
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-form {
+  display: grid;
+  gap: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-form-row {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-field {
+  grid-column: span 12;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-field--6 { grid-column: span 6; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-field--4 { grid-column: span 4; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-field--8 { grid-column: span 8; }
+
+@media (max-width: 860px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .c-field--6,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .c-field--4,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .c-field--8 {
+    grid-column: span 12;
+  }
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 7px;
+  font-size: 13px;
+  font-weight: 750;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-help {
+  margin: 6px 0 0;
+  color: var(--c-text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-input,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-select,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  padding: 11px 12px;
+  color: var(--c-text);
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-input::placeholder,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-input:focus,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-select:focus,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-textarea:focus {
+  border-color: rgba(79, 140, 255, 0.75);
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.18);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-error {
+  margin-top: 6px;
+  color: rgba(239, 68, 68, 0.95);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+/* Chips / checkbox list */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* ---------------------------
+   6) Botones
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, border-color 160ms ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn:active {
+  transform: translateY(1px);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn--primary {
+  background: linear-gradient(180deg, rgba(79, 140, 255, 0.95), rgba(47, 108, 255, 0.95));
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #0b1220;
+  box-shadow: 0 12px 22px rgba(79, 140, 255, 0.22);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn--primary:hover {
+  box-shadow: 0 14px 26px rgba(79, 140, 255, 0.30);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn--ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn--ghost:hover {
+  border-color: var(--c-border-strong);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn--danger {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: rgba(255, 255, 255, 0.94);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn[disabled],
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-btn.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ---------------------------
+   7) Tablas (listas: solicitudes, pagos, ofertas)
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-table-wrap {
+  overflow: auto;
+  border-radius: var(--c-radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) table.c-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 740px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-table th {
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.70);
+  padding: 12px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-table td {
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Badges de estado */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-badge--success {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-badge--warning {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.30);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-badge--danger {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.30);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-badge--info {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+/* ---------------------------
+   8) Alerts / Notificaciones
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-alert {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  padding: 12px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-alert__title {
+  margin: 0;
+  font-weight: 900;
+  font-size: 13px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-alert__text {
+  margin: 4px 0 0;
+  color: var(--c-text-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-alert--success { border-color: rgba(34, 197, 94, 0.25); background: rgba(34, 197, 94, 0.10); }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-alert--warning { border-color: rgba(245, 158, 11, 0.28); background: rgba(245, 158, 11, 0.10); }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-alert--danger  { border-color: rgba(239, 68, 68, 0.30); background: rgba(239, 68, 68, 0.10); }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-alert--info    { border-color: rgba(56, 189, 248, 0.28); background: rgba(56, 189, 248, 0.10); }
+
+/* ---------------------------
+   9) Modal / Drawer básico
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 999;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-modal-backdrop.is-open {
+  display: flex;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-modal {
+  width: min(720px, 100%);
+  border-radius: var(--c-radius);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  box-shadow: var(--c-shadow);
+  overflow: hidden;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-modal__head {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-modal__body {
+  padding: 16px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-modal__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+/* ---------------------------
+   10) Utilidades
+   --------------------------- */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-muted { color: var(--c-text-muted); }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-soft  { color: var(--c-text-soft); }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-right { text-align: right; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-center { text-align: center; }
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.10);
+  margin: 14px 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-spacer { height: 12px; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .c-spacer-lg { height: 18px; }
+
+/* Accesibilidad: reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* =====================================================================
+   FIX FINAL (CLIENTES): texto blanco sobre fondo blanco en DETALLE
+   - Mantiene el portal oscuro, pero fuerza la tarjeta de detalle a ser clara
+     (y con texto oscuro) para que NUNCA se pierdan las secciones.
+   - También deja los TAGS (habilidades/fortalezas) 100% visibles.
+   ===================================================================== */
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(16, 24, 40, 0.12) !important;
+  box-shadow: 0 18px 45px rgba(16, 24, 40, 0.12) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-info,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-info * {
+  color: #101828 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-info .text-muted,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-info .small.text-muted {
+  color: #667085 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-frase {
+  background: #f2f4f7 !important;
+  border-color: rgba(16, 24, 40, 0.10) !important;
+  color: #101828 !important;
+}
+
+/* Badges dentro del detalle: legibles en tarjeta blanca */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-meta .badge {
+  background: #f2f4f7 !important;
+  border-color: rgba(16, 24, 40, 0.12) !important;
+  color: #101828 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-meta .badge-success {
+  background: rgba(34, 197, 94, 0.14) !important;
+  border-color: rgba(34, 197, 94, 0.35) !important;
+  color: #065f46 !important;
+}
+
+/* Habilidades / fortalezas (TAGS) SIEMPRE visibles */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .tag-item {
+  background: #f2f4f7 !important;
+  border: 1px solid rgba(16, 24, 40, 0.12) !important;
+  color: #101828 !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  line-height: 1.1 !important;
+}
+
+/* CTA del detalle: que no se pierda el texto */
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-cta,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-cta * {
+  color: #101828 !important;
+}
+
+
+/* ==========================================================
+   FIX: Botones en DETALLE (tarjeta blanca)
+   - Evita botones claros sobre fondo blanco
+   - Fuerza contraste con !important (porque arriba hay reglas * !important)
+   ========================================================== */
+
+/* Primario: texto blanco para verse más pro */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-primary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-primary {
+  background: linear-gradient(180deg, rgba(79, 140, 255, 0.98), rgba(47, 108, 255, 0.98)) !important;
+  border-color: rgba(47, 108, 255, 0.45) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 22px rgba(79, 140, 255, 0.26) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-primary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-primary:hover {
+  box-shadow: 0 14px 26px rgba(79, 140, 255, 0.34) !important;
+}
+
+/* Outline / Secondary / Light: siempre visibles en tarjeta blanca */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-outline,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-outline,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-outline-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-outline-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-light,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-light {
+  background: #f2f4f7 !important;
+  border: 1px solid rgba(16, 24, 40, 0.18) !important;
+  color: #101828 !important;
+  font-weight: 800 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-outline:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-outline:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-outline-secondary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-outline-secondary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-secondary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-secondary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn-light:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn.btn-light:hover {
+  background: #e9edf3 !important;
+  border-color: rgba(16, 24, 40, 0.24) !important;
+}
+
+/* Si algún icono/font dentro del botón quedó claro, lo fuerza */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card .btn * {
+  color: inherit !important;
+}
+
+
+
+
+/* ==========================================================
+   MODAL PRO (foto en grande) — Clientes
+   - Overlay real centrado (no "abajo" en la página)
+   - Se muestra con clase .is-open
+   - Compat: si alguna vista usa style.display='block', igual se ve bien
+   ========================================================== */
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalImagen {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  padding: 18px;
+  display: none;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalImagen.is-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Compat: si se abre con display:block desde JS, lo centramos igual */
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalImagen[style*="display: block"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalImagen[style*="display:block"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalImagen[style*="display: flex"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalImagen[style*="display:flex"] {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalDialog {
+  position: relative;
+  width: min(920px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0,0,0,.45);
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  animation: dcModalIn 160ms ease-out;
+}
+
+@keyframes dcModalIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0px) scale(1); }
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalDialog button[aria-label="Cerrar"] {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 10px 20px rgba(0,0,0,.18);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalDialog > div:first-of-type {
+  background: #0b1220;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #imgModalGrande {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #0b1220;
+  display: block;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalDialog > div:last-of-type {
+  padding: 12px 14px 14px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalNombre {
+  font-weight: 900;
+  font-size: 16px;
+  color: #101828;
+  line-height: 1.2;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #modalMeta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #667085;
+  font-weight: 700;
+}
+
+/* Bloquea scroll cuando el modal está abierto (si usas class en body) */
+body.dc-modal-open {
+  overflow: hidden;
+}
+
+@media (max-width: 420px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) #modalDialog {
+    width: calc(100vw - 18px);
+    border-radius: 14px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) #modalDialog > div:first-of-type {
+    padding: 10px;
+  }
+}
+/* =====================================================================
+   FIX (CLIENTES): FORMULARIO NUEVA/EDITAR SOLICITUD
+   Problema: el portal usa texto claro (blanco) por defecto y, cuando una
+   página usa cards blancos (Bootstrap), todo se ve “blanco/gris” y sin
+   contraste (labels invisibles, inputs con fondo gris).
+
+   Solución: cuando haya un FORM dentro de una CARD (caso solicitud),
+   forzamos un “modo tarjeta clara”: texto oscuro + inputs blancos +
+   checkboxes legibles + botones con contraste.
+   ===================================================================== */
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card form {
+  background: #ffffff !important;
+  border: 1px solid rgba(16, 24, 40, 0.12) !important;
+  color: #101828 !important;
+}
+
+/* Títulos y textos dentro de la card del formulario */
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card h1,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card h2,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card h3,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card h4,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card h5,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card p,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card small,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .text-muted {
+  color: #101828 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .text-muted,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .small.text-muted,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-text {
+  color: #667085 !important;
+}
+
+/* Labels: que nunca se pierdan */
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card label,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-label,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .col-form-label {
+  color: #101828 !important;
+  font-weight: 750;
+}
+
+/* Inputs/select/textarea: fondo blanco real (no gris) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-control,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-select,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card textarea.form-control {
+  background-color: #ffffff !important;
+  color: #101828 !important;
+  border: 1px solid rgba(16, 24, 40, 0.18) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-control::placeholder,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card textarea.form-control::placeholder {
+  color: rgba(16, 24, 40, 0.45) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-control:focus,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-select:focus,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card textarea.form-control:focus {
+  border-color: rgba(79, 140, 255, 0.65) !important;
+  box-shadow: 0 0 0 .25rem rgba(79, 140, 255, 0.16) !important;
+}
+
+/* Checkboxes / radios: evita “cuadritos solos” */
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-check {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  min-height: 1.85rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-check-label {
+  color: rgba(16, 24, 40, 0.92) !important;
+  font-weight: 750;
+  margin: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-check-input {
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1px solid rgba(16, 24, 40, 0.28) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .form-check-input:checked {
+  background-color: rgba(47, 108, 255, 0.95) !important;
+  border-color: rgba(47, 108, 255, 0.95) !important;
+}
+
+/* Separadores / borders dentro de la card blanca */
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card hr,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .border-top,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .border-bottom {
+  border-color: rgba(16, 24, 40, 0.12) !important;
+}
+
+/* Botones dentro de la card blanca: contraste pro */
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-primary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-primary {
+  background: linear-gradient(180deg, rgba(79, 140, 255, 0.98), rgba(47, 108, 255, 0.98)) !important;
+  border-color: rgba(47, 108, 255, 0.45) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 22px rgba(79, 140, 255, 0.26) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-primary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-primary:hover {
+  box-shadow: 0 14px 26px rgba(79, 140, 255, 0.34) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-light,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-light,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-outline,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-outline-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-outline-secondary {
+  background: #f2f4f7 !important;
+  border: 1px solid rgba(16, 24, 40, 0.18) !important;
+  color: #101828 !important;
+  font-weight: 850 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-secondary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-secondary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-light:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-light:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-outline:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-outline-secondary:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-outline-secondary:hover {
+  background: #e9edf3 !important;
+  border-color: rgba(16, 24, 40, 0.26) !important;
+}
+
+/* Iconos/texto dentro del botón heredan bien */
+:where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn * {
+  color: inherit !important;
+}
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Centra el login vertical/horizontal con aire bonito */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid > section.py-4,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid > section.py-lg-5,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid > section.py-4.py-lg-5 {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 14px;
+}
+
+/* Card principal del login */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 {
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 22px !important;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.40) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Panel izquierdo (marca) — robusto (aunque el HTML cambie clases)
+   - Fuerza fondo oscuro premium en la 1ra columna del card del login
+   - Evita texto blanco sobre fondo blanco (problema actual)
+*/
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :first-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :first-child {
+  background:
+    radial-gradient(900px 520px at 20% 15%, rgba(79, 140, 255, 0.35), transparent 55%),
+    radial-gradient(760px 520px at 85% 25%, rgba(56, 189, 248, 0.22), transparent 52%),
+    radial-gradient(820px 560px at 60% 92%, rgba(34, 197, 94, 0.16), transparent 58%),
+    rgba(11, 18, 32, 0.92) !important;
+  color: rgba(255,255,255,.92) !important;
+  border-right: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :first-child *,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :first-child * {
+  color: rgba(255,255,255,.92) !important;
+}
+
+/* Texto pequeño bajo el logo ("Agencia de empleo" o similar): que se vea sin gritar */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :first-child small,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :first-child .small,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :first-child small,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :first-child .small {
+  color: rgba(255,255,255,.80) !important;
+}
+
+/* Logo del panel izquierdo: más grande y siempre completo */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :first-child img,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :first-child img {
+  max-height: 96px !important;
+  width: auto;
+  object-fit: contain;
+  display: inline-block;
+  filter: drop-shadow(0 14px 26px rgba(0,0,0,.35));
+}
+
+/* Panel derecho: blanco elegante + texto oscuro (legible) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :last-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :last-child {
+  background: #ffffff !important;
+  color: #101828 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :last-child *,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :last-child * {
+  color: #101828 !important;
+}
+
+/* Muted en panel derecho */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :last-child .text-muted,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :last-child .small.text-muted,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :last-child .text-muted,
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :last-child .small.text-muted {
+  color: #667085 !important;
+}
+
+/* Tipografía del encabezado */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid h1.h4 {
+  letter-spacing: -0.02em;
+}
+
+/* Inputs del login: bordes más pro y foco suave */
+:where(body.clientes, .clientes, [data-portal="clientes"]) #loginForm .form-control {
+  border-radius: 14px;
+  border: 1px solid rgba(16, 24, 40, 0.18);
+  padding: 12px 12px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #loginForm .form-control:focus {
+  border-color: rgba(79, 140, 255, 0.72) !important;
+  box-shadow: 0 0 0 .25rem rgba(79, 140, 255, 0.16) !important;
+}
+
+/* Password input-group: que se vea como UNA sola pieza (sin “cuadro” pegado) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) #loginForm .input-group {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(16, 24, 40, 0.18);
+  background: #ffffff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #loginForm .input-group .form-control {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #togglePwd.btn {
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-left: 1px solid rgba(16, 24, 40, 0.12) !important;
+  background: #f2f4f7 !important;
+  color: #101828 !important;
+  font-weight: 900;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #togglePwd.btn:hover {
+  background: #e9edf3 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) #loginForm .input-group:focus-within {
+  border-color: rgba(79, 140, 255, 0.72) !important;
+  box-shadow: 0 0 0 .25rem rgba(79, 140, 255, 0.16) !important;
+}
+
+/* Botón Entrar: más contraste (en portal, btn-primary tenía texto oscuro) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) #loginForm .btn.btn-primary {
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: #ffffff !important;
+}
+
+/* Alertas del login: más limpias */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .alert {
+  border-radius: 14px;
+}
+
+/* Nota (info) de soporte: se vea pro, sin perder legibilidad */
+:where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .alert.alert-info {
+  background: #f2f4f7;
+  border-color: rgba(16, 24, 40, 0.12);
+  color: #101828;
+}
+
+/* Responsive: reduce padding del card en móviles */
+@media (max-width: 576px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card .p-4,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card .p-lg-5 {
+    padding: 18px !important;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row.g-0 > :first-child img,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :first-child img {
+    max-height: 80px !important;
+  }
+}

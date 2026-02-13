@@ -6,7 +6,7 @@ from typing import Optional  # ✅ PARA PYTHON 3.9
 
 from flask import (
     render_template, redirect, url_for, flash,
-    request, abort, g, session, current_app, jsonify, make_response
+    request, abort, g, session, current_app, jsonify, make_response, send_file
 )
 from flask_login import (
     login_required, current_user, login_user, logout_user
@@ -18,7 +18,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from config_app import db
-from models import Cliente, Solicitud
+try:
+    from models import Cliente, Solicitud, Candidata, CandidataWeb
+except Exception:
+    from models import Cliente, Solicitud
+    Candidata = None
+    CandidataWeb = None
 from utils import letra_por_indice
 from .forms import (
     ClienteLoginForm,
@@ -29,7 +34,143 @@ from .forms import (
 )
 
 # 🔹 Usa SIEMPRE el blueprint único definido en clientes/__init__.py
+
 from . import clientes_bp
+
+
+# ─────────────────────────────────────────────────────────────
+# 🔒 Banco de domésticas (solo clientes con solicitud ACTIVA y plan Premium/VIP)
+# ─────────────────────────────────────────────────────────────
+PLANES_BANCO_DOMESTICAS = {'premium', 'vip'}
+# Solo solicitudes con estado EXACTAMENTE 'activa' son consideradas activas para acceso al banco de domésticas.
+ESTADOS_SOLICITUD_ACTIVA = {'activa'}
+
+
+def _get_plan_solicitud(s: 'Solicitud') -> str:
+    """Lee el plan desde distintos nombres posibles en tu modelo."""
+    for attr in ('tipo_plan', 'plan', 'plan_cliente', 'tipo_plan_cliente'):
+        if hasattr(s, attr):
+            v = getattr(s, attr)
+            return (v or '').strip().lower()
+    return ''
+
+
+def _cliente_tiene_banco_domesticas(cliente_id: int) -> bool:
+    """True si el cliente tiene al menos 1 solicitud ACTIVA con plan Premium/VIP."""
+    try:
+        # Filtra SOLO solicitudes ACTIVAS (estado == 'activa')
+        # Esto es lo que define si el cliente tiene acceso al banco.
+        q = Solicitud.query.filter(Solicitud.cliente_id == cliente_id)
+
+        if hasattr(Solicitud, 'estado'):
+            # Estricto: solo activa
+            q = q.filter(Solicitud.estado == 'activa')
+
+        # Revisar planes en Python para soportar distintos nombres de columna
+        for s in q.order_by(Solicitud.id.desc()).limit(200).all():
+            plan = _get_plan_solicitud(s)
+            if plan in PLANES_BANCO_DOMESTICAS:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def banco_domesticas_required(f):
+    """Bloquea el banco si el cliente NO tiene solicitud activa Premium/VIP."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('clientes.login', next=request.full_path))
+
+        # Solo clientes
+        if getattr(current_user, 'role', 'cliente') != 'cliente':
+            abort(404)
+
+        ok = _cliente_tiene_banco_domesticas(int(getattr(current_user, 'id', 0) or 0))
+        if not ok:
+            flash('Este acceso es solo para clientes con una solicitud ACTIVA en plan Premium o VIP.', 'warning')
+            return redirect(url_for('clientes.listar_solicitudes'))
+
+        return f(*args, **kwargs)
+    return decorated
+
+@clientes_bp.before_request
+def _clientes_force_login_view():
+    """Si la petición es del portal de clientes y no hay sesión válida, manda al login de clientes.
+
+    Objetivo:
+    - Evitar que Flask-Login redirija al login general (`login`) cuando el usuario intenta entrar a `/clientes/*`.
+    - Forzar el `login_view` y el `blueprint_login_views['clientes']` en cada request del blueprint.
+    - Bloquear acceso si el usuario está autenticado con otro tipo de cuenta (ej: admin) y quiere entrar al portal de clientes.
+    """
+
+    # ✅ Forzar a Flask-Login a usar el login del portal de clientes
+    try:
+        lm = current_app.extensions.get('login_manager')
+        if lm is not None:
+            lm.login_view = 'clientes.login'
+            try:
+                if not hasattr(lm, 'blueprint_login_views') or lm.blueprint_login_views is None:
+                    lm.blueprint_login_views = {}
+                lm.blueprint_login_views['clientes'] = 'clientes.login'
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Solo aplicar dentro del blueprint de clientes
+    if (request.blueprint or '') != 'clientes':
+        return None
+
+    # Endpoints públicos dentro del portal
+    PUBLIC_ENDPOINTS = {
+        'clientes.login',
+        'clientes.reset_password',
+        'clientes.solicitud_publica',
+        'static',
+    }
+
+    # Si el endpoint no está resuelto (muy raro), no rompas nada
+    if request.endpoint is None:
+        return None
+
+    # Permitir rutas públicas del portal
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+
+    # 🔒 1) Si NO está autenticado, siempre manda al login
+    if not current_user.is_authenticated:
+        next_url = request.full_path if request.full_path else request.path
+        return redirect(url_for('clientes.login', next=next_url))
+
+    # 🔒 2) Si está autenticado, pero NO es un Cliente, NO puede entrar al portal
+    # (Esto evita que un admin/logueo general se cuele en /clientes/*)
+    if not isinstance(current_user, Cliente):
+        try:
+            logout_user()
+            session.clear()
+        except Exception:
+            pass
+        next_url = request.full_path if request.full_path else request.path
+        return redirect(url_for('clientes.login', next=next_url))
+
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
+# NO CACHE HEADERS for all clientes responses
+# ─────────────────────────────────────────────────────────────
+@clientes_bp.after_request
+def _clientes_no_cache_headers(response):
+    """Evita que el navegador muestre páginas privadas desde caché (Back/Forward) sin sesión."""
+    try:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    except Exception:
+        pass
+    return response
 
 # ─────────────────────────────────────────────────────────────
 # Helpers básicos
@@ -63,7 +204,31 @@ def generar_token_publico_cliente(cliente: Cliente) -> str:
     return ser.dumps(payload)
 
 def _is_safe_next(next_url: str) -> bool:
-    return bool(next_url) and next_url.startswith('/')
+    """Permite redirects internos seguros.
+
+    Acepta:
+      - /clientes/...
+      - /...
+      - http(s)://<mismo-host>/... (cuando Flask-Login manda next absoluto)
+    """
+    if not next_url:
+        return False
+
+    next_url = str(next_url).strip()
+    if next_url.startswith('/'):
+        return True
+
+    # Permitir next absoluto SOLO si es del mismo host
+    try:
+        from urllib.parse import urlparse
+        cur = urlparse(request.host_url)
+        nxt = urlparse(next_url)
+        if nxt.scheme in ('http', 'https') and nxt.netloc == cur.netloc and (nxt.path or '').startswith('/'):
+            return True
+    except Exception:
+        return False
+
+    return False
 
 
 def cliente_required(f):
@@ -116,12 +281,19 @@ def login():
         identificador = (form.username.data or "").strip()
         password = (form.password.data or "")
 
-        # Permite login por username O por email
-        user = (
-            Cliente.query.filter(Cliente.username == identificador).first()
-            or
-            Cliente.query.filter(Cliente.email == identificador).first()
-        )
+        # Permite login por: username (si existe) OR email OR código
+        user = None
+        try:
+            if hasattr(Cliente, 'username'):
+                user = Cliente.query.filter(Cliente.username == identificador).first()
+        except Exception:
+            user = None
+
+        if not user:
+            user = Cliente.query.filter(Cliente.email == identificador).first()
+
+        if not user:
+            user = Cliente.query.filter(Cliente.codigo == identificador).first()
 
         if not user:
             flash('Usuario no encontrado.', 'danger')
@@ -132,7 +304,11 @@ def login():
             flash('Debes restablecer tu contraseña antes de iniciar sesión.', 'warning')
             return redirect(url_for('clientes.reset_password', codigo=user.codigo))
 
-        # Verificación de contraseña
+        # Verificación de contraseña (requiere columna password_hash)
+        if not hasattr(user, 'password_hash'):
+            flash('Este cliente no tiene credenciales configuradas. Contacta soporte.', 'warning')
+            return redirect(url_for('clientes.login', next=next_url))
+
         if not check_password_hash(user.password_hash, password):
             flash('Usuario o contraseña inválidos.', 'danger')
             return redirect(url_for('clientes.login', next=next_url))
@@ -148,10 +324,6 @@ def login():
         except Exception:
             pass
 
-        try:
-            session.permanent = True
-        except Exception:
-            pass
 
         login_user(user, remember=False)
 
@@ -221,7 +393,7 @@ def reset_password(codigo):
 # ─────────────────────────────────────────────────────────────
 # Dashboard del cliente
 # ─────────────────────────────────────────────────────────────
-@clientes_bp.route('/')
+@clientes_bp.route('/dashboard')
 @login_required
 @cliente_required
 def dashboard():
@@ -233,6 +405,10 @@ def dashboard():
         .all()
     )
     por_estado_dict = {estado or 'sin_definir': cnt for estado, cnt in por_estado}
+
+    # Calcular total_activas y total_pagadas usando por_estado_dict
+    total_activas = int(por_estado_dict.get('activa', 0) or 0)
+    total_pagadas = int(por_estado_dict.get('pagada', 0) or 0)
 
     recientes = (
         Solicitud.query
@@ -247,7 +423,9 @@ def dashboard():
         total_solicitudes=total,
         por_estado=por_estado_dict,
         recientes=recientes,
-        hoy=date.today()
+        hoy=date.today(),
+        total_activas=total_activas,
+        total_pagadas=total_pagadas,
     )
 
 
@@ -413,6 +591,51 @@ def listar_solicitudes():
 # ─────────────────────────────────────────────────────────────
 # Helpers para normalización de formularios de solicitud
 # ─────────────────────────────────────────────────────────────
+
+# Nuevos helpers para alineación de campos form/modelo (no perder datos)
+def _first_form_data(form, *field_names, default=''):
+    """Devuelve el primer .data no vacío de los campos indicados (si existen)."""
+    for name in field_names:
+        if hasattr(form, name):
+            try:
+                v = getattr(form, name).data
+            except Exception:
+                v = None
+            if v is None:
+                continue
+            # Lista
+            if isinstance(v, (list, tuple, set)):
+                if len(v) > 0:
+                    return v
+                continue
+            s = str(v).strip()
+            if s:
+                return s
+    return default
+
+
+def _set_attr_if_exists(obj, attr: str, value):
+    if hasattr(obj, attr):
+        try:
+            setattr(obj, attr, value)
+        except Exception:
+            pass
+
+
+def _set_attr_if_empty(obj, attr: str, value):
+    """Setea solo si el valor actual está vacío/None."""
+    if not hasattr(obj, attr):
+        return
+    try:
+        cur = getattr(obj, attr)
+    except Exception:
+        cur = None
+    empty = (cur is None) or (cur == '') or (cur == [])
+    if empty:
+        try:
+            setattr(obj, attr, value)
+        except Exception:
+            pass
 def _clean_list(seq):
     bad = {"-", "–", "—"}
     out, seen = [], set()
@@ -523,8 +746,14 @@ def nueva_solicitud():
 
     if form.validate_on_submit():
         try:
-            count  = Solicitud.query.filter_by(cliente_id=current_user.id).count()
-            codigo = f"{current_user.codigo}-{letra_por_indice(count)}"
+            # Código único: evita choques si el cliente borró solicitudes o si hay carreras
+            idx = Solicitud.query.filter_by(cliente_id=current_user.id).count()
+            while True:
+                codigo = f"{current_user.codigo}-{letra_por_indice(idx)}"
+                existe = Solicitud.query.filter_by(codigo_solicitud=codigo).first()
+                if not existe:
+                    break
+                idx += 1
 
             s = Solicitud(
                 cliente_id=current_user.id,
@@ -533,8 +762,29 @@ def nueva_solicitud():
             )
             form.populate_obj(s)
 
+            # ─────────────────────────────────────────
+            # Alinear nombres posibles del form con el modelo
+            # (evita que "no se guarden" cuando el form usa otros nombres)
+            # ─────────────────────────────────────────
+            # ciudad_sector puede venir como ciudad+sector
+            ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
+            sector = _first_form_data(form, 'sector', 'sector_oferta', 'sector_cliente', default='')
+            if ciudad or sector:
+                combo = " ".join([x for x in [ciudad, sector] if x]).strip()
+                _set_attr_if_empty(s, 'ciudad_sector', combo)
+
+            # rutas_cercanas / ruta más cercana
+            ruta = _first_form_data(form, 'rutas_cercanas', 'ruta_mas_cercana', 'ruta_cercana', 'ruta', default='')
+            if ruta:
+                _set_attr_if_empty(s, 'rutas_cercanas', ruta)
+
+            # funciones_otro existe en el modelo
+            funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
+            if funciones_otro_txt:
+                _set_attr_if_exists(s, 'funciones_otro', funciones_otro_txt)
+
             # Normalizaciones
-            s.funciones      = _map_funciones(form.funciones.data, getattr(form, 'funciones_otro', None).data if hasattr(form, 'funciones_otro') else '')
+            s.funciones      = _map_funciones(form.funciones.data, funciones_otro_txt)
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
             s.edad_requerida = _map_edad_choices(form.edad_requerida.data, form.edad_requerida.choices, getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else '')
             s.tipo_lugar     = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''), getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else '')
@@ -562,9 +812,22 @@ def nueva_solicitud():
             flash(f'Solicitud {codigo} creada correctamente.', 'success')
             return redirect(url_for('clientes.listar_solicitudes'))
 
-        except SQLAlchemyError:
+        except SQLAlchemyError as e:
             db.session.rollback()
-            flash('No se pudo crear la solicitud. Intenta de nuevo.', 'danger')
+            try:
+                current_app.logger.exception("ERROR creando solicitud (cliente)")
+            except Exception:
+                pass
+
+            # En desarrollo, muestra un detalle corto para poder corregir rápido
+            msg = 'No se pudo crear la solicitud. Intenta de nuevo.'
+            try:
+                if bool(getattr(current_app, 'debug', False)):
+                    msg = f"No se pudo crear la solicitud: {str(e)}"
+            except Exception:
+                pass
+
+            flash(msg, 'danger')
 
     return render_template('clientes/solicitud_form.html', form=form, nuevo=True)
 
@@ -625,7 +888,28 @@ def editar_solicitud(id):
         try:
             form.populate_obj(s)
 
-            s.funciones      = _map_funciones(form.funciones.data, getattr(form, 'funciones_otro', None).data if hasattr(form, 'funciones_otro') else '')
+            # ─────────────────────────────────────────
+            # Alinear nombres posibles del form con el modelo
+            # (evita que "no se guarden" cuando el form usa otros nombres)
+            # ─────────────────────────────────────────
+            # ciudad_sector puede venir como ciudad+sector
+            ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
+            sector = _first_form_data(form, 'sector', 'sector_oferta', 'sector_cliente', default='')
+            if ciudad or sector:
+                combo = " ".join([x for x in [ciudad, sector] if x]).strip()
+                _set_attr_if_empty(s, 'ciudad_sector', combo)
+
+            # rutas_cercanas / ruta más cercana
+            ruta = _first_form_data(form, 'rutas_cercanas', 'ruta_mas_cercana', 'ruta_cercana', 'ruta', default='')
+            if ruta:
+                _set_attr_if_empty(s, 'rutas_cercanas', ruta)
+
+            # funciones_otro existe en el modelo
+            funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
+            if funciones_otro_txt:
+                _set_attr_if_exists(s, 'funciones_otro', funciones_otro_txt)
+
+            s.funciones      = _map_funciones(form.funciones.data, funciones_otro_txt)
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
             s.edad_requerida = _map_edad_choices(form.edad_requerida.data, form.edad_requerida.choices, getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else '')
             s.tipo_lugar     = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''), getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else '')
@@ -792,7 +1076,7 @@ def _show_policies_modal_once():
         return None
 
     # Ya aceptó
-    if getattr(current_user, 'acepto_politicas', False):
+    if bool(getattr(current_user, 'acepto_politicas', False)):
         return None
 
     # Mostrar modal una sola vez en la sesión
@@ -828,8 +1112,11 @@ def politicas():
 @login_required
 def aceptar_politicas():
     next_url = request.args.get('next') or url_for('clientes.dashboard')
-    current_user.acepto_politicas = True
-    current_user.fecha_acepto_politicas = datetime.utcnow()
+    # Guardar aceptación
+    if hasattr(current_user, 'acepto_politicas'):
+        current_user.acepto_politicas = True
+    if hasattr(current_user, 'fecha_acepto_politicas'):
+        current_user.fecha_acepto_politicas = datetime.utcnow()
     db.session.commit()
     flash('Gracias por aceptar nuestras políticas.', 'success')
     return redirect(next_url if _is_safe_next(next_url) else url_for('clientes.dashboard'))
@@ -1330,3 +1617,255 @@ def solicitud_publica(token):
         flash('Revisa los campos marcados en rojo.', 'danger')
 
     return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+
+# ─────────────────────────────────────────────────────────────
+# Helpers: normalización de tags (Habilidades y fortalezas)
+# ─────────────────────────────────────────────────────────────
+def _to_tags_text(v) -> str:
+    """Convierte tags/fortalezas a un string limpio separado por comas.
+
+    Soporta:
+      - None
+      - string con \n, ;, |
+      - list/tuple/set
+      - dict
+    """
+    if v is None:
+        return ''
+
+    # Si viene como lista/tupla/set
+    if isinstance(v, (list, tuple, set)):
+        parts = [str(x).strip() for x in v if str(x).strip()]
+        return ', '.join(parts)
+
+    # Si viene como dict
+    if isinstance(v, dict):
+        parts = [str(x).strip() for x in v.values() if str(x).strip()]
+        return ', '.join(parts)
+
+    # String normal
+    s = str(v)
+    s = s.replace('\n', ',').replace(';', ',').replace('|', ',')
+    parts = [p.strip() for p in s.split(',') if p.strip()]
+    return ', '.join(parts)
+
+# ─────────────────────────────────────────────────────────────
+# Banco de domésticas (Portal Clientes)
+# ─────────────────────────────────────────────────────────────
+@clientes_bp.route('/domesticas/disponibles', methods=['GET'], endpoint='domesticas_list')
+@clientes_bp.route('/domesticas', methods=['GET'])
+@login_required
+@cliente_required
+@politicas_requeridas
+@banco_domesticas_required
+def banco_domesticas():
+    """Listado de candidatas disponibles para clientes Premium/VIP con solicitud activa."""
+    if Candidata is None or CandidataWeb is None:
+        abort(404)
+
+    # Paginación
+    page = request.args.get('page', 1, type=int)
+    page = max(page, 1)
+    per_page = request.args.get('per_page', 12, type=int)
+    per_page = per_page if per_page in (6, 12, 24, 48) else 12
+
+    q = (request.args.get('q') or '').strip()[:120]
+
+    query = (
+        db.session.query(Candidata, CandidataWeb)
+        .join(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == 'disponible')
+        .order_by(
+            db.case((CandidataWeb.orden_lista.is_(None), 1), else_=0).asc(),
+            CandidataWeb.orden_lista.asc(),
+            Candidata.nombre_completo.asc()
+        )
+    )
+
+    # Búsqueda simple (nombre / cédula / teléfono / código)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.numero_telefono.ilike(like),
+                Candidata.codigo.ilike(like),
+            )
+        )
+
+    total = query.count()
+    items = (
+        query
+        .limit(per_page)
+        .offset((page - 1) * per_page)
+        .all()
+    )
+
+    pages = (total + per_page - 1) // per_page if per_page else 1
+    has_prev = page > 1
+    has_next = page < pages
+
+    # Normaliza items para el template (sin romper lo existente: mantenemos `resultados`)
+    # Si el template usa `domesticas`, tendrá un dict listo.
+    domesticas = []
+    for cand, ficha in (items or []):
+        # Foto: URL pública si existe, si no el blob
+        foto_url = (getattr(ficha, 'foto_url_publica', None) or getattr(ficha, 'foto', None) or '').strip()
+        if not foto_url:
+            try:
+                if getattr(cand, 'foto_perfil', None):
+                    foto_url = url_for('clientes.domestica_foto_perfil', fila=cand.fila)
+            except Exception:
+                foto_url = ''
+
+        domesticas.append({
+            'foto': foto_url or None,
+            'nombre': (getattr(ficha, 'nombre_publico', None) or getattr(cand, 'nombre_completo', None) or '').strip(),
+            'edad': (getattr(ficha, 'edad_publica', None) or getattr(cand, 'edad', None) or '').strip(),
+            'codigo': (getattr(cand, 'codigo', None) or '').strip() or None,
+            'modalidad': (getattr(ficha, 'modalidad_publica', None) or getattr(cand, 'modalidad', None) or '').strip() or None,
+            'ciudad': (getattr(ficha, 'ciudad_publica', None) or getattr(cand, 'ciudad', None) or '').strip() or None,
+            'sector': (getattr(ficha, 'sector_publico', None) or getattr(cand, 'sector', None) or '').strip() or None,
+            # Habilidades/Fortalezas: viene de `tags_publicos` (CandidataWeb) pero
+            # dejamos fallbacks por si en tu modelo usa otros nombres.
+            'tags': _to_tags_text(
+                getattr(ficha, 'tags_publicos', None)
+                or getattr(ficha, 'fortalezas_publicas', None)
+                or getattr(ficha, 'habilidades_publicas', None)
+                or getattr(cand, 'compat_fortalezas', None)
+                or getattr(cand, 'tags', None)
+            ),
+            'fila': int(getattr(cand, 'fila', 0) or 0),
+        })
+
+    return render_template(
+        'clientes/domesticas_list.html',
+        resultados=items,
+        q=q,
+        page=page,
+        per_page=per_page,
+        total=total,
+        pages=pages,
+        has_prev=has_prev,
+        has_next=has_next,
+        prev_num=page-1 if has_prev else 1,
+        next_num=page+1 if has_next else pages,
+        domesticas=domesticas,
+    )
+
+
+@clientes_bp.route('/domesticas/<int:fila>', methods=['GET'])
+@login_required
+@cliente_required
+@politicas_requeridas
+@banco_domesticas_required
+def domestica_detalle(fila: int):
+    """Detalle público de una candidata (solo si está visible y disponible)."""
+    if Candidata is None or CandidataWeb is None:
+        abort(404)
+
+    cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
+
+    if not ficha or not getattr(ficha, 'visible', False) or getattr(ficha, 'estado_publico', '') != 'disponible':
+        abort(404)
+
+    # ─────────────────────────────────────────────────────────
+    # Normalizar payload para el template (para que "Habilidades y fortalezas" salga siempre)
+    # El template debe leer `candidata.tags` (string con comas).
+    # En BD lo guardamos como `tags_publicos` (CandidataWeb).
+    # ─────────────────────────────────────────────────────────
+    # Habilidades/Fortalezas: normaliza para que nunca llegue "en blanco" por formato
+    raw_tags = (
+        getattr(ficha, 'tags_publicos', None)
+        or getattr(ficha, 'fortalezas_publicas', None)
+        or getattr(ficha, 'habilidades_publicas', None)
+        or getattr(cand, 'compat_fortalezas', None)
+        or getattr(cand, 'tags', None)
+    )
+    tags_txt = _to_tags_text(raw_tags)
+
+    # Foto: preferimos URL pública si existe; si no, usamos la ruta que sirve el blob.
+    foto_url = (getattr(ficha, 'foto_url_publica', None) or getattr(ficha, 'foto', None) or '').strip()
+    if not foto_url:
+        # Si la candidata tiene blob de foto_perfil, usa el endpoint interno
+        try:
+            if getattr(cand, 'foto_perfil', None):
+                foto_url = url_for('clientes.domestica_foto_perfil', fila=cand.fila)
+        except Exception:
+            foto_url = ''
+
+    # Disponible inmediato (si tienes campos en ficha)
+    disponible_inmediato = bool(getattr(ficha, 'disponible_inmediato', False))
+    disponible_msg = (getattr(ficha, 'disponible_inmediato_msg', None) or '').strip() or None
+
+    candidata = {
+        'foto': foto_url or None,
+        'nombre': (getattr(ficha, 'nombre_publico', None) or getattr(cand, 'nombre_completo', None) or '').strip(),
+        'edad': (getattr(ficha, 'edad_publica', None) or getattr(cand, 'edad', None) or '').strip(),
+        'frase_destacada': (getattr(ficha, 'frase_destacada', None) or '').strip() or None,
+        'codigo': (getattr(cand, 'codigo', None) or '').strip() or None,
+        'tipo_servicio': (getattr(ficha, 'tipo_servicio_publico', None) or '').strip() or None,
+        'disponible_inmediato': disponible_inmediato,
+        'disponible_inmediato_msg': disponible_msg,
+        'ciudad': (getattr(ficha, 'ciudad_publica', None) or getattr(cand, 'ciudad', None) or '').strip() or None,
+        'sector': (getattr(ficha, 'sector_publico', None) or getattr(cand, 'sector', None) or '').strip() or None,
+        'modalidad': (getattr(ficha, 'modalidad_publica', None) or getattr(cand, 'modalidad', None) or '').strip() or None,
+        'anos_experiencia': (getattr(ficha, 'anos_experiencia_publicos', None) or getattr(cand, 'anos_experiencia', None) or '').strip() or None,
+        'experiencia': (getattr(ficha, 'experiencia_resumen', None) or getattr(cand, 'experiencia', None) or '').strip() or None,
+        'experiencia_detallada': (getattr(ficha, 'experiencia_detallada', None) or '').strip() or None,
+        # ✅ CLAVE: esto es lo que el template usa para "Habilidades y fortalezas"
+        'tags': tags_txt,
+
+        # Sueldo (opcional, si existe)
+        'sueldo': (getattr(ficha, 'sueldo_publico', None) or '').strip() or None,
+        'sueldo_desde': (getattr(ficha, 'sueldo_desde', None) or '').strip() or None,
+        'sueldo_hasta': (getattr(ficha, 'sueldo_hasta', None) or '').strip() or None,
+    }
+
+    return render_template(
+        'clientes/domesticas_detail.html',
+        cand=cand,
+        ficha=ficha,
+        candidata=candidata,
+    )
+
+
+@clientes_bp.route('/domesticas/<int:fila>/foto_perfil', methods=['GET'])
+@login_required
+@cliente_required
+@banco_domesticas_required
+def domestica_foto_perfil(fila: int):
+    """Devuelve la foto_perfil (LargeBinary) como imagen (si existe)."""
+    if Candidata is None:
+        abort(404)
+
+    from io import BytesIO
+    import imghdr
+
+    cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    blob = getattr(cand, 'foto_perfil', None)
+    if not blob:
+        abort(404)
+
+    kind = imghdr.what(None, h=blob)
+    if kind == 'jpeg':
+        mimetype, ext = 'image/jpeg', 'jpg'
+    elif kind == 'png':
+        mimetype, ext = 'image/png', 'png'
+    elif kind == 'gif':
+        mimetype, ext = 'image/gif', 'gif'
+    elif kind == 'webp':
+        mimetype, ext = 'image/webp', 'webp'
+    else:
+        mimetype, ext = 'application/octet-stream', 'bin'
+
+    return send_file(
+        BytesIO(blob),
+        mimetype=mimetype,
+        as_attachment=False,
+        download_name=f"candidata_{fila}_perfil.{ext}",
+        max_age=3600,
+    )

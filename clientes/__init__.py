@@ -6,8 +6,9 @@ from flask import Blueprint
 clientes_bp = Blueprint(
     'clientes',
     __name__,
-    url_prefix='/clientes',
-    template_folder='../templates/clientes'
+    # ⚠️ NO pongas url_prefix aquí si también lo registras con url_prefix en config_app.py.
+    # Deja que el prefijo lo maneje SOLO app.register_blueprint(..., url_prefix='/clientes').
+    template_folder='../templates'
 )
 
 __all__ = ['clientes_bp']

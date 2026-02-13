@@ -1,22 +1,8 @@
-{# templates/clientes/ayuda.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Ayuda & Contacto | Doméstica del Cibao A&D{% endblock %}
 
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-<style>
-  .support-hero{
-    background: linear-gradient(135deg,#EEF6FF,#F8FDFF);
-    border: 1px solid #e6efff;
-    border-radius: 16px;
-  }
-  .card-soft{border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.06)}
-  .contact-btn{display:flex;align-items:center;gap:.5rem}
-  .copy-btn{border:1px dashed #cbd5e1}
-  .kw{background:#f1f5f9;border-radius:8px;padding:.15rem .5rem;font-size:.825rem}
-  .badge-sla{background:#e8fff3;color:#0a7a3e;border:1px solid #a7efc3}
-  .time-chip{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:.25rem .5rem}
-</style>
 {% endblock %}
 
 {% block content %}
@@ -179,6 +165,37 @@
             </div>
           </div>
         </div>
+
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="q5">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#a5">
+              ¿Cómo puedo acceder al Banco de Domésticas y ver las domésticas disponibles?
+            </button>
+          </h2>
+          <div id="a5" class="accordion-collapse collapse" data-bs-parent="#faq">
+            <div class="accordion-body">
+              El <strong>Banco de Domésticas</strong> es una sección donde puedes ver candidatas disponibles con sus
+              perfiles organizados, modalidad, experiencia y detalles clave.
+              <br><br>
+              <strong>Para acceder:</strong>
+              <ul>
+                <li>Debes tener un plan <strong>Premium</strong> o <strong>VIP</strong>.</li>
+                <li>Debes tener al menos una <strong>solicitud activa</strong> registrada en el sistema.</li>
+              </ul>
+
+              Una vez cumplas esos requisitos, verás la opción de <strong>Banco de Domésticas</strong> en tu panel.
+              Desde ahí podrás:
+              <ul>
+                <li>Ver las domésticas disponibles.</li>
+                <li>Entrar al perfil de cada candidata.</li>
+                <li>Hacer una oferta o solicitar más información directamente.</li>
+              </ul>
+
+              Si no ves el banco disponible, revisa tu plan en <a href="{{ url_for('clientes.planes') }}">Planes</a>
+              o escribe a soporte por WhatsApp.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -229,21 +246,4 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  // Copiar al portapapeles
-  document.querySelectorAll('.copy-btn').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const val = btn.getAttribute('data-copy') || '';
-      try{
-        await navigator.clipboard.writeText(val);
-        const original = btn.innerHTML;
-        btn.innerHTML = '<i class="bi bi-check2-circle"></i> Copiado';
-        btn.classList.add('btn-success','text-white');
-        setTimeout(()=>{ btn.innerHTML = original; btn.classList.remove('btn-success','text-white'); }, 1500);
-      }catch(e){
-        alert('No se pudo copiar. Intenta manualmente: ' + val);
-      }
-    });
-  });
-</script>
 {% endblock %}

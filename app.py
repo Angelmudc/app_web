@@ -73,7 +73,52 @@ except Exception:
 # -----------------------------------------------------------------------------
 # APP BOOT
 # -----------------------------------------------------------------------------
+
 app = create_app()
+
+# ----------------------------------------------------------------------------
+# Flask-Login: asegúrate de que cada blueprint use SU login (clientes/admin)
+#  - Evita que /clientes/* termine cayendo en /login (panel interno)
+#  - Mantiene el login interno por sesión (ruta /login) sin romperlo
+# ----------------------------------------------------------------------------
+try:
+    _lm = app.extensions.get('login_manager')
+    if _lm is not None:
+        # defaults (siempre existente)
+        _lm.login_view = 'login'
+
+        # Mapea logins por blueprint (lo que Flask-Login consulta primero)
+        try:
+            if not hasattr(_lm, 'blueprint_login_views') or _lm.blueprint_login_views is None:
+                _lm.blueprint_login_views = {}
+            # ✅ Portal de clientes
+            _lm.blueprint_login_views['clientes'] = 'clientes.login'
+            # ✅ Panel admin (si usas @login_required en admin)
+            _lm.blueprint_login_views['admin'] = 'admin.login'
+        except Exception:
+            pass
+
+        # Handler global: si alguien cae en unauthorized dentro de un blueprint,
+        # redirige al login correcto.
+        @_lm.unauthorized_handler
+        def _unauthorized_callback():
+            try:
+                bp = (request.blueprint or '').strip()
+                next_url = request.full_path if request.full_path else request.path
+                if bp == 'clientes':
+                    return redirect(url_for('clientes.login', next=next_url))
+                if bp == 'admin':
+                    return redirect(url_for('admin.login', next=next_url))
+            except Exception:
+                pass
+            # fallback: login interno
+            try:
+                next_url = request.full_path if request.full_path else request.path
+                return redirect(url_for('login', next=next_url))
+            except Exception:
+                return redirect(url_for('login'))
+except Exception:
+    pass
 
 # Helper para verificar si un endpoint existe (usable desde Jinja)
 app.jinja_env.globals['has_endpoint'] = lambda name: name in app.view_functions
@@ -88,7 +133,149 @@ app.jinja_env.globals['url_for_safe'] = url_for_safe
 # -----------------------------------------------------------------------------
 # HELPERS
 # -----------------------------------------------------------------------------
+
 CEDULA_PATTERN = re.compile(r'^\d{11}$')
+
+# Código estricto tipo CAN-000000
+CODIGO_PATTERN = re.compile(r'^[A-Z]{3}-\d{6}$')
+
+
+def _strip_accents_py(s: str) -> str:
+    """Quita acentos en Python (para normalizar el texto de búsqueda)."""
+    if not s:
+        return ''
+    nfkd = unicodedata.normalize('NFKD', s)
+    return ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
+
+
+def normalize_query_text(raw: str) -> str:
+    """Normaliza texto para búsquedas flexibles (nombre, etc.).
+    - lower
+    - sin acentos
+    - coma/puntos a espacios
+    - colapsa espacios
+    """
+    s = (raw or '').strip()
+    if not s:
+        return ''
+    s = s.replace(',', ' ').replace('.', ' ').replace(';', ' ').replace(':', ' ')
+    s = s.replace('\n', ' ').replace('\t', ' ')
+    s = _strip_accents_py(s).lower()
+    s = re.sub(r"[^a-z0-9\s\-]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def normalize_digits(raw: str) -> str:
+    """Deja solo dígitos (para cédula/teléfono)."""
+    return re.sub(r'\D', '', raw or '').strip()
+
+
+def normalize_code(raw: str) -> str:
+    """Normaliza código: MAYÚSCULAS y sin espacios."""
+    return re.sub(r"\s+", "", (raw or '').strip().upper())
+
+
+def _sql_name_norm(col):
+    """Normaliza nombre en SQL (PostgreSQL) sin depender de EXTENSION unaccent.
+    - lower
+    - reemplaza acentos comunes
+    - reemplaza puntuación por espacio
+    - colapsa espacios
+    """
+    # Nota: regexp_replace y translate existen en PostgreSQL.
+    lowered = func.lower(col)
+    # Map básico de acentos + ñ
+    translated = func.translate(
+        lowered,
+        'áàäâãéèëêíìïîóòöôõúùüûñ',
+        'aaaaaeeeeiiiiooooouuuun'
+    )
+    # Cambia puntuación a espacio
+    cleaned = func.regexp_replace(translated, r"[^a-z0-9\s\-]", " ", "g")
+    cleaned = func.regexp_replace(cleaned, r"[\s]+", " ", "g")
+    return func.trim(cleaned)
+
+
+def _sql_digits(col):
+    """Extrae solo dígitos desde una columna (PostgreSQL)."""
+    return func.regexp_replace(col, r"\D", "", "g")
+
+
+def build_flexible_search_filters(q: str):
+    """Construye filtros flexibles para nombre/cédula/teléfono.
+
+    Reglas:
+    - Código: SOLO match estricto tipo CAN-000000 (sin búsquedas parciales por código).
+    - Nombre: flexible con coma/sin coma, acentos/no acentos, espacios extra.
+    - Cédula y teléfono: flexible por dígitos (ignorando guiones, espacios, paréntesis, etc.).
+
+    Retorna: (strict_code_filter_or_None, other_filters_list)
+    """
+    q = (q or '').strip()
+    if not q:
+        return None, []
+
+    q_code = normalize_code(q)
+    q_digits = normalize_digits(q)
+    q_text = normalize_query_text(q)
+
+    strict_code = None
+    if CODIGO_PATTERN.fullmatch(q_code):
+        # estricto: igual exacto (trim + upper)
+        strict_code = (func.trim(func.upper(Candidata.codigo)) == q_code)
+
+    filters = []
+
+    # Nombre: si hay texto
+    if q_text:
+        # Match inteligente: mientras más completo el nombre, más estricto.
+        # Requiere que TODOS los tokens estén en el nombre (AND), no cualquiera (OR).
+        tokens = [t for t in q_text.split(' ') if t]
+        name_norm = _sql_name_norm(Candidata.nombre_completo)
+
+        if tokens:
+            name_and = and_(*[name_norm.ilike(f"%{t}%") for t in tokens])
+            filters.append(name_and)
+
+    # Cédula / Teléfono: por dígitos (flexible)
+    if q_digits:
+        ced_digits = _sql_digits(Candidata.cedula).ilike(f"%{q_digits}%")
+        tel_digits = _sql_digits(Candidata.numero_telefono).ilike(f"%{q_digits}%")
+        filters.append(or_(ced_digits, tel_digits))
+
+    # Si no hay tokens ni dígitos, al menos intenta por raw como fallback
+    if not filters:
+        like = f"%{q}%"
+        filters.extend([
+            Candidata.nombre_completo.ilike(like),
+            Candidata.cedula.ilike(like),
+            Candidata.numero_telefono.ilike(like),
+        ])
+
+    return strict_code, filters
+
+
+def apply_search_to_candidata_query(base_query, q: str):
+    """Aplica la lógica de búsqueda estándar a una query de Candidata.
+
+    IMPORTANTE:
+    - Esta función NO aplica `order_by()`, `limit()` ni `offset()`.
+    - El caller debe hacer: `apply_search_to_candidata_query(...).order_by(...).limit(...)`
+      para evitar el error de SQLAlchemy: order_by() después de limit().
+    """
+    strict_code, filters = build_flexible_search_filters(q)
+
+    # Si el usuario escribió un código válido, SOLO buscamos por código estricto.
+    if strict_code is not None:
+        return base_query.filter(Candidata.codigo.isnot(None)).filter(strict_code)
+
+    # Si NO es código válido, buscamos por nombre/cédula/teléfono (flexible) y
+    # NO hacemos búsquedas por código.
+    if filters:
+        return base_query.filter(or_(*filters))
+
+    return base_query
 
 
 # ----------------------------------------------------------------------------
@@ -672,13 +859,10 @@ def list_candidatas():
     try:
         base = Candidata.query.order_by(Candidata.nombre_completo.asc())
         if q:
-            like = f"%{q}%"
-            base = base.filter(or_(
-                Candidata.nombre_completo.ilike(like),
-                Candidata.cedula.ilike(like),
-            ))
-
-        candidatas = safe_all(base)  # respeta tu helper actual
+            base = apply_search_to_candidata_query(base, q).limit(300)
+            candidatas = safe_all(base)
+        else:
+            candidatas = safe_all(base)
         return render_template('candidatas.html', candidatas=candidatas, query=q)
     except Exception:
         app.logger.exception("❌ Error listando candidatas")
@@ -783,15 +967,9 @@ def entrevistas_buscar():
             return redirect(url_for('entrevistas_buscar'))
 
     if q:
-        like = f"%{q}%"
         try:
             filas = (
-                Candidata.query
-                .filter(or_(
-                    Candidata.nombre_completo.ilike(like),
-                    Candidata.cedula.ilike(like),
-                    Candidata.numero_telefono.ilike(like),
-                ))
+                apply_search_to_candidata_query(Candidata.query, q)
                 .order_by(Candidata.nombre_completo.asc())
                 .limit(200)
                 .all()
@@ -1507,46 +1685,18 @@ def buscar_candidata():
 
     # ================== BÚSQUEDA ==================
     if busqueda and not candidata:
-        like = f"%{busqueda}%"
         try:
-            # 1) Intentar primero búsqueda EXACTA por código, flexible con espacios y mayúsculas
-            codigo_normalizado = busqueda.upper()
+            base = Candidata.query.order_by(Candidata.nombre_completo.asc())
+            qtxt = busqueda
 
+            # Aplica reglas:
+            # - código (CAN-000000) => estricto
+            # - si no es código => nombre/cédula/teléfono flexible (sin código)
             resultados = (
-                Candidata.query
-                .filter(
-                    Candidata.codigo.isnot(None),
-                    func.trim(func.upper(Candidata.codigo)) == codigo_normalizado
-                )
-                .order_by(Candidata.nombre_completo.asc())
+                apply_search_to_candidata_query(base, qtxt)
+                .limit(300)
                 .all()
             )
-
-            # 2) Si no hay match exacto por código, probamos búsqueda flexible con ILIKE normal
-            if not resultados:
-                filtros = [
-                    Candidata.codigo.ilike(like),
-                    Candidata.nombre_completo.ilike(like),
-                    cast(Candidata.edad, String).ilike(like),
-                    Candidata.numero_telefono.ilike(like),
-                    Candidata.direccion_completa.ilike(like),
-                    Candidata.modalidad_trabajo_preferida.ilike(like),
-                    Candidata.rutas_cercanas.ilike(like),
-                    Candidata.empleo_anterior.ilike(like),
-                    Candidata.anos_experiencia.ilike(like),
-                    Candidata.areas_experiencia.ilike(like),
-                    Candidata.contactos_referencias_laborales.ilike(like),
-                    Candidata.referencias_familiares_detalle.ilike(like),
-                    Candidata.cedula.ilike(like),
-                ]
-
-                resultados = (
-                    Candidata.query
-                    .filter(or_(*filtros))
-                    .order_by(Candidata.nombre_completo.asc())
-                    .limit(300)
-                    .all()
-                )
 
             if not resultados:
                 mensaje = "⚠️ No se encontraron coincidencias."
@@ -1731,15 +1881,13 @@ def inscripcion():
         else:
             q = (request.form.get("buscar") or "").strip()[:128]
             if q:
-                like = f"%{q}%"
                 try:
-                    resultados = (Candidata.query.filter(
-                        or_(
-                            Candidata.nombre_completo.ilike(like),
-                            Candidata.cedula.ilike(like),
-                            Candidata.numero_telefono.ilike(like)
-                        )
-                    ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                    resultados = (
+                        apply_search_to_candidata_query(Candidata.query, q)
+                        .order_by(Candidata.nombre_completo.asc())
+                        .limit(300)
+                        .all()
+                    )
                     if not resultados:
                         flash("⚠️ No se encontraron coincidencias.", "error")
                 except Exception:
@@ -1749,15 +1897,13 @@ def inscripcion():
     else:
         q = (request.args.get("buscar") or "").strip()[:128]
         if q:
-            like = f"%{q}%"
             try:
-                resultados = (Candidata.query.filter(
-                    or_(
-                        Candidata.nombre_completo.ilike(like),
-                        Candidata.cedula.ilike(like),
-                        Candidata.numero_telefono.ilike(like)
-                    )
-                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                resultados = (
+                    apply_search_to_candidata_query(Candidata.query, q)
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
                 if not resultados:
                     mensaje = "⚠️ No se encontraron coincidencias."
             except Exception:
@@ -1829,15 +1975,13 @@ def porciento():
     else:
         q = (request.args.get('busqueda') or '').strip()[:128]
         if q:
-            like = f"%{q}%"
             try:
-                resultados = (Candidata.query.filter(
-                    or_(
-                        Candidata.nombre_completo.ilike(like),
-                        Candidata.cedula.ilike(like),
-                        Candidata.numero_telefono.ilike(like)
-                    )
-                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                resultados = (
+                    apply_search_to_candidata_query(Candidata.query, q)
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
                 if not resultados:
                     flash("⚠️ No se encontraron coincidencias.", "warning")
             except Exception:
@@ -1975,17 +2119,9 @@ def pagos():
     sel = (request.args.get('candidata') or '').strip()
 
     if q:
-        like = f"%{q}%"
         try:
             filas = (
-                Candidata.query
-                .filter(
-                    or_(
-                        Candidata.nombre_completo.ilike(like),
-                        Candidata.cedula.ilike(like),
-                        Candidata.codigo.ilike(like),
-                    )
-                )
+                apply_search_to_candidata_query(Candidata.query, q)
                 .order_by(Candidata.nombre_completo.asc())
                 .limit(300)
                 .all()
@@ -2370,16 +2506,9 @@ def subir_fotos():
                 flash("⚠️ Ingresa algo para buscar.", "warning")
                 return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
-            like = f"%{q}%"
             try:
                 filas = (
-                    Candidata.query.filter(
-                        or_(
-                            Candidata.nombre_completo.ilike(like),
-                            Candidata.cedula.ilike(like),
-                            Candidata.numero_telefono.ilike(like),
-                        )
-                    )
+                    apply_search_to_candidata_query(Candidata.query, q)
                     .order_by(Candidata.nombre_completo.asc())
                     .limit(300)
                     .all()
@@ -2580,17 +2709,9 @@ def gestionar_archivos():
                 flash("⚠️ Ingresa algo para buscar.", "warning")
                 return redirect(url_for("gestionar_archivos", accion="buscar"))
 
-            like = f"%{q}%"
             try:
                 filas = (
-                    Candidata.query
-                    .filter(
-                        or_(
-                            Candidata.nombre_completo.ilike(like),
-                            Candidata.cedula.ilike(like),
-                            Candidata.numero_telefono.ilike(like),
-                        )
-                    )
+                    apply_search_to_candidata_query(Candidata.query, q)
                     .order_by(Candidata.nombre_completo.asc())
                     .limit(300)
                     .all()
@@ -3352,15 +3473,13 @@ def referencias():
     if request.method == 'POST' and 'busqueda' in request.form:
         termino = (request.form.get('busqueda') or '').strip()[:128]
         if termino:
-            like = f"%{termino}%"
             try:
-                filas = (Candidata.query.filter(
-                    or_(
-                        Candidata.nombre_completo.ilike(like),
-                        Candidata.cedula.ilike(like),
-                        Candidata.numero_telefono.ilike(like)
-                    )
-                ).order_by(Candidata.nombre_completo.asc()).limit(300).all())
+                filas = (
+                    apply_search_to_candidata_query(Candidata.query, termino)
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
             except Exception:
                 current_app.logger.exception("❌ Error buscando candidatas en /referencias")
                 filas = []

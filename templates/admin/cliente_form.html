@@ -114,6 +114,70 @@
 
       <hr class="divider my-4">
 
+      <!-- Credenciales (Portal de clientes) -->
+      <div class="mb-4">
+        <h5 class="mb-3"><i class="bi bi-shield-lock-fill section-icon"></i> Credenciales</h5>
+        <div class="row g-3">
+
+          <div class="col-md-6">
+            <label class="form-label">Usuario (opcional)</label>
+            {% set has_err = cliente_form.username.errors %}
+            {{ cliente_form.username(
+              class="form-control" + (" is-invalid" if has_err else ""),
+              placeholder="Ej. juan.perez",
+              autocomplete="username"
+            ) }}
+            {% if has_err %}
+              <div class="invalid-feedback">{{ cliente_form.username.errors[0] }}</div>
+            {% endif %}
+            <div class="form-text mt-1">
+              Si lo dejas vacío, se usará el email como usuario.
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Contraseña (opcional)</label>
+            {% set has_err_pw = cliente_form.password.errors %}
+            {{ cliente_form.password(
+              class="form-control" + (" is-invalid" if has_err_pw else ""),
+              placeholder="Solo si deseas habilitar acceso",
+              autocomplete="new-password"
+            ) }}
+            {% if has_err_pw %}
+              <div class="invalid-feedback">{{ cliente_form.password.errors[0] }}</div>
+            {% endif %}
+            <div class="form-text mt-1">
+              Si no escribes contraseña, el cliente NO podrá iniciar sesión hasta que se le cree una.
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Confirmar contraseña</label>
+            {% set has_err_pw2 = cliente_form.password_confirm.errors %}
+            {{ cliente_form.password_confirm(
+              class="form-control" + (" is-invalid" if has_err_pw2 else ""),
+              placeholder="Repite la contraseña",
+              autocomplete="new-password"
+            ) }}
+            {% if has_err_pw2 %}
+              <div class="invalid-feedback">{{ cliente_form.password_confirm.errors[0] }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-6 d-flex align-items-end">
+            <div class="alert alert-info w-100 mb-0" style="border-radius: 12px;">
+              <div class="small">
+                <strong>Nota:</strong> Estas credenciales son para el <b>portal privado</b>.
+                Si no las llenas, el cliente se guarda igual.
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <hr class="divider my-4">
+
       <!-- Ubicación -->
       <div class="mb-4">
         <h5 class="mb-3"><i class="bi bi-geo-alt-fill section-icon"></i> Ubicación</h5>

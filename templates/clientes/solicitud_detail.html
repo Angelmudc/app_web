@@ -1,29 +1,5 @@
-{# templates/clientes/solicitud_detail.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Detalle {{ s.codigo_solicitud }} | Doméstica del Cibao A&D{% endblock %}
-
-{% block head %}
-<style>
-  .kard{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
-  .kard .kard-h{border-bottom:1px solid rgba(0,0,0,.05);padding:.9rem 1.25rem}
-  .kard .kard-b{padding:1.25rem}
-  .chip{display:inline-flex;align-items:center;gap:.35rem;background:#eef2ff;color:#3730a3;border-radius:999px;padding:.25rem .6rem;font-size:.8rem}
-  .meta dt{color:#475467;width:42%;min-width:160px}
-  .meta dd{margin:0}
-  .timeline{position:relative}
-  .timeline::before{content:"";position:absolute;left:11px;top:0;bottom:0;width:2px;background:#e5e7eb}
-  .t-item{position:relative;padding-left:2.2rem;margin-bottom:1rem}
-  .t-item .dot{position:absolute;left:6px;top:2px;width:12px;height:12px;border-radius:50%;background:#6366f1}
-  .print-zone{page-break-inside:avoid}
-  .badge-state{text-transform:capitalize}
-  @media print{
-    .no-print{display:none!important}
-    .kard{box-shadow:none}
-    .container{max-width:100%}
-    body{background:#fff}
-  }
-</style>
-{% endblock %}
 
 {% block content %}
 <div class="container py-4">
@@ -33,9 +9,6 @@
     <div class="me-3 mb-2">
       <div class="d-flex align-items-center gap-2">
         <h1 class="h4 mb-0">Solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
-        <button class="btn btn-sm btn-outline-secondary no-print" id="copy-code" title="Copiar código" aria-label="Copiar código">
-          <i class="bi bi-clipboard"></i>
-        </button>
       </div>
       <div class="small text-muted mt-1">
         Enviada: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
@@ -249,22 +222,4 @@
     </a>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  // Copiar código
-  document.getElementById('copy-code')?.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText('{{ s.codigo_solicitud }}');
-      const btn = document.getElementById('copy-code');
-      btn.innerHTML = '<i class="bi bi-clipboard-check"></i>';
-      btn.classList.add('btn-success','text-white');
-      setTimeout(() => {
-        btn.innerHTML = '<i class="bi bi-clipboard"></i>';
-        btn.classList.remove('btn-success','text-white');
-      }, 1200);
-    } catch(e) {}
-  });
-</script>
 {% endblock %}

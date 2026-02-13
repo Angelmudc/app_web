@@ -1,23 +1,26 @@
 from datetime import datetime
 
-from flask import abort, current_app, flash, redirect, render_template, request, url_for, session
-from sqlalchemy import or_
+from flask import abort, current_app, flash, redirect, render_template, request, url_for, session, send_file
+from sqlalchemy import or_, and_, func
+import re
+import unicodedata
 from flask_login import current_user
 from functools import wraps
 
+
 def _get_user_role():
-    """
-    Devuelve el rol del usuario autenticado.
+    """Devuelve el rol del usuario autenticado.
     Soporta ambos nombres de campo comunes: role / rol.
     """
     return getattr(current_user, "role", None) or getattr(current_user, "rol", None)
 
+
 def roles_required(*roles):
-    """
-    Requiere que el usuario esté autenticado y tenga uno de los roles permitidos.
+    """Requiere que el usuario esté autenticado y tenga uno de los roles permitidos.
     - Si no está autenticado: redirige a admin.login con next
     - Si no tiene rol permitido: 404
     """
+
     def decorator(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
@@ -27,19 +30,86 @@ def roles_required(*roles):
             if user_role not in roles:
                 abort(404)
             return f(*args, **kwargs)
+
         return wrapped
+
     return decorator
+
+
 from . import webadmin_bp
 from models import Candidata, CandidataWeb, db
 
 # Roles permitidos para entrar a WEBADMIN
 WEBADMIN_ALLOWED_ROLES = ("admin", "secretaria")
 
+# ─────────────────────────────────────────────────────────────
+# Helpers de búsqueda (igual filosofía que app.py)
+# ─────────────────────────────────────────────────────────────
+CODIGO_PATTERN = re.compile(r'^[A-Z]{3}-\d{6}$')
+
+# Palabras comunes que NO ayudan a filtrar (evita falsos negativos)
+STOPWORDS_NOMBRES = {"de", "del", "la", "las", "los", "y"}
+
+
+def _strip_accents_py(s: str) -> str:
+    if not s:
+        return ''
+    nfkd = unicodedata.normalize('NFKD', s)
+    return ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
+
+
+def normalize_query_text(raw: str) -> str:
+    s = (raw or '').strip()
+    if not s:
+        return ''
+    s = s.replace(',', ' ').replace('.', ' ').replace(';', ' ').replace(':', ' ')
+    s = s.replace('\n', ' ').replace('\t', ' ')
+    s = _strip_accents_py(s).lower()
+    s = re.sub(r"[^a-z0-9\s\-]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def normalize_digits(raw: str) -> str:
+    return re.sub(r'\D', '', raw or '').strip()
+
+
+def normalize_code(raw: str) -> str:
+    return re.sub(r"\s+", "", (raw or '').strip().upper())
+
+
+def _sql_name_norm(col):
+    lowered = func.lower(col)
+    translated = func.translate(
+        lowered,
+        'áàäâãéèëêíìïîóòöôõúùüûñ',
+        'aaaaaeeeeiiiiooooouuuun'
+    )
+    cleaned = func.regexp_replace(translated, r"[^a-z0-9\s\-]", " ", "g")
+    cleaned = func.regexp_replace(cleaned, r"[\s]+", " ", "g")
+    return func.trim(cleaned)
+
+
+def _sql_digits(col):
+    return func.regexp_replace(col, r"\D", "", "g")
+
+
+class SimplePagination:
+    def __init__(self, page: int, per_page: int, total: int):
+        self.page = max(int(page or 1), 1)
+        self.per_page = int(per_page or 20)
+        self.total = int(total or 0)
+
+        self.pages = (self.total + self.per_page - 1) // self.per_page if self.per_page else 0
+        self.has_prev = self.page > 1
+        self.has_next = self.page < self.pages
+        self.prev_num = self.page - 1 if self.has_prev else 1
+        self.next_num = self.page + 1 if self.has_next else self.pages
+
 
 @webadmin_bp.before_request
 def _webadmin_guard():
-    """
-    Protección global del blueprint webadmin:
+    """Protección global del blueprint webadmin:
     - Si no hay sesión: redirige a admin.login (con next)
     - Si el rol no está permitido: 404 (mejor que 403 para no revelar existencia)
     """
@@ -64,11 +134,52 @@ def _webadmin_guard():
 
     return None
 
+
+@webadmin_bp.route('/candidatas_web/<int:fila>/foto_perfil')
+@roles_required('admin')
+def candidata_foto_perfil(fila: int):
+    """Devuelve la foto_perfil (LargeBinary) como imagen."""
+    from io import BytesIO
+    import imghdr
+
+    cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    blob = cand.foto_perfil
+
+    if not blob:
+        abort(404)
+
+    kind = imghdr.what(None, h=blob)
+    if kind == 'jpeg':
+        mimetype = 'image/jpeg'
+        ext = 'jpg'
+    elif kind == 'png':
+        mimetype = 'image/png'
+        ext = 'png'
+    elif kind == 'gif':
+        mimetype = 'image/gif'
+        ext = 'gif'
+    elif kind == 'webp':
+        mimetype = 'image/webp'
+        ext = 'webp'
+    else:
+        mimetype = 'application/octet-stream'
+        ext = 'bin'
+
+    return send_file(
+        BytesIO(blob),
+        mimetype=mimetype,
+        as_attachment=False,
+        download_name=f"candidata_{fila}_perfil.{ext}",
+        max_age=3600,
+    )
+
+
 # ─────────────────────────────────────────────────────────────
 # ADMIN / SECRETARÍA – GESTIÓN DE CANDIDATAS PARA LA WEB
 # ─────────────────────────────────────────────────────────────
 
-@webadmin_bp.route('/candidatas_web', methods=['GET', 'POST'])
+
+@webadmin_bp.route('/candidatas_web', methods=['GET'])
 @roles_required('admin')
 def listar_candidatas_web():
 
@@ -83,9 +194,9 @@ def listar_candidatas_web():
         per_page = int(request.args.get("per_page", "30"))
     except ValueError:
         per_page = 30
-    per_page = min(max(per_page, 10), 100)  # entre 10 y 100
+    per_page = per_page if per_page in (10, 20, 50, 100) else 20
 
-    q = (request.form.get('q') or request.args.get('q') or '').strip()[:120]
+    q = (request.args.get('q') or '').strip()[:120]
 
     # BASE: TODAS las candidatas
     query = (
@@ -93,64 +204,111 @@ def listar_candidatas_web():
         .outerjoin(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
     )
 
+    # Si no hay búsqueda, NO cargamos candidatas (solo mostramos la barra de búsqueda)
+    if not q:
+        pagination = None
+        return render_template(
+            'webadmin/candidatas_web_list.html',
+            resultados=[],
+            q=q,
+            page=page,
+            per_page=per_page,
+            total=0,
+            has_prev=False,
+            has_next=False,
+            pagination=pagination,
+        )
+
     # 🔍 BÚSQUEDA SOLO EN CANDIDATA (donde están los datos reales)
     if q:
-        like = f"%{q}%"
-        query = query.filter(
-            or_(
-                Candidata.nombre_completo.ilike(like),
-                Candidata.cedula.ilike(like),
-                Candidata.codigo.ilike(like),
-                Candidata.numero_telefono.ilike(like),
+        q_code = normalize_code(q)
+        q_digits = normalize_digits(q)
+        q_text = normalize_query_text(q)
+
+        # 1) Código estricto (AAA-000000): si el usuario escribió un código válido,
+        #    buscamos SOLO por ese código exacto.
+        if CODIGO_PATTERN.fullmatch(q_code):
+            query = query.filter(
+                Candidata.codigo.isnot(None),
+                func.trim(func.upper(Candidata.codigo)) == q_code
             )
-        )
+        else:
+            or_filters = []
+
+            # 2) Nombre inteligente (AND por tokens) — sin acentos / con coma / etc.
+            if q_text:
+                tokens = [t for t in q_text.split(' ') if t and t not in STOPWORDS_NOMBRES]
+                if tokens:
+                    name_norm = _sql_name_norm(Candidata.nombre_completo)
+                    name_and = and_(*[name_norm.ilike(f"%{t}%") for t in tokens])
+                    or_filters.append(name_and)
+
+            # 3) Cédula / Teléfono flexible por dígitos
+            if q_digits:
+                ced_digits = _sql_digits(Candidata.cedula).ilike(f"%{q_digits}%")
+                tel_digits = _sql_digits(Candidata.numero_telefono).ilike(f"%{q_digits}%")
+                or_filters.append(or_(ced_digits, tel_digits))
+
+            # Fallback mínimo si no se pudo tokenizar
+            if not or_filters:
+                like = f"%{q}%"
+                or_filters.extend([
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.numero_telefono.ilike(like),
+                ])
+
+            query = query.filter(or_(*or_filters))
 
     # Orden limpio y lógico
     query = query.order_by(
         Candidata.nombre_completo.asc()
     )
 
-    # Total (para controles de paginación). Ojo: count en join puede ser pesado,
-    # pero aquí es aceptable porque ya no traemos todo el dataset.
+    # Total
     try:
         total = query.count()
     except Exception:
         total = 0
 
+    pagination = SimplePagination(page=page, per_page=per_page, total=total)
+
     resultados = (
         query
-        .limit(per_page)
-        .offset((page - 1) * per_page)
+        .limit(pagination.per_page)
+        .offset((pagination.page - 1) * pagination.per_page)
         .all()
-    )  # [(candidata, ficha_web), ...]
+    )
 
-    has_prev = page > 1
-    has_next = (page * per_page) < total if total else (len(resultados) == per_page)
+    # Si la página está fuera de rango
+    if pagination.pages and pagination.page > pagination.pages:
+        pagination = SimplePagination(page=pagination.pages, per_page=pagination.per_page, total=total)
+        resultados = (
+            query
+            .limit(pagination.per_page)
+            .offset((pagination.page - 1) * pagination.per_page)
+            .all()
+        )
 
     return render_template(
         'webadmin/candidatas_web_list.html',
         resultados=resultados,
         q=q,
-        page=page,
-        per_page=per_page,
-        total=total,
-        has_prev=has_prev,
-        has_next=has_next,
+        page=pagination.page,
+        per_page=pagination.per_page,
+        total=pagination.total,
+        has_prev=pagination.has_prev,
+        has_next=pagination.has_next,
+        pagination=pagination,
     )
 
 
 @webadmin_bp.route('/candidatas_web/<int:fila>/editar', methods=['GET', 'POST'])
 @roles_required('admin')
 def editar_candidata_web(fila):
-    """
-    Editar la ficha pública de una candidata:
-    - Lee los datos internos desde Candidata (nombre_completo, etc.).
-    - Guarda todo lo que es de la web en CandidataWeb.
-    """
-    # 'fila' = identificador interno de la candidata
+    """Editar la ficha pública de una candidata."""
     cand = Candidata.query.filter_by(fila=fila).first_or_404()
 
-    # Buscar ficha web; si no existe, crearla en memoria
     ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
     if not ficha:
         ficha = CandidataWeb(
@@ -159,20 +317,17 @@ def editar_candidata_web(fila):
             estado_publico='disponible',
         )
         db.session.add(ficha)
-        db.session.flush()  # la deja lista sin hacer commit todavía
+        db.session.flush()
 
     if request.method == 'POST':
-        # Checkboxes
         ficha.visible = bool(request.form.get('visible'))
         ficha.es_destacada = bool(request.form.get('es_destacada'))
         ficha.disponible_inmediato = bool(request.form.get('disponible_inmediato'))
 
-        # Estado público (select con opciones válidas)
         estado = (request.form.get('estado_publico') or '').strip()
         if estado in ['disponible', 'reservada', 'no_disponible']:
             ficha.estado_publico = estado
 
-        # Orden manual
         orden_raw = (request.form.get('orden_lista') or '').strip()
         if orden_raw:
             try:
@@ -182,7 +337,6 @@ def editar_candidata_web(fila):
         else:
             ficha.orden_lista = None
 
-        # Textos públicos
         ficha.nombre_publico = (request.form.get('nombre_publico') or '').strip()[:200] or None
         ficha.edad_publica = (request.form.get('edad_publica') or '').strip()[:50] or None
         ficha.ciudad_publica = (request.form.get('ciudad_publica') or '').strip()[:120] or None
@@ -196,7 +350,6 @@ def editar_candidata_web(fila):
         ficha.tags_publicos = (request.form.get('tags_publicos') or '').strip()[:255] or None
         ficha.frase_destacada = (request.form.get('frase_destacada') or '').strip()[:200] or None
 
-        # Sueldo y foto
         sueldo_desde_raw = (request.form.get('sueldo_desde') or '').strip()
         sueldo_hasta_raw = (request.form.get('sueldo_hasta') or '').strip()
 
@@ -204,16 +357,14 @@ def editar_candidata_web(fila):
         ficha.sueldo_hasta = int(sueldo_hasta_raw) if sueldo_hasta_raw.isdigit() else None
 
         ficha.sueldo_texto_publico = (request.form.get('sueldo_texto_publico') or '').strip()[:120] or None
-        ficha.foto_publica_url = (request.form.get('foto_publica_url') or '').strip()[:255] or None
+        # foto_publica_url ya no se usa en el admin (se gestiona por “Subir fotos”).
 
-        # Fecha de publicación la primera vez que se marca visible
         if ficha.visible and ficha.fecha_publicacion is None:
             ficha.fecha_publicacion = datetime.utcnow()
 
         try:
             db.session.commit()
             flash("✅ Ficha para la web actualizada correctamente.", "success")
-            # Para que no se ponga lento, volvemos a la misma ficha en vez de cargar el listado completo
             return redirect(url_for('webadmin.editar_candidata_web', fila=cand.fila))
         except Exception:
             db.session.rollback()

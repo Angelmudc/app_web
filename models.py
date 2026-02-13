@@ -411,6 +411,17 @@ class Cliente(UserMixin, db.Model):
     email                      = db.Column(db.String(100), nullable=False, unique=True, index=True)
     telefono                   = db.Column(db.String(20),  nullable=False)
 
+    # ----- Credenciales (portal de clientes) -----
+    # Username opcional: si no se define, podemos usar el código como identificador.
+    username                   = db.Column(db.String(80), unique=True, index=True)
+
+    # Hash de contraseña (Werkzeug). Si está deshabilitada, se marca como DISABLED_RESET_REQUIRED.
+    password_hash              = db.Column(
+                                    db.String(255),
+                                    nullable=False,
+                                    default="DISABLED_RESET_REQUIRED"
+                                )
+
     # ----- Depósitos / estados financieros -----
     porcentaje_deposito        = db.Column(db.Numeric(5, 2),  nullable=False, default=0.00)
     monto_deposito_requerido   = db.Column(db.Numeric(10, 2))
@@ -443,6 +454,12 @@ class Cliente(UserMixin, db.Model):
                                     default=False,
                                     comment="True si el cliente ya aceptó las políticas al ingresar por primera vez."
                                 )
+
+    # ⚠️ IMPORTANTE:
+    # No se puede hacer synonym del mismo nombre porque rompe SQLAlchemy.
+    # Si en algún módulo quieres un alias, debe ser con un nombre DIFERENTE.
+    acepto_politicas_ok        = synonym('acepto_politicas')
+
     fecha_acepto_politicas     = db.Column(
                                     db.DateTime,
                                     nullable=True,
@@ -466,6 +483,30 @@ class Cliente(UserMixin, db.Model):
     )
 
     # ----- Métodos útiles -----
+
+    def set_password(self, raw_password: str) -> None:
+        """Guarda el hash de la contraseña (requiere Werkzeug)."""
+        from werkzeug.security import generate_password_hash
+        raw = (raw_password or '').strip()
+        if not raw:
+            # Mantener deshabilitada si no se pasa contraseña
+            self.password_hash = "DISABLED_RESET_REQUIRED"
+            return
+        self.password_hash = generate_password_hash(raw)
+
+    def check_password(self, raw_password: str) -> bool:
+        """Valida la contraseña contra el hash guardado."""
+        from werkzeug.security import check_password_hash
+        if not getattr(self, 'password_hash', None):
+            return False
+        if self.password_hash == "DISABLED_RESET_REQUIRED":
+            return False
+        return check_password_hash(self.password_hash, raw_password or '')
+
+    @property
+    def requiere_reset_password(self) -> bool:
+        return (getattr(self, 'password_hash', None) or '') == "DISABLED_RESET_REQUIRED"
+
     def get_id(self):
         # Para flask-login, si en algún momento decides loguear por ID de cliente.
         return str(self.id)

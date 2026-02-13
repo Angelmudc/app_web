@@ -1,0 +1,903 @@
+/* ==========================================================
+   CLIENTES COMPONENTS CSS
+   Archivo: static/clientes/css/clientes_components.css
+   Portal: Clientes - Doméstica del Cibao A&D
+   Objetivo: Componentes reutilizables (cards, botones, badges,
+             tablas, inputs, alertas, etc.) SIN chocar con admin.
+   ========================================================== */
+
+/* ==========================================================
+   VARIABLES AUXILIARES (si clientes_base.css no las define)
+   ========================================================== */
+:root {
+  --cli-bg: #0b1220;
+  --cli-bg-soft: rgba(255,255,255,0.04);
+  --cli-bg-glass: rgba(255,255,255,0.06);
+
+  --cli-text: rgba(255,255,255,0.92);
+  --cli-text-soft: rgba(255,255,255,0.72);
+  --cli-text-muted: rgba(255,255,255,0.55);
+
+  --cli-primary: #4da3ff;
+  --cli-primary-2: #5c5cff;
+  --cli-success: #3ddc97;
+  --cli-warning: #ffcc66;
+  --cli-danger: #ff5c5c;
+  --cli-info: #7ee3ff;
+
+  --cli-border: rgba(255,255,255,0.10);
+  --cli-border-soft: rgba(255,255,255,0.06);
+
+  --cli-radius-lg: 18px;
+  --cli-radius-md: 14px;
+  --cli-radius-sm: 10px;
+
+  --cli-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  --cli-shadow-soft: 0 6px 18px rgba(0,0,0,0.25);
+
+  --cli-focus: rgba(77,163,255,0.30);
+  --cli-focus-2: rgba(92,92,255,0.28);
+
+  --cli-transition: 180ms ease;
+}
+
+/* ==========================================================
+   UTILIDADES GENERALES (solo dentro del portal clientes)
+   ========================================================== */
+body.clientes .muted {
+  color: var(--cli-text-muted) !important;
+}
+
+body.clientes .soft {
+  color: var(--cli-text-soft) !important;
+}
+
+body.clientes .nowrap {
+  white-space: nowrap !important;
+}
+
+body.clientes .truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.clientes .divider {
+  width: 100%;
+  height: 1px;
+  background: var(--cli-border-soft);
+  margin: 14px 0;
+}
+
+/* ==========================================================
+   BOTONES PREMIUM (SIN romper Bootstrap)
+   ========================================================== */
+body.clientes .btn-cli {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-radius: var(--cli-radius-md);
+  border: 1px solid var(--cli-border);
+  background: var(--cli-bg-glass);
+  color: var(--cli-text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: transform var(--cli-transition), box-shadow var(--cli-transition), background var(--cli-transition);
+  text-decoration: none;
+  user-select: none;
+}
+
+body.clientes .btn-cli:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--cli-shadow-soft);
+  background: rgba(255,255,255,0.08);
+}
+
+body.clientes .btn-cli:active {
+  transform: translateY(0px);
+}
+
+body.clientes .btn-cli:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--cli-focus);
+}
+
+body.clientes .btn-cli-primary {
+  background: linear-gradient(135deg, var(--cli-primary), var(--cli-primary-2));
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #fff;
+}
+
+body.clientes .btn-cli-primary:hover {
+  background: linear-gradient(135deg, #63b2ff, #6d6dff);
+}
+
+body.clientes .btn-cli-success {
+  background: linear-gradient(135deg, #2fbf86, var(--cli-success));
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #fff;
+}
+
+body.clientes .btn-cli-danger {
+  background: linear-gradient(135deg, #ff4b4b, #ff6d6d);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #fff;
+}
+
+body.clientes .btn-cli-outline {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+body.clientes .btn-cli-sm {
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  border-radius: var(--cli-radius-sm);
+}
+
+body.clientes .btn-cli-lg {
+  padding: 13px 20px;
+  font-size: 1rem;
+  border-radius: var(--cli-radius-lg);
+}
+
+/* ==========================================================
+   BADGES MODERNOS
+   ========================================================== */
+body.clientes .badge-cli {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.78rem;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: var(--cli-text);
+}
+
+body.clientes .badge-cli-success {
+  background: rgba(61,220,151,0.12);
+  border-color: rgba(61,220,151,0.35);
+  color: #8ff5c9;
+}
+
+body.clientes .badge-cli-warning {
+  background: rgba(255,204,102,0.12);
+  border-color: rgba(255,204,102,0.35);
+  color: #ffe1a8;
+}
+
+body.clientes .badge-cli-danger {
+  background: rgba(255,92,92,0.12);
+  border-color: rgba(255,92,92,0.35);
+  color: #ffb0b0;
+}
+
+body.clientes .badge-cli-info {
+  background: rgba(126,227,255,0.10);
+  border-color: rgba(126,227,255,0.35);
+  color: #b6f2ff;
+}
+
+body.clientes .badge-cli-primary {
+  background: rgba(77,163,255,0.12);
+  border-color: rgba(77,163,255,0.35);
+  color: #b5dcff;
+}
+
+/* ==========================================================
+   TARJETAS (CARDS)
+   ========================================================== */
+body.clientes .card-cli {
+  border-radius: var(--cli-radius-lg);
+  border: 1px solid var(--cli-border);
+  background: rgba(255,255,255,0.05);
+  box-shadow: var(--cli-shadow-soft);
+  overflow: hidden;
+  position: relative;
+}
+
+body.clientes .card-cli::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top left, rgba(77,163,255,0.10), transparent 55%);
+  pointer-events: none;
+}
+
+body.clientes .card-cli-header {
+  padding: 18px 18px 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+body.clientes .card-cli-title {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.2px;
+  color: var(--cli-text);
+}
+
+body.clientes .card-cli-subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--cli-text-muted);
+}
+
+body.clientes .card-cli-body {
+  padding: 18px;
+}
+
+body.clientes .card-cli-footer {
+  padding: 14px 18px;
+  border-top: 1px solid var(--cli-border-soft);
+  background: rgba(0,0,0,0.10);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ==========================================================
+   STAT CARDS (Resumen de dashboard)
+   ========================================================== */
+body.clientes .stat-card {
+  border-radius: var(--cli-radius-lg);
+  border: 1px solid var(--cli-border);
+  background: rgba(255,255,255,0.05);
+  padding: 16px 16px;
+  box-shadow: var(--cli-shadow-soft);
+  transition: transform var(--cli-transition), box-shadow var(--cli-transition);
+  position: relative;
+  overflow: hidden;
+}
+
+body.clientes .stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--cli-shadow);
+}
+
+body.clientes .stat-card::after {
+  content: "";
+  position: absolute;
+  right: -50px;
+  top: -50px;
+  width: 160px;
+  height: 160px;
+  background: radial-gradient(circle, rgba(92,92,255,0.22), transparent 70%);
+  filter: blur(4px);
+}
+
+body.clientes .stat-card .stat-title {
+  font-weight: 700;
+  color: var(--cli-text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 6px;
+}
+
+body.clientes .stat-card .stat-value {
+  font-weight: 900;
+  font-size: 1.6rem;
+  color: var(--cli-text);
+  letter-spacing: -0.4px;
+}
+
+body.clientes .stat-card .stat-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: #fff;
+}
+
+/* ==========================================================
+   FORMULARIOS PROFESIONALES
+   (IMPORTANTE: YA NO PISAMOS .form-control GLOBAL)
+   ========================================================== */
+body.clientes .form-cli {
+  width: 100%;
+}
+
+body.clientes .form-group {
+  margin-bottom: 14px;
+}
+
+/* Labels SOLO para formularios custom */
+body.clientes .form-cli label,
+body.clientes .card-cli label,
+body.clientes .modal-cli label,
+body.clientes .list-cli-item label {
+  font-weight: 700;
+  color: var(--cli-text-soft);
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+  display: inline-block;
+}
+
+/* Inputs SOLO dentro de wrappers custom */
+body.clientes .form-cli .form-control,
+body.clientes .form-cli input.form-control,
+body.clientes .form-cli select.form-control,
+body.clientes .form-cli textarea.form-control,
+body.clientes .card-cli .form-control,
+body.clientes .card-cli input.form-control,
+body.clientes .card-cli select.form-control,
+body.clientes .card-cli textarea.form-control,
+body.clientes .modal-cli .form-control,
+body.clientes .modal-cli input.form-control,
+body.clientes .modal-cli select.form-control,
+body.clientes .modal-cli textarea.form-control,
+body.clientes .list-cli-item .form-control {
+  border-radius: var(--cli-radius-md);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.18);
+  color: var(--cli-text);
+  padding: 11px 12px;
+  font-size: 0.95rem;
+  transition: border var(--cli-transition), box-shadow var(--cli-transition), background var(--cli-transition);
+}
+
+body.clientes .form-cli .form-control::placeholder,
+body.clientes .card-cli .form-control::placeholder,
+body.clientes .modal-cli .form-control::placeholder,
+body.clientes .list-cli-item .form-control::placeholder {
+  color: rgba(255,255,255,0.45);
+}
+
+body.clientes .form-cli .form-control:focus,
+body.clientes .card-cli .form-control:focus,
+body.clientes .modal-cli .form-control:focus,
+body.clientes .list-cli-item .form-control:focus {
+  border-color: rgba(77,163,255,0.55);
+  box-shadow: 0 0 0 4px var(--cli-focus);
+  background: rgba(0,0,0,0.22);
+  color: #fff;
+}
+
+body.clientes .form-cli textarea.form-control,
+body.clientes .card-cli textarea.form-control,
+body.clientes .modal-cli textarea.form-control {
+  min-height: 110px;
+  resize: vertical;
+}
+
+/* Checkbox / radio modern */
+body.clientes .form-cli input[type="checkbox"],
+body.clientes .form-cli input[type="radio"],
+body.clientes .card-cli input[type="checkbox"],
+body.clientes .card-cli input[type="radio"],
+body.clientes .modal-cli input[type="checkbox"],
+body.clientes .modal-cli input[type="radio"] {
+  accent-color: var(--cli-primary);
+  transform: scale(1.05);
+}
+
+/* ==========================================================
+   INPUT GROUPS
+   ========================================================== */
+body.clientes .input-group-cli {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+body.clientes .input-group-cli .form-control {
+  flex: 1;
+}
+
+body.clientes .input-addon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: var(--cli-radius-md);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: var(--cli-text-soft);
+  font-weight: 700;
+}
+
+/* ==========================================================
+   ALERTAS PERSONALIZADAS
+   ========================================================== */
+body.clientes .alert-cli {
+  border-radius: var(--cli-radius-lg);
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.06);
+  color: var(--cli-text);
+  box-shadow: var(--cli-shadow-soft);
+}
+
+body.clientes .alert-cli strong {
+  font-weight: 900;
+}
+
+body.clientes .alert-cli-success {
+  border-color: rgba(61,220,151,0.35);
+  background: rgba(61,220,151,0.10);
+}
+
+body.clientes .alert-cli-warning {
+  border-color: rgba(255,204,102,0.35);
+  background: rgba(255,204,102,0.10);
+}
+
+body.clientes .alert-cli-danger {
+  border-color: rgba(255,92,92,0.35);
+  background: rgba(255,92,92,0.10);
+}
+
+body.clientes .alert-cli-info {
+  border-color: rgba(126,227,255,0.35);
+  background: rgba(126,227,255,0.10);
+}
+
+/* ==========================================================
+   TABLAS ULTRA PRO
+   ========================================================== */
+body.clientes .table-cli {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--cli-radius-lg);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+}
+
+body.clientes .table-cli thead th {
+  padding: 14px 14px;
+  text-align: left;
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: var(--cli-text-soft);
+  background: rgba(0,0,0,0.22);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+
+body.clientes .table-cli tbody td {
+  padding: 14px 14px;
+  font-size: 0.93rem;
+  color: var(--cli-text);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+body.clientes .table-cli tbody tr:hover td {
+  background: rgba(255,255,255,0.04);
+}
+
+body.clientes .table-cli tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==========================================================
+   LISTAS / ITEMS
+   ========================================================== */
+body.clientes .list-cli {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+body.clientes .list-cli-item {
+  border-radius: var(--cli-radius-lg);
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.05);
+  padding: 14px 16px;
+  box-shadow: var(--cli-shadow-soft);
+  transition: transform var(--cli-transition), box-shadow var(--cli-transition);
+}
+
+body.clientes .list-cli-item:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--cli-shadow);
+}
+
+body.clientes .list-cli-item .title {
+  font-weight: 900;
+  font-size: 1rem;
+  margin: 0 0 4px 0;
+}
+
+body.clientes .list-cli-item .meta {
+  font-size: 0.88rem;
+  color: var(--cli-text-muted);
+}
+
+/* ==========================================================
+   MODALS CUSTOM
+   ========================================================== */
+body.clientes .modal-cli {
+  border-radius: var(--cli-radius-lg);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(18,25,45,0.95);
+  box-shadow: var(--cli-shadow);
+  padding: 18px;
+}
+
+body.clientes .modal-cli .modal-title {
+  font-weight: 900;
+  font-size: 1.1rem;
+}
+
+body.clientes .modal-cli .modal-subtitle {
+  font-size: 0.9rem;
+  color: var(--cli-text-muted);
+}
+
+/* ==========================================================
+   PROGRESS BAR PERSONALIZADA
+   ========================================================== */
+body.clientes .progress-cli {
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+body.clientes .progress-cli > span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--cli-primary), var(--cli-primary-2));
+  border-radius: 999px;
+  transition: width 300ms ease;
+}
+
+/* ==========================================================
+   AVATARS
+   ========================================================== */
+body.clientes .avatar-cli {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+/* ==========================================================
+   DROPDOWN CUSTOM LOOK
+   ========================================================== */
+body.clientes .dropdown-menu {
+  border-radius: var(--cli-radius-lg);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(20,25,40,0.95);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--cli-shadow);
+  padding: 10px;
+}
+
+body.clientes .dropdown-item {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+}
+
+body.clientes .dropdown-item:hover {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+}
+
+body.clientes .dropdown-divider {
+  border-color: rgba(255,255,255,0.08);
+}
+
+/* ==========================================================
+   NAVBAR ENHANCEMENT
+   ========================================================== */
+body.clientes .navbar {
+  background: rgba(10,15,25,0.92) !important;
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+body.clientes .navbar .nav-link {
+  font-weight: 700;
+  color: rgba(255,255,255,0.78) !important;
+  border-radius: 12px;
+  padding: 8px 12px;
+  transition: background var(--cli-transition), color var(--cli-transition);
+}
+
+body.clientes .navbar .nav-link:hover {
+  background: rgba(255,255,255,0.06);
+  color: #fff !important;
+}
+
+body.clientes .navbar .nav-link.active {
+  background: rgba(77,163,255,0.18);
+  color: #fff !important;
+}
+
+/* ==========================================================
+   FOOTER
+   ========================================================== */
+body.clientes footer {
+  color: rgba(255,255,255,0.65);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.12);
+}
+
+body.clientes footer a {
+  color: rgba(255,255,255,0.78);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+body.clientes footer a:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* ==========================================================
+   TOASTS (flash messages)
+   ========================================================== */
+body.clientes .toast-container {
+  position: fixed;
+  top: 88px;
+  right: 16px;
+  z-index: 9999;
+  width: min(360px, calc(100vw - 32px));
+}
+
+body.clientes .toast {
+  border-radius: var(--cli-radius-lg);
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(15,20,35,0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--cli-shadow);
+  color: rgba(255,255,255,0.92);
+}
+
+/* ==========================================================
+   FAB WHATSAPP
+   ========================================================== */
+body.clientes .fab-whatsapp {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #00c853, #00a844);
+  color: #fff;
+  box-shadow: var(--cli-shadow);
+  text-decoration: none;
+  transition: transform var(--cli-transition), box-shadow var(--cli-transition);
+  z-index: 9998;
+}
+
+body.clientes .fab-whatsapp:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 40px rgba(0,0,0,0.45);
+}
+
+/* ==========================================================
+   RESPONSIVE FINO
+   ========================================================== */
+@media (max-width: 576px) {
+  body.clientes .card-cli-body {
+    padding: 14px;
+  }
+
+  body.clientes .card-cli-header {
+    padding: 14px 14px 8px 14px;
+  }
+
+  body.clientes .btn-cli {
+    width: 100%;
+  }
+
+  body.clientes .toast-container {
+    top: 74px;
+    right: 12px;
+  }
+}
+
+/* ==========================================================
+   FIX: CARDS CON FOTO ARRIBA (sin espacio feo)
+   ========================================================== */
+body.clientes .card-cli .card-cli-body:has(img) {
+  padding-top: 0 !important;
+}
+
+body.clientes .card-cli .card-cli-body:has(.card-domestica-avatar),
+body.clientes .card-cli .card-cli-body:has(.domestica-avatar),
+body.clientes .card-cli .card-cli-body:has(.avatar-wrapper) {
+  padding-top: 0 !important;
+}
+
+body.clientes .card-cli .card-cli-header + .card-cli-body:has(img) {
+  padding-top: 0 !important;
+}
+
+body.clientes .card-cli img {
+  display: block;
+}
+
+/* ==========================================================
+   FIX CONTRASTE (NAVBAR / FOOTER / BOTONES CLAROS)
+   ========================================================== */
+body.clientes .navbar .nav-link,
+body.clientes .navbar a.nav-link {
+  color: rgba(255,255,255,0.92) !important;
+  font-weight: 750;
+}
+
+body.clientes .navbar .nav-link:hover,
+body.clientes .navbar a.nav-link:hover {
+  color: #fff !important;
+  background: rgba(255,255,255,0.08);
+}
+
+body.clientes .navbar .nav-link.active {
+  color: #fff !important;
+  background: rgba(77,163,255,0.22);
+}
+
+body.clientes .navbar .dropdown-toggle {
+  color: rgba(255,255,255,0.92) !important;
+  font-weight: 750;
+}
+
+body.clientes footer {
+  color: rgba(255,255,255,0.82) !important;
+}
+
+body.clientes footer a {
+  color: rgba(255,255,255,0.92) !important;
+  font-weight: 750;
+}
+
+body.clientes footer a:hover {
+  color: #fff !important;
+  text-decoration: underline;
+}
+
+body.clientes .btn.btn-outline,
+body.clientes .btn.btn-outline-secondary,
+body.clientes .btn.btn-light {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.28) !important;
+  color: #0b1220 !important;
+  font-weight: 750;
+}
+
+body.clientes .btn.btn-outline:hover,
+body.clientes .btn.btn-outline-secondary:hover,
+body.clientes .btn.btn-light:hover {
+  background: rgba(15, 23, 42, 0.06) !important;
+  border-color: rgba(15, 23, 42, 0.36) !important;
+}
+
+body.clientes .btn.btn-secondary {
+  background: rgba(15, 23, 42, 0.14) !important;
+  border: 1px solid rgba(15, 23, 42, 0.26) !important;
+  color: #0b1220 !important;
+  font-weight: 750;
+}
+
+body.clientes .btn.btn-secondary:hover {
+  background: rgba(15, 23, 42, 0.20) !important;
+  border-color: rgba(15, 23, 42, 0.32) !important;
+}
+
+/* ==========================================================
+   COMPATIBILIDAD BOOTSTRAP (CARDS BLANCAS)
+   ========================================================== */
+body.clientes .card:not(.card-cli) {
+  background: #ffffff;
+  border: 1px solid rgba(16, 24, 40, 0.10);
+}
+
+body.clientes .card:not(.card-cli) .form-label,
+body.clientes .card:not(.card-cli) label {
+  color: #101828;
+  font-weight: 750;
+}
+
+body.clientes .card:not(.card-cli) .form-text {
+  color: rgba(16, 24, 40, 0.65);
+}
+
+body.clientes .card:not(.card-cli) .form-control,
+body.clientes .card:not(.card-cli) .form-select,
+body.clientes .card:not(.card-cli) textarea.form-control {
+  background: #ffffff;
+  color: #101828;
+  border: 1px solid rgba(16, 24, 40, 0.18);
+}
+
+body.clientes .card:not(.card-cli) .form-control::placeholder,
+body.clientes .card:not(.card-cli) textarea.form-control::placeholder {
+  color: rgba(16, 24, 40, 0.45);
+}
+
+body.clientes .card:not(.card-cli) .form-control:focus,
+body.clientes .card:not(.card-cli) .form-select:focus,
+body.clientes .card:not(.card-cli) textarea.form-control:focus {
+  border-color: rgba(79, 140, 255, 0.65);
+  box-shadow: 0 0 0 .25rem rgba(79, 140, 255, 0.16);
+}
+
+body.clientes .card:not(.card-cli) .form-check-label {
+  color: rgba(16, 24, 40, 0.92);
+  font-weight: 650;
+}
+
+body.clientes .card:not(.card-cli) .btn.btn-secondary,
+body.clientes .card:not(.card-cli) .btn.btn-light,
+body.clientes .card:not(.card-cli) .btn.btn-outline-secondary {
+  background: #f2f4f7;
+  border: 1px solid rgba(16, 24, 40, 0.18);
+  color: #101828;
+  font-weight: 800;
+}
+
+body.clientes .card:not(.card-cli) .btn.btn-secondary:hover,
+body.clientes .card:not(.card-cli) .btn.btn-light:hover,
+body.clientes .card:not(.card-cli) .btn.btn-outline-secondary:hover {
+  background: #e9edf3;
+  border-color: rgba(16, 24, 40, 0.26);
+}
+
+body.clientes .card:not(.card-cli) .btn.btn-primary {
+  color: #ffffff;
+}
+
+/* ==========================================================
+   FIX LOGIN: Botón ojo (togglePwd) sin “cuadro” pegado
+   - El problema viene de los estilos globales de .btn-light/.btn-outline-secondary
+   - Aquí lo dejamos como una sola pieza con el input
+   ========================================================== */
+body.clientes .input-group #togglePwd,
+body.clientes .input-group button#togglePwd {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+body.clientes .input-group:has(#togglePwd) {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(16, 24, 40, 0.18);
+  background: #ffffff;
+}
+
+body.clientes .input-group:has(#togglePwd) .form-control {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+body.clientes .input-group:has(#togglePwd) #togglePwd {
+  border-left: 1px solid rgba(16, 24, 40, 0.12) !important;
+  background: #f2f4f7 !important;
+  color: #101828 !important;
+}
+
+body.clientes .input-group:has(#togglePwd):focus-within {
+  border-color: rgba(79, 140, 255, 0.65) !important;
+  box-shadow: 0 0 0 .25rem rgba(79, 140, 255, 0.16);
+}

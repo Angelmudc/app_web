@@ -19,9 +19,9 @@
   <!-- BUSCADOR -->
   <div class="card mt-3">
     <div class="card-body">
-      <form method="post" class="row g-2 align-items-end">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="col-12 col-md-9">
+      <form method="get" class="row g-2 align-items-end">
+        <input type="hidden" name="page" value="1">
+        <div class="col-12 col-lg-7">
           <label for="q" class="form-label mb-1">Buscar candidata</label>
           <div class="input-group input-group-lg">
             <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
@@ -30,15 +30,27 @@
               class="form-control"
               id="q"
               name="q"
-              placeholder="Nombre, cédula, código o teléfono"
+              placeholder="Nombre, cédula o teléfono (código exacto: CAN-000000)"
               value="{{ q or '' }}"
               autocomplete="off">
           </div>
           <div class="form-text">
-            Tip: puedes pegar la cédula sin guiones o escribir parte del nombre.
+            Tip: sin acentos también encuentra con acentos. Puedes pegar cédula/teléfono con o sin guiones. El código es exacto (CAN-000000).
           </div>
         </div>
-        <div class="col-12 col-md-3 d-grid">
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <label for="per_page" class="form-label mb-1">Filas por página</label>
+          <select class="form-select form-select-lg" id="per_page" name="per_page">
+            {% set pp = per_page or 20 %}
+            <option value="10" {{ 'selected' if pp == 10 else '' }}>10</option>
+            <option value="20" {{ 'selected' if pp == 20 else '' }}>20</option>
+            <option value="50" {{ 'selected' if pp == 50 else '' }}>50</option>
+            <option value="100" {{ 'selected' if pp == 100 else '' }}>100</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-2 d-grid">
           <button type="submit" class="btn btn-primary btn-lg">
             <i class="fa-solid fa-search me-1"></i>Buscar
           </button>
@@ -47,6 +59,7 @@
     </div>
   </div>
 
+  {% if q %}
   <!-- RESULTADOS -->
   <div class="card mt-3">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -54,11 +67,64 @@
         <i class="fa-solid fa-list-ul me-2"></i> Resultados
       </span>
       <span class="badge bg-light text-dark">
-        {{ resultados|length }} candidata{{ resultados|length != 1 and 's' or '' }}
+        {% set total = (pagination.total if pagination is defined and pagination else (resultados|length)) %}
+        {{ total }} candidata{{ total != 1 and 's' or '' }}
       </span>
     </div>
     <div class="card-body p-0">
       {% if resultados %}
+      {% if pagination is defined and pagination and pagination.pages > 1 %}
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 p-3 border-bottom">
+          <div class="text-muted small">
+            Mostrando
+            <strong>{{ (pagination.page - 1) * pagination.per_page + 1 }}</strong>
+            –
+            <strong>{{ (pagination.page - 1) * pagination.per_page + resultados|length }}</strong>
+            de
+            <strong>{{ pagination.total }}</strong>
+          </div>
+
+          <nav aria-label="Paginación de candidatas">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+                <a class="page-link" href="{{ url_for('webadmin.listar_candidatas_web', q=q, page=pagination.prev_num, per_page=per_page) }}" aria-label="Anterior">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+
+              {# Ventana de páginas #}
+              {% set start = (pagination.page - 2) if (pagination.page - 2) > 1 else 1 %}
+              {% set end = (pagination.page + 2) if (pagination.page + 2) < pagination.pages else pagination.pages %}
+
+              {% if start > 1 %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('webadmin.listar_candidatas_web', q=q, page=1, per_page=per_page) }}">1</a></li>
+                {% if start > 2 %}
+                  <li class="page-item disabled"><span class="page-link">…</span></li>
+                {% endif %}
+              {% endif %}
+
+              {% for p in range(start, end + 1) %}
+                <li class="page-item {{ 'active' if p == pagination.page }}">
+                  <a class="page-link" href="{{ url_for('webadmin.listar_candidatas_web', q=q, page=p, per_page=per_page) }}">{{ p }}</a>
+                </li>
+              {% endfor %}
+
+              {% if end < pagination.pages %}
+                {% if end < pagination.pages - 1 %}
+                  <li class="page-item disabled"><span class="page-link">…</span></li>
+                {% endif %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('webadmin.listar_candidatas_web', q=q, page=pagination.pages, per_page=per_page) }}">{{ pagination.pages }}</a></li>
+              {% endif %}
+
+              <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+                <a class="page-link" href="{{ url_for('webadmin.listar_candidatas_web', q=q, page=pagination.next_num, per_page=per_page) }}" aria-label="Siguiente">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead class="table-light">
@@ -126,6 +192,23 @@
           </tbody>
         </table>
       </div>
+      {% if pagination is defined and pagination and pagination.pages > 1 %}
+        <div class="d-flex justify-content-center justify-content-md-end p-3 border-top">
+          <nav aria-label="Paginación de candidatas (abajo)">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+                <a class="page-link" href="{{ url_for('webadmin.listar_candidatas_web', q=q, page=pagination.prev_num, per_page=per_page) }}">Anterior</a>
+              </li>
+              <li class="page-item disabled">
+                <span class="page-link">Página {{ pagination.page }} / {{ pagination.pages }}</span>
+              </li>
+              <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+                <a class="page-link" href="{{ url_for('webadmin.listar_candidatas_web', q=q, page=pagination.next_num, per_page=per_page) }}">Siguiente</a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
       {% else %}
         <p class="text-muted text-center my-3">
           No se encontraron candidatas con ese criterio.
@@ -133,9 +216,14 @@
       {% endif %}
     </div>
   </div>
+  {% else %}
+  <div class="text-muted text-center mt-4">
+    Escribe un nombre, cédula o teléfono arriba para buscar.
+  </div>
+  {% endif %}
 
   <div class="text-center mt-4">
-    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">
+    <a href="{{ url_for('webadmin.listar_candidatas_web') }}" class="btn btn-outline-secondary">
       <i class="fa-solid fa-house me-1"></i>Volver al inicio
     </a>
   </div>

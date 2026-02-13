@@ -3,22 +3,23 @@
 from flask_wtf import FlaskForm
 from wtforms import (
     StringField, PasswordField, SelectField, SelectMultipleField,
-    TextAreaField, BooleanField, IntegerField, FloatField, SubmitField
+    TextAreaField, BooleanField, IntegerField, FloatField, SubmitField, HiddenField
 )
 from wtforms.validators import (
-    DataRequired, Length, NumberRange, Optional, ValidationError
+    DataRequired, Length, NumberRange, Optional, ValidationError, Email
 )
 from wtforms.widgets import ListWidget, CheckboxInput
-# en clientes/forms.py
-from wtforms import StringField, HiddenField
-from wtforms.validators import DataRequired, Email
 # ─────────────────────────────────────────────────────────────
 # Utilidades
 # ─────────────────────────────────────────────────────────────
 def _strip(v):
     return v.strip() if isinstance(v, str) else v
 
+def _strip_lower(v):
+    return v.strip().lower() if isinstance(v, str) else v
+
 STRIP = [_strip]
+STRIP_LOWER = [_strip_lower]
 
 # ─────────────────────────────────────────────────────────────
 # Intentar obtener las opciones centralizadas; si no, usar fallback
@@ -48,10 +49,13 @@ except Exception:
 # ─────────────────────────────────────────────────────────────
 class ClienteLoginForm(FlaskForm):
     username = StringField(
-        "Usuario o Email",
-        validators=[DataRequired("Ingresa tu usuario o correo."), Length(min=3, max=120)],
-        filters=STRIP,
-        render_kw={"placeholder": "Tu usuario o correo", "autocomplete": "username"}
+        "Usuario, Email o Código",
+        validators=[DataRequired("Ingresa tu usuario, correo o código."), Length(min=3, max=120)],
+        filters=STRIP_LOWER,
+        render_kw={
+            "placeholder": "Tu usuario, correo o código",
+            "autocomplete": "username"
+        }
     )
     password = PasswordField(
         "Contraseña",

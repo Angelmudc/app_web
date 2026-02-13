@@ -1,0 +1,362 @@
+{% extends "clientes/base.html" %}
+
+{% block title %}Domésticas disponibles{% endblock %}
+
+{% block content %}
+
+<section class="section">
+  <div class="container">
+
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mt-3 mb-2">
+      <div>
+        <h1 class="section-title d-flex align-items-center gap-2">
+          <i class="fa-solid fa-users"></i>
+          Domésticas disponibles
+        </h1>
+        <p class="section-subtitle">
+          Este banco está disponible solo para clientes con solicitud <strong>activa</strong> y plan <strong>Premium/VIP</strong>.
+        </p>
+      </div>
+
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('clientes.dashboard') }}" class="btn btn-secondary">
+          <i class="fa-solid fa-arrow-left me-1"></i> Volver al panel
+        </a>
+      </div>
+    </div>
+
+    <!-- Estado silencioso de actualización (modo pro) -->
+    <div id="liveStatus" style="display:none; margin:10px 0; color:#667085; font-size:14px;">
+      Actualizando listado...
+    </div>
+
+
+    {% if pages is defined and pages > 1 %}
+      <div class="d-flex justify-content-end mt-3">
+        <span class="badge bg-light text-dark">Página {{ page }} / {{ pages }}</span>
+      </div>
+    {% endif %}
+
+    <div id="domesticasGrid" class="grid-3">
+      {% if resultados %}
+        {# resultados = [(Candidata, CandidataWeb), ...] #}
+        {% for cand, ficha in resultados %}
+          <div class="card card-domestica">
+
+            <!-- Encabezado: estado -->
+            <div class="card-domestica-header">
+              {% set estado = (ficha.estado_publico if ficha else 'disponible') %}
+              {% if estado == 'disponible' %}
+                <span class="badge badge-success">Disponible</span>
+              {% elif estado == 'reservada' %}
+                <span class="badge badge-warning">Reservada</span>
+              {% else %}
+                <span class="badge badge-dark">No disponible</span>
+              {% endif %}
+            </div>
+
+            <!-- Avatar centrado (clic para ver grande) -->
+            {% if cand.foto_perfil %}
+              <div class="card-domestica-avatar">
+                <img
+                  src="{{ url_for('clientes.domestica_foto_perfil', fila=cand.fila) }}"
+                  alt="Foto de {{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}"
+                  loading="lazy"
+                  data-nombre="{{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}"
+                  data-edad="{{ (ficha and ficha.edad_publica) or '' }}"
+                  data-codigo="{{ cand.codigo or '' }}"
+                  onclick="verImagenCompleta(this)"
+                  class="domestica-foto"
+                >
+              </div>
+            {% endif %}
+
+            <!-- Nombre y edad -->
+            <h3 class="card-domestica-nombre">
+              {{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}
+              {% if ficha and ficha.edad_publica %}, {{ ficha.edad_publica }}{% endif %}
+            </h3>
+
+            <!-- Código -->
+            {% if cand.codigo %}
+              <p class="card-domestica-codigo">
+                <span class="badge badge-dark">Código: {{ cand.codigo }}</span>
+              </p>
+            {% endif %}
+
+            <!-- Modalidad / ciudad corta -->
+            <p class="card-domestica-meta">
+              {% if ficha and ficha.modalidad_publica %}
+                {{ ficha.modalidad_publica }}
+              {% else %}
+                Doméstica disponible
+              {% endif %}
+
+              {% if ficha and ficha.ciudad_publica %}
+                · {{ ficha.ciudad_publica }}
+              {% endif %}
+            </p>
+
+            {# Mensaje si NO está disponible inmediato (si existe) #}
+            {% if ficha and (ficha.disponible_inmediato is defined) and (not ficha.disponible_inmediato) %}
+              <p class="card-domestica-alert" style="margin:6px 0 0; color:#d92d20; font-weight:600; font-size:13px;">
+                No disponible para iniciar de inmediato.
+              </p>
+            {% endif %}
+
+            {% if ficha and ficha.experiencia_resumen %}
+              <p class="text-muted small" style="
+                margin-top:10px;
+                display:-webkit-box;
+                -webkit-line-clamp:3;
+                line-clamp:3;
+                -webkit-box-orient:vertical;
+                overflow:hidden;
+              ">
+                {{ ficha.experiencia_resumen }}
+              </p>
+            {% endif %}
+
+            <!-- Acciones principales -->
+            <div class="card-domestica-actions">
+              <a
+                href="{{ url_for('clientes.domestica_detalle', fila=cand.fila) }}"
+                class="btn btn-outline btn-ver-detalle"
+                rel="nofollow"
+              >
+                Ver más detalles
+              </a>
+
+              <button
+                type="button"
+                class="btn btn-primary btn-oferta"
+                data-codigo="{{ cand.codigo or '' }}"
+                onclick="ofrecerEmpleo(this)"
+              >
+                Ofrecer empleo
+              </button>
+            </div>
+
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    {% if not resultados or resultados|length == 0 %}
+      <p class="info-text" style="margin-top:18px;">
+        Por el momento no hay candidatas para mostrar con ese criterio.
+      </p>
+    {% endif %}
+
+    {% if pages is defined and pages > 1 %}
+      <nav class="pagination" aria-label="Paginación de domésticas">
+        {% if has_prev %}
+          <a href="{{ url_for('clientes.banco_domesticas', page=prev_num) }}" class="page-link" rel="nofollow">
+            ← Anterior
+          </a>
+        {% endif %}
+
+        <span class="page-info">Página {{ page }} de {{ pages }}</span>
+
+        {% if has_next %}
+          <a href="{{ url_for('clientes.banco_domesticas', page=next_num) }}" class="page-link" rel="nofollow">
+            Siguiente →
+          </a>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  </div>
+</section>
+
+
+<!-- MODAL PARA VER LA FOTO EN GRANDE (PRO) -->
+<div
+  id="modalImagen"
+  aria-hidden="true"
+  style="
+    display:none;
+    position:fixed;
+    inset:0;
+    z-index:999999;
+    padding:18px;
+  "
+>
+  <!-- Backdrop -->
+  <div
+    id="modalBackdrop"
+    onclick="cerrarImagen()"
+    aria-hidden="true"
+    style="
+      position:absolute;
+      inset:0;
+      background:rgba(0,0,0,.72);
+    "
+  ></div>
+
+  <!-- Dialog -->
+  <div
+    id="modalDialog"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Foto de candidata"
+    tabindex="-1"
+    style="
+      position:relative;
+      width:min(920px, calc(100vw - 28px));
+      max-height:calc(100vh - 28px);
+      margin:0 auto;
+      border-radius:16px;
+      overflow:hidden;
+      background:#fff;
+      box-shadow:0 24px 70px rgba(0,0,0,.45);
+      display:flex;
+      flex-direction:column;
+      top:50%;
+      transform:translateY(-50%);
+    "
+  >
+    <!-- Close button -->
+    <button
+      type="button"
+      onclick="cerrarImagen()"
+      aria-label="Cerrar"
+      style="
+        position:absolute;
+        top:10px;
+        right:10px;
+        width:40px;
+        height:40px;
+        border:none;
+        border-radius:10px;
+        background:rgba(255,255,255,.92);
+        box-shadow:0 10px 20px rgba(0,0,0,.18);
+        cursor:pointer;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        z-index:2;
+      "
+    >
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+
+    <!-- Image area -->
+    <div
+      style="
+        background:#0b1220;
+        padding:12px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+      "
+    >
+      <img
+        id="imgModalGrande"
+        alt="Foto candidata"
+        style="
+          width:100%;
+          height:auto;
+          max-height:70vh;
+          object-fit:contain;
+          border-radius:12px;
+          background:#0b1220;
+        "
+      >
+    </div>
+
+    <!-- Footer info -->
+    <div style="padding:12px 14px 14px; border-top:1px solid #e5e7eb;">
+      <div id="modalNombre" style="font-weight:800; font-size:16px; color:#101828; line-height:1.2;"></div>
+      <div id="modalMeta" style="margin-top:4px; font-size:13px; color:#667085; font-weight:600;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- JS específico para el visor de imagen + oferta -->
+<script>
+  function verImagenCompleta(el) {
+    const modal = document.getElementById('modalImagen');
+    const dialog = document.getElementById('modalDialog');
+    const img = document.getElementById('imgModalGrande');
+    const nombreEl = document.getElementById('modalNombre');
+    const metaEl = document.getElementById('modalMeta');
+
+    const src = (el && el.src) ? el.src : '';
+    if (!modal || !dialog || !img || !src) return;
+
+    const nombre = (el && el.dataset) ? (el.dataset.nombre || '') : '';
+    const edad = (el && el.dataset) ? (el.dataset.edad || '') : '';
+    const codigo = (el && el.dataset) ? (el.dataset.codigo || '') : '';
+
+    img.src = src;
+
+    if (nombreEl) nombreEl.textContent = nombre || 'Candidata';
+
+    const partes = [];
+    if (edad) partes.push(`Edad: ${edad}`);
+    if (codigo) partes.push(`Código: ${codigo}`);
+    if (metaEl) metaEl.textContent = partes.join(' · ');
+
+    modal.style.display = 'block';
+    modal.setAttribute('aria-hidden', 'false');
+
+    // Bloquea scroll de fondo (pro)
+    document.body.style.overflow = 'hidden';
+
+    // Enfocar para ESC
+    setTimeout(() => {
+      try { dialog.focus(); } catch (e) {}
+    }, 0);
+  }
+
+  function cerrarImagen() {
+    const modal = document.getElementById('modalImagen');
+    const img = document.getElementById('imgModalGrande');
+
+    if (img) img.src = '';
+
+    if (modal) {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.body.style.overflow = '';
+  }
+
+  // Cerrar con ESC
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('modalImagen');
+      if (modal && modal.style.display === 'block') cerrarImagen();
+    }
+  });
+
+  function ofrecerEmpleo(elOrCodigo) {
+    // Soporta: ofrecerEmpleo(this)  ó  ofrecerEmpleo('COD-123')
+    let codigo = "";
+
+    if (typeof elOrCodigo === "string") {
+      codigo = elOrCodigo;
+    } else if (elOrCodigo && elOrCodigo.dataset) {
+      codigo = elOrCodigo.dataset.codigo || "";
+    }
+
+    codigo = (codigo || "").toString().trim();
+
+    if (!codigo) {
+      alert("Código de candidata no disponible.");
+      return;
+    }
+
+    const mensaje = encodeURIComponent(
+      `Hola, me interesa la candidata con el código ${codigo}. Quisiera ofrecer un empleo y recibir más información.`
+    );
+
+    const telefono = "18094296892"; // WhatsApp oficial
+    const url = `https://wa.me/${telefono}?text=${mensaje}`;
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+</script>
+{% endblock %}

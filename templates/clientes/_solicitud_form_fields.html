@@ -37,7 +37,8 @@
     {% else %}
       <div
         class="form-group {{ extra_class or '' }}"
-        style="margin-top: 12px; {{ wrapper_style or '' }}"
+        style="margin-top: 12px;"
+        {% if wrapper_style %}data-extra-style="{{ wrapper_style }}"{% endif %}
         {% if wrapper_id %}id="{{ wrapper_id }}"{% endif %}
         {% if data_field %}data-field="{{ data_field }}"{% endif %}
       >
@@ -135,9 +136,14 @@
 
 {# ─────────────────────────────────────────────
    JS: "Otro" dinámico + "todas_anteriores" áreas comunes
+   (versión ES5, sin optional chaining, sin arrow functions)
    ───────────────────────────────────────────── #}
 <script>
 (function () {
+  // Evita doble inicialización si el partial se incluye más de una vez
+  if (window.__solicitudFieldsInit__) return;
+  window.__solicitudFieldsInit__ = true;
+
   function norm(v) {
     return (v || "").toString().trim().toLowerCase();
   }
@@ -147,6 +153,22 @@
 
   function getWrap(id) {
     return document.getElementById(id);
+  }
+
+  function closestFormGroup(el) {
+    var cur = el;
+    while (cur && cur !== document) {
+      if (cur.classList && cur.classList.contains("form-group")) return cur;
+      cur = cur.parentNode;
+    }
+    return null;
+  }
+
+  function toArray(nodeList) {
+    var arr = [];
+    if (!nodeList) return arr;
+    for (var i = 0; i < nodeList.length; i++) arr.push(nodeList[i]);
+    return arr;
   }
 
   // Encuentra inputs/checkboxes de un grupo por wrapper (checkbox-list o select multiple)
@@ -184,13 +206,15 @@
   function clearTextInputs(wrapper) {
     if (!wrapper) return;
     var inputs = wrapper.querySelectorAll('input[type="text"], textarea');
-    inputs.forEach(function (inp) { inp.value = ""; });
+    inputs = toArray(inputs);
+    for (var i = 0; i < inputs.length; i++) inputs[i].value = "";
   }
 
   // ✅ Toggle "Otro" fields
   function syncOtro() {
     // Edad
-    var wrapEdad = document.getElementById("wrap_edad_requerida") || document.getElementById("edad_requerida")?.closest(".form-group");
+    var edadEl = document.getElementById("edad_requerida");
+    var wrapEdad = document.getElementById("wrap_edad_requerida") || (edadEl ? closestFormGroup(edadEl) : null);
     var wrapEdadOtro = getWrap("wrap_edad_otro");
     if (wrapEdadOtro) {
       if (groupHasValue(wrapEdad, "otro")) {
@@ -202,7 +226,8 @@
     }
 
     // Funciones
-    var wrapFun = document.getElementById("wrap_funciones") || document.getElementById("funciones")?.closest(".form-group");
+    var funEl = document.getElementById("funciones");
+    var wrapFun = document.getElementById("wrap_funciones") || (funEl ? closestFormGroup(funEl) : null);
     var wrapFunOtro = getWrap("wrap_funciones_otro");
     if (wrapFunOtro) {
       if (groupHasValue(wrapFun, "otro")) {
@@ -214,10 +239,10 @@
     }
 
     // Tipo lugar
-    var wrapTL = document.getElementById("wrap_tipo_lugar") || document.getElementById("tipo_lugar")?.closest(".form-group");
+    var tlEl = document.getElementById("tipo_lugar");
+    var wrapTL = document.getElementById("wrap_tipo_lugar") || (tlEl ? closestFormGroup(tlEl) : null);
     var wrapTLOtro = getWrap("wrap_tipo_lugar_otro");
     if (wrapTLOtro) {
-      // En SelectField normalmente es value == 'otro'
       if (groupHasValue(wrapTL, "otro")) {
         show(wrapTLOtro);
       } else {
@@ -247,101 +272,101 @@
     // Caso checkbox-list
     var inputs = wrapAreas.querySelectorAll('input[type="checkbox"]');
     if (inputs && inputs.length) {
-      var todas = null;
-      inputs.forEach(function (inp) {
-        if (norm(inp.value) === "todas_anteriores") todas = inp;
-      });
+      inputs = toArray(inputs);
 
+      var todas = null;
+      for (var i = 0; i < inputs.length; i++) {
+        if (norm(inputs[i].value) === "todas_anteriores") {
+          todas = inputs[i];
+          break;
+        }
+      }
       if (!todas) return;
 
       function setAllExceptOtro(checked) {
-        inputs.forEach(function (inp) {
-          var v = norm(inp.value);
-          if (v === "todas_anteriores") return;
+        for (var k = 0; k < inputs.length; k++) {
+          var v = norm(inputs[k].value);
+          if (v === "todas_anteriores") continue;
           if (v === "otro") {
-            inp.checked = false; // nunca marca "otro" con todas
-            return;
+            inputs[k].checked = false;
+            continue;
           }
-          inp.checked = !!checked;
-        });
-      }
-
-      function anyUnchecked() {
-        for (var i = 0; i < inputs.length; i++) {
-          var v = norm(inputs[i].value);
-          if (v === "todas_anteriores" || v === "otro") continue;
-          if (!inputs[i].checked) return true;
+          inputs[k].checked = !!checked;
         }
-        return false;
       }
 
-      // Si marcan TODAS
-      if (todas.checked) {
-        setAllExceptOtro(true);
-      } else {
-        // Si desmarcan alguna de las normales, tumba "todas_anteriores"
-        // (esto se maneja en el listener de cambios)
+      function allNormalsChecked() {
+        for (var t = 0; t < inputs.length; t++) {
+          var vv = norm(inputs[t].value);
+          if (vv === "todas_anteriores" || vv === "otro") continue;
+          if (!inputs[t].checked) return false;
+        }
+        return true;
       }
+
+      if (todas.checked) setAllExceptOtro(true);
 
       // Listeners
-      inputs.forEach(function (inp) {
-        inp.addEventListener("change", function () {
-          var v = norm(inp.value);
+      for (var m = 0; m < inputs.length; m++) {
+        (function (inp) {
+          inp.addEventListener("change", function () {
+            var v = norm(inp.value);
 
-          if (v === "todas_anteriores") {
-            if (inp.checked) {
-              setAllExceptOtro(true);
-            }
-          } else if (v === "otro") {
-            // si marcaron otro, tumba todas_anteriores
-            if (inp.checked) {
-              todas.checked = false;
-            }
-          } else {
-            // si quitaron una normal, tumba todas_anteriores
-            if (!inp.checked) {
-              todas.checked = false;
+            if (v === "todas_anteriores") {
+              if (inp.checked) setAllExceptOtro(true);
+            } else if (v === "otro") {
+              if (inp.checked) todas.checked = false;
             } else {
-              // si ya todas las normales están marcadas, puedes marcar "todas_anteriores"
-              // (opcional, pero útil)
-              if (!anyUnchecked()) {
-                todas.checked = true;
-                // y asegúrate que "otro" no se marque
-                inputs.forEach(function (x) { if (norm(x.value) === "otro") x.checked = false; });
+              if (!inp.checked) {
+                todas.checked = false;
+              } else {
+                if (allNormalsChecked()) {
+                  todas.checked = true;
+                  // asegura que "otro" no se marque
+                  for (var x = 0; x < inputs.length; x++) {
+                    if (norm(inputs[x].value) === "otro") inputs[x].checked = false;
+                  }
+                }
               }
             }
-          }
 
-          // Luego sincroniza "otro" UI
-          syncOtro();
-        });
-      });
+            syncOtro();
+          });
+        })(inputs[m]);
+      }
 
       return;
     }
 
-    // Caso select multiple (si lo usas así)
+    // Caso select multiple
     var sel = wrapAreas.querySelector("select");
     if (sel && sel.multiple) {
       sel.addEventListener("change", function () {
-        var selected = Array.from(sel.options).filter(o => o.selected).map(o => norm(o.value));
-        var hasTodas = selected.includes("todas_anteriores");
+        var selected = [];
+        for (var i2 = 0; i2 < sel.options.length; i2++) {
+          if (sel.options[i2].selected) selected.push(norm(sel.options[i2].value));
+        }
+
+        var hasTodas = false;
+        for (var j2 = 0; j2 < selected.length; j2++) {
+          if (selected[j2] === "todas_anteriores") { hasTodas = true; break; }
+        }
 
         if (hasTodas) {
-          Array.from(sel.options).forEach(function (o) {
-            var v = norm(o.value);
-            if (v === "otro") {
-              o.selected = false;
-            } else if (v !== "todas_anteriores") {
-              o.selected = true;
-            }
-          });
+          for (var k2 = 0; k2 < sel.options.length; k2++) {
+            var v2 = norm(sel.options[k2].value);
+            if (v2 === "otro") sel.options[k2].selected = false;
+            else if (v2 !== "todas_anteriores") sel.options[k2].selected = true;
+          }
         } else {
-          // si seleccionan "otro", quitar todas_anteriores
-          if (selected.includes("otro")) {
-            Array.from(sel.options).forEach(function (o) {
-              if (norm(o.value) === "todas_anteriores") o.selected = false;
-            });
+          var hasOtro = false;
+          for (var z = 0; z < selected.length; z++) {
+            if (selected[z] === "otro") { hasOtro = true; break; }
+          }
+          if (hasOtro) {
+            for (var p = 0; p < sel.options.length; p++) {
+              if (norm(sel.options[p].value) === "todas_anteriores") sel.options[p].selected = false;
+            }
           }
         }
 
@@ -353,33 +378,37 @@
   // Listeners generales para cambios (edad, funciones, tipo_lugar)
   function attachGeneralListeners() {
     var ids = ["edad_requerida", "funciones", "tipo_lugar"];
-    ids.forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) {
-        el.addEventListener("change", syncOtro);
-      }
 
-      // si son checkbox-list, hay que enganchar los inputs
-      var wrap = document.getElementById("wrap_" + id) || el?.closest(".form-group");
-      if (wrap) {
-        var ins = wrap.querySelectorAll('input[type="checkbox"], input[type="radio"]');
-        if (ins && ins.length) {
-          ins.forEach(function (inp) {
-            inp.addEventListener("change", syncOtro);
-          });
+    for (var i = 0; i < ids.length; i++) {
+      (function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener("change", syncOtro);
+
+        var wrap = document.getElementById("wrap_" + id) || (el ? closestFormGroup(el) : null);
+        if (wrap) {
+          var ins = wrap.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+          ins = toArray(ins);
+          for (var j = 0; j < ins.length; j++) ins[j].addEventListener("change", syncOtro);
         }
-      }
-    });
+      })(ids[i]);
+    }
 
-    // áreas comunes se maneja aparte
     syncAreasTodas();
   }
 
-  // Init
   document.addEventListener("DOMContentLoaded", function () {
+    // Aplica estilos extra inyectados por Jinja sin romper el parser CSS del editor
+    var extraNodes = document.querySelectorAll('[data-extra-style]');
+    for (var ei = 0; ei < extraNodes.length; ei++) {
+      var extra = extraNodes[ei].getAttribute('data-extra-style');
+      if (extra) {
+        // concatena al style actual
+        extraNodes[ei].style.cssText = (extraNodes[ei].style.cssText || '') + ';' + extra;
+      }
+    }
     attachGeneralListeners();
-    syncOtro();        // estado inicial
-    syncAreasTodas();  // estado inicial
+    syncOtro();
+    syncAreasTodas();
   });
 })();
 </script>

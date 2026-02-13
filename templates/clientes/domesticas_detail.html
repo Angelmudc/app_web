@@ -1,0 +1,230 @@
+{% extends "clientes/base.html" %}
+
+{% block title %}Detalle de candidata - Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container detalle-candidata">
+
+    <a href="{{ url_for('clientes.banco_domesticas') }}" class="btn btn-secondary">
+      <i class="fa-solid fa-arrow-left me-1"></i> Volver al banco de domésticas
+    </a>
+
+    <div class="detalle-card">
+
+      {# FOTO (izquierda) #}
+      {% if cand.foto_perfil %}
+      <div class="detalle-avatar">
+        <img
+          src="{{ url_for('clientes.domestica_foto_perfil', fila=cand.fila) }}"
+          alt="Foto de {{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}"
+          loading="lazy"
+          onclick="verImagenCompleta(this.src)"
+        >
+      </div>
+      {% endif %}
+
+      {# INFO (derecha) #}
+      <div class="detalle-info">
+
+        <h1 class="detalle-nombre">
+          {{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}
+        </h1>
+
+        {% if ficha and ficha.edad_publica %}
+          <p class="detalle-edad text-muted">{{ ficha.edad_publica }}</p>
+        {% endif %}
+
+        {% if ficha and ficha.frase_destacada %}
+          <p class="detalle-frase">“{{ ficha.frase_destacada }}”</p>
+        {% endif %}
+
+        <div class="detalle-meta">
+          {% if cand.codigo %}
+            <span class="badge badge-primario">Código: {{ cand.codigo }}</span>
+          {% endif %}
+
+          {% if ficha and ficha.tipo_servicio_publico %}
+            <span class="badge badge-secundario">{{ ficha.tipo_servicio_publico }}</span>
+          {% endif %}
+
+          {% if ficha and ficha.disponible_inmediato %}
+            <span class="badge badge-success">Disponible para iniciar de inmediato</span>
+          {% else %}
+            {# Si no está disponible inmediato, igual se muestra pero con aviso en rojo #}
+            {% set inmediato_msg = (ficha.disponible_inmediato_msg if ficha is defined and ficha and ficha.disponible_inmediato_msg is defined else None) %}
+            {% if not inmediato_msg %}
+              {% set inmediato_msg = 'No disponible para entrar de inmediato' %}
+            {% endif %}
+            <span class="badge" style="background:#fef3f2; color:#b42318; border:1px solid #fecdca;">
+              {{ inmediato_msg }}
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="detalle-ubicacion">
+          {% if (ficha and ficha.ciudad_publica) or (ficha and ficha.sector_publico) %}
+            <p class="detalle-line">
+              <strong>Zona:</strong>
+              {% if ficha and ficha.ciudad_publica %}{{ ficha.ciudad_publica }}{% endif %}
+              {% if ficha and ficha.ciudad_publica and ficha.sector_publico %} – {% endif %}
+              {% if ficha and ficha.sector_publico %}{{ ficha.sector_publico }}{% endif %}
+            </p>
+          {% endif %}
+
+          {% if ficha and ficha.modalidad_publica %}
+            <p class="detalle-line"><strong>Modalidad:</strong> {{ ficha.modalidad_publica }}</p>
+          {% endif %}
+
+          {% if ficha and ficha.anos_experiencia_publicos %}
+            <p class="detalle-line"><strong>Años de experiencia:</strong> {{ ficha.anos_experiencia_publicos }}</p>
+          {% endif %}
+        </div>
+
+        {% if (ficha and ficha.sueldo_texto_publico) or (ficha and (ficha.sueldo_desde or ficha.sueldo_hasta)) %}
+        <div class="detalle-sueldo">
+          <h2>Sueldo de referencia</h2>
+
+          {% if ficha and ficha.sueldo_texto_publico %}
+            <p>{{ ficha.sueldo_texto_publico }}</p>
+          {% else %}
+            <p>
+              {% if ficha and ficha.sueldo_desde %}
+                Desde RD$ {{ ficha.sueldo_desde }}
+              {% endif %}
+              {% if ficha and ficha.sueldo_desde and ficha.sueldo_hasta %}
+                &nbsp;–&nbsp;
+              {% endif %}
+              {% if ficha and ficha.sueldo_hasta %}
+                hasta RD$ {{ ficha.sueldo_hasta }}
+              {% endif %}
+            </p>
+          {% endif %}
+
+          <p class="text-muted small">*Montos orientativos, se confirman según horario y funciones.</p>
+        </div>
+        {% endif %}
+
+        {% if ficha and ficha.experiencia_resumen %}
+        <div class="detalle-experiencia">
+          <h2>Experiencia</h2>
+          <p>{{ ficha.experiencia_resumen }}</p>
+        </div>
+        {% endif %}
+
+        {% if ficha and ficha.experiencia_detallada %}
+        <div class="detalle-experiencia-detallada">
+          <h2>Detalle de experiencia</h2>
+          <p>{{ ficha.experiencia_detallada |replace('\n', '<br>')|safe }}</p>
+        </div>
+        {% endif %}
+
+        {# Habilidades y fortalezas (si no hay tags, igual mostramos la sección) #}
+        {% set tags_txt = (ficha.tags_publicos if ficha is defined and ficha and ficha.tags_publicos is defined else '') %}
+        {% set tags_txt = (tags_txt or '').strip() %}
+
+        <div class="detalle-tags">
+          <h2>Habilidades y fortalezas</h2>
+
+          {% if tags_txt %}
+            <div class="tags-list">
+              {% for tag in tags_txt.split(',') %}
+                {% if tag.strip() %}
+                  <span class="tag-item">{{ tag.strip() }}</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted" style="margin:8px 0 0;">No especificado.</p>
+          {% endif %}
+        </div>
+
+        <div class="detalle-cta">
+          <p class="detalle-cta-text">
+            Si te interesa esta candidata, contáctanos e indica el código
+            {% if cand.codigo %}
+              <strong>{{ cand.codigo }}</strong>.
+            {% else %}
+              que aparece en su ficha.
+            {% endif %}
+          </p>
+
+          {# WhatsApp oficial (mismo número que usas en público) #}
+          {% set wa_number = '18094296892' %}
+
+          {% set codigo_txt = (cand.codigo or 'Código no disponible') %}
+          {% set nombre_txt = ((ficha and ficha.nombre_publico) or cand.nombre_completo or '') %}
+          {% set ciudad_txt = ((ficha and ficha.ciudad_publica) or '') %}
+
+          {% set wa_text = (
+            'Hola, soy cliente. Me interesa la candidata (CÓDIGO: ' ~ codigo_txt ~ ')' ~
+            (nombre_txt and ' ' ~ nombre_txt or '') ~
+            (ciudad_txt and ' de ' ~ ciudad_txt or '') ~
+            '. Quiero más información, por favor.'
+          ) %}
+
+          <div class="detalle-cta-buttons">
+            <a
+              href="https://wa.me/{{ wa_number }}?text={{ wa_text|urlencode }}"
+              target="_blank"
+              rel="noopener"
+              class="btn btn-primary"
+            >
+              Ofrecer empleo por WhatsApp
+            </a>
+
+            <a href="{{ url_for('clientes.banco_domesticas') }}" class="btn btn-outline">
+              Ver otras candidatas
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ===== MODAL PARA VER IMAGEN EN GRANDE ===== #}
+<div id="modalImagen" class="modal-imagen" role="dialog" aria-modal="true" aria-label="Imagen ampliada">
+  <span class="cerrar-modal" onclick="cerrarImagen()" aria-label="Cerrar">&times;</span>
+  <img class="modal-contenido" id="imgModalGrande" alt="Foto candidata">
+</div>
+
+<script>
+  function verImagenCompleta(src) {
+    const modal = document.getElementById('modalImagen');
+    const img = document.getElementById('imgModalGrande');
+
+    img.src = src;
+    modal.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function cerrarImagen() {
+    const modal = document.getElementById('modalImagen');
+    const img = document.getElementById('imgModalGrande');
+
+    modal.classList.remove('is-open');
+    img.src = '';
+    document.body.style.overflow = '';
+  }
+
+  // Cierra si se hace clic fuera de la imagen
+  window.addEventListener('click', function (e) {
+    const modal = document.getElementById('modalImagen');
+    if (e.target === modal) {
+      cerrarImagen();
+    }
+  });
+
+  // Cierra con ESC
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('modalImagen');
+      if (modal && modal.classList.contains('is-open')) {
+        cerrarImagen();
+      }
+    }
+  });
+</script>
+{% endblock %}

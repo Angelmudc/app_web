@@ -42,7 +42,7 @@
         <div class="card-body text-center">
           <p class="mb-2 fw-semibold">Foto de la candidata (perfil)</p>
           <img
-            src="{{ cand.foto_perfil }}"
+            src="{{ url_for('webadmin.candidata_foto_perfil', fila=cand.fila) }}"
             alt="Foto candidata"
             style="max-width: 100%; border-radius: 1rem; border: 2px solid rgba(148,163,184,.6); box-shadow: 0 10px 25px rgba(15,23,42,.5);"
           >
@@ -59,11 +59,13 @@
       <form method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+
+
         <!-- VISIBILIDAD -->
-        <div class="card mb-3">
+        <div class="card mb-3" id="sec-visibilidad">
           <div class="card-header d-flex justify-content-between align-items-center">
             <span class="fw-semibold">
-              Configuración de visibilidad
+              Visibilidad
             </span>
           </div>
           <div class="card-body">
@@ -78,6 +80,7 @@
               <label class="form-check-label" for="visible">
                 Mostrar esta candidata en la página pública
               </label>
+              <div class="form-text">Controla si aparece o no en “Domésticas disponibles”.</div>
             </div>
 
             <div class="row g-2">
@@ -136,13 +139,13 @@
         </div>
 
         <!-- INFORMACIÓN VISIBLE EN LA WEB -->
-        <div class="card mb-3">
+        <div class="card mb-3" id="sec-encabezado">
           <div class="card-header">
-            <span class="fw-semibold">Información visible en la web</span>
+            <span class="fw-semibold">Encabezado y datos principales</span>
           </div>
           <div class="card-body">
             <div class="mb-2">
-              <label for="nombre_publico" class="form-label mb-1">Nombre que verá el cliente</label>
+              <label for="nombre_publico" class="form-label mb-1 visually-hidden">Nombre</label>
               <input
                 type="text"
                 class="form-control"
@@ -154,9 +157,11 @@
               </div>
             </div>
 
-            <div class="row g-2 mt-1">
+            <hr class="my-3">
+            <h3 class="h6 mb-2">Encabezado</h3>
+            <div class="row g-2 mt-1" id="sec-zona">
               <div class="col-12 col-md-6">
-                <label for="edad_publica" class="form-label mb-1">Edad visible</label>
+                <label for="edad_publica" class="form-label mb-1">Edad</label>
                 <input
                   type="text"
                   class="form-control"
@@ -166,7 +171,7 @@
                   value="{{ ficha.edad_publica or '' }}">
               </div>
               <div class="col-12 col-md-6">
-                <label for="ciudad_publica" class="form-label mb-1">Ciudad / Sector</label>
+                <label for="ciudad_publica" class="form-label mb-1">Zona (Ciudad)</label>
                 <input
                   type="text"
                   class="form-control"
@@ -177,9 +182,11 @@
               </div>
             </div>
 
+            <hr class="my-3">
+            <h3 class="h6 mb-2">Zona, modalidad y badges</h3>
             <div class="row g-2 mt-2">
               <div class="col-12 col-md-6">
-                <label for="sector_publico" class="form-label mb-1">Sector (opcional)</label>
+                <label for="sector_publico" class="form-label mb-1">Zona (Sector)</label>
                 <input
                   type="text"
                   class="form-control"
@@ -189,7 +196,7 @@
                   value="{{ ficha.sector_publico or '' }}">
               </div>
               <div class="col-12 col-md-6">
-                <label for="modalidad_publica" class="form-label mb-1">Modalidad que verá el cliente</label>
+                <label for="modalidad_publica" class="form-label mb-1">Modalidad</label>
                 <input
                   type="text"
                   class="form-control"
@@ -210,6 +217,7 @@
                   name="tipo_servicio_publico"
                   placeholder="Doméstica, Niñera, Enfermera, etc."
                   value="{{ ficha.tipo_servicio_publico or 'DOMESTICA' }}">
+                <div class="form-text">Sale como badge en la ficha pública.</div>
               </div>
               <div class="col-12 col-md-6">
                 <label for="anos_experiencia_publicos" class="form-label mb-1">Años de experiencia</label>
@@ -223,21 +231,36 @@
               </div>
             </div>
 
+            <hr class="my-3">
+            <h3 class="h6 mb-2">Frase destacada</h3>
             <div class="mt-3">
-              <label for="experiencia_resumen" class="form-label mb-1">
-                Resumen de experiencia (lo que se muestra en la tarjeta)
-              </label>
+              <label for="frase_destacada" class="form-label mb-1 visually-hidden">Frase destacada</label>
+              <input
+                type="text"
+                class="form-control"
+                id="frase_destacada"
+                name="frase_destacada"
+                placeholder="Ej.: Muy paciente con niños y responsable."
+                value="{{ ficha.frase_destacada or '' }}">
+              <div class="form-text">Sale debajo del nombre, entre comillas.</div>
+            </div>
+
+            <hr class="my-3">
+            <h3 class="h6 mb-2" id="sec-exp">Experiencia</h3>
+            <div class="mt-3">
+              <label for="experiencia_resumen" class="form-label mb-1 visually-hidden">Experiencia</label>
               <textarea
                 id="experiencia_resumen"
                 name="experiencia_resumen"
                 rows="3"
                 class="form-control"
                 placeholder="Ej.: 3 años con niños, sabe cocinar básico, experiencia en apartamentos grandes.">{{ ficha.experiencia_resumen or '' }}</textarea>
+              <div class="form-text">Este bloque sale como “Experiencia” en la ficha pública.</div>
             </div>
 
-            <div class="mt-3">
+            <div class="mt-3" id="sec-detalle">
               <label for="experiencia_detallada" class="form-label mb-1">
-                Descripción detallada (para la página de detalle)
+                Detalle de experiencia
               </label>
               <textarea
                 id="experiencia_detallada"
@@ -245,10 +268,11 @@
                 rows="4"
                 class="form-control"
                 placeholder="Aquí puedes detallar mejor su experiencia, tipo de casa donde ha trabajado, funciones, etc.">{{ ficha.experiencia_detallada or '' }}</textarea>
+              <div class="form-text">Este bloque sale como “Detalle de experiencia” en la ficha pública.</div>
             </div>
 
-            <div class="mt-3">
-              <label for="tags_publicos" class="form-label mb-1">Etiquetas visibles (tags)</label>
+            <div class="mt-3" id="sec-tags">
+              <label for="tags_publicos" class="form-label mb-1">Habilidades y fortalezas (tags)</label>
               <input
                 type="text"
                 class="form-control"
@@ -261,26 +285,16 @@
               </div>
             </div>
 
-            <div class="mt-3">
-              <label for="frase_destacada" class="form-label mb-1">Frase destacada</label>
-              <input
-                type="text"
-                class="form-control"
-                id="frase_destacada"
-                name="frase_destacada"
-                placeholder="Ej.: Muy paciente con niños y responsable."
-                value="{{ ficha.frase_destacada or '' }}">
-            </div>
-
           </div>
         </div>
 
         <!-- SUELDO Y FOTO -->
-        <div class="card mb-3">
+        <div class="card mb-3" id="sec-sueldo">
           <div class="card-header">
-            <span class="fw-semibold">Sueldo de referencia y foto pública</span>
+            <span class="fw-semibold">Sueldo de referencia</span>
           </div>
           <div class="card-body">
+            <div class="mb-2 text-muted small">Si llenas “Texto de sueldo”, la web usa ese. Si está vacío, usa el rango desde/hasta.</div>
             <div class="row g-2">
               <div class="col-12 col-md-4">
                 <label for="sueldo_desde" class="form-label mb-1">Sueldo desde (RD$)</label>
@@ -316,19 +330,6 @@
               </div>
             </div>
 
-            <div class="mt-3">
-              <label for="foto_publica_url" class="form-label mb-1">URL de foto pública (opcional)</label>
-              <input
-                type="text"
-                class="form-control"
-                id="foto_publica_url"
-                name="foto_publica_url"
-                placeholder="Si usas una foto distinta a la interna, pega aquí la URL."
-                value="{{ ficha.foto_publica_url or '' }}">
-              <div class="form-text">
-                Si está vacía, se puede usar la foto interna o un placeholder en la web.
-              </div>
-            </div>
           </div>
         </div>
 

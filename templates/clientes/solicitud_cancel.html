@@ -1,17 +1,5 @@
-{# templates/clientes/solicitud_cancel.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Cancelar {{ s.codigo_solicitud }} | Doméstica del Cibao A&D{% endblock %}
-
-{% block head %}
-<style>
-  .danger-card{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
-  .danger-card .hd{padding:1rem 1.25rem;border-bottom:1px solid rgba(0,0,0,.05)}
-  .danger-card .bd{padding:1.25rem}
-  .alert-soft{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}
-  .meta small{color:#475467}
-  .char-counter{font-size:.85rem}
-</style>
-{% endblock %}
 
 {% block content %}
 <div class="container py-4">
@@ -114,31 +102,4 @@
   </div>
 
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  // Contador de caracteres
-  (function(){
-    const ta = document.getElementById('{{ form.motivo.id }}');
-    const out = document.getElementById('chars');
-    if(ta && out){
-      const upd = () => out.textContent = ta.value.length;
-      ta.addEventListener('input', upd);
-      upd();
-    }
-  })();
-
-  // Evitar doble envío
-  (function(){
-    const form = document.getElementById('cancel-form');
-    const btn  = document.getElementById('confirm-submit');
-    if(form && btn){
-      form.addEventListener('submit', () => {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Enviando...';
-      });
-    }
-  })();
-</script>
 {% endblock %}

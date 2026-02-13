@@ -268,9 +268,10 @@ def create_app():
 
     @login_manager.unauthorized_handler
     def unauthorized_callback():
+        next_url = request.full_path if request.full_path else request.path
         if request.path.startswith("/clientes"):
-            return redirect(url_for("clientes.login", next=request.url))
-        return redirect(url_for("admin.login", next=request.url))
+            return redirect(url_for("clientes.login", next=next_url))
+        return redirect(url_for("admin.login", next=next_url))
 
     class User(UserMixin):
         def __init__(self, username, role):
@@ -305,7 +306,8 @@ def create_app():
 
     from clientes import clientes_bp
 
-    app.register_blueprint(clientes_bp)
+    # ✅ Portal de clientes siempre bajo /clientes
+    app.register_blueprint(clientes_bp, url_prefix="/clientes")
 
     from public import public_bp
 

@@ -1,30 +1,15 @@
-{# templates/clientes/informacion.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Información | Doméstica del Cibao A&D{% endblock %}
 
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-<style>
-  .hero-info{
-    background: linear-gradient(135deg,#F0F7FF,#F8FDFF);
-    border: 1px solid #e6efff;
-    border-radius: 16px;
-  }
-  .card-soft{border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.06)}
-  .check{color:#0ea5e9}
-  .step-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#0ea5e9;color:#fff;font-weight:600}
-  .kpi{
-    background:#0ea5e910;border:1px solid #bae6fd;border-radius:12px
-  }
-  .badge-trust{background:#e8fff3;color:#0a7a3e;border:1px solid #a7efc3}
-</style>
 {% endblock %}
 
 {% block content %}
 <div class="container py-4">
 
   <!-- HERO -->
-  <section class="hero-info p-4 p-md-5 mb-4">
+  <section class="p-4 p-md-5 mb-4 bg-body-tertiary border rounded-4">
     <div class="row align-items-center g-4">
       <div class="col-lg-8">
         <h1 class="h3 mb-2">Sobre Doméstica del Cibao A&amp;D</h1>
@@ -47,7 +32,7 @@
         </div>
       </div>
       <div class="col-lg-4">
-        <div class="kpi p-3">
+        <div class="p-3 bg-info bg-opacity-10 border border-info border-opacity-25 rounded-3">
           <div class="d-flex align-items-center justify-content-between">
             <div>
               <div class="fw-semibold small text-secondary">Tiempo de selección</div>
@@ -63,7 +48,7 @@
             </div>
             <i class="bi bi-emoji-smile fs-3 text-info"></i>
           </div>
-          <div class="mt-3"><span class="badge badge-trust">Garantía de reemplazo según plan</span></div>
+          <div class="mt-3"><span class="badge text-bg-success bg-opacity-10 text-success border border-success border-opacity-25">Garantía de reemplazo según plan</span></div>
         </div>
       </div>
     </div>
@@ -73,20 +58,20 @@
   <section class="mb-4">
     <div class="row g-4">
       <div class="col-md-4">
-        <div class="card card-soft h-100">
+        <div class="card h-100 border-0 shadow-sm rounded-4">
           <div class="card-body">
             <h5 class="card-title"><i class="bi bi-shield-check me-2 text-primary"></i> Selección segura</h5>
             <ul class="mb-0 ps-3">
-              <li class="mb-1"><span class="check me-1">●</span> Entrevista y validación documental</li>
-              <li class="mb-1"><span class="check me-1">●</span> Referencias verificadas</li>
-              <li class="mb-1"><span class="check me-1">●</span> Perfil por habilidades y experiencia</li>
-              <li class="mb-1"><span class="check me-1">●</span> Depuración policial</li>
+              <li class="mb-1"><span class="text-info me-1">●</span> Entrevista y validación documental</li>
+              <li class="mb-1"><span class="text-info me-1">●</span> Referencias verificadas</li>
+              <li class="mb-1"><span class="text-info me-1">●</span> Perfil por habilidades y experiencia</li>
+              <li class="mb-1"><span class="text-info me-1">●</span> Depuración policial</li>
             </ul>
           </div>
         </div>
       </div>
       <div class="col-md-4">
-        <div class="card card-soft h-100">
+        <div class="card h-100 border-0 shadow-sm rounded-4">
           <div class="card-body">
             <h5 class="card-title"><i class="bi bi-people me-2 text-primary"></i> Acompañamiento</h5>
             <p class="text-secondary mb-0">
@@ -97,7 +82,7 @@
         </div>
       </div>
       <div class="col-md-4">
-        <div class="card card-soft h-100">
+        <div class="card h-100 border-0 shadow-sm rounded-4">
           <div class="card-body">
             <h5 class="card-title"><i class="bi bi-file-earmark-text me-2 text-primary"></i> Transparencia</h5>
             <p class="text-secondary mb-0">
@@ -111,42 +96,42 @@
   </section>
 
   <!-- CÓMO FUNCIONA -->
-  <section class="card card-soft mb-4">
+  <section class="card mb-4 border-0 shadow-sm rounded-4">
     <div class="card-body">
       <h5 class="card-title mb-3"><i class="bi bi-diagram-3 me-2 text-primary"></i> ¿Cómo funciona?</h5>
       <div class="row g-3 align-items-start">
         <div class="col-md-6">
           <ol class="list-unstyled mb-0">
             <li class="d-flex gap-3 mb-3">
-              <div class="step-dot">1</div>
+              <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white fw-semibold" style="width:36px;height:36px;">1</div>
               <div>
                 <div class="fw-semibold">Elige tu plan</div>
                 <div class="text-secondary small">Básico, Premium o VIP según cobertura y garantías.</div>
               </div>
             </li>
             <li class="d-flex gap-3 mb-3">
-              <div class="step-dot">2</div>
+              <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white fw-semibold" style="width:36px;height:36px;">2</div>
               <div>
                 <div class="fw-semibold">Crea tu solicitud</div>
                 <div class="text-secondary small">Desde tu panel, completa ubicación y requerimientos.</div>
               </div>
             </li>
             <li class="d-flex gap-3 mb-3">
-              <div class="step-dot">3</div>
+              <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white fw-semibold" style="width:36px;height:36px;">3</div>
               <div>
                 <div class="fw-semibold">Validación y activación</div>
                 <div class="text-secondary small">Revisamos datos y activamos la búsqueda.</div>
               </div>
             </li>
             <li class="d-flex gap-3 mb-3">
-              <div class="step-dot">4</div>
+              <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white fw-semibold" style="width:36px;height:36px;">4</div>
               <div>
                 <div class="fw-semibold">Coordinación y envío</div>
                 <div class="text-secondary small">Te presentamos la candidata y coordinamos inicio.</div>
               </div>
             </li>
             <li class="d-flex gap-3">
-              <div class="step-dot">5</div>
+              <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white fw-semibold" style="width:36px;height:36px;">5</div>
               <div>
                 <div class="fw-semibold">Seguimiento y garantía</div>
                 <div class="text-secondary small">Acompañamiento y reemplazo según tu plan.</div>
@@ -155,7 +140,7 @@
           </ol>
         </div>
         <div class="col-md-6">
-          <div class="p-3 bg-light rounded-3">
+          <div class="p-3 bg-body-tertiary rounded-3">
             <div class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i> Recomendaciones</div>
             <ul class="mb-0 ps-3 text-secondary">
               <li>Describe con claridad horario, funciones y experiencia deseada.</li>
@@ -176,13 +161,81 @@
     </div>
   </section>
 
+  <!-- BANCO DE DOMÉSTICAS -->
+  <section class="card mb-4 border-0 shadow-sm rounded-4">
+    <div class="card-body">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h5 class="card-title mb-2">
+            <i class="bi bi-collection me-2 text-primary"></i> ¿Qué es el Banco de Domésticas?
+          </h5>
+          <p class="text-secondary mb-2">
+            El <strong>Banco de Domésticas</strong> es una sección exclusiva donde puedes ver candidatas
+            disponibles con sus perfiles organizados, experiencia, modalidad y detalles clave.
+            Es ideal para clientes que desean <strong>comparar opciones</strong> y elegir con mayor rapidez.
+          </p>
+          <ul class="text-secondary ps-3 mb-0">
+            <li>Acceso a perfiles actualizados y verificados.</li>
+            <li>Información clara para tomar decisiones sin perder tiempo.</li>
+            <li>Opciones disponibles según ciudad, modalidad y experiencia.</li>
+            <li>Mayor rapidez para coordinar entrevistas y envío.</li>
+          </ul>
+        </div>
+
+        <div class="p-3 bg-body-tertiary rounded-3 border" style="min-width: 280px;">
+          <div class="fw-semibold mb-2">
+            <i class="bi bi-stars me-1 text-warning"></i> Acceso exclusivo
+          </div>
+          <div class="small text-secondary mb-2">
+            Disponible solo para planes <strong>Premium</strong> y <strong>VIP</strong>.
+          </div>
+          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary btn-sm w-100">
+            Ver planes
+          </a>
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="p-3 bg-body-tertiary rounded-3 h-100">
+            <div class="fw-semibold mb-1"><i class="bi bi-search me-1 text-primary"></i> Búsqueda rápida</div>
+            <div class="small text-secondary">Encuentra candidatas disponibles sin esperar que te llamen.</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 bg-body-tertiary rounded-3 h-100">
+            <div class="fw-semibold mb-1"><i class="bi bi-person-check me-1 text-success"></i> Perfiles verificados</div>
+            <div class="small text-secondary">Cada candidata pasa por entrevista y revisión de documentos.</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 bg-body-tertiary rounded-3 h-100">
+            <div class="fw-semibold mb-1"><i class="bi bi-chat-dots me-1 text-info"></i> Coordinación directa</div>
+            <div class="small text-secondary">Puedes solicitar entrevista o hacer una oferta desde el sistema.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 d-flex flex-wrap gap-2">
+        <a href="{{ url_for('clientes.planes') }}" class="btn btn-primary">
+          <i class="bi bi-stars me-1"></i> Ver planes
+        </a>
+        <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-plus-circle me-1"></i> Crear solicitud
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- CONTACTO -->
-  <section class="card card-soft mb-4">
+  <section class="card mb-4 border-0 shadow-sm rounded-4">
     <div class="card-body">
       <h5 class="card-title mb-3"><i class="bi bi-telephone-forward me-2 text-primary"></i> Contacto</h5>
       <div class="row g-3">
         <div class="col-md-4">
-          <div class="p-3 bg-light rounded-3 h-100">
+          <div class="p-3 bg-body-tertiary rounded-3 h-100">
             <div class="fw-semibold mb-1"><i class="bi bi-whatsapp text-success me-1"></i> WhatsApp</div>
             <div class="mb-2">+1 809 429 6892</div>
             <a class="btn btn-success btn-sm"
@@ -193,7 +246,7 @@
           </div>
         </div>
         <div class="col-md-4">
-          <div class="p-3 bg-light rounded-3 h-100">
+          <div class="p-3 bg-body-tertiary rounded-3 h-100">
             <div class="fw-semibold mb-1"><i class="bi bi-envelope-paper text-primary me-1"></i> Email</div>
             <div class="mb-2">soporte.domesticacibao@gmail.com</div>
             <a class="btn btn-primary btn-sm"
@@ -204,7 +257,7 @@
           </div>
         </div>
         <div class="col-md-4">
-          <div class="p-3 bg-light rounded-3 h-100">
+          <div class="p-3 bg-body-tertiary rounded-3 h-100">
             <div class="fw-semibold mb-1"><i class="bi bi-telephone text-info me-1"></i> Teléfono</div>
             <div class="mb-2">(809) 429-6892</div>
             <div class="small text-secondary mb-2">Lun–Vie 8:00–17:00</div>

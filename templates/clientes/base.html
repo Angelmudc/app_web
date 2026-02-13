@@ -27,20 +27,22 @@
   <!-- Select2 (si lo usas en formularios) -->
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/css/select2.min.css" rel="stylesheet" />
 
-  <link href="{{ url_for('static', filename='css/tokens.css') }}" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/components.css') }}" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/animations.css') }}" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/pages.css') }}" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/themes.css') }}" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/styles.css') }}" rel="stylesheet">
+  <!-- CSS del portal de clientes (aislado del admin) -->
+  <link href="{{ url_for('static', filename='clientes/css/clientes.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='clientes/css/clientes_components.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='clientes/css/clientes_pages.css') }}" rel="stylesheet">
+
 
   {% block head %}{% endblock %}
 </head>
-<body>
+<body class="clientes" data-portal="clientes">
+  {% set is_login_page = (request.endpoint == 'clientes.login') %}
+  {% set is_authed = (current_user.is_authenticated if current_user is defined else false) %}
+  {% set show_shell = (is_authed and (not is_login_page)) %}
 
+  {% if show_shell %}
   <!-- NAVBAR -->
-  <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
     <div class="container">
       <a class="navbar-brand fw-semibold" href="{{ url_for('clientes.dashboard') }}">
         <i class="fa-solid fa-sparkles fa-fw me-2"></i>Doméstica del Cibao A&D
@@ -68,6 +70,12 @@
           <li class="nav-item">
             <a class="nav-link {% if ep.endswith('clientes.listar_solicitudes') %}active{% endif %}"
                href="{{ url_for('clientes.listar_solicitudes') }}">Mis Solicitudes</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if ep.endswith('clientes.domesticas_list') %}active{% endif %}"
+               href="{{ url_for('clientes.domesticas_list') }}">
+              Domésticas disponibles
+            </a>
           </li>
           <li class="nav-item">
             <a class="nav-link {% if ep.endswith('clientes.ayuda') %}active{% endif %}"
@@ -100,6 +108,7 @@
               <li><hr class="dropdown-divider"></li>
               <li><a class="dropdown-item" href="{{ url_for('clientes.dashboard') }}"><i class="bi bi-speedometer2 me-2"></i>Panel</a></li>
               <li><a class="dropdown-item" href="{{ url_for('clientes.listar_solicitudes') }}"><i class="bi bi-card-checklist me-2"></i>Mis solicitudes</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('clientes.domesticas_list') }}"><i class="bi bi-people-fill me-2"></i>Domésticas disponibles</a></li>
               <li><a class="dropdown-item" href="{{ url_for('clientes.ayuda') }}"><i class="bi bi-life-preserver me-2"></i>Soporte</a></li>
               <li><hr class="dropdown-divider"></li>
               <li>
@@ -117,6 +126,7 @@
 
   <!-- SEPARADOR Navbar -->
   <div style="height: 16px;"></div>
+  {% endif %}
 
   <!-- TOASTS de flash -->
   <div class="toast-container">
@@ -145,13 +155,13 @@
     {% endwith %}
   </div>
 
-  <!-- CONTENIDO -->
-  <main class="container">
+  <main class="{% if show_shell %}container{% else %}container-fluid{% endif %}">
     {% block content %}{% endblock %}
   </main>
 
+  {% if show_shell %}
   <!-- FOOTER -->
-  <footer class="py-4 mt-auto">
+  <footer class="py-4 mt-auto bg-dark text-white">
     <div class="container">
       <div class="row gy-3 align-items-center">
         <div class="col-md">
@@ -159,47 +169,77 @@
         </div>
         <div class="col-md text-md-end">
           <small>
-            <a href="{{ url_for('clientes.informacion') }}" class="me-3">Quiénes somos</a>
-            <a href="{{ url_for('clientes.planes') }}" class="me-3">Planes</a>
-            <a href="{{ url_for('clientes.ayuda') }}">Soporte</a>
+            <a href="{{ url_for('clientes.informacion') }}" class="me-3 link-light">Quiénes somos</a>
+            <a href="{{ url_for('clientes.planes') }}" class="me-3 link-light">Planes</a>
+            <a href="{{ url_for('clientes.ayuda') }}" class="link-light">Soporte</a>
           </small>
         </div>
       </div>
     </div>
   </footer>
+  {% endif %}
 
+  {% if show_shell %}
   <!-- FAB WhatsApp -->
   <a class="fab-whatsapp" href="https://wa.me/18094296892?text=Hola%2C%20necesito%20ayuda%20con%20mi%20servicio"
      target="_blank" rel="noopener" aria-label="Chatear por WhatsApp">
     <i class="bi bi-whatsapp fs-4"></i>
   </a>
+  {% endif %}
 
   <!-- SCRIPTS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/js/select2.min.js"></script>
 
-  {# ← Incluimos el modal de políticas AQUÍ (Bootstrap ya cargado) #}
-  {% include 'clientes/_modal_politicas.html' %}
+  {% if show_shell %}
+    {% include 'clientes/_modal_politicas.html' %}
+  {% endif %}
 
   <script>
     // Auto-init toasts desde los flash messages
-    document.querySelectorAll('.toast').forEach((t) => new bootstrap.Toast(t, { delay: 4000 }).show());
+    try {
+      document.querySelectorAll('.toast').forEach((t) => new bootstrap.Toast(t, { delay: 4000 }).show());
+    } catch (e) {
+      // noop
+    }
 
     // Utilidad: Alternar tema (si quieres un switch en alguna vista, sólo cambia el atributo)
     function setTheme(mode){ document.documentElement.setAttribute('data-bs-theme', mode); }
   </script>
 
-  <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/core/modal.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/core/toast.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/ui/theme.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/ui/ui.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/ui/search.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/forms/validate.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/forms/autosave.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}"></script>
+  <!-- JS del portal de clientes (aislado del admin) -->
+  <script src="{{ url_for('static', filename='clientes/js/clientes.js') }}"></script>
+
+  {% if show_shell %}
+  <script>
+    // Compat: si alguna vista abre/cierra el modal con style.display, lo normalizamos a la clase is-open
+    (function () {
+      function syncModalState() {
+        const m = document.getElementById('modalImagen');
+        if (!m) return;
+        const open = (m.style.display === 'block' || m.style.display === 'flex');
+        if (open) {
+          m.classList.add('is-open');
+        } else {
+          m.classList.remove('is-open');
+        }
+      }
+
+      // Observa cambios en el atributo style del modal
+      const modal = document.getElementById('modalImagen');
+      if (modal) {
+        try {
+          const obs = new MutationObserver(syncModalState);
+          obs.observe(modal, { attributes: true, attributeFilter: ['style'] });
+          syncModalState();
+        } catch (e) {
+          // noop
+        }
+      }
+    })();
+  </script>
+  {% endif %}
 
   {% block scripts %}{% endblock %}
 </body>

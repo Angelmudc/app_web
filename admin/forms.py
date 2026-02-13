@@ -142,6 +142,70 @@ class AdminClienteForm(FlaskForm):
         }
     )
 
+    # ----- Credenciales (portal de clientes) -----
+    # Reglas:
+    # - `username` puede quedar vacío: si está vacío, el backend puede usar `email`.
+    # - `password` puede quedar vacío: si está vacío, NO se cambia la contraseña.
+    # - Si se escribe `password`, se exige `password_confirm`.
+    # - Si se escribe `password_confirm`, se exige `password`.
+
+    username = StringField(
+        'Usuario (opcional)',
+        validators=[Optional(), Length(min=3, max=80)],
+        filters=[_strip_lower],
+        render_kw={
+            "placeholder": "Ej. juan.perez (si lo dejas vacío, se usa el email)",
+            "autocomplete": "username"
+        }
+    )
+
+    password = PasswordField(
+        'Contraseña (opcional)',
+        validators=[Optional(), Length(min=6, max=100)],
+        render_kw={
+            "placeholder": "Solo si quieres crear/cambiar la contraseña",
+            "autocomplete": "new-password"
+        }
+    )
+
+    password_confirm = PasswordField(
+        'Confirmar contraseña',
+        validators=[Optional(), EqualTo('password', message='Las contraseñas no coinciden.')],
+        render_kw={
+            "placeholder": "Repite la contraseña (si llenaste contraseña)",
+            "autocomplete": "new-password"
+        }
+    )
+
+    def validate_username(self, field):
+        """Valida el formato del usuario si se llena (sin romper si se deja vacío)."""
+        val = (field.data or '').strip()
+        if not val:
+            return
+        # Permitimos letras, números, punto, guion, guion bajo.
+        import re
+        if not re.match(r'^[a-z0-9._-]+$', val, flags=re.IGNORECASE):
+            raise ValidationError('El usuario solo puede tener letras, números, punto (.), guion (-) y guion bajo (_).')
+
+    def validate_password(self, field):
+        """Si escriben contraseña, exigir confirmación y evitar contraseñas demasiado débiles."""
+        pw = (field.data or '').strip()
+        if not pw:
+            return
+        # Reglas mínimas: 6+ ya la valida Length; aquí evitamos solo espacios.
+        if len(pw) < 6:
+            raise ValidationError('La contraseña debe tener al menos 6 caracteres.')
+
+    def validate_password_confirm(self, field):
+        """Si se escribe contraseña, exigir confirmación. Si se escribe confirmación, exigir contraseña."""
+        pw = (self.password.data or '').strip()
+        pc = (field.data or '').strip()
+
+        if pw and not pc:
+            raise ValidationError('Confirma la contraseña.')
+        if pc and not pw:
+            raise ValidationError('Debes escribir la contraseña primero.')
+
     ciudad = StringField(
         'Ciudad',
         validators=[
@@ -178,6 +242,7 @@ class AdminClienteForm(FlaskForm):
             "rows": 3
         }
     )
+
 
     submit = SubmitField('Guardar cliente')
 

@@ -426,19 +426,44 @@ def listar_clientes():
 
     if q:
         filtros = []
-        # Si es un ID exacto (entero), permite búsqueda directa por ID
+        q_lower = q.lower()
+
+        # 1) Si es un ID exacto (entero), permite búsqueda directa por ID
         if q.isdigit():
             try:
                 filtros.append(Cliente.id == int(q))
             except Exception:
                 pass
 
-        # Para búsquedas textuales muy cortas (1 char), no aplicar ilike para evitar full scan
+        # 2) Búsqueda por CÓDIGO (exacto + parcial)
+        #    - Exacto: rápido y preciso
+        #    - Parcial: útil para fragmentos (ej: "ADC" o "ADC-" o "-A")
+        try:
+            filtros.append(Cliente.codigo == q)
+        except Exception:
+            pass
+        if len(q) >= 2:
+            filtros.append(Cliente.codigo.ilike(f"%{q}%"))
+
+        # 3) Búsqueda por EMAIL (case-insensitive) — soporta "gmail" o el email completo
+        #    - Si el query incluye '@' o '.' o la palabra 'gmail', asumimos que es email/fragmento
+        looks_like_email = ('@' in q) or ('.' in q) or ('gmail' in q_lower)
+        if looks_like_email:
+            try:
+                filtros.append(func.lower(Cliente.email).like(f"%{q_lower}%"))
+            except Exception:
+                # fallback si el motor no soporta func.lower
+                filtros.append(Cliente.email.ilike(f"%{q}%"))
+        else:
+            # Si no parece email, solo lo incluimos cuando q tenga mínimo 2 chars (evita full scan por 1 char)
+            if len(q) >= 2:
+                filtros.append(Cliente.email.ilike(f"%{q}%"))
+
+        # 4) Campos extra (solo cuando hay suficiente texto para evitar escaneo completo)
         if len(q) >= 2:
             filtros.extend([
-                Cliente.nombre_completo.ilike(f'%{q}%'),
-                Cliente.telefono.ilike(f'%{q}%'),
-                Cliente.codigo.ilike(f'%{q}%'),
+                Cliente.nombre_completo.ilike(f"%{q}%"),
+                Cliente.telefono.ilike(f"%{q}%"),
             ])
 
         if filtros:
@@ -881,7 +906,32 @@ def nuevo_cliente():
             flash("No se pudo validar el email del cliente.", "danger")
             return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
 
-        # --- Creación del cliente (sin password ni username) ---
+        # --- Validación de USERNAME único (opcional, si existe en el modelo) ---
+        username_norm = None
+        if hasattr(Cliente, 'username'):
+            # Preferimos el campo del form si existe; si no, intentamos leerlo del POST directo
+            raw_username = None
+            if hasattr(form, 'username'):
+                raw_username = form.username.data
+            if not raw_username:
+                raw_username = request.form.get('username')
+
+            username_norm = (raw_username or '').strip().lower()
+            if not username_norm:
+                # Si no envían username, usamos el email como username por defecto
+                username_norm = email_norm
+
+            try:
+                if Cliente.query.filter(func.lower(Cliente.username) == username_norm).first():
+                    if hasattr(form, 'username'):
+                        form.username.errors.append("Este usuario ya está registrado.")
+                    flash("Este usuario ya está registrado.", "danger")
+                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+            except Exception:
+                flash("No se pudo validar el usuario del cliente.", "danger")
+                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+
+        # --- Creación del cliente (con username/password si existen) ---
         try:
             ahora = datetime.utcnow()
             c = Cliente()
@@ -889,6 +939,26 @@ def nuevo_cliente():
 
             # Normalizamos email y fechas clave
             c.email = email_norm
+
+            # Username (si existe en el modelo)
+            if hasattr(c, 'username'):
+                # Si ya calculamos username_norm arriba úsalo, si no, usa el email
+                c.username = (username_norm or email_norm)
+
+            # Password (si existe en el modelo)
+            if hasattr(c, 'password_hash'):
+                raw_pw = None
+                if hasattr(form, 'password'):
+                    raw_pw = form.password.data
+                if not raw_pw:
+                    raw_pw = request.form.get('password')
+
+                raw_pw = (raw_pw or '').strip()
+                # Si mandan contraseña, la seteamos. Si no, dejamos el server_default (DISABLED_RESET_REQUIRED)
+                if raw_pw:
+                    # Fuerza PBKDF2 (compatibilidad): algunos Python/macOS pueden no traer hashlib.scrypt
+                    c.password_hash = generate_password_hash(raw_pw, method="pbkdf2:sha256")
+
             if not c.fecha_registro:
                 c.fecha_registro = ahora
             if not c.created_at:
@@ -930,7 +1000,14 @@ def nuevo_cliente():
 @login_required
 @staff_required
 def editar_cliente(cliente_id):
-    """✏️ Editar la información de un cliente existente (sin manejar contraseñas)."""
+    """✏️ Editar la información de un cliente existente.
+
+    Fix:
+    - El bug solo ocurría cuando se tocaba username/password.
+    - Evitamos `form.populate_obj(c)` para que WTForms no intente setear atributos no mapeados.
+    - Actualizamos username/password SOLO si el usuario escribió algo.
+    - Logueamos el error real en terminal para depurar rápido.
+    """
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminClienteForm(obj=c)
 
@@ -938,35 +1015,115 @@ def editar_cliente(cliente_id):
         _norm_cliente_form(form)
 
         # --- Validar código si se modifica ---
-        if form.codigo.data != c.codigo:
-            try:
-                if Cliente.query.filter(Cliente.codigo == form.codigo.data).first():
-                    form.codigo.errors.append("Este código ya está en uso.")
-                    flash("El código ya está en uso.", "danger")
-                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
-            except Exception:
-                flash("No se pudo validar el código del cliente.", "danger")
-                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+        if hasattr(c, 'codigo') and hasattr(form, 'codigo'):
+            new_codigo = (form.codigo.data or '').strip()
+            old_codigo = (c.codigo or '').strip()
+            if new_codigo != old_codigo:
+                try:
+                    if Cliente.query.filter(Cliente.codigo == new_codigo).first():
+                        form.codigo.errors.append("Este código ya está en uso.")
+                        flash("El código ya está en uso.", "danger")
+                        return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                except Exception:
+                    flash("No se pudo validar el código del cliente.", "danger")
+                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
 
         # --- Validar email si se modifica ---
-        email_norm = (form.email.data or "").lower().strip()
-        email_actual = (c.email or "").lower().strip()
+        email_norm = (getattr(form, 'email', type('x', (), {'data': ''})) .data or '').lower().strip()
+        email_actual = (getattr(c, 'email', '') or '').lower().strip()
         if email_norm != email_actual:
             try:
                 if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
-                    form.email.errors.append("Este email ya está registrado.")
+                    if hasattr(form, 'email'):
+                        form.email.errors.append("Este email ya está registrado.")
                     flash("Este email ya está registrado.", "danger")
-                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
             except Exception:
                 flash("No se pudo validar el email del cliente.", "danger")
-                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
 
-        # --- Guardar cambios (sin tocar credenciales) ---
+        # --- Username: validar solo si el usuario escribió uno ---
+        username_to_set = None
+        if hasattr(c, 'username'):
+            raw_username = None
+            if hasattr(form, 'username'):
+                raw_username = form.username.data
+            if raw_username is None:
+                raw_username = request.form.get('username')
+
+            raw_username = (raw_username or '').strip()
+            if raw_username:
+                username_norm = raw_username.lower()
+                username_actual = (getattr(c, 'username', '') or '').strip().lower()
+
+                # Solo validar si realmente cambia
+                if username_norm != username_actual:
+                    try:
+                        # Excluir el mismo cliente
+                        exists = Cliente.query.filter(
+                            func.lower(Cliente.username) == username_norm,
+                            Cliente.id != c.id
+                        ).first()
+                        if exists:
+                            if hasattr(form, 'username'):
+                                form.username.errors.append("Este usuario ya está registrado.")
+                            flash("Este usuario ya está registrado.", "danger")
+                            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                    except Exception:
+                        flash("No se pudo validar el usuario del cliente.", "danger")
+                        return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+
+                username_to_set = username_norm
+
+        # --- Password: solo si escriben una nueva ---
+        password_to_set = None
+        if hasattr(c, 'password_hash'):
+            raw_pw = None
+            if hasattr(form, 'password'):
+                raw_pw = form.password.data
+            if raw_pw is None:
+                raw_pw = request.form.get('password')
+            raw_pw = (raw_pw or '').strip()
+            if raw_pw:
+                password_to_set = raw_pw
+
+        # --- Guardar cambios (sin populate_obj) ---
         try:
-            form.populate_obj(c)
-            c.email = email_norm
-            c.fecha_ultima_actividad = datetime.utcnow()
-            c.updated_at = datetime.utcnow()
+            # Campos base (solo si existen)
+            if hasattr(c, 'codigo') and hasattr(form, 'codigo'):
+                c.codigo = (form.codigo.data or '').strip()
+
+            if hasattr(c, 'nombre_completo') and hasattr(form, 'nombre_completo'):
+                c.nombre_completo = (form.nombre_completo.data or '').strip()
+
+            if hasattr(c, 'email'):
+                c.email = email_norm
+
+            if hasattr(c, 'telefono') and hasattr(form, 'telefono'):
+                c.telefono = _normalize_phone(form.telefono.data or '')
+
+            if hasattr(c, 'ciudad') and hasattr(form, 'ciudad'):
+                c.ciudad = (form.ciudad.data or '').strip()
+
+            if hasattr(c, 'sector') and hasattr(form, 'sector'):
+                c.sector = (form.sector.data or '').strip()
+
+            if hasattr(c, 'notas_admin') and hasattr(form, 'notas_admin'):
+                c.notas_admin = (form.notas_admin.data or '').strip()
+
+            # Username (solo si el usuario escribió uno)
+            if username_to_set is not None and hasattr(c, 'username'):
+                c.username = username_to_set
+
+            # Password (solo si escribió una nueva)
+            if password_to_set is not None and hasattr(c, 'password_hash'):
+                # Fuerza PBKDF2 (compatibilidad): algunos Python/macOS pueden no traer hashlib.scrypt
+                c.password_hash = generate_password_hash(password_to_set, method="pbkdf2:sha256")
+
+            if hasattr(c, 'fecha_ultima_actividad'):
+                c.fecha_ultima_actividad = datetime.utcnow()
+            if hasattr(c, 'updated_at'):
+                c.updated_at = datetime.utcnow()
 
             db.session.commit()
 
@@ -977,19 +1134,42 @@ def editar_cliente(cliente_id):
             db.session.rollback()
             which = parse_integrity_error(e)
             if which == "codigo":
-                form.codigo.errors.append("Este código ya está en uso.")
+                if hasattr(form, 'codigo'):
+                    form.codigo.errors.append("Este código ya está en uso.")
                 flash("Este código ya está en uso.", "danger")
             elif which == "email":
-                form.email.errors.append("Este email ya está registrado.")
+                if hasattr(form, 'email'):
+                    form.email.errors.append("Este email ya está registrado.")
                 flash("Este email ya está registrado.", "danger")
             else:
-                flash('No se pudo actualizar: conflicto con datos únicos (p. ej., código o email).', 'danger')
+                # Puede incluir username unique si el parser no lo detecta
+                flash('No se pudo actualizar: conflicto con datos únicos (código/email/usuario).', 'danger')
 
         except Exception:
             db.session.rollback()
+            # Mostrar el error real en terminal
+            try:
+                import traceback
+                print("\n=== ERROR REAL editar_cliente ===")
+                traceback.print_exc()
+                print("=== FIN ERROR ===\n")
+            except Exception:
+                pass
             flash('Ocurrió un error al actualizar el cliente. Intenta de nuevo.', 'danger')
 
-    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False)
+    elif request.method == 'POST':
+        # Si llegó POST pero no pasó validación, NO debe “parecer” que guardó.
+        flash('No se guardó. Revisa los campos marcados y corrige los errores.', 'danger')
+        try:
+            current_app.logger.warning('editar_cliente validate_on_submit=False | cliente_id=%s | errors=%s', cliente_id, form.errors)
+        except Exception:
+            pass
+        try:
+            print('editar_cliente validate_on_submit=False', 'cliente_id=', cliente_id, 'errors=', form.errors)
+        except Exception:
+            pass
+
+    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
 
 
 # ─────────────────────────────────────────────────────────────

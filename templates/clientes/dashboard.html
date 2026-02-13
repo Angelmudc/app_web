@@ -1,61 +1,105 @@
-{# templates/clientes/dashboard.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Panel del Cliente{% endblock %}
 
 {% block content %}
 <div class="container py-4">
 
-  {# ===== Accesos rápidos ===== #}
-  <div class="row g-4 mb-4">
-    <div class="col-12 col-md-3">
-      <div class="card h-100 shadow-sm border-0">
-        <div class="card-body text-center">
-          <div class="display-5 fw-bold text-primary">{{ total_solicitudes }}</div>
-          <div class="text-muted">Total de solicitudes</div>
-        </div>
-      </div>
-    </div>
+  {# =====================
+     Header / Bienvenida
+     ===================== #}
 
-    <div class="col-12 col-md-3">
-      <div class="card h-100 shadow-sm border-0">
-        <div class="card-body d-flex flex-column align-items-center justify-content-center">
-          <div class="fw-semibold mb-2">Nueva Solicitud</div>
-          <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success w-100">
-            <i class="bi bi-plus-lg me-1"></i> Crear
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+        <div>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            <h2 class="mb-0 fw-bold">Panel del Cliente</h2>
+          </div>
+          <div class="text-muted">
+            Bienvenido(a) a tu panel. Desde aquí puedes crear solicitudes, ver el progreso de tu proceso,
+            revisar estados y mantener toda tu información organizada con Doméstica del Cibao A&amp;D.
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success">
+            <i class="bi bi-plus-lg me-1"></i> Nueva solicitud
+          </a>
+          <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-primary">
+            <i class="bi bi-card-checklist me-1"></i> Mis solicitudes
+          </a>
+          <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-chat-dots me-1"></i> Ayuda
           </a>
         </div>
       </div>
-    </div>
 
-    <div class="col-12 col-md-3">
-      <div class="card h-100 shadow-sm border-0">
-        <div class="card-body d-flex flex-column align-items-center justify-content-center">
-          <div class="fw-semibold mb-2">Información</div>
-          <p class="small text-muted text-center mb-2">Quiénes somos, cómo funciona y horarios.</p>
-          <a href="{{ url_for('clientes.informacion') }}" class="btn btn-outline-primary w-100">
-            <i class="bi bi-info-circle me-1"></i> Ver
-          </a>
+      <hr class="my-3">
+
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <div class="d-flex align-items-center justify-content-between p-3 rounded border bg-light">
+            <div>
+              <div class="text-muted small">Total de solicitudes</div>
+              <div class="fs-3 fw-bold">{{ total_solicitudes }}</div>
+            </div>
+            <div class="text-primary" style="font-size: 1.7rem;">
+              <i class="bi bi-clipboard-check"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <div class="d-flex align-items-center justify-content-between p-3 rounded border bg-light">
+            <div>
+              <div class="text-muted small">Solicitudes activas</div>
+              <div class="fs-3 fw-bold">{{ total_activas|default('—') }}</div>
+            </div>
+            <div class="text-primary" style="font-size: 1.7rem;">
+              <i class="bi bi-lightning-charge"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <div class="d-flex align-items-center justify-content-between p-3 rounded border bg-light">
+            <div>
+              <div class="text-muted small">Pagadas</div>
+              <div class="fs-3 fw-bold">{{ total_pagadas|default('—') }}</div>
+            </div>
+            <div class="text-success" style="font-size: 1.7rem;">
+              <i class="bi bi-check-circle"></i>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="col-12 col-md-3">
-      <div class="card h-100 shadow-sm border-0">
-        <div class="card-body d-flex flex-column align-items-center justify-content-center">
-          <div class="fw-semibold mb-2">Planes</div>
-          <p class="small text-muted text-center mb-2">Básico, Premium y VIP.</p>
-          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary w-100">
-            <i class="bi bi-grid me-1"></i> Ver
-          </a>
+      <div class="mt-3 p-3 rounded border bg-light">
+        <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-2">
+          <div>
+            <div class="fw-semibold"><i class="bi bi-shield-check text-success me-1"></i>Proceso seguro y organizado</div>
+            <div class="text-muted small">
+              Todas tus solicitudes quedan registradas y nuestro equipo las gestiona de forma clara.
+              Puedes entrar al detalle de cada solicitud en cualquier momento.
+            </div>
+          </div>
+          <div class="text-muted small">
+            <i class="bi bi-clock-history me-1"></i>Respuesta en orden de prioridad
+          </div>
         </div>
       </div>
+
     </div>
   </div>
 
-  {# ===== Últimas solicitudes ===== #}
+
+ 
+  {# =====================
+     Últimas solicitudes
+     ===================== #}
   <div class="card shadow-sm border-0">
     <div class="card-header bg-white">
-      <div class="d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h5 class="mb-0">Últimas solicitudes</h5>
         <a href="{{ url_for('clientes.listar_solicitudes') }}" class="small text-decoration-none">
           Ver todas →
@@ -66,39 +110,65 @@
     <div class="list-group list-group-flush">
       {% if recientes and recientes|length > 0 %}
         {% for s in recientes %}
+          {% set estado = (s.estado or 'proceso') %}
+          {% set badge_class =
+              'bg-secondary' if estado=='proceso' else
+              'bg-primary'   if estado=='activa'  else
+              'bg-success'   if estado=='pagada'  else
+              'bg-warning text-dark' if estado=='cancelada' else
+              'bg-info'
+          %}
+
           <div class="list-group-item">
-            <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+
               <div>
-                <a class="fw-semibold text-decoration-none" href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}">
-                  {{ s.codigo_solicitud }}
-                </a>
-                <div class="small text-muted mt-1">
-                  {{ (s.fecha_solicitud or now()).strftime('%d/%m/%Y') }}
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <a class="fw-semibold text-decoration-none" href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}">
+                    {{ s.codigo_solicitud }}
+                  </a>
+
+                  <span class="badge {{ badge_class }}">{{ estado|capitalize }}</span>
+
                   {% if s.last_copiado_at and s.last_copiado_at.date() == now().date() %}
-                    <span class="badge bg-danger ms-2">Publicado hoy</span>
+                    <span class="badge bg-danger">Publicado hoy</span>
+                  {% endif %}
+                </div>
+
+                <div class="small text-muted mt-1">
+                  <i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now()).strftime('%d/%m/%Y') }}
+                  {% if s.ciudad_sector %}
+                    <span class="mx-2">•</span>
+                    <i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}
+                  {% endif %}
+                  {% if s.modalidad_trabajo %}
+                    <span class="mx-2">•</span>
+                    <i class="bi bi-briefcase me-1"></i>{{ s.modalidad_trabajo }}
                   {% endif %}
                 </div>
               </div>
 
-              {# Mapeo visual de estado #}
-              {% set estado = (s.estado or 'proceso') %}
-              {% set badge_class =
-                  'bg-secondary' if estado=='proceso' else
-                  'bg-primary'   if estado=='activa'  else
-                  'bg-success'   if estado=='pagada'  else
-                  'bg-warning text-dark' if estado=='cancelada' else
-                  'bg-info'
-              %}
-              <span class="badge {{ badge_class }} align-self-center text-wrap">
-                {{ estado|capitalize }}
-              </span>
+              <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-eye me-1"></i> Ver detalles
+                </a>
+
+                {% if estado == 'proceso' %}
+                  <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-pencil-square me-1"></i> Editar
+                  </a>
+                {% endif %}
+              </div>
+
             </div>
           </div>
+
         {% endfor %}
       {% else %}
         <div class="list-group-item text-center py-5">
           <div class="mb-2"><i class="bi bi-inbox text-muted" style="font-size:2rem;"></i></div>
-          <p class="text-muted mb-3">Aún no tienes solicitudes recientes.</p>
+          <h6 class="fw-bold mb-1">Aún no tienes solicitudes recientes</h6>
+          <p class="text-muted mb-3">Crea tu primera solicitud y empieza el proceso con nosotros.</p>
           <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
             <i class="bi bi-plus-lg me-1"></i> Crear mi primera solicitud
           </a>
@@ -107,19 +177,22 @@
     </div>
   </div>
 
-  {# ===== Soporte rápido ===== #}
+
+  {# =====================
+     Soporte rápido
+     ===================== #}
   <div class="card shadow-sm border-0 mt-4">
     <div class="card-body d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
       <div>
         <h6 class="mb-1">¿Necesitas ayuda?</h6>
         <p class="mb-0 text-muted small">Contáctanos por el Centro de Ayuda. Tiempo de respuesta promedio: &lt; 24 h.</p>
       </div>
-      <div class="d-flex gap-2">
+      <div class="d-flex flex-wrap gap-2">
         <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
           <i class="bi bi-chat-dots me-1"></i> Centro de ayuda
         </a>
-        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-primary">
-          <i class="bi bi-card-checklist me-1"></i> Mis solicitudes
+        <a href="{{ url_for('clientes.informacion') }}" class="btn btn-outline-primary">
+          <i class="bi bi-info-circle me-1"></i> Información
         </a>
         <a href="{{ url_for('clientes.politicas') }}" class="btn btn-outline-dark">
           <i class="bi bi-file-earmark-text me-1"></i> Políticas

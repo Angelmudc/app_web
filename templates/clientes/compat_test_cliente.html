@@ -1,17 +1,5 @@
-{# templates/clientes/compat_test_cliente.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Test de compatibilidad | {{ s.codigo_solicitud }}{% endblock %}
-
-{% block head %}
-<style>
-  .kard{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
-  .kard .kard-h{border-bottom:1px solid rgba(0,0,0,.05);padding:.9rem 1.25rem}
-  .kard .kard-b{padding:1.25rem}
-  .form-helper{font-size:.85rem;color:#6b7280}
-  .check-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem .75rem}
-  .badge-soft{background:#eef2ff;color:#3730a3;border-radius:999px;padding:.2rem .55rem;font-size:.8rem}
-</style>
-{% endblock %}
 
 {% block content %}
 <div class="container py-4" style="max-width: 880px;">
@@ -23,13 +11,13 @@
     </a>
   </div>
 
-  <form method="post" class="kard">
+  <form method="post" class="card shadow-sm border-0 rounded-4">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div class="kard-h bg-light fw-semibold">
+    <div class="card-header bg-light fw-semibold">
       Datos del hogar
     </div>
-    <div class="kard-b">
+    <div class="card-body">
       <div class="mb-3">
         <label class="form-label">Ciudad / Sector</label>
         <input type="text" name="ciudad_sector" class="form-control"
@@ -41,14 +29,14 @@
         <input type="text" name="composicion_hogar" class="form-control"
                placeholder="Ej.: 2 adultos, 2 niños"
                value="{{ initial.composicion_hogar or '' }}">
-        <div class="form-helper">Solo para entender el contexto del hogar.</div>
+        <div class="form-text">Solo para entender el contexto del hogar.</div>
       </div>
     </div>
 
-    <div class="kard-h bg-light fw-semibold">
+    <div class="card-header bg-light fw-semibold">
       Preferencias y estilo
     </div>
-    <div class="kard-b">
+    <div class="card-body">
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label">Ritmo del hogar</label>
@@ -113,51 +101,51 @@
             <option value="10:00 a.m. - 7:00 p.m." {{ 'selected' if '10' in hp and '7' in hp else '' }}>10:00 a.m. - 7:00 p.m.</option>
             <option value="Otro"                   {{ 'selected' if hp and 'otro' in hp|lower else '' }}>Otro</option>
           </select>
-          <div class="form-helper">Los días ya están definidos en tu solicitud/plan.</div>
+          <div class="form-text">Los días ya están definidos en tu solicitud/plan.</div>
         </div>
       </div>
     </div>
 
-    <div class="kard-h bg-light fw-semibold">
+    <div class="card-header bg-light fw-semibold">
       Prioridades del hogar (selección múltiple)
     </div>
-    <div class="kard-b">
+    <div class="card-body">
       {% set pr = (initial.prioridades or []) | map('lower') | list %}
-      <div class="check-grid">
-        {% for opt in ['Limpieza','Cocina','Lavado y planchado','Cuidado de niños','Organización','Compras y mandados','Mascotas'] %}
+      <div class="row g-2">
+        {% for opt in ['Limpieza','Cocina','Lavado y planchado','Cuidado de niños','Organización','Compras y mandados'] %}
           {% set key = opt|lower %}
-          <label class="form-check">
+          <label class="form-check col-12 col-sm-6 col-lg-4">
             <input class="form-check-input" type="checkbox" name="prioridades[]" value="{{ opt }}"
                    {% if key in pr %}checked{% endif %}>
             <span class="form-check-label">{{ opt }}</span>
           </label>
         {% endfor %}
       </div>
-      <div class="form-helper mt-2">Marca todas las que realmente son prioridad.</div>
+      <div class="form-text mt-2">Marca todas las que realmente son prioridad.</div>
     </div>
 
-    <div class="kard-h bg-light fw-semibold">
+    <div class="card-header bg-light fw-semibold">
       No negociables (selección múltiple)
     </div>
-    <div class="kard-b">
+    <div class="card-body">
       {% set nn = (initial.no_negociables or []) | map('lower') | list %}
-      <div class="check-grid">
-        {% for opt in ['No mascotas','No cocinar','No dormir fuera','No planchar','No trabajar fines de semana','No usar celular en horario'] %}
+      <div class="row g-2">
+        {% for opt in ['No cocinar','No dormir fuera','No planchar','No trabajar fines de semana','No usar celular en horario'] %}
           {% set key = opt|lower %}
-          <label class="form-check">
+          <label class="form-check col-12 col-sm-6 col-lg-4">
             <input class="form-check-input" type="checkbox" name="no_negociables[]" value="{{ opt }}"
                    {% if key in nn %}checked{% endif %}>
             <span class="form-check-label">{{ opt }}</span>
           </label>
         {% endfor %}
       </div>
-      <div class="form-helper mt-2">Esto se cruza con los límites de la candidata.</div>
+      <div class="form-text mt-2">Esto se cruza con los límites de la candidata.</div>
     </div>
 
-    <div class="kard-h bg-light fw-semibold">
+    <div class="card-header bg-light fw-semibold">
       Notas adicionales
     </div>
-    <div class="kard-b">
+    <div class="card-body">
       <div class="mb-3">
         <textarea name="nota_cliente_test" rows="3" class="form-control"
                   placeholder="Detalles que debamos saber">{{ initial.nota_cliente_test or '' }}</textarea>
