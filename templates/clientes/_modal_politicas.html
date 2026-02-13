@@ -1,5 +1,5 @@
 {# templates/clientes/_modal_politicas.html #}
-{% if current_user.is_authenticated and not (current_user.acepto_politicas or False) %}
+{% if current_user.is_authenticated and not (current_user.acepto_politicas or False) and (request.endpoint != 'clientes.politicas') and ('politicas' not in (request.path or '')) %}
 <div class="modal fade" id="politicasModal" tabindex="-1" aria-labelledby="politicasLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-0" style="border-radius:16px; overflow:hidden;">
