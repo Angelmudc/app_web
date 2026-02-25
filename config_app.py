@@ -39,11 +39,34 @@ csrf = CSRFProtect()
 # ─────────────────────────────────────────────────────────────
 # Usuarios en memoria (para login admin/secretaria)
 # ─────────────────────────────────────────────────────────────
+
 USUARIOS = {
     "Cruz":   {"pwd_hash": generate_password_hash("8998", method="pbkdf2:sha256"), "role": "admin"},
     "Karla":  {"pwd_hash": generate_password_hash("9989", method="pbkdf2:sha256"), "role": "secretaria"},
     "Nicole": {"pwd_hash": generate_password_hash("0928", method="pbkdf2:sha256"), "role": "secretaria"},
 }
+
+# Helper: get admin user record by username, case-insensitive
+def _get_admin_user_record(raw_username: str):
+    """Devuelve (key_canonica, data) para USUARIOS, tolerando mayúsc/minúsc.
+
+    Esto evita loops de login cuando el username se guarda con otro casing.
+    """
+    u = (raw_username or "").strip()
+    if not u:
+        return None, None
+
+    # 1) Exact match
+    if u in USUARIOS:
+        return u, USUARIOS[u]
+
+    # 2) Case-insensitive match
+    ul = u.lower()
+    for k, v in USUARIOS.items():
+        if str(k).lower() == ul:
+            return k, v
+
+    return None, None
 
 # ─────────────────────────────────────────────────────────────
 # Utilidad: normalizar cédula (devuelve 11 dígitos sin guiones)
@@ -99,6 +122,17 @@ def create_app():
     env = _detect_env()
     prod = env in ("prod", "production")
 
+    # Detectar si estamos corriendo en Render (para decidir cookies Secure sin romper local)
+    IS_RENDER = bool(
+        os.getenv("RENDER")
+        or os.getenv("RENDER_SERVICE_NAME")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or os.getenv("RENDER_INTERNAL_HOSTNAME")
+    )
+
+    # Permite forzar manualmente cookie secure (por si usas otro hosting)
+    FORCE_COOKIE_SECURE = _is_true(os.getenv("FORCE_COOKIE_SECURE", ""))
+
     def _env_str(name: str, default: str) -> str:
         return (os.getenv(name) or default).strip()
 
@@ -129,17 +163,20 @@ def create_app():
     # - En local: False (para no romper CSRF/cookies)
     # Nota: ProxyFix + request.is_secure te ayuda a detectar HTTPS real detrás de proxy.
     def _cookie_secure() -> bool:
+        # En desarrollo local (aunque APP_ENV diga "production"), NO usar cookies Secure
+        # porque en HTTP el navegador las ignora y la sesión no se guarda.
+        if FORCE_COOKIE_SECURE:
+            return True
+
         if not prod:
             return False
-        try:
-            # si es localhost en runtime, no asegures
-            if _is_local_request_host():
-                return False
-        except Exception:
-            pass
-        if is_localhost_flag:
+
+        # Si NO estamos en Render (o un entorno HTTPS real), asumimos que es local/dev
+        # y desactivamos Secure para no romper login/sesión.
+        if not IS_RENDER:
             return False
-        # En prod, asumimos HTTPS real (Render usa https), salvo que tú lo fuerces a local
+
+        # En Render, normalmente hay HTTPS real.
         return True
 
     app.config.update(
@@ -153,8 +190,8 @@ def create_app():
             "SESSION_REFRESH_EACH_REQUEST": False,
             "REMEMBER_COOKIE_REFRESH_EACH_REQUEST": False,
             "REMEMBER_COOKIE_HTTPONLY": True,
-            "REMEMBER_COOKIE_SECURE": _cookie_secure(),
-            "REMEMBER_COOKIE_DURATION": timedelta(seconds=0),
+            # Evita que el remember cookie se "muera" instantáneo (0s puede crear comportamientos raros)
+            "REMEMBER_COOKIE_DURATION": timedelta(days=int(os.getenv("REMEMBER_DAYS", "7"))),
             "PREFERRED_URL_SCHEME": "https" if prod else "http",
 
             # Sesión (Flask espera timedelta, no int)
@@ -176,7 +213,7 @@ def create_app():
     # En local con http, SSL_STRICT debe ser False.
     # En prod, normalmente sí.
     app.config["WTF_CSRF_ENABLED"] = True
-    app.config["WTF_CSRF_SSL_STRICT"] = (prod and _cookie_secure())
+    app.config["WTF_CSRF_SSL_STRICT"] = (prod and _cookie_secure() and IS_RENDER)
     app.config["WTF_CSRF_TIME_LIMIT"] = int(os.getenv("WTF_CSRF_TIME_LIMIT", "7200"))  # 2 horas
     app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken", "X-CSRF-Token"]
     app.config["WTF_CSRF_CHECK_DEFAULT"] = True
@@ -187,6 +224,26 @@ def create_app():
     # ─────────────────────────────────────────────────────────
     # Esto es clave para request.is_secure, host, ip, etc.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+    # ─────────────────────────────────────────────────────────
+    # Override LOCAL (evita loops de login cuando en tu .env hay vars de Render)
+    # Si estás entrando por http://localhost o http://127.0.0.1, el navegador
+    # IGNORA cookies con atributo Secure. Eso rompe la sesión y te devuelve a /login.
+    #
+    # Esto mantiene seguridad "tipo empresa" en producción/HTTPS, pero garantiza
+    # que en local funcione aunque tengas APP_ENV=production o variables RENDER en .env.
+    # ─────────────────────────────────────────────────────────
+    @app.before_request
+    def _local_cookie_override():
+        # Si el usuario fuerza Secure, respetarlo
+        if FORCE_COOKIE_SECURE:
+            return
+
+        # Si estamos en localhost, no usar cookies Secure y no exigir CSRF por SSL
+        if _is_local_request_host() or is_localhost_flag:
+            app.config["SESSION_COOKIE_SECURE"] = False
+            app.config["REMEMBER_COOKIE_SECURE"] = False
+            app.config["WTF_CSRF_SSL_STRICT"] = False
 
     # ─────────────────────────────────────────────────────────
     # Base de datos remota
@@ -319,13 +376,16 @@ def create_app():
             self.role = role
 
         def check_password(self, password):
-            return check_password_hash(USUARIOS[self.id]["pwd_hash"], password)
+            key, data = _get_admin_user_record(self.id)
+            if not data:
+                return False
+            return check_password_hash(data["pwd_hash"], password)
 
     @login_manager.user_loader
     def load_user(user_id):
-        data = USUARIOS.get(user_id)
+        key, data = _get_admin_user_record(user_id)
         if data:
-            return User(user_id, data["role"])
+            return User(key, data["role"])
         try:
             from models import Cliente
             return Cliente.query.get(int(user_id))

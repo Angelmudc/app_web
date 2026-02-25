@@ -447,11 +447,41 @@ def _admin_guard_and_rate_limit():
         if not current_user or not getattr(current_user, "is_authenticated", False):
             return None
 
-        # Debe ser AdminUser y sesión marcada como admin
-        is_admin_user = isinstance(current_user, AdminUser)
+        # Debe ser identidad ADMIN válida + sesión marcada como admin.
+        # OJO: NO usamos isinstance(AdminUser) porque flask-login reconstruye el usuario
+        # vía user_loader y puede no devolver la misma clase.
+        def _is_admin_identity() -> bool:
+            try:
+                uid = None
+                try:
+                    uid = current_user.get_id()
+                except Exception:
+                    uid = getattr(current_user, "id", None)
+
+                if uid is None:
+                    return False
+
+                uid_str = str(uid).strip()
+                if not uid_str:
+                    return False
+
+                # Match exacto o case-insensitive contra USUARIOS
+                if uid_str in (USUARIOS or {}):
+                    return True
+
+                uid_norm = uid_str.lower()
+                for k in (USUARIOS or {}).keys():
+                    if str(k).strip().lower() == uid_norm:
+                        return True
+
+                return False
+            except Exception:
+                return False
+
+        is_admin_user = _is_admin_identity()
         is_admin_session = bool(session.get(_ADMIN_SESSION_MARKER))
 
-        if not is_admin_user or not is_admin_session:
+        if (not is_admin_user) or (not is_admin_session):
             try:
                 logout_user()
             except Exception:
@@ -958,6 +988,7 @@ def login():
             # ✅ MARCAR ESTA SESIÓN COMO ADMIN (AISLAMIENTO REAL)
             try:
                 session[_ADMIN_SESSION_MARKER] = True
+                session.modified = True
             except Exception:
                 pass
 
