@@ -533,7 +533,6 @@
    ========================================================== */
 
 :where(body.clientes, .clientes, [data-portal="clientes"]) .section,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .container,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-candidata,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .cta-section {
   /* No forzamos fondo aquí: lo controla la página.
@@ -643,14 +642,12 @@
 }
 
 :where(body.clientes, .clientes, [data-portal="clientes"]) .section a,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .container a,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-candidata a,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .cta-section a {
   color: #0b1220;
 }
 
 :where(body.clientes, .clientes, [data-portal="clientes"]) .section a:hover,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .container a:hover,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-candidata a:hover,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .cta-section a:hover,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .back-link:hover {
@@ -661,34 +658,49 @@
    FIX CONTRASTE NAVBAR + FOOTER (se veían muy claros)
    ========================================================== */
 
-/* Navbar: links con contraste real */
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar * {
+/* Navbar: solo links/brand (NO tocar dropdown-menu que es blanco) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar.navbar-dark .navbar-brand,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar.navbar-dark .navbar-brand * {
   color: rgba(255,255,255,.92) !important;
+  font-weight: 800;
 }
 
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar a,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .nav-link {
-  color: rgba(255,255,255,.92) !important;
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar.navbar-dark .navbar-nav .nav-link {
+  color: rgba(255,255,255,.90) !important;
   font-weight: 750;
+  border-radius: .65rem;
+  padding: .5rem .75rem;
 }
 
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar a:hover,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .nav-link:hover {
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar.navbar-dark .navbar-nav .nav-link:hover {
   color: #ffffff !important;
   text-decoration: none !important;
+  background: rgba(255,255,255,.08);
 }
 
-/* Activo (si bootstrap marca active) */
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .nav-link.active,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar a.active {
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar.navbar-dark .navbar-nav .nav-link.active {
   color: #ffffff !important;
+  background: rgba(255,255,255,.12);
 }
 
-/* Dropdown del usuario */
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-toggle,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-toggle * {
-  color: rgba(255,255,255,.92) !important;
+/* Dropdown menu (fondo blanco): texto oscuro legible */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item-text {
+  color: #0f172a !important;
+  font-weight: 650;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item.text-danger {
+  color: #b42318 !important;
 }
 
 /* Footer: links con contraste (cuando el footer es oscuro o con gradiente) */
@@ -791,10 +803,6 @@
 }
 
 /* En algunas versiones el contenedor general puede meter padding en el primer hijo */
-:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica > :first-child,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card > :first-child {
-  margin-top: 0 !important;
-}
 :where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica > :first-child,
 :where(body.clientes, .clientes, [data-portal="clientes"]) .detalle-card > :first-child {
   margin-top: 0 !important;
@@ -1088,4 +1096,102 @@ body.clientes.dc-modal-open {
   :where(body.clientes, .clientes, [data-portal="clientes"]) main.container-fluid .card.shadow-sm.border-0 .row > :first-child img {
     max-height: 84px !important;
   }
+}
+
+/* ==========================================================
+   PLANES (alineación de tarjetas y botones)
+   Objetivo: que los 3 botones queden EXACTAMENTE al mismo nivel.
+   Nota: NO requiere tocar HTML si ya existen contenedores típicos.
+   ========================================================== */
+
+/* 1) Si existe una grilla/contenedor de planes, hacemos que las cards estiren */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-grid,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-grid,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plans-grid,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-row {
+  align-items: stretch;
+}
+
+/* 2) Convertimos cada tarjeta de plan en layout tipo "columna" */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.plan,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.plan-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.pricing,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.pricing-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 3) El bloque de precio + botón siempre va al fondo */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card .plan-footer,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card .plan-footer,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-card .plan-footer,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card .pricing-footer,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card .pricing-footer,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.plan .plan-footer,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.pricing .pricing-footer {
+  margin-top: auto;
+}
+
+/* 4) Si NO existe footer, empujamos el botón directamente */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.plan .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.pricing .btn {
+  margin-top: auto;
+}
+
+/* 5) Botones: que SIEMPRE se vean (especialmente VIP / Básico) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.plan .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card.pricing .btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  font-weight: 850;
+}
+
+/* VIP: si el HTML usa btn-dark, aseguramos contraste real */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn.btn-dark,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn.btn-dark * {
+  color: #ffffff !important;
+}
+
+/* Básico: si el HTML usa outline/secondary y se "pierde", lo reforzamos */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn.btn-outline,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn.btn-outline-secondary {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.26) !important;
+  color: #0b1220 !important;
+}
+
+/* Premium: si usa warning/amarillo, que el texto sea oscuro y legible */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn.btn-warning,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn.btn-warning * {
+  color: #111827 !important;
+  font-weight: 900;
+}
+/* ==========================================================
+   FIX NAVBAR (anti-bullets / anti-reset global)
+   ========================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar ul,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar ol {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar li {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }

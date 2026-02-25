@@ -10,6 +10,31 @@ from wtforms.validators import (
 )
 from wtforms.widgets import ListWidget, CheckboxInput
 # ─────────────────────────────────────────────────────────────
+# Validaciones estrictas de seguridad (anti símbolos raros)
+# ─────────────────────────────────────────────────────────────
+import re
+
+def _solo_texto(valor):
+    """
+    Permite únicamente letras (incluye acentos), espacios y comas.
+    """
+    if not valor:
+        return valor
+    patron = r'^[A-Za-zÁÉÍÓÚáéíóúÑñ\s,]+$'
+    if not re.fullmatch(patron, valor.strip()):
+        raise ValidationError("Solo se permiten letras y espacios (sin números ni símbolos).")
+    return valor
+
+def _solo_numeros(valor):
+    """
+    Permite únicamente números enteros positivos.
+    """
+    if valor is None:
+        return valor
+    if not re.fullmatch(r'^\d+$', str(valor)):
+        raise ValidationError("Solo se permiten números, sin símbolos ni letras.")
+    return valor
+# ─────────────────────────────────────────────────────────────
 # Utilidades
 # ─────────────────────────────────────────────────────────────
 def _strip(v):
@@ -112,7 +137,7 @@ class SolicitudForm(FlaskForm):
         "Ciudad / Sector",
         validators=[DataRequired("Indica ciudad y sector.")],
         filters=STRIP,
-        render_kw={"placeholder": "Ej. Santiago / Los Jardines"}
+        render_kw={"placeholder": "Ej. Santiago / Los Jardines", "inputmode": "text", "autocomplete": "address-level2"}
     )
     rutas_cercanas = StringField(
         "Rutas de transporte cercanas",
@@ -155,7 +180,7 @@ class SolicitudForm(FlaskForm):
         "Tipo de experiencia requerida",
         validators=[DataRequired("Describe la experiencia requerida."), Length(min=5, max=500)],
         filters=STRIP,
-        render_kw={"placeholder": "Ej. Niñera, cocina, planchado… (máx. 500)", "maxlength": 500}
+        render_kw={"placeholder": "Ej. Niñera, cocina, planchado… (máx. 500)", "maxlength": 500, "inputmode": "text"}
     )
 
     horario = StringField(
@@ -281,6 +306,24 @@ class SolicitudForm(FlaskForm):
     submit = SubmitField("Enviar")
 
     # ───────── Validaciones cruzadas (para 'Otro') ─────────
+    def validate_ciudad_sector(self, field):
+        _solo_texto(field.data)
+
+    def validate_experiencia(self, field):
+        _solo_texto(field.data)
+
+    def validate_edades_ninos(self, field):
+        """Si se marca 'Cuidar Niños' y hay niños > 0, las edades son obligatorias."""
+        funciones = self.funciones.data or []
+        try:
+            ninos_cnt = int(self.ninos.data or 0)
+        except Exception:
+            ninos_cnt = 0
+
+        requiere = ('ninos' in funciones) and (ninos_cnt > 0)
+        if requiere:
+            if not (field.data and str(field.data).strip()):
+                raise ValidationError("Debes indicar las edades de los niños.")
     def validate_edad_requerida(self, field):
         data = field.data or []
         if 'otro' in data and not (self.edad_otro.data and self.edad_otro.data.strip()):
@@ -294,6 +337,56 @@ class SolicitudForm(FlaskForm):
     def validate_tipo_lugar(self, field):
         if field.data == 'otro' and not (self.tipo_lugar_otro.data and self.tipo_lugar_otro.data.strip()):
             raise ValidationError("Especifica el tipo de lugar cuando marcas 'Otro'.")
+
+    def validate_modalidad_trabajo(self, field):
+        _solo_texto(field.data)
+
+    def validate_horario(self, field):
+        # Permite letras, números y espacios (horario necesita números)
+        if field.data:
+            if not re.fullmatch(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s:–\-]+$', field.data.strip()):
+                raise ValidationError("Horario inválido. Solo texto y números.")
+
+    def validate_funciones_otro(self, field):
+        if field.data:
+            _solo_texto(field.data)
+
+    def validate_area_otro(self, field):
+        if field.data:
+            _solo_texto(field.data)
+
+    def validate_tipo_lugar_otro(self, field):
+        if field.data:
+            _solo_texto(field.data)
+
+    def validate_mascota(self, field):
+        if field.data:
+            _solo_texto(field.data)
+
+    def validate_nota_cliente(self, field):
+        if field.data:
+            # Permite letras, números y espacios básicos
+            if not re.fullmatch(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s,.]+$', field.data.strip()):
+                raise ValidationError("La nota contiene caracteres no permitidos.")
+
+    def validate_sueldo(self, field):
+        if field.data:
+            _solo_numeros(field.data)
+
+    def validate_adultos(self, field):
+        _solo_numeros(field.data)
+
+    def validate_ninos(self, field):
+        _solo_numeros(field.data)
+
+    def validate_habitaciones(self, field):
+        _solo_numeros(field.data)
+
+    def validate_banos(self, field):
+        # Permite números y punto decimal
+        if field.data is not None:
+            if not re.fullmatch(r'^\d+(\.\d+)?$', str(field.data)):
+                raise ValidationError("Cantidad de baños inválida.")
 
 # IMPORTANTE: esto asume que ya existe SolicitudForm en este mismo archivo.
 class SolicitudPublicaForm(SolicitudForm):

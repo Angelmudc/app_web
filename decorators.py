@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from functools import wraps
-from flask import abort, flash, redirect, request, session, url_for
+from datetime import datetime, timedelta
+
+from flask import abort, flash, redirect, request, session, url_for, current_app
 
 # ─────────────────────────────────────────────────────────────
 # flask-login (carga segura)
@@ -17,7 +19,7 @@ except Exception:
 # Helpers internos (NO exportar)
 # ─────────────────────────────────────────────────────────────
 
-def _is_authenticated():
+def _is_authenticated() -> bool:
     """
     Verificación robusta de autenticación con flask-login.
     Evita AnonymousUser y objetos manipulados.
@@ -26,19 +28,24 @@ def _is_authenticated():
         return bool(
             current_user
             and hasattr(current_user, "is_authenticated")
-            and current_user.is_authenticated
+            and bool(current_user.is_authenticated)
         )
     except Exception:
         return False
 
 
-def _safe_next():
+def _safe_next() -> str:
     """
     Previene open-redirect.
-    Solo permite rutas internas del mismo dominio.
+    Solo permite rutas internas seguras.
     """
     nxt = request.full_path or request.path or "/"
-    if isinstance(nxt, str) and nxt.startswith("/"):
+    if not isinstance(nxt, str):
+        return "/"
+    nxt = nxt.strip()
+
+    # Solo rutas internas, nunca // ni externas
+    if nxt.startswith("/") and not nxt.startswith("//"):
         return nxt
     return "/"
 
@@ -53,30 +60,66 @@ def _redirect_login(endpoint: str):
         abort(401)
 
 
-def _get_role():
+def _get_role() -> str:
     """
     Obtiene y normaliza el rol del usuario.
     """
-    if not current_user:
+    try:
+        if not current_user:
+            return ""
+        role = (
+            getattr(current_user, "role", None)
+            or getattr(current_user, "rol", None)
+            or ""
+        )
+        return str(role).strip().lower()
+    except Exception:
         return ""
-    role = (
-        getattr(current_user, "role", None)
-        or getattr(current_user, "rol", None)
-        or ""
-    )
-    return str(role).strip().lower()
 
 
-def _is_admin():
+def _is_admin() -> bool:
     """
     Determina si el usuario es admin de forma segura.
     """
-    if not current_user:
+    try:
+        if not current_user:
+            return False
+        return bool(
+            getattr(current_user, "is_admin", False)
+            or _get_role() == "admin"
+        )
+    except Exception:
         return False
-    return bool(
-        getattr(current_user, "is_admin", False)
-        or _get_role() == "admin"
-    )
+
+
+def _parse_logged_at(value):
+    """
+    logged_at viene de:
+      session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+    """
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).strip())
+    except Exception:
+        return None
+
+
+def _get_session_ttl_seconds() -> int:
+    """
+    TTL defensivo:
+    - Preferimos config PERMANENT_SESSION_LIFETIME.
+    - Si no existe, usamos 30 días.
+    """
+    try:
+        ttl = current_app.config.get("PERMANENT_SESSION_LIFETIME")
+        if isinstance(ttl, timedelta):
+            return int(ttl.total_seconds())
+        if isinstance(ttl, (int, float)) and ttl > 0:
+            return int(ttl)
+    except Exception:
+        pass
+    return 60 * 60 * 24 * 30  # 30 días
 
 
 # ─────────────────────────────────────────────────────────────
@@ -125,7 +168,6 @@ def staff_required(view_func):
 def cliente_required(view_func):
     """
     Requiere login válido y que el usuario sea un Cliente real.
-    Evita acceso por role inyectado o sesión manipulada.
     """
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -141,12 +183,12 @@ def cliente_required(view_func):
             if not isinstance(current_user, Cliente):
                 abort(403)
         else:
-            # Fallback defensivo si el modelo no está disponible
             if _get_role() != "cliente":
                 abort(403)
 
         return view_func(*args, **kwargs)
-    return wrapper
+
+    return wrapper  # ✅ obligatorio
 
 
 def politicas_requeridas(view_func):
@@ -160,32 +202,59 @@ def politicas_requeridas(view_func):
 
         if not getattr(current_user, "acepto_politicas", False):
             flash("Debes aceptar las políticas para continuar.", "warning")
-            return redirect(url_for("clientes.politicas", next=_safe_next()))
+            return redirect(
+                url_for("clientes.politicas", next=_safe_next())
+            )
 
         return view_func(*args, **kwargs)
     return wrapper
 
 
 # ─────────────────────────────────────────────────────────────
-# LEGACY (session-based) — NO TOCAR
+# LEGACY (session-based)
 # ─────────────────────────────────────────────────────────────
 
 def roles_required(*permitted_roles):
     """
     Decorador legacy por session.
-    Mantener solo para rutas antiguas.
     """
+    permitted = [str(r).strip().lower() for r in permitted_roles]
+
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(*args, **kwargs):
-            if "usuario" not in session:
-                abort(401)
-            if session.get("role") not in permitted_roles:
+            usuario = session.get("usuario")
+            role = (session.get("role") or "").strip().lower()
+
+            if not usuario or not role:
+                flash("Debes iniciar sesión.", "warning")
+                return redirect(url_for("login", next=_safe_next()))
+
+            logged_at = _parse_logged_at(session.get("logged_at"))
+            if logged_at:
+                ttl_seconds = _get_session_ttl_seconds()
+                try:
+                    if datetime.utcnow() - logged_at > timedelta(seconds=ttl_seconds):
+                        try:
+                            session.clear()
+                        except Exception:
+                            pass
+                        flash("Tu sesión expiró. Inicia sesión otra vez.", "warning")
+                        return redirect(url_for("login", next=_safe_next()))
+                except Exception:
+                    try:
+                        session.clear()
+                    except Exception:
+                        pass
+                    flash("Tu sesión expiró. Inicia sesión otra vez.", "warning")
+                    return redirect(url_for("login", next=_safe_next()))
+
+            if role not in permitted:
                 abort(403)
+
             return view_func(*args, **kwargs)
         return wrapped
     return decorator
 
 
-# Alias legacy
 admin_required_session = roles_required("admin")

@@ -32,10 +32,52 @@
   <link href="{{ url_for('static', filename='clientes/css/clientes_components.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='clientes/css/clientes_pages.css') }}" rel="stylesheet">
 
+  <!-- Hotfix UI: evita que el CSS del portal pise estilos de Bootstrap en la navbar/dropdown -->
+  <style>
+    :root{ --clientes-font: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+
+    body.clientes{ font-family: var(--clientes-font); }
+
+    /* Si algún CSS global cambió UL/LI, esto asegura que la navbar no salga con viñetas */
+    body.clientes nav.navbar ul,
+    body.clientes nav.navbar li{
+      list-style: none !important;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Mantener el layout de la navbar como Bootstrap espera */
+    body.clientes .navbar .navbar-nav{
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: .35rem;
+    }
+
+    /* En mobile, el collapse vuelve a columna */
+    @media (max-width: 991.98px){
+      body.clientes .navbar .navbar-nav{ flex-direction: column; align-items: flex-start; gap: .15rem; }
+      body.clientes .navbar .navbar-nav .nav-link{ width: 100%; }
+    }
+
+    body.clientes .navbar .nav-link{
+      padding: .5rem .75rem;
+      border-radius: .6rem;
+    }
+
+    body.clientes .navbar .nav-link.active{
+      background: rgba(255,255,255,.12);
+    }
+
+    body.clientes .dropdown-menu{ min-width: 240px; }
+
+    /* Espaciado general del contenido */
+    main.container, main.container-fluid{ padding-top: 24px; padding-bottom: 24px; }
+  </style>
 
   {% block head %}{% endblock %}
 </head>
-<body class="clientes" data-portal="clientes">
+<body class="clientes d-flex flex-column min-vh-100" data-portal="clientes">
   {% set is_login_page = (request.endpoint == 'clientes.login') %}
   {% set is_authed = (current_user.is_authenticated if current_user is defined else false) %}
   {% set show_shell = (is_authed and (not is_login_page)) %}
@@ -129,7 +171,7 @@
   {% endif %}
 
   <!-- TOASTS de flash -->
-  <div class="toast-container">
+  <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, text in messages %}
@@ -155,7 +197,7 @@
     {% endwith %}
   </div>
 
-  <main class="{% if show_shell %}container{% else %}container-fluid{% endif %}">
+  <main class="{% if show_shell %}container{% else %}container-fluid{% endif %} flex-grow-1 px-3">
     {% block content %}{% endblock %}
   </main>
 

@@ -61,7 +61,16 @@
           <div class="row g-4">
             <div class="col-md-7">
               <label class="form-label fw-semibold">{{ form.ciudad_sector.label.text }} <span class="text-danger">*</span></label>
-              {{ form.ciudad_sector(class="form-control", aria_required="true") }}
+              {{ form.ciudad_sector(
+                  class="form-control",
+                  aria_required="true",
+                  inputmode="text",
+                  autocomplete="off",
+                  spellcheck="false",
+                  maxlength="80",
+                  pattern="^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.,-]{2,80}$",
+                  title="Solo letras y espacios. Se permiten . , -"
+              ) }}
               <div class="form-text"><i class="bi bi-info-circle me-1"></i> Ciudad y sector donde se realizará el servicio.</div>
             </div>
             <div class="col-md-5">
@@ -110,7 +119,16 @@
             </div>
             <div class="col-12">
               <label class="form-label fw-semibold">{{ form.experiencia.label.text }}</label>
-              {{ form.experiencia(rows=3, class="form-control", maxlength="500") }}
+              {{ form.experiencia(
+                  rows=3,
+                  class="form-control",
+                  maxlength="500",
+                  inputmode="text",
+                  autocomplete="off",
+                  spellcheck="true",
+                  pattern="^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.,:-]{0,500}$",
+                  title="Solo texto. No se permiten números. Se permiten . , : -"
+              ) }}
               <div class="d-flex justify-content-between mt-1">
                 <span class="form-text">Hasta 500 caracteres.</span>
                 <span class="form-text"><span id="exp-count">0</span>/500</span>
@@ -215,9 +233,10 @@
               <label class="form-label fw-semibold">{{ form.ninos.label.text }}</label>
               {{ form.ninos(class="form-control", type="number", min="0", step="1", placeholder="0") }}
             </div>
-            <div class="col-md-3">
+            <div class="col-md-3" id="wrap-edades-ninos">
               <label class="form-label fw-semibold">{{ form.edades_ninos.label.text }}</label>
               {{ form.edades_ninos(class="form-control", placeholder="Ej. 2 y 6 años") }}
+              <div class="form-text">Solo si aplica cuidado de niños.</div>
             </div>
 
             {# Mascota: solo se muestra si el form trae el campo #}
@@ -292,72 +311,4 @@
 </section>
 {% endblock %}
 
-{% block scripts %}
-<script>
-(function(){
-  // Contadores de caracteres
-  const exp = document.getElementById("{{ form.experiencia.id }}");
-  const nota = document.getElementById("{{ form.nota_cliente.id }}");
-  function bindCount(el, outId){
-    if(!el) return;
-    const out = document.getElementById(outId);
-    const upd = () => { if(out) out.textContent = el.value.length; };
-    el.addEventListener('input', upd); upd();
-  }
-  bindCount(exp, 'exp-count');
-  bindCount(nota, 'nota-count');
-
-  // Aviso cambios sin guardar
-  let dirty = false;
-  const formEl = document.getElementById('solicitud-form');
-  formEl.addEventListener('input', () => { dirty = true; });
-  window.addEventListener('beforeunload', function(e){
-    if(!dirty) return;
-    e.preventDefault(); e.returnValue='';
-  });
-  const submitBtn = document.getElementById('btn-submit');
-  if (submitBtn) submitBtn.addEventListener('click', function(){ dirty = false; });
-
-  // Toggle "Otro" - Edad
-  const edadWrap = document.getElementById('wrap-edad-otro');
-  const edadChecks = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
-  function updateEdadOtro(){
-    let checkedOtro = false;
-    edadChecks.forEach(ch => { if (ch.value === 'otro' && ch.checked) checkedOtro = true; });
-    if (!edadWrap) return;
-    edadWrap.classList.toggle('d-none', !checkedOtro);
-  }
-  edadChecks.forEach(ch => ch.addEventListener('change', updateEdadOtro));
-  updateEdadOtro();
-
-  // Toggle "Otro" - Funciones
-  const funcWrap = document.getElementById('wrap-funciones-otro');
-  const funcChecks = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
-  function updateFuncionesOtro(){
-    let checkedOtro = false;
-    funcChecks.forEach(ch => { if (ch.value === 'otro' && ch.checked) checkedOtro = true; });
-    if (!funcWrap) return;
-    funcWrap.classList.toggle('d-none', !checkedOtro);
-  }
-  funcChecks.forEach(ch => ch.addEventListener('change', updateFuncionesOtro));
-  updateFuncionesOtro();
-
-  // Toggle "Otro" - Tipo de lugar
-  const tipoSel = document.getElementById('{{ form.tipo_lugar.id }}');
-  const tipoWrap = document.getElementById('wrap-tipo-lugar-otro');
-  function updateTipoLugarOtro(){
-    if (!tipoSel || !tipoWrap) return;
-    tipoWrap.classList.toggle('d-none', tipoSel.value !== 'otro');
-  }
-  if (tipoSel) tipoSel.addEventListener('change', updateTipoLugarOtro);
-  updateTipoLugarOtro();
-
-  const HAS_ERRORS = (formEl && formEl.dataset && formEl.dataset.hasErrors === '1');
-  // Accesibilidad: focus al primer error (si existiera)
-  if (HAS_ERRORS) {
-    const firstInvalid = document.querySelector('.is-invalid, .was-validated .form-control:invalid');
-    if (firstInvalid) firstInvalid.focus({ preventScroll: false });
-  }
-})();
-</script>
-{% endblock %}
+{% block scripts %}{% endblock %}

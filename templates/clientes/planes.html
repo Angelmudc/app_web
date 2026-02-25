@@ -1,28 +1,8 @@
-{# templates/clientes/planes.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Planes | Doméstica del Cibao A&D{% endblock %}
 
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-<style>
-  /* Scoped / prefixed styles to avoid clashing with global CSS from base.html */
-  .cpl-hero{
-    background: linear-gradient(140deg,#f0f7ff 0%,#f7fbff 100%);
-    border: 1px solid #e6efff;
-    border-radius: 16px;
-  }
-  .cpl-card{
-    border:0;border-radius:16px;
-    box-shadow:0 10px 30px rgba(16,24,40,.06);
-    transition: transform .2s ease, box-shadow .2s ease;
-  }
-  .cpl-card:hover{ transform: translateY(-2px); box-shadow:0 14px 36px rgba(16,24,40,.10) }
-  .cpl-price{ font-size:2rem }
-  .cpl-badge-best{ background:#fff7e6; color:#a86b00; border:1px solid #ffe3a3 }
-  .cpl-feature i{ width:1.25rem }
-  .cpl-compare thead th{ background:#0ea5e9; color:#fff }
-  .cpl-compare td, .cpl-compare th{ vertical-align:middle }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -38,27 +18,28 @@
   </section>
 
   <!-- CARDS DE PLANES -->
-  <div class="row g-4">
+  <div class="row g-4 cpl-plan-row">
 
     <!-- Básico -->
     <div class="col-md-4">
-      <div class="cpl-card h-100" style="background:#f0f8ff;">
+      <div class="cpl-card cpl-plan-card h-100 d-flex flex-column" style="background:#f0f8ff;">
         <div class="p-3 border-bottom text-center">
           <h3 class="h5 mb-0"><i class="bi bi-shield-check text-primary me-1"></i> Básico</h3>
         </div>
-        <div class="p-3">
-          <ul class="list-unstyled mb-3">
+        <div class="p-3 cpl-plan-body d-flex flex-column flex-grow-1">
+          <ul class="list-unstyled mb-3 cpl-plan-features">
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Depuración policial</li>
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Presentación de candidata</li>
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>Garantía 15 días</li>
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-primary me-2"></i>1 reemplazo sin costo</li>
             <li class="cpl-feature"><i class="bi bi-check-circle-fill text-primary me-2"></i>Entrevista inicial</li>
           </ul>
-          <div class="text-center">
+
+          <div class="text-center cpl-plan-footer mt-auto">
             <div class="cpl-price fw-bold">RD$3,500</div>
             <small class="text-muted d-block">Pago único</small>
             <a href="{{ url_for('clientes.nueva_solicitud') }}"
-               class="btn btn-outline-primary w-100 mt-3">Elegir Básico</a>
+               class="btn btn-primary w-100 mt-3">Elegir Básico</a>
           </div>
         </div>
       </div>
@@ -66,15 +47,15 @@
 
     <!-- Premium (destacado) -->
     <div class="col-md-4">
-      <div class="cpl-card h-100 border border-warning-subtle" style="background:#fff8e1;">
+      <div class="cpl-card cpl-plan-card border border-warning-subtle h-100 d-flex flex-column" style="background:#fff8e1;">
         <div class="p-3 border-bottom text-center">
           <h3 class="h5 mb-1">
             <i class="bi bi-stars text-warning me-1"></i> Premium
           </h3>
           <span class="badge cpl-badge-best">Más elegido</span>
         </div>
-        <div class="p-3">
-          <ul class="list-unstyled mb-3">
+        <div class="p-3 cpl-plan-body d-flex flex-column flex-grow-1">
+          <ul class="list-unstyled mb-3 cpl-plan-features">
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Todo lo del Básico</li>
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Garantía 1 mes</li>
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>2 reemplazos sin costo</li>
@@ -82,7 +63,8 @@
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-warning me-2"></i>Acceso al banco de domésticas</li>
             <li class="cpl-feature"><i class="bi bi-check-circle-fill text-warning me-2"></i>Test de compatibilidad</li>
           </ul>
-          <div class="text-center">
+
+          <div class="text-center cpl-plan-footer mt-auto">
             <div class="cpl-price fw-bold">RD$5,000</div>
             <small class="text-muted d-block">Asesoría personalizada</small>
             <a href="{{ url_for('clientes.nueva_solicitud') }}"
@@ -94,12 +76,12 @@
 
     <!-- VIP -->
     <div class="col-md-4">
-      <div class="cpl-card h-100" style="background:#f5f5f5;">
+      <div class="cpl-card cpl-plan-card h-100 d-flex flex-column" style="background:#f5f5f5;">
         <div class="p-3 border-bottom text-center">
           <h3 class="h5 mb-0"><i class="bi bi-gem text-dark me-1"></i> VIP</h3>
         </div>
-        <div class="p-3">
-          <ul class="list-unstyled mb-3">
+        <div class="p-3 cpl-plan-body d-flex flex-column flex-grow-1">
+          <ul class="list-unstyled mb-3 cpl-plan-features">
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Incluye Básico + Premium</li>
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Garantía 2 meses</li>
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Reemplazos ilimitados</li>
@@ -107,11 +89,12 @@
             <li class="cpl-feature mb-2"><i class="bi bi-check-circle-fill text-dark me-2"></i>Acceso al banco de domésticas</li>
             <li class="cpl-feature"><i class="bi bi-check-circle-fill text-dark me-2"></i>Seguimiento continuo</li>
           </ul>
-          <div class="text-center">
+
+          <div class="text-center cpl-plan-footer mt-auto">
             <div class="cpl-price fw-bold">RD$7,500</div>
             <small class="text-muted d-block">Servicio de excelencia</small>
             <a href="{{ url_for('clientes.nueva_solicitud') }}"
-               class="btn btn-dark w-100 mt-3">Elegir VIP</a>
+               class="btn btn-dark w-100 mt-3 text-white">Elegir VIP</a>
           </div>
         </div>
       </div>

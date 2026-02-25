@@ -736,70 +736,40 @@ body.clientes .card-cli img {
 }
 
 /* ==========================================================
-   FIX CONTRASTE (NAVBAR / FOOTER / BOTONES CLAROS)
+   NAV / DROPDOWN FIX (quita bullets y evita estilos raros)
    ========================================================== */
-body.clientes .navbar .nav-link,
-body.clientes .navbar a.nav-link {
-  color: rgba(255,255,255,0.92) !important;
-  font-weight: 750;
+body.clientes .navbar-nav,
+body.clientes .navbar-nav .nav-item,
+body.clientes .navbar-nav .nav-link {
+  list-style: none !important;
 }
 
-body.clientes .navbar .nav-link:hover,
-body.clientes .navbar a.nav-link:hover {
-  color: #fff !important;
+body.clientes .navbar-nav {
+  padding-left: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Dropdown legible (sin pelear con Bootstrap) */
+body.clientes .dropdown-menu {
+  color: rgba(255,255,255,0.92);
+}
+
+body.clientes .dropdown-item-text {
+  color: rgba(255,255,255,0.65) !important;
+}
+
+body.clientes .dropdown-item {
+  text-decoration: none;
+}
+
+body.clientes .dropdown-item:focus,
+body.clientes .dropdown-item:active {
   background: rgba(255,255,255,0.08);
+  color: #fff;
 }
 
-body.clientes .navbar .nav-link.active {
-  color: #fff !important;
-  background: rgba(77,163,255,0.22);
-}
-
-body.clientes .navbar .dropdown-toggle {
-  color: rgba(255,255,255,0.92) !important;
-  font-weight: 750;
-}
-
-body.clientes footer {
-  color: rgba(255,255,255,0.82) !important;
-}
-
-body.clientes footer a {
-  color: rgba(255,255,255,0.92) !important;
-  font-weight: 750;
-}
-
-body.clientes footer a:hover {
-  color: #fff !important;
-  text-decoration: underline;
-}
-
-body.clientes .btn.btn-outline,
-body.clientes .btn.btn-outline-secondary,
-body.clientes .btn.btn-light {
-  background: #ffffff !important;
-  border: 1px solid rgba(15, 23, 42, 0.28) !important;
-  color: #0b1220 !important;
-  font-weight: 750;
-}
-
-body.clientes .btn.btn-outline:hover,
-body.clientes .btn.btn-outline-secondary:hover,
-body.clientes .btn.btn-light:hover {
-  background: rgba(15, 23, 42, 0.06) !important;
-  border-color: rgba(15, 23, 42, 0.36) !important;
-}
-
-body.clientes .btn.btn-secondary {
-  background: rgba(15, 23, 42, 0.14) !important;
-  border: 1px solid rgba(15, 23, 42, 0.26) !important;
-  color: #0b1220 !important;
-  font-weight: 750;
-}
-
-body.clientes .btn.btn-secondary:hover {
-  background: rgba(15, 23, 42, 0.20) !important;
-  border-color: rgba(15, 23, 42, 0.32) !important;
+body.clientes .dropdown-item.text-danger {
+  color: #ffb3b3 !important;
 }
 
 /* ==========================================================

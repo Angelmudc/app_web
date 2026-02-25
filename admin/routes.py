@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import os
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -60,54 +61,679 @@ class AdminUser:
         return str(self.id)
 
 
-# —— Anti fuerza-bruta por sesión (simple, sin dependencias externas) ——
-_MAX_LOGIN_ATTEMPTS = 5
-_LOCK_MINUTES = 10
 
-def _is_login_locked() -> bool:
-    """Devuelve True si la sesión actual está bloqueada por intentos fallidos."""
-    data = session.get('admin_login_fail')
-    if not data:
+# ─────────────────────────────────────────────────────────────
+# 🔒 Aislamiento real de sesión ADMIN vs CLIENTE + Rate-limit admin
+# ─────────────────────────────────────────────────────────────
+# Marcador de sesión: si no existe, NO se permite navegar en /admin/*
+_ADMIN_SESSION_MARKER = "is_admin_session"
+
+# Rate-limit global para acciones ADMIN (POST/PUT/PATCH/DELETE)
+# Configurable por env:
+#   ADMIN_ACTION_MAX=80   (acciones por ventana)
+#   ADMIN_ACTION_WINDOW=60 (segundos)
+#   ADMIN_ACTION_LOCK=120  (segundos bloqueado si se pasa)
+_ADMIN_ACTION_MAX = int((os.getenv("ADMIN_ACTION_MAX") or "80").strip() or 80)
+_ADMIN_ACTION_WINDOW = int((os.getenv("ADMIN_ACTION_WINDOW") or "60").strip() or 60)
+_ADMIN_ACTION_LOCK = int((os.getenv("ADMIN_ACTION_LOCK") or "120").strip() or 120)
+_ADMIN_ACTION_KEY_PREFIX = "admin_action"
+
+
+def _admin_action_limits(bucket: str = "default"):
+    """Devuelve (max, window, lock) por bucket."""
+    b = (bucket or "default").strip().lower()
+
+    mx = _ADMIN_ACTION_MAX
+    win = _ADMIN_ACTION_WINDOW
+    lock = _ADMIN_ACTION_LOCK
+
+    try:
+        if b == "pagos":
+            mx = int((os.getenv("ADMIN_ACTION_MAX_PAGOS") or str(mx)).strip())
+            win = int((os.getenv("ADMIN_ACTION_WINDOW_PAGOS") or str(win)).strip())
+        elif b == "solicitudes":
+            mx = int((os.getenv("ADMIN_ACTION_MAX_SOL") or str(mx)).strip())
+            win = int((os.getenv("ADMIN_ACTION_WINDOW_SOL") or str(win)).strip())
+        elif b == "reemplazos":
+            mx = int((os.getenv("ADMIN_ACTION_MAX_REEMP") or str(mx)).strip())
+            win = int((os.getenv("ADMIN_ACTION_WINDOW_REEMP") or str(win)).strip())
+        elif b == "delete":
+            mx = int((os.getenv("ADMIN_ACTION_MAX_DEL") or str(mx)).strip())
+            win = int((os.getenv("ADMIN_ACTION_WINDOW_DEL") or str(win)).strip())
+    except Exception:
+        pass
+
+    try:
+        lock = int((os.getenv("ADMIN_ACTION_LOCK") or str(lock)).strip())
+    except Exception:
+        lock = _ADMIN_ACTION_LOCK
+
+    return mx, win, lock
+
+
+def _admin_action_keys(usuario_norm: str, bucket: str = "default"):
+    ip = _client_ip()
+    u = (usuario_norm or "").strip().lower()[:64]
+    b = (bucket or "default").strip().lower()[:32]
+    base = f"{_ADMIN_ACTION_KEY_PREFIX}:{ip}:{u}:{b}"
+    return {
+        "count": f"{base}:count",
+        "lock": f"{base}:lock",
+    }
+
+
+def _sess_action_key(usuario_norm: str, bucket: str = "default") -> str:
+    ip = _client_ip()
+    u = (usuario_norm or "").strip().lower()[:64]
+    b = (bucket or "default").strip().lower()[:32]
+    return f"admin_action:{ip}:{u}:{b}"
+
+
+def _session_action_is_locked(usuario_norm: str, bucket: str = "default") -> bool:
+    data = session.get(_sess_action_key(usuario_norm, bucket)) or {}
+    locked_until = data.get("locked_until")
+    if not locked_until:
         return False
-    tries = data.get('tries', 0)
-    locked_until_ts = data.get('locked_until')
-    now_ts = int(datetime.utcnow().timestamp())
-    if locked_until_ts and now_ts < locked_until_ts:
+    try:
+        return datetime.utcnow().timestamp() < float(locked_until)
+    except Exception:
+        return False
+
+
+def _session_action_register(usuario_norm: str, bucket: str, mx: int, win: int, lock: int) -> int:
+    key = _sess_action_key(usuario_norm, bucket)
+    data = session.get(key) or {}
+
+    now_ts = datetime.utcnow().timestamp()
+    window_start = float(data.get("window_start") or 0.0)
+
+    if not window_start or (now_ts - window_start) > win:
+        data["window_start"] = now_ts
+        data["count"] = 0
+        data.pop("locked_until", None)
+
+    if data.get("locked_until"):
+        session[key] = data
+        return int(data.get("count") or 0)
+
+    data["count"] = int(data.get("count") or 0) + 1
+
+    if int(data["count"]) > mx:
+        data["locked_until"] = now_ts + lock
+
+    session[key] = data
+    return int(data.get("count") or 0)
+
+
+def _session_action_lock_left_seconds(usuario_norm: str, bucket: str = "default") -> int:
+    data = session.get(_sess_action_key(usuario_norm, bucket)) or {}
+    locked_until = data.get("locked_until")
+    if not locked_until:
+        return 0
+    try:
+        left = int(float(locked_until) - datetime.utcnow().timestamp())
+        return max(0, left)
+    except Exception:
+        return 0
+
+
+def _admin_action_is_locked(usuario_norm: str, bucket: str = "default") -> bool:
+    if _cache_ok():
+        keys = _admin_action_keys(usuario_norm, bucket)
+        try:
+            return bool(cache.get(keys["lock"]))
+        except Exception:
+            return _session_action_is_locked(usuario_norm, bucket)
+    return _session_action_is_locked(usuario_norm, bucket)
+
+
+def _admin_action_lock_left_seconds(usuario_norm: str, bucket: str = "default") -> int:
+    mx, win, lock = _admin_action_limits(bucket)
+
+    if _cache_ok():
+        keys = _admin_action_keys(usuario_norm, bucket)
+        try:
+            left = cache.get(keys["lock"])
+            try:
+                return max(0, int(left or 0))
+            except Exception:
+                return lock
+        except Exception:
+            return _session_action_lock_left_seconds(usuario_norm, bucket)
+
+    return _session_action_lock_left_seconds(usuario_norm, bucket)
+
+
+def _admin_action_register(usuario_norm: str, bucket: str = "default") -> int:
+    mx, win, lock = _admin_action_limits(bucket)
+
+    if _cache_ok():
+        keys = _admin_action_keys(usuario_norm, bucket)
+        try:
+            if cache.get(keys["lock"]):
+                return int(cache.get(keys["count"]) or 0)
+
+            n = int(cache.get(keys["count"]) or 0) + 1
+            cache.set(keys["count"], n, timeout=win)
+
+            if n > mx:
+                cache.set(keys["lock"], lock, timeout=lock)
+            return n
+        except Exception:
+            return _session_action_register(usuario_norm, bucket, mx=mx, win=win, lock=lock)
+
+    return _session_action_register(usuario_norm, bucket, mx=mx, win=win, lock=lock)
+
+
+#
+# ─────────────────────────────────────────────────────────────
+# ✅ Decorador CANÓNICO: rate-limit por ruta (admin_action_limit)
+# IMPORTANTE: debe existir ANTES de cualquier uso @admin_action_limit(...)
+# ─────────────────────────────────────────────────────────────
+
+def admin_action_limit(bucket: str = "default", max_actions: int | None = None, window_sec: int | None = None):
+    """Rate-limit por IP + usuario para rutas ADMIN.
+
+    - bucket: agrupa acciones (ej: 'pagos', 'solicitudes', 'delete', 'tareas')
+    - max_actions: override del máximo en la ventana
+    - window_sec: override del tamaño de la ventana (segundos)
+
+    Usa cache (Flask-Caching) si está disponible; si no, usa sesión como fallback.
+    """
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                # usuario normalizado
+                try:
+                    uname = (current_user.get_id() if current_user else "") or ""
+                except Exception:
+                    uname = getattr(current_user, "id", "") or ""
+
+                usuario_norm = str(uname).strip().lower()[:64]
+                b = (bucket or "default").strip().lower()[:32]
+
+                # límites base por bucket
+                mx, win, lock = _admin_action_limits(b)
+
+                # overrides por ruta
+                if max_actions is not None:
+                    try:
+                        mx = int(max_actions)
+                    except Exception:
+                        pass
+                if window_sec is not None:
+                    try:
+                        win = int(window_sec)
+                    except Exception:
+                        pass
+
+                # nunca permitir valores absurdos
+                try:
+                    mx = max(1, min(int(mx), 5000))
+                except Exception:
+                    mx = 80
+                try:
+                    win = max(1, min(int(win), 3600))
+                except Exception:
+                    win = 60
+                try:
+                    lock = max(5, min(int(lock), 3600))
+                except Exception:
+                    lock = 120
+
+                # --- con CACHE (preferido) ---
+                if _cache_ok():
+                    keys = _admin_action_keys(usuario_norm, bucket=b)
+                    try:
+                        # locked?
+                        left = cache.get(keys["lock"])
+                        if left:
+                            try:
+                                left_i = int(left)
+                            except Exception:
+                                left_i = lock
+
+                            wants_json = False
+                            try:
+                                wants_json = (request.is_json or ("application/json" in (request.headers.get("Accept") or "")))
+                            except Exception:
+                                wants_json = False
+
+                            if wants_json:
+                                return jsonify({
+                                    "ok": False,
+                                    "error": "rate_limited",
+                                    "bucket": b,
+                                    "retry_after_sec": max(10, left_i),
+                                }), 429
+
+                            flash(f"Demasiadas acciones seguidas ({b}). Intenta de nuevo en {max(10, left_i)} segundos.", "warning")
+                            return redirect(url_for("admin.listar_clientes"))
+
+                        # count
+                        n = int(cache.get(keys["count"]) or 0) + 1
+                        cache.set(keys["count"], n, timeout=win)
+
+                        if n > mx:
+                            cache.set(keys["lock"], lock, timeout=lock)
+
+                            wants_json = False
+                            try:
+                                wants_json = (request.is_json or ("application/json" in (request.headers.get("Accept") or "")))
+                            except Exception:
+                                wants_json = False
+
+                            if wants_json:
+                                return jsonify({
+                                    "ok": False,
+                                    "error": "rate_limited",
+                                    "bucket": b,
+                                    "retry_after_sec": max(10, lock),
+                                }), 429
+
+                            flash(f"Demasiadas acciones seguidas ({b}). Intenta de nuevo en {max(10, lock)} segundos.", "warning")
+                            return redirect(url_for("admin.listar_clientes"))
+
+                        return fn(*args, **kwargs)
+                    except Exception:
+                        # si cache falla, cae a sesión
+                        pass
+
+                # --- fallback por SESIÓN ---
+                try:
+                    key = _sess_action_key(usuario_norm, bucket=b)
+                    data = session.get(key) or {}
+
+                    now_ts = datetime.utcnow().timestamp()
+                    window_start = float(data.get("window_start") or 0.0)
+
+                    if not window_start or (now_ts - window_start) > win:
+                        data["window_start"] = now_ts
+                        data["count"] = 0
+                        data.pop("locked_until", None)
+
+                    locked_until = data.get("locked_until")
+                    if locked_until:
+                        try:
+                            left = int(float(locked_until) - now_ts)
+                        except Exception:
+                            left = lock
+                        left = max(0, left)
+
+                        wants_json = False
+                        try:
+                            wants_json = (request.is_json or ("application/json" in (request.headers.get("Accept") or "")))
+                        except Exception:
+                            wants_json = False
+
+                        if wants_json:
+                            return jsonify({
+                                "ok": False,
+                                "error": "rate_limited",
+                                "bucket": b,
+                                "retry_after_sec": max(10, left or 10),
+                            }), 429
+
+                        flash(f"Demasiadas acciones seguidas ({b}). Intenta de nuevo en {max(10, left or 10)} segundos.", "warning")
+                        return redirect(url_for("admin.listar_clientes"))
+
+                    data["count"] = int(data.get("count") or 0) + 1
+
+                    if int(data["count"]) > mx:
+                        data["locked_until"] = now_ts + lock
+                        session[key] = data
+
+                        wants_json = False
+                        try:
+                            wants_json = (request.is_json or ("application/json" in (request.headers.get("Accept") or "")))
+                        except Exception:
+                            wants_json = False
+
+                        if wants_json:
+                            return jsonify({
+                                "ok": False,
+                                "error": "rate_limited",
+                                "bucket": b,
+                                "retry_after_sec": max(10, lock),
+                            }), 429
+
+                        flash(f"Demasiadas acciones seguidas ({b}). Intenta de nuevo en {max(10, lock)} segundos.", "warning")
+                        return redirect(url_for("admin.listar_clientes"))
+
+                    session[key] = data
+                except Exception:
+                    # si todo falla, no rompemos el flujo
+                    pass
+
+            except Exception:
+                # si algo raro pasa, no rompemos la ruta
+                pass
+
+            return fn(*args, **kwargs)
+        return wrapper
+    return deco
+
+@admin_bp.before_request
+def _admin_guard_and_rate_limit():
+    """
+    1) Aislamiento real de sesión Admin:
+       - Solo permite navegar por /admin/* si:
+         - current_user es AdminUser
+         - session[_ADMIN_SESSION_MARKER] == True
+       - Si no, logout y manda a /admin/login
+
+    2) Rate-limit global para acciones sensibles:
+       - Solo aplica a métodos mutadores: POST/PUT/PATCH/DELETE
+       - Excluye: login/logout/ping/solicitudes_live
+    """
+    try:
+        # Endpoint actual
+        ep = (request.endpoint or "").strip()
+
+        # Permitir siempre rutas públicas del admin blueprint (login)
+        # y utilidades (logout, ping, live)
+        allow_eps = {
+            "admin.login",
+            "admin.logout",
+            "admin.admin_ping",
+            "admin.solicitudes_live",
+        }
+        if ep in allow_eps:
+            return None
+
+        # Si NO hay usuario logueado, que flask-login maneje @login_required más abajo
+        # (pero aquí evitamos que un cliente autenticado con otra sesión se cuele).
+        if not current_user or not getattr(current_user, "is_authenticated", False):
+            return None
+
+        # Debe ser AdminUser y sesión marcada como admin
+        is_admin_user = isinstance(current_user, AdminUser)
+        is_admin_session = bool(session.get(_ADMIN_SESSION_MARKER))
+
+        if not is_admin_user or not is_admin_session:
+            try:
+                logout_user()
+            except Exception:
+                pass
+            try:
+                session.clear()
+            except Exception:
+                pass
+            return redirect(url_for("admin.login"))
+
+        # Rate-limit solo para acciones que cambian cosas
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            usuario_norm = ""
+            try:
+                usuario_norm = (current_user.get_id() or "").strip().lower()
+            except Exception:
+                usuario_norm = ""
+
+            # Bucket automático según endpoint/path/método
+            ep_l = (ep or "").lower()
+            path_l = (request.path or "").lower()
+            if request.method == "DELETE" or "eliminar" in ep_l or "/eliminar" in path_l:
+                bucket = "delete"
+            elif "pago" in ep_l or "/pago" in path_l or "abono" in ep_l or "/abono" in path_l:
+                bucket = "pagos"
+            elif "reemplazo" in ep_l or "/reemplazo" in path_l:
+                bucket = "reemplazos"
+            elif "solicitud" in ep_l or "/solicitud" in path_l:
+                bucket = "solicitudes"
+            elif "tarea" in ep_l or "/tarea" in path_l:
+                bucket = "tareas"
+            else:
+                bucket = "default"
+
+            if _admin_action_is_locked(usuario_norm, bucket=bucket):
+                left = _admin_action_lock_left_seconds(usuario_norm, bucket=bucket)
+                # Mensaje corto y claro
+                flash(f"Demasiadas acciones seguidas. Intenta de nuevo en {max(10, left)} segundos.", "danger")
+                return redirect(url_for("admin.listar_clientes"))
+
+            _admin_action_register(usuario_norm, bucket=bucket)
+
+    except Exception:
+        # Nunca rompemos el request por seguridad
+        return None
+
+    return None
+
+
+
+#
+# —— Anti fuerza-bruta (cache) por IP + usuario ——
+# Nota: usamos `cache` (Flask-Caching) para que el lock sea real incluso si el usuario cambia de navegador.
+# Fallback seguro: si `cache` no está disponible o falla, usamos sesión (NO rompe el login).
+# Configurable por env: ADMIN_LOGIN_MAX_INTENTOS y ADMIN_LOGIN_LOCK_MINUTOS.
+_ADMIN_LOGIN_MAX_INTENTOS = int((os.getenv("ADMIN_LOGIN_MAX_INTENTOS") or "6").strip() or 6)
+_ADMIN_LOGIN_LOCK_MINUTOS = int((os.getenv("ADMIN_LOGIN_LOCK_MINUTOS") or "10").strip() or 10)
+_ADMIN_LOGIN_KEY_PREFIX   = "admin_login"
+
+
+def _client_ip() -> str:
+    """Obtiene la IP del cliente.
+    - En local: NO confía en X-Forwarded-For.
+    - En producción detrás de proxy: solo confía si TRUST_XFF=1.
+    """
+    trust_xff = (os.getenv("TRUST_XFF", "0").strip() == "1")
+    if trust_xff:
+        xff = (request.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip()[:64]
+    return (request.remote_addr or "0.0.0.0").strip()[:64]
+
+
+def _admin_login_max_intentos() -> int:
+    # permite cambiar en runtime si hace falta
+    try:
+        return int((os.getenv("ADMIN_LOGIN_MAX_INTENTOS") or str(_ADMIN_LOGIN_MAX_INTENTOS)).strip())
+    except Exception:
+        return _ADMIN_LOGIN_MAX_INTENTOS
+
+
+def _admin_login_lock_minutos() -> int:
+    try:
+        return int((os.getenv("ADMIN_LOGIN_LOCK_MINUTOS") or str(_ADMIN_LOGIN_LOCK_MINUTOS)).strip())
+    except Exception:
+        return _ADMIN_LOGIN_LOCK_MINUTOS
+
+
+def _admin_login_keys(usuario_norm: str):
+    ip = _client_ip()
+    u = (usuario_norm or "").strip().lower()[:64]
+    base = f"{_ADMIN_LOGIN_KEY_PREFIX}:{ip}:{u}"
+    return {
+        "fail": f"{base}:fail",
+        "lock": f"{base}:lock",
+    }
+
+
+def _cache_ok() -> bool:
+    """Retorna True si el cache está disponible y operativo."""
+    try:
+        # Un get simple no debería explotar; si explota, asumimos cache no usable
+        _ = cache.get("__ping__")
         return True
-    # si ya pasó el tiempo, limpia el lock
-    if locked_until_ts and now_ts >= locked_until_ts:
-        session.pop('admin_login_fail', None)
+    except Exception:
         return False
-    return tries >= _MAX_LOGIN_ATTEMPTS
 
-def _register_login_fail() -> None:
-    """Incrementa el contador de fallos y bloquea si supera el máximo."""
-    now_ts = int(datetime.utcnow().timestamp())
-    data = session.get('admin_login_fail', {'tries': 0, 'first_ts': now_ts, 'locked_until': None})
-    data['tries'] = int(data.get('tries', 0)) + 1
-    if data['tries'] >= _MAX_LOGIN_ATTEMPTS:
-        data['locked_until'] = now_ts + (_LOCK_MINUTES * 60)
-    session['admin_login_fail'] = data
 
-def _reset_login_fail() -> None:
-    session.pop('admin_login_fail', None)
+def _sess_key(usuario_norm: str) -> str:
+    ip = _client_ip()
+    u = (usuario_norm or "").strip().lower()[:64]
+    return f"admin_login_fail:{ip}:{u}"
+
+
+def _session_is_locked(usuario_norm: str) -> bool:
+    data = session.get(_sess_key(usuario_norm)) or {}
+    locked_until = data.get("locked_until")
+    if not locked_until:
+        return False
+    try:
+        return datetime.utcnow().timestamp() < float(locked_until)
+    except Exception:
+        return False
+
+
+def _session_fail_count(usuario_norm: str) -> int:
+    data = session.get(_sess_key(usuario_norm)) or {}
+    try:
+        return int(data.get("tries") or 0)
+    except Exception:
+        return 0
+
+
+def _session_lock(usuario_norm: str):
+    key = _sess_key(usuario_norm)
+    data = session.get(key) or {}
+    data["locked_until"] = datetime.utcnow().timestamp() + (_admin_login_lock_minutos() * 60)
+    session[key] = data
+
+
+def _session_register_fail(usuario_norm: str) -> int:
+    key = _sess_key(usuario_norm)
+    data = session.get(key) or {}
+    tries = int(data.get("tries") or 0) + 1
+    data["tries"] = tries
+    # lock cuando llega al máximo
+    if tries >= _admin_login_max_intentos():
+        data["locked_until"] = datetime.utcnow().timestamp() + (_admin_login_lock_minutos() * 60)
+    session[key] = data
+    return tries
+
+
+def _session_reset_fail(usuario_norm: str):
+    try:
+        session.pop(_sess_key(usuario_norm), None)
+    except Exception:
+        pass
+
+
+def _admin_is_locked(usuario_norm: str) -> bool:
+    """Chequea lock (cache si sirve, si no sesión)."""
+    if _cache_ok():
+        keys = _admin_login_keys(usuario_norm)
+        try:
+            return bool(cache.get(keys["lock"]))
+        except Exception:
+            # si falla cache en runtime, cae a sesión
+            return _session_is_locked(usuario_norm)
+    return _session_is_locked(usuario_norm)
+
+
+def _admin_lock(usuario_norm: str):
+    """Activa lock (cache si sirve, si no sesión)."""
+    if _cache_ok():
+        keys = _admin_login_keys(usuario_norm)
+        try:
+            cache.set(keys["lock"], True, timeout=_admin_login_lock_minutos() * 60)
+            return
+        except Exception:
+            pass
+    _session_lock(usuario_norm)
+
+
+def _admin_fail_count(usuario_norm: str) -> int:
+    """Conteo de fallos (cache si sirve, si no sesión)."""
+    if _cache_ok():
+        keys = _admin_login_keys(usuario_norm)
+        try:
+            return int(cache.get(keys["fail"]) or 0)
+        except Exception:
+            return _session_fail_count(usuario_norm)
+    return _session_fail_count(usuario_norm)
+
+
+def _admin_register_fail(usuario_norm: str) -> int:
+    """Registra intento fallido y bloquea al llegar al máximo."""
+    if _cache_ok():
+        keys = _admin_login_keys(usuario_norm)
+        n = _admin_fail_count(usuario_norm) + 1
+        try:
+            cache.set(keys["fail"], n, timeout=_admin_login_lock_minutos() * 60)
+        except Exception:
+            # cae a sesión si cache falla
+            return _session_register_fail(usuario_norm)
+
+        if n >= _admin_login_max_intentos():
+            _admin_lock(usuario_norm)
+        return n
+
+    return _session_register_fail(usuario_norm)
+
+
+def _admin_reset_fail(usuario_norm: str):
+    """Limpia contadores y locks."""
+    if _cache_ok():
+        keys = _admin_login_keys(usuario_norm)
+        try:
+            cache.delete(keys["fail"])
+            cache.delete(keys["lock"])
+        except Exception:
+            pass
+    _session_reset_fail(usuario_norm)
+
+
+def _clear_security_layer_lock_admin(endpoint: str = "/admin/login", usuario: str = ""):
+    """Limpia el lock global (utils/security_layer.py) si está registrado.
+    Soporta limpiar por IP + endpoint + usuario.
+    """
+    try:
+        clear_fn = current_app.extensions.get("clear_login_attempts")
+        if callable(clear_fn):
+            ip = _client_ip()
+            ep = (endpoint or "/admin/login").strip() or "/admin/login"
+            uname = (usuario or "").strip()
+            try:
+                if uname:
+                    clear_fn(ip, ep, uname)
+                else:
+                    clear_fn(ip, ep)
+            except TypeError:
+                clear_fn(ip)
+    except Exception:
+        pass
+
+
+def _is_safe_next(target: str) -> bool:
+    """Permite solo redirects internos (sin dominio externo)."""
+    if not target:
+        return False
+    try:
+        from urllib.parse import urlparse
+        ref = urlparse(request.host_url)
+        test = urlparse(target)
+        if not test.netloc and test.path.startswith("/"):
+            return True
+        return (test.scheme, test.netloc) == (ref.scheme, ref.netloc)
+    except Exception:
+        return False
+
+
+def _safe_next_url(fallback: str) -> str:
+    nxt = (request.args.get("next") or request.form.get("next") or "").strip()
+    return nxt if _is_safe_next(nxt) else fallback
+
 
 def _reset_inicio_seguimiento_si_reactiva(s, now: datetime):
-    """
-    Si una solicitud se (re)activa para seguimiento, reinicia fecha_inicio_seguimiento.
+    """Si una solicitud se (re)activa para seguimiento, reinicia `fecha_inicio_seguimiento`.
+
     Esto evita que solicitudes viejas “arrastren” días viejos al reactivarlas.
+
+    Nota: esta función es defensiva (solo actúa si el modelo tiene el atributo).
     """
     if not hasattr(s, 'fecha_inicio_seguimiento'):
         return
 
-    # si viene cancelada/pagada y se reactiva, reinicia sí o sí
     estado = (getattr(s, 'estado', '') or '').strip().lower()
 
     # Estados que cuentan como "seguimiento"
     tracking_states = {'proceso', 'activa', 'reemplazo'}
 
     if estado in tracking_states:
-        # si está en tracking, pero es reactivación o quieres reset siempre que se vuelva tracking:
+        # Si se llama al (re)activar, queremos resetear el inicio del seguimiento.
         s.fecha_inicio_seguimiento = now
 
 
@@ -266,149 +892,385 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """
-    Login de admin basado en diccionario USUARIOS.
+    """Login de admin basado en diccionario USUARIOS.
 
     Endurecido:
-      - Anti fuerza bruta por sesión (ya lo tenías).
-      - Anti fuerza bruta por IP usando cache (más fuerte).
+      - Anti fuerza bruta por IP+usuario usando cache.
       - Sanitiza inputs (strip + límites).
       - Limpia sesión al autenticar (reduce session fixation).
-      - Evita open-redirect si se usa next.
+      - Evita open-redirect con ?next=...
+      - Honeypot opcional (anti-bots) via input hidden name="website".
+
+    Nota: Asegúrate de incluir {{ csrf_token() }} en admin/login.html.
     """
     error = None
 
-    # -----------------------------
-    # Helpers locales (no rompen nada)
-    # -----------------------------
-    def _client_ip() -> str:
-        # ProxyFix ya está en tu config_app, así que X-Forwarded-For puede venir bien.
-        # Aun así, agarramos lo más estable.
-        xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-        return xff or (request.remote_addr or "unknown")
-
-    def _safe_next_url(fallback: str):
-        nxt = (request.args.get("next") or "").strip()
-        if not nxt:
-            return fallback
-
-        # Solo permitimos rutas internas
-        if nxt.startswith("/") and not nxt.startswith("//"):
-            return nxt
-        return fallback
-
-    def _ip_key() -> str:
-        return f"admin_login_fail_ip:{_client_ip()}"
-
-    def _ip_data_get():
-        try:
-            return cache.get(_ip_key()) or {"tries": 0, "locked_until": None}
-        except Exception:
-            return {"tries": 0, "locked_until": None}
-
-    def _ip_data_set(data: dict):
-        # TTL: 1 hora (suficiente). El lock real lo controlamos con locked_until.
-        try:
-            cache.set(_ip_key(), data, timeout=3600)
-        except Exception:
-            pass
-
-    def _ip_is_locked() -> bool:
-        data = _ip_data_get()
-        locked_until = data.get("locked_until")
-        if not locked_until:
-            return False
-        now_ts = int(datetime.utcnow().timestamp())
-        return now_ts < int(locked_until)
-
-    def _ip_register_fail():
-        data = _ip_data_get()
-        data["tries"] = int(data.get("tries", 0)) + 1
-        now_ts = int(datetime.utcnow().timestamp())
-
-        # Mismo criterio que sesión: 5 intentos => lock 10 minutos
-        if data["tries"] >= _MAX_LOGIN_ATTEMPTS:
-            data["locked_until"] = now_ts + (_LOCK_MINUTES * 60)
-
-        _ip_data_set(data)
-
-    def _ip_reset_fail():
-        try:
-            cache.delete(_ip_key())
-        except Exception:
-            pass
-
-    # -----------------------------
-    # Bloqueos (sesión + IP)
-    # -----------------------------
     if request.method == 'POST':
-        if _is_login_locked() or _ip_is_locked():
-            error = f'Has excedido el máximo de intentos. Intenta de nuevo en {_LOCK_MINUTES} minutos.'
+        # Honeypot (opcional). Si el template no lo tiene, no afecta.
+        if (request.form.get('website') or '').strip():
+            return "", 400
+
+        usuario_raw = (request.form.get('usuario') or '').strip()[:64]
+        clave       = (request.form.get('clave') or '').strip()[:128]
+        usuario_norm = (usuario_raw or '').strip().lower()
+
+        # Si está bloqueado por IP+usuario
+        if _admin_is_locked(usuario_norm):
+            mins = _admin_login_lock_minutos()
+            error = f'Has excedido el máximo de intentos. Intenta de nuevo en {mins} minutos.'
             return render_template('admin/login.html', error=error), 429
 
-        # Sanitiza inputs
-        usuario = (request.form.get('usuario') or '').strip()[:64]
-        clave   = (request.form.get('clave') or '').strip()[:128]
+        user_data = None
+        try:
+            # USUARIOS normalmente viene con keys exactas. Permitimos match case-insensitive.
+            # Primero intento exacto, luego busco por lower.
+            user_data = USUARIOS.get(usuario_raw) or USUARIOS.get(usuario_norm)
+            if user_data is None:
+                for k, v in (USUARIOS or {}).items():
+                    if str(k).strip().lower() == usuario_norm:
+                        user_data = v
+                        usuario_raw = k  # preserva el username real para role y session
+                        break
+        except Exception:
+            user_data = None
 
-        user_data = USUARIOS.get(usuario)
+        ok = False
+        try:
+            if user_data and check_password_hash(user_data.get('pwd_hash', ''), clave):
+                ok = True
+        except Exception:
+            ok = False
 
-        # Nota: tu USUARIOS en config_app usa pwd_hash.
-        if user_data and check_password_hash(user_data['pwd_hash'], clave):
+        if ok:
             # ✅ Login correcto
-
-            # Rotación simple de sesión (reduce session fixation).
-            # Mantiene la petición estable y fuerza nueva cookie.
             try:
                 session.clear()
             except Exception:
-                # si por alguna razón falla, al menos limpia los contadores
-                session.pop('admin_login_fail', None)
+                pass
 
-            # Sesión permanente (respeta PERMANENT_SESSION_LIFETIME)
             try:
                 session.permanent = True
             except Exception:
                 pass
 
-            login_user(AdminUser(usuario), remember=False)
+            login_user(AdminUser(str(usuario_raw)), remember=False)
 
-            # Resetea contadores
-            _reset_login_fail()
-            _ip_reset_fail()
-
-            # ✅ Limpia también los contadores globales (IP + endpoint + usuario)
-            # (viene de utils/security_layer.py, lo registramos en app.extensions)
+            # ✅ MARCAR ESTA SESIÓN COMO ADMIN (AISLAMIENTO REAL)
             try:
-                clear_fn = current_app.extensions.get("clear_login_attempts")
-                if callable(clear_fn):
-                    clear_fn(_client_ip(), "/admin/login", usuario)
+                session[_ADMIN_SESSION_MARKER] = True
             except Exception:
                 pass
 
-            # Redirección segura
+            # Reset locks
+            _admin_reset_fail(usuario_norm)
+            _clear_security_layer_lock_admin(endpoint="/admin/login", usuario=str(usuario_raw))
+
             fallback = url_for('admin.listar_clientes')
             return redirect(_safe_next_url(fallback))
 
         # ❌ Login incorrecto
-        _register_login_fail()
-        _ip_register_fail()
+        _admin_register_fail(usuario_norm)
         error = 'Credenciales inválidas.'
 
     return render_template('admin/login.html', error=error)
 
 
-
 @admin_bp.route('/logout')
 @login_required
 def logout():
-    """Cerrar sesión siempre debe estar disponible para cualquier usuario autenticado."""
-    logout_user()
     try:
-        session.clear()
+        # captura usuario antes de salir
+        uname = None
+        try:
+            uname = (current_user.get_id() if current_user else None)
+        except Exception:
+            uname = None
+
+        # ✅ bajar marcador de sesión admin (por si session.clear falla)
+        try:
+            session.pop(_ADMIN_SESSION_MARKER, None)
+        except Exception:
+            pass
+
+        logout_user()
+
+        # limpiar locks (si se puede)
+        if uname:
+            usuario_norm = str(uname).strip().lower()
+
+            # 🔐 reset de bruteforce login
+            try:
+                _admin_reset_fail(usuario_norm)
+            except Exception:
+                pass
+
+            # 🔐 limpiar capa global (si existe)
+            try:
+                _clear_security_layer_lock_admin(endpoint="/admin/login", usuario=str(uname))
+            except Exception:
+                pass
+
+            # 🟡 reset de rate-limit admin (acciones)
+            try:
+                # limpiamos buckets comunes para que al salir quede limpio
+                buckets = ["default", "pagos", "solicitudes", "reemplazos", "delete", "tareas"]
+
+                if _cache_ok():
+                    for b in buckets:
+                        try:
+                            keys = _admin_action_keys(usuario_norm, bucket=b)
+                            cache.delete(keys["count"])
+                            cache.delete(keys["lock"])
+                        except Exception:
+                            pass
+
+                for b in buckets:
+                    try:
+                        session.pop(_sess_action_key(usuario_norm, bucket=b), None)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # ✅ limpieza total de sesión
+        try:
+            session.clear()
+        except Exception:
+            pass
+
     except Exception:
-        pass
+        try:
+            # por si algo explotó, igual nos aseguramos de salir
+            try:
+                session.pop(_ADMIN_SESSION_MARKER, None)
+            except Exception:
+                pass
+            logout_user()
+        except Exception:
+            pass
+        try:
+            session.clear()
+        except Exception:
+            pass
+
     return redirect(url_for('admin.login'))
 
+# =============================================================================
+#                 GUARD GLOBAL ADMIN (aislamiento real)
+# =============================================================================
+
+def _is_admin_identity_LEGACY() -> bool:
+    """True si el current_user pertenece a USUARIOS (admin/staff/secretaria).
+    Esto evita que un cliente autenticado (con otra sesión) pueda tocar /admin/*
+    aunque haya un bug de roles.
+    """
+    try:
+        if not current_user or not getattr(current_user, "is_authenticated", False):
+            return False
+
+        uid = None
+        try:
+            uid = current_user.get_id()
+        except Exception:
+            uid = getattr(current_user, "id", None)
+
+        if uid is None:
+            return False
+
+        uid_str = str(uid).strip()
+        if not uid_str:
+            return False
+
+        # Match exacto o case-insensitive contra USUARIOS
+        if uid_str in (USUARIOS or {}):
+            return True
+
+        uid_norm = uid_str.lower()
+        for k in (USUARIOS or {}).keys():
+            if str(k).strip().lower() == uid_norm:
+                return True
+
+        return False
+    except Exception:
+        return False
+
+
+@admin_bp.before_request
+def _admin_guard_before_request_LEGACY():
+    """Se ejecuta antes de cualquier endpoint del blueprint admin.
+    Si la sesión no es de admin real -> logout y pa' fuera.
+    """
+    return None
+    try:
+        # Permitir login sin estar autenticado
+        if request.endpoint in ("admin.login", "admin.static"):
+            return None
+
+        # Si no está logueado, pa' login
+        if not current_user or not getattr(current_user, "is_authenticated", False):
+            return redirect(url_for("admin.login"))
+
+        # ✅ Aislamiento real: si NO es usuario admin/staff/secretaria => sacar
+        if not _is_admin_identity_LEGACY():
+            try:
+                logout_user()
+            except Exception:
+                pass
+            try:
+                session.clear()
+            except Exception:
+                pass
+            return redirect(url_for("admin.login"))
+
+        return None
+    except Exception:
+        # fallback ultra seguro
+        try:
+            logout_user()
+        except Exception:
+            pass
+        try:
+            session.clear()
+        except Exception:
+            pass
+        return redirect(url_for("admin.login"))
+
+# =============================================================================
+#                 RATE-LIMIT ADMIN (acciones sensibles)
+# =============================================================================
+
+_ADMIN_ACTION_KEY_PREFIX_LEGACY = "admin_act"
+
+def _admin_action_max_LEGACY() -> int:
+    # acciones permitidas por ventana
+    try:
+        return int((os.getenv("ADMIN_ACTION_MAX") or "40").strip())
+    except Exception:
+        return 40
+
+def _admin_action_window_sec_LEGACY() -> int:
+    # ventana en segundos
+    try:
+        return int((os.getenv("ADMIN_ACTION_WINDOW_SEC") or "60").strip())
+    except Exception:
+        return 60
+
+def _admin_action_lock_min_LEGACY() -> int:
+    # lock en minutos si se pasa
+    try:
+        return int((os.getenv("ADMIN_ACTION_LOCK_MIN") or "5").strip())
+    except Exception:
+        return 5
+
+def _admin_action_keys_LEGACY(usuario_norm: str, bucket: str = "default"):
+    ip = _client_ip()
+    u = (usuario_norm or "").strip().lower()[:64]
+    b = (bucket or "default").strip().lower()[:32]
+    base = f"{_ADMIN_ACTION_KEY_PREFIX_LEGACY}:{ip}:{u}:{b}"
+    return {
+        "count": f"{base}:count",
+        "lock":  f"{base}:lock",
+    }
+
+def _sess_action_key_LEGACY(usuario_norm: str, bucket: str = "default") -> str:
+    ip = _client_ip()
+    u = (usuario_norm or "").strip().lower()[:64]
+    b = (bucket or "default").strip().lower()[:32]
+    return f"admin_act:{ip}:{u}:{b}"
+
+def _session_action_get_LEGACY(usuario_norm: str, bucket: str):
+    return session.get(_sess_action_key_LEGACY(usuario_norm, bucket)) or {}
+
+def _session_action_is_locked_LEGACY(usuario_norm: str, bucket: str) -> bool:
+    data = _session_action_get_LEGACY(usuario_norm, bucket)
+    until = data.get("locked_until")
+    if not until:
+        return False
+    try:
+        return datetime.utcnow().timestamp() < float(until)
+    except Exception:
+        return False
+
+def _session_action_register_LEGACY(usuario_norm: str, bucket: str, max_actions: int, window_sec: int) -> int:
+    key = _sess_action_key_LEGACY(usuario_norm, bucket)
+    now = datetime.utcnow().timestamp()
+    data = session.get(key) or {}
+
+    start = float(data.get("start_ts") or now)
+    count = int(data.get("count") or 0)
+
+    # si se venció la ventana, resetea
+    if (now - start) > window_sec:
+        start = now
+        count = 0
+
+    count += 1
+    data["start_ts"] = start
+    data["count"] = count
+
+    if count >= max_actions:
+        data["locked_until"] = now + (_admin_action_lock_min_LEGACY() * 60)
+
+    session[key] = data
+    return count
+
+def _admin_action_is_locked_LEGACY(usuario_norm: str, bucket: str) -> bool:
+    if _cache_ok():
+        keys = _admin_action_keys_LEGACY(usuario_norm, bucket=bucket)
+        try:
+            return bool(cache.get(keys["lock"]))
+        except Exception:
+            return _session_action_is_locked_LEGACY(usuario_norm, bucket)
+    return _session_action_is_locked_LEGACY(usuario_norm, bucket)
+
+def _admin_action_register_LEGACY(usuario_norm: str, bucket: str, max_actions: int, window_sec: int) -> int:
+    if _cache_ok():
+        keys = _admin_action_keys_LEGACY(usuario_norm, bucket=bucket)
+        try:
+            # ventana: count expira con la ventana
+            n = int(cache.get(keys["count"]) or 0) + 1
+            cache.set(keys["count"], n, timeout=window_sec)
+
+            if n >= max_actions:
+                cache.set(keys["lock"], True, timeout=_admin_action_lock_min_LEGACY() * 60)
+            return n
+        except Exception:
+            return _session_action_register_LEGACY(usuario_norm, bucket, max_actions, window_sec)
+
+    return _session_action_register_LEGACY(usuario_norm, bucket, max_actions, window_sec)
+
+def admin_action_limit_LEGACY(bucket: str = "default", max_actions: int | None = None, window_sec: int | None = None):
+    """Decorador para limitar acciones admin por IP+usuario.
+    bucket: agrupa acciones (ej: 'delete', 'edit', 'pay', 'reemplazo')
+    """
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                uname = ""
+                try:
+                    uname = current_user.get_id()
+                except Exception:
+                    uname = getattr(current_user, "id", "") or ""
+                usuario_norm = str(uname).strip().lower()
+
+                lim = int(max_actions) if max_actions is not None else _admin_action_max_LEGACY()
+                win = int(window_sec) if window_sec is not None else _admin_action_window_sec_LEGACY()
+
+                if _admin_action_is_locked_LEGACY(usuario_norm, bucket=bucket):
+                    mins = _admin_action_lock_min_LEGACY()
+                    flash(f"Demasiadas acciones seguidas. Intenta de nuevo en {mins} minutos.", "warning")
+                    return redirect(url_for("admin.listar_clientes"))
+
+                _admin_action_register_LEGACY(usuario_norm, bucket=bucket, max_actions=lim, window_sec=win)
+
+            except Exception:
+                # si falla el rate-limit, NO rompemos la app
+                pass
+
+            return fn(*args, **kwargs)
+        return wrapper
+    return deco
 
 # =============================================================================
 #                            CLIENTES (CRUD BÁSICO)
@@ -878,6 +1740,7 @@ def _next_codigo_solicitud(cliente: Cliente) -> str:
 @admin_bp.route('/clientes/nuevo', methods=['GET', 'POST'])
 @login_required
 @staff_required
+@admin_action_limit(bucket="create_cliente", max_actions=25, window_sec=60)
 def nuevo_cliente():
     """🟢 Crear un nuevo cliente desde el panel de administración (sin credenciales de login)."""
     form = AdminClienteForm()
@@ -999,6 +1862,7 @@ def nuevo_cliente():
 @admin_bp.route('/clientes/<int:cliente_id>/editar', methods=['GET', 'POST'])
 @login_required
 @staff_required
+@admin_action_limit(bucket="edit_cliente", max_actions=35, window_sec=60)
 def editar_cliente(cliente_id):
     """✏️ Editar la información de un cliente existente.
 
@@ -1178,6 +2042,7 @@ def editar_cliente(cliente_id):
 @admin_bp.route('/clientes/<int:cliente_id>/eliminar', methods=['POST'])
 @login_required
 @admin_required
+@admin_action_limit(bucket="delete_cliente", max_actions=10, window_sec=60)
 def eliminar_cliente(cliente_id):
     """🗑️ Eliminar un cliente definitivamente."""
     c = Cliente.query.get_or_404(cliente_id)
@@ -1433,6 +2298,7 @@ def tareas_hoy():
 @admin_bp.route('/clientes/<int:cliente_id>/tareas/rapida', methods=['POST'])
 @login_required
 @staff_required
+@admin_action_limit(bucket="tareas", max_actions=60, window_sec=60)
 def crear_tarea_rapida(cliente_id):
     """
     Crea una tarea rápida para hoy asociada al cliente.
@@ -1633,6 +2499,7 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/nueva', methods=['GET', 'POST'])
 @login_required
 @staff_required
+@admin_action_limit(bucket="create_solicitud", max_actions=25, window_sec=60)
 def nueva_solicitud_admin(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminSolicitudForm()
@@ -1787,6 +2654,7 @@ def nueva_solicitud_admin(cliente_id):
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
 @staff_required
+@admin_action_limit(bucket="edit_solicitud", max_actions=35, window_sec=60)
 def editar_solicitud_admin(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminSolicitudForm(obj=s)
@@ -2171,6 +3039,7 @@ def _choice_codes(choices):
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
 @login_required
 @admin_required
+@admin_action_limit(bucket="delete_solicitud", max_actions=10, window_sec=60)
 def eliminar_solicitud_admin(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
 
@@ -2212,6 +3081,7 @@ def eliminar_solicitud_admin(cliente_id, id):
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/plan', methods=['GET','POST'])
 @login_required
 @admin_required
+@admin_action_limit(bucket="plan_abono", max_actions=25, window_sec=60)
 def gestionar_plan(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminGestionPlanForm(obj=s)
@@ -2301,6 +3171,7 @@ def gestionar_plan(cliente_id, id):
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/pago', methods=['GET', 'POST'])
 @login_required
 @admin_required
+@admin_action_limit(bucket="pagos", max_actions=20, window_sec=60)
 def registrar_pago(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminPagoForm()
@@ -2420,6 +3291,7 @@ def registrar_pago(cliente_id, id):
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET', 'POST'])
 @login_required
 @admin_required
+@admin_action_limit(bucket="reemplazos", max_actions=15, window_sec=60)
 def nuevo_reemplazo(s_id):
     sol = (
         Solicitud.query

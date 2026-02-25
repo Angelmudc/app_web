@@ -74,7 +74,73 @@ except Exception:
 # APP BOOT
 # -----------------------------------------------------------------------------
 
+
 app = create_app()
+
+@app.before_request
+def force_session_expire():
+    # 🔒 Siempre forzar sesión no permanente
+    session.permanent = False
+
+# -----------------------------------------------------------------------------
+# 🔒 HARDENING BÁSICO (NO ROMPE LOCAL)
+# -----------------------------------------------------------------------------
+# En producción (HTTPS) activa cookies seguras. En local se queda normal.
+IS_PROD = (
+    (os.getenv("FLASK_ENV", "").strip().lower() == "production")
+    or (os.getenv("ENV", "").strip().lower() == "production")
+)
+
+# Cookies de sesión seguras
+app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
+app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")  # evita CSRF cross-site sin romper navegación
+app.config.setdefault("SESSION_COOKIE_SECURE", bool(IS_PROD))  # True solo en prod con HTTPS
+
+# Cookies remember (Flask-Login)
+app.config.setdefault("REMEMBER_COOKIE_HTTPONLY", True)
+app.config.setdefault("REMEMBER_COOKIE_SAMESITE", "Lax")
+app.config.setdefault("REMEMBER_COOKIE_SECURE", bool(IS_PROD))
+
+# Vida de sesión (ajustable)
+app.config.setdefault("PERMANENT_SESSION_LIFETIME", timedelta(hours=8))
+# 🔒 Forzar sesión NO permanente (se cierra al cerrar el navegador)
+app.config.setdefault("SESSION_PERMANENT", False)
+
+# CSRF (Flask-WTF)
+app.config.setdefault("WTF_CSRF_TIME_LIMIT", 60 * 60 * 8)  # 8 horas
+
+# ProxyFix (SOLO si TRUST_XFF=1, para no confiar en XFF en local)
+try:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    if os.getenv("TRUST_XFF", "0").strip().lower() in ("1", "true", "yes", "on"):
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+except Exception:
+    pass
+
+# Headers de seguridad (suaves, sin romper)
+@app.after_request
+def _security_headers(resp):
+    """Headers de seguridad.
+
+    IMPORTANTE:
+    - NO definir CSP aquí.
+      `create_app()` (config_app.py) y/o `utils/security_layer.py` ya manejan la CSP.
+      Si la seteamos aquí, por el orden de `after_request`, esta CSP termina ganando y
+      bloquea CDNs (Bootstrap/Icons), rompiendo los diseños del portal.
+    """
+    try:
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        # Evita clickjacking
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+
+        # ⚠️ CSP se define en config_app.py / security_layer.py (NO duplicar aquí)
+        # resp.headers.setdefault("Content-Security-Policy", "...")
+    except Exception:
+        pass
+    return resp
+
 
 # ----------------------------------------------------------------------------
 # Flask-Login: asegúrate de que cada blueprint use SU login (clientes/admin)
@@ -602,11 +668,11 @@ def _reset_fail(usuario_norm: str):
     cache.delete(keys["fail"])
     cache.delete(keys["lock"])
 
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     mensaje = ""
-    # Mantener sesión como permanente según tu TTL en config_app
-    session.permanent = True
 
     if request.method == 'POST':
         # (Opcional pero recomendado) Honeypot: si lo llenan, es bot
@@ -614,9 +680,11 @@ def login():
         if (request.form.get("website") or "").strip():
             return "", 400
 
-        usuario_raw  = (request.form.get('usuario') or '').strip()[:64]
-        clave        = (request.form.get('clave')   or '').strip()[:128]
-        usuario_norm = usuario_raw.lower()
+        usuario_raw = (request.form.get('usuario') or '').strip()[:64]
+        clave       = (request.form.get('clave')   or '').strip()[:128]
+
+        # ✅ Normaliza para llaves internas (bloqueos) y consistencia
+        usuario_norm = usuario_raw.lower().strip()
 
         # 🔒 Bloqueo por intentos (tu bloqueo por usuario+IP)
         if _is_locked(usuario_norm):
@@ -626,6 +694,7 @@ def login():
             ), 429
 
         # ✅ Validación usando el USUARIOS importado desde config_app
+        # (mantengo tu lógica de intentar raw/lower/upper)
         user_data = (
             USUARIOS.get(usuario_raw)
             or USUARIOS.get(usuario_raw.lower())
@@ -644,12 +713,31 @@ def login():
         if ok:
             # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global (IP+endpoint+usuario)
             _reset_fail(usuario_norm)
-            _clear_security_layer_lock("/login", usuario_norm)
 
+            # ✅ Limpia lock del security_layer con IP real (Render) si existe helper
+            try:
+                clear_fn = current_app.extensions.get("clear_login_attempts")
+                if callable(clear_fn):
+                    xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+                    ip = xff or (request.remote_addr or "").strip()
+                    # Tu security_layer usa username lower para keys
+                    clear_fn(ip, "/login", usuario_norm)
+            except Exception:
+                pass
+
+            # Si tú también tienes tu helper legacy, lo dejamos (no rompe nada)
+            try:
+                _clear_security_layer_lock("/login", usuario_norm)
+            except Exception:
+                pass
+
+            # 🔒 Regenerar sesión completamente al autenticar
             session.clear()
+            session.permanent = False
             session['usuario']   = usuario_raw
             session['role']      = (user_data.get("role") or "admin")
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+            session.modified = True
 
             return safe_redirect_next('home')
 

@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, date
 from functools import wraps
+import os
 import re
+import json
+import hashlib
 from typing import Optional  # ✅ PARA PYTHON 3.9
 
 from flask import (
@@ -12,42 +15,135 @@ from flask_login import (
     login_required, current_user, login_user, logout_user
 )
 from werkzeug.security import check_password_hash, generate_password_hash
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
-# ✅ FALTABAN ESTOS IMPORTS (TOKEN EN URL)
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
-from config_app import db
+from config_app import db, cache
 try:
     from models import Cliente, Solicitud, Candidata, CandidataWeb
 except Exception:
     from models import Cliente, Solicitud
     Candidata = None
     CandidataWeb = None
+
 from utils import letra_por_indice
+
+# ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
+    AREAS_COMUNES_CHOICES,
     ClienteLoginForm,
     ClienteCancelForm,
     SolicitudForm,
-    ClienteSolicitudForm,  # compatibilidad
-    SolicitudPublicaForm   # ✅ SI YA LO CREASTE EN forms.py
+    ClienteSolicitudForm,
+    SolicitudPublicaForm
 )
 
-# 🔹 Usa SIEMPRE el blueprint único definido en clientes/__init__.py
-
 from . import clientes_bp
+from decorators import cliente_required, politicas_requeridas
 
 
 # ─────────────────────────────────────────────────────────────
-# 🔒 Banco de domésticas (solo clientes con solicitud ACTIVA y plan Premium/VIP)
+# 🔒 Banco de domésticas
 # ─────────────────────────────────────────────────────────────
+
 PLANES_BANCO_DOMESTICAS = {'premium', 'vip'}
-# Solo solicitudes con estado EXACTAMENTE 'activa' son consideradas activas para acceso al banco de domésticas.
 ESTADOS_SOLICITUD_ACTIVA = {'activa'}
 
 
+# ─────────────────────────────────────────────────────────────
+# 🔒 Anti fuerza bruta (clientes/login)  IP + identificador
+# ─────────────────────────────────────────────────────────────
+_CLIENTE_LOGIN_MAX_INTENTOS = int((os.getenv("CLIENTE_LOGIN_MAX_INTENTOS") or "6").strip() or 6)
+_CLIENTE_LOGIN_LOCK_MINUTOS = int((os.getenv("CLIENTE_LOGIN_LOCK_MINUTOS") or "10").strip() or 10)
+_CLIENTE_LOGIN_KEY_PREFIX   = "cliente_login"
+
+
+def _cliente_ip() -> str:
+    trust_xff = (os.getenv("TRUST_XFF", "0").strip().lower() in ("1", "true", "yes", "on"))
+    if trust_xff:
+        xff = (request.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip()[:64]
+    return (request.remote_addr or "0.0.0.0").strip()[:64]
+
+
+def _cliente_login_keys(ident_norm: str):
+    ip = _cliente_ip()
+    u = (ident_norm or "").strip().lower()[:80]
+    base = f"{_CLIENTE_LOGIN_KEY_PREFIX}:{ip}:{u}"
+    return {"fail": f"{base}:fail", "lock": f"{base}:lock"}
+
+
+def _cache_ok() -> bool:
+    try:
+        _ = cache.get("__ping__")
+        return True
+    except Exception:
+        return False
+
+
+def _cliente_is_locked(ident_norm: str) -> bool:
+    if _cache_ok():
+        keys = _cliente_login_keys(ident_norm)
+        try:
+            return bool(cache.get(keys["lock"]))
+        except Exception:
+            return False
+    return False
+
+
+def _cliente_register_fail(ident_norm: str) -> int:
+    if _cache_ok():
+        keys = _cliente_login_keys(ident_norm)
+        try:
+            n = int(cache.get(keys["fail"]) or 0) + 1
+        except Exception:
+            n = 1
+
+        try:
+            cache.set(keys["fail"], n, timeout=_CLIENTE_LOGIN_LOCK_MINUTOS * 60)
+        except Exception:
+            return n
+
+        if n >= _CLIENTE_LOGIN_MAX_INTENTOS:
+            try:
+                cache.set(keys["lock"], True, timeout=_CLIENTE_LOGIN_LOCK_MINUTOS * 60)
+            except Exception:
+                pass
+        return n
+
+    return 1
+
+
+def _cliente_reset_fail(ident_norm: str):
+    if _cache_ok():
+        keys = _cliente_login_keys(ident_norm)
+        try:
+            cache.delete(keys["fail"])
+            cache.delete(keys["lock"])
+        except Exception:
+            pass
+
+
+def _trust_xff() -> bool:
+    return (os.getenv("TRUST_XFF", "").strip().lower() in ("1", "true", "yes", "on"))
+
+
+def _client_ip_for_security_layer() -> str:
+    ip = ""
+    if _trust_xff():
+        xff = (request.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            ip = xff.split(",")[0].strip()
+
+    if not ip:
+        ip = (request.remote_addr or "").strip()
+
+    return ip[:64]
+
+
 def _get_plan_solicitud(s: 'Solicitud') -> str:
-    """Lee el plan desde distintos nombres posibles en tu modelo."""
     for attr in ('tipo_plan', 'plan', 'plan_cliente', 'tipo_plan_cliente'):
         if hasattr(s, attr):
             v = getattr(s, attr)
@@ -56,17 +152,12 @@ def _get_plan_solicitud(s: 'Solicitud') -> str:
 
 
 def _cliente_tiene_banco_domesticas(cliente_id: int) -> bool:
-    """True si el cliente tiene al menos 1 solicitud ACTIVA con plan Premium/VIP."""
     try:
-        # Filtra SOLO solicitudes ACTIVAS (estado == 'activa')
-        # Esto es lo que define si el cliente tiene acceso al banco.
         q = Solicitud.query.filter(Solicitud.cliente_id == cliente_id)
 
         if hasattr(Solicitud, 'estado'):
-            # Estricto: solo activa
             q = q.filter(Solicitud.estado == 'activa')
 
-        # Revisar planes en Python para soportar distintos nombres de columna
         for s in q.order_by(Solicitud.id.desc()).limit(200).all():
             plan = _get_plan_solicitud(s)
             if plan in PLANES_BANCO_DOMESTICAS:
@@ -77,75 +168,78 @@ def _cliente_tiene_banco_domesticas(cliente_id: int) -> bool:
 
 
 def banco_domesticas_required(f):
-    """Bloquea el banco si el cliente NO tiene solicitud activa Premium/VIP."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not current_user.is_authenticated:
-            return redirect(url_for('clientes.login', next=request.full_path))
+            nxt = request.full_path if request.full_path else request.path
+            nxt = nxt if _is_safe_next(nxt) else url_for('clientes.dashboard')
+            return redirect(url_for('clientes.login', next=nxt))
 
-        # Solo clientes
         if getattr(current_user, 'role', 'cliente') != 'cliente':
             abort(404)
 
-        ok = _cliente_tiene_banco_domesticas(int(getattr(current_user, 'id', 0) or 0))
+        ok = _cliente_tiene_banco_domesticas(
+            int(getattr(current_user, 'id', 0) or 0)
+        )
         if not ok:
-            flash('Este acceso es solo para clientes con una solicitud ACTIVA en plan Premium o VIP.', 'warning')
+            flash(
+                'Este acceso es solo para clientes con una solicitud ACTIVA en plan Premium o VIP.',
+                'warning'
+            )
             return redirect(url_for('clientes.listar_solicitudes'))
 
         return f(*args, **kwargs)
     return decorated
 
+
 @clientes_bp.before_request
 def _clientes_force_login_view():
-    """Si la petición es del portal de clientes y no hay sesión válida, manda al login de clientes.
-
-    Objetivo:
-    - Evitar que Flask-Login redirija al login general (`login`) cuando el usuario intenta entrar a `/clientes/*`.
-    - Forzar el `login_view` y el `blueprint_login_views['clientes']` en cada request del blueprint.
-    - Bloquear acceso si el usuario está autenticado con otro tipo de cuenta (ej: admin) y quiere entrar al portal de clientes.
+    """
+    Fuerza que todo /clientes/*:
+      - Use siempre el login del blueprint clientes.
+      - No permita acceso si no está autenticado.
+      - No permita que un usuario que NO sea Cliente (ej: admin) entre al portal.
     """
 
-    # ✅ Forzar a Flask-Login a usar el login del portal de clientes
+    # Solo aplica dentro del blueprint de clientes
+    if (request.blueprint or '') != 'clientes':
+        return None
+
+    # Forzar login_view correcto
     try:
         lm = current_app.extensions.get('login_manager')
         if lm is not None:
             lm.login_view = 'clientes.login'
-            try:
-                if not hasattr(lm, 'blueprint_login_views') or lm.blueprint_login_views is None:
-                    lm.blueprint_login_views = {}
-                lm.blueprint_login_views['clientes'] = 'clientes.login'
-            except Exception:
-                pass
+            if not hasattr(lm, 'blueprint_login_views') or lm.blueprint_login_views is None:
+                lm.blueprint_login_views = {}
+            lm.blueprint_login_views['clientes'] = 'clientes.login'
     except Exception:
         pass
-
-    # Solo aplicar dentro del blueprint de clientes
-    if (request.blueprint or '') != 'clientes':
-        return None
 
     # Endpoints públicos dentro del portal
     PUBLIC_ENDPOINTS = {
         'clientes.login',
         'clientes.reset_password',
         'clientes.solicitud_publica',
+        'clientes.politicas',
+        'clientes.aceptar_politicas',
+        'clientes.rechazar_politicas',
         'static',
     }
 
-    # Si el endpoint no está resuelto (muy raro), no rompas nada
     if request.endpoint is None:
         return None
 
-    # Permitir rutas públicas del portal
     if request.endpoint in PUBLIC_ENDPOINTS:
         return None
 
-    # 🔒 1) Si NO está autenticado, siempre manda al login
+    # 🔒 Si NO está autenticado → login clientes
     if not current_user.is_authenticated:
         next_url = request.full_path if request.full_path else request.path
+        next_url = next_url if _is_safe_next(next_url) else url_for('clientes.dashboard')
         return redirect(url_for('clientes.login', next=next_url))
 
-    # 🔒 2) Si está autenticado, pero NO es un Cliente, NO puede entrar al portal
-    # (Esto evita que un admin/logueo general se cuele en /clientes/*)
+    # 🔒 Si está autenticado pero NO es Cliente → expulsar
     if not isinstance(current_user, Cliente):
         try:
             logout_user()
@@ -153,17 +247,14 @@ def _clientes_force_login_view():
         except Exception:
             pass
         next_url = request.full_path if request.full_path else request.path
+        next_url = next_url if _is_safe_next(next_url) else url_for('clientes.dashboard')
         return redirect(url_for('clientes.login', next=next_url))
 
     return None
 
 
-# ─────────────────────────────────────────────────────────────
-# NO CACHE HEADERS for all clientes responses
-# ─────────────────────────────────────────────────────────────
 @clientes_bp.after_request
 def _clientes_no_cache_headers(response):
-    """Evita que el navegador muestre páginas privadas desde caché (Back/Forward) sin sesión."""
     try:
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
@@ -172,17 +263,20 @@ def _clientes_no_cache_headers(response):
         pass
     return response
 
+
 # ─────────────────────────────────────────────────────────────
-# Helpers básicos
+# Helpers
 # ─────────────────────────────────────────────────────────────
 
 def _norm_email(v: str) -> str:
     return (v or "").strip().lower()
 
+
 def _norm_text(v: str) -> str:
     s = (v or "").strip()
     s = re.sub(r"\s+", " ", s)
     return s.lower()
+
 
 def _public_link_serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
@@ -190,12 +284,8 @@ def _public_link_serializer() -> URLSafeTimedSerializer:
         salt="clientes-solicitud-publica"
     )
 
+
 def generar_token_publico_cliente(cliente: Cliente) -> str:
-    """
-    Token firmado con info mínima:
-      - cliente_id
-      - codigo (extra seguridad)
-    """
     ser = _public_link_serializer()
     payload = {
         "cliente_id": int(cliente.id),
@@ -203,27 +293,27 @@ def generar_token_publico_cliente(cliente: Cliente) -> str:
     }
     return ser.dumps(payload)
 
-def _is_safe_next(next_url: str) -> bool:
-    """Permite redirects internos seguros.
 
-    Acepta:
-      - /clientes/...
-      - /...
-      - http(s)://<mismo-host>/... (cuando Flask-Login manda next absoluto)
-    """
+def _is_safe_next(next_url: str) -> bool:
     if not next_url:
         return False
 
     next_url = str(next_url).strip()
-    if next_url.startswith('/'):
-        return True
 
-    # Permitir next absoluto SOLO si es del mismo host
+    # Solo rutas internas seguras
+    if next_url.startswith("/"):
+        return not next_url.startswith("//")
+
+    # Permitir absoluto SOLO si es el mismo host
     try:
         from urllib.parse import urlparse
         cur = urlparse(request.host_url)
         nxt = urlparse(next_url)
-        if nxt.scheme in ('http', 'https') and nxt.netloc == cur.netloc and (nxt.path or '').startswith('/'):
+        if (
+            nxt.scheme in ("http", "https")
+            and nxt.netloc == cur.netloc
+            and (nxt.path or "").startswith("/")
+        ):
             return True
     except Exception:
         return False
@@ -231,57 +321,37 @@ def _is_safe_next(next_url: str) -> bool:
     return False
 
 
-def cliente_required(f):
-    """Asegura que el usuario autenticado es un Cliente (modelo Cliente)."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not current_user.is_authenticated or not isinstance(current_user, Cliente):
-            return redirect(url_for('clientes.login', next=request.url))
-        return f(*args, **kwargs)
-    return decorated
-
-
-def politicas_requeridas(f):
-    """Bloquea acceso si el cliente no ha aceptado las políticas."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not getattr(current_user, 'acepto_politicas', False):
-            dest = url_for('clientes.politicas', next=request.url)
-            return redirect(dest)
-        return f(*args, **kwargs)
-    return decorated
-
-
 # ─────────────────────────────────────────────────────────────
-# Configuración de opciones UI (listas y radios)
+# Login
 # ─────────────────────────────────────────────────────────────
-try:
-    # Si ya las declaras en admin.routes, se aprovechan para no duplicar
-    from admin.routes import AREAS_COMUNES_CHOICES  # type: ignore
-except Exception:
-    AREAS_COMUNES_CHOICES = [
-        ('sala', 'Sala'), ('comedor', 'Comedor'),
-        ('cocina', 'Cocina'), ('salon_juegos', 'Salón de juegos'),
-        ('terraza', 'Terraza'), ('jardin', 'Jardín'),
-        ('estudio', 'Estudio'), ('patio', 'Patio'),
-        ('piscina', 'Piscina'), ('marquesina', 'Marquesina'),
-        ('todas_anteriores', 'Todas las anteriores'), ('otro', 'Otro'),
-    ]
 
-
-# ─────────────────────────────────────────────────────────────
-# Login / Logout
-# ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/login', methods=['GET', 'POST'])
 def login():
     form = ClienteLoginForm()
-    next_url = request.args.get('next') or url_for('clientes.dashboard')
+
+    raw_next = (request.args.get('next') or request.form.get('next') or '').strip()
+    next_url = raw_next if _is_safe_next(raw_next) else url_for('clientes.dashboard')
+
+
+    if request.method == "POST":
+        # Honeypot (agrega input hidden name="website" en el template si quieres)
+        if (request.form.get("website") or "").strip():
+            return "", 400
+
+        ident_raw = (getattr(form, "username", None).data if hasattr(form, "username") else request.form.get("username")) or ""
+        ident_norm = (ident_raw or "").strip().lower()
+
+        if _cliente_is_locked(ident_norm):
+            mins = _CLIENTE_LOGIN_LOCK_MINUTOS
+            flash(f'Has excedido el máximo de intentos. Intenta de nuevo en {mins} minutos.', 'danger')
+            return render_template('clientes/login.html', form=form), 429
 
     if form.validate_on_submit():
         identificador = (form.username.data or "").strip()
         password = (form.password.data or "")
 
-        # Permite login por: username (si existe) OR email OR código
+        ident_norm = identificador.strip().lower()
+
         user = None
         try:
             if hasattr(Cliente, 'username'):
@@ -296,54 +366,66 @@ def login():
             user = Cliente.query.filter(Cliente.codigo == identificador).first()
 
         if not user:
-            flash('Usuario no encontrado.', 'danger')
-            return redirect(url_for('clientes.login', next=next_url))
-
-        # Bloqueo de cuentas migradas sin contraseña real
-        if user.password_hash == "DISABLED_RESET_REQUIRED":
-            flash('Debes restablecer tu contraseña antes de iniciar sesión.', 'warning')
-            return redirect(url_for('clientes.reset_password', codigo=user.codigo))
-
-        # Verificación de contraseña (requiere columna password_hash)
-        if not hasattr(user, 'password_hash'):
-            flash('Este cliente no tiene credenciales configuradas. Contacta soporte.', 'warning')
-            return redirect(url_for('clientes.login', next=next_url))
-
-        if not check_password_hash(user.password_hash, password):
+            _cliente_register_fail(ident_norm)
             flash('Usuario o contraseña inválidos.', 'danger')
             return redirect(url_for('clientes.login', next=next_url))
 
-        # Estado
+        if getattr(user, "password_hash", None) == "DISABLED_RESET_REQUIRED":
+            flash('Debes restablecer tu contraseña antes de iniciar sesión.', 'warning')
+            return redirect(url_for('clientes.reset_password', codigo=user.codigo))
+
+        if not hasattr(user, 'password_hash'):
+            _cliente_register_fail(ident_norm)
+            flash('Este cliente no tiene credenciales configuradas. Contacta soporte.', 'warning')
+            return redirect(url_for('clientes.login', next=next_url))
+
+        ok = False
+        try:
+            ok = check_password_hash(user.password_hash, password)
+        except Exception:
+            ok = False
+
+        if not ok:
+            _cliente_register_fail(ident_norm)
+            flash('Usuario o contraseña inválidos.', 'danger')
+            return redirect(url_for('clientes.login', next=next_url))
+
         if not getattr(user, "is_active", True):
             flash('Cuenta inactiva. Contacta soporte.', 'warning')
             return redirect(url_for('clientes.login'))
 
-        # Login OK (rotación de sesión para evitar session fixation)
+        # ✅ Login correcto
+        _cliente_reset_fail(ident_norm)
+
         try:
             session.clear()
         except Exception:
             pass
 
-
         login_user(user, remember=False)
 
-        # ✅ Limpia también los contadores globales (IP + endpoint + usuario)
-        # (viene de utils/security_layer.py, lo registramos en app.extensions)
+        try:
+            session.permanent = False
+            session.modified = True
+        except Exception:
+            pass
+
         try:
             clear_fn = current_app.extensions.get("clear_login_attempts")
             if callable(clear_fn):
-                # Usamos IP local; en producción el bloqueo sigue funcionando igual.
-                ip = (request.remote_addr or "").strip()
-                # Username real si existe, si no el identificador usado.
+                ip = _client_ip_for_security_layer()
                 uname = (getattr(user, "username", "") or identificador or "").strip()
                 clear_fn(ip, "/clientes/login", uname)
         except Exception:
             pass
 
         flash('Bienvenido.', 'success')
-        return redirect(next_url if _is_safe_next(next_url) else url_for('clientes.dashboard'))
 
-    # GET
+        if not _is_safe_next(next_url):
+            next_url = url_for('clientes.dashboard')
+
+        return redirect(next_url)
+
     return render_template('clientes/login.html', form=form)
 
 
@@ -363,31 +445,6 @@ def logout():
 # ─────────────────────────────────────────────────────────────
 # Reset de contraseña (por código del cliente)
 # ─────────────────────────────────────────────────────────────
-@clientes_bp.route('/reset/<codigo>', methods=['GET', 'POST'])
-def reset_password(codigo):
-    user = Cliente.query.filter_by(codigo=codigo).first()
-    if not user:
-        flash('Cliente no encontrado.', 'danger')
-        return redirect(url_for('clientes.login'))
-
-    if request.method == 'POST':
-        pwd1 = (request.form.get('password1') or '').strip()
-        pwd2 = (request.form.get('password2') or '').strip()
-
-        if not pwd1 or len(pwd1) < 6:
-            flash('La contraseña debe tener al menos 6 caracteres.', 'danger')
-            return redirect(url_for('clientes.reset_password', codigo=codigo))
-
-        if pwd1 != pwd2:
-            flash('Las contraseñas no coinciden.', 'danger')
-            return redirect(url_for('clientes.reset_password', codigo=codigo))
-
-        user.password_hash = generate_password_hash(pwd1)
-        db.session.commit()
-        flash('Contraseña actualizada. Ya puedes iniciar sesión.', 'success')
-        return redirect(url_for('clientes.login'))
-
-    return render_template('clientes/reset_password.html', user=user)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -406,17 +463,17 @@ def dashboard():
     )
     por_estado_dict = {estado or 'sin_definir': cnt for estado, cnt in por_estado}
 
-    # Calcular total_activas y total_pagadas usando por_estado_dict
     total_activas = int(por_estado_dict.get('activa', 0) or 0)
     total_pagadas = int(por_estado_dict.get('pagada', 0) or 0)
 
-    recientes = (
-        Solicitud.query
-        .filter_by(cliente_id=current_user.id)
-        .order_by(Solicitud.fecha_solicitud.desc())
-        .limit(5)
-        .all()
-    )
+    # OJO: fecha_solicitud puede no existir en algunos modelos viejos
+    q_rec = Solicitud.query.filter_by(cliente_id=current_user.id)
+    if hasattr(Solicitud, 'fecha_solicitud'):
+        q_rec = q_rec.order_by(Solicitud.fecha_solicitud.desc())
+    else:
+        q_rec = q_rec.order_by(Solicitud.id.desc())
+
+    recientes = q_rec.limit(5).all()
 
     return render_template(
         'clientes/dashboard.html',
@@ -457,7 +514,6 @@ def ayuda():
 # ─────────────────────────────────────────────────────────────
 # Keep-alive / refresh silencioso (cliente)
 # ─────────────────────────────────────────────────────────────
-
 def _json_no_cache(payload: dict, status: int = 200):
     """JSON response con headers anti-cache para refresco silencioso."""
     resp = make_response(jsonify(payload), status)
@@ -504,11 +560,18 @@ def clientes_solicitudes_live():
             )
         )
 
-    items = (
-        query.order_by(Solicitud.fecha_solicitud.desc())
-        .limit(limit)
-        .all()
-    )
+    if hasattr(Solicitud, 'fecha_solicitud'):
+        query = query.order_by(Solicitud.fecha_solicitud.desc())
+    else:
+        query = query.order_by(Solicitud.id.desc())
+
+    items = query.limit(limit).all()
+
+    def _dt_iso(dt):
+        try:
+            return dt.isoformat() + 'Z' if dt else None
+        except Exception:
+            return None
 
     data = []
     for s in items:
@@ -516,13 +579,12 @@ def clientes_solicitudes_live():
             'id': int(s.id),
             'codigo_solicitud': getattr(s, 'codigo_solicitud', None),
             'estado': getattr(s, 'estado', None),
-            'fecha_solicitud': (getattr(s, 'fecha_solicitud', None).isoformat() + 'Z') if getattr(s, 'fecha_solicitud', None) else None,
-            'fecha_ultima_modificacion': (getattr(s, 'fecha_ultima_modificacion', None).isoformat() + 'Z') if getattr(s, 'fecha_ultima_modificacion', None) else None,
+            'fecha_solicitud': _dt_iso(getattr(s, 'fecha_solicitud', None)),
+            'fecha_ultima_modificacion': _dt_iso(getattr(s, 'fecha_ultima_modificacion', None)),
             'monto_pagado': str(getattr(s, 'monto_pagado', '') or ''),
             'saldo_pendiente': str(getattr(s, 'saldo_pendiente', '') or ''),
         })
 
-    # Conteo por estado para badges
     try:
         counts = (
             db.session.query(Solicitud.estado, db.func.count(Solicitud.id))
@@ -571,7 +633,11 @@ def listar_solicitudes():
             )
         )
 
-    query = query.order_by(Solicitud.fecha_solicitud.desc())
+    if hasattr(Solicitud, 'fecha_solicitud'):
+        query = query.order_by(Solicitud.fecha_solicitud.desc())
+    else:
+        query = query.order_by(Solicitud.id.desc())
+
     paginado = query.paginate(page=page, per_page=per_page, error_out=False)
 
     estados_disponibles = [e[0] for e in db.session.query(Solicitud.estado).distinct().all() if e[0]]
@@ -592,7 +658,6 @@ def listar_solicitudes():
 # Helpers para normalización de formularios de solicitud
 # ─────────────────────────────────────────────────────────────
 
-# Nuevos helpers para alineación de campos form/modelo (no perder datos)
 def _first_form_data(form, *field_names, default=''):
     """Devuelve el primer .data no vacío de los campos indicados (si existen)."""
     for name in field_names:
@@ -603,7 +668,6 @@ def _first_form_data(form, *field_names, default=''):
                 v = None
             if v is None:
                 continue
-            # Lista
             if isinstance(v, (list, tuple, set)):
                 if len(v) > 0:
                     return v
@@ -636,6 +700,8 @@ def _set_attr_if_empty(obj, attr: str, value):
             setattr(obj, attr, value)
         except Exception:
             pass
+
+
 def _clean_list(seq):
     bad = {"-", "–", "—"}
     out, seen = [], set()
@@ -716,12 +782,134 @@ def _map_tipo_lugar(value, extra):
     return value
 
 
+
 def _money_sanitize(raw):
     if raw is None:
         return None
     s = str(raw)
     limpio = s.replace('RD$', '').replace('$', '').replace('.', '').replace(',', '').strip()
     return limpio or s.strip()
+
+
+# ─────────────────────────────────────────────────────────────
+# Helpers: Anti-duplicados y locks para formularios de solicitud
+# ─────────────────────────────────────────────────────────────
+def _cache_add(cache_obj, key: str, value, timeout: int) -> bool:
+    """Best-effort atomic add. Returns True if acquired/set, False otherwise."""
+    try:
+        # Flask-Caching supports .add() for many backends
+        if hasattr(cache_obj, 'add'):
+            return bool(cache_obj.add(key, value, timeout=timeout))
+        # Fallback: if get is empty, set
+        if cache_obj.get(key) is None:
+            cache_obj.set(key, value, timeout=timeout)
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _cache_set(cache_obj, key: str, value, timeout: int) -> bool:
+    try:
+        cache_obj.set(key, value, timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
+def _cache_del(cache_obj, key: str) -> bool:
+    try:
+        cache_obj.delete(key)
+        return True
+    except Exception:
+        return False
+
+
+def _solicitud_fingerprint(form_obj) -> str:
+    """Fingerprint estable del contenido de la solicitud para evitar duplicados por doble click/reintento."""
+    try:
+        data = getattr(form_obj, 'data', {}) or {}
+    except Exception:
+        data = {}
+
+    # Quitamos campos que no deben influir (CSRF, submit, tokens)
+    drop = {
+        'csrf_token', 'submit', 'token', 'codigo_solicitud', 'id', 'created_at', 'updated_at'
+    }
+
+    clean = {}
+    for k, v in (data or {}).items():
+        if k in drop:
+            continue
+        if isinstance(v, str):
+            clean[k] = v.strip()
+        elif isinstance(v, (list, tuple, set)):
+            clean[k] = [str(x).strip() for x in v if str(x).strip()]
+        else:
+            clean[k] = v
+
+    raw = json.dumps(clean, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+
+def _request_fingerprint_from_form(path: str) -> str:
+    """Fingerprint estable del POST actual (sin CSRF/submit) para prevenir doble envío."""
+    try:
+        items = []
+        for k in sorted((request.form or {}).keys()):
+            if k in ('csrf_token', 'submit'):
+                continue
+            vals = request.form.getlist(k)
+            vals = [str(v).strip()[:120] for v in vals if str(v).strip()]
+            if not vals:
+                continue
+            items.append((k, vals))
+        raw = json.dumps({'p': (path or ''), 'f': items}, ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        raw = str(path or '')
+
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+
+def _session_dedupe_hit(key: str, ttl_seconds: int = 10) -> bool:
+    """Fallback anti-doble submit usando session si cache no está disponible."""
+    try:
+        now = int(datetime.utcnow().timestamp())
+        bucket = session.get('_post_dedupe', {}) or {}
+        last = int(bucket.get(key) or 0)
+        if last and (now - last) < int(ttl_seconds):
+            return True
+        bucket[key] = now
+        # compacta un chin
+        if len(bucket) > 60:
+            for kk in list(bucket.keys())[:20]:
+                bucket.pop(kk, None)
+        session['_post_dedupe'] = bucket
+        session.modified = True
+        return False
+    except Exception:
+        return False
+
+
+def _prevent_double_post(scope: str, seconds: int = 8) -> bool:
+    """True si se permite, False si detectamos doble POST inmediato (cache o session)."""
+    uid = int(getattr(current_user, 'id', 0) or 0)
+    if uid <= 0:
+        return True
+
+    fp = _request_fingerprint_from_form(request.path or '')
+    key = f"clientes:post:{scope}:{uid}:{fp}"
+
+    # Preferir cache (más fuerte)
+    if _cache_ok():
+        try:
+            return _cache_add(cache, key, 1, timeout=max(2, int(seconds)))
+        except Exception:
+            pass
+
+    # Fallback session
+    hit = _session_dedupe_hit(key, ttl_seconds=max(2, int(seconds)))
+    return not hit
 
 
 # ─────────────────────────────────────────────────────────────
@@ -745,8 +933,39 @@ def nueva_solicitud():
             form.pasaje_aporte.data = False
 
     if form.validate_on_submit():
+        # Anti doble submit (global, sin JS)
+        if not _prevent_double_post('solicitud_create', seconds=10):
+            flash('Ya esa solicitud se está enviando. Evitamos duplicados.', 'warning')
+            return redirect(url_for('clientes.listar_solicitudes'))
+        # ─────────────────────────────────────────────────────────
+        # Anti-duplicados / anti doble-click (sin JS)
+        # - Lock corto por usuario para evitar carreras concurrentes
+        # - Dedupe por fingerprint para evitar guardar 2 iguales por reintentos
+        # ─────────────────────────────────────────────────────────
+        lock_key = f"solicitud:create_lock:{int(getattr(current_user, 'id', 0) or 0)}"
+        dedupe_key = None
+        lock_acquired = False
+
         try:
-            # Código único: evita choques si el cliente borró solicitudes o si hay carreras
+            if _cache_ok():
+                lock_acquired = _cache_add(cache, lock_key, 1, timeout=15)
+                if not lock_acquired:
+                    flash('Ya se está guardando una solicitud. Espera un momento y vuelve a intentar.', 'warning')
+                    return redirect(url_for('clientes.listar_solicitudes'))
+
+                fp = _solicitud_fingerprint(form)
+                dedupe_key = f"solicitud:dedupe:{int(getattr(current_user, 'id', 0) or 0)}:{fp}"
+                if cache.get(dedupe_key):
+                    flash('Esa solicitud ya fue enviada hace un momento. Evitamos duplicados.', 'info')
+                    return redirect(url_for('clientes.listar_solicitudes'))
+
+                # Marcamos este fingerprint por 45s para bloquear duplicados por reintento
+                _cache_set(cache, dedupe_key, True, timeout=45)
+        except Exception:
+            # Si el cache falla, no bloqueamos el flujo.
+            pass
+
+        try:
             idx = Solicitud.query.filter_by(cliente_id=current_user.id).count()
             while True:
                 codigo = f"{current_user.codigo}-{letra_por_indice(idx)}"
@@ -762,32 +981,31 @@ def nueva_solicitud():
             )
             form.populate_obj(s)
 
-            # ─────────────────────────────────────────
-            # Alinear nombres posibles del form con el modelo
-            # (evita que "no se guarden" cuando el form usa otros nombres)
-            # ─────────────────────────────────────────
-            # ciudad_sector puede venir como ciudad+sector
             ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
             sector = _first_form_data(form, 'sector', 'sector_oferta', 'sector_cliente', default='')
             if ciudad or sector:
                 combo = " ".join([x for x in [ciudad, sector] if x]).strip()
                 _set_attr_if_empty(s, 'ciudad_sector', combo)
 
-            # rutas_cercanas / ruta más cercana
             ruta = _first_form_data(form, 'rutas_cercanas', 'ruta_mas_cercana', 'ruta_cercana', 'ruta', default='')
             if ruta:
                 _set_attr_if_empty(s, 'rutas_cercanas', ruta)
 
-            # funciones_otro existe en el modelo
             funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
             if funciones_otro_txt:
                 _set_attr_if_exists(s, 'funciones_otro', funciones_otro_txt)
 
-            # Normalizaciones
             s.funciones      = _map_funciones(form.funciones.data, funciones_otro_txt)
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
-            s.edad_requerida = _map_edad_choices(form.edad_requerida.data, form.edad_requerida.choices, getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else '')
-            s.tipo_lugar     = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''), getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else '')
+            s.edad_requerida = _map_edad_choices(
+                form.edad_requerida.data,
+                form.edad_requerida.choices,
+                getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else ''
+            )
+            s.tipo_lugar     = _map_tipo_lugar(
+                getattr(s, 'tipo_lugar', ''),
+                getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+            )
 
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
@@ -808,18 +1026,25 @@ def nueva_solicitud():
             except Exception:
                 pass
 
+            # Flush para detectar problemas (y evitar que un error tarde dispare reintentos duplicados)
+            db.session.flush()
             db.session.commit()
             flash(f'Solicitud {codigo} creada correctamente.', 'success')
             return redirect(url_for('clientes.listar_solicitudes'))
 
         except SQLAlchemyError as e:
             db.session.rollback()
+            # Si falló, liberar dedupe para permitir reintento limpio
+            try:
+                if dedupe_key and _cache_ok():
+                    _cache_del(cache, dedupe_key)
+            except Exception:
+                pass
             try:
                 current_app.logger.exception("ERROR creando solicitud (cliente)")
             except Exception:
                 pass
 
-            # En desarrollo, muestra un detalle corto para poder corregir rápido
             msg = 'No se pudo crear la solicitud. Intenta de nuevo.'
             try:
                 if bool(getattr(current_app, 'debug', False)):
@@ -828,6 +1053,13 @@ def nueva_solicitud():
                 pass
 
             flash(msg, 'danger')
+        finally:
+            # Liberar lock corto (si existe)
+            try:
+                if lock_acquired and _cache_ok():
+                    _cache_del(cache, lock_key)
+            except Exception:
+                pass
 
     return render_template('clientes/solicitud_form.html', form=form, nuevo=True)
 
@@ -845,11 +1077,9 @@ def editar_solicitud(id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
     if request.method == 'GET':
-        # Precargar listas
         form.funciones.data      = _clean_list(s.funciones)
         form.areas_comunes.data  = _clean_list(s.areas_comunes)
 
-        # Edad: LABELS (BD) → códigos (form) + texto otro
         selected_codes, otro_text = _split_edad_for_form(
             stored_list=s.edad_requerida,
             edad_choices=form.edad_requerida.choices
@@ -858,7 +1088,6 @@ def editar_solicitud(id):
         if hasattr(form, 'edad_otro'):
             form.edad_otro.data = otro_text
 
-        # Funciones personalizadas → “otro”
         try:
             allowed_fun = {str(v) for v, _ in form.funciones.choices}
             custom_fun = [v for v in (s.funciones or []) if v and v not in allowed_fun]
@@ -870,7 +1099,6 @@ def editar_solicitud(id):
         except Exception:
             pass
 
-        # Tipo de lugar
         try:
             allowed_tl = {str(v) for v, _ in form.tipo_lugar.choices}
             if s.tipo_lugar and s.tipo_lugar not in allowed_tl and hasattr(form, 'tipo_lugar_otro'):
@@ -885,34 +1113,51 @@ def editar_solicitud(id):
             form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
 
     if form.validate_on_submit():
+        # Anti doble submit (sin JS) + lock corto por usuario/solicitud
+        if not _prevent_double_post('solicitud_edit', seconds=8):
+            flash('Ya esa actualización se está enviando. Evitamos duplicados.', 'warning')
+            return redirect(url_for('clientes.detalle_solicitud', id=id))
+
+        lock_key = f"solicitud:edit_lock:{int(getattr(current_user, 'id', 0) or 0)}:{int(id)}"
+        lock_acquired = False
+        try:
+            if _cache_ok():
+                lock_acquired = _cache_add(cache, lock_key, 1, timeout=12)
+                if not lock_acquired:
+                    flash('Ya se está guardando esta solicitud. Espera un momento y vuelve a intentar.', 'warning')
+                    return redirect(url_for('clientes.detalle_solicitud', id=id))
+        except Exception:
+            lock_acquired = False
         try:
             form.populate_obj(s)
 
-            # ─────────────────────────────────────────
-            # Alinear nombres posibles del form con el modelo
-            # (evita que "no se guarden" cuando el form usa otros nombres)
-            # ─────────────────────────────────────────
-            # ciudad_sector puede venir como ciudad+sector
             ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
             sector = _first_form_data(form, 'sector', 'sector_oferta', 'sector_cliente', default='')
             if ciudad or sector:
                 combo = " ".join([x for x in [ciudad, sector] if x]).strip()
-                _set_attr_if_empty(s, 'ciudad_sector', combo)
+                # ✅ en editar sí debe actualizar
+                _set_attr_if_exists(s, 'ciudad_sector', combo)
 
-            # rutas_cercanas / ruta más cercana
             ruta = _first_form_data(form, 'rutas_cercanas', 'ruta_mas_cercana', 'ruta_cercana', 'ruta', default='')
             if ruta:
-                _set_attr_if_empty(s, 'rutas_cercanas', ruta)
+                # ✅ en editar sí debe actualizar
+                _set_attr_if_exists(s, 'rutas_cercanas', ruta)
 
-            # funciones_otro existe en el modelo
             funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
             if funciones_otro_txt:
                 _set_attr_if_exists(s, 'funciones_otro', funciones_otro_txt)
 
             s.funciones      = _map_funciones(form.funciones.data, funciones_otro_txt)
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
-            s.edad_requerida = _map_edad_choices(form.edad_requerida.data, form.edad_requerida.choices, getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else '')
-            s.tipo_lugar     = _map_tipo_lugar(getattr(s, 'tipo_lugar', ''), getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else '')
+            s.edad_requerida = _map_edad_choices(
+                form.edad_requerida.data,
+                form.edad_requerida.choices,
+                getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else ''
+            )
+            s.tipo_lugar     = _map_tipo_lugar(
+                getattr(s, 'tipo_lugar', ''),
+                getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+            )
 
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
@@ -925,6 +1170,7 @@ def editar_solicitud(id):
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = datetime.utcnow()
 
+            db.session.flush()
             db.session.commit()
             flash('Solicitud actualizada.', 'success')
             return redirect(url_for('clientes.detalle_solicitud', id=id))
@@ -932,6 +1178,12 @@ def editar_solicitud(id):
         except SQLAlchemyError:
             db.session.rollback()
             flash('No se pudo actualizar la solicitud. Intenta de nuevo.', 'danger')
+        finally:
+            try:
+                if lock_acquired and _cache_ok():
+                    _cache_del(cache, lock_key)
+            except Exception:
+                pass
 
     return render_template('clientes/solicitud_form.html', form=form, editar=True, solicitud=s)
 
@@ -945,7 +1197,6 @@ def editar_solicitud(id):
 def detalle_solicitud(id):
     s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
 
-    # Historial de envíos (inicial + reemplazos)
     envios = []
     if getattr(s, 'candidata', None):
         envios.append({
@@ -961,7 +1212,6 @@ def detalle_solicitud(id):
                 'fecha': r.fecha_inicio_reemplazo or r.created_at
             })
 
-    # Historial de cancelaciones
     cancelaciones = []
     if s.estado == 'cancelada' and getattr(s, 'fecha_cancelacion', None):
         cancelaciones.append({
@@ -1053,12 +1303,6 @@ def cancelar_solicitud(id):
 # ─────────────────────────────────────────────────────────────
 @clientes_bp.before_app_request
 def _show_policies_modal_once():
-    """
-    Si el usuario (cliente) NO ha aceptado todavía:
-    - Mostrar un modal solo 1 vez por sesión (flag en session).
-    - Bloquear POSTs a cualquier ruta excepto aceptar_politicas.
-    - Permitir acceder a la página de políticas.
-    """
     WHITELIST = {
         'clientes.politicas',
         'clientes.aceptar_politicas',
@@ -1071,48 +1315,36 @@ def _show_policies_modal_once():
     if not current_user.is_authenticated:
         return None
 
-    # Solo aplica a ROLE cliente
     if getattr(current_user, 'role', 'cliente') != 'cliente':
         return None
 
-    # Ya aceptó
     if bool(getattr(current_user, 'acepto_politicas', False)):
         return None
 
-    # Mostrar modal una sola vez en la sesión
     g.show_policies_modal = False
     if not session.get('policies_modal_shown', False):
         g.show_policies_modal = True
         session['policies_modal_shown'] = True
 
-    # Evitar POSTs a otras rutas sin aceptar antes
     if request.method == 'POST' and request.endpoint not in WHITELIST:
         return redirect(url_for('clientes.politicas', next=request.url))
 
     return None
 
 
-# ─────────────────────────────────────────────────────────────
-# PÁGINA: Políticas (acceso manual desde menú)
-# ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/politicas', methods=['GET'])
 @login_required
 def politicas():
-    # Solo clientes
     if getattr(current_user, 'role', 'cliente') != 'cliente':
         flash('Acceso no permitido.', 'warning')
         return redirect(url_for('clientes.dashboard'))
     return render_template('clientes/politicas.html')
 
 
-# ─────────────────────────────────────────────────────────────
-# ACCIONES: aceptar / rechazar políticas
-# ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/politicas/aceptar', methods=['POST'])
 @login_required
 def aceptar_politicas():
     next_url = request.args.get('next') or url_for('clientes.dashboard')
-    # Guardar aceptación
     if hasattr(current_user, 'acepto_politicas'):
         current_user.acepto_politicas = True
     if hasattr(current_user, 'fecha_acepto_politicas'):
@@ -1129,21 +1361,15 @@ def rechazar_politicas():
     flash('Debes aceptar las políticas para usar el portal.', 'warning')
     return redirect(url_for('clientes.login'))
 
+
 # ─────────────────────────────────────────────────────────────
 # COMPATIBILIDAD – TEST DEL CLIENTE (por SOLICITUD)
-# Solo Premium/VIP. Persistencia en DB (JSONB) con versión y timestamp.
-# Incluye recálculo básico de score si hay candidata asignada.
 # ─────────────────────────────────────────────────────────────
 from json import dumps, loads
-# Usa tus decoradores existentes:
-#   - cliente_required
-#   - politicas_requeridas
 
-# Planes habilitados
 PLANES_COMPATIBLES = {'premium', 'vip'}
 COMPAT_TEST_VERSION = 'v1.0'
 
-# Catálogos/normalización (alineados a enums que agregamos a models)
 _RITMOS = {'tranquilo', 'activo', 'muy_activo'}
 _ESTILOS = {
     'paso_a_paso': 'necesita_instrucciones',
@@ -1151,36 +1377,38 @@ _ESTILOS = {
     'necesita_instrucciones': 'necesita_instrucciones',
     'toma_iniciativa': 'toma_iniciativa',
 }
-_LEVELS = {'baja', 'media', 'alta'}  # experiencia deseada del cliente / nivel de match
+_LEVELS = {'baja', 'media', 'alta'}
 
 
-# ─────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────
 def _plan_permite_compat(solicitud: Solicitud) -> bool:
     plan = (getattr(solicitud, 'tipo_plan', '') or '').strip().lower()
     return plan in PLANES_COMPATIBLES
 
+
 def _get_solicitud_cliente_or_404(solicitud_id: int) -> Solicitud:
     return Solicitud.query.filter_by(id=solicitud_id, cliente_id=current_user.id).first_or_404()
 
+
 def _list_from_form(name: str):
-    """Lee listas de checkboxes/multiselect (name="foo[]")."""
     vals = request.form.getlist(name)
     return [v.strip() for v in vals if v and v.strip()]
+
 
 def _norm_ritmo(v: Optional[str]):
     v = (v or '').strip().lower().replace(' ', '_')
     v = v.replace('muyactivo', 'muy_activo')
     return v if v in _RITMOS else None
 
+
 def _norm_estilo(v: Optional[str]):
     v = (v or '').strip().lower().replace(' ', '_')
     return _ESTILOS.get(v)
 
+
 def _norm_level(v: Optional[str]):
     v = (v or '').strip().lower()
     return v if v in _LEVELS else None
+
 
 def _parse_int_1a5(v: Optional[str]):
     try:
@@ -1189,17 +1417,10 @@ def _parse_int_1a5(v: Optional[str]):
     except Exception:
         return None
 
+
 def _save_compat_cliente(s: Solicitud, payload_dict: dict) -> str:
-    """
-    Guarda en columnas nativas de la Solicitud si existen:
-      - compat_test_cliente_json (JSONB)
-      - compat_test_cliente_at (timestamp)
-      - compat_test_cliente_version (str)
-    Fallback: compat_test_cliente (TEXT) o session.
-    """
     payload_dict = payload_dict or {}
 
-    # 1) Persistencia nativa (JSONB)
     if hasattr(s, 'compat_test_cliente_json'):
         try:
             s.compat_test_cliente_json = payload_dict
@@ -1214,7 +1435,6 @@ def _save_compat_cliente(s: Solicitud, payload_dict: dict) -> str:
         except Exception:
             db.session.rollback()
 
-    # 2) Texto legacy
     if hasattr(s, 'compat_test_cliente'):
         try:
             s.compat_test_cliente = dumps(payload_dict, ensure_ascii=False)
@@ -1229,30 +1449,26 @@ def _save_compat_cliente(s: Solicitud, payload_dict: dict) -> str:
         except Exception:
             db.session.rollback()
 
-    # 3) Session fallback
     session.setdefault('compat_tests_cliente', {})
     session['compat_tests_cliente'][f"{current_user.id}:{s.id}"] = payload_dict
     return 'session'
 
+
 def _load_compat_cliente(s: Solicitud) -> Optional[dict]:
-    # 1) JSON nativo
     if hasattr(s, 'compat_test_cliente_json') and getattr(s, 'compat_test_cliente_json', None):
         return getattr(s, 'compat_test_cliente_json')
-    # 2) Texto legacy
+
     if hasattr(s, 'compat_test_cliente') and getattr(s, 'compat_test_cliente', None):
         try:
             return loads(getattr(s, 'compat_test_cliente'))
         except Exception:
             return {"__raw__": str(getattr(s, 'compat_test_cliente'))}
-    # 3) Session
+
     by_cliente = session.get('compat_tests_cliente', {})
     return by_cliente.get(f"{current_user.id}:{s.id}")
 
+
 def _normalize_payload_from_form(s: Solicitud) -> dict:
-    """
-    Normaliza datos del formulario a un dict estable para cálculo/almacenamiento.
-    Elimina "días preferidos": los días se definen por el plan/solicitud.
-    """
     cliente_nombre = (getattr(current_user, 'nombre_completo', None) or getattr(current_user, 'username', '')).strip()
     cliente_codigo = (getattr(current_user, 'codigo', '') or '').strip()
 
@@ -1265,16 +1481,16 @@ def _normalize_payload_from_form(s: Solicitud) -> dict:
         "cliente_nombre": cliente_nombre,
         "cliente_codigo": cliente_codigo,
         "solicitud_codigo": s.codigo_solicitud,
-        "ciudad_sector": (request.form.get('ciudad_sector') or s.ciudad_sector or '').strip(),
+        "ciudad_sector": (request.form.get('ciudad_sector') or getattr(s, 'ciudad_sector', '') or '').strip(),
         "composicion_hogar": (request.form.get('composicion_hogar') or '').strip(),
-        "prioridades": _list_from_form('prioridades[]'),            # ← checkboxes
-        "ritmo_hogar": ritmo,                                       # enum
-        "puntualidad_1a5": puntualidad,                             # 1..5
+        "prioridades": _list_from_form('prioridades[]'),
+        "ritmo_hogar": ritmo,
+        "puntualidad_1a5": puntualidad,
         "comunicacion": (request.form.get('comunicacion') or '').strip(),
-        "direccion_trabajo": estilo,                                # enum
-        "experiencia_deseada": exp,                                 # 'baja'|'media'|'alta'
-        "horario_preferido": (request.form.get('horario_preferido') or s.horario or '').strip(),
-        "no_negociables": _list_from_form('no_negociables[]'),      # ← checkboxes
+        "direccion_trabajo": estilo,
+        "experiencia_deseada": exp,
+        "horario_preferido": (request.form.get('horario_preferido') or getattr(s, 'horario', '') or '').strip(),
+        "no_negociables": _list_from_form('no_negociables[]'),
         "nota_cliente_test": (request.form.get('nota_cliente_test') or '').strip(),
         "version": COMPAT_TEST_VERSION,
         "timestamp": datetime.utcnow().isoformat(),
@@ -1282,15 +1498,8 @@ def _normalize_payload_from_form(s: Solicitud) -> dict:
     return payload
 
 
-# ─────────────────────────────────────────────────────────────
-# Scoring básico – cliente vs candidata asignada
-# ─────────────────────────────────────────────────────────────
 def _calc_score_basico(s: Solicitud, payload: dict):
-    """
-    Devuelve (score:int 0..100, level:str, resumen:str, riesgos:str) si hay candidata.
-    Pondera: ritmo, estilo, niños, no-negociables, prioridades↔fortalezas.
-    """
-    c = s.candidata
+    c = getattr(s, 'candidata', None)
     if not c:
         return None, None, "Aún no hay candidata asignada para calcular compatibilidad.", None
 
@@ -1299,7 +1508,6 @@ def _calc_score_basico(s: Solicitud, payload: dict):
     detalles = []
     riesgos = []
 
-    # Ritmo
     total += 1
     if payload.get('ritmo_hogar') and getattr(c, 'compat_ritmo_preferido', None):
         if payload['ritmo_hogar'] == c.compat_ritmo_preferido:
@@ -1310,7 +1518,6 @@ def _calc_score_basico(s: Solicitud, payload: dict):
     else:
         detalles.append("Ritmo: sin datos completos")
 
-    # Estilo (dirección de trabajo)
     total += 1
     if payload.get('direccion_trabajo') and getattr(c, 'compat_estilo_trabajo', None):
         if payload['direccion_trabajo'] == c.compat_estilo_trabajo:
@@ -1321,10 +1528,9 @@ def _calc_score_basico(s: Solicitud, payload: dict):
     else:
         detalles.append("Estilo: sin datos completos")
 
-    # Niños (según solicitud)
     total += 1
-    relacion_c = getattr(c, 'compat_relacion_ninos', None)  # 'comoda'|'neutral'|'prefiere_evitar'
-    tiene_ninos = (s.ninos or 0) > 0
+    relacion_c = getattr(c, 'compat_relacion_ninos', None)
+    tiene_ninos = (getattr(s, 'ninos', 0) or 0) > 0
     if tiene_ninos and relacion_c:
         if relacion_c == 'prefiere_evitar':
             riesgos.append("La candidata prefiere evitar trabajar con niños")
@@ -1335,7 +1541,6 @@ def _calc_score_basico(s: Solicitud, payload: dict):
         puntos += 1
         detalles.append("Sin niños o sin restricciones")
 
-    # No negociables (choques)
     total += 1
     no_neg = set([x.lower() for x in (payload.get('no_negociables') or [])])
     limites = set([x.lower() for x in (getattr(c, 'compat_limites_no_negociables', []) or [])])
@@ -1345,7 +1550,6 @@ def _calc_score_basico(s: Solicitud, payload: dict):
         puntos += 1
         detalles.append("No hay choques en no-negociables")
 
-    # Prioridades del hogar vs fortalezas de la candidata
     total += 1
     prios = set([x.lower() for x in (payload.get('prioridades') or [])])
     forts = set([x.lower() for x in (getattr(c, 'compat_fortalezas', []) or [])])
@@ -1355,7 +1559,6 @@ def _calc_score_basico(s: Solicitud, payload: dict):
     else:
         riesgos.append("La candidata no destaca en las prioridades clave del hogar")
 
-    # Score final
     score = int(round((puntos / max(total, 1)) * 100))
     if score >= 80:
         level = 'alta'
@@ -1367,6 +1570,7 @@ def _calc_score_basico(s: Solicitud, payload: dict):
     resumen = "; ".join(detalles) if detalles else "Sin detalles."
     riesgos_txt = "; ".join(riesgos) if riesgos else None
     return score, level, resumen, riesgos_txt
+
 
 def _guardar_resultado_calculo(s: Solicitud, score, level, resumen, riesgos) -> bool:
     try:
@@ -1384,9 +1588,6 @@ def _guardar_resultado_calculo(s: Solicitud, score, level, resumen, riesgos) -> 
         return False
 
 
-# ─────────────────────────────────────────────────────────────
-# Rutas
-# ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/compat/test', methods=['GET', 'POST'])
 @login_required
 @cliente_required
@@ -1402,7 +1603,6 @@ def compat_test_cliente(solicitud_id):
         payload = _normalize_payload_from_form(s)
         destino = _save_compat_cliente(s, payload)
 
-        # Recalcular score si ya hay candidata
         score, level, resumen, riesgos = _calc_score_basico(s, payload)
         if score is not None:
             ok = _guardar_resultado_calculo(s, score, level, resumen, riesgos)
@@ -1415,16 +1615,15 @@ def compat_test_cliente(solicitud_id):
 
         return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
 
-    # GET – precarga con datos existentes
     initial = _load_compat_cliente(s) or {}
     return render_template('clientes/compat_test_cliente.html', s=s, initial=initial)
+
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/compat/recalcular', methods=['POST'])
 @login_required
 @cliente_required
 @politicas_requeridas
 def compat_recalcular(solicitud_id):
-    """Forzar recálculo si se asignó candidata después del test."""
     s = _get_solicitud_cliente_or_404(solicitud_id)
 
     if not _plan_permite_compat(s):
@@ -1450,10 +1649,8 @@ def compat_recalcular(solicitud_id):
     return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
 
 
-
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 def solicitud_publica(token):
-    # 🔒 DESACTIVADA TEMPORALMENTE (no usada por ahora)
     abort(404)
 
     from flask import current_app
@@ -1463,38 +1660,30 @@ def solicitud_publica(token):
     form = SolicitudPublicaForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
-    # Iniciales como tu ruta de cliente
     if request.method == 'GET':
         if hasattr(form, 'token'):
             form.token.data = token
-
         if hasattr(form, 'funciones'):
             form.funciones.data = form.funciones.data or []
-
         if hasattr(form, 'areas_comunes'):
             form.areas_comunes.data = form.areas_comunes.data or []
-
         if hasattr(form, 'edad_requerida'):
             form.edad_requerida.data = form.edad_requerida.data or []
-
         if hasattr(form, 'dos_pisos') and form.dos_pisos.data is None:
             form.dos_pisos.data = False
-
         if hasattr(form, 'pasaje_aporte') and form.pasaje_aporte.data is None:
             form.pasaje_aporte.data = False
 
-    # Anti-bot (honeypot)
     if request.method == 'POST' and hasattr(form, 'hp'):
         if (form.hp.data or '').strip():
             abort(400)
 
-    # ── Validar token (protección por URL correcta)
     try:
         ser = URLSafeTimedSerializer(
             current_app.config["SECRET_KEY"],
             salt="clientes-solicitud-publica"
         )
-        payload = ser.loads(token, max_age=60 * 60 * 24 * 30)  # 30 días
+        payload = ser.loads(token, max_age=60 * 60 * 24 * 30)
         cliente_id = payload.get("cliente_id")
         codigo_token = (payload.get("codigo") or "").strip()
     except SignatureExpired:
@@ -1509,15 +1698,12 @@ def solicitud_publica(token):
         flash("Enlace no válido para ningún cliente. Contacta a la agencia.", "danger")
         return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
 
-    # ── POST: valida triple + guarda TODO
     if form.validate_on_submit():
-        # token hidden check
         if hasattr(form, 'token'):
             if (form.token.data or '') != token:
                 flash("Token inválido.", "danger")
                 return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
 
-        # Validación TRIPLE
         def _norm_email(v):
             return (v or "").strip().lower()
 
@@ -1526,7 +1712,6 @@ def solicitud_publica(token):
             s = re.sub(r"\s+", " ", s)
             return s.lower()
 
-        # OJO: codigo es numérico a veces ("001"), no uses lower como requisito real
         if _norm_text(getattr(form, 'codigo_cliente', type('x',(object,),{'data':''})) .data) != _norm_text(c.codigo):
             flash("El código no coincide con este enlace.", "danger")
             return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
@@ -1540,7 +1725,6 @@ def solicitud_publica(token):
             return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
 
         try:
-            # Código único: NO usar count directo (puede chocar)
             idx = Solicitud.query.filter_by(cliente_id=c.id).count()
             while True:
                 codigo = f"{c.codigo}-{letra_por_indice(idx)}"
@@ -1555,10 +1739,8 @@ def solicitud_publica(token):
                 codigo_solicitud=codigo
             )
 
-            # Carga general desde WTForms (solo campos que existen en el form)
             form.populate_obj(s)
 
-            # Normalizaciones (las mismas que ya usas)
             s.funciones = _map_funciones(
                 getattr(form, 'funciones', type('x',(object,),{'data':[]})).data,
                 getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
@@ -1579,7 +1761,6 @@ def solicitud_publica(token):
                 getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
             )
 
-            # Campos extra con limpieza
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
 
@@ -1597,7 +1778,6 @@ def solicitud_publica(token):
 
             db.session.add(s)
 
-            # Métricas cliente
             c.total_solicitudes = (c.total_solicitudes or 0) + 1
             c.fecha_ultima_solicitud = datetime.utcnow()
             c.fecha_ultima_actividad = datetime.utcnow()
@@ -1608,46 +1788,41 @@ def solicitud_publica(token):
 
         except Exception as e:
             db.session.rollback()
-
-            # Aquí está la CLAVE: ver el error real
             current_app.logger.exception("ERROR guardando solicitud pública")
             flash(f"No se pudo enviar la solicitud. Error: {str(e)}", "danger")
+        finally:
+            try:
+                if lock_acquired and _cache_ok():
+                    _cache_del(cache, lock_key)
+            except Exception:
+                pass
 
     elif request.method == 'POST':
         flash('Revisa los campos marcados en rojo.', 'danger')
 
     return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
 
+
 # ─────────────────────────────────────────────────────────────
 # Helpers: normalización de tags (Habilidades y fortalezas)
 # ─────────────────────────────────────────────────────────────
 def _to_tags_text(v) -> str:
-    """Convierte tags/fortalezas a un string limpio separado por comas.
-
-    Soporta:
-      - None
-      - string con \n, ;, |
-      - list/tuple/set
-      - dict
-    """
     if v is None:
         return ''
 
-    # Si viene como lista/tupla/set
     if isinstance(v, (list, tuple, set)):
         parts = [str(x).strip() for x in v if str(x).strip()]
         return ', '.join(parts)
 
-    # Si viene como dict
     if isinstance(v, dict):
         parts = [str(x).strip() for x in v.values() if str(x).strip()]
         return ', '.join(parts)
 
-    # String normal
     s = str(v)
     s = s.replace('\n', ',').replace(';', ',').replace('|', ',')
     parts = [p.strip() for p in s.split(',') if p.strip()]
     return ', '.join(parts)
+
 
 # ─────────────────────────────────────────────────────────────
 # Banco de domésticas (Portal Clientes)
@@ -1659,11 +1834,9 @@ def _to_tags_text(v) -> str:
 @politicas_requeridas
 @banco_domesticas_required
 def banco_domesticas():
-    """Listado de candidatas disponibles para clientes Premium/VIP con solicitud activa."""
     if Candidata is None or CandidataWeb is None:
         abort(404)
 
-    # Paginación
     page = request.args.get('page', 1, type=int)
     page = max(page, 1)
     per_page = request.args.get('per_page', 12, type=int)
@@ -1683,7 +1856,6 @@ def banco_domesticas():
         )
     )
 
-    # Búsqueda simple (nombre / cédula / teléfono / código)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -1707,11 +1879,8 @@ def banco_domesticas():
     has_prev = page > 1
     has_next = page < pages
 
-    # Normaliza items para el template (sin romper lo existente: mantenemos `resultados`)
-    # Si el template usa `domesticas`, tendrá un dict listo.
     domesticas = []
     for cand, ficha in (items or []):
-        # Foto: URL pública si existe, si no el blob
         foto_url = (getattr(ficha, 'foto_url_publica', None) or getattr(ficha, 'foto', None) or '').strip()
         if not foto_url:
             try:
@@ -1728,8 +1897,6 @@ def banco_domesticas():
             'modalidad': (getattr(ficha, 'modalidad_publica', None) or getattr(cand, 'modalidad', None) or '').strip() or None,
             'ciudad': (getattr(ficha, 'ciudad_publica', None) or getattr(cand, 'ciudad', None) or '').strip() or None,
             'sector': (getattr(ficha, 'sector_publico', None) or getattr(cand, 'sector', None) or '').strip() or None,
-            # Habilidades/Fortalezas: viene de `tags_publicos` (CandidataWeb) pero
-            # dejamos fallbacks por si en tu modelo usa otros nombres.
             'tags': _to_tags_text(
                 getattr(ficha, 'tags_publicos', None)
                 or getattr(ficha, 'fortalezas_publicas', None)
@@ -1762,7 +1929,6 @@ def banco_domesticas():
 @politicas_requeridas
 @banco_domesticas_required
 def domestica_detalle(fila: int):
-    """Detalle público de una candidata (solo si está visible y disponible)."""
     if Candidata is None or CandidataWeb is None:
         abort(404)
 
@@ -1772,12 +1938,6 @@ def domestica_detalle(fila: int):
     if not ficha or not getattr(ficha, 'visible', False) or getattr(ficha, 'estado_publico', '') != 'disponible':
         abort(404)
 
-    # ─────────────────────────────────────────────────────────
-    # Normalizar payload para el template (para que "Habilidades y fortalezas" salga siempre)
-    # El template debe leer `candidata.tags` (string con comas).
-    # En BD lo guardamos como `tags_publicos` (CandidataWeb).
-    # ─────────────────────────────────────────────────────────
-    # Habilidades/Fortalezas: normaliza para que nunca llegue "en blanco" por formato
     raw_tags = (
         getattr(ficha, 'tags_publicos', None)
         or getattr(ficha, 'fortalezas_publicas', None)
@@ -1787,17 +1947,14 @@ def domestica_detalle(fila: int):
     )
     tags_txt = _to_tags_text(raw_tags)
 
-    # Foto: preferimos URL pública si existe; si no, usamos la ruta que sirve el blob.
     foto_url = (getattr(ficha, 'foto_url_publica', None) or getattr(ficha, 'foto', None) or '').strip()
     if not foto_url:
-        # Si la candidata tiene blob de foto_perfil, usa el endpoint interno
         try:
             if getattr(cand, 'foto_perfil', None):
                 foto_url = url_for('clientes.domestica_foto_perfil', fila=cand.fila)
         except Exception:
             foto_url = ''
 
-    # Disponible inmediato (si tienes campos en ficha)
     disponible_inmediato = bool(getattr(ficha, 'disponible_inmediato', False))
     disponible_msg = (getattr(ficha, 'disponible_inmediato_msg', None) or '').strip() or None
 
@@ -1816,10 +1973,7 @@ def domestica_detalle(fila: int):
         'anos_experiencia': (getattr(ficha, 'anos_experiencia_publicos', None) or getattr(cand, 'anos_experiencia', None) or '').strip() or None,
         'experiencia': (getattr(ficha, 'experiencia_resumen', None) or getattr(cand, 'experiencia', None) or '').strip() or None,
         'experiencia_detallada': (getattr(ficha, 'experiencia_detallada', None) or '').strip() or None,
-        # ✅ CLAVE: esto es lo que el template usa para "Habilidades y fortalezas"
         'tags': tags_txt,
-
-        # Sueldo (opcional, si existe)
         'sueldo': (getattr(ficha, 'sueldo_publico', None) or '').strip() or None,
         'sueldo_desde': (getattr(ficha, 'sueldo_desde', None) or '').strip() or None,
         'sueldo_hasta': (getattr(ficha, 'sueldo_hasta', None) or '').strip() or None,
@@ -1838,7 +1992,6 @@ def domestica_detalle(fila: int):
 @cliente_required
 @banco_domesticas_required
 def domestica_foto_perfil(fila: int):
-    """Devuelve la foto_perfil (LargeBinary) como imagen (si existe)."""
     if Candidata is None:
         abort(404)
 
@@ -1862,10 +2015,13 @@ def domestica_foto_perfil(fila: int):
     else:
         mimetype, ext = 'application/octet-stream', 'bin'
 
-    return send_file(
+    response = send_file(
         BytesIO(blob),
         mimetype=mimetype,
         as_attachment=False,
         download_name=f"candidata_{fila}_perfil.{ext}",
         max_age=3600,
     )
+    response.headers['Cache-Control'] = 'private, max-age=3600'
+    response.headers['Pragma'] = 'private'
+    return response

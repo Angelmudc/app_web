@@ -317,6 +317,95 @@
   }
 
   // ===== Form UX: evitar doble submit + loading =====
+  // ===== Anti doble envío (GLOBAL + fingerprint) =====
+  // - Evita doble submit por doble click/Enter/lag
+  // - Evita duplicados por reintento rápido con la misma data
+  // - Guarda un lock corto en sessionStorage por fingerprint
+  const SUBMIT_LOCK_MS = 15000; // 15s
+
+  function _normStr(v) {
+    return String(v == null ? '' : v).trim().replace(/\s+/g, ' ');
+  }
+
+  function _hash32(str) {
+    // FNV-1a 32-bit
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16);
+  }
+
+  function _formFingerprint(form) {
+    try {
+      const method = (form.getAttribute('method') || 'GET').toUpperCase();
+      const action = form.getAttribute('action') || location.pathname;
+      const fd = new FormData(form);
+
+      // No incluimos csrf ni campos vacíos para que el fingerprint sea estable.
+      const pairs = [];
+      for (const [k, v] of fd.entries()) {
+        const key = String(k || '');
+        if (!key) continue;
+        if (key === 'csrf_token') continue;
+
+        // Normaliza valores
+        const val = _normStr(v);
+        if (!val) continue;
+        pairs.push([key, val]);
+      }
+
+      // Orden para evitar que cambie por orden del DOM
+      pairs.sort((a, b) => {
+        if (a[0] === b[0]) return a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0;
+        return a[0] < b[0] ? -1 : 1;
+      });
+
+      const base = `${method}|${action}|` + pairs.map((p) => `${p[0]}=${p[1]}`).join('&');
+      return _hash32(base);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function _lockKey(fp) {
+    return `clientes_submit_lock:${fp}`;
+  }
+
+  function _isLocked(fp) {
+    if (!fp) return false;
+    try {
+      const raw = sessionStorage.getItem(_lockKey(fp));
+      if (!raw) return false;
+      const exp = parseInt(raw, 10);
+      if (!exp || Number.isNaN(exp)) {
+        sessionStorage.removeItem(_lockKey(fp));
+        return false;
+      }
+      if (Date.now() > exp) {
+        sessionStorage.removeItem(_lockKey(fp));
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function _setLock(fp) {
+    if (!fp) return;
+    try {
+      sessionStorage.setItem(_lockKey(fp), String(Date.now() + SUBMIT_LOCK_MS));
+    } catch (_) {}
+  }
+
+  function _clearLock(fp) {
+    if (!fp) return;
+    try {
+      sessionStorage.removeItem(_lockKey(fp));
+    } catch (_) {}
+  }
   function initForms() {
     d.addEventListener(
       'submit',
@@ -327,11 +416,24 @@
         if (!form.closest('body.clientes,[data-portal="clientes"],.clientes')) return;
         if (form.hasAttribute('data-no-lock')) return;
 
+        // 1) Bloqueo por submit en memoria (doble click / enter / lag)
         if (form.__submitting__) {
           e.preventDefault();
+          toast('Ya se está enviando…', 'warning', { duration: 1800 });
           return;
         }
+
+        // 2) Bloqueo por fingerprint (evita duplicados del mismo payload por reintento rápido)
+        const fp = _formFingerprint(form);
+        if (fp && _isLocked(fp)) {
+          e.preventDefault();
+          toast('Ese formulario ya se envió. Espera un momento…', 'warning', { duration: 2200 });
+          return;
+        }
+
         form.__submitting__ = true;
+        if (fp) _setLock(fp);
+        form.__submit_fp__ = fp;
 
         const submits = $$('button[type="submit"], input[type="submit"]', form);
         submits.forEach((btn) => {
@@ -343,6 +445,10 @@
 
         setTimeout(() => {
           form.__submitting__ = false;
+          if (form.__submit_fp__) {
+            _clearLock(form.__submit_fp__);
+            form.__submit_fp__ = '';
+          }
           submits.forEach((btn) => {
             try {
               btn.disabled = false;
@@ -633,6 +739,306 @@
     }
   }
 
+  // ==========================================================
+  // Solicitud Form (Clientes)
+  // - Lógica del formulario sin meter JS en el template
+  // - Vive aquí (clientes.js) y solo corre si existe #solicitud-form
+  // ==========================================================
+  function initSolicitudForm() {
+    const formEl = $('#solicitud-form');
+    if (!formEl) return;
+
+    // ---------- Contadores ----------
+    function bindCountBySelector(inputSel, outId) {
+      const el = $(inputSel, formEl);
+      const out = d.getElementById(outId);
+      if (!el || !out) return;
+
+      const upd = () => {
+        try {
+          out.textContent = String((el.value || '').length);
+        } catch (_) {}
+      };
+
+      el.addEventListener('input', upd, { passive: true });
+      upd();
+    }
+
+    // Nombres típicos en WTForms
+    bindCountBySelector('textarea[name="experiencia"], #experiencia', 'exp-count');
+    bindCountBySelector('textarea[name="nota_cliente"], #nota_cliente', 'nota-count');
+
+    // ---------- Limpieza de inputs en wraps ocultos ----------
+    function clearWrapInputs(wrapEl) {
+      if (!wrapEl) return;
+      try {
+        wrapEl.querySelectorAll('input, textarea, select').forEach((el) => {
+          const tag = (el.tagName || '').toLowerCase();
+          const type = (el.getAttribute('type') || '').toLowerCase();
+
+          if (tag === 'select') {
+            el.selectedIndex = 0;
+            return;
+          }
+
+          if (type === 'checkbox' || type === 'radio') {
+            el.checked = false;
+            return;
+          }
+
+          el.value = '';
+        });
+      } catch (_) {}
+    }
+
+    // ---------- Aviso de cambios sin guardar ----------
+    let dirty = false;
+    formEl.addEventListener('input', () => {
+      dirty = true;
+    }, { passive: true });
+
+    w.addEventListener('beforeunload', function (e) {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+
+    const submitBtn = $('#btn-submit', formEl);
+    if (submitBtn) {
+      submitBtn.addEventListener('click', () => {
+        dirty = false;
+      }, { passive: true });
+    }
+
+    // ---------- Helpers ----------
+    function _normTxt(t) {
+      return String(t || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function _stripAccents(s) {
+      try {
+        return String(s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      } catch (_) {
+        return String(s || '');
+      }
+    }
+
+    function _labelTextForInput(inputEl) {
+      if (!inputEl || !inputEl.id) return '';
+      const lbl = d.querySelector(`label[for="${inputEl.id}"]`);
+      return lbl ? lbl.textContent : '';
+    }
+
+    // ---------- Toggle "Otro" (Edad requerida) ----------
+    const edadWrap = d.getElementById('wrap-edad-otro');
+    const edadChecks = $$('input[name="edad_requerida"]', formEl);
+
+    function updateEdadOtro() {
+      if (!edadWrap) return;
+      let checkedOtro = false;
+      edadChecks.forEach((ch) => {
+        if (String(ch.value || '').toLowerCase() === 'otro' && ch.checked) checkedOtro = true;
+      });
+      const hide = !checkedOtro;
+      edadWrap.classList.toggle('d-none', hide);
+      if (hide) clearWrapInputs(edadWrap);
+    }
+
+    edadChecks.forEach((ch) => ch.addEventListener('change', updateEdadOtro));
+    updateEdadOtro();
+
+    // ---------- Toggle "Otro" (Funciones) ----------
+    const funcWrap = d.getElementById('wrap-funciones-otro');
+    const funcChecks = $$('input[type="checkbox"][name="funciones"]', formEl);
+
+    function updateFuncionesOtro() {
+      if (!funcWrap) return;
+      let checkedOtro = false;
+      funcChecks.forEach((ch) => {
+        if (String(ch.value || '').toLowerCase() === 'otro' && ch.checked) checkedOtro = true;
+      });
+      const hide = !checkedOtro;
+      funcWrap.classList.toggle('d-none', hide);
+      if (hide) clearWrapInputs(funcWrap);
+    }
+
+    funcChecks.forEach((ch) => ch.addEventListener('change', updateFuncionesOtro));
+    updateFuncionesOtro();
+
+    // ---------- "Todas las anteriores" (genérico) ----------
+    function findTodasLasAnteriores(checkboxes) {
+      let found = checkboxes.find((ch) => String(ch.value || '').toLowerCase() === 'todas_anteriores');
+      if (found) return found;
+
+      for (const ch of checkboxes) {
+        const txt = _normTxt(_stripAccents(_labelTextForInput(ch)));
+        if (txt === 'todas las anteriores' || txt === 'todas las anteriores.') return ch;
+      }
+      return null;
+    }
+
+    // ---------- "Todas las anteriores" (Funciones) ----------
+    const funcAllPrev = findTodasLasAnteriores(funcChecks);
+
+    function funcOthers() {
+      return funcChecks.filter((ch) => ch !== funcAllPrev);
+    }
+
+    function funcOthersExceptOtro() {
+      return funcOthers().filter((ch) => String(ch.value || '').toLowerCase() !== 'otro');
+    }
+
+    function setFuncOthersChecked(checked) {
+      funcOthersExceptOtro().forEach((ch) => {
+        ch.checked = !!checked;
+      });
+      updateFuncionesOtro();
+    }
+
+    function syncFuncAllPrevFromOthers() {
+      if (!funcAllPrev) return;
+      const others = funcOthersExceptOtro();
+      if (!others.length) return;
+      funcAllPrev.checked = others.every((ch) => ch.checked);
+    }
+
+    if (funcAllPrev) {
+      funcAllPrev.addEventListener('change', function () {
+        const isOn = !!funcAllPrev.checked;
+        setFuncOthersChecked(isOn);
+        if (!isOn) funcAllPrev.checked = false;
+      });
+
+      funcOthers().forEach((ch) => ch.addEventListener('change', syncFuncAllPrevFromOthers));
+      syncFuncAllPrevFromOthers();
+    }
+
+    // ---------- Toggle "Otro" (Tipo de lugar) ----------
+    const tipoSel = $('select[name="tipo_lugar"], #tipo_lugar', formEl);
+    const tipoWrap = d.getElementById('wrap-tipo-lugar-otro');
+
+    function updateTipoLugarOtro() {
+      if (!tipoSel || !tipoWrap) return;
+      const hide = String(tipoSel.value || '') !== 'otro';
+      tipoWrap.classList.toggle('d-none', hide);
+      if (hide) clearWrapInputs(tipoWrap);
+    }
+
+    if (tipoSel) {
+      tipoSel.addEventListener('change', updateTipoLugarOtro);
+      updateTipoLugarOtro();
+    }
+
+    // ---------- "Todas las anteriores" (Áreas comunes) + limpiar area_otro ----------
+    const areaChecks = $$('input[type="checkbox"][name="areas_comunes"]', formEl);
+    const areaAllPrev = findTodasLasAnteriores(areaChecks);
+    const areaOtro = areaChecks.find((ch) => String(ch.value || '').toLowerCase() === 'otro');
+    const areaOtroInput = $('input[name="area_otro"], #area_otro', formEl);
+
+    function areaOthers() {
+      return areaChecks.filter((ch) => ch !== areaAllPrev);
+    }
+
+    function areaOthersExceptOtro() {
+      return areaOthers().filter((ch) => String(ch.value || '').toLowerCase() !== 'otro');
+    }
+
+    function setAreaOthersChecked(checked) {
+      areaOthersExceptOtro().forEach((ch) => {
+        ch.checked = !!checked;
+      });
+      if (areaOtro && areaOtroInput && !areaOtro.checked) areaOtroInput.value = '';
+    }
+
+    function syncAreaAllPrevFromOthers() {
+      if (!areaAllPrev) return;
+      const others = areaOthersExceptOtro();
+      if (!others.length) return;
+      areaAllPrev.checked = others.every((ch) => ch.checked);
+    }
+
+    if (areaAllPrev) {
+      areaAllPrev.addEventListener('change', function () {
+        const isOn = !!areaAllPrev.checked;
+        setAreaOthersChecked(isOn);
+        if (!isOn) areaAllPrev.checked = false;
+      });
+
+      areaOthers().forEach((ch) => {
+        ch.addEventListener('change', function () {
+          syncAreaAllPrevFromOthers();
+          if (ch === areaOtro && areaOtroInput && !areaOtro.checked) areaOtroInput.value = '';
+        });
+      });
+
+      syncAreaAllPrevFromOthers();
+    } else if (areaOtro && areaOtroInput) {
+      areaOtro.addEventListener('change', function () {
+        if (!areaOtro.checked) areaOtroInput.value = '';
+      });
+    }
+
+    // ---------- Edades de niños: visible + obligatoria SOLO si (cuidar niños) && (ninos > 0) ----------
+    const wrapEdadesNinos = d.getElementById('wrap-edades-ninos');
+    const inputNinos = $('input[name="ninos"], #ninos', formEl);
+    const inputEdadesNinos = $('input[name="edades_ninos"], #edades_ninos', formEl);
+
+    function findFuncCuidarNinos(checkboxes) {
+      let found = null;
+      (checkboxes || []).forEach((ch) => {
+        if (found) return;
+        const txt = _stripAccents(_normTxt(_labelTextForInput(ch)));
+        if (txt.includes('cuidar ninos') || txt.includes('cuidado de ninos')) found = ch;
+      });
+      return found;
+    }
+
+    const funcCuidarNinos = findFuncCuidarNinos(funcChecks);
+
+    function updateEdadesNinosVisibility() {
+      if (!wrapEdadesNinos) return;
+
+      let n = 0;
+      try {
+        n = parseInt((inputNinos && inputNinos.value) ? String(inputNinos.value).trim() : '0', 10);
+        if (isNaN(n)) n = 0;
+      } catch (_) {
+        n = 0;
+      }
+
+      const wantsKids = !!(funcCuidarNinos && funcCuidarNinos.checked);
+      const show = wantsKids && n > 0;
+
+      wrapEdadesNinos.classList.toggle('d-none', !show);
+
+      if (inputEdadesNinos) {
+        inputEdadesNinos.required = !!show;
+        inputEdadesNinos.setAttribute('aria-required', show ? 'true' : 'false');
+        if (!show) inputEdadesNinos.value = '';
+      }
+    }
+
+    if (funcCuidarNinos) {
+      funcCuidarNinos.addEventListener('change', updateEdadesNinosVisibility);
+    }
+
+    if (inputNinos) {
+      inputNinos.addEventListener('input', updateEdadesNinosVisibility, { passive: true });
+      inputNinos.addEventListener('change', updateEdadesNinosVisibility, { passive: true });
+    }
+
+    updateEdadesNinosVisibility();
+
+    // ---------- Focus primer error ----------
+    const HAS_ERRORS = (formEl.dataset && formEl.dataset.hasErrors === '1');
+    if (HAS_ERRORS) {
+      const firstInvalid = d.querySelector('.is-invalid, .was-validated .form-control:invalid');
+      try {
+        if (firstInvalid) firstInvalid.focus({ preventScroll: false });
+      } catch (_) {}
+    }
+  }
+
   // ===== Init =====
   function init() {
     const t0 = now();
@@ -640,6 +1046,8 @@
     setAriaCurrent();
     initForms();
     initConfirmLinks();
+
+    initSolicitudForm();
 
     setTimeout(() => {
       initAutosave();
@@ -670,10 +1078,9 @@
   }
 
   // API mínima por si la llamas desde templates
-  w.ClientesApp = Object.freeze({
-    toast,
-    confirmBox,
-    debounce,
-    throttle,
-  });
+  // (No expone nada sensible; solo utilidades UI)
+  w.ClientesPortal = w.ClientesPortal || {};
+  w.ClientesPortal.toast = toast;
+  w.ClientesPortal.confirm = confirmBox;
+
 })();

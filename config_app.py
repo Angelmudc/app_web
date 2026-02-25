@@ -1,15 +1,16 @@
 # config_app.py
+# -*- coding: utf-8 -*-
+
 import os
 import re
 import json
 from pathlib import Path
 from dotenv import load_dotenv
-
 from typing import Optional
 
 from flask import Flask, request, redirect, url_for, abort
-# Para manejo correcto de tiempo de sesión
 from datetime import timedelta
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
 from flask_migrate import Migrate
@@ -39,8 +40,8 @@ csrf = CSRFProtect()
 # Usuarios en memoria (para login admin/secretaria)
 # ─────────────────────────────────────────────────────────────
 USUARIOS = {
-    "Cruz": {"pwd_hash": generate_password_hash("8998", method="pbkdf2:sha256"), "role": "admin"},
-    "Karla": {"pwd_hash": generate_password_hash("9989", method="pbkdf2:sha256"), "role": "secretaria"},
+    "Cruz":   {"pwd_hash": generate_password_hash("8998", method="pbkdf2:sha256"), "role": "admin"},
+    "Karla":  {"pwd_hash": generate_password_hash("9989", method="pbkdf2:sha256"), "role": "secretaria"},
     "Nicole": {"pwd_hash": generate_password_hash("0928", method="pbkdf2:sha256"), "role": "secretaria"},
 }
 
@@ -61,90 +62,139 @@ def normalize_cedula(raw: str) -> Optional[str]:
 def _normalize_db_url(url: str) -> str:
     """
     - Acepta 'postgres://...' y lo convierte a 'postgresql+psycopg2://...'
-    - Asegura 'sslmode=require' en la querystring.
+    - Asegura 'sslmode=require' en la querystring (para Render/Supabase/Neon/etc).
     """
     if not url:
         raise RuntimeError("❌ Debes definir DATABASE_URL en tu .env (URL REMOTA).")
 
     url = url.strip()
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
+    # Asegurar sslmode=require en URL
     if "sslmode=" not in url:
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}sslmode=require"
+
     return url
 
 
-# ─────────────────────────────────────────────────────────────
-# Factory de la app
-# ─────────────────────────────────────────────────────────────
+def _is_true(v: str) -> bool:
+    return (str(v or "").strip().lower() in ("1", "true", "yes", "on"))
+
+
+def _detect_env() -> str:
+    return (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development").strip().lower()
+
+
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
+
     # ✅ Permite que las rutas funcionen con y sin slash final.
-    # Ej: /registro y /registro/ (evita 404 por trailing slash)
     app.url_map.strict_slashes = False
 
-    # ── Seguridad de sesión/cookies
-    # En local, si no defines nada, asumimos DEVELOPMENT para que no rompa cookies/CSRF.
-    env = (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development").lower()
+    env = _detect_env()
     prod = env in ("prod", "production")
 
-    # Si estás en localhost (127.0.0.1 / localhost), NO forces cookies secure aunque env diga production.
-    # Esto evita el error: "The CSRF session token is missing" en http local.
-    host = (os.getenv("FLASK_RUN_HOST") or "").strip().lower()
-    is_localhost = host in ("127.0.0.1", "localhost") or host == ""
+    def _env_str(name: str, default: str) -> str:
+        return (os.getenv(name) or default).strip()
+
+    # ─────────────────────────────────────────────────────────
+    # Seguridad de sesión/cookies
+    # ─────────────────────────────────────────────────────────
+    # OJO:
+    # En Render, FLASK_RUN_HOST casi nunca existe.
+    # Por eso detectamos "localhost" de forma robusta.
+    def _is_local_request_host() -> bool:
+        try:
+            host = (request.host or "").split(":")[0].strip().lower()
+            return host in ("127.0.0.1", "localhost")
+        except Exception:
+            # fallback seguro
+            return False
+
+    # Si NO hay request context (en startup), usamos variable opcional
+    is_localhost_flag = (os.getenv("IS_LOCALHOST", "").strip().lower() in ("1", "true", "yes", "on"))
 
     default_secret = "cambia_esta_clave_a_una_muy_segura"
     app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", default_secret)
     if app.config["SECRET_KEY"] == default_secret and prod:
         raise RuntimeError("SECRET_KEY no configurada. Define FLASK_SECRET_KEY en .env")
 
+    # Cookies secure:
+    # - En prod: True (pero SOLO si estás bajo HTTPS real)
+    # - En local: False (para no romper CSRF/cookies)
+    # Nota: ProxyFix + request.is_secure te ayuda a detectar HTTPS real detrás de proxy.
+    def _cookie_secure() -> bool:
+        if not prod:
+            return False
+        try:
+            # si es localhost en runtime, no asegures
+            if _is_local_request_host():
+                return False
+        except Exception:
+            pass
+        if is_localhost_flag:
+            return False
+        # En prod, asumimos HTTPS real (Render usa https), salvo que tú lo fuerces a local
+        return True
+
     app.config.update(
         {
             "SESSION_COOKIE_HTTPONLY": True,
-            "SESSION_COOKIE_SAMESITE": "Lax",
+            "SESSION_COOKIE_SAMESITE": _env_str("SESSION_COOKIE_SAMESITE", "Lax"),
             "SESSION_COOKIE_DOMAIN": None,
-            "SESSION_COOKIE_SECURE": (prod and not is_localhost),  # True solo en HTTPS real
+            "SESSION_COOKIE_SECURE": _cookie_secure(),
+            "SESSION_PERMANENT": False,
+            "SESSION_COOKIE_MAX_AGE": None,
             "SESSION_REFRESH_EACH_REQUEST": False,
+            "REMEMBER_COOKIE_REFRESH_EACH_REQUEST": False,
             "REMEMBER_COOKIE_HTTPONLY": True,
-            "REMEMBER_COOKIE_SECURE": (prod and not is_localhost),
+            "REMEMBER_COOKIE_SECURE": _cookie_secure(),
+            "REMEMBER_COOKIE_DURATION": timedelta(seconds=0),
+            "PREFERRED_URL_SCHEME": "https" if prod else "http",
+
             # Sesión (Flask espera timedelta, no int)
             "PERMANENT_SESSION_LIFETIME": timedelta(
                 seconds=int(os.getenv("SESSION_TTL_SECONDS", "2592000"))
-            ),  # 30 días por defecto
+            ),
 
-            # Cookies (más control)
-            "SESSION_COOKIE_NAME": os.getenv("SESSION_COOKIE_NAME", "app_web_session"),
-            "REMEMBER_COOKIE_SAMESITE": "Lax",
+            "SESSION_COOKIE_NAME": _env_str("SESSION_COOKIE_NAME", "app_web_session"),
+            "REMEMBER_COOKIE_SAMESITE": _env_str("REMEMBER_COOKIE_SAMESITE", "Lax"),
         }
     )
 
     # ✅ Limitar tamaño de requests (evita payloads gigantes)
-    app.config["MAX_CONTENT_LENGTH"] = int(
-        os.getenv("MAX_CONTENT_LENGTH", str(4 * 1024 * 1024))
-    )  # 4MB
+    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH", str(4 * 1024 * 1024)))  # 4MB
 
+    # ─────────────────────────────────────────────────────────
     # CSRF
+    # ─────────────────────────────────────────────────────────
+    # En local con http, SSL_STRICT debe ser False.
+    # En prod, normalmente sí.
     app.config["WTF_CSRF_ENABLED"] = True
-    # CSRF: en producción exige HTTPS real
-    app.config["WTF_CSRF_SSL_STRICT"] = (prod and not is_localhost)
+    app.config["WTF_CSRF_SSL_STRICT"] = (prod and _cookie_secure())
     app.config["WTF_CSRF_TIME_LIMIT"] = int(os.getenv("WTF_CSRF_TIME_LIMIT", "7200"))  # 2 horas
     app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken", "X-CSRF-Token"]
     app.config["WTF_CSRF_CHECK_DEFAULT"] = True
     csrf.init_app(app)
 
-    # Si deployas detrás de proxy (Render, Fly, etc.)
+    # ─────────────────────────────────────────────────────────
+    # ProxyFix (Render / reverse proxy)
+    # ─────────────────────────────────────────────────────────
+    # Esto es clave para request.is_secure, host, ip, etc.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
-    # ── Base de datos remota (sin BD local)
+    # ─────────────────────────────────────────────────────────
+    # Base de datos remota
+    # ─────────────────────────────────────────────────────────
     raw_db_url = os.getenv("DATABASE_URL", "")
     db_url = _normalize_db_url(raw_db_url)
 
-    # ¿Usas PgBouncer (transaction pooling)? → usa NullPool para evitar reciclar SSL roto
-    pool_mode = os.getenv("DB_POOL_MODE", "").lower()  # "", "pgbouncer", "nullpool"
+    pool_mode = (os.getenv("DB_POOL_MODE", "") or "").lower()
     use_null_pool = pool_mode in ("pgbouncer", "nullpool", "off")
 
     connect_args = {
@@ -180,51 +230,39 @@ def create_app():
             "SQLALCHEMY_DATABASE_URI": db_url,
             "SQLALCHEMY_TRACK_MODIFICATIONS": False,
             "SQLALCHEMY_ENGINE_OPTIONS": engine_opts,
+
+            # Cache (simple)
             "CACHE_TYPE": "simple",
             "CACHE_DEFAULT_TIMEOUT": 120,
+
             "TEMPLATES_AUTO_RELOAD": not prod,
             "JSON_SORT_KEYS": False,
         }
     )
 
+    # ─────────────────────────────────────────────────────────
     # Inicializar extensiones
+    # ─────────────────────────────────────────────────────────
     db.init_app(app)
     cache.init_app(app)
     migrate.init_app(app, db)
 
-    # Importar modelos para que SQLAlchemy registre todas las tablas (necesario para Alembic/Migrate)
+    # Importar modelos para Alembic/Migrate
     try:
         import models  # noqa: F401
     except Exception:
         pass
 
-    # ── Capa de seguridad extra (headers + anti brute-force login)
-    # Requiere: utils/security_layer.py
+    # ─────────────────────────────────────────────────────────
+    # Seguridad extra (anti brute-force + headers suaves)
+    # ─────────────────────────────────────────────────────────
     from utils.security_layer import init_security
-
     init_security(app, cache)
 
-    # ── Headers de seguridad globales (CSP unificado para tus 3 base.html)
-    csp = (
-        "default-src 'self'; "
-        "base-uri 'self'; "
-        "object-src 'none'; "
-        "frame-ancestors 'self'; "
-        "img-src 'self' data: blob: https:; "
-        "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://use.fontawesome.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com https://cdn.datatables.net; "
-        "connect-src 'self'; "
-        "form-action 'self'; "
-    )
-
-    # En producción con HTTPS real, forzamos que el navegador suba a HTTPS cuando vea HTTP.
-    if prod and not is_localhost:
-        csp += "upgrade-insecure-requests; "
 
     @app.after_request
     def _set_security_headers(resp):
-        # No sobreescribir si ya existe (por capas)
+        # No sobreescribir si ya existe (por capas: security_layer también setea)
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -233,21 +271,20 @@ def create_app():
             "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
         )
 
-        # CSP (enforcing) - no pisar si ya fue seteada antes
-        resp.headers.setdefault("Content-Security-Policy", csp)
+        # CSP se maneja en utils/security_layer.py (una sola fuente de verdad)
 
-        # HSTS SOLO en producción (requiere HTTPS). No pisar si ya existe.
-        if prod:
-            resp.headers.setdefault(
-                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
-            )
+        # HSTS SOLO si estás en prod y bajo HTTPS real (ProxyFix ayuda)
+        # Si tu sitio abre por HTTP (preview/local), no lo fuerces.
+        try:
+            if prod and request.is_secure:
+                resp.headers.setdefault(
+                    "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+                )
+        except Exception:
+            pass
 
-        # Cross-origin isolation (COOP/COEP/CORP)
-        # ⚠️ Esto puede romper CDNs (fonts, DataTables, jQuery, etc.) si no tienen los headers adecuados.
-        # Por defecto lo dejamos APAGADO incluso en producción para evitar que el sitio se rompa.
-        # Si más adelante self-hosteas TODO (css/js/fonts) y necesitas crossOriginIsolated,
-        # activa ENABLE_CROSS_ORIGIN_ISOLATION=true en tu .env.
-        enable_xoi = (os.getenv("ENABLE_CROSS_ORIGIN_ISOLATION", "").strip().lower() in ("1", "true", "yes", "on"))
+        # Cross-origin isolation opcional
+        enable_xoi = _is_true(os.getenv("ENABLE_CROSS_ORIGIN_ISOLATION", ""))
         if prod and enable_xoi:
             resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
             resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
@@ -255,13 +292,16 @@ def create_app():
 
         return resp
 
+    # ─────────────────────────────────────────────────────────
     # Helpers globales para templates
+    # ─────────────────────────────────────────────────────────
     from datetime import datetime as _dt
-
     app.jinja_env.globals["now"] = _dt.utcnow
     app.jinja_env.globals["current_year"] = _dt.utcnow().year
 
-    # ── Login manager (usuarios en memoria + clientes)
+    # ─────────────────────────────────────────────────────────
+    # Login manager (usuarios en memoria + clientes)
+    # ─────────────────────────────────────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
     login_manager.session_protection = "strong"
@@ -288,43 +328,34 @@ def create_app():
             return User(user_id, data["role"])
         try:
             from models import Cliente
-
             return Cliente.query.get(int(user_id))
         except Exception:
             return None
 
-    # ── Blueprints
+    # ─────────────────────────────────────────────────────────
+    # Blueprints
+    # ─────────────────────────────────────────────────────────
     from admin.routes import admin_bp
-
     app.register_blueprint(admin_bp, url_prefix="/admin")
 
-    # ── Web admin (panel para gestionar contenido público)
     from webadmin import webadmin_bp
-
-    # Panel separado (no cuelga de /admin)
     app.register_blueprint(webadmin_bp, url_prefix="/webadmin")
 
     from clientes import clientes_bp
-
-    # ✅ Portal de clientes siempre bajo /clientes
     app.register_blueprint(clientes_bp, url_prefix="/clientes")
 
     from public import public_bp
+    app.register_blueprint(public_bp)  # "/"
 
-    app.register_blueprint(public_bp)  # sin prefix: responde en "/"
-
-    # ── Registro público de candidatas (formulario interno de la app)
     from registro.routes import registro_bp
-
-    # Prefijo claro y consistente, igual que los demás módulos
     app.register_blueprint(registro_bp, url_prefix="/registro")
 
-    # ── Reclutamiento general (NO doméstica)
     from reclutas import reclutas_bp
-
     app.register_blueprint(reclutas_bp)  # ya trae url_prefix="/reclutas"
 
+    # ─────────────────────────────────────────────────────────
     # Config de entrevistas (si existe)
+    # ─────────────────────────────────────────────────────────
     try:
         cfg_path = Path(app.root_path) / "config" / "config_entrevistas.json"
         with open(cfg_path, encoding="utf-8") as f:
@@ -333,7 +364,9 @@ def create_app():
         entrevistas_cfg = {}
     app.config["ENTREVISTAS_CONFIG"] = entrevistas_cfg
 
-    # ── Ping preventivo por request (evita conexiones muertas)
+    # ─────────────────────────────────────────────────────────
+    # Ping preventivo por request (evita conexiones muertas)
+    # ─────────────────────────────────────────────────────────
     @app.before_request
     def _ensure_db_connection():
         try:

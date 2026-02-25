@@ -1579,3 +1579,303 @@ body.dc-modal-open {
     max-height: 80px !important;
   }
 }
+
+/* =====================================================================
+   PLANES (CLIENTES) — FIX REAL (SE VEA PRO Y NO “BLANCO SOBRE BLANCO”)
+   Problemas que se ven en tu screenshot:
+   - Las tarjetas se están yendo full ancho (se ven como “barras”).
+   - Texto claro (blanco) sobre fondos claros dentro de los planes.
+   - Botones/price quedan desalineados.
+
+   Solución:
+   1) Hacemos que cualquier tarjeta de plan tenga un ancho máximo (aunque el grid falle).
+   2) Forzamos un look “glass oscuro” para que TODO el texto sea legible.
+   3) Si el contenedor tiene clases conocidas, lo ponemos en grid 3 columnas.
+   ===================================================================== */
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box {
+  box-sizing: border-box;
+  /* ✅ aunque el contenedor esté malo, NO se estira full ancho */
+  width: 100%;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+
+  /* ✅ look pro del portal */
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03)) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 18px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.28);
+
+  /* ✅ texto siempre legible */
+  color: rgba(255,255,255,.92) !important;
+
+  /* Layout interno para alinear precio + botón */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  height: 100%;
+  min-height: 0; /* no forzamos altura gigante */
+  overflow: hidden;
+}
+
+/* Padding interno (si el HTML no lo tiene bien) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card > *,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan > *,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card > *,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box > * {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card > :first-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan > :first-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card > :first-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box > :first-child {
+  padding-top: 18px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card > :last-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan > :last-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card > :last-child,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box > :last-child {
+  padding-bottom: 18px;
+}
+
+/* Títulos y texto dentro del plan */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card h1,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card h2,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card h3,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card h4,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan h1,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan h2,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan h3,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan h4 {
+  margin: 0;
+  color: rgba(255,255,255,.95) !important;
+  letter-spacing: -0.02em;
+  font-weight: 950;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card p,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan p,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card p,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box p {
+  color: rgba(255,255,255,.80) !important;
+}
+
+/* Features list: que no se “pierda” */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card ul,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan ul,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card ul,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card li,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan li,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card li,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box li {
+  color: rgba(255,255,255,.82) !important;
+  margin: 6px 0;
+}
+
+/* Bloque principal ocupa el espacio y empuja el footer abajo */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-body,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-content,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-body,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-features {
+  flex: 1;
+}
+
+/* Precio: siempre antes del botón, alineado y visible */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-price,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-price,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card .price {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.92) !important;
+  font-weight: 950;
+}
+
+/* Botón: full width y alineado abajo */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-card .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plan-box .btn {
+  margin-top: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-weight: 950;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Colores de botones por plan (si el HTML usa estas clases) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-basico,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-basic {
+  background: linear-gradient(180deg, rgba(79, 140, 255, 0.98), rgba(47, 108, 255, 0.98)) !important;
+  border: 1px solid rgba(47, 108, 255, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 26px rgba(79, 140, 255, 0.22) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-premium {
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.98), rgba(234, 179, 8, 0.98)) !important;
+  border: 1px solid rgba(245, 158, 11, 0.55) !important;
+  color: #0b1220 !important;
+  box-shadow: 0 14px 26px rgba(245, 158, 11, 0.20) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-vip {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(2, 6, 23, 0.98)) !important;
+  border: 1px solid rgba(2, 6, 23, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.30) !important;
+}
+
+/* Si VIP está usando btn-dark, igual forzamos texto blanco */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn.btn-dark,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-dark {
+  color: #ffffff !important;
+}
+
+/* ✅ GRID 3 COLUMNAS si el contenedor tiene clases conocidas */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-grid,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plans-grid,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .plans-container,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .planes-container,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-grid,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-cards,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-cards-grid,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-plans {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+@media (max-width: 980px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .planes-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .plans-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .plans-container,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .planes-container,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-cards,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-cards-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-plans {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .planes-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .plans-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .plans-container,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .planes-container,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-cards,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-cards-grid,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .pricing-plans {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================
+   PLANES (CLIENTES) — FIX REAL PARA TU TEMPLATE cpl-*
+   - No depende de Bootstrap grid
+   - 3 columnas desktop, 2 tablet, 1 móvil
+   - Texto oscuro dentro de cards claras
+   ========================================================== */
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-row{
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+/* Si Bootstrap no está, estos divs col-* quedan “full width”.
+   Con grid, los neutralizamos */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-row > [class*="col-"]{
+  width: auto !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+@media (max-width: 980px){
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-row{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px){
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-row{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card base pro */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-card{
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(16, 24, 40, 0.12);
+  box-shadow: 0 18px 45px rgba(0,0,0,.18);
+}
+
+/* Texto oscuro dentro de las tarjetas (porque el portal pone texto blanco por defecto) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-card *{
+  color: #101828 !important;
+}
+
+/* “Secondary / muted” dentro de cards claras */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-card .text-secondary,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-card .text-muted{
+  color: #667085 !important;
+}
+
+/* Footer del plan bien abajo */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-plan-footer{
+  margin-top: auto;
+}
+
+/* Precio más pro */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-price{
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+/* Badge “Más elegido” */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .cpl-badge-best{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #7a4b00 !important;
+}
+
+/* Mini “utilities” por si Bootstrap está bloqueado */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .text-primary{ color: var(--c-primary) !important; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .text-warning{ color: #f59e0b !important; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .text-success{ color: #22c55e !important; }
+:where(body.clientes, .clientes, [data-portal="clientes"]) .text-dark{ color: #101828 !important; }
+
+/* Botón VIP siempre blanco */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .btn-dark{
+  color: #ffffff !important;
+}
