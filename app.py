@@ -85,31 +85,11 @@ def force_session_expire():
 # -----------------------------------------------------------------------------
 # 🔒 HARDENING BÁSICO (NO ROMPE LOCAL)
 # -----------------------------------------------------------------------------
-# Determinar si estamos en producción HTTPS.
-# NOTA IMPORTANTE:
-# - En local (http://127.0.0.1 / localhost) una cookie marcada como Secure NO se guarda,
-#   lo que provoca que el login (admin/clientes) parezca “no entrar” porque la sesión no persiste.
-# - En Render normalmente pondrás TRUST_XFF=1 (ProxyFix) y la app corre detrás de HTTPS.
-# Por eso, aquí activamos cookies Secure solo cuando realmente estamos en entorno tipo producción.
-IS_RENDER = (os.getenv("RENDER") or os.getenv("ON_RENDER") or os.getenv("RENDER_EXTERNAL_URL"))
-TRUST_XFF_ON = os.getenv("TRUST_XFF", "0").strip().lower() in ("1", "true", "yes", "on")
-
-IS_PROD = bool(
-    IS_RENDER
-    or (
-        (os.getenv("FLASK_ENV", "").strip().lower() == "production")
-        or (os.getenv("ENV", "").strip().lower() == "production")
-        or (os.getenv("ENVIRONMENT", "").strip().lower() == "production")
-    )
+# En producción (HTTPS) activa cookies seguras. En local se queda normal.
+IS_PROD = (
+    (os.getenv("FLASK_ENV", "").strip().lower() == "production")
+    or (os.getenv("ENV", "").strip().lower() == "production")
 )
-
-# Override explícito si alguna vez lo necesitas.
-# - FORCE_SECURE_COOKIES=1 fuerza Secure
-# - FORCE_INSECURE_COOKIES=1 lo desactiva
-if os.getenv("FORCE_SECURE_COOKIES", "0").strip().lower() in ("1", "true", "yes", "on"):
-    IS_PROD = True
-if os.getenv("FORCE_INSECURE_COOKIES", "0").strip().lower() in ("1", "true", "yes", "on"):
-    IS_PROD = False
 
 # Cookies de sesión seguras
 app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
@@ -2170,3 +2150,3413 @@ def pagos():
             raise ValueError("El monto debe ser mayor que 0")
 
         return val.quantize(Decimal("0.01"))
+
+    if request.method == 'POST':
+        fila = request.form.get('fila', type=int)
+        monto_str = (request.form.get('monto_pagado') or '').strip()[:30]
+        calificacion = (request.form.get('calificacion') or '').strip()[:200]
+
+        if not fila or not monto_str or not calificacion:
+            flash("❌ Datos inválidos.", "danger")
+            return redirect(url_for('pagos'))
+
+        try:
+            monto_pagado = _parse_money_to_decimal(monto_str)
+        except Exception as e:
+            flash(f"❌ Monto inválido: {e}", "danger")
+            return redirect(url_for('pagos'))
+
+        obj = Candidata.query.get(fila)
+        if not obj:
+            flash("⚠️ Candidata no encontrada.", "warning")
+            return redirect(url_for('pagos'))
+
+        # En PostgreSQL Numeric normalmente ya viene Decimal; esto lo deja seguro
+        actual = obj.porciento if obj.porciento is not None else Decimal("0.00")
+        try:
+            actual = Decimal(str(actual))
+        except Exception:
+            actual = Decimal("0.00")
+
+        nuevo = actual - monto_pagado
+        if nuevo < Decimal("0"):
+            nuevo = Decimal("0.00")
+
+        obj.porciento = nuevo.quantize(Decimal("0.01"))
+        obj.calificacion = calificacion
+
+        # auditoría simple (opcional pero útil)
+        try:
+            obj.fecha_de_pago = date.today()
+        except Exception:
+            pass
+
+        try:
+            db.session.commit()
+            flash("✅ Pago guardado con éxito.", "success")
+            candidata = obj
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("❌ Error al guardar pago")
+            flash("❌ Error al guardar.", "danger")
+
+        return render_template('pagos.html', resultados=[], candidata=candidata)
+
+    # GET
+    q = (request.args.get('busqueda') or '').strip()[:128]
+    sel = (request.args.get('candidata') or '').strip()
+
+    if q:
+        try:
+            filas = (
+                apply_search_to_candidata_query(Candidata.query, q)
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(300)
+                .all()
+            )
+
+            resultados = [{
+                'fila':     c.fila,
+                'nombre':   c.nombre_completo,
+                'cedula':   c.cedula,
+                'telefono': c.numero_telefono or 'No especificado',
+            } for c in filas]
+
+            if not resultados:
+                flash("⚠️ No se encontraron coincidencias.", "warning")
+        except Exception:
+            app.logger.exception("❌ Error buscando en pagos")
+            flash("❌ Error al buscar.", "warning")
+
+    if sel.isdigit() and not resultados:
+        obj = Candidata.query.get(int(sel))
+        if obj:
+            candidata = obj
+        else:
+            flash("⚠️ Candidata no encontrada.", "warning")
+
+    return render_template('pagos.html', resultados=resultados, candidata=candidata)
+
+def _retry_query(callable_fn, retries: int = 2, swallow: bool = False):
+    """
+    Ejecuta una función que hace queries a la BD con reintentos básicos.
+    - retries: número de reintentos adicionales.
+    - swallow: si True, retorna None en vez de levantar excepción tras agotar reintentos.
+    """
+    last_err = None
+    for _ in range(retries + 1):
+        try:
+            return callable_fn()
+        except (OperationalError, DBAPIError) as e:
+            # Limpia la sesión para no dejarla en estado inválido
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            last_err = e
+            continue
+    if swallow:
+        return None
+    raise last_err
+
+
+@app.route('/reporte_inscripciones', methods=['GET'])
+@roles_required('admin')
+def reporte_inscripciones():
+    """
+    Reporte de inscripciones por mes/año.
+    - Visualización: pagina resultados (page/per_page) y renderiza tabla HTML.
+    - Descarga Excel (descargar=1): trae todos los resultados del mes/año y genera XLSX.
+    Robusto frente a caídas SSL/db con reintentos y rollback.
+    """
+    # 1) Parámetros (acotamos rangos para evitar explosiones)
+    try:
+        today = date.today()
+        mes       = int(request.args.get('mes', today.month))
+        anio      = int(request.args.get('anio', today.year))
+        descargar = request.args.get('descargar', '0') == '1'
+        page      = max(1, request.args.get('page', default=1, type=int))
+        per_page  = min(200, max(1, request.args.get('per_page', default=20, type=int)))
+        if not (1 <= mes <= 12):
+            return "Parámetro 'mes' inválido.", 400
+        if anio < 2000 or anio > today.year + 1:
+            return "Parámetro 'anio' inválido.", 400
+    except Exception as e:
+        return f"Parámetros inválidos: {e}", 400
+
+    # 2) Base query (solo columnas necesarias)
+    def _base_query():
+        return (
+            db.session.query(
+                Candidata.nombre_completo,
+                Candidata.direccion_completa,
+                Candidata.numero_telefono,
+                Candidata.cedula,
+                Candidata.codigo,
+                Candidata.medio_inscripcion,
+                Candidata.inscripcion,
+                Candidata.monto,
+                Candidata.fecha
+            )
+            .filter(
+                Candidata.inscripcion.is_(True),
+                Candidata.fecha.isnot(None),
+                func.extract('month', Candidata.fecha) == mes,
+                func.extract('year',  Candidata.fecha) == anio
+            )
+        )
+
+    # 3) Modo descarga (sin paginar): exporta TODO el mes/año
+    if descargar:
+        def _fetch_all():
+            # Trae todo para el Excel, pero solo columnas mínimas
+            return _base_query().order_by(Candidata.fecha.asc()).all()
+
+        rows = _retry_query(_fetch_all, retries=2, swallow=True)
+        if rows is None:
+            return render_template(
+                "reporte_inscripciones.html",
+                reporte_html="",
+                mes=mes, anio=anio,
+                mensaje="❌ No fue posible conectarse a la base de datos para generar el Excel. Intenta de nuevo."
+            ), 200
+
+        if not rows:
+            return render_template(
+                "reporte_inscripciones.html",
+                reporte_html="",
+                mes=mes, anio=anio,
+                mensaje=f"No se encontraron inscripciones para {mes}/{anio}."
+            ), 200
+
+        # Construir DataFrame para Excel (con nulos seguros)
+        df = pd.DataFrame([{
+            "Nombre":       r[0] or "",
+            "Ciudad":       r[1] or "",
+            "Teléfono":     r[2] or "",
+            "Cédula":       r[3] or "",
+            "Código":       r[4] or "",
+            "Medio":        r[5] or "",
+            "Inscripción":  "Sí" if r[6] else "No",
+            "Monto":        float(r[7] or 0),
+            "Fecha":        r[8].strftime("%Y-%m-%d") if r[8] else ""
+        } for r in rows])
+
+        output = io.BytesIO()
+        try:
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Reporte')
+            output.seek(0)
+        except Exception as e:
+            current_app.logger.exception("❌ Error generando Excel de inscripciones")
+            return render_template(
+                "reporte_inscripciones.html",
+                reporte_html="",
+                mes=mes, anio=anio,
+                mensaje=f"❌ Error generando el archivo: {e}"
+            ), 200
+
+        filename = f"Reporte_Inscripciones_{anio}_{mes:02d}.xlsx"
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    # 4) Modo visualización (paginado)
+    def _fetch_page():
+        q = _base_query().order_by(Candidata.fecha.desc())
+        total = q.count()
+        items = q.offset((page - 1) * per_page).limit(per_page).all()
+        return total, items
+
+    fetched = _retry_query(_fetch_page, retries=2, swallow=True)
+    if fetched is None:
+        return render_template(
+            "reporte_inscripciones.html",
+            reporte_html="",
+            mes=mes, anio=anio,
+            mensaje="❌ No fue posible conectarse a la base de datos. Intenta nuevamente."
+        ), 200
+
+    total, items = fetched
+
+    if not items:
+        return render_template(
+            "reporte_inscripciones.html",
+            reporte_html="",
+            mes=mes, anio=anio,
+            mensaje=f"No se encontraron inscripciones para {mes}/{anio}."
+        ), 200
+
+    # Constrúyelo rápido con pandas → HTML
+    df = pd.DataFrame([{
+        "Nombre":       r[0] or "",
+        "Ciudad":       r[1] or "",
+        "Teléfono":     r[2] or "",
+        "Cédula":       r[3] or "",
+        "Código":       r[4] or "",
+        "Medio":        r[5] or "",
+        "Inscripción":  "Sí" if r[6] else "No",
+        "Monto":        float(r[7] or 0),
+        "Fecha":        r[8].strftime("%Y-%m-%d") if r[8] else ""
+    } for r in items])
+
+    reporte_html = df.to_html(classes="table table-striped", index=False, border=0)
+    total_pages = (total + per_page - 1) // per_page
+
+    return render_template(
+        "reporte_inscripciones.html",
+        reporte_html=reporte_html,
+        mes=mes, anio=anio,
+        mensaje="",
+        page=page, per_page=per_page, total=total, total_pages=total_pages
+    )
+
+
+
+@app.route('/reporte_pagos', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def reporte_pagos():
+    """
+    Reporte de pagos pendientes (porciento > 0).
+    """
+    page     = max(1, request.args.get('page', default=1, type=int))
+    per_page = min(200, max(1, request.args.get('per_page', default=20, type=int)))
+
+    def _fetch_page():
+        q = (
+            db.session.query(
+                Candidata.nombre_completo,
+                Candidata.cedula,
+                Candidata.codigo,
+                Candidata.porciento
+            )
+            .filter(Candidata.porciento > 0)
+            .order_by(Candidata.nombre_completo.asc())
+        )
+
+        total = q.count()
+        items = q.offset((page - 1) * per_page).limit(per_page).all()
+        return total, items
+
+    fetched = _retry_query(_fetch_page, retries=2, swallow=True)
+    if fetched is None:
+        return render_template(
+            'reporte_pagos.html',
+            pagos_pendientes=[],
+            mensaje="❌ No fue posible conectarse a la base de datos. Intenta nuevamente."
+        ), 200
+
+    total, rows = fetched
+
+    pagos_pendientes = [{
+        'nombre':               r[0] or "",
+        'cedula':               r[1] or "",
+        'codigo':               r[2] or "No especificado",
+        'porcentaje_pendiente': float(r[3] or 0),
+    } for r in rows]
+
+    mensaje = None if pagos_pendientes else "⚠️ No se encontraron pagos pendientes."
+    total_pages = (total + per_page - 1) // per_page
+
+    return render_template(
+        'reporte_pagos.html',
+        pagos_pendientes=pagos_pendientes,
+        mensaje=mensaje,
+        page=page,
+        per_page=per_page,
+        total=total,
+        total_pages=total_pages
+    )
+# -----------------------------------------------------------------------------
+# SUBIR FOTOS + GESTIONAR ARCHIVOS (BINARIOS EN DB)
+# -----------------------------------------------------------------------------
+
+from flask import (
+    Blueprint, Response, abort,
+    request, render_template, redirect, url_for, flash,
+    current_app, send_file
+)
+from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
+import io
+import os
+import re
+import unicodedata
+
+# OJO: asumo que ya tienes:
+# - db
+# - roles_required
+# - Candidata
+# - _retry_query (si no la tienes, te lo digo al final)
+# -----------------------------------------------------------------------------
+
+subir_bp = Blueprint('subir_fotos', __name__, url_prefix='/subir_fotos')
+
+# Registrar blueprint (IMPORTANTE): se registra AL FINAL del archivo, luego de declarar todas las rutas.
+# Si se registra aquí y luego declaras @subir_bp.route(...) más abajo, Flask lanza:
+# AssertionError: blueprint already registered.
+_DEFER_REGISTER_SUBIR_BP = True
+
+# =========================
+# Helpers comunes
+# =========================
+
+ALLOWED_IMG_FIELDS = ('depuracion', 'perfil', 'cedula1', 'cedula2')
+
+def _is_bytes(x):
+    return isinstance(x, (bytes, bytearray, memoryview))
+
+def _to_bytes(data):
+    if data is None:
+        return None
+    if isinstance(data, memoryview):
+        return data.tobytes()
+    if isinstance(data, (bytes, bytearray)):
+        return bytes(data)
+    try:
+        return bytes(data)
+    except Exception:
+        return None
+
+def _detect_mimetype_and_ext(data: bytes):
+    if not data:
+        return ("application/octet-stream", "bin")
+    head = data[:12]
+    if head.startswith(b"\x89PNG"):
+        return ("image/png", "png")
+    if head.startswith(b"\xFF\xD8\xFF"):
+        return ("image/jpeg", "jpg")
+    if head[:4] == b"GIF8":
+        return ("image/gif", "gif")
+    if head[:4] == b"%PDF":
+        return ("application/pdf", "pdf")
+    return ("application/octet-stream", "bin")
+
+def _get_candidata_by_fila_or_pk(fila_id: int):
+    """
+    Robustez:
+    - Primero intenta db.session.get (si fila es PK)
+    - Si no, cae a filter_by(fila=)
+    """
+    if not fila_id:
+        return None
+
+    cand = None
+    try:
+        cand = db.session.get(Candidata, fila_id)
+    except Exception:
+        cand = None
+
+    if cand:
+        return cand
+
+    try:
+        return Candidata.query.filter_by(fila=fila_id).first()
+    except Exception:
+        return None
+
+def _build_docs_flags(cand):
+    if not cand:
+        return {k: False for k in ALLOWED_IMG_FIELDS}
+    return {
+        'depuracion': bool(getattr(cand, 'depuracion', None)),
+        'perfil': bool(getattr(cand, 'perfil', None)),
+        'cedula1': bool(getattr(cand, 'cedula1', None)),
+        'cedula2': bool(getattr(cand, 'cedula2', None)),
+    }
+
+# -----------------------------------------------------------------------------
+# SUBIR FOTOS (BINARIOS EN DB)
+# -----------------------------------------------------------------------------
+
+@subir_bp.route('', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def subir_fotos():
+    """
+    Vista para:
+    - Buscar candidata por nombre, cédula o teléfono.
+    - Subir imágenes: depuración, perfil, cédula frente (cedula1) y cédula reverso (cedula2).
+    Todo se guarda como binario en la tabla Candidata.
+    """
+    accion = (request.args.get('accion') or 'buscar').strip()
+    fila_id = request.args.get('fila', type=int)
+    resultados = []
+
+    # ========================= MODO BUSCAR =========================
+    if accion == 'buscar':
+        if request.method == 'POST':
+            q = (request.form.get('busqueda') or '').strip()[:128]
+            if not q:
+                flash("⚠️ Ingresa algo para buscar.", "warning")
+                return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
+            try:
+                filas = (
+                    apply_search_to_candidata_query(Candidata.query, q)
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
+            except Exception:
+                current_app.logger.exception("❌ Error buscando en subir_fotos")
+                filas = []
+
+            if not filas:
+                flash("⚠️ No se encontraron candidatas.", "warning")
+            else:
+                resultados = [
+                    {
+                        'fila': c.fila,
+                        'nombre': c.nombre_completo,
+                        'telefono': c.numero_telefono or 'No especificado',
+                        'cedula': c.cedula or 'No especificado',
+                    }
+                    for c in filas
+                ]
+
+        return render_template('subir_fotos.html', accion='buscar', resultados=resultados)
+
+    # ========================= MODO SUBIR =========================
+    if accion == 'subir':
+        if not fila_id:
+            flash("❌ Debes seleccionar primero una candidata.", "danger")
+            return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
+        candidata = _get_candidata_by_fila_or_pk(fila_id)
+        if not candidata:
+            flash("⚠️ Candidata no encontrada.", "warning")
+            return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
+        # GET: mostrar formulario con info de qué imágenes tiene
+        if request.method == 'GET':
+            tiene = _build_docs_flags(candidata)
+            return render_template(
+                'subir_fotos.html',
+                accion='subir',
+                fila=fila_id,
+                tiene=tiene
+            )
+
+        # POST: guardar archivos
+        files = {
+            'depuracion': request.files.get('depuracion'),
+            'perfil': request.files.get('perfil'),
+            'cedula1': request.files.get('cedula1'),
+            'cedula2': request.files.get('cedula2'),
+        }
+
+        # Filtrar solo los archivos realmente seleccionados (nombre no vacío)
+        archivos_validos = {}
+        for campo, archivo in files.items():
+            if campo in ALLOWED_IMG_FIELDS and archivo and archivo.filename:
+                archivos_validos[campo] = archivo
+
+        if not archivos_validos:
+            flash("⚠️ Debes seleccionar al menos una imagen para subir.", "warning")
+            tiene = _build_docs_flags(candidata)
+            return render_template(
+                'subir_fotos.html',
+                accion='subir',
+                fila=fila_id,
+                tiene=tiene
+            )
+
+        try:
+            # Límite por archivo (extra) para evitar cargas enormes aunque MAX_CONTENT_LENGTH exista
+            max_file = int(os.getenv("MAX_IMAGE_BYTES", str(3 * 1024 * 1024)))  # 3MB por archivo
+
+            for campo, archivo in archivos_validos.items():
+                try:
+                    data = archivo.read()
+                except Exception:
+                    current_app.logger.exception("❌ Error leyendo archivo %s", campo)
+                    flash(f"❌ Error leyendo el archivo de {campo}. Intenta de nuevo.", "danger")
+                    tiene = _build_docs_flags(candidata)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+
+                if not data:
+                    current_app.logger.warning("⚠️ Archivo vacío para %s, no se guardará.", campo)
+                    continue
+
+                if len(data) > max_file:
+                    flash(f"❌ La imagen de {campo} es demasiado grande. Máximo {max_file // (1024*1024)}MB.", "danger")
+                    tiene = _build_docs_flags(candidata)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+
+                # Validar que realmente sea imagen por magic-bytes
+                mt, _ext = _detect_mimetype_and_ext(data)
+                if not mt.startswith("image/"):
+                    flash(f"❌ El archivo de {campo} no parece ser una imagen válida.", "danger")
+                    tiene = _build_docs_flags(candidata)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+
+                # Guardar binario
+                setattr(candidata, campo, data)
+
+            db.session.commit()
+            flash("✅ Imágenes subidas/actualizadas correctamente.", "success")
+            return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("❌ Error guardando imágenes en la BD")
+            flash("❌ Ocurrió un error guardando en la base de datos.", "danger")
+            tiene = _build_docs_flags(candidata)
+            return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+
+    return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
+
+
+@subir_bp.route('/imagen/<int:fila>/<campo>')
+@roles_required('admin', 'secretaria')
+def ver_imagen(fila, campo):
+    """
+    Sirve la imagen guardada en la BD para depuración/perfil/cedula1/cedula2.
+    """
+    if campo not in ALLOWED_IMG_FIELDS:
+        abort(404)
+
+    cand = _get_candidata_by_fila_or_pk(fila)
+    if not cand:
+        abort(404)
+
+    data = _to_bytes(getattr(cand, campo, None))
+    if not data:
+        abort(404)
+
+    mt, _ext = _detect_mimetype_and_ext(data)
+    # Para seguridad: solo servir como imagen (si no es imagen, no servimos aquí)
+    if not mt.startswith("image/"):
+        abort(404)
+
+    return Response(data, mimetype=mt)
+
+
+# ✅ IMPORTANTE (la causa del error):
+# Estas 2 líneas TIENEN que estar al FINAL DE app.py, después del ÚLTIMO @subir_bp.route(...)
+if 'subir_fotos' not in app.blueprints:
+    app.register_blueprint(subir_bp)
+
+# -----------------------------------------------------------------------------
+# GESTIONAR ARCHIVOS / PDF (DB only)  ✅ MEJORADO
+# -----------------------------------------------------------------------------
+from flask import render_template, redirect, url_for, request, flash
+from sqlalchemy import or_
+
+@app.route("/gestionar_archivos", methods=["GET", "POST"])
+@roles_required('admin', 'secretaria')
+def gestionar_archivos():
+    accion = (request.args.get("accion") or "buscar").strip().lower()
+    mensaje = None
+    resultados = []
+    docs = {}
+    fila = (request.args.get("fila") or "").strip()
+
+    # ✅ Helper: NO pasar binarios al template, solo booleanos + entrevista
+    def build_docs_flags(c):
+        if not c:
+            return {
+                "depuracion": False,
+                "perfil": False,
+                "cedula1": False,
+                "cedula2": False,
+                "entrevista": "",
+            }
+
+        return {
+            "depuracion": bool(getattr(c, "depuracion", None)),
+            "perfil": bool(getattr(c, "perfil", None)),
+            "cedula1": bool(getattr(c, "cedula1", None)),
+            "cedula2": bool(getattr(c, "cedula2", None)),
+            # 👇 entrevista sí la pasamos (es texto, no pesado)
+            "entrevista": (getattr(c, "entrevista", "") or "").strip(),
+        }
+
+    # ========================= DESCARGAR (PDF) =========================
+    if accion == "descargar":
+        doc = (request.args.get("doc") or "").strip().lower()
+        if not fila.isdigit():
+            return "Error: Fila inválida", 400
+        idx = int(fila)
+
+        if doc == "pdf":
+            # PDF entrevista
+            return redirect(url_for("generar_pdf_entrevista", fila=idx))
+
+        return "Documento no reconocido", 400
+
+    # ========================= BUSCAR =========================
+    if accion == "buscar":
+        if request.method == "POST":
+            q = (request.form.get("busqueda") or "").strip()[:128]
+            if not q:
+                flash("⚠️ Ingresa algo para buscar.", "warning")
+                return redirect(url_for("gestionar_archivos", accion="buscar"))
+
+            try:
+                filas = (
+                    apply_search_to_candidata_query(Candidata.query, q)
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
+            except Exception:
+                current_app.logger.exception("❌ Error buscando en gestionar_archivos")
+                filas = []
+
+            if filas:
+                resultados = [{
+                    "fila": c.fila,
+                    "nombre": c.nombre_completo,
+                    "telefono": c.numero_telefono or "No especificado",
+                    "cedula": c.cedula or "No especificado"
+                } for c in filas]
+            else:
+                mensaje = "⚠️ No se encontraron candidatas."
+
+        return render_template(
+            "gestionar_archivos.html",
+            accion="buscar",
+            resultados=resultados,
+            mensaje=mensaje
+        )
+
+    # ========================= VER =========================
+    if accion == "ver":
+        if not fila.isdigit():
+            mensaje = "Error: Fila inválida."
+            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
+
+        idx = int(fila)
+        c = Candidata.query.filter_by(fila=idx).first()
+        if not c:
+            mensaje = "⚠️ Candidata no encontrada."
+            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
+
+        docs = build_docs_flags(c)
+
+        return render_template(
+            "gestionar_archivos.html",
+            accion="ver",
+            fila=idx,
+            docs=docs,
+            mensaje=mensaje
+        )
+
+    # Si viene una acción rara, volvemos a buscar
+    return redirect(url_for("gestionar_archivos", accion="buscar"))
+
+
+
+@app.route('/generar_pdf_entrevista')
+@roles_required('admin', 'secretaria')
+def generar_pdf_entrevista():
+    # Asegura fpdf2
+    try:
+        from fpdf import FPDF as _FPDF
+        from fpdf.errors import FPDFException
+    except Exception:
+        return "❌ fpdf2 no está instalado. Ejecuta: pip uninstall -y fpdf && pip install -U fpdf2", 500
+
+    fila_index = request.args.get('fila', type=int)
+    if not fila_index:
+        return "Error: falta parámetro fila", 400
+
+    c = _get_candidata_by_fila_or_pk(fila_index)
+    if not c:
+        return "Candidata no encontrada", 404
+
+    texto_entrevista = (getattr(c, "entrevista", None) or "").strip()
+    if not texto_entrevista:
+        return "No hay entrevista registrada para esa fila", 404
+
+    # OJO: aquí estás usando nombres que tal vez no coincidan con tu modelo real.
+    # Si tus columnas se llaman diferente, se ajusta después.
+    ref_laborales  = (getattr(c, "referencias_laboral", "") or "").strip()
+    ref_familiares = (getattr(c, "referencias_familiares", "") or "").strip()
+
+    BRAND = (0, 102, 204)
+    FAINT = (120, 120, 120)
+    GRID  = (210, 210, 210)
+
+    def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
+        if unicode_ok:
+            return s or ""
+        s = s or ""
+        nfkd = unicodedata.normalize("NFKD", s)
+        return "".join(ch for ch in nfkd if not unicodedata.combining(ch) and ord(ch) < 0x2500)
+
+    def _collapse_ws(s: str) -> str:
+        return re.sub(r"[ \t]+", " ", (s or "").strip())
+
+    def _wrap_unbreakables(s: str, chunk=60) -> str:
+        out = []
+        for w in (s or "").split(" "):
+            if len(w) > chunk:
+                out.extend([w[i:i+chunk] for i in range(0, len(w), chunk)])
+            else:
+                out.append(w)
+        return " ".join(out)
+
+    def safe_multicell(pdf, txt, font_name, font_style, font_size, color=None, align="J", line_space=1.2):
+        pdf.set_x(pdf.l_margin)
+        if color:
+            pdf.set_text_color(*color)
+        try:
+            pdf.set_font(font_name, font_style, font_size)
+        except Exception:
+            try:
+                pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
+            except Exception:
+                pdf.set_font("Arial", "", 10)
+
+        try:
+            pdf.multi_cell(pdf.epw, 7, txt, align=align)
+            pdf.ln(line_space)
+        except FPDFException:
+            txt2 = _wrap_unbreakables(txt, chunk=35)
+            pdf.set_font(font_name, "", 10)
+            pdf.multi_cell(pdf.epw, 7, txt2, align="L")
+            pdf.ln(line_space)
+
+    class InterviewPDF(_FPDF):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._logo_path   = None
+            self._base_font   = "Arial"
+            self._unicode_ok  = False
+            self._has_italic  = False
+            self._has_bold    = False
+            self._has_bi      = False
+
+        def header(self):
+            if self.page_no() == 1:
+                if self._logo_path and os.path.exists(self._logo_path):
+                    w = 92
+                    x = (self.w - w) / 2.0
+                    self.image(self._logo_path, x=x, y=10, w=w)
+                    y_line = 10 + (w * 0.38)
+                    self.set_y(y_line)
+                else:
+                    self.set_y(18)
+
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.6)
+                self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+                self.ln(3)
+
+                try:
+                    self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
+                except Exception:
+                    self.set_font("Arial", "B", 18)
+
+                self.set_fill_color(*BRAND)
+                self.set_text_color(255, 255, 255)
+                self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
+                self.set_text_color(0, 0, 0)
+                self.ln(4)
+            else:
+                self.set_y(14)
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.4)
+                self.line(self.l_margin, 14, self.w - self.r_margin, 14)
+                self.ln(7)
+
+        def footer(self):
+            self.set_y(-15)
+            try:
+                if self._has_italic or self._has_bi:
+                    self.set_font(self._base_font, "I", 9)
+                else:
+                    self.set_font(self._base_font, "", 9)
+            except Exception:
+                try:
+                    self.set_font("Arial", "I", 9)
+                except Exception:
+                    self.set_font("Arial", "", 9)
+
+            self.set_text_color(*FAINT)
+            self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
+
+    try:
+        pdf = InterviewPDF(format="A4")
+        pdf.alias_nb_pages()
+        pdf.set_auto_page_break(auto=True, margin=16)
+        pdf.set_margins(16, 16, 16)
+        pdf._logo_path = os.path.join(current_app.root_path, "static", "logo_nuevo.png")
+
+        base_font  = "Arial"
+        unicode_ok = False
+        has_bold   = False
+        has_italic = False
+        has_bi     = False
+
+        try:
+            font_dir = os.path.join(current_app.root_path, "static", "fonts")
+            reg  = os.path.join(font_dir, "DejaVuSans.ttf")
+            bold = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+            it   = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")
+            bi   = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")
+
+            if os.path.exists(reg):
+                pdf.add_font("DejaVuSans", "", reg, uni=True)
+                base_font  = "DejaVuSans"
+                unicode_ok = True
+            if os.path.exists(bold):
+                pdf.add_font("DejaVuSans", "B", bold, uni=True)
+                has_bold = True
+            if os.path.exists(it):
+                pdf.add_font("DejaVuSans", "I", it, uni=True)
+                has_italic = True
+            if os.path.exists(bi):
+                pdf.add_font("DejaVuSans", "BI", bi, uni=True)
+                has_bi = True
+        except Exception:
+            base_font  = "Arial"
+            unicode_ok = False
+            has_bold   = True
+            has_italic = True
+            has_bi     = True
+
+        pdf._base_font  = base_font
+        pdf._unicode_ok = unicode_ok
+        pdf._has_bold   = has_bold
+        pdf._has_italic = has_italic
+        pdf._has_bi     = has_bi
+
+        pdf.add_page()
+
+        bullet = "• " if unicode_ok else "- "
+
+        # ===== ENTREVISTA =====
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
+        except Exception:
+            pdf.set_font("Arial", "B", 13)
+
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+        for raw in (texto_entrevista or "").splitlines():
+            line = _collapse_ws(_ascii_if_needed(raw, unicode_ok))
+            if ":" in line:
+                q, a = line.split(":", 1)
+                q = _collapse_ws(q)
+                a = _collapse_ws(a)
+
+                safe_multicell(pdf, (q + ":").strip(), base_font, "B" if has_bold else "", 12,
+                               color=(0, 0, 0), align="L", line_space=1)
+
+                ans = _wrap_unbreakables(a, 60)
+                ans = (bullet + ans) if ans else ans
+                safe_multicell(pdf, ans, base_font, "", 12, color=BRAND, align="J", line_space=2)
+            else:
+                safe_multicell(pdf, _wrap_unbreakables(line, 60), base_font, "", 12,
+                               color=(0, 0, 0), align="J", line_space=1.5)
+
+        pdf.ln(3)
+
+        # ===== REFERENCIAS =====
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
+        except Exception:
+            pdf.set_font("Arial", "B", 13)
+
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+        # Laborales
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 12)
+        except Exception:
+            pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 7, "Laborales:", ln=True)
+
+        if ref_laborales:
+            safe_multicell(pdf, _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
+                           base_font, "", 12, color=BRAND, align="J")
+        else:
+            safe_multicell(pdf, "No hay referencias laborales.", base_font, "", 12, color=FAINT, align="L")
+
+        # Familiares
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 12)
+        except Exception:
+            pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 7, "Familiares:", ln=True)
+
+        if ref_familiares:
+            safe_multicell(pdf, _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
+                           base_font, "", 12, color=BRAND, align="J")
+        else:
+            safe_multicell(pdf, "No hay referencias familiares.", base_font, "", 12, color=FAINT, align="L")
+
+        raw = pdf.output(dest="S")
+        pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
+        buf = io.BytesIO(pdf_bytes); buf.seek(0)
+
+        return send_file(
+            buf,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"entrevista_candidata_{fila_index}.pdf"
+        )
+
+    except Exception as e:
+        current_app.logger.exception("❌ Error interno generando PDF")
+        return f"Error interno generando PDF: {e}", 500
+
+# -----------------------------------------------------------------------------
+# NUEVO PDF (ENTREVISTAS NUEVAS EN BD)  ✅ NO BORRA LO VIEJO
+# -----------------------------------------------------------------------------
+
+@app.route('/entrevistas/pdf/<int:entrevista_id>', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def generar_pdf_entrevista_nueva_db(entrevista_id: int):
+    """Genera PDF para entrevista del sistema nuevo (BD), usando el MISMO estilo visual del PDF viejo.
+
+    - No toca /generar_pdf_entrevista (lo viejo se queda igual).
+    - NO incluye datos personales (cédula/teléfono/dirección) ni fechas.
+    - Muestra solo el encabezado + preguntas y respuestas.
+    """
+
+    # Asegura fpdf2
+    try:
+        from fpdf import FPDF as _FPDF
+        from fpdf.errors import FPDFException
+    except Exception:
+        return "❌ fpdf2 no está instalado. Ejecuta: pip uninstall -y fpdf && pip install -U fpdf2", 500
+
+    # Intentar obtener modelos sin asumir imports rígidos (robusto)
+    EntrevistaModel = globals().get('Entrevista')
+    RespModel = globals().get('EntrevistaRespuesta') or globals().get('EntrevistaRespuestas')
+    PregModel = globals().get('EntrevistaPregunta') or globals().get('EntrevistaPreguntas')
+
+    if EntrevistaModel is None:
+        return "❌ No se encontró el modelo 'Entrevista' en el proyecto. Revisa models/imports.", 500
+
+    # Cargar entrevista
+    try:
+        entrevista = db.session.get(EntrevistaModel, entrevista_id)
+    except Exception:
+        entrevista = None
+
+    if not entrevista:
+        return "Entrevista no encontrada", 404
+
+    # ----------------------------
+    # Helpers de texto (igual al PDF viejo)
+    # ----------------------------
+    BRAND = (0, 102, 204)
+    FAINT = (120, 120, 120)
+    GRID  = (210, 210, 210)
+
+    def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
+        if unicode_ok:
+            return s or ""
+        s = s or ""
+        nfkd = unicodedata.normalize("NFKD", s)
+        return "".join(ch for ch in nfkd if not unicodedata.combining(ch) and ord(ch) < 0x2500)
+
+    def _collapse_ws(s: str) -> str:
+        return re.sub(r"[ \t]+", " ", (s or "").strip())
+
+    def _wrap_unbreakables(s: str, chunk=60) -> str:
+        out = []
+        for w in (s or "").split(" "):
+            if len(w) > chunk:
+                out.extend([w[i:i+chunk] for i in range(0, len(w), chunk)])
+            else:
+                out.append(w)
+        return " ".join(out)
+
+    def safe_multicell(pdf, txt, font_name, font_style, font_size, color=None, align="J", line_space=1.2):
+        pdf.set_x(pdf.l_margin)
+        if color:
+            pdf.set_text_color(*color)
+        try:
+            pdf.set_font(font_name, font_style, font_size)
+        except Exception:
+            try:
+                pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
+            except Exception:
+                pdf.set_font("Arial", "", 10)
+
+        try:
+            pdf.multi_cell(pdf.epw, 7, txt, align=align)
+            pdf.ln(line_space)
+        except FPDFException:
+            txt2 = _wrap_unbreakables(txt, chunk=35)
+            pdf.set_font(font_name, "", 10)
+            pdf.multi_cell(pdf.epw, 7, txt2, align="L")
+            pdf.ln(line_space)
+
+    # ----------------------------
+    # PDF Class (igual al PDF viejo)
+    # ----------------------------
+    class InterviewPDF(_FPDF):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._logo_path   = None
+            self._base_font   = "Arial"
+            self._unicode_ok  = False
+            self._has_italic  = False
+            self._has_bold    = False
+            self._has_bi      = False
+
+        def header(self):
+            if self.page_no() == 1:
+                if self._logo_path and os.path.exists(self._logo_path):
+                    w = 92
+                    x = (self.w - w) / 2.0
+                    self.image(self._logo_path, x=x, y=10, w=w)
+                    y_line = 10 + (w * 0.38)
+                    self.set_y(y_line)
+                else:
+                    self.set_y(18)
+
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.6)
+                self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+                self.ln(3)
+
+                try:
+                    self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
+                except Exception:
+                    self.set_font("Arial", "B", 18)
+
+                self.set_fill_color(*BRAND)
+                self.set_text_color(255, 255, 255)
+                self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
+                self.set_text_color(0, 0, 0)
+                self.ln(4)
+            else:
+                self.set_y(14)
+                self.set_draw_color(*GRID)
+                self.set_line_width(0.4)
+                self.line(self.l_margin, 14, self.w - self.r_margin, 14)
+                self.ln(7)
+
+        def footer(self):
+            self.set_y(-15)
+            try:
+                if self._has_italic or self._has_bi:
+                    self.set_font(self._base_font, "I", 9)
+                else:
+                    self.set_font(self._base_font, "", 9)
+            except Exception:
+                try:
+                    self.set_font("Arial", "I", 9)
+                except Exception:
+                    self.set_font("Arial", "", 9)
+
+            self.set_text_color(*FAINT)
+            self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
+
+    # ----------------------------
+    # Extraer preguntas/respuestas del sistema nuevo
+    # ----------------------------
+    qa_pairs = []
+
+    # 1) Relación directa
+    respuestas_rel = getattr(entrevista, 'respuestas', None)
+    if respuestas_rel is not None:
+        try:
+            for r in respuestas_rel:
+                qtxt = (getattr(r, 'pregunta_texto', None) or getattr(r, 'pregunta', None) or getattr(r, 'texto_pregunta', None) or '').strip()
+                atxt = (getattr(r, 'respuesta', None) or getattr(r, 'valor', None) or getattr(r, 'texto_respuesta', None) or '').strip()
+                if qtxt or atxt:
+                    qa_pairs.append((qtxt, atxt))
+        except Exception:
+            pass
+
+    # 2) Query por modelos
+    if (not qa_pairs) and RespModel is not None:
+        try:
+            q = db.session.query(RespModel)
+            if hasattr(RespModel, 'entrevista_id'):
+                q = q.filter(RespModel.entrevista_id == entrevista_id)
+            rows = q.all()
+
+            preg_map = {}
+            if PregModel is not None:
+                try:
+                    pregs = db.session.query(PregModel).all()
+                    for p in pregs:
+                        pid = getattr(p, 'id', None)
+                        txt = (getattr(p, 'texto', None) or getattr(p, 'pregunta', None) or '').strip()
+                        if pid is not None:
+                            preg_map[int(pid)] = txt
+                except Exception:
+                    preg_map = {}
+
+            for r in rows:
+                pid = getattr(r, 'pregunta_id', None)
+                qtxt = (getattr(r, 'pregunta_texto', None) or getattr(r, 'texto_pregunta', None) or '').strip()
+                if (not qtxt) and pid is not None:
+                    qtxt = (preg_map.get(int(pid), '') or '').strip()
+                atxt = (getattr(r, 'respuesta', None) or getattr(r, 'valor', None) or getattr(r, 'texto_respuesta', None) or '').strip()
+                if qtxt or atxt:
+                    qa_pairs.append((qtxt, atxt))
+        except Exception:
+            pass
+
+    # 3) Campo texto grande
+    if not qa_pairs:
+        blob = (getattr(entrevista, 'contenido', None)
+                or getattr(entrevista, 'texto', None)
+                or getattr(entrevista, 'entrevista_texto', None)
+                or getattr(entrevista, 'resumen', None)
+                or '').strip()
+        if blob:
+            for raw in blob.splitlines():
+                line = _collapse_ws(raw)
+                if ":" in line:
+                    qtxt, atxt = line.split(":", 1)
+                    qa_pairs.append((_collapse_ws(qtxt), _collapse_ws(atxt)))
+                else:
+                    qa_pairs.append(("", line))
+
+    if not qa_pairs:
+        return "No hay respuestas registradas para esta entrevista", 404
+
+    # ----------------------------
+    # Construcción del PDF (igual al viejo)
+    # ----------------------------
+    try:
+        pdf = InterviewPDF(format="A4")
+        pdf.alias_nb_pages()
+        pdf.set_auto_page_break(auto=True, margin=16)
+        pdf.set_margins(16, 16, 16)
+        pdf._logo_path = os.path.join(current_app.root_path, "static", "logo_nuevo.png")
+
+        base_font  = "Arial"
+        unicode_ok = False
+        has_bold   = False
+        has_italic = False
+        has_bi     = False
+
+        try:
+            font_dir = os.path.join(current_app.root_path, "static", "fonts")
+            reg  = os.path.join(font_dir, "DejaVuSans.ttf")
+            bold = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+            it   = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")
+            bi   = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")
+
+            if os.path.exists(reg):
+                pdf.add_font("DejaVuSans", "", reg, uni=True)
+                base_font  = "DejaVuSans"
+                unicode_ok = True
+            if os.path.exists(bold):
+                pdf.add_font("DejaVuSans", "B", bold, uni=True)
+                has_bold = True
+            if os.path.exists(it):
+                pdf.add_font("DejaVuSans", "I", it, uni=True)
+                has_italic = True
+            if os.path.exists(bi):
+                pdf.add_font("DejaVuSans", "BI", bi, uni=True)
+                has_bi = True
+        except Exception:
+            base_font  = "Arial"
+            unicode_ok = False
+            has_bold   = True
+            has_italic = True
+            has_bi     = True
+
+        pdf._base_font  = base_font
+        pdf._unicode_ok = unicode_ok
+        pdf._has_bold   = has_bold
+        pdf._has_italic = has_italic
+        pdf._has_bi     = has_bi
+
+        pdf.add_page()
+
+        bullet = "• " if unicode_ok else "- "
+
+        # ===== ENTREVISTA =====
+        try:
+            pdf.set_font(base_font, "B" if has_bold else "", 13)
+        except Exception:
+            pdf.set_font("Arial", "B", 13)
+
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+        # Pintar Q/A en el mismo formato del PDF viejo
+        for i, (qtxt, atxt) in enumerate(qa_pairs, start=1):
+            qtxt = _collapse_ws(_ascii_if_needed(qtxt, unicode_ok))
+            atxt = _collapse_ws(_ascii_if_needed(atxt, unicode_ok))
+
+            # Si no tenemos texto de pregunta, intentamos no inventar: solo mostramos la línea como texto
+            if qtxt and atxt:
+                safe_multicell(
+                    pdf,
+                    (qtxt + ":").strip(),
+                    base_font,
+                    "B" if has_bold else "",
+                    12,
+                    color=(0, 0, 0),
+                    align="L",
+                    line_space=1
+                )
+                ans = _wrap_unbreakables(atxt, 60)
+                ans = (bullet + ans) if ans else ans
+                safe_multicell(pdf, ans, base_font, "", 12, color=BRAND, align="J", line_space=2)
+            else:
+                # Línea suelta
+                line = (qtxt or atxt or "").strip()
+                if line:
+                    safe_multicell(pdf, _wrap_unbreakables(line, 60), base_font, "", 12, color=(0, 0, 0), align="J", line_space=1.5)
+
+        raw = pdf.output(dest="S")
+        pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
+        buf = io.BytesIO(pdf_bytes)
+        buf.seek(0)
+
+        return send_file(
+            buf,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"entrevista_{entrevista_id}.pdf"
+        )
+
+    except Exception as e:
+        current_app.logger.exception("❌ Error interno generando PDF (nuevo estilo viejo)")
+        return f"Error interno generando PDF: {e}", 500
+
+
+@app.route('/entrevistas/candidata/<int:fila>/pdf', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def generar_pdf_ultima_entrevista_candidata(fila: int):
+    """Acceso rápido: genera el PDF de la última entrevista (nuevo sistema) de una candidata por fila."""
+
+    EntrevistaModel = globals().get('Entrevista')
+    if EntrevistaModel is None:
+        return "❌ No se encontró el modelo 'Entrevista' en el proyecto.", 500
+
+    # Buscar última entrevista por candidata
+    try:
+        q = db.session.query(EntrevistaModel)
+        # campo típico
+        if hasattr(EntrevistaModel, 'candidata_id'):
+            q = q.filter(EntrevistaModel.candidata_id == fila)
+        elif hasattr(EntrevistaModel, 'fila'):
+            q = q.filter(EntrevistaModel.fila == fila)
+        elif hasattr(EntrevistaModel, 'candidata_fila'):
+            q = q.filter(EntrevistaModel.candidata_fila == fila)
+
+        # ordenar por fecha/id
+        if hasattr(EntrevistaModel, 'actualizada_en'):
+            q = q.order_by(EntrevistaModel.actualizada_en.desc())
+        elif hasattr(EntrevistaModel, 'creada_en'):
+            q = q.order_by(EntrevistaModel.creada_en.desc())
+        else:
+            q = q.order_by(EntrevistaModel.id.desc())
+
+        last = q.first()
+    except Exception:
+        last = None
+
+    if not last:
+        return "No hay entrevistas nuevas registradas para esa candidata", 404
+
+    return redirect(url_for('generar_pdf_entrevista_nueva_db', entrevista_id=int(getattr(last, 'id', 0))))
+
+
+@app.route("/gestionar_archivos/descargar_uno", methods=["GET"])
+@roles_required('admin', 'secretaria')
+def descargar_uno_db():
+    cid = request.args.get("id", type=int)
+    doc = (request.args.get("doc") or "").strip().lower()
+
+    if not cid or doc not in ("depuracion", "perfil", "cedula1", "cedula2"):
+        return "Error: parámetros inválidos", 400
+
+    # ✅ Cargar candidata (con tu retry)
+    def _load():
+        # SQLAlchemy moderno
+        return db.session.get(Candidata, cid)
+
+    try:
+        candidata = _retry_query(_load, retries=1, swallow=False)
+    except Exception:
+        current_app.logger.exception("❌ Error consultando candidata en descargar_uno_db")
+        candidata = None
+
+    if not candidata:
+        return "Candidata no encontrada", 404
+
+    data = getattr(candidata, doc, None)
+    if not data:
+        return f"No hay archivo para {doc}", 404
+
+    # ✅ Asegurar bytes (puede venir memoryview)
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+    elif isinstance(data, bytearray):
+        data = bytes(data)
+    elif not isinstance(data, (bytes,)):
+        try:
+            data = bytes(data)
+        except Exception:
+            return "Formato de archivo inválido.", 400
+
+    # ✅ Detectar mimetype por encabezado
+    head = data[:12]
+    if head.startswith(b"\x89PNG"):
+        mt, ext = "image/png", "png"
+    elif head.startswith(b"\xFF\xD8\xFF"):
+        mt, ext = "image/jpeg", "jpg"
+    elif head.startswith(b"GIF87a") or head.startswith(b"GIF89a"):
+        mt, ext = "image/gif", "gif"
+    elif head.startswith(b"%PDF"):
+        mt, ext = "application/pdf", "pdf"
+    else:
+        mt, ext = "application/octet-stream", "bin"
+
+    # ✅ Nombre de archivo bonito y seguro
+    nombre = (getattr(candidata, "nombre_completo", "") or "").strip()
+    if not nombre:
+        nombre = f"fila_{cid}"
+
+    # sanitizar: letras/números/_/-
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", nombre)[:60].strip("_")
+    filename = f"{doc}_{safe_name}_{cid}.{ext}"
+
+    bio = io.BytesIO(data)
+    bio.seek(0)
+
+    current_app.logger.info("⬇️ Descargando doc=%s fila=%s nombre=%s", doc, cid, nombre)
+
+    return send_file(
+        bio,
+        mimetype=mt,
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+# -----------------------------------------------------------------------------
+# REFERENCIAS (laborales / familiares)
+# -----------------------------------------------------------------------------
+@app.route('/referencias', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def referencias():
+    mensaje = None
+    accion = (request.args.get('accion') or 'buscar').strip()
+    resultados = []
+    candidata = None
+
+    # Buscar por término
+    if request.method == 'POST' and 'busqueda' in request.form:
+        termino = (request.form.get('busqueda') or '').strip()[:128]
+        if termino:
+            try:
+                filas = (
+                    apply_search_to_candidata_query(Candidata.query, termino)
+                    .order_by(Candidata.nombre_completo.asc())
+                    .limit(300)
+                    .all()
+                )
+            except Exception:
+                current_app.logger.exception("❌ Error buscando candidatas en /referencias")
+                filas = []
+
+            resultados = [
+                {
+                    'id': c.fila,
+                    'nombre': c.nombre_completo,
+                    'cedula': c.cedula,
+                    'telefono': c.numero_telefono or 'No especificado'
+                } for c in filas
+            ]
+            if not resultados:
+                mensaje = "⚠️ No se encontraron candidatas."
+        else:
+            mensaje = "⚠️ Ingresa un término de búsqueda."
+
+        return render_template('referencias.html',
+                               accion='buscar',
+                               resultados=resultados,
+                               mensaje=mensaje)
+
+    # Ver candidata seleccionada
+    candidata_id = request.args.get('candidata', type=int)
+    if request.method == 'GET' and candidata_id:
+        candidata = Candidata.query.get(candidata_id)
+        if not candidata:
+            mensaje = "⚠️ Candidata no encontrada."
+            return render_template('referencias.html',
+                                   accion='buscar',
+                                   resultados=[],
+                                   mensaje=mensaje)
+        return render_template('referencias.html',
+                               accion='ver',
+                               candidata=candidata,
+                               mensaje=mensaje)
+
+    # Guardar referencias
+    if request.method == 'POST' and 'candidata_id' in request.form:
+        cid = request.form.get('candidata_id', type=int)
+        candidata = Candidata.query.get(cid)
+        if not candidata:
+            mensaje = "⚠️ Candidata no existe."
+        else:
+            # Limitar tamaño para evitar payloads enormes
+            cand_ref_lab = (request.form.get('referencias_laboral') or '').strip()[:5000]
+            cand_ref_fam = (request.form.get('referencias_familiares') or '').strip()[:5000]
+
+            candidata.referencias_laboral    = cand_ref_lab
+            candidata.referencias_familiares = cand_ref_fam
+            try:
+                db.session.commit()
+                mensaje = "✅ Referencias actualizadas."
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception("❌ Error al guardar referencias")
+                mensaje = "❌ Error al guardar."
+
+        return render_template('referencias.html',
+                               accion='ver',
+                               candidata=candidata,
+                               mensaje=mensaje)
+
+    return render_template('referencias.html',
+                           accion='buscar',
+                           resultados=[],
+                           mensaje=mensaje)
+
+
+# -----------------------------------------------------------------------------
+# DASHBOARD / AUTOMATIONS
+# -----------------------------------------------------------------------------
+@app.route('/dashboard_procesos', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def dashboard_procesos():
+    estado_filtro = (request.args.get('estado') or '').strip()[:40]
+    desde_str     = (request.args.get('desde') or '').strip()[:10]
+    hasta_str     = (request.args.get('hasta') or '').strip()[:10]
+    page          = max(1, request.args.get('page', 1, type=int))
+    per_page      = min(100, max(1, request.args.get('per_page', 20, type=int)))
+
+    # Parseo de fechas
+    desde = None
+    hasta = None
+    try:
+        if desde_str:
+            desde = datetime.strptime(desde_str, '%Y-%m-%d').date()
+        if hasta_str:
+            hasta = datetime.strptime(hasta_str, '%Y-%m-%d').date()
+    except ValueError:
+        desde = None
+        hasta = None
+
+    estados = [
+        'en_proceso',
+        'proceso_inscripcion',
+        'inscrita',
+        'inscrita_incompleta',
+        'lista_para_trabajar',
+        'trabajando',
+        'descalificada'
+    ]
+
+    # Defaults si la BD está caída
+    total = 0
+    entradas_hoy = 0
+    counts_por_estado = {}
+    paginado = None
+
+    try:
+        # KPIs
+        total = Candidata.query.count()
+        hoy = date.today()
+        entradas_hoy = Candidata.query.filter(
+            cast(Candidata.fecha_cambio_estado, Date) == hoy
+        ).count()
+        counts_por_estado = dict(
+            db.session.query(
+                Candidata.estado,
+                func.count(Candidata.estado)
+            ).group_by(Candidata.estado).all()
+        )
+
+        # Query filtrada + orden + paginación
+        q = Candidata.query
+        if estado_filtro:
+            q = q.filter(Candidata.estado == estado_filtro)
+        if desde:
+            q = q.filter(cast(Candidata.fecha_cambio_estado, Date) >= desde)
+        if hasta:
+            q = q.filter(cast(Candidata.fecha_cambio_estado, Date) <= hasta)
+
+        q = q.order_by(Candidata.fecha_cambio_estado.desc())
+
+        # Paginado compatible con SQLAlchemy 1.4/2.x y Flask-SQLAlchemy 3.x
+        try:
+            paginado = q.paginate(page=page, per_page=per_page, error_out=False)
+        except AttributeError:
+            paginado = db.paginate(q, page=page, per_page=per_page, error_out=False)
+
+    except OperationalError:
+        flash("⚠️ No se pudo conectar a la base de datos. Reintenta en unos segundos.", "warning")
+
+        class _EmptyPagination:
+            def __init__(self):
+                self.items = []
+                self.total = 0
+                self.pages = 0
+                self.page = page
+                self.prev_num = None
+                self.next_num = None
+            def has_prev(self): return False
+            def has_next(self): return False
+            def iter_pages(self, left_edge=1, right_edge=1, left_current=2, right_current=2):
+                return iter([])
+
+        paginado = _EmptyPagination()
+    except Exception:
+        current_app.logger.exception("❌ Error construyendo dashboard")
+        class _EmptyPagination:
+            def __init__(self):
+                self.items = []
+                self.total = 0
+                self.pages = 0
+                self.page = page
+                self.prev_num = None
+            def has_prev(self): return False
+            def has_next(self): return False
+            def iter_pages(self, *args, **kwargs):
+                return iter([])
+        paginado = _EmptyPagination()
+
+    return render_template(
+        'dashboard_procesos.html',
+        total=total,
+        entradas_hoy=entradas_hoy,
+        counts_por_estado=counts_por_estado,
+        estados=estados,
+        estado_filtro=estado_filtro,
+        desde_str=desde_str,
+        hasta_str=hasta_str,
+        candidatas=paginado
+    )
+
+
+@app.route('/auto_actualizar_estados', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def auto_actualizar_estados():
+    """
+    Revisa candidatas en 'inscrita_incompleta' y promueve a 'lista_para_trabajar'
+    si ya tienen todos los documentos/datos requeridos.
+    """
+    try:
+        pendientes = Candidata.query.filter_by(estado='inscrita_incompleta').all()
+        actualizadas = []
+
+        for c in pendientes:
+            if (c.codigo and c.entrevista and c.referencias_laboral and c.referencias_familiares
+                and c.perfil and c.cedula1 and c.cedula2 and c.depuracion):
+                c.estado = 'lista_para_trabajar'
+                c.fecha_cambio_estado = datetime.utcnow()
+                c.usuario_cambio_estado = 'sistema'
+                actualizadas.append(c.fila)
+
+        if actualizadas:
+            db.session.commit()
+
+        return jsonify({'conteo_actualizadas': len(actualizadas),
+                        'filas_actualizadas': actualizadas})
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("❌ Error auto_actualizando estados")
+        return jsonify({'error': 'No se pudo actualizar estados automáticamente'}), 500
+
+
+# -----------------------------------------------------------------------------
+# LLAMADAS CANDIDATAS
+# -----------------------------------------------------------------------------
+@app.route('/candidatas/llamadas')
+@roles_required('admin','secretaria')
+def listado_llamadas_candidatas():
+    q               = (request.args.get('q') or '').strip()[:128]
+    period          = (request.args.get('period') or 'all').strip()[:16]
+    start_date_str  = request.args.get('start_date', None)
+    page            = max(1, request.args.get('page', 1, type=int))
+
+    start_dt, end_dt = get_date_bounds(period, start_date_str)
+
+    # Subconsulta de llamadas por candidata
+    calls_subq = (
+        db.session.query(
+            LlamadaCandidata.candidata_id.label('cid'),
+            func.count(LlamadaCandidata.id).label('num_calls'),
+            func.max(LlamadaCandidata.fecha_llamada).label('last_call')
+        )
+        .group_by(LlamadaCandidata.candidata_id)
+        .subquery()
+    )
+
+    base_q = (
+        db.session.query(
+            Candidata.fila,
+            Candidata.nombre_completo,
+            Candidata.codigo,
+            Candidata.numero_telefono,
+            Candidata.marca_temporal,
+            calls_subq.c.num_calls,
+            calls_subq.c.last_call
+        )
+        .outerjoin(calls_subq, Candidata.fila == calls_subq.c.cid)
+    )
+
+    if q:
+        il = f'%{q}%'
+        base_q = base_q.filter(
+            or_(
+                Candidata.codigo.ilike(il),
+                Candidata.nombre_completo.ilike(il),
+                Candidata.numero_telefono.ilike(il),
+                Candidata.cedula.ilike(il),
+            )
+        )
+
+    def section(estado: str):
+        qsec = base_q.filter(Candidata.estado == estado)
+        if start_dt and end_dt:
+            qsec = qsec.filter(
+                cast(Candidata.marca_temporal, Date) >= start_dt,
+                cast(Candidata.marca_temporal, Date) <= end_dt
+            )
+        # Paginación segura (10 por sección)
+        try:
+            return qsec.order_by(calls_subq.c.last_call.asc().nullsfirst())\
+                       .paginate(page=page, per_page=10, error_out=False)
+        except AttributeError:
+            return db.paginate(qsec.order_by(calls_subq.c.last_call.asc().nullsfirst()),
+                               page=page, per_page=10, error_out=False)
+
+    en_proceso     = section('en_proceso')
+    en_inscripcion = section('proceso_inscripcion')
+    lista_trabajar = section('lista_para_trabajar')
+
+    return render_template('llamadas_candidatas.html',
+                           q=q,
+                           period=period,
+                           start_date=start_date_str,
+                           en_proceso=en_proceso,
+                           en_inscripcion=en_inscripcion,
+                           lista_trabajar=lista_trabajar)
+
+
+@app.route('/candidatas/<int:fila>/llamar', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def registrar_llamada_candidata(fila):
+    candidata = Candidata.query.get_or_404(fila)
+    form      = LlamadaCandidataForm()
+
+    if form.validate_on_submit():
+        minutos  = form.duracion_minutos.data
+        segundos = (minutos * 60) if (minutos is not None) else None
+
+        llamada = LlamadaCandidata(
+            candidata_id      = candidata.fila,
+            fecha_llamada     = func.now(),
+            agente            = session.get('usuario', 'desconocido')[:64],
+            resultado         = (form.resultado.data or '').strip()[:200],
+            duracion_segundos = segundos,
+            notas             = (form.notas.data or '').strip()[:2000],
+            created_at        = datetime.utcnow()
+        )
+        db.session.add(llamada)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("❌ Error guardando llamada de candidata")
+            flash('❌ Error al registrar la llamada.', 'danger')
+            return redirect(url_for('listado_llamadas_candidatas'))
+
+        flash(f'Llamada registrada para {candidata.nombre_completo}.', 'success')
+        return redirect(url_for('listado_llamadas_candidatas'))
+
+    return render_template('registrar_llamada_candidata.html',
+                           form=form,
+                           candidata=candidata)
+
+
+@app.route('/candidatas/llamadas/reporte')
+@roles_required('admin')
+def reporte_llamadas_candidatas():
+    period         = (request.args.get('period') or 'week').strip()[:16]
+    start_date_str = request.args.get('start_date', None)
+    start_dt       = get_start_date(period, start_date_str)
+    hoy            = date.today()
+    page           = max(1, request.args.get('page', 1, type=int))
+
+    stats_subq = (
+        db.session.query(
+            LlamadaCandidata.candidata_id.label('cid'),
+            func.count(LlamadaCandidata.id).label('num_calls'),
+            func.max(LlamadaCandidata.fecha_llamada).label('last_call')
+        )
+        .group_by(LlamadaCandidata.candidata_id)
+        .subquery()
+    )
+
+    base_q = (
+        db.session.query(
+            Candidata.fila,
+            Candidata.nombre_completo,
+            Candidata.codigo,
+            Candidata.numero_telefono,
+            Candidata.marca_temporal,
+            stats_subq.c.num_calls,
+            stats_subq.c.last_call
+        )
+        .outerjoin(stats_subq, Candidata.fila == stats_subq.c.cid)
+    )
+
+    def paginate_estado(estado: str):
+        qy = base_q.filter(Candidata.estado == estado)
+        if start_dt:
+            qy = qy.filter(
+                or_(
+                    stats_subq.c.last_call == None,
+                    cast(stats_subq.c.last_call, Date) < start_dt
+                )
+            )
+        try:
+            return qy.order_by(cast(stats_subq.c.last_call, Date).desc().nullsfirst())\
+                     .paginate(page=page, per_page=10, error_out=False)
+        except AttributeError:
+            return db.paginate(qy.order_by(cast(stats_subq.c.last_call, Date).desc().nullsfirst()),
+                               page=page, per_page=10, error_out=False)
+
+    estancadas_en_proceso  = paginate_estado('en_proceso')
+    estancadas_inscripcion = paginate_estado('proceso_inscripcion')
+    estancadas_lista       = paginate_estado('lista_para_trabajar')
+
+    calls_query    = db.session.query(
+                         LlamadaCandidata.candidata_id,
+                         func.count().label('cnt')
+                     ).group_by(LlamadaCandidata.candidata_id).all()
+    total_calls    = sum(c.cnt for c in calls_query)
+    num_with_calls = len(calls_query)
+    promedio       = round(total_calls / num_with_calls, 1) if num_with_calls else 0
+
+    calls_q = db.session.query(LlamadaCandidata).order_by(LlamadaCandidata.fecha_llamada.desc())
+    if start_dt:
+        start_dt_dt = datetime.combine(start_dt, datetime.min.time())
+        calls_q = calls_q.filter(LlamadaCandidata.fecha_llamada >= start_dt_dt)
+    calls_period = calls_q.all()
+
+    filtros = []
+    if start_dt:
+        filtros.append(LlamadaCandidata.fecha_llamada >= start_dt_dt)
+
+    calls_by_day = (
+        db.session.query(
+            func.date_trunc('day', LlamadaCandidata.fecha_llamada).label('periodo'),
+            func.count().label('cnt')
+        )
+        .filter(*filtros)
+        .group_by('periodo')
+        .order_by('periodo')
+        .all()
+    )
+    calls_by_week = (
+        db.session.query(
+            func.date_trunc('week', LlamadaCandidata.fecha_llamada).label('periodo'),
+            func.count().label('cnt')
+        )
+        .filter(*filtros)
+        .group_by('periodo')
+        .order_by('periodo')
+        .all()
+    )
+    calls_by_month = (
+        db.session.query(
+            func.date_trunc('month', LlamadaCandidata.fecha_llamada).label('periodo'),
+            func.count().label('cnt')
+        )
+        .filter(*filtros)
+        .group_by('periodo')
+        .order_by('periodo')
+        .all()
+    )
+
+    return render_template('reporte_llamadas.html',
+                           period=period,
+                           start_date=start_date_str,
+                           hoy=hoy,
+                           estancadas_en_proceso=estancadas_en_proceso,
+                           estancadas_inscripcion=estancadas_inscripcion,
+                           estancadas_lista=estancadas_lista,
+                           promedio=promedio,
+                           calls_period=calls_period,
+                           calls_by_day=calls_by_day,
+                           calls_by_week=calls_by_week,
+                           calls_by_month=calls_by_month)
+
+
+# ─────────────────────────────────────────────────────────────
+from datetime import date, datetime
+from flask import request, render_template, url_for, jsonify, flash, redirect
+from sqlalchemy import func, or_, and_
+from sqlalchemy.orm import joinedload, load_only
+from urllib.parse import urlencode  # ← lo usas más abajo
+
+# ── Helpers (una sola vez) ───────────────────────────────────
+def _as_list(val):
+    if val is None:
+        return []
+    if isinstance(val, (list, tuple, set)):
+        return list(val)
+    try:
+        return [x.strip() for x in str(val).split(',') if x.strip()]
+    except Exception:
+        return []
+
+def _fmt_banos(v):
+    if v is None or v == "":
+        return ""
+    return str(v).rstrip('0').rstrip('.') if isinstance(v, float) else str(v)
+
+def _norm_area(s):
+    return (s or "").strip()
+
+def _s(v):
+    return "" if v is None else str(v).strip()
+
+
+# ─────────────────────────────────────────────────────────────
+# PUBLICAR HOY (listado para copiar+marcar) – template: secretarias_solicitudes_copiar.html
+# ─────────────────────────────────────────────────────────────
+@app.route('/secretarias/solicitudes/copiar', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def secretarias_copiar_solicitudes():
+    """
+    Lista solicitudes copiables. En el texto:
+    - NO imprime 'Modalidad:' ni 'Hogar:' como etiqueta.
+    - Si hay modalidad, imprime SOLO el valor en una línea.
+    - Si hay descripción de hogar, imprime SOLO la descripción (sin prefijo).
+    """
+    hoy = date.today()
+
+    base_q = (
+        Solicitud.query
+        .options(joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new))
+        .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
+        .filter(or_(Solicitud.last_copiado_at.is_(None),
+                    func.date(Solicitud.last_copiado_at) < hoy))
+        .order_by(Solicitud.fecha_solicitud.desc())
+    )
+
+    try:
+        raw_sols = base_q.limit(500).all()
+    except Exception:
+        current_app.logger.exception("❌ Error listando solicitudes copiables")
+        raw_sols = []
+
+    # Mapear funciones code->label (igual que admin)
+    FUNCIONES_CHOICES = {}
+    try:
+        form = AdminSolicitudForm() if AdminSolicitudForm else None
+        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
+            FUNCIONES_CHOICES = dict(form.funciones.choices)
+    except Exception:
+        FUNCIONES_CHOICES = {}
+
+    solicitudes = []
+    for s in raw_sols:
+        # Funciones (labels + otro)
+        funcs = []
+        try:
+            seleccion = set(_as_list(getattr(s, 'funciones', None)))
+        except Exception:
+            seleccion = set()
+        for code in seleccion:
+            if code == 'otro':
+                continue
+            label = FUNCIONES_CHOICES.get(code)
+            if label:
+                funcs.append(label)
+        custom_otro = (getattr(s, 'funciones_otro', None) or '').strip()
+        if custom_otro:
+            funcs.append(custom_otro)
+
+        # Adultos / Niños / Mascota
+        adultos = s.adultos or ""
+        ninos_line = ""
+        if getattr(s, 'ninos', None):
+            ninos_line = f"Niños: {s.ninos}"
+            if getattr(s, 'edades_ninos', None):
+                ninos_line += f" ({s.edades_ninos})"
+        mascota_val = (getattr(s, 'mascota', None) or '').strip()
+        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
+
+        # Modalidad (solo valor)
+        modalidad_val = (
+            getattr(s, 'modalidad_trabajo', None)
+            or getattr(s, 'modalidad', None)
+            or getattr(s, 'tipo_modalidad', None)
+            or ''
+        )
+        modalidad_val = modalidad_val.strip()
+
+        # Hogar (solo descripción, sin prefijo)
+        hogar_partes = []
+        if getattr(s, 'habitaciones', None):
+            hogar_partes.append(f"{s.habitaciones} habitaciones")
+        banos_txt = _fmt_banos(getattr(s, 'banos', None))
+        if banos_txt:
+            hogar_partes.append(f"{banos_txt} baños")
+        if bool(getattr(s, 'dos_pisos', False)):
+            hogar_partes.append("2 pisos")
+
+        areas = []
+        if getattr(s, 'areas_comunes', None):
+            try:
+                for a in s.areas_comunes:
+                    a = str(a).strip()
+                    if a:
+                        areas.append(_norm_area(a))
+            except Exception:
+                pass
+        area_otro = (getattr(s, 'area_otro', None) or "").strip()
+        if area_otro:
+            areas.append(_norm_area(area_otro))
+        if areas:
+            hogar_partes.append(", ".join(areas))
+
+        tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
+        if tipo_lugar and hogar_partes:
+            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
+        elif tipo_lugar:
+            hogar_descr = tipo_lugar
+        else:
+            hogar_descr = ", ".join(hogar_partes)
+        hogar_val = hogar_descr.strip() if hogar_descr else ""
+
+        # Edad requerida
+        if isinstance(s.edad_requerida, (list, tuple, set)):
+            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
+        else:
+            edad_req = s.edad_requerida or ""
+
+        nota_cli  = (s.nota_cliente or "").strip()
+        nota_line = f"Nota: {nota_cli}" if nota_cli else ""
+        sueldo_txt = f"Sueldo: ${_s(s.sueldo)} mensual{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
+
+        # ===== Texto final (sin etiquetas fijas) =====
+        lines = [
+            f"Disponible ( {s.codigo_solicitud or ''} )",
+            f"📍 {s.ciudad_sector or ''}",
+            f"Ruta más cercana: {s.rutas_cercanas or ''}",
+            "",
+        ]
+        if modalidad_val:
+            lines += [modalidad_val, ""]
+
+        lines += [
+            f"Edad: {edad_req}",
+            "Dominicana",
+            "Que sepa leer y escribir",
+            f"Experiencia en: {s.experiencia or ''}",
+            f"Horario: {s.horario or ''}",
+            "",
+            f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
+        ]
+        if hogar_val:
+            lines += ["", hogar_val]
+
+        lines += ["", f"Adultos: {adultos}"]
+        if ninos_line:
+            lines.append(ninos_line)
+        if mascota_line:
+            lines.append(mascota_line)
+        lines += ["", sueldo_txt]
+        if nota_line:
+            lines += ["", nota_line]
+
+        order_text = "\n".join(lines).strip()[:4000]  # seguridad
+
+        solicitudes.append({
+            "id": s.id,
+            "codigo_solicitud": _s(s.codigo_solicitud),
+            "ciudad_sector": _s(s.ciudad_sector),
+            "modalidad": modalidad_val,
+            "copiada_hoy": False,
+            "order_text": order_text,
+        })
+
+    return render_template(
+        'secretarias_solicitudes_copiar.html',
+        solicitudes=solicitudes,
+        q="", q_enabled=False,
+        endpoint='secretarias_copiar_solicitudes'
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# COPIAR Y MARCAR (POST)
+# ─────────────────────────────────────────────────────────────
+@app.route('/secretarias/solicitudes/<int:id>/copiar', methods=['POST'])
+@roles_required('admin', 'secretaria')
+def secretarias_copiar_solicitud(id):
+    s = Solicitud.query.get_or_404(id)
+    try:
+        s.last_copiado_at = func.now()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("❌ Error marcando solicitud copiada")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"ok": False, "error": "No se pudo marcar como copiada"}), 500
+        flash('❌ No se pudo marcar la solicitud como copiada.', 'danger')
+        return redirect(url_for('secretarias_copiar_solicitudes'))
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({"ok": True, "id": id, "codigo": _s(s.codigo_solicitud)}), 200
+
+    flash(f'Solicitud { _s(s.codigo_solicitud) } copiada. Ya no se mostrará hasta mañana.', 'success')
+    return redirect(url_for('secretarias_copiar_solicitudes'))
+
+
+# ─────────────────────────────────────────────────────────────
+# BUSCAR (paginado + filtros) – template: secretarias_solicitudes_buscar.html
+# ─────────────────────────────────────────────────────────────
+@app.route('/secretarias/solicitudes/buscar', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def secretarias_buscar_solicitudes():
+    q           = (request.args.get('q') or '').strip()[:128]
+    estado      = (request.args.get('estado') or '').strip()[:20]
+    desde_str   = (request.args.get('desde') or '').strip()[:10]
+    hasta_str   = (request.args.get('hasta') or '').strip()[:10]
+    modalidad   = (request.args.get('modalidad') or '').strip()[:60]
+    mascota     = (request.args.get('mascota') or '').strip()[:3]      # '', 'si', 'no'
+    con_ninos   = (request.args.get('con_ninos') or '').strip()[:3]    # '', 'si', 'no'
+    page        = max(1, request.args.get('page', type=int, default=1))
+    per_page    = min(100, max(10, request.args.get('per_page', type=int, default=20)))
+
+    cols = (
+        Solicitud.id,
+        Solicitud.fecha_solicitud,
+        Solicitud.codigo_solicitud,
+        Solicitud.ciudad_sector,
+        Solicitud.rutas_cercanas,
+        Solicitud.modalidad_trabajo,
+        Solicitud.modalidad,
+        Solicitud.tipo_modalidad,
+        Solicitud.edad_requerida,
+        Solicitud.experiencia,
+        Solicitud.horario,
+        Solicitud.funciones,
+        Solicitud.funciones_otro,
+        Solicitud.adultos,
+        Solicitud.ninos,
+        Solicitud.edades_ninos,
+        Solicitud.mascota,
+        Solicitud.tipo_lugar,
+        Solicitud.habitaciones,
+        Solicitud.banos,
+        Solicitud.dos_pisos,
+        Solicitud.areas_comunes,
+        Solicitud.area_otro,
+        Solicitud.direccion,
+        Solicitud.sueldo,
+        Solicitud.pasaje_aporte,
+        Solicitud.nota_cliente,
+        Solicitud.last_copiado_at,
+        Solicitud.estado,
+    )
+
+    qy = (
+        db.session.query(Solicitud)
+        .options(load_only(*cols))
+        .execution_options(stream_results=True)
+    )
+
+    if q:
+        like = f"%{q}%"
+        qy = qy.filter(or_(
+            Solicitud.codigo_solicitud.ilike(like),
+            Solicitud.ciudad_sector.ilike(like)
+        ))
+
+    if estado:
+        qy = qy.filter(Solicitud.estado == estado)
+    if modalidad:
+        qy = qy.filter(or_(
+            Solicitud.modalidad_trabajo.ilike(f"%{modalidad}%"),
+            Solicitud.modalidad.ilike(f"%{modalidad}%"),
+            Solicitud.tipo_modalidad.ilike(f"%{modalidad}%"),
+        ))
+
+    if mascota == 'si':
+        qy = qy.filter(Solicitud.mascota.isnot(None), func.length(func.trim(Solicitud.mascota)) > 0)
+    elif mascota == 'no':
+        qy = qy.filter(or_(Solicitud.mascota.is_(None), func.length(func.trim(Solicitud.mascota)) == 0))
+
+    if con_ninos == 'si':
+        qy = qy.filter(Solicitud.ninos.isnot(None), Solicitud.ninos > 0)
+    elif con_ninos == 'no':
+        qy = qy.filter(or_(Solicitud.ninos.is_(None), Solicitud.ninos == 0))
+
+    def _parse_date(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except Exception:
+            return None
+
+    desde_dt = _parse_date(desde_str)
+    hasta_dt = _parse_date(hasta_str)
+    if desde_dt and hasta_dt:
+        hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        qy = qy.filter(and_(Solicitud.fecha_solicitud >= desde_dt,
+                            Solicitud.fecha_solicitud <= hasta_end))
+    elif desde_dt:
+        qy = qy.filter(Solicitud.fecha_solicitud >= desde_dt)
+    elif hasta_dt:
+        hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        qy = qy.filter(Solicitud.fecha_solicitud <= hasta_end)
+
+    order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
+    qy = qy.order_by(order_col.desc())
+
+    try:
+        paginado = qy.paginate(page=page, per_page=per_page, error_out=False)
+    except AttributeError:
+        paginado = db.paginate(qy, page=page, per_page=per_page, error_out=False)
+
+    # Mapear funciones code->label (como admin)
+    FUNCIONES_CHOICES = {}
+    try:
+        form = AdminSolicitudForm() if AdminSolicitudForm else None
+        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
+            FUNCIONES_CHOICES = dict(form.funciones.choices)
+    except Exception:
+        FUNCIONES_CHOICES = {}
+
+    items = []
+    for s in paginado.items:
+        modalidad_val = ((s.modalidad_trabajo or s.modalidad or s.tipo_modalidad or '')).strip()
+
+        funcs = []
+        try:
+            seleccion = set(_as_list(getattr(s, 'funciones', None)))
+        except Exception:
+            seleccion = set()
+        for code in seleccion:
+            if code == 'otro':
+                continue
+            label = FUNCIONES_CHOICES.get(code)
+            if label:
+                funcs.append(label)
+        custom_otro = (getattr(s, 'funciones_otro', None) or '').strip()
+        if custom_otro:
+            funcs.append(custom_otro)
+
+        adultos = s.adultos or ""
+        ninos_line = ""
+        if getattr(s, 'ninos', None):
+            ninos_line = f"Niños: {s.ninos}"
+            if getattr(s, 'edades_ninos', None):
+                ninos_line += f" ({s.edades_ninos})"
+        mascota_val = (getattr(s, 'mascota', None) or '').strip()
+        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
+
+        # Hogar (armado; solo valor)
+        hogar_partes = []
+        if getattr(s, 'habitaciones', None):
+            hogar_partes.append(f"{s.habitaciones} habitaciones")
+        banos_txt = _fmt_banos(getattr(s, 'banos', None))
+        if banos_txt:
+            hogar_partes.append(f"{banos_txt} baños")
+        if bool(getattr(s, 'dos_pisos', False)):
+            hogar_partes.append("2 pisos")
+        areas = []
+        if getattr(s, 'areas_comunes', None):
+            try:
+                for a in s.areas_comunes:
+                    a = str(a).strip()
+                    if a:
+                        areas.append(_norm_area(a))
+            except Exception:
+                pass
+        area_otro = (getattr(s, 'area_otro', None) or "").strip()
+        if area_otro:
+            areas.append(_norm_area(area_otro))
+        if areas:
+            hogar_partes.append(", ".join(areas))
+        tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
+        if tipo_lugar and hogar_partes:
+            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
+        elif tipo_lugar:
+            hogar_descr = tipo_lugar
+        else:
+            hogar_descr = ", ".join(hogar_partes)
+        hogar_val = hogar_descr.strip() if hogar_descr else ""
+
+        if isinstance(s.edad_requerida, (list, tuple, set)):
+            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
+        else:
+            edad_req = s.edad_requerida or ""
+
+        nota_cli  = (s.nota_cliente or "").strip()
+        nota_line = f"Nota: {nota_cli}" if nota_cli else ""
+        sueldo_txt = f"Sueldo: ${_s(s.sueldo)} mensual{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
+
+        # ===== Texto final (sin etiquetas fijas) =====
+        lines = [
+            f"Disponible ( {s.codigo_solicitud or ''} )",
+            f"📍 {s.ciudad_sector or ''}",
+            f"Ruta más cercana: {s.rutas_cercanas or ''}",
+            "",
+        ]
+        if modalidad_val:
+            lines += [modalidad_val, ""]
+
+        lines += [
+            f"Edad: {edad_req}",
+            "Dominicana",
+            "Que sepa leer y escribir",
+            f"Experiencia en: {s.experiencia or ''}",
+            f"Horario: {s.horario or ''}",
+            "",
+            f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
+        ]
+        if hogar_val:
+            lines += ["", hogar_val]
+
+        lines += ["", f"Adultos: {adultos}"]
+        if ninos_line:
+            lines.append(ninos_line)
+        if mascota_line:
+            lines.append(mascota_line)
+        lines += ["", sueldo_txt]
+        if nota_line:
+            lines += ["", nota_line]
+
+        order_text = "\n".join(lines).strip()[:4000]
+
+        items.append({
+            "id": s.id,
+            "codigo_solicitud": _s(s.codigo_solicitud),
+            "ciudad_sector": _s(s.ciudad_sector),
+            "modalidad": modalidad_val,
+            "estado": _s(s.estado),
+            "fecha_solicitud": s.fecha_solicitud.strftime("%Y-%m-%d %H:%M") if s.fecha_solicitud else "",
+            "copiada_ciclo": (s.last_copiado_at is not None),
+            "order_text": order_text,
+        })
+
+    current_params = request.args.to_dict(flat=True)
+    def page_url(p):
+        d = current_params.copy()
+        d['page'] = p
+        return url_for('secretarias_buscar_solicitudes') + ('?' + urlencode(d) if d else '')
+
+    total_pages = paginado.pages or 1
+    page_links = [{"n": p, "url": page_url(p), "active": (p == paginado.page)} for p in range(1, total_pages + 1)]
+    prev_url = page_url(paginado.page - 1) if paginado.page > 1 else None
+    next_url = page_url(paginado.page + 1) if paginado.page < total_pages else None
+
+    return render_template(
+        'secretarias_solicitudes_buscar.html',
+        items=items,
+        page=paginado.page,
+        pages=total_pages,
+        total=paginado.total,
+        per_page=per_page,
+        q=q,
+        estado=estado,
+        estados_opts=['proceso','activa','pagada','cancelada','reemplazo'],
+        desde=desde_str,
+        hasta=hasta_str,
+        modalidad=modalidad,
+        mascota=mascota,
+        con_ninos=con_ninos,
+        page_links=page_links,
+        prev_url=prev_url,
+        next_url=next_url
+    )
+
+# ==== FINALIZAR PROCESO + PERFIL (con vuelta SIEMPRE al BUSCADOR) ====
+from flask import (
+    request, render_template, redirect, url_for, flash, abort,
+    current_app, session, send_file
+)
+from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import load_only
+from datetime import datetime
+from io import BytesIO
+import json
+
+def _cfg_grupos_empleo():
+    default = [
+        "Interna", "Dormir Adentro", "Dormir Afuera",
+        "Niñera", "Cuidadora", "Limpieza", "Cocinera",
+        "Por Días", "Tiempo Completo", "Medio Tiempo"
+    ]
+    try:
+        return current_app.config.get('GRUPOS_EMPLEO', default)
+    except Exception:
+        return default
+
+def _set_bytes_attr_safe(obj, attr_name, data):
+    if hasattr(obj, attr_name):
+        setattr(obj, attr_name, data)
+        return True
+    return False
+
+def _save_grupos_empleo_safe(candidata, grupos_list):
+    saved = False
+    if hasattr(candidata, 'grupos_empleo'):
+        try:
+            candidata.grupos_empleo = grupos_list
+            saved = True
+        except Exception:
+            pass
+    if not saved and hasattr(candidata, 'grupos'):
+        try:
+            candidata.grupos = grupos_list
+            saved = True
+        except Exception:
+            pass
+    if not saved and hasattr(candidata, 'grupos_empleo_json'):
+        try:
+            candidata.grupos_empleo_json = json.dumps(grupos_list, ensure_ascii=False)
+            saved = True
+        except Exception:
+            pass
+    return saved
+
+
+# ---------- BUSCADOR (punto central de ida y vuelta) ----------
+@app.route('/finalizar_proceso/buscar', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def finalizar_proceso_buscar():
+    q = (request.args.get('q') or '').strip()[:128]
+    resultados = []
+    if q:
+        like = f"%{q}%"
+        try:
+            resultados = (
+                Candidata.query
+                .options(load_only(
+                    Candidata.fila, Candidata.nombre_completo, Candidata.cedula,
+                    Candidata.estado, Candidata.codigo
+                ))
+                .filter(or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.codigo.ilike(like),
+                ))
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(300)
+                .all()
+            )
+        except Exception:
+            current_app.logger.exception("❌ Error buscando en finalizar_proceso_buscar")
+            resultados = []
+    return render_template('finalizar_proceso_buscar.html', q=q, resultados=resultados)
+
+
+# ---------- FORMULARIO FINALIZAR ----------
+@app.route('/finalizar_proceso', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def finalizar_proceso():
+    fila = request.values.get('fila', type=int)
+    if not fila:
+        flash("Falta el parámetro ?fila=<id>.", "warning")
+        return redirect(url_for('finalizar_proceso_buscar'))
+
+    candidata = Candidata.query.get(fila)
+    if not candidata:
+        abort(404, description=f"No existe la candidata con fila={fila}")
+
+    grupos = _cfg_grupos_empleo()
+
+    if request.method == 'GET':
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    # POST: validar archivos obligatorios
+    foto_perfil_file = request.files.get('foto_perfil')
+    cedula1_file     = request.files.get('cedula1')
+    cedula2_file     = request.files.get('cedula2')
+
+    faltan = []
+    if not foto_perfil_file or foto_perfil_file.filename == '':
+        faltan.append("Foto de perfil")
+    if not cedula1_file or cedula1_file.filename == '':
+        faltan.append("Cédula (frontal)")
+    if not cedula2_file or cedula2_file.filename == '':
+        faltan.append("Cédula (reverso)")
+
+    if faltan:
+        flash("Faltan archivos: " + ", ".join(faltan) + ".", "danger")
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    # Leer bytes
+    try:
+        foto_perfil_bytes = foto_perfil_file.read()
+        cedula1_bytes     = cedula1_file.read()
+        cedula2_bytes     = cedula2_file.read()
+    except Exception as e:
+        flash(f"Error leyendo archivos: {e}", "danger")
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    # Guardar bytes
+    ok_foto = _set_bytes_attr_safe(candidata, 'foto_perfil', foto_perfil_bytes) or \
+              _set_bytes_attr_safe(candidata, 'perfil', foto_perfil_bytes)
+    ok_ced1 = _set_bytes_attr_safe(candidata, 'cedula1', cedula1_bytes)
+    ok_ced2 = _set_bytes_attr_safe(candidata, 'cedula2', cedula2_bytes)
+
+    if not (ok_foto and ok_ced1 and ok_ced2):
+        detalles = []
+        if not ok_foto: detalles.append("foto_perfil (o perfil) no existe en el modelo")
+        if not ok_ced1: detalles.append("cedula1 no existe en el modelo")
+        if not ok_ced2: detalles.append("cedula2 no existe en el modelo")
+        flash("No se pudieron guardar algunos campos binarios: " + "; ".join(detalles), "warning")
+
+    # Grupos (opcional)
+    grupos_sel = request.form.getlist('grupos_empleo')
+    if grupos_sel:
+        if not _save_grupos_empleo_safe(candidata, grupos_sel):
+            flash("No se encontró columna para guardar los grupos (grupos_empleo / grupos / grupos_empleo_json).", "warning")
+
+    # Estado si están los 3 archivos
+    try:
+        tiene_foto = bool(getattr(candidata, 'foto_perfil', None) or getattr(candidata, 'perfil', None))
+        tiene_ced1 = bool(getattr(candidata, 'cedula1', None))
+        tiene_ced2 = bool(getattr(candidata, 'cedula2', None))
+        if tiene_foto and tiene_ced1 and tiene_ced2 and hasattr(candidata, 'estado'):
+            candidata.estado = 'lista_para_trabajar'
+            if hasattr(candidata, 'fecha_cambio_estado'):
+                candidata.fecha_cambio_estado = datetime.utcnow()
+            if hasattr(candidata, 'usuario_cambio_estado'):
+                candidata.usuario_cambio_estado = session.get('usuario', 'sistema')
+    except Exception:
+        pass
+
+    try:
+        db.session.commit()
+        flash("✅ Proceso finalizado y datos guardados correctamente.", "success")
+        return redirect(url_for('candidata_ver_perfil', fila=candidata.fila))
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        flash(f"❌ Error guardando en la base de datos: {e}", "danger")
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+
+# ---------- PERFIL (HTML) ----------
+@app.route('/candidata/perfil', methods=['GET'], endpoint='candidata_ver_perfil')
+@roles_required('admin', 'secretaria')
+def ver_perfil():
+    """
+    Perfil detallado de candidata. Usa carga con retry para evitar caídas por SSL.
+    """
+    fila = request.args.get('fila', type=int)
+    if fila is None:
+        abort(400, description="Falta el parámetro ?fila=<id>.")
+
+    try:
+        candidata = _get_candidata_safe_by_pk(fila)
+    except Exception:
+        current_app.logger.exception("Error consultando Candidata.fila=%s", fila)
+        abort(500, description="Error consultando la base de datos.")
+
+    if not candidata:
+        abort(404, description=f"No existe la candidata con fila={fila}")
+
+    # Normaliza grupos (por si vienen como string/JSON)
+    grupos = getattr(candidata, 'grupos_empleo', None)
+    if isinstance(grupos, str):
+        try:
+            parsed = json.loads(grupos)
+            grupos = parsed if isinstance(parsed, list) else [str(parsed)]
+        except Exception:
+            grupos = [g.strip() for g in grupos.split(',') if g.strip()] if grupos else []
+    elif grupos is None:
+        alt = getattr(candidata, 'grupos', None) or getattr(candidata, 'grupos_empleo_json', None)
+        if isinstance(alt, str):
+            try:
+                parsed = json.loads(alt)
+                grupos = parsed if isinstance(parsed, list) else [str(parsed)]
+            except Exception:
+                grupos = [g.strip() for g in alt.split(',') if g.strip()] if alt else []
+        else:
+            grupos = alt or []
+
+    tiene_foto = bool(getattr(candidata, 'foto_perfil', None) or getattr(candidata, 'perfil', None))
+    tiene_ced1 = bool(getattr(candidata, 'cedula1', None))
+    tiene_ced2 = bool(getattr(candidata, 'cedula2', None))
+
+    return render_template(
+        'candidata_perfil.html',
+        candidata=candidata,
+        tiene_foto=tiene_foto,
+        tiene_ced1=tiene_ced1,
+        tiene_ced2=tiene_ced2,
+        grupos=grupos
+    )
+
+@app.route('/perfil_candidata', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def perfil_candidata():
+    """
+    Sirve la imagen de perfil (bytes) con ruta más robusta:
+    - Lee directo con engine.connect() y text(), con retry.
+    - Si no hay imagen, 404.
+    """
+    fila = request.args.get('fila', type=int)
+    if not fila:
+        abort(400, description="Falta el parámetro ?fila=<id>.")
+
+    try:
+        img_bytes = _fetch_image_bytes_safe(fila)
+    except Exception:
+        current_app.logger.exception("Error leyendo imagen de Candidata.fila=%s", fila)
+        abort(500, description="No se pudo leer la imagen.")
+
+    if not img_bytes:
+        abort(404, description="La candidata no tiene foto almacenada.")
+
+    bio = BytesIO(img_bytes); bio.seek(0)
+    return send_file(
+        bio,
+        mimetype='image/jpeg',
+        as_attachment=False,
+        download_name=f"perfil_{fila}.jpg",
+        max_age=0
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# SECRETARÍAS – TEST DE COMPATIBILIDAD PARA CANDIDATA
+# ─────────────────────────────────────────────────────────────
+COMPAT_TEST_CANDIDATA_VERSION = "v1.0"
+
+# Catálogos (alineados con models.py)
+COMPAT_RITMOS = [
+    ('tranquilo',   'Tranquilo'),
+    ('activo',      'Activo'),
+    ('muy_activo',  'Muy activo'),
+]
+COMPAT_ESTILOS = [
+    ('necesita_instrucciones', 'Paso a paso'),
+    ('toma_iniciativa',        'Prefiere iniciativa'),
+]
+COMPAT_COMUNICACION = [
+    ('breve',     'Breve y directa'),
+    ('detallada', 'Detallada'),
+    ('mixta',     'Mixta'),
+]
+COMPAT_RELACION_NINOS = [
+    ('comoda',         'Cómoda con niños'),
+    ('neutral',        'Neutral'),
+    ('prefiere_evitar','Prefiere evitar niños'),
+]
+COMPAT_EXPERIENCIA_NIVEL = [
+    ('baja',  'Básica'),
+    ('media', 'Intermedia'),
+    ('alta',  'Alta'),
+]
+COMPAT_MASCOTAS = [
+    ('si', 'Sí, sin problema'),
+    ('no', 'No, prefiero evitarlo'),
+]
+
+# Checklists (guardamos el "code")
+FORTALEZAS = [
+    ('limpieza_general',   'Limpieza general'),
+    ('limpieza_profunda',  'Limpieza profunda'),
+    ('cocina_basica',      'Cocina básica'),
+    ('cocina_avanzada',    'Cocina avanzada'),
+    ('lavado',             'Lavado'),
+    ('planchado',          'Planchado'),
+    ('cuidado_ninos',      'Cuidado de niños'),
+    ('cuidado_mayores',    'Cuidado de personas mayores'),
+    ('compras',            'Compras / mandados'),
+    ('inventario',         'Orden / inventario'),
+    ('electrodomesticos',  'Manejo de electrodomésticos'),
+]
+TAREAS_EVITAR = [
+    ('cocinar',          'Cocinar'),
+    ('planchar',         'Planchar'),
+    ('animales_grandes', 'Mascotas grandes'),
+    ('subir_escaleras',  'Subir muchas escaleras'),
+    ('nocturno',         'Trabajar de noche'),
+    ('dormir_fuera',     'Dormir fuera de casa'),
+    ('altas_exigencias', 'Hogares de alta exigencia'),
+]
+LIMITES_NO_NEG = [
+    ('no_cocinar',       'No cocinar'),
+    ('no_planchar',      'No planchar'),
+    ('no_cuidar_ninos',  'No cuidado de niños'),
+    ('no_mascotas',      'No mascotas'),
+    ('no_fines_semana',  'No fines de semana'),
+    ('no_nocturno',      'No horario nocturno'),
+]
+DIAS_SEMANA = [
+    ('lun','Lunes'), ('mar','Martes'), ('mie','Miércoles'),
+    ('jue','Jueves'), ('vie','Viernes'), ('sab','Sábado'), ('dom','Domingo')
+]
+HORARIOS = [
+    ('manana','Mañana'),
+    ('tarde','Tarde'),
+    ('noche','Noche'),
+    ('interna','Interna'),
+    ('flexible','Flexible'),
+]
+
+# ── Helpers de normalización ─────────────────────────────────
+def _getlist_clean(name: str):
+    return [x.strip() for x in request.form.getlist(name) if x and x.strip()]
+
+def _int_1a5(name: str):
+    try:
+        v = int((request.form.get(name) or '').strip())
+        return v if 1 <= v <= 5 else None
+    except Exception:
+        return None
+
+def _norm_choice(v: str, allowed: set):
+    v = (v or '').strip().lower()
+    return v if v in allowed else None
+
+def _filter_allowed(items, allowed: set):
+    out = []
+    for it in items or []:
+        key = (it or '').strip().lower()
+        if key in allowed:
+            out.append(key)
+    return out
+
+CHOICES_DICT = {
+    "RITMOS": COMPAT_RITMOS,
+    "ESTILOS": COMPAT_ESTILOS,
+    "COMUNICACION": COMPAT_COMUNICACION,
+    "REL_NINOS": COMPAT_RELACION_NINOS,
+    "EXP_NIVEL": COMPAT_EXPERIENCIA_NIVEL,
+    "FORTALEZAS": FORTALEZAS,
+    "TAREAS_EVITAR": TAREAS_EVITAR,
+    "LIMITES": LIMITES_NO_NEG,
+    "DIAS": DIAS_SEMANA,
+    "HORARIOS": HORARIOS,
+    "MASCOTAS": COMPAT_MASCOTAS,
+}
+
+# ─────────────────────────────────────────────────────────────
+# RUTA PRINCIPAL
+# ─────────────────────────────────────────────────────────────
+@app.route('/secretarias/compat/candidata', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def compat_candidata():
+    """
+    - GET  sin ?fila  → buscador (acepta ?q= en GET).
+    - GET  con ?fila   → muestra formulario del test.
+    - POST (accion=guardar & fila) → guarda el test y redirige:
+        * si next=home  → home
+        * si no         → buscador del test (no al perfil/fotos)
+    """
+    fila = request.values.get('fila', type=int)
+
+    # ── 1) GUARDAR (POST) ────────────────────────────────────
+    if request.method == 'POST' and request.form.get('accion') == 'guardar' and fila:
+        c = Candidata.query.get_or_404(fila)
+
+        # Normalizaciones de selects/radios
+        ritmo     = _norm_choice(request.form.get('ritmo'),               {k for k, _ in COMPAT_RITMOS})
+        estilo    = _norm_choice(request.form.get('estilo'),              {k for k, _ in COMPAT_ESTILOS})
+        comun     = _norm_choice(request.form.get('comunicacion'),        {k for k, _ in COMPAT_COMUNICACION})
+        rel_n     = _norm_choice(request.form.get('relacion_ninos'),      {k for k, _ in COMPAT_RELACION_NINOS})
+        exp_niv   = _norm_choice(request.form.get('experiencia_nivel'),   {k for k, _ in COMPAT_EXPERIENCIA_NIVEL})
+        mascotas  = _norm_choice(request.form.get('mascotas'),            {k for k, _ in COMPAT_MASCOTAS})
+        puntual   = _int_1a5('puntualidad_1a5')
+
+        # Checkboxes (filtramos a los permitidos)
+        fortalezas = _filter_allowed(_getlist_clean('fortalezas'),              {k for k, _ in FORTALEZAS})
+        evitar     = _filter_allowed(_getlist_clean('tareas_evitar'),           {k for k, _ in TAREAS_EVITAR})
+        limites    = _filter_allowed(_getlist_clean('limites_no_negociables'),  {k for k, _ in LIMITES_NO_NEG})
+        dias       = _filter_allowed(_getlist_clean('disponibilidad_dias'),     {k for k, _ in DIAS_SEMANA})
+        horarios   = _filter_allowed(_getlist_clean('disponibilidad_horarios'), {k for k, _ in HORARIOS})
+
+        notas = (request.form.get('nota') or '').strip()[:2000]
+
+        # Validaciones mínimas
+        err = []
+        if not ritmo:         err.append("Ritmo de hogar")
+        if not estilo:        err.append("Estilo de trabajo")
+        if not comun:         err.append("Comunicación preferida")
+        if not rel_n:         err.append("Relación con niños")
+        if puntual is None:   err.append("Puntualidad (1 a 5)")
+        if not mascotas:      err.append("Compatibilidad con mascotas")
+        if not fortalezas:    err.append("Fortalezas (al menos una)")
+        if not dias:          err.append("Disponibilidad en días")
+        if not horarios:      err.append("Disponibilidad en horarios")
+
+        if err:
+            flash("Completa: " + ", ".join(err), "warning")
+            data = {
+                "ritmo": ritmo, "estilo": estilo, "comunicacion": comun,
+                "relacion_ninos": rel_n, "experiencia_nivel": exp_niv,
+                "puntualidad_1a5": puntual, "fortalezas": fortalezas,
+                "tareas_evitar": evitar, "limites_no_negociables": limites,
+                "disponibilidad_dias": dias, "disponibilidad_horarios": horarios,
+                "mascotas": mascotas, "nota": notas
+            }
+            return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
+
+        # Persistir en columnas dedicadas (soporta alias alternos)
+        try:
+            if hasattr(c, 'compat_ritmo_preferido'):   c.compat_ritmo_preferido = ritmo
+            if hasattr(c, 'compat_estilo_trabajo'):    c.compat_estilo_trabajo = estilo
+            if hasattr(c, 'compat_comunicacion'):      c.compat_comunicacion = comun
+            if hasattr(c, 'compat_relacion_ninos'):    c.compat_relacion_ninos = rel_n
+            if hasattr(c, 'compat_experiencia_nivel'): c.compat_experiencia_nivel = exp_niv
+            if hasattr(c, 'compat_puntualidad_1a5'):   c.compat_puntualidad_1a5 = puntual
+
+            if hasattr(c, 'compat_mascotas'):
+                c.compat_mascotas = mascotas
+            if hasattr(c, 'compat_mascotas_ok'):
+                c.compat_mascotas_ok = (mascotas == 'si')
+
+            if hasattr(c, 'compat_habilidades_fuertes'):
+                c.compat_habilidades_fuertes = fortalezas
+            elif hasattr(c, 'compat_fortalezas'):
+                c.compat_fortalezas = fortalezas
+
+            if hasattr(c, 'compat_habilidades_evitar'):
+                c.compat_habilidades_evitar = evitar
+            elif hasattr(c, 'compat_tareas_evitar'):
+                c.compat_tareas_evitar = evitar
+
+            if hasattr(c, 'compat_limites_no_negociables'):  c.compat_limites_no_negociables = limites
+            if hasattr(c, 'compat_disponibilidad_dias'):     c.compat_disponibilidad_dias = dias
+            if hasattr(c, 'compat_disponibilidad_horarios'): c.compat_disponibilidad_horarios = horarios
+
+            if hasattr(c, 'compat_observaciones'):           c.compat_observaciones = notas
+
+            payload = {
+                "version": COMPAT_TEST_CANDIDATA_VERSION,
+                "timestamp": datetime.utcnow().isoformat(),
+                "ritmo": ritmo,
+                "estilo": estilo,
+                "comunicacion": comun,
+                "relacion_ninos": rel_n,
+                "experiencia_nivel": exp_niv,
+                "puntualidad_1a5": puntual,
+                "fortalezas": fortalezas,
+                "tareas_evitar": evitar,
+                "limites_no_negociables": limites,
+                "disponibilidad_dias": dias,
+                "disponibilidad_horarios": horarios,
+                "mascotas": mascotas,
+                "nota": notas,
+            }
+            if hasattr(c, 'compat_test_candidata_json'):     c.compat_test_candidata_json = payload
+            if hasattr(c, 'compat_test_candidata_version'):  c.compat_test_candidata_version = COMPAT_TEST_CANDIDATA_VERSION
+            if hasattr(c, 'compat_test_candidata_at'):       c.compat_test_candidata_at = datetime.utcnow()
+
+            db.session.commit()
+            flash("✅ Test de compatibilidad guardado correctamente.", "success")
+
+            next_url = request.values.get('next')
+            if next_url == 'home':
+                return redirect(url_for('home'))
+            return redirect(url_for('compat_candidata'))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.exception("❌ Error guardando test de compatibilidad")
+            flash("❌ No se pudo guardar.", "danger")
+            return redirect(url_for('compat_candidata', fila=fila))
+
+    # ── 2) FORMULARIO (GET con fila) ──────────────────────────
+    if request.method == 'GET' and fila:
+        c = Candidata.query.get_or_404(fila)
+        data = {
+            "ritmo":                   getattr(c, 'compat_ritmo_preferido', None),
+            "estilo":                  getattr(c, 'compat_estilo_trabajo', None),
+            "comunicacion":            getattr(c, 'compat_comunicacion', None),
+            "relacion_ninos":          getattr(c, 'compat_relacion_ninos', None),
+            "experiencia_nivel":       getattr(c, 'compat_experiencia_nivel', None),
+            "puntualidad_1a5":         getattr(c, 'compat_puntualidad_1a5', None),
+            "fortalezas":              getattr(c, 'compat_habilidades_fuertes', None)
+                                       or getattr(c, 'compat_fortalezas', []) or [],
+            "tareas_evitar":           getattr(c, 'compat_habilidades_evitar', None)
+                                       or getattr(c, 'compat_tareas_evitar', []) or [],
+            "limites_no_negociables":  getattr(c, 'compat_limites_no_negociables', []) or [],
+            "disponibilidad_dias":     getattr(c, 'compat_disponibilidad_dias', []) or [],
+            "disponibilidad_horarios": getattr(c, 'compat_disponibilidad_horarios', []) or [],
+            "mascotas":                (getattr(c, 'compat_mascotas', None)
+                                        if hasattr(c, 'compat_mascotas')
+                                        else ('si' if getattr(c, 'compat_mascotas_ok', False) else 'no')
+                                        if hasattr(c, 'compat_mascotas_ok') else None),
+            "nota":                    getattr(c, 'compat_observaciones', '') or '',
+        }
+        return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
+
+    # ── 3) BUSCADOR (GET/POST sin fila) ───────────────────────
+    q = (request.values.get('q') or '').strip()[:128]
+    resultados = []
+    mensaje = None
+
+    if request.method == 'POST' and request.form.get('accion') == 'buscar':
+        q = (request.form.get('q') or '').strip()[:128]
+
+    if q:
+        like = f"%{q}%"
+        try:
+            resultados = (
+                Candidata.query
+                .filter(or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                    Candidata.codigo.ilike(like),
+                ))
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(200)
+                .all()
+            )
+        except Exception:
+            current_app.logger.exception("❌ Error buscando candidatas en compat_candidata")
+            resultados = []
+        if not resultados:
+            mensaje = "⚠️ No se encontraron coincidencias."
+
+    return render_template('compat_candidata_buscar.html',
+                           resultados=resultados,
+                           mensaje=mensaje,
+                           q=q)
+
+
+from flask import render_template, session, redirect, url_for, request
+
+@app.route('/candidatas_porcentaje')
+@roles_required('admin', 'secretaria')
+def candidatas_porcentaje():
+    """
+    Lista todas las candidatas que tienen un porcentaje configurado.
+    Optimizado con:
+      - with_entities (solo columnas necesarias)
+      - paginación
+    """
+
+    # Proteger la vista: si no hay usuario logueado, mandar a login
+    if 'usuario' not in session:
+        return redirect(url_for('login'))
+
+    # Página actual (por defecto 1)
+    page = request.args.get('page', 1, type=int)
+    per_page = 50  # puedes subir o bajar este número
+
+    # Query optimizada: solo las columnas que usamos en la tabla
+    base_query = (
+        Candidata.query
+        .with_entities(
+            Candidata.fila,
+            Candidata.codigo,
+            Candidata.nombre_completo.label('nombre'),
+            Candidata.numero_telefono.label('telefono'),
+            Candidata.modalidad_trabajo_preferida.label('modalidad'),
+            Candidata.inicio.label('fecha_inicio'),
+            Candidata.fecha_de_pago.label('fecha_pago'),
+            Candidata.monto_total,
+            Candidata.porciento,
+        )
+        .filter(
+            Candidata.porciento.isnot(None),
+            Candidata.porciento > 0
+        )
+        .order_by(
+            Candidata.fecha_de_pago.asc().nullslast(),
+            Candidata.fila.asc()
+        )
+    )
+
+    pagination = base_query.paginate(page=page, per_page=per_page, error_out=False)
+    candidatas = pagination.items
+
+    return render_template(
+        'candidatas_porcentaje.html',
+        candidatas=candidatas,
+        pagination=pagination
+    )
+
+
+@app.route('/candidatas/eliminar', methods=['GET', 'POST'])
+@roles_required('admin', 'secretaria')
+def eliminar_candidata():
+    """
+    Pantalla para eliminar candidatas manualmente:
+    - Paso 1: Buscar por nombre, cédula, teléfono o código.
+    - Paso 2: Ver detalle completo (docs, entrevista, etc.).
+    - Paso 3: Confirmar eliminación definitiva.
+
+    ✅ SOLO se permite eliminar candidatas SIN historial:
+    - sin solicitudes
+    - sin llamadas
+    - sin reemplazos
+    """
+
+    # ─────────────────────────────────────────────────────────────
+    # Helpers
+    # ─────────────────────────────────────────────────────────────
+    def _has_blob(v) -> bool:
+        """Soporta bytes, bytearray, memoryview o None."""
+        if v is None:
+            return False
+        if isinstance(v, memoryview):
+            try:
+                return len(v.tobytes()) > 0
+            except Exception:
+                return False
+        if isinstance(v, (bytes, bytearray)):
+            return len(v) > 0
+        try:
+            return bool(v)
+        except Exception:
+            return False
+
+    def _safe_len(rel):
+        """Cuenta relaciones sin explotar."""
+        try:
+            if rel is None:
+                return 0
+            return len(rel)
+        except Exception:
+            return 0
+
+    def _count_scalar(query):
+        """Devuelve el count como int seguro."""
+        try:
+            n = query.scalar()
+            return int(n or 0)
+        except Exception:
+            return 0
+
+    def build_docs_info(c):
+        if not c:
+            return {
+                "tiene_cedula1": False,
+                "tiene_cedula2": False,
+                "tiene_perfil": False,
+                "tiene_depuracion": False,
+                "documentos_completos": False,
+                "entrevista_realizada": False,
+                "solicitudes_count": 0,
+                "llamadas_count": 0,
+                "reemplazos_count": 0,
+                "tiene_historial": False,
+                "puede_eliminar": False,
+            }
+
+        # ── Documentos binarios
+        tiene_cedula1 = _has_blob(getattr(c, "cedula1", None))
+        tiene_cedula2 = _has_blob(getattr(c, "cedula2", None))
+        tiene_perfil  = _has_blob(getattr(c, "perfil", None))
+        tiene_dep     = _has_blob(getattr(c, "depuracion", None))
+
+        documentos_completos = (tiene_cedula1 and tiene_cedula2 and tiene_perfil and tiene_dep)
+
+        # ── Entrevista (texto)
+        entrevista_txt = (getattr(c, "entrevista", "") or "")
+        entrevista_realizada = bool(str(entrevista_txt).strip())
+
+        # ─────────────────────────────────────────
+        # ✅ RELACIONES (ARREGLO REAL)
+        # 1) Primero por relationship (lo más confiable)
+        # 2) Si por algo falla, fallback por DB
+        # ─────────────────────────────────────────
+        solicitudes_count = _safe_len(getattr(c, "solicitudes", None))
+        llamadas_count = _safe_len(getattr(c, "llamadas", None))
+
+        if solicitudes_count == 0:
+            solicitudes_count = _count_scalar(
+                db.session.query(func.count(Solicitud.id)).filter(Solicitud.candidata_id == c.fila)
+            )
+
+        if llamadas_count == 0:
+            llamadas_count = _count_scalar(
+                db.session.query(func.count(LlamadaCandidata.id)).filter(LlamadaCandidata.candidata_id == c.fila)
+            )
+
+        # Reemplazos: siempre por DB (no tienes relación directa en Candidata)
+        reemplazos_count = _count_scalar(
+            db.session.query(func.count(Reemplazo.id)).filter(
+                or_(
+                    Reemplazo.candidata_old_id == c.fila,
+                    Reemplazo.candidata_new_id == c.fila
+                )
+            )
+        )
+
+        tiene_historial = (solicitudes_count > 0) or (llamadas_count > 0) or (reemplazos_count > 0)
+        puede_eliminar = not tiene_historial
+
+        return {
+            "tiene_cedula1": tiene_cedula1,
+            "tiene_cedula2": tiene_cedula2,
+            "tiene_perfil": tiene_perfil,
+            "tiene_depuracion": tiene_dep,
+            "documentos_completos": documentos_completos,
+            "entrevista_realizada": entrevista_realizada,
+            "solicitudes_count": int(solicitudes_count or 0),
+            "llamadas_count": int(llamadas_count or 0),
+            "reemplazos_count": int(reemplazos_count or 0),
+            "tiene_historial": tiene_historial,
+            "puede_eliminar": puede_eliminar,
+        }
+
+    # ─────────────────────────────────────────────────────────────
+    # Leer búsqueda
+    # ─────────────────────────────────────────────────────────────
+    if request.method == 'POST' and request.form.get('confirmar_eliminacion'):
+        busqueda = (request.form.get('busqueda') or '').strip()[:128]
+    else:
+        busqueda = (
+            (request.form.get('busqueda') if request.method == 'POST'
+             else request.args.get('busqueda')) or ''
+        ).strip()[:128]
+
+    resultados = []
+    candidata = None
+    mensaje = None
+    docs_info = build_docs_info(None)
+
+    # ─────────────────────────────────────────────────────────────
+    # 1) CONFIRMAR ELIMINACIÓN (POST)
+    # ─────────────────────────────────────────────────────────────
+    if request.method == 'POST' and request.form.get('confirmar_eliminacion'):
+        cid = (request.form.get('candidata_id') or '').strip()
+
+        if not cid.isdigit():
+            mensaje = "❌ ID de candidata inválido."
+        else:
+            obj = db.session.get(Candidata, int(cid))
+            if not obj:
+                mensaje = "⚠️ La candidata ya no existe en la base de datos."
+            else:
+                docs_info = build_docs_info(obj)
+
+                if docs_info["tiene_historial"]:
+                    mensaje = (
+                        "⚠️ No se puede eliminar esta candidata porque tiene historial: "
+                        f"{docs_info['solicitudes_count']} solicitudes, "
+                        f"{docs_info['llamadas_count']} llamadas y "
+                        f"{docs_info['reemplazos_count']} reemplazos. "
+                        "Recomendación: marcarla como inactiva / no disponible, pero NO borrarla."
+                    )
+                    candidata = obj
+                else:
+                    try:
+                        nombre_log = obj.nombre_completo
+                        cedula_log = obj.cedula
+                        codigo_log = obj.codigo
+
+                        db.session.delete(obj)
+                        db.session.commit()
+
+                        current_app.logger.info(
+                            "✅ Candidata eliminada manualmente: fila=%s, nombre=%s, cedula=%s, codigo=%s",
+                            cid, nombre_log, cedula_log, codigo_log
+                        )
+                        flash("✅ Candidata eliminada correctamente.", "success")
+                        return redirect(url_for('eliminar_candidata', busqueda=busqueda or ''))
+
+                    except IntegrityError:
+                        db.session.rollback()
+                        current_app.logger.exception("❌ FK bloqueó la eliminación de la candidata.")
+                        mensaje = (
+                            "❌ La base de datos no permitió eliminarla porque está ligada a otros registros. "
+                            "Para no dañar el historial, es mejor marcarla como no disponible."
+                        )
+                        candidata = obj
+                        docs_info = build_docs_info(obj)
+
+                    except Exception:
+                        db.session.rollback()
+                        current_app.logger.exception("❌ Error al eliminar candidata manualmente")
+                        mensaje = "❌ Ocurrió un error al eliminar. Intenta de nuevo."
+                        candidata = obj
+                        docs_info = build_docs_info(obj)
+
+    # ─────────────────────────────────────────────────────────────
+    # 2) CARGAR DETALLE (GET ?candidata_id=)
+    # ─────────────────────────────────────────────────────────────
+    if not candidata:
+        cid = (request.args.get('candidata_id') or '').strip()
+        if cid.isdigit():
+            candidata = db.session.get(Candidata, int(cid))
+            if not candidata:
+                mensaje = "⚠️ Candidata no encontrada."
+                docs_info = build_docs_info(None)
+            else:
+                docs_info = build_docs_info(candidata)
+
+    # ─────────────────────────────────────────────────────────────
+    # 3) BÚSQUEDA (lista)
+    # ─────────────────────────────────────────────────────────────
+    if busqueda and not candidata:
+        like = f"%{busqueda}%"
+        try:
+            resultados = (
+                Candidata.query
+                .filter(
+                    or_(
+                        Candidata.codigo.ilike(like),
+                        Candidata.nombre_completo.ilike(like),
+                        Candidata.cedula.ilike(like),
+                        Candidata.numero_telefono.ilike(like),
+                    )
+                )
+                .order_by(Candidata.nombre_completo.asc())
+                .limit(100)
+                .all()
+            )
+            if not resultados:
+                mensaje = "⚠️ No se encontraron candidatas con ese dato."
+        except Exception:
+            current_app.logger.exception("❌ Error buscando candidatas para eliminar")
+            mensaje = "❌ Ocurrió un error al buscar."
+
+    return render_template(
+        'candidata_eliminar.html',
+        busqueda=busqueda,
+        resultados=resultados,
+        candidata=candidata,
+        mensaje=mensaje,
+        docs_info=docs_info,
+    )
+
+import click
+from config_app import db
+from models import EntrevistaPregunta
+
+ENTREVISTAS_BANCO = {
+  "domestica": {
+    "titulo": "Entrevista para Doméstica",
+    "descripcion": "Preguntas específicas para empleadas domésticas.",
+    "preguntas": [
+      { "id": "nombre", "enunciado": "Nombre completo", "tipo": "texto" },
+      { "id": "nacionalidad", "enunciado": "Nacionalidad", "tipo": "texto" },
+      { "id": "edad", "enunciado": "Edad", "tipo": "texto" },
+      { "id": "direccion", "enunciado": "Dirección", "tipo": "texto_largo" },
+      { "id": "estado_civil", "enunciado": "Estado civil", "tipo": "texto" },
+      { "id": "tienes_hijos", "enunciado": "¿Tienes hijos?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "numero_hijos", "enunciado": "Número de hijos", "tipo": "texto" },
+      { "id": "edades_hijos", "enunciado": "Edades de los hijos", "tipo": "texto" },
+      { "id": "quien_cuida", "enunciado": "¿Quién cuida a sus hijos?", "tipo": "texto" },
+      { "id": "descripcion_personal", "enunciado": "¿Cómo te describes como persona?", "tipo": "texto_largo" },
+      { "id": "fuerte", "enunciado": "¿Cuál es tu fuerte?", "tipo": "texto" },
+      { "id": "modalidad", "enunciado": "Modalidad de trabajo", "tipo": "texto" },
+      { "id": "razon_trabajo", "enunciado": "¿Por qué eliges trabajar en una casa de familia?", "tipo": "texto_largo" },
+      { "id": "labores_anteriores", "enunciado": "Labores desempeñadas en trabajos anteriores", "tipo": "texto_largo" },
+      { "id": "tiempo_ultimo_trabajo", "enunciado": "Tiempo desde el último trabajo", "tipo": "texto" },
+      { "id": "razon_salida", "enunciado": "¿Por qué saliste de tu último trabajo?", "tipo": "texto_largo" },
+      { "id": "situacion_dificil", "enunciado": "¿Has enfrentado situaciones difíciles en el trabajo?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "manejo_situacion", "enunciado": "¿Cómo manejaste esa situación?", "tipo": "texto" },
+      { "id": "manejo_reclamo", "enunciado": "¿Cómo manejarías reclamos o malos tratos del jefe?", "tipo": "texto_largo" },
+      { "id": "uniforme", "enunciado": "¿Trabajas con uniforme?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "dias_feriados", "enunciado": "¿Trabajas días feriados?", "tipo": "radio", "opciones": ["Sí", "No", "Sí lo pagan"] },
+      { "id": "revision_salida", "enunciado": "¿Puedes ser revisada a la salida?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "colaboracion", "enunciado": "¿Estás dispuesta a colaborar en lo que el jefe necesite?", "tipo": "texto" },
+      { "id": "tipo_familia", "enunciado": "¿Con qué tipo de familia has trabajado anteriormente?", "tipo": "texto_largo" },
+      { "id": "cuidado_ninos", "enunciado": "¿Has cuidado niños y de qué edad?", "tipo": "texto_largo" },
+      { "id": "sabes_cocinar", "enunciado": "¿Sabes cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "gusta_cocinar", "enunciado": "¿Te gusta cocinar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "que_cocinas", "enunciado": "¿Qué sabes cocinar?", "tipo": "texto_largo" },
+      { "id": "postres", "enunciado": "¿Haces postres?", "tipo": "texto_largo" },
+      { "id": "tareas_casa", "enunciado": "¿Qué tareas de la casa te gustan y cuáles no?", "tipo": "texto_largo" },
+      { "id": "electrodomesticos", "enunciado": "¿Sabes usar electrodomésticos modernos?", "tipo": "texto" },
+      { "id": "planchar", "enunciado": "¿Sabes planchar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "actividad_principal", "enunciado": "¿Tienes alguna actividad principal (trabajo/estudio)?", "tipo": "texto" },
+      { "id": "afiliacion_religiosa", "enunciado": "Afiliación religiosa", "tipo": "texto" },
+      { "id": "cursos_domesticos", "enunciado": "¿Tienes cursos en el área doméstica?", "tipo": "texto" },
+      { "id": "nivel_academico", "enunciado": "Nivel académico", "tipo": "texto" },
+      { "id": "condiciones_salud", "enunciado": "¿Tienes condiciones de salud?", "tipo": "texto" },
+      { "id": "alergico", "enunciado": "¿Eres alérgica a algo?", "tipo": "texto" },
+      { "id": "medicamentos", "enunciado": "¿Tomas medicamentos?", "tipo": "texto" },
+      { "id": "seguro_medico", "enunciado": "¿Tienes seguro médico?", "tipo": "texto" },
+      { "id": "pruebas_medicas", "enunciado": "¿Aceptas hacer pruebas médicas si se solicita?", "tipo": "texto" },
+      { "id": "vacunas_covid", "enunciado": "¿Cuántas vacunas del COVID tienes?", "tipo": "radio", "opciones": ["Dosis 1", "Dosis 2", "Dosis 3", "No tengo ninguna vacuna"] },
+      { "id": "tomas_alcohol", "enunciado": "¿Tomas alcohol?", "tipo": "radio", "opciones": ["Sí", "No", "A veces"] },
+      { "id": "fumas", "enunciado": "¿Fumas?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "texto" }
+    ]
+  },
+
+  "enfermera": {
+    "titulo": "Entrevista para Enfermera Domiciliaria",
+    "descripcion": "Preguntas específicas para profesionales de enfermería que brindan cuidado a domicilio en casas de familia.",
+    "preguntas": [
+      { "id": "nombre", "enunciado": "Nombre completo", "tipo": "texto" },
+      { "id": "nacionalidad", "enunciado": "Nacionalidad", "tipo": "texto" },
+      { "id": "edad", "enunciado": "Edad", "tipo": "texto" },
+      { "id": "direccion", "enunciado": "Dirección", "tipo": "texto_largo" },
+      { "id": "estado_civil", "enunciado": "Estado civil", "tipo": "texto" },
+      { "id": "tienes_hijos", "enunciado": "¿Tienes hijos?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "numero_hijos", "enunciado": "Número de hijos", "tipo": "texto" },
+      { "id": "edades_hijos", "enunciado": "Edades de los hijos", "tipo": "texto" },
+      { "id": "experiencia", "enunciado": "Años de experiencia en enfermería", "tipo": "texto" },
+      { "id": "licencia", "enunciado": "¿Posees licencia de enfermería?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "especialidad", "enunciado": "Especialidad o área de mayor experiencia", "tipo": "texto" },
+      { "id": "tipo_cuidado", "enunciado": "¿Tienes experiencia en cuidados a domicilio?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "disponibilidad", "enunciado": "Disponibilidad de turno y horarios", "tipo": "radio", "opciones": ["Diurno", "Nocturno", "Ambos"] },
+      { "id": "modalidad_trabajo", "enunciado": "¿Trabajarías con salida diaria o dormida?", "tipo": "radio", "opciones": ["Salida diaria", "Dormida", "Ambos"] },
+      { "id": "manejo_emergencias", "enunciado": "¿Tienes experiencia en manejo de emergencias en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "signos_vitales", "enunciado": "¿Sabes medir la presión arterial y tomar signos vitales?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "metodo_presion", "enunciado": "¿Con qué método mides la presión arterial?", "tipo": "radio", "opciones": ["Digital", "Manual", "No sé"] },
+      { "id": "manejo_medicacion", "enunciado": "¿Consideras que tienes buen manejo en la administración de medicación?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "adaptacion_entorno", "enunciado": "¿Cómo te adaptas a trabajar en entornos familiares?", "tipo": "texto_largo" },
+      { "id": "tiempo_ultimo_trabajo", "enunciado": "¿Cuánto tiempo ha pasado desde tu último trabajo?", "tipo": "texto" },
+      { "id": "razon_salida", "enunciado": "¿Por qué saliste de tu último trabajo?", "tipo": "texto_largo" },
+      { "id": "manejo_reclamo", "enunciado": "¿Cómo manejarías reclamos o malos tratos del jefe?", "tipo": "texto_largo" },
+      { "id": "dias_feriados", "enunciado": "¿Trabajas días feriados?", "tipo": "radio", "opciones": ["Sí", "No", "Sí, se lo pagan"] },
+      { "id": "revision_salida", "enunciado": "¿Puedes ser revisada a la salida?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "colaboracion", "enunciado": "¿Estás dispuesta a colaborar en lo que el jefe necesite?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "actividad_principal", "enunciado": "¿Tienes alguna actividad principal (trabajo/estudio)?", "tipo": "texto" },
+      { "id": "afiliacion_religiosa", "enunciado": "Afiliación religiosa", "tipo": "texto" },
+      { "id": "pruebas_medicas", "enunciado": "¿Aceptas hacer pruebas médicas si se solicita?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "tatuajes_piercings", "enunciado": "¿Tienes tatuajes visibles o piercings?", "tipo": "radio", "opciones": ["Sí", "No"] },
+      { "id": "vacunas_covid", "enunciado": "¿Cuántas vacunas del COVID tienes?", "tipo": "radio", "opciones": ["Dosis 1", "Dosis 2", "Dosis 3"] },
+      { "id": "idiomas", "enunciado": "Idiomas que hablas", "tipo": "texto" },
+      { "id": "motivacion", "enunciado": "¿Por qué eliges trabajar en cuidados domiciliarios?", "tipo": "texto_largo" },
+      { "id": "fortalezas", "enunciado": "¿Cuáles consideras que son tus fortalezas profesionales?", "tipo": "texto_largo" },
+      { "id": "situacion_dificil", "enunciado": "Describe una situación difícil en el cuidado domiciliario y cómo la resolviste", "tipo": "texto_largo" },
+      { "id": "tecnologia", "enunciado": "¿Tienes experiencia con tecnología médica o sistemas de monitoreo en el hogar?", "tipo": "radio", "opciones": ["Sí", "No"] }
+    ]
+  },
+
+  "empleo_general": {
+    "titulo": "Entrevista de Empleo General",
+    "descripcion": "Preguntas generales para cualquier tipo de empleo.",
+    "preguntas": [
+      { "id": "nombre", "enunciado": "Nombre del candidato", "tipo": "texto" }
+    ]
+  }
+}
+
+
+import click
+from flask.cli import with_appcontext
+from sqlalchemy.exc import SQLAlchemyError
+
+@app.cli.command("seed-entrevista")
+@with_appcontext
+def seed_entrevista():
+    """
+    Crea/actualiza el banco de preguntas desde la config JSON.
+    Uso:
+      flask seed-entrevista
+    """
+
+    # ✅ Usa tu config real (la que ya cargas arriba)
+    banco = current_app.config.get("ENTREVISTAS_CONFIG") or {}
+    if not isinstance(banco, dict) or not banco:
+        click.echo("❌ No hay configuración cargada en ENTREVISTAS_CONFIG.")
+        return
+
+    total_creadas = 0
+    total_actualizadas = 0
+    orden_global = 1
+
+    try:
+        for categoria, data in banco.items():
+            data = data or {}
+            preguntas = data.get("preguntas") or []
+            if not isinstance(preguntas, list):
+                continue
+
+            for p in preguntas:
+                p = p or {}
+                pid = (p.get("id") or "").strip()
+                if not pid:
+                    # Si una pregunta viene mal definida, no rompemos el comando
+                    continue
+
+                clave = f"{categoria}.{pid}"  # ✅ clave única por categoría
+                texto = (p.get("enunciado") or "").strip()
+                tipo = (p.get("tipo") or "texto").strip()
+                opciones = p.get("opciones")
+
+                # ✅ Opciones: deben ser lista o None (para JSONB)
+                if opciones is not None and not isinstance(opciones, (list, tuple)):
+                    opciones = None
+
+                q = EntrevistaPregunta.query.filter_by(clave=clave).first()
+
+                if not q:
+                    q = EntrevistaPregunta(
+                        clave=clave,
+                        texto=texto[:255],
+                        tipo=tipo[:30],
+                        opciones=list(opciones) if isinstance(opciones, (list, tuple)) else None,
+                        orden=orden_global,
+                        activa=True
+                    )
+                    db.session.add(q)
+                    total_creadas += 1
+
+                else:
+                    cambio = False
+
+                    if (q.texto or "") != texto[:255]:
+                        q.texto = texto[:255]
+                        cambio = True
+
+                    if (q.tipo or "texto") != tipo[:30]:
+                        q.tipo = tipo[:30]
+                        cambio = True
+
+                    nuevas_opciones = list(opciones) if isinstance(opciones, (list, tuple)) else None
+                    if q.opciones != nuevas_opciones:
+                        q.opciones = nuevas_opciones
+                        cambio = True
+
+                    if (q.orden or 0) != orden_global:
+                        q.orden = orden_global
+                        cambio = True
+
+                    if q.activa is False:
+                        q.activa = True
+                        cambio = True
+
+                    if cambio:
+                        total_actualizadas += 1
+
+                orden_global += 1
+
+        db.session.commit()
+        click.echo(f"OK ✅ Preguntas creadas: {total_creadas} | actualizadas: {total_actualizadas}")
+
+    except SQLAlchemyError:
+        db.session.rollback()
+        click.echo("❌ Error de base de datos guardando preguntas.")
+        raise
+
+    except Exception:
+        db.session.rollback()
+        click.echo("❌ Error inesperado ejecutando seed-entrevista.")
+        raise
+
+# -----------------------------------------------------------------------------
+# MAIN
+# -----------------------------------------------------------------------------
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=10000)

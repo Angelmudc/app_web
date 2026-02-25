@@ -134,9 +134,43 @@
           </li>
           {% endif %}
 
+
+          {# ================= Admin: Solicitudes / Reportes / Registro Interno ================= #}
+
           {% if has_endpoint('admin.listar_solicitudes') %}
           <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('admin.listar_solicitudes') }}">Solicitudes</a>
+            <a class="nav-link {% if request.endpoint=='admin.listar_solicitudes' %}active{% endif %}"
+               href="{{ url_for('admin.listar_solicitudes') }}">Solicitudes</a>
+          </li>
+          {% endif %}
+
+          {# Reportes (puede existir con distintos nombres según tu blueprint) #}
+          {% set ns_rep = namespace(url=None, ep=None) %}
+          {% for ep in ['admin.reportes', 'admin.reporte', 'admin.reportes_view', 'reportes', 'reporte', 'reporte_pagos', 'admin.reporte_pagos', 'admin.reportes_pagos'] %}
+            {% if (ns_rep.url is none) and has_endpoint(ep) %}
+              {% set ns_rep.url = url_for(ep) %}
+              {% set ns_rep.ep = ep %}
+            {% endif %}
+          {% endfor %}
+          {% if ns_rep.url %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint==ns_rep.ep %}active{% endif %}"
+               href="{{ ns_rep.url }}">Reportes</a>
+          </li>
+          {% endif %}
+
+          {# Registro Interno (puede estar en app root o en admin) #}
+          {% set ns_reg = namespace(url=None, ep=None) %}
+          {% for ep in ['registro_interno', 'admin.registro_interno', 'admin.registro', 'registro'] %}
+            {% if (ns_reg.url is none) and has_endpoint(ep) %}
+              {% set ns_reg.url = url_for(ep) %}
+              {% set ns_reg.ep = ep %}
+            {% endif %}
+          {% endfor %}
+          {% if ns_reg.url %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint==ns_reg.ep %}active{% endif %}"
+               href="{{ ns_reg.url }}">Registro Interno</a>
           </li>
           {% endif %}
 
