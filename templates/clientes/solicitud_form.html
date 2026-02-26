@@ -199,6 +199,7 @@
             <div class="d-flex flex-wrap gap-3">
               {% set sel = form.areas_comunes.data or [] %}
               {% for val, lbl in form.areas_comunes.choices %}
+                {% if (val|string)|lower != 'otro' %}
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox"
                          name="{{ form.areas_comunes.name }}"
@@ -206,6 +207,7 @@
                          {% if val in sel %}checked{% endif %}>
                   <label class="form-check-label" for="area_{{ loop.index0 }}">{{ lbl }}</label>
                 </div>
+                {% endif %}
               {% endfor %}
             </div>
             <div class="mt-2">

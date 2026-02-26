@@ -70,6 +70,185 @@
     </div>
   </div>
 
+  <!-- 🛠️ Resumen interno (solo para trabajo interno) -->
+  <div class="glass-card mb-4">
+    <div class="glass-header">
+      <i class="bi bi-journal-text"></i> Resumen interno
+    </div>
+    <div class="p-3 p-md-4">
+      <p class="small text-muted mb-3">
+        Texto interno para el equipo. Listo para copiar y pegar tal cual.
+      </p>
+
+      {# Usa resumen_interno si el backend lo envía; si no, cae a resumen_cliente #}
+      {% set _rutas = (solicitud.rutas_cercanas or '') %}
+      {% set _modalidad = (solicitud.modalidad_trabajo or '') %}
+
+      {# Edad: si existe texto libre, úsalo; si no, intenta construirlo desde edad_requerida/edad_otro (normalizado para lista/string) #}
+      {% set _edad_txt = (solicitud.edad_texto if solicitud.edad_texto is defined else '') %}
+      {% if not _edad_txt %}
+        {% set _edad_txt = '' %}
+        {% if solicitud.edad_requerida is defined and solicitud.edad_requerida %}
+          {% if solicitud.edad_requerida is string %}
+            {% set _edad_txt = solicitud.edad_requerida %}
+          {% else %}
+            {# si viene como lista (ej: ['25 en adelante']) #}
+            {% set _edad_txt = solicitud.edad_requerida | join(', ') %}
+          {% endif %}
+        {% endif %}
+
+        {% if (not _edad_txt) and (solicitud.edad_otro is defined) and solicitud.edad_otro %}
+          {% set _edad_txt = solicitud.edad_otro %}
+        {% endif %}
+      {% endif %}
+
+      {# Experiencia #}
+      {% set _exp = (solicitud.experiencia or '') %}
+      {% if _exp %}
+        {% set _exp = '*' ~ _exp ~ '*' %}
+      {% endif %}
+
+      {# Horario #}
+      {% set _horario = (solicitud.horario or '') %}
+
+      {# Funciones (puede venir como lista o string). Normalizamos a string. #}
+      {% set _funcs = '' %}
+      {% if solicitud.funciones is defined and solicitud.funciones %}
+        {% if solicitud.funciones is string %}
+          {% set _funcs = solicitud.funciones %}
+        {% else %}
+          {% set _funcs = solicitud.funciones | join(', ') %}
+        {% endif %}
+      {% endif %}
+
+      {# Tipo de lugar + detalles básicos #}
+      {% set _tipo = (solicitud.tipo_lugar or '') %}
+      {% if _tipo == 'otro' and solicitud.tipo_lugar_otro is defined and solicitud.tipo_lugar_otro %}
+        {% set _tipo = solicitud.tipo_lugar_otro %}
+      {% endif %}
+
+      {% set _hab = (solicitud.habitaciones if solicitud.habitaciones is defined else None) %}
+      {% set _ban = (solicitud.banos if solicitud.banos is defined else None) %}
+
+      {# Areas comunes (puede venir como lista o string). Normalizamos a string. #}
+      {% set _areas = '' %}
+      {% if solicitud.areas_comunes is defined and solicitud.areas_comunes %}
+        {% if solicitud.areas_comunes is string %}
+          {% set _areas = solicitud.areas_comunes %}
+        {% else %}
+          {% set _areas = solicitud.areas_comunes | join(', ') %}
+        {% endif %}
+      {% endif %}
+      {% if solicitud.area_otro is defined and solicitud.area_otro %}
+        {% if _areas %}
+          {% set _areas = _areas ~ ', ' ~ solicitud.area_otro %}
+        {% else %}
+          {% set _areas = solicitud.area_otro %}
+        {% endif %}
+      {% endif %}
+
+      {# Construcción de la línea de casa/apto #}
+      {% set _casa_line = '' %}
+      {% if _tipo %}
+        {% set _casa_line = _tipo %}
+      {% else %}
+        {% set _casa_line = 'Casa' %}
+      {% endif %}
+      {% set _det = [] %}
+      {% if _hab is not none and (_hab|string) != '' %}
+        {% set _ = _det.append(_hab|string ~ ' habitaciones') %}
+      {% endif %}
+      {% if _ban is not none and (_ban|string) != '' %}
+        {% set _ = _det.append(_ban|string ~ ' baños') %}
+      {% endif %}
+      {% if _areas %}
+        {% set _ = _det.append(_areas) %}
+      {% endif %}
+      {% if _det|length > 0 %}
+        {% set _casa_line = _casa_line ~ ' - ' ~ (_det|join(', ')) %}
+      {% endif %}
+
+      {# Ocupantes #}
+      {% set _adultos = (solicitud.adultos if solicitud.adultos is defined else '') %}
+      {% set _ninos = (solicitud.ninos if solicitud.ninos is defined else '') %}
+      {% set _edades_ninos = (solicitud.edades_ninos if solicitud.edades_ninos is defined else '') %}
+
+      {# Mascota (si existe el campo) #}
+      {% set _mascota = (solicitud.mascota if solicitud.mascota is defined else '') %}
+
+      {# Sueldo + pasaje #}
+      {% set _sueldo = (solicitud.sueldo or '') %}
+      {% set _pasaje = (solicitud.pasaje_aporte if solicitud.pasaje_aporte is defined else False) %}
+
+      {# Texto final interno EXACTO en el formato que quieres copiar #}
+      {% set _interno = (
+        'Disponible ( ' ~ (solicitud.codigo_solicitud or '—') ~ ' )\n'
+        ~ '📍 ' ~ (solicitud.ciudad_sector or '—') ~ '\n'
+        ~ 'Ruta más cercana: ' ~ _rutas ~ '\n\n'
+        ~ _modalidad ~ '\n\n'
+        ~ 'Edad: ' ~ (_edad_txt or '') ~ '\n'
+        ~ 'Dominicana\n'
+        ~ 'Que sepa leer y escribir\n'
+        ~ 'Experiencia en: ' ~ (_exp or '') ~ '\n'
+        ~ 'Horario: ' ~ _horario ~ '\n\n'
+        ~ 'Funciones: ' ~ _funcs ~ '\n\n'
+        ~ (_casa_line or '') ~ '\n\n'
+        ~ 'Adultos: ' ~ (_adultos|string if _adultos is not none else '') ~ '\n'
+        ~ ('Niños: ' ~ (_ninos|string if _ninos is not none else '') ~ '\n' if (_ninos is not none and (_ninos|string)|trim != '' and (_ninos|string)|int > 0) else '')
+        ~ ('Edades niños: ' ~ _edades_ninos ~ '\n' if (_edades_ninos|string)|trim != '' else '')
+        ~ ('Mascota: ' ~ _mascota ~ '\n\n' if _mascota else '\n')
+        ~ 'Sueldo: $' ~ (_sueldo|string) ~ ' mensual' ~ (', más ayuda del pasaje' if _pasaje else '')
+      ) %}
+
+      {# Si el backend trae resumen_interno explícito, úsalo como prioridad (pero mantén el formato arriba como fallback) #}
+      {% if resumen_interno is defined and resumen_interno %}
+        {% set _interno = resumen_interno %}
+      {% endif %}
+
+      <div class="glass-card p-3 p-md-4">
+        <ul class="list-group list-unstyled mb-0">
+          <li class="list-group-item p-3 bg-body text-body border-bottom">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                  <span class="fw-semibold text-primary">{{ solicitud.codigo_solicitud or '—' }}</span>
+                  <span class="text-body-secondary">—</span>
+                  <span class="text-body">{{ solicitud.ciudad_sector or '—' }}</span>
+                </div>
+
+                <div class="mt-1">
+                  <small class="text-body-secondary">
+                    <span class="me-2"><strong>Modalidad:</strong> {{ solicitud.modalidad_trabajo if solicitud.modalidad_trabajo else '—' }}</span>
+                    {% if solicitud.horario %}
+                      <span class="me-2">— <strong>Horario:</strong> {{ solicitud.horario }}</span>
+                    {% endif %}
+                  </small>
+                </div>
+
+                {% if solicitud.funciones %}
+                <div class="mt-1">
+                  <small><strong>Funciones:</strong> {{ solicitud.funciones if (solicitud.funciones is string) else (solicitud.funciones | join(', ')) }}</small>
+                </div>
+                {% endif %}
+              </div>
+
+              <div class="text-end">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary copy-btn-interno"
+                  data-order-text='{{ _interno | tojson | safe }}'
+                  aria-label="Copiar resumen interno"
+                >
+                  <i class="bi bi-clipboard-check me-1"></i> Copiar interno
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <!-- Historial de Envíos -->
   <div class="glass-card mb-4">
     <div class="glass-header bg-info">
@@ -184,6 +363,8 @@
   </div>
 </div>
 
+<div id="copy-toast" class="copy-toast" style="display:none;">✅ Copiado al portapapeles</div>
+
 <script>
   function copiarResumenCliente() {
     const textarea = document.getElementById('resumenCliente');
@@ -211,5 +392,75 @@
       }
     }
   }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const toast = document.getElementById('copy-toast');
+
+    function showToast() {
+      if (!toast) return;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 1800);
+    }
+
+    function fallbackCopy(text) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    document.querySelectorAll('.copy-btn-interno').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        // Lee el JSON embebido en el data-attribute.
+        let text = '';
+        try {
+          text = JSON.parse(btn.dataset.orderText);
+          if (typeof text !== 'string') { text = String(text ?? ''); }
+        } catch {
+          text = btn.dataset.orderText || '';
+        }
+
+        // Copia robusta
+        let copied = false;
+        if (navigator.clipboard && window.isSecureContext) {
+          try {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          } catch (e) {
+            copied = fallbackCopy(text);
+          }
+        } else {
+          copied = fallbackCopy(text);
+        }
+
+        if (copied) {
+          showToast();
+          btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Copiado';
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-success');
+          btn.disabled = true;
+
+          setTimeout(() => {
+            btn.disabled = false;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+            btn.innerHTML = '<i class="bi bi-clipboard-check me-1"></i> Copiar interno';
+          }, 2000);
+        } else {
+          alert('❌ No se pudo copiar. Intenta de nuevo.');
+        }
+      });
+    });
+  });
 </script>
 {% endblock %}

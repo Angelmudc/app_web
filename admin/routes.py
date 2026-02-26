@@ -3159,15 +3159,16 @@ def gestionar_plan(cliente_id, id):
             # --- Timestamps ---
             now = datetime.utcnow()
 
-            # ✅ REGLA CLAVE:
-            # Si estaba cancelada o pagada y vuelve a activa, reiniciamos seguimiento.
-            # Así NO arrastra días viejos en solicitudes/prioridad.
+            # ✅ Seguimiento:
+            # Al guardar el ABONO/PLAN, refrescamos el inicio de seguimiento.
+            # - Si ya tiene fecha_inicio_seguimiento, se ACTUALIZA a ahora.
+            # - Si no tiene, se setea a ahora.
             if hasattr(s, 'fecha_inicio_seguimiento'):
-                if estado_anterior in ('cancelada', 'pagada'):
+                if getattr(s, 'fecha_inicio_seguimiento', None):
+                    # Ya existía -> refrescar
                     s.fecha_inicio_seguimiento = now
-
-                # Opcional (recomendado): si nunca se ha seteado, setéala ahora
-                elif not getattr(s, 'fecha_inicio_seguimiento', None):
+                else:
+                    # No existía -> iniciar
                     s.fecha_inicio_seguimiento = now
 
             s.fecha_ultima_actividad = now
@@ -3703,13 +3704,14 @@ from sqlalchemy import func
 @admin_required
 def solicitudes_prioridad():
     """
-    Lista solicitudes prioritarias (robusto y consistente con tu plantilla).
+    Lista solicitudes prioritarias basadas ÚNICAMENTE en `fecha_inicio_seguimiento`.
 
-    Criterio BASE (SQL):
+    ✅ Regla clave (SQL):
       - estado in ('proceso', 'activa', 'reemplazo')
-      - COALESCE(fecha_inicio_seguimiento, fecha_solicitud) <= (UTC ahora - dias)
+      - fecha_inicio_seguimiento IS NOT NULL
+      - fecha_inicio_seguimiento <= (UTC ahora - dias)
 
-    Extra (para que de verdad sean “prioritarias”):
+    Extra:
       - Por defecto NO muestra solicitudes con candidata asignada (porque ya no son “sin candidata”)
         Puedes verlas con ?incluye_asignadas=1
 
@@ -3742,7 +3744,6 @@ def solicitudes_prioridad():
             self.es_prioritaria = es
 
         def __getattr__(self, name):
-            # delega todo lo demás al modelo real (cliente, candidata, codigo_solicitud, etc.)
             return getattr(self._s, name)
 
     # -------------------------
@@ -3781,11 +3782,6 @@ def solicitudes_prioridad():
     ahora = datetime.utcnow()
     limite_fecha = ahora - timedelta(days=dias)
 
-    base_date = func.coalesce(
-        Solicitud.fecha_inicio_seguimiento,
-        Solicitud.fecha_solicitud
-    )
-
     # -------------------------
     # Estados permitidos
     # -------------------------
@@ -3793,7 +3789,7 @@ def solicitudes_prioridad():
     estados_filtrados = [estado] if (estado and estado in allowed_states) else list(allowed_states)
 
     # -------------------------
-    # Query base
+    # Query base (SOLO fecha_inicio_seguimiento)
     # -------------------------
     query = (
         Solicitud.query
@@ -3803,8 +3799,8 @@ def solicitudes_prioridad():
         )
         .filter(
             Solicitud.estado.in_(estados_filtrados),
-            base_date.isnot(None),
-            base_date <= limite_fecha,
+            Solicitud.fecha_inicio_seguimiento.isnot(None),
+            Solicitud.fecha_inicio_seguimiento <= limite_fecha,
         )
     )
 
@@ -3859,7 +3855,8 @@ def solicitudes_prioridad():
 
             query = query.filter(or_(*filtros))
 
-    query = query.order_by(base_date.asc(), Solicitud.id.asc())
+    # Orden: más antiguas primero (prioridad real)
+    query = query.order_by(Solicitud.fecha_inicio_seguimiento.asc(), Solicitud.id.asc())
 
     total = query.count()
     solicitudes = (
@@ -3882,8 +3879,7 @@ def solicitudes_prioridad():
             return None
 
     def _dias_en_seguimiento(s) -> int:
-        d = getattr(s, 'fecha_inicio_seguimiento', None) or getattr(s, 'fecha_solicitud', None)
-        dt = _to_dt(d)
+        dt = _to_dt(getattr(s, 'fecha_inicio_seguimiento', None))
         if not dt:
             return 0
         return max(0, int((ahora - dt).total_seconds() // 86400))
@@ -3897,7 +3893,6 @@ def solicitudes_prioridad():
             return 'media'
         return 'normal'
 
-    # ✅ Envolver para que el HTML siga usando s.dias_en_seguimiento, s.nivel_prioridad, s.es_prioritaria
     wrapped = []
     for s in (solicitudes or []):
         n = _dias_en_seguimiento(s)

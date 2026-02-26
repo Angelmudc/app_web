@@ -683,24 +683,34 @@
   background: rgba(255,255,255,.12);
 }
 
-/* Dropdown menu (fondo blanco): texto oscuro legible */
+/* Dropdown menu (perfil): fondo oscuro + texto claro (evita negro sobre negro) */
 :where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu {
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #0b1220 !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: 0 18px 45px rgba(0,0,0,.35) !important;
 }
 
 :where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item,
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item-text {
-  color: #0f172a !important;
-  font-weight: 650;
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item-text,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu a,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu span,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu small {
+  color: rgba(255,255,255,.92) !important;
+  font-weight: 700;
 }
 
-:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item:hover {
-  background: rgba(15, 23, 42, 0.06);
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item:focus {
+  background: rgba(255,255,255,.08) !important;
+  color: #ffffff !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-divider {
+  border-top: 1px solid rgba(255,255,255,.10) !important;
 }
 
 :where(body.clientes, .clientes, [data-portal="clientes"]) .navbar .dropdown-menu .dropdown-item.text-danger {
-  color: #b42318 !important;
+  color: #fb7185 !important;
 }
 
 /* Footer: links con contraste (cuando el footer es oscuro o con gradiente) */

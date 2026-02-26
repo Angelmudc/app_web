@@ -51,7 +51,7 @@
       display: flex;
       flex-direction: row;
       align-items: center;
-      gap: .35rem;
+      gap: 1rem;
     }
 
     /* En mobile, el collapse vuelve a columna */
@@ -61,15 +61,96 @@
     }
 
     body.clientes .navbar .nav-link{
-      padding: .5rem .75rem;
-      border-radius: .6rem;
+      padding: .6rem 1rem;
+      border-radius: .8rem;
+      font-weight: 500;
     }
 
     body.clientes .navbar .nav-link.active{
       background: rgba(255,255,255,.12);
     }
 
-    body.clientes .dropdown-menu{ min-width: 240px; }
+    /* Logo grande y consistente (evita que otros CSS lo reduzcan) */
+    body.clientes nav.navbar{
+      padding-top: .6rem;
+      padding-bottom: .6rem;
+      min-height: 120px;
+    }
+
+    body.clientes nav.navbar .navbar-brand{
+      padding: 0;
+      margin-right: .75rem;
+      display: flex;
+      align-items: center;
+    }
+
+    body.clientes nav.navbar img.clientes-navbar-logo{
+      height: 100px !important;      /* sube/baja aquí si lo quieres aún más grande */
+      width: auto !important;
+      max-height: none !important;
+      object-fit: contain;
+      display: block;
+    }
+
+    @media (max-width: 991.98px){
+      body.clientes nav.navbar{ min-height: 84px; }
+      body.clientes nav.navbar img.clientes-navbar-logo{ height: 64px !important; }
+    }
+
+    /* Dropdown usuario: fondo claro + texto legible (evita negro con negro)
+       Nota: usamos !important porque `clientes.css` puede estar pisando el dropdown. */
+    body.clientes nav.navbar .dropdown-menu{
+      min-width: 260px !important;
+      max-width: 320px !important;
+      width: auto !important;
+      background: #ffffff !important;
+      color: #101828 !important;
+      border: 1px solid rgba(16, 24, 40, 0.12) !important;
+      border-radius: 14px !important;
+      padding: .35rem !important;
+      overflow: hidden !important;
+      box-shadow: 0 18px 50px rgba(0,0,0,.18) !important;
+    }
+
+    body.clientes nav.navbar .dropdown-menu .dropdown-item,
+    body.clientes nav.navbar .dropdown-menu .dropdown-item-text,
+    body.clientes nav.navbar .dropdown-menu .dropdown-header{
+      color: #101828 !important;
+      max-width: 100% !important;
+    }
+
+    body.clientes nav.navbar .dropdown-menu .dropdown-header{
+      color: #667085 !important;
+      font-weight: 600 !important;
+      padding: .6rem .75rem !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+
+    body.clientes nav.navbar .dropdown-menu .dropdown-item{
+      border-radius: 10px !important;
+      padding: .55rem .75rem !important;
+      background: transparent !important;
+    }
+
+    body.clientes nav.navbar .dropdown-menu .dropdown-item:hover,
+    body.clientes nav.navbar .dropdown-menu .dropdown-item:focus{
+      background: rgba(16, 24, 40, 0.06) !important;
+    }
+
+    body.clientes nav.navbar .dropdown-menu i{ width: 1.1rem; text-align: center; }
+
+    /* Email: 1 línea con ... (no estira el dropdown)*/
+    body.clientes nav.navbar .dropdown-email{
+      display: block !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      word-break: normal !important;
+      line-height: 1.2 !important;
+      color: #101828 !important; /* Fuerza texto negro */
+    }
 
     /* Espaciado general del contenido */
     main.container, main.container-fluid{ padding-top: 24px; padding-bottom: 24px; }
@@ -86,8 +167,10 @@
   <!-- NAVBAR -->
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
     <div class="container">
-      <a class="navbar-brand fw-semibold" href="{{ url_for('clientes.dashboard') }}">
-        <i class="fa-solid fa-sparkles fa-fw me-2"></i>Doméstica del Cibao A&D
+      <a class="navbar-brand d-flex align-items-center fw-semibold" href="{{ url_for('clientes.dashboard') }}">
+        <img class="clientes-navbar-logo"
+             src="{{ url_for('static', filename='logo_nuevo.png') }}"
+             alt="Doméstica del Cibao A&D">
       </a>
 
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu" aria-controls="navMenu" aria-expanded="false" aria-label="Abrir menú">
@@ -140,11 +223,11 @@
               </span>
             </a>
             <ul class="dropdown-menu dropdown-menu-end shadow">
-              <li class="dropdown-item-text small text-muted">
+              <li class="dropdown-header small text-muted py-2">
                 {% if current_user.is_authenticated and (current_user.email is defined) %}
-                  {{ current_user.email | default('') }}
+                  <span class="dropdown-email" title="{{ current_user.email | default('') }}">{{ current_user.email | default('') }}</span>
                 {% else %}
-                  &nbsp;
+                  <span class="dropdown-email">&nbsp;</span>
                 {% endif %}
               </li>
               <li><hr class="dropdown-divider"></li>
