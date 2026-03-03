@@ -43,7 +43,7 @@ csrf = CSRFProtect()
 USUARIOS = {
     "Cruz":   {"pwd_hash": generate_password_hash("8998", method="pbkdf2:sha256"), "role": "admin"},
     "Karla":  {"pwd_hash": generate_password_hash("9989", method="pbkdf2:sha256"), "role": "secretaria"},
-    "Nicole": {"pwd_hash": generate_password_hash("0928", method="pbkdf2:sha256"), "role": "secretaria"},
+    "Anyi": {"pwd_hash": generate_password_hash("0931", method="pbkdf2:sha256"), "role": "secretaria"},
 }
 
 # Helper: get admin user record by username, case-insensitive
