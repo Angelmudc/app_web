@@ -1531,3 +1531,53 @@ class ReclutaCambio(db.Model):
 #   NO contengan 'domestica'.
 # - Usa los valores de TIPOS_EMPLEO_GENERAL.
 # ─────────────────────────────────────────────────────────────
+
+
+class SolicitudCandidata(db.Model):
+    """
+    Relación interna para matching entre solicitudes y candidatas.
+    No reemplaza la asignación final de `solicitud.candidata_id`.
+    """
+
+    __tablename__ = "solicitudes_candidatas"
+
+    id = db.Column(db.Integer, primary_key=True)
+    solicitud_id = db.Column(
+        db.Integer,
+        db.ForeignKey("solicitudes.id"),
+        nullable=False,
+        index=True,
+    )
+    candidata_id = db.Column(
+        db.Integer,
+        db.ForeignKey("candidatas.fila"),
+        nullable=False,
+        index=True,
+    )
+
+    score_snapshot = db.Column(db.Integer, nullable=True)
+    breakdown_snapshot = db.Column(JSONB, nullable=True)
+    status = db.Column(
+        SAEnum(
+            "sugerida",
+            "enviada",
+            "vista",
+            "descartada",
+            "seleccionada",
+            name="solicitud_candidata_status_enum",
+        ),
+        nullable=False,
+        default="sugerida",
+        server_default=text("'sugerida'"),
+    )
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_by = db.Column(db.String(120), nullable=True)
+
+    solicitud = db.relationship("Solicitud", lazy="joined")
+    candidata = db.relationship("Candidata", lazy="joined")
+
+    def __repr__(self) -> str:
+        return (
+            f"<SolicitudCandidata id={self.id} solicitud_id={self.solicitud_id} "
+            f"candidata_id={self.candidata_id} status={self.status}>"
+        )

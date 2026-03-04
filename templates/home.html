@@ -123,6 +123,39 @@
     </div>
   {% endfor %}
 
+  {% set _role = (current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) %}
+  {% if _role in ['admin', 'secretaria'] %}
+    <div class="mb-5">
+      <h2 class="section-title">
+        <i class="fa-solid fa-people-arrows me-2 text-primary"></i> Compatibilidad
+      </h2>
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        <div class="col">
+          <div class="dashboard-card">
+            <h5>Test de compatibilidad de candidata</h5>
+            <p>
+              Evaluar el perfil de trabajo y personalidad de la candidata para calcular compatibilidad con solicitudes.
+            </p>
+            <a href="{{ url_for('compat_candidata') }}" class="btn btn-primary w-100">
+              Iniciar test
+            </a>
+          </div>
+        </div>
+        <div class="col">
+          <div class="dashboard-card">
+            <h5>Matching de Solicitudes</h5>
+            <p>
+              Sugerencias automáticas de candidatas por solicitud activa con ranking interno.
+            </p>
+            <a href="{{ url_for('admin.matching_solicitudes') }}" class="btn btn-outline-primary w-100">
+              Abrir matching
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
   {# ─────────────────────────────────────────────
      ENTREVISTAS ESTRUCTURADAS (NUEVO) – ACCESO DIRECTO
      (No quita la entrevista vieja; esto es un acceso aparte)

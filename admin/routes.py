@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from functools import wraps  # si otros decoradores locales lo usan
 
 from config_app import db, USUARIOS, cache
-from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser
+from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata
 from admin.forms import (
     StaffUserCreateForm,
     StaffUserEditForm,
@@ -30,6 +30,9 @@ from admin.forms import (
     AdminReemplazoFinForm,  # 🔹 NUEVO FORM PARA FINALIZAR REEMPLAZO
 )
 from utils import letra_por_indice
+from utils.compat_engine import compute_match, format_compat_result
+from utils.matching_service import rank_candidates
+from utils.funciones_formatter import format_funciones
 from utils.staff_auth import (
     breakglass_allowed_ip,
     get_request_ip,
@@ -908,7 +911,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     if otros_fun:
         fun_labels.append(otros_fun)
 
-    funciones_txt = ", ".join(fun_labels) if fun_labels else ""
+    funciones_txt = format_funciones(fun_labels, otros_fun)
 
     # Hogar
     tipo_lugar   = _s(getattr(s, 'tipo_lugar', None))
@@ -4054,7 +4057,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
 @login_required
-@admin_required
+@staff_required
 def detalle_solicitud(cliente_id, id):
     # Carga completa para evitar N+1 en plantilla
     s = (Solicitud.query
@@ -4453,6 +4456,113 @@ def listar_solicitudes():
         proc_count=proc_count,
         copiable_count=copiable_count
     )
+
+
+def _matching_created_by() -> str:
+    try:
+        if getattr(current_user, "is_authenticated", False):
+            username = getattr(current_user, "username", None) or getattr(current_user, "id", None)
+            if username:
+                return str(username)
+    except Exception:
+        pass
+    return str(session.get("usuario") or "sistema")
+
+
+@admin_bp.route('/matching/solicitudes')
+@login_required
+@staff_required
+def matching_solicitudes():
+    solicitudes = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente))
+        .filter(Solicitud.estado.in_(("activa", "reemplazo")))
+        .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+        .limit(300)
+        .all()
+    )
+    return render_template("admin/matching_solicitudes.html", solicitudes=solicitudes)
+
+
+@admin_bp.route('/matching/solicitudes/<int:solicitud_id>')
+@login_required
+@staff_required
+def matching_detalle_solicitud(solicitud_id: int):
+    solicitud = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente))
+        .filter_by(id=solicitud_id)
+        .first_or_404()
+    )
+    ranked_candidates = rank_candidates(solicitud, top_k=30)
+    return render_template(
+        "admin/matching_detalle.html",
+        solicitud=solicitud,
+        ranked_candidates=ranked_candidates,
+    )
+
+
+@admin_bp.route('/matching/solicitudes/<int:solicitud_id>/enviar', methods=['POST'])
+@login_required
+@staff_required
+def matching_enviar_candidatas(solicitud_id: int):
+    solicitud = Solicitud.query.filter_by(id=solicitud_id).first_or_404()
+    raw_ids = request.form.getlist("candidata_ids")
+    candidata_ids = []
+    for raw in raw_ids:
+        try:
+            val = int(str(raw).strip())
+            if val > 0:
+                candidata_ids.append(val)
+        except Exception:
+            continue
+    candidata_ids = sorted(set(candidata_ids))
+
+    if not candidata_ids:
+        flash("Selecciona al menos una candidata para enviar.", "warning")
+        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+    ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
+    created_by = _matching_created_by()
+    inserted = 0
+
+    try:
+        for candidata_id in candidata_ids:
+            cand = Candidata.query.filter_by(fila=candidata_id).first()
+            if not cand:
+                continue
+
+            exists = (
+                SolicitudCandidata.query
+                .filter_by(solicitud_id=solicitud.id, candidata_id=candidata_id)
+                .first()
+            )
+            if exists:
+                continue
+
+            ranked_item = ranking_map.get(candidata_id) or {"score": 0, "breakdown": []}
+            row = SolicitudCandidata(
+                solicitud_id=solicitud.id,
+                candidata_id=candidata_id,
+                score_snapshot=int(ranked_item.get("score") or 0),
+                breakdown_snapshot=ranked_item.get("breakdown") or [],
+                status="enviada",
+                created_by=created_by,
+            )
+            db.session.add(row)
+            inserted += 1
+
+        if inserted:
+            db.session.commit()
+            flash(f"Se enviaron {inserted} candidatas para la solicitud {solicitud.codigo_solicitud}.", "success")
+        else:
+            db.session.rollback()
+            flash("No se guardaron candidatas nuevas (ya estaban enviadas o no existen).", "warning")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")
+
+    return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
 
 
 # ============================================================
@@ -5653,151 +5763,11 @@ def resumen_diario_clientes():
 #                              COMPATIBILIDAD (ADMIN)
 # =============================================================================
 
-# Helpers robustos (si ya existen en tu archivo, no los dupliques)
-def _as_iter(val):
-    if val is None:
-        return []
-    if isinstance(val, (list, tuple, set)):
-        return list(val)
-    s = str(val)
-    parts = [p.strip() for p in s.split(',') if p.strip()]
-    return parts if parts else ([s.strip()] if s.strip() else [])
-
-def _as_set(val):
-    return {str(x).strip().lower() for x in _as_iter(val)}
-
-def _first_nonempty(obj, aliases, default=None):
-    for name in aliases:
-        if hasattr(obj, name):
-            v = getattr(obj, name)
-            if v not in (None, '', [], {}, ()):
-                return v
-    return default
-
-def _first_text(obj, aliases, default=''):
-    v = _first_nonempty(obj, aliases, default=None)
-    if v is None:
-        return default
-    try:
-        return str(v).strip()
-    except Exception:
-        return default
-
-def _first_int(obj, aliases, default=0):
-    v = _first_nonempty(obj, aliases, default=None)
-    if v is None:
-        return default
-    try:
-        return int(v)
-    except Exception:
-        try:
-            return int(float(str(v).strip()))
-        except Exception:
-            return default
-
-def _match_text(haystack: str, needle: str) -> bool:
-    return (needle or "").lower() in (haystack or "").lower()
-
-# -------------------------
-# Cálculo de compatibilidad
-# -------------------------
 def calc_score_compat(solicitud: Solicitud, candidata: Candidata):
     """
-    Devuelve dict con breakdown y score final (0-100).
+    DEPRECATED: conservar alias local mientras todo el sistema consume el engine único.
     """
-    total = 0
-    breakdown = []
-
-    # Alias de campos
-    CLI_NINOS_ALIASES   = ['ninos']
-    CLI_MASCOTA_ALIASES = ['mascota']
-    CLI_FUNC_ALIASES    = ['funciones']
-    CLI_HORARIO_ALIASES = ['horario']
-    CLI_EXPERI_ALIASES  = ['experiencia']  # informativo
-
-    CAND_RITMO_ALIASES     = ['compat_ritmo_preferido']
-    CAND_ESTILO_ALIASES    = ['compat_estilo_trabajo']
-    CAND_NINOS_ALIASES     = ['compat_relacion_ninos']         # comoda|neutral|prefiere_evitar
-    CAND_ANOS_EXP_ALIASES  = ['anos_experiencia']
-    CAND_CALIF_ALIASES     = ['calificacion']                  # 1–5
-    CAND_FORTS_ALIASES     = ['compat_fortalezas']             # ARRAY
-    CAND_DISP_HOR_ALIASES  = ['compat_disponibilidad_horario'] # "mañana, tarde, interna"
-    CAND_DISP_DIAS_ALIASES = ['compat_disponibilidad_dias']    # no usado
-    CAND_LIMITES_ALIASES   = ['compat_limites_no_negociables'] # ARRAY; p.ej. 'no_mascotas'
-
-    # 1) Ritmo (informativo)
-    cand_ritmo = _first_text(candidata, CAND_RITMO_ALIASES, default='')
-    breakdown.append(("Ritmo (sin dato para comparar)", +0))
-
-    # 2) Estilo (informativo)
-    cand_estilo = _first_text(candidata, CAND_ESTILO_ALIASES, default='')
-    breakdown.append(("Estilo (sin dato para comparar)", +0))
-
-    # 3) Niños (±15/−20)
-    cant_ninos = _first_int(solicitud, CLI_NINOS_ALIASES, default=0)
-    hay_ninos  = cant_ninos > 0
-    rel_ninos  = _first_text(candidata, CAND_NINOS_ALIASES, default='').lower()
-    if hay_ninos:
-        if rel_ninos == 'comoda':
-            total += 15; breakdown.append(("Cómoda con niños (solicitud con niños)", +15))
-        elif rel_ninos == 'neutral':
-            total += 7;  breakdown.append(("Neutral con niños (solicitud con niños)", +7))
-        elif rel_ninos == 'prefiere_evitar':
-            total -= 20; breakdown.append(("Prefiere evitar niños (solicitud con niños)", -20))
-        else:
-            breakdown.append(("Relación con niños (sin dato)", +0))
-    else:
-        breakdown.append(("Sin niños en la solicitud", +0))
-
-    # 4) Mascotas (±20)
-    sol_mascota_txt = _first_text(solicitud, CLI_MASCOTA_ALIASES, default='')
-    hay_mascota     = bool(sol_mascota_txt)
-    cand_limites    = _as_set(_first_nonempty(candidata, CAND_LIMITES_ALIASES, default=[]))
-    if hay_mascota:
-        if 'no_mascotas' in cand_limites:
-            total -= 20; breakdown.append((f"No apta con mascota ({sol_mascota_txt})", -20))
-        else:
-            total += 15; breakdown.append((f"Apta con mascota ({sol_mascota_txt})", +15))
-    else:
-        breakdown.append(("Solicitud sin mascotas", +0))
-
-    # 5) Años experiencia (0/5/10)
-    anos_exp = _first_int(candidata, CAND_ANOS_EXP_ALIASES, default=0)
-    total += 10 if anos_exp >= 3 else 5 if anos_exp >= 1 else 0
-    breakdown.append(("Experiencia (años)", 10 if anos_exp >= 3 else 5 if anos_exp >= 1 else 0))
-
-    # 6) Calificación (0–5)
-    punt_raw = _first_nonempty(candidata, CAND_CALIF_ALIASES, default=0) or 0
-    try:
-        punt = int(float(str(punt_raw).strip()))
-        punt_pts = max(0, min(5, punt))
-    except Exception:
-        punt_pts = 0
-    total += punt_pts
-    breakdown.append(("Puntualidad / calificación", punt_pts))
-
-    # 7) Fortalezas vs funciones requeridas (hasta 20)
-    fun_req   = _as_set(_first_nonempty(solicitud, CLI_FUNC_ALIASES, default=[]))
-    fort_cand = _as_set(_first_nonempty(candidata, CAND_FORTS_ALIASES, default=[]))
-    overlap   = len(fun_req & fort_cand)
-    fort_pts  = min(20, overlap * 4)   # 5 matches → 20
-    total += fort_pts
-    breakdown.append((f"Coincidencias en funciones/fortalezas ({overlap})", fort_pts))
-
-    # 8) Disponibilidad (hasta 10)
-    sol_hor_str = _first_text(solicitud, CLI_HORARIO_ALIASES, default='').lower()
-    cand_disp_h = _first_text(candidata, CAND_DISP_HOR_ALIASES, default='').lower()
-    disp_tokens = _as_set(cand_disp_h)
-    disp_pts = 0
-    if 'interna' in sol_hor_str and ('interna' in disp_tokens or 'interna' in cand_disp_h):
-        disp_pts = 10
-    elif any(t in sol_hor_str for t in ('mañana', 'manana', 'tarde', 'noche')) and disp_tokens:
-        disp_pts = 8 if any(t in sol_hor_str for t in disp_tokens) else 3
-    total += disp_pts
-    breakdown.append(("Disponibilidad/horario", disp_pts))
-
-    score_final = max(0, min(100, int(round(total))))
-    return {"score": score_final, "breakdown": breakdown}
+    return format_compat_result(compute_match(solicitud, candidata))
 
 # ---------------------------------
 # VISTA: resumen HTML de compatibilidad
@@ -5816,7 +5786,7 @@ def ver_compatibilidad(cliente_id, candidata_id):
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
     candidata = Candidata.query.get_or_404(candidata_id)
-    res = calc_score_compat(solicitud, candidata)
+    res = format_compat_result(compute_match(solicitud, candidata))
 
     return render_template(
         'admin/compat_resumen.html',
@@ -5843,7 +5813,7 @@ def pdf_compatibilidad(cliente_id, candidata_id):
         return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
     candidata = Candidata.query.get_or_404(candidata_id)
-    res = calc_score_compat(solicitud, candidata)
+    res = format_compat_result(compute_match(solicitud, candidata))
 
     html_str = render_template(
         'admin/compat_pdf.html',
