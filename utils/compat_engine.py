@@ -26,6 +26,15 @@ HORARIO_OPTIONS = [
     ("salida_quincenal", "Salida quincenal (cada 15 días)"),
 ]
 HORARIO_TOKENS = {k for k, _ in HORARIO_OPTIONS}
+MASCOTAS_CHOICES = [
+    ("si", "Si"),
+    ("no", "No"),
+]
+MASCOTAS_IMPORTANCIA_CHOICES = [
+    ("baja", "Baja"),
+    ("media", "Media"),
+    ("alta", "Alta"),
+]
 
 
 def _now_iso() -> str:
@@ -150,12 +159,64 @@ def _norm_exp_level(value: Any) -> Optional[str]:
 
 
 def _norm_bool_mascota(value: Any) -> Optional[bool]:
-    v = _canon_text(value)
-    if v in {"si", "sí", "yes", "true", "1", "con mascota", "tiene mascota"}:
+    token = _norm_mascotas(value)
+    if token == "si":
         return True
-    if v in {"no", "false", "0", "sin mascota"}:
+    if token == "no":
         return False
     return None
+
+
+def _norm_mascotas(value: Any) -> Optional[str]:
+    v = _canon_text(value)
+    mapping = {
+        "si": "si",
+        "sí": "si",
+        "yes": "si",
+        "true": "si",
+        "1": "si",
+        "con mascota": "si",
+        "con mascotas": "si",
+        "tiene mascota": "si",
+        "tiene mascotas": "si",
+        "no": "no",
+        "false": "no",
+        "0": "no",
+        "sin mascota": "no",
+        "sin mascotas": "no",
+    }
+    return mapping.get(v)
+
+
+def _norm_mascotas_importancia(value: Any, default: Optional[str] = "media") -> Optional[str]:
+    v = _canon_text(value)
+    mapping = {
+        "baja": "baja",
+        "low": "baja",
+        "1": "baja",
+        "leve": "baja",
+        "poca": "baja",
+        "media": "media",
+        "medium": "media",
+        "2": "media",
+        "alta": "alta",
+        "high": "alta",
+        "3": "alta",
+        "critica": "alta",
+        "critico": "alta",
+        "muy importante": "alta",
+    }
+    if not v:
+        return default
+    return mapping.get(v, default)
+
+
+def normalize_mascotas_token(value: Any) -> Optional[str]:
+    return _norm_mascotas(value)
+
+
+def normalize_mascotas_importancia(value: Any, default: Optional[str] = "media") -> Optional[str]:
+    return _norm_mascotas_importancia(value, default=default)
 
 
 def _norm_limit(value: Any) -> Optional[str]:
@@ -387,6 +448,8 @@ def load_candidata_profile(c) -> Dict[str, Any]:
         mascotas = getattr(c, "compat_mascotas", None)
         if mascotas in (None, "") and hasattr(c, "compat_mascotas_ok"):
             mascotas = "si" if bool(getattr(c, "compat_mascotas_ok")) else "no"
+    mascotas_token = _norm_mascotas(mascotas)
+    mascotas_importancia = _norm_mascotas_importancia(_first_nonempty(data, "mascotas_importancia"), default="media")
 
     puntualidad = _to_int(_first_nonempty(data, "puntualidad_1a5"), None)
     if puntualidad is None:
@@ -404,7 +467,9 @@ def load_candidata_profile(c) -> Dict[str, Any]:
         "limites_no_negociables": [_norm_limit(x) for x in _to_list(limites) if _norm_limit(x)],
         "disponibilidad_dias": [(_canon_text(x) or x) for x in _to_list(disp_dias)],
         "disponibilidad_horarios": _sort_horario_tokens(normalize_horarios_tokens(disp_horarios)),
-        "mascotas": _norm_bool_mascota(mascotas),
+        "mascotas": mascotas_token,
+        "mascotas_bool": _norm_bool_mascota(mascotas_token),
+        "mascotas_importancia": mascotas_importancia,
         "nota": str(_first_nonempty(data, "nota", "observaciones") or getattr(c, "compat_observaciones", "") or "").strip(),
         "raw": raw,
         "version": str(raw.get("version") or "v1.0"),
@@ -427,6 +492,12 @@ def load_cliente_profile(s) -> Dict[str, Any]:
     if not horario_tokens:
         horario_tokens = normalize_horarios_tokens(getattr(s, "horario", None))
 
+    mascotas_raw = _first_nonempty(data, "mascotas", "mascota")
+    if not mascotas_raw:
+        mascotas_raw = getattr(s, "mascota", None)
+    mascotas_token = _norm_mascotas(mascotas_raw)
+    mascotas_importancia = _norm_mascotas_importancia(_first_nonempty(data, "mascotas_importancia"), default="media")
+
     out = {
         "ritmo_hogar": _norm_ritmo(_first_nonempty(data, "ritmo_hogar")),
         "direccion_trabajo": _norm_estilo(_first_nonempty(data, "direccion_trabajo", "estilo")),
@@ -439,7 +510,9 @@ def load_cliente_profile(s) -> Dict[str, Any]:
         "no_negociables": no_neg,
         "nota_cliente_test": str(_first_nonempty(data, "nota_cliente_test") or "").strip(),
         "ninos": _to_int(_first_nonempty(data, "ninos"), _to_int(getattr(s, "ninos", None), 0)) or 0,
-        "mascota": _norm_bool_mascota(_first_nonempty(data, "mascota") or getattr(s, "mascota", None)),
+        "mascota": _norm_bool_mascota(mascotas_token),
+        "mascotas": mascotas_token,
+        "mascotas_importancia": mascotas_importancia,
         "funciones": _normalize_funciones(getattr(s, "funciones", None)),
         "raw": raw,
         "version": str(raw.get("version") or getattr(s, "compat_test_cliente_version", None) or "v1.0"),
@@ -638,25 +711,36 @@ def _compute_limites(cliente: Dict[str, Any], candidata: Dict[str, Any]) -> tupl
 
 def _compute_mascotas(cliente: Dict[str, Any], candidata: Dict[str, Any]) -> tuple[int, str, List[str]]:
     risks: List[str] = []
-    tiene_mascota = cliente.get("mascota")
+    tiene_mascota = cliente.get("mascotas")
+    importancia = _norm_mascotas_importancia(cliente.get("mascotas_importancia"), default="media") or "media"
     cand_acepta = candidata.get("mascotas")
     cand_limites = set(candidata.get("limites_no_negociables") or [])
+    penalties = {"alta": 17, "media": 11, "baja": 6}
+    penalty = penalties.get(importancia, 11)
 
-    if not tiene_mascota:
-        return 22, "La solicitud no reporta mascotas como factor crítico.", risks
+    if tiene_mascota not in {"si", "no"}:
+        risks.append("No hay confirmacion clara de mascotas en la solicitud.")
+        return 16, f"Datos incompletos en mascotas (importancia {importancia}).", risks
 
-    if "no_mascotas" in cand_limites:
-        risks.append("El hogar tiene mascota y la candidata declaró no trabajar con mascotas.")
-        return 5, "Compatibilidad baja frente al criterio de mascotas.", risks
+    if tiene_mascota == "no":
+        score = 24 if importancia == "alta" else 23 if importancia == "media" else 22
+        return score, f"El hogar reporta no tener mascotas (importancia {importancia}).", risks
 
-    if cand_acepta is True:
-        return 25, "La candidata acepta mascotas y cumple con ese requisito del hogar.", risks
-    if cand_acepta is False:
-        risks.append("El hogar tiene mascota y la candidata reporta rechazo a mascotas.")
-        return 5, "Compatibilidad baja frente al criterio de mascotas.", risks
+    if "no_mascotas" in cand_limites or cand_acepta == "no":
+        risks.append(
+            f"El hogar tiene mascotas y la candidata no acepta mascotas (importancia {importancia})."
+        )
+        score = max(0, 25 - penalty)
+        return score, f"Choque relevante en criterio de mascotas (importancia {importancia}).", risks
 
-    risks.append("No hay confirmación explícita sobre compatibilidad con mascotas.")
-    return 12, "Compatibilidad parcial en criterio de mascotas por falta de confirmación.", risks
+    if cand_acepta == "si":
+        return 25, f"La candidata acepta mascotas y el criterio del hogar esta cubierto (importancia {importancia}).", risks
+
+    risks.append(
+        f"El hogar tiene mascotas y la candidata no confirma su tolerancia (importancia {importancia})."
+    )
+    score = max(0, 25 - max(3, penalty - 3))
+    return score, f"Compatibilidad parcial en mascotas por falta de confirmacion (importancia {importancia}).", risks
 
 
 def _score_to_level(score: int) -> str:
@@ -738,6 +822,11 @@ def compute_match(s, c) -> Dict[str, Any]:
             "cliente_test_timestamp": cliente.get("timestamp"),
             "candidata_test_version": candidata.get("version"),
             "candidata_test_timestamp": candidata.get("timestamp"),
+        },
+        "mascotas_context": {
+            "cliente_mascotas": cliente.get("mascotas"),
+            "candidata_mascotas": candidata.get("mascotas"),
+            "mascotas_importancia": cliente.get("mascotas_importancia"),
         },
     }
 
@@ -826,6 +915,16 @@ def format_compat_result(result: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         summary = f"Compatibilidad {level} ({score}/100)."
 
     meta = base.get("meta") if isinstance(base.get("meta"), dict) else {}
+    mascotas_raw = base.get("mascotas_context") if isinstance(base.get("mascotas_context"), dict) else {}
+    cliente_mascotas = _norm_mascotas(mascotas_raw.get("cliente_mascotas"))
+    candidata_mascotas = _norm_mascotas(mascotas_raw.get("candidata_mascotas"))
+    mascotas_importancia = _norm_mascotas_importancia(mascotas_raw.get("mascotas_importancia"), default="media")
+
+    labels = {"si": "Si", "no": "No", None: "No definido"}
+    masc_resumen = f"Hogar con mascotas: {labels.get(cliente_mascotas, 'No definido')}. "
+    masc_resumen += f"Candidata acepta mascotas: {labels.get(candidata_mascotas, 'No definido')}. "
+    masc_resumen += f"Importancia: {(mascotas_importancia or 'media').title()}."
+    summary = f"{summary} {masc_resumen}".strip()
 
     return {
         "score": score,
@@ -840,5 +939,11 @@ def format_compat_result(result: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "cliente_test_timestamp": meta.get("cliente_test_timestamp"),
             "candidata_test_version": meta.get("candidata_test_version"),
             "candidata_test_timestamp": meta.get("candidata_test_timestamp"),
+        },
+        "mascotas_context": {
+            "cliente_mascotas": cliente_mascotas,
+            "candidata_mascotas": candidata_mascotas,
+            "mascotas_importancia": mascotas_importancia,
+            "summary": masc_resumen,
         },
     }

@@ -43,8 +43,12 @@ from . import clientes_bp
 from decorators import cliente_required, politicas_requeridas
 from utils.compat_engine import (
     HORARIO_OPTIONS,
+    MASCOTAS_CHOICES,
+    MASCOTAS_IMPORTANCIA_CHOICES,
     compute_match,
     format_compat_result,
+    normalize_mascotas_importancia,
+    normalize_mascotas_token,
     normalize_horarios_tokens,
     persist_result_to_solicitud,
 )
@@ -1619,6 +1623,8 @@ def _normalize_payload_from_form(s: Solicitud) -> dict:
     estilo = _norm_estilo(request.form.get('direccion_trabajo'))
     exp = _norm_level(request.form.get('experiencia_deseada'))
     puntualidad = _parse_int_1a5(request.form.get('puntualidad_1a5'))
+    mascotas = normalize_mascotas_token(request.form.get('mascotas') or getattr(s, 'mascota', None))
+    mascotas_importancia = normalize_mascotas_importancia(request.form.get('mascotas_importancia'), default='media')
 
     horario_raw = _list_from_form('horario_tokens[]')
     horario_tokens = sorted(normalize_horarios_tokens(horario_raw), key=lambda t: HORARIO_ORDER.get(t, 999))
@@ -1640,7 +1646,9 @@ def _normalize_payload_from_form(s: Solicitud) -> dict:
         "no_negociables": _list_from_form('no_negociables[]'),
         "nota_cliente_test": (request.form.get('nota_cliente_test') or '').strip(),
         "ninos": int(getattr(s, 'ninos', 0) or 0),
-        "mascota": (getattr(s, 'mascota', '') or '').strip(),
+        "mascota": mascotas,
+        "mascotas": mascotas,
+        "mascotas_importancia": mascotas_importancia,
     }
     payload = {
         "version": COMPAT_TEST_VERSION,
@@ -1683,7 +1691,16 @@ def compat_test_cliente(solicitud_id):
         initial = initial_payload if isinstance(initial_payload, dict) else {}
     raw_horario = initial.get('horario_tokens') or initial.get('horario_preferido') or getattr(s, 'horario', '')
     initial['horario_tokens'] = sorted(normalize_horarios_tokens(raw_horario), key=lambda t: HORARIO_ORDER.get(t, 999))
-    return render_template('clientes/compat_test_cliente.html', s=s, initial=initial, HORARIO_CHOICES=HORARIO_OPTIONS)
+    initial['mascotas'] = normalize_mascotas_token(initial.get('mascotas') or initial.get('mascota') or getattr(s, 'mascota', None))
+    initial['mascotas_importancia'] = normalize_mascotas_importancia(initial.get('mascotas_importancia'), default='media')
+    return render_template(
+        'clientes/compat_test_cliente.html',
+        s=s,
+        initial=initial,
+        HORARIO_CHOICES=HORARIO_OPTIONS,
+        MASCOTAS_CHOICES=MASCOTAS_CHOICES,
+        MASCOTAS_IMPORTANCIA_CHOICES=MASCOTAS_IMPORTANCIA_CHOICES,
+    )
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/compat/recalcular', methods=['POST'])

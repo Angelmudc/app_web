@@ -237,6 +237,17 @@
           {% endfor %}
         </div>
       </div>
+
+      <div class="section-gap">
+        <label for="mascotas_importancia" class="form-label">Importancia de mascotas</label>
+        <select class="form-select" id="mascotas_importancia" name="mascotas_importancia" autocomplete="off" required>
+          <option value="">—</option>
+          {% for code, label in CHOICES.MASCOTAS_IMPORTANCIA %}
+            <option value="{{ code }}" {{ 'selected' if data.mascotas_importancia == code else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="muted mt-1">Este valor ajusta el peso del criterio de mascotas en el cálculo del match.</div>
+      </div>
     </div>
 
     <div class="kard-h bg-light fw-semibold">

@@ -12,6 +12,7 @@ import logging
 import unicodedata
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
+from time import perf_counter
 
 import requests  # HTTP externo (si lo usas en otras partes)
 
@@ -60,7 +61,15 @@ from forms import LlamadaCandidataForm
 # Utils locales
 from utils_codigo import generar_codigo_unico  # tu función optimizada
 from utils.upload_security import validate_upload_file
-from utils.compat_engine import ENGINE_VERSION, HORARIO_OPTIONS, normalize_horarios_tokens
+from utils.compat_engine import (
+    ENGINE_VERSION,
+    HORARIO_OPTIONS,
+    MASCOTAS_CHOICES,
+    MASCOTAS_IMPORTANCIA_CHOICES,
+    normalize_horarios_tokens,
+    normalize_mascotas_importancia,
+    normalize_mascotas_token,
+)
 from utils.staff_auth import (
     admin_legacy_enabled,
     breakglass_allowed_ip,
@@ -408,20 +417,48 @@ def apply_search_to_candidata_query(base_query, q: str):
     return base_query
 
 
-def search_candidatas_limited(q: str, *, limit: int = 300, base_query=None):
+def search_candidatas_limited(
+    q: str,
+    *,
+    limit: int = 300,
+    base_query=None,
+    minimal_fields: bool = False,
+    order_mode: str = "nombre_asc",
+    log_label: str = "default",
+):
     """Ejecuta la búsqueda estándar de candidatas con límite y orden consistentes."""
     q = (q or "").strip()[:128]
     if not q:
         return []
 
     query = base_query if base_query is not None else Candidata.query
+    if minimal_fields:
+        query = query.options(
+            load_only(
+                Candidata.fila,
+                Candidata.nombre_completo,
+                Candidata.cedula,
+                Candidata.numero_telefono,
+                Candidata.codigo,
+            )
+        )
     safe_limit = max(1, min(int(limit or 300), 500))
-    return (
-        apply_search_to_candidata_query(query, q)
-        .order_by(Candidata.nombre_completo.asc())
-        .limit(safe_limit)
-        .all()
+    t0 = perf_counter()
+    filtered = apply_search_to_candidata_query(query, q)
+    if order_mode == "id_desc":
+        filtered = filtered.order_by(Candidata.fila.desc())
+    else:
+        filtered = filtered.order_by(Candidata.nombre_completo.asc())
+    rows = filtered.limit(safe_limit).all()
+    dt_ms = round((perf_counter() - t0) * 1000, 2)
+    current_app.logger.info(
+        "search_candidatas_limited[%s] q=%r rows=%s dt_ms=%s",
+        log_label,
+        q,
+        len(rows),
+        dt_ms,
     )
+    return rows
 
 
 def get_candidata_by_id(raw_id):
@@ -4684,10 +4721,8 @@ COMPAT_EXPERIENCIA_NIVEL = [
     ('media', 'Intermedia'),
     ('alta',  'Alta'),
 ]
-COMPAT_MASCOTAS = [
-    ('si', 'Sí, sin problema'),
-    ('no', 'No, prefiero evitarlo'),
-]
+COMPAT_MASCOTAS = list(MASCOTAS_CHOICES)
+COMPAT_MASCOTAS_IMPORTANCIA = list(MASCOTAS_IMPORTANCIA_CHOICES)
 
 # Checklists (guardamos el "code")
 FORTALEZAS = [
@@ -4771,6 +4806,7 @@ CHOICES_DICT = {
     "DIAS": DIAS_SEMANA,
     "HORARIOS": HORARIOS,
     "MASCOTAS": COMPAT_MASCOTAS,
+    "MASCOTAS_IMPORTANCIA": COMPAT_MASCOTAS_IMPORTANCIA,
 }
 HORARIO_ORDER = {tok: idx for idx, (tok, _lbl) in enumerate(HORARIO_OPTIONS)}
 
@@ -4797,21 +4833,24 @@ def compat_candidata():
         raw_comunicacion = request.form.get('comunicacion')
         raw_experiencia_nivel = request.form.get('experiencia_nivel')
         raw_puntualidad_1a5 = request.form.get('puntualidad_1a5')
+        raw_mascotas = request.form.get('mascotas')
+        raw_mascotas_importancia = request.form.get('mascotas_importancia')
 
         ritmo     = _norm_choice(request.form.get('ritmo'),               {k for k, _ in COMPAT_RITMOS})
         estilo    = _norm_choice(request.form.get('estilo'),              {k for k, _ in COMPAT_ESTILOS})
         comun     = _norm_choice(raw_comunicacion,                        {k for k, _ in COMPAT_COMUNICACION})
         rel_n     = _norm_choice(request.form.get('relacion_ninos'),      {k for k, _ in COMPAT_RELACION_NINOS})
         exp_niv   = _norm_choice(raw_experiencia_nivel,                   {k for k, _ in COMPAT_EXPERIENCIA_NIVEL})
-        mascotas  = _norm_choice(request.form.get('mascotas'),            {k for k, _ in COMPAT_MASCOTAS})
+        mascotas  = normalize_mascotas_token(raw_mascotas)
+        mascotas_importancia = normalize_mascotas_importancia(raw_mascotas_importancia, default=None)
         puntual   = _int_1a5('puntualidad_1a5')
         current_app.logger.debug(
-            "compat_candidata POST raw values fila=%s comunicacion=%r experiencia_nivel=%r puntualidad_1a5=%r",
-            fila, raw_comunicacion, raw_experiencia_nivel, raw_puntualidad_1a5
+            "compat_candidata POST raw values fila=%s comunicacion=%r experiencia_nivel=%r puntualidad_1a5=%r mascotas=%r mascotas_importancia=%r",
+            fila, raw_comunicacion, raw_experiencia_nivel, raw_puntualidad_1a5, raw_mascotas, raw_mascotas_importancia
         )
         current_app.logger.debug(
-            "compat_candidata POST normalized fila=%s comun=%r exp_niv=%r puntual=%r",
-            fila, comun, exp_niv, puntual
+            "compat_candidata POST normalized fila=%s comun=%r exp_niv=%r puntual=%r mascotas=%r mascotas_importancia=%r",
+            fila, comun, exp_niv, puntual, mascotas, mascotas_importancia
         )
 
         # Checkboxes (filtramos a los permitidos)
@@ -4836,6 +4875,7 @@ def compat_candidata():
         if not rel_n:         err.append("Relación con niños")
         if puntual is None:   err.append("Puntualidad (1 a 5)")
         if not mascotas:      err.append("Compatibilidad con mascotas")
+        if not mascotas_importancia: err.append("Importancia de mascotas")
         if not fortalezas:    err.append("Fortalezas (al menos una)")
         if not dias:          err.append("Disponibilidad en días")
         if not horarios:      err.append("Disponibilidad en horarios")
@@ -4848,7 +4888,7 @@ def compat_candidata():
                 "puntualidad_1a5": puntual, "fortalezas": fortalezas,
                 "tareas_evitar": evitar, "limites_no_negociables": limites,
                 "disponibilidad_dias": dias, "disponibilidad_horarios": horarios,
-                "mascotas": mascotas, "nota": notas
+                "mascotas": mascotas, "mascotas_importancia": mascotas_importancia, "nota": notas
             }
             return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
 
@@ -4896,6 +4936,7 @@ def compat_candidata():
                 "disponibilidad_dias": dias,
                 "disponibilidad_horarios": horarios,
                 "mascotas": mascotas,
+                "mascotas_importancia": mascotas_importancia,
                 "nota": notas,
             }
             payload = {
@@ -4956,6 +4997,7 @@ def compat_candidata():
                                         if hasattr(c, 'compat_mascotas')
                                         else ('si' if getattr(c, 'compat_mascotas_ok', False) else 'no')
                                         if hasattr(c, 'compat_mascotas_ok') else profile.get('mascotas')),
+            "mascotas_importancia":    profile.get('mascotas_importancia') or 'media',
             "nota":                    getattr(c, 'compat_observaciones', '') or profile.get('nota', '') or '',
         }
         return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
@@ -4970,7 +5012,13 @@ def compat_candidata():
 
     if q:
         try:
-            resultados = search_candidatas_limited(q, limit=200)
+            resultados = search_candidatas_limited(
+                q,
+                limit=80,
+                minimal_fields=True,
+                order_mode="id_desc",
+                log_label="compat_candidata",
+            )
         except Exception:
             current_app.logger.exception("❌ Error buscando candidatas en compat_candidata")
             resultados = []

@@ -56,6 +56,29 @@
                value="{{ initial.composicion_hogar or '' }}">
         <div class="form-text">Solo para entender el contexto del hogar.</div>
       </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">¿Hay mascotas en la casa?</label>
+          {% set mas = (initial.mascotas or '')|lower %}
+          <select class="form-select" name="mascotas" required>
+            <option value="">—</option>
+            {% for code, label in MASCOTAS_CHOICES %}
+              <option value="{{ code }}" {{ 'selected' if mas == code else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Importancia de mascotas</label>
+          {% set mas_imp = (initial.mascotas_importancia or 'media')|lower %}
+          <select class="form-select" name="mascotas_importancia" required>
+            {% for code, label in MASCOTAS_IMPORTANCIA_CHOICES %}
+              <option value="{{ code }}" {{ 'selected' if mas_imp == code else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Este peso ajusta el score del match cuando hay choque por mascotas.</div>
+        </div>
+      </div>
     </div>
 
     <div class="card-header bg-light fw-semibold">
