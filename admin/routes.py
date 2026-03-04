@@ -1748,6 +1748,23 @@ def _allowed_codes_from_choices(choices):
     except Exception:
         return set()
 
+def _normalize_areas_comunes_selected(selected_vals, choices):
+    """Normaliza áreas comunes y expande 'todas_anteriores' a todas las opciones reales."""
+    vals = _clean_list(selected_vals)
+    allowed = _allowed_codes_from_choices(choices)
+    vals = [v for v in vals if v in allowed]
+
+    if 'todas_anteriores' in vals:
+        all_codes = [
+            str(code).strip()
+            for code, _ in (choices or [])
+            if str(code).strip() and str(code).strip() not in {'todas_anteriores', 'otro'}
+        ]
+        vals = [v for v in vals if v != 'todas_anteriores']
+        vals = _clean_list(vals + all_codes)
+
+    return [v for v in vals if v != 'todas_anteriores']
+
 def _next_codigo_solicitud(cliente: Cliente) -> str:
     """
     Genera un código único del tipo <CODCLI>-<LETRA>.
@@ -2389,9 +2406,13 @@ def _build_detalles_servicio_from_form(form) -> dict | None:
     if ts == 'NINERA':
         cant_ninos = form.ninera_cant_ninos.data if hasattr(form, 'ninera_cant_ninos') else None
         edades = (form.ninera_edades.data or '').strip() if hasattr(form, 'ninera_edades') else ''
-        tareas = form.ninera_tareas.data if hasattr(form, 'ninera_tareas') else []
+        tareas = _clean_list(form.ninera_tareas.data) if hasattr(form, 'ninera_tareas') else []
         tareas_otro = (form.ninera_tareas_otro.data or '').strip() if hasattr(form, 'ninera_tareas_otro') else ''
         condicion = (form.ninera_condicion_especial.data or '').strip() if hasattr(form, 'ninera_condicion_especial') else ''
+        usa_otro = ('otro' in tareas)
+        tareas = [t for t in tareas if t != 'otro']
+        if not usa_otro:
+            tareas_otro = ''
 
         detalles.update({
             "cantidad_ninos": cant_ninos,
@@ -2408,8 +2429,12 @@ def _build_detalles_servicio_from_form(form) -> dict | None:
         a_quien = (form.enf_a_quien_cuida.data or '').strip() if hasattr(form, 'enf_a_quien_cuida') else ''
         condicion = (form.enf_condicion_principal.data or '').strip() if hasattr(form, 'enf_condicion_principal') else ''
         movilidad = form.enf_movilidad.data if hasattr(form, 'enf_movilidad') else ''
-        tareas = form.enf_tareas.data if hasattr(form, 'enf_tareas') else []
+        tareas = _clean_list(form.enf_tareas.data) if hasattr(form, 'enf_tareas') else []
         tareas_otro = (form.enf_tareas_otro.data or '').strip() if hasattr(form, 'enf_tareas_otro') else ''
+        usa_otro = ('otro' in tareas)
+        tareas = [t for t in tareas if t != 'otro']
+        if not usa_otro:
+            tareas_otro = ''
 
         detalles.update({
             "a_quien_cuida": a_quien or None,
@@ -2426,6 +2451,8 @@ def _build_detalles_servicio_from_form(form) -> dict | None:
         vehiculo = form.chofer_vehiculo.data if hasattr(form, 'chofer_vehiculo') else ''
         tipo_vehiculo = form.chofer_tipo_vehiculo.data if hasattr(form, 'chofer_tipo_vehiculo') else ''
         tipo_vehiculo_otro = (form.chofer_tipo_vehiculo_otro.data or '').strip() if hasattr(form, 'chofer_tipo_vehiculo_otro') else ''
+        if tipo_vehiculo != 'otro':
+            tipo_vehiculo_otro = ''
         rutas = (form.chofer_rutas.data or '').strip() if hasattr(form, 'chofer_rutas') else ''
         viajes_largos = bool(form.chofer_viajes_largos.data) if hasattr(form, 'chofer_viajes_largos') else None
         licencia = (form.chofer_licencia_detalle.data or '').strip() if hasattr(form, 'chofer_licencia_detalle') else ''
@@ -2651,6 +2678,8 @@ def nueva_solicitud_admin(cliente_id):
             # Funciones
             selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
             extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+            if 'otro' not in selected_codes:
+                extra_text = ''
             if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
                 valid_codes = _allowed_codes_from_choices(form.funciones.choices)
                 s.funciones = [c for c in selected_codes if c in valid_codes and c != 'otro']
@@ -2660,15 +2689,18 @@ def nueva_solicitud_admin(cliente_id):
                 s.funciones_otro = extra_text or None
 
             # Áreas comunes válidas
-            allowed_areas = _allowed_codes_from_choices(form.areas_comunes.choices) if hasattr(form, 'areas_comunes') else set()
-            s.areas_comunes = [
-                a for a in _clean_list(getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data)
-                if a in allowed_areas
-            ]
+            selected_areas = []
+            if hasattr(form, 'areas_comunes'):
+                selected_areas = _normalize_areas_comunes_selected(
+                    selected_vals=getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data,
+                    choices=form.areas_comunes.choices
+                )
+            s.areas_comunes = selected_areas
 
             # Área "otro"
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                s.area_otro = (form.area_otro.data or '').strip() or None
+                area_otro_txt = (form.area_otro.data or '').strip()
+                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
 
             # Pasaje
             s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', type('x', (object,), {'data': False})).data)
@@ -2849,6 +2881,8 @@ def editar_solicitud_admin(cliente_id, id):
             # Funciones
             selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
             extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+            if 'otro' not in selected_codes:
+                extra_text = ''
             if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
                 valid_codes = _allowed_codes_from_choices(form.funciones.choices)
                 s.funciones = [c for c in selected_codes if c in valid_codes and c != 'otro']
@@ -2859,12 +2893,15 @@ def editar_solicitud_admin(cliente_id, id):
 
             # Áreas válidas
             if hasattr(form, 'areas_comunes'):
-                allowed_areas = _allowed_codes_from_choices(form.areas_comunes.choices)
-                s.areas_comunes = [a for a in _clean_list(form.areas_comunes.data) if a in allowed_areas]
+                s.areas_comunes = _normalize_areas_comunes_selected(
+                    selected_vals=form.areas_comunes.data,
+                    choices=form.areas_comunes.choices
+                )
 
             # Área "otro"
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                s.area_otro = (form.area_otro.data or '').strip() or None
+                area_otro_txt = (form.area_otro.data or '').strip()
+                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
 
             # Pasaje
             if hasattr(form, 'pasaje_aporte'):
