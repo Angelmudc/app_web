@@ -16,13 +16,14 @@ import re
 
 def _solo_texto(valor):
     """
-    Permite únicamente letras (incluye acentos), espacios y comas.
+    Valida texto de forma segura sin bloquear entradas reales del usuario.
+    Permite letras, números y signos comunes de dirección/horario.
     """
     if not valor:
         return valor
-    patron = r'^[A-Za-zÁÉÍÓÚáéíóúÑñ\s,]+$'
+    patron = r'^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s.,:/()#&+\-]+$'
     if not re.fullmatch(patron, valor.strip()):
-        raise ValidationError("Solo se permiten letras y espacios (sin números ni símbolos).")
+        raise ValidationError("Contiene caracteres no permitidos.")
     return valor
 
 def _solo_numeros(valor):
@@ -310,7 +311,8 @@ class SolicitudForm(FlaskForm):
         _solo_texto(field.data)
 
     def validate_experiencia(self, field):
-        _solo_texto(field.data)
+        if field.data and len((field.data or '').strip()) < 5:
+            raise ValidationError("Describe un poco más la experiencia requerida.")
 
     def validate_edades_ninos(self, field):
         """Si se marca 'Cuidar Niños' y hay niños > 0, las edades son obligatorias."""
@@ -344,7 +346,7 @@ class SolicitudForm(FlaskForm):
     def validate_horario(self, field):
         # Permite letras, números y espacios (horario necesita números)
         if field.data:
-            if not re.fullmatch(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s:–\-]+$', field.data.strip()):
+            if not re.fullmatch(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s:–\-/.,]+$', field.data.strip()):
                 raise ValidationError("Horario inválido. Solo texto y números.")
 
     def validate_funciones_otro(self, field):
@@ -365,13 +367,16 @@ class SolicitudForm(FlaskForm):
 
     def validate_nota_cliente(self, field):
         if field.data:
-            # Permite letras, números y espacios básicos
-            if not re.fullmatch(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s,.]+$', field.data.strip()):
+            # Nota libre con puntuación común
+            if not re.fullmatch(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s,.:;()#&+\-_/!?]+$', field.data.strip()):
                 raise ValidationError("La nota contiene caracteres no permitidos.")
 
     def validate_sueldo(self, field):
         if field.data:
-            _solo_numeros(field.data)
+            raw = str(field.data).strip()
+            clean = raw.replace('RD$', '').replace('$', '').replace(',', '').replace('.', '').strip()
+            if not re.fullmatch(r'^\d+$', clean):
+                raise ValidationError("Sueldo inválido. Usa solo números (ej: 18000 o 18,000).")
 
     def validate_adultos(self, field):
         _solo_numeros(field.data)

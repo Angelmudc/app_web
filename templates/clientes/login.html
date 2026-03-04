@@ -53,6 +53,7 @@
                 <form method="POST" action="{{ url_for('clientes.login') }}" id="loginForm" autocomplete="on" novalidate>
                   <!-- ✅ CSRF -->
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="next" value="{{ next_url or '' }}">
 
                   <!-- Honeypot (anti bots) -->
                   <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="visually-hidden" value="">
@@ -65,6 +66,7 @@
                       type="text"
                       class="form-control"
                       placeholder="tu.usuario"
+                      value="{{ form.username.data if form and form.username is defined else '' }}"
                       required
                       maxlength="64"
                       autocomplete="username"

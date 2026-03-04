@@ -21,6 +21,9 @@
       <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-light">
         <i class="bi bi-arrow-left-short me-1"></i> Volver
       </a>
+      <a href="{{ url_for('clientes.seguimiento_solicitud', id=s.id) }}" class="btn btn-outline-primary">
+        <i class="bi bi-clock-history me-1"></i> Seguimiento
+      </a>
       <button class="btn btn-outline-secondary" onclick="window.print()">
         <i class="bi bi-printer me-1"></i> Imprimir
       </button>
@@ -91,8 +94,7 @@
     </div>
   </div>
 
-  <!-- Información completa (solo si activa) -->
-  {% if s.estado == 'activa' %}
+  <!-- Información completa -->
   <div class="kard mb-4 print-zone">
     <div class="kard-h bg-success bg-opacity-10 text-success fw-semibold">
       <i class="bi bi-list-ul me-2"></i>Información completa
@@ -150,7 +152,6 @@
       </div>
     </div>
   </div>
-  {% endif %}
 
   <!-- Seguimiento -->
   <div class="kard mb-4 print-zone">

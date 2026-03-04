@@ -344,7 +344,7 @@ def login():
         if _cliente_is_locked(ident_norm):
             mins = _CLIENTE_LOGIN_LOCK_MINUTOS
             flash(f'Has excedido el máximo de intentos. Intenta de nuevo en {mins} minutos.', 'danger')
-            return render_template('clientes/login.html', form=form), 429
+            return render_template('clientes/login.html', form=form, next_url=next_url), 429
 
     if form.validate_on_submit():
         identificador = (form.username.data or "").strip()
@@ -426,7 +426,7 @@ def login():
 
         return redirect(next_url)
 
-    return render_template('clientes/login.html', form=form)
+    return render_template('clientes/login.html', form=form, next_url=next_url)
 
 
 @clientes_bp.route('/logout', methods=['POST'])
@@ -445,6 +445,44 @@ def logout():
 # ─────────────────────────────────────────────────────────────
 # Reset de contraseña (por código del cliente)
 # ─────────────────────────────────────────────────────────────
+@clientes_bp.route('/reset-password', methods=['GET', 'POST'], endpoint='reset_password')
+def reset_password():
+    codigo = (request.args.get('codigo') or request.form.get('codigo') or '').strip()
+    next_raw = (request.args.get('next') or request.form.get('next') or '').strip()
+    next_url = next_raw if _is_safe_next(next_raw) else url_for('clientes.dashboard')
+
+    if not codigo:
+        flash('Debes indicar tu código de cliente para restablecer la contraseña.', 'warning')
+        return redirect(url_for('clientes.login', next=next_url))
+
+    user = Cliente.query.filter(db.func.lower(Cliente.codigo) == codigo.lower()).first()
+    if not user:
+        flash('No encontramos un cliente con ese código.', 'danger')
+        return redirect(url_for('clientes.login', next=next_url))
+
+    if request.method == 'POST':
+        p1 = (request.form.get('password1') or '').strip()
+        p2 = (request.form.get('password2') or '').strip()
+
+        if len(p1) < 6:
+            flash('La contraseña debe tener al menos 6 caracteres.', 'warning')
+        elif len(p1) > 128:
+            flash('La contraseña es demasiado larga.', 'warning')
+        elif p1 != p2:
+            flash('Las contraseñas no coinciden.', 'warning')
+        else:
+            try:
+                user.password_hash = generate_password_hash(p1)
+                if hasattr(user, 'fecha_ultima_actividad'):
+                    user.fecha_ultima_actividad = datetime.utcnow()
+                db.session.commit()
+                flash('Tu contraseña fue restablecida. Ya puedes iniciar sesión.', 'success')
+                return redirect(url_for('clientes.login', next=next_url))
+            except Exception:
+                db.session.rollback()
+                flash('No se pudo guardar la nueva contraseña. Intenta nuevamente.', 'danger')
+
+    return render_template('clientes/reset_password.html', user=user, next_url=next_url)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -542,6 +580,10 @@ def clientes_solicitudes_live():
     """Snapshot mínimo para refrescar listados sin recargar toda la página."""
     q = (request.args.get('q') or '').strip()[:120]
     estado = (request.args.get('estado') or '').strip()[:40]
+    ciudad = (request.args.get('ciudad') or '').strip()[:120]
+    modalidad = (request.args.get('modalidad') or '').strip()[:120]
+    fecha_desde_raw = (request.args.get('fecha_desde') or '').strip()[:20]
+    fecha_hasta_raw = (request.args.get('fecha_hasta') or '').strip()[:20]
     limit = request.args.get('limit', 20, type=int)
     limit = max(1, min(limit, 50))
 
@@ -550,13 +592,34 @@ def clientes_solicitudes_live():
     if estado:
         query = query.filter(Solicitud.estado == estado)
 
+    if ciudad:
+        query = query.filter(getattr(Solicitud, 'ciudad_sector', db.literal('')).ilike(f"%{ciudad}%"))
+
+    if modalidad:
+        query = query.filter(getattr(Solicitud, 'modalidad_trabajo', db.literal('')).ilike(f"%{modalidad}%"))
+
+    if fecha_desde_raw and hasattr(Solicitud, 'fecha_solicitud'):
+        try:
+            fecha_desde = datetime.strptime(fecha_desde_raw, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Solicitud.fecha_solicitud) >= fecha_desde)
+        except ValueError:
+            pass
+
+    if fecha_hasta_raw and hasattr(Solicitud, 'fecha_solicitud'):
+        try:
+            fecha_hasta = datetime.strptime(fecha_hasta_raw, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Solicitud.fecha_solicitud) <= fecha_hasta)
+        except ValueError:
+            pass
+
     if q:
         like = f"%{q}%"
         query = query.filter(
             db.or_(
                 Solicitud.codigo_solicitud.ilike(like),
-                getattr(Solicitud, 'ciudad', db.literal('')).ilike(like),
-                getattr(Solicitud, 'descripcion', db.literal('')).ilike(like)
+                getattr(Solicitud, 'ciudad_sector', db.literal('')).ilike(like),
+                getattr(Solicitud, 'modalidad_trabajo', db.literal('')).ilike(like),
+                getattr(Solicitud, 'experiencia', db.literal('')).ilike(like)
             )
         )
 
@@ -601,6 +664,10 @@ def clientes_solicitudes_live():
         'server_time': datetime.utcnow().isoformat() + 'Z',
         'q': q,
         'estado': estado,
+        'ciudad': ciudad,
+        'modalidad': modalidad,
+        'fecha_desde': fecha_desde_raw,
+        'fecha_hasta': fecha_hasta_raw,
         'count_by_estado': counts,
         'items': data,
     })
@@ -615,6 +682,10 @@ def clientes_solicitudes_live():
 def listar_solicitudes():
     q        = request.args.get('q', '').strip()[:120]
     estado   = request.args.get('estado', '').strip()[:40]
+    ciudad   = request.args.get('ciudad', '').strip()[:120]
+    modalidad = request.args.get('modalidad', '').strip()[:120]
+    fecha_desde_raw = (request.args.get('fecha_desde') or '').strip()[:20]
+    fecha_hasta_raw = (request.args.get('fecha_hasta') or '').strip()[:20]
     page     = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     page     = max(page, 1)
@@ -625,13 +696,34 @@ def listar_solicitudes():
     if estado:
         query = query.filter(Solicitud.estado == estado)
 
+    if ciudad:
+        query = query.filter(getattr(Solicitud, 'ciudad_sector', db.literal('')).ilike(f"%{ciudad}%"))
+
+    if modalidad:
+        query = query.filter(getattr(Solicitud, 'modalidad_trabajo', db.literal('')).ilike(f"%{modalidad}%"))
+
+    if fecha_desde_raw and hasattr(Solicitud, 'fecha_solicitud'):
+        try:
+            fecha_desde = datetime.strptime(fecha_desde_raw, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Solicitud.fecha_solicitud) >= fecha_desde)
+        except ValueError:
+            pass
+
+    if fecha_hasta_raw and hasattr(Solicitud, 'fecha_solicitud'):
+        try:
+            fecha_hasta = datetime.strptime(fecha_hasta_raw, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Solicitud.fecha_solicitud) <= fecha_hasta)
+        except ValueError:
+            pass
+
     if q:
         like = f"%{q}%"
         query = query.filter(
             db.or_(
                 Solicitud.codigo_solicitud.ilike(like),
-                getattr(Solicitud, 'ciudad', db.literal('')).ilike(like),
-                getattr(Solicitud, 'descripcion', db.literal('')).ilike(like)
+                getattr(Solicitud, 'ciudad_sector', db.literal('')).ilike(like),
+                getattr(Solicitud, 'modalidad_trabajo', db.literal('')).ilike(like),
+                getattr(Solicitud, 'experiencia', db.literal('')).ilike(like)
             )
         )
 
@@ -642,7 +734,34 @@ def listar_solicitudes():
 
     paginado = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    estados_disponibles = [e[0] for e in db.session.query(Solicitud.estado).distinct().all() if e[0]]
+    estados_disponibles = [
+        e[0] for e in (
+            db.session.query(Solicitud.estado)
+            .filter(Solicitud.cliente_id == current_user.id)
+            .distinct()
+            .all()
+        ) if e[0]
+    ]
+
+    ciudades_disponibles = sorted([
+        (e[0] or '').strip() for e in (
+            db.session.query(Solicitud.ciudad_sector)
+            .filter(Solicitud.cliente_id == current_user.id)
+            .filter(Solicitud.ciudad_sector.isnot(None))
+            .distinct()
+            .all()
+        ) if (e[0] or '').strip()
+    ])
+
+    modalidades_disponibles = sorted([
+        (e[0] or '').strip() for e in (
+            db.session.query(Solicitud.modalidad_trabajo)
+            .filter(Solicitud.cliente_id == current_user.id)
+            .filter(Solicitud.modalidad_trabajo.isnot(None))
+            .distinct()
+            .all()
+        ) if (e[0] or '').strip()
+    ])
 
     return render_template(
         'clientes/solicitudes_list.html',
@@ -652,7 +771,11 @@ def listar_solicitudes():
         has_prev=paginado.has_prev, has_next=paginado.has_next,
         prev_num=getattr(paginado, 'prev_num', None),
         next_num=getattr(paginado, 'next_num', None),
-        q=q, estado=estado, estados_disponibles=estados_disponibles
+        q=q, estado=estado, ciudad=ciudad, modalidad=modalidad,
+        fecha_desde=fecha_desde_raw, fecha_hasta=fecha_hasta_raw,
+        estados_disponibles=estados_disponibles,
+        ciudades_disponibles=ciudades_disponibles,
+        modalidades_disponibles=modalidades_disponibles
     )
 
 
@@ -994,10 +1117,11 @@ def nueva_solicitud():
                 _set_attr_if_empty(s, 'rutas_cercanas', ruta)
 
             funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
-            if funciones_otro_txt:
-                _set_attr_if_exists(s, 'funciones_otro', funciones_otro_txt)
+            selected_funciones = _clean_list(form.funciones.data)
+            funciones_otro_clean = funciones_otro_txt if 'otro' in selected_funciones else ''
+            _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
-            s.funciones      = _map_funciones(form.funciones.data, funciones_otro_txt)
+            s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
             s.edad_requerida = _map_edad_choices(
                 form.edad_requerida.data,
@@ -1012,7 +1136,8 @@ def nueva_solicitud():
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                s.area_otro = (form.area_otro.data or '').strip()
+                area_otro_txt = (form.area_otro.data or '').strip()
+                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = (form.nota_cliente.data or '').strip()
             if hasattr(s, 'sueldo'):
@@ -1146,10 +1271,11 @@ def editar_solicitud(id):
                 _set_attr_if_exists(s, 'rutas_cercanas', ruta)
 
             funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
-            if funciones_otro_txt:
-                _set_attr_if_exists(s, 'funciones_otro', funciones_otro_txt)
+            selected_funciones = _clean_list(form.funciones.data)
+            funciones_otro_clean = funciones_otro_txt if 'otro' in selected_funciones else ''
+            _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
-            s.funciones      = _map_funciones(form.funciones.data, funciones_otro_txt)
+            s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
             s.areas_comunes  = _clean_list(form.areas_comunes.data)
             s.edad_requerida = _map_edad_choices(
                 form.edad_requerida.data,
@@ -1164,7 +1290,8 @@ def editar_solicitud(id):
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
                 s.mascota = (form.mascota.data or '').strip() or None
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                s.area_otro = (form.area_otro.data or '').strip()
+                area_otro_txt = (form.area_otro.data or '').strip()
+                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = (form.nota_cliente.data or '').strip()
             if hasattr(s, 'sueldo'):
@@ -1743,10 +1870,13 @@ def solicitud_publica(token):
 
             form.populate_obj(s)
 
-            s.funciones = _map_funciones(
-                getattr(form, 'funciones', type('x',(object,),{'data':[]})).data,
-                getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
-            )
+            selected_funciones = _clean_list(getattr(form, 'funciones', type('x',(object,),{'data':[]})).data)
+            funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
+            funciones_otro_clean = (funciones_otro_raw or '').strip() if 'otro' in selected_funciones else ''
+
+            s.funciones = _map_funciones(selected_funciones, funciones_otro_clean)
+            if hasattr(s, 'funciones_otro'):
+                s.funciones_otro = funciones_otro_clean or None
 
             s.areas_comunes = _clean_list(
                 getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data
@@ -1767,7 +1897,8 @@ def solicitud_publica(token):
                 s.mascota = (form.mascota.data or '').strip() or None
 
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                s.area_otro = (form.area_otro.data or '').strip() or ''
+                area_otro_txt = (form.area_otro.data or '').strip()
+                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
 
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = (form.nota_cliente.data or '').strip()
@@ -1792,12 +1923,6 @@ def solicitud_publica(token):
             db.session.rollback()
             current_app.logger.exception("ERROR guardando solicitud pública")
             flash(f"No se pudo enviar la solicitud. Error: {str(e)}", "danger")
-        finally:
-            try:
-                if lock_acquired and _cache_ok():
-                    _cache_del(cache, lock_key)
-            except Exception:
-                pass
 
     elif request.method == 'POST':
         flash('Revisa los campos marcados en rojo.', 'danger')
@@ -1845,6 +1970,8 @@ def banco_domesticas():
     per_page = per_page if per_page in (6, 12, 24, 48) else 12
 
     q = (request.args.get('q') or '').strip()[:120]
+    ciudad = (request.args.get('ciudad') or '').strip()[:120]
+    modalidad = (request.args.get('modalidad') or '').strip()[:120]
 
     query = (
         db.session.query(Candidata, CandidataWeb)
@@ -1869,6 +1996,12 @@ def banco_domesticas():
             )
         )
 
+    if ciudad:
+        query = query.filter(getattr(CandidataWeb, 'ciudad_publica', db.literal('')).ilike(f"%{ciudad}%"))
+
+    if modalidad:
+        query = query.filter(getattr(CandidataWeb, 'modalidad_publica', db.literal('')).ilike(f"%{modalidad}%"))
+
     total = query.count()
     items = (
         query
@@ -1878,6 +2011,7 @@ def banco_domesticas():
     )
 
     pages = (total + per_page - 1) // per_page if per_page else 1
+    pages = max(1, pages)
     has_prev = page > 1
     has_next = page < pages
 
@@ -1909,10 +2043,32 @@ def banco_domesticas():
             'fila': int(getattr(cand, 'fila', 0) or 0),
         })
 
+    try:
+        base_opts = (
+            db.session.query(CandidataWeb)
+            .filter(CandidataWeb.visible.is_(True))
+            .filter(CandidataWeb.estado_publico == 'disponible')
+        )
+        ciudades_disponibles = sorted({
+            (x.ciudad_publica or '').strip()
+            for x in base_opts
+            if (x.ciudad_publica or '').strip()
+        })
+        modalidades_disponibles = sorted({
+            (x.modalidad_publica or '').strip()
+            for x in base_opts
+            if (x.modalidad_publica or '').strip()
+        })
+    except Exception:
+        ciudades_disponibles = []
+        modalidades_disponibles = []
+
     return render_template(
         'clientes/domesticas_list.html',
         resultados=items,
         q=q,
+        ciudad=ciudad,
+        modalidad=modalidad,
         page=page,
         per_page=per_page,
         total=total,
@@ -1922,6 +2078,8 @@ def banco_domesticas():
         prev_num=page-1 if has_prev else 1,
         next_num=page+1 if has_next else pages,
         domesticas=domesticas,
+        ciudades_disponibles=ciudades_disponibles,
+        modalidades_disponibles=modalidades_disponibles,
     )
 
 

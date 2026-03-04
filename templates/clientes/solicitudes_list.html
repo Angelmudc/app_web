@@ -1,221 +1,165 @@
-{# templates/clientes/solicitudes_list.html #}
 {% extends "clientes/base.html" %}
 {% block title %}Mis Solicitudes{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-
-  <!-- Header -->
-  <div class="d-flex flex-wrap gap-3 justify-content-between align-items-start align-items-md-center mb-3">
+<div class="container py-4 clientes-solicitudes-page">
+  <div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-3">
     <div>
       <h2 class="mb-1 fw-bold">Mis Solicitudes</h2>
-      <div class="text-muted small">Aquí ves el estado, el plan y puedes entrar al detalle de cada solicitud.</div>
+      <div class="text-muted small">Filtra por estado, ciudad, modalidad, fecha o texto para encontrar rápido.</div>
     </div>
     <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success">
       <i class="bi bi-plus-lg me-1"></i> Nueva Solicitud
     </a>
   </div>
 
-  <!-- Panel filtros -->
   <div class="card shadow-sm border-0 mb-3">
     <div class="card-body">
-      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-        <div class="fw-semibold">
-          <i class="bi bi-funnel me-1 text-primary"></i> Filtros
-        </div>
-        <div class="text-muted small">Tip: escribe un código o filtra por estado.</div>
-      </div>
-
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-6">
-          <label class="form-label">Buscar</label>
-          <div class="input-group">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input id="buscador" type="text" class="form-control" placeholder="Código, fecha (dd/mm/aaaa) o estado…">
-          </div>
-        </div>
-
+      <form method="get" class="row g-3 align-items-end">
         <div class="col-12 col-md-4">
-          <label class="form-label">Estado</label>
-          <select id="filtro-estado" class="form-select">
+          <label class="form-label fw-semibold">Buscar</label>
+          <input type="text" class="form-control" name="q" value="{{ q or '' }}" placeholder="Código, ciudad, modalidad o experiencia">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold">Estado</label>
+          <select class="form-select" name="estado">
             <option value="">Todos</option>
-            <option value="proceso">Proceso</option>
-            <option value="activa">Activa</option>
-            <option value="pagada">Pagada</option>
-            <option value="cancelada">Cancelada</option>
+            {% for e in estados_disponibles %}
+              <option value="{{ e }}" {% if estado == e %}selected{% endif %}>{{ e|capitalize }}</option>
+            {% endfor %}
           </select>
         </div>
-
-        <div class="col-12 col-md-2 text-md-end">
-          <button id="limpiar" class="btn btn-outline-secondary w-100">
-            <i class="bi bi-x-circle me-1"></i> Limpiar
-          </button>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold">Ciudad/Sector</label>
+          <select class="form-select" name="ciudad">
+            <option value="">Todas</option>
+            {% for c in ciudades_disponibles %}
+              <option value="{{ c }}" {% if ciudad == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
         </div>
-      </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold">Modalidad</label>
+          <select class="form-select" name="modalidad">
+            <option value="">Todas</option>
+            {% for m in modalidades_disponibles %}
+              <option value="{{ m }}" {% if modalidad == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold">Desde</label>
+          <input type="date" class="form-control" name="fecha_desde" value="{{ fecha_desde or '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold">Hasta</label>
+          <input type="date" class="form-control" name="fecha_hasta" value="{{ fecha_hasta or '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold">Mostrar</label>
+          <select class="form-select" name="per_page">
+            {% for n in [10, 20, 30, 50] %}
+              <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-funnel me-1"></i> Aplicar filtros
+          </button>
+          <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">
+            Limpiar
+          </a>
+        </div>
+      </form>
     </div>
   </div>
 
-  <!-- Lista -->
   <div class="card shadow-sm border-0">
-    <div class="list-group list-group-flush" id="lista-solicitudes">
+    <div class="list-group list-group-flush">
       {% if solicitudes and solicitudes|length > 0 %}
         {% for s in solicitudes %}
-          {% set estado = (s.estado or 'proceso') %}
-          {% set plan = (s.tipo_plan or '')|lower %}
-
-          {# Badge de estado #}
-          {% set badge_class =
-              'bg-secondary' if estado=='proceso' else
-              'bg-primary'   if estado=='activa'  else
-              'bg-success'   if estado=='pagada'  else
-              'bg-warning text-dark' if estado=='cancelada' else
-              'bg-info'
+          {% set estado = (s.estado or 'proceso')|lower %}
+          {% set estado_label =
+            'Pendiente' if estado == 'proceso' else
+            'Activa' if estado == 'activa' else
+            'Completada' if estado == 'pagada' else
+            'Cerrada' if estado == 'cancelada' else
+            (s.estado or 'Sin estado')
           %}
-
-          {# Badge de plan #}
+          {% set plan = (s.tipo_plan or '')|lower %}
           {% set plan_label =
               'Básico' if plan in ['basico','básico'] else
               'Premium' if plan == 'premium' else
               'VIP' if plan == 'vip' else
               (s.tipo_plan or 'Sin plan')
           %}
-          {% set plan_badge =
-              'text-bg-secondary' if plan_label=='Sin plan' else
-              'text-bg-dark' if plan_label=='Básico' else
-              'text-bg-primary' if plan_label=='Premium' else
-              'text-bg-success' if plan_label=='VIP' else
-              'text-bg-secondary'
-          %}
-
-          <div class="list-group-item solicitud-item"
-               data-estado="{{ estado|lower }}"
-               data-buscable="{{ (s.codigo_solicitud ~ ' ' ~ (s.fecha_solicitud.strftime('%d/%m/%Y') if s.fecha_solicitud else '') ~ ' ' ~ estado ~ ' ' ~ plan_label)|lower }}">
-
+          <div class="list-group-item solicitud-item-v2">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
-
-              <!-- Izquierda: info -->
               <div class="flex-grow-1">
                 <div class="d-flex flex-wrap align-items-center gap-2">
                   <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="fw-bold text-decoration-none">
                     {{ s.codigo_solicitud }}
                   </a>
-                  <span class="badge {{ badge_class }}">{{ estado|capitalize }}</span>
-                  <span class="badge {{ plan_badge }}">
-                    <i class="bi bi-award me-1"></i>{{ plan_label }}
-                  </span>
-
+                  <span class="badge estado-badge estado-{{ estado }}">{{ estado_label }}</span>
+                  <span class="badge rounded-pill text-bg-light border">{{ plan_label }}</span>
                   {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
-                    <span class="badge bg-danger">
-                      <i class="bi bi-megaphone me-1"></i>Publicado hoy
-                    </span>
+                    <span class="badge bg-danger">Publicado hoy</span>
                   {% endif %}
                 </div>
-
-                <div class="small text-muted mt-1">
-                  <i class="bi bi-calendar3 me-1"></i>
-                  {{ (s.fecha_solicitud or now()).strftime('%d/%m/%Y') }}
-
-                  {% if s.ciudad_sector %}
-                    <span class="mx-2">•</span>
-                    <i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}
-                  {% endif %}
-
-                  {% if s.modalidad_trabajo %}
-                    <span class="mx-2">•</span>
-                    <i class="bi bi-briefcase me-1"></i>{{ s.modalidad_trabajo }}
-                  {% endif %}
+                <div class="small text-muted mt-1 d-flex flex-wrap gap-2">
+                  <span><i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now()).strftime('%d/%m/%Y') }}</span>
+                  {% if s.ciudad_sector %}<span><i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}</span>{% endif %}
+                  {% if s.modalidad_trabajo %}<span><i class="bi bi-briefcase me-1"></i>{{ s.modalidad_trabajo }}</span>{% endif %}
                 </div>
               </div>
 
-              <!-- Derecha: acciones -->
-              <div class="d-flex flex-wrap align-items-center justify-content-start justify-content-lg-end gap-2">
+              <div class="d-flex flex-wrap gap-2">
                 <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-sm btn-outline-primary">
-                  <i class="bi bi-eye me-1"></i> Ver detalles
+                  <i class="bi bi-eye me-1"></i> Ver
                 </a>
-
                 {% if estado == 'proceso' %}
                   <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}" class="btn btn-sm btn-primary">
                     <i class="bi bi-pencil-square me-1"></i> Editar
                   </a>
-                  <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}"
-                     class="btn btn-sm btn-outline-danger"
-                     onclick="return confirm('¿Seguro que deseas solicitar la cancelación?');">
+                  <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}" class="btn btn-sm btn-outline-danger">
                     <i class="bi bi-x-circle me-1"></i> Cancelar
                   </a>
-                {% else %}
-                  <span class="text-muted small">No editable</span>
                 {% endif %}
               </div>
             </div>
-
           </div>
         {% endfor %}
       {% else %}
         <div class="list-group-item text-center py-5">
-          <div class="mb-2">
-            <i class="bi bi-inbox text-muted" style="font-size:2.2rem;"></i>
-          </div>
-          <h5 class="mb-1 fw-bold">Aún no tienes solicitudes</h5>
-          <p class="text-muted mb-3">Crea tu primera solicitud y empieza el proceso con nosotros.</p>
+          <div class="mb-2"><i class="bi bi-inbox text-muted" style="font-size:2.2rem;"></i></div>
+          <h5 class="mb-1 fw-bold">No encontramos solicitudes con esos filtros</h5>
+          <p class="text-muted mb-3">Prueba limpiando filtros o crea una nueva solicitud.</p>
           <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
-            <i class="bi bi-plus-lg me-1"></i> Crear mi primera solicitud
+            <i class="bi bi-plus-lg me-1"></i> Crear solicitud
           </a>
         </div>
       {% endif %}
     </div>
 
-    {% if solicitudes and solicitudes|length > 0 %}
-      <div class="card-footer d-flex flex-column flex-md-row justify-content-between gap-2 small text-muted">
-        <span id="contador"></span>
-        <span>Consejo: filtra por estado o busca por fecha/código para encontrar rápido.</span>
+    {% if total and total > 0 %}
+      <div class="card-footer d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+        <div class="small text-muted">
+          Mostrando {{ solicitudes|length }} de {{ total }} solicitudes
+        </div>
+        <nav aria-label="Paginación">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {% if not has_prev %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('clientes.listar_solicitudes', q=q, estado=estado, ciudad=ciudad, modalidad=modalidad, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, per_page=per_page, page=prev_num or 1) }}">Anterior</a>
+            </li>
+            <li class="page-item disabled"><span class="page-link">Página {{ page }} de {{ pages or 1 }}</span></li>
+            <li class="page-item {% if not has_next %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('clientes.listar_solicitudes', q=q, estado=estado, ciudad=ciudad, modalidad=modalidad, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, per_page=per_page, page=next_num or page) }}">Siguiente</a>
+            </li>
+          </ul>
+        </nav>
       </div>
     {% endif %}
   </div>
-
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-(function () {
-  const $items = Array.from(document.querySelectorAll('.solicitud-item'));
-  const $buscador = document.getElementById('buscador');
-  const $fEstado = document.getElementById('filtro-estado');
-  const $contador = document.getElementById('contador');
-  const $limpiar = document.getElementById('limpiar');
-
-  function normalizar(t){ return (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
-
-  function aplicarFiltros() {
-    const q = normalizar($buscador.value);
-    const est = ($fEstado.value || '').toLowerCase();
-    let visibles = 0;
-
-    $items.forEach(it => {
-      const eb = it.getAttribute('data-estado') || '';
-      const txt = normalizar(it.getAttribute('data-buscable') || '');
-      const matchEstado = !est || eb === est;
-      const matchTxt = !q || txt.includes(q);
-      const show = matchEstado && matchTxt;
-      it.style.display = show ? '' : 'none';
-      if (show) visibles++;
-    });
-
-    if ($contador) {
-      const total = $items.length;
-      $contador.textContent = `Mostrando ${visibles} de ${total}`;
-    }
-  }
-
-  if ($buscador) $buscador.addEventListener('input', aplicarFiltros);
-  if ($fEstado) $fEstado.addEventListener('change', aplicarFiltros);
-  if ($limpiar) $limpiar.addEventListener('click', function(){
-    if ($buscador) $buscador.value = '';
-    if ($fEstado) $fEstado.value = '';
-    aplicarFiltros();
-  });
-
-  aplicarFiltros();
-})();
-</script>
 {% endblock %}

@@ -30,6 +30,47 @@
       Actualizando listado...
     </div>
 
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Buscar</label>
+            <input type="text" class="form-control" name="q" value="{{ q or '' }}" placeholder="Nombre o código">
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label fw-semibold">Ciudad</label>
+            <select class="form-select" name="ciudad">
+              <option value="">Todas</option>
+              {% for c in ciudades_disponibles or [] %}
+                <option value="{{ c }}" {% if ciudad == c %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label fw-semibold">Modalidad</label>
+            <select class="form-select" name="modalidad">
+              <option value="">Todas</option>
+              {% for m in modalidades_disponibles or [] %}
+                <option value="{{ m }}" {% if modalidad == m %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label fw-semibold">Mostrar</label>
+            <select class="form-select" name="per_page">
+              {% for n in [6, 12, 24, 48] %}
+                <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-filter me-1"></i>Aplicar</button>
+            <a href="{{ url_for('clientes.banco_domesticas') }}" class="btn btn-outline-secondary">Limpiar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
 
     {% if pages is defined and pages > 1 %}
       <div class="d-flex justify-content-end mt-3">
@@ -68,6 +109,13 @@
                   onclick="verImagenCompleta(this)"
                   class="domestica-foto"
                 >
+              </div>
+            {% else %}
+              <div class="card-domestica-avatar card-domestica-avatar-fallback">
+                <div class="fallback-inner">
+                  <i class="fa-solid fa-user"></i>
+                  <span>Sin foto disponible</span>
+                </div>
               </div>
             {% endif %}
 
@@ -151,7 +199,7 @@
     {% if pages is defined and pages > 1 %}
       <nav class="pagination" aria-label="Paginación de domésticas">
         {% if has_prev %}
-          <a href="{{ url_for('clientes.banco_domesticas', page=prev_num) }}" class="page-link" rel="nofollow">
+          <a href="{{ url_for('clientes.banco_domesticas', page=prev_num, q=q, ciudad=ciudad, modalidad=modalidad, per_page=per_page) }}" class="page-link" rel="nofollow">
             ← Anterior
           </a>
         {% endif %}
@@ -159,7 +207,7 @@
         <span class="page-info">Página {{ page }} de {{ pages }}</span>
 
         {% if has_next %}
-          <a href="{{ url_for('clientes.banco_domesticas', page=next_num) }}" class="page-link" rel="nofollow">
+          <a href="{{ url_for('clientes.banco_domesticas', page=next_num, q=q, ciudad=ciudad, modalidad=modalidad, per_page=per_page) }}" class="page-link" rel="nofollow">
             Siguiente →
           </a>
         {% endif %}

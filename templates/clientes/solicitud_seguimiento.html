@@ -1,0 +1,39 @@
+{% extends "clientes/base.html" %}
+{% block title %}Seguimiento {{ s.codigo_solicitud }}{% endblock %}
+
+{% block content %}
+<div class="container py-4 clientes-seguimiento-page">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">Seguimiento de solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
+      <div class="text-muted small">Línea de tiempo de los eventos de tu solicitud.</div>
+    </div>
+    <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i> Volver al detalle
+    </a>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="card-body">
+      {% if timeline and timeline|length > 0 %}
+        <div class="timeline-v2">
+          {% for item in timeline %}
+            <div class="timeline-v2-item">
+              <div class="timeline-v2-dot"></div>
+              <div class="timeline-v2-content">
+                <div class="fw-semibold">{{ item.titulo }}</div>
+                <div class="small text-muted">{{ item.detalle or 'Sin detalle' }}</div>
+                <div class="small text-muted">
+                  {% if item.fecha %}{{ item.fecha.strftime('%d/%m/%Y %H:%M') }}{% else %}Fecha no disponible{% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="text-muted">Aún no hay eventos para mostrar.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1975,3 +1975,145 @@ html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="client
   color: #eaf0ff !important;
   background-color: #111a33 !important;
 }
+
+/* ==========================================================
+   Clientes UI Refresh (dashboard + solicitudes + forms + banco)
+   ========================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .container.py-4,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .container.py-5 {
+  max-width: 1160px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card {
+  border-radius: 16px !important;
+  border: 1px solid rgba(16, 24, 40, 0.08) !important;
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-item-v2 {
+  transition: background-color .15s ease;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-item-v2:hover {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .estado-badge {
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .estado-proceso {
+  color: #7a4f01;
+  background: #fff3cd;
+  border-color: #ffe69c;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .estado-activa {
+  color: #084298;
+  background: #cfe2ff;
+  border-color: #9ec5fe;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .estado-pagada {
+  color: #0f5132;
+  background: #d1e7dd;
+  border-color: #a3cfbb;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .estado-cancelada {
+  color: #842029;
+  background: #f8d7da;
+  border-color: #f1aeb5;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .form-control,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .form-select {
+  border-radius: 12px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .form-check {
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .form-check:hover {
+  border-color: rgba(47, 108, 255, 0.35);
+  background: #f8fbff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .timeline-v2 {
+  position: relative;
+  margin-left: 4px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .timeline-v2-item {
+  position: relative;
+  padding-left: 28px;
+  margin-bottom: 18px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .timeline-v2-item:last-child {
+  margin-bottom: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .timeline-v2-item::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 18px;
+  bottom: -18px;
+  width: 2px;
+  background: #d0d5dd;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .timeline-v2-item:last-child::before {
+  display: none;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .timeline-v2-dot {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2f6cff;
+  box-shadow: 0 0 0 4px rgba(47, 108, 255, 0.18);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .timeline-v2-content {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica-avatar-fallback {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, #eef2ff, #f8fafc);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica-avatar-fallback .fallback-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #475467;
+  font-weight: 600;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .card-domestica-avatar-fallback i {
+  font-size: 36px;
+  color: #98a2b3;
+}
+
+@media (max-width: 768px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .form-check {
+    padding: 8px 10px;
+  }
+}
