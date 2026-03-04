@@ -2418,7 +2418,8 @@ def _build_detalles_servicio_from_form(form) -> dict | None:
             "cantidad_ninos": cant_ninos,
             "edades_ninos": edades or None,
             "tareas": _clean_list(tareas or []),
-            "tareas_otro": tareas_otro or None,
+            # Clave específica para evitar cruces con ENFERMERA.
+            "ninera_tareas_otro": tareas_otro or None,
             "condicion_especial": condicion or None,
         })
 
@@ -2441,7 +2442,8 @@ def _build_detalles_servicio_from_form(form) -> dict | None:
             "condicion_principal": condicion or None,
             "movilidad": movilidad or None,
             "tareas": _clean_list(tareas or []),
-            "tareas_otro": tareas_otro or None,
+            # Clave específica para evitar cruces con NIÑERA.
+            "enf_tareas_otro": tareas_otro or None,
         })
 
     # ─────────────────────────────
@@ -2508,7 +2510,12 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
             if hasattr(form, 'ninera_tareas'):
                 form.ninera_tareas.data = data.get("tareas") or []
             if hasattr(form, 'ninera_tareas_otro'):
-                form.ninera_tareas_otro.data = data.get("tareas_otro") or ''
+                # Compat retroactiva: lee clave nueva y fallback legado.
+                form.ninera_tareas_otro.data = (
+                    data.get("ninera_tareas_otro")
+                    or data.get("tareas_otro")
+                    or ''
+                )
             try:
                 if hasattr(form, 'ninera_tareas') and hasattr(form, 'ninera_tareas_otro'):
                     if (form.ninera_tareas_otro.data or '').strip():
@@ -2535,7 +2542,12 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
             if hasattr(form, 'enf_tareas'):
                 form.enf_tareas.data = data.get("tareas") or []
             if hasattr(form, 'enf_tareas_otro'):
-                form.enf_tareas_otro.data = data.get("tareas_otro") or ''
+                # Compat retroactiva: lee clave nueva y fallback legado.
+                form.enf_tareas_otro.data = (
+                    data.get("enf_tareas_otro")
+                    or data.get("tareas_otro")
+                    or ''
+                )
             try:
                 if hasattr(form, 'enf_tareas') and hasattr(form, 'enf_tareas_otro'):
                     if (form.enf_tareas_otro.data or '').strip():
