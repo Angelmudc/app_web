@@ -95,9 +95,14 @@
         </a>
 
         <div class="d-flex gap-2">
-          <a href="{{ url_for('clientes.rechazar_politicas') }}" class="btn btn-outline-danger">
-            <i class="bi bi-box-arrow-left me-1"></i> No acepto
-          </a>
+          <form method="post"
+                action="{{ url_for('clientes.rechazar_politicas') }}"
+                class="d-inline-block m-0 p-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-danger">
+              <i class="bi bi-box-arrow-left me-1"></i> No acepto
+            </button>
+          </form>
 
           <form method="post"
                 action="{{ url_for('clientes.aceptar_politicas', next=request.url) }}"

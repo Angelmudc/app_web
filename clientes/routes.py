@@ -429,7 +429,7 @@ def login():
     return render_template('clientes/login.html', form=form)
 
 
-@clientes_bp.route('/logout')
+@clientes_bp.route('/logout', methods=['POST'])
 @login_required
 @cliente_required
 def logout():
@@ -540,8 +540,8 @@ def clientes_ping():
 @cliente_required
 def clientes_solicitudes_live():
     """Snapshot mínimo para refrescar listados sin recargar toda la página."""
-    q = (request.args.get('q') or '').strip()
-    estado = (request.args.get('estado') or '').strip()
+    q = (request.args.get('q') or '').strip()[:120]
+    estado = (request.args.get('estado') or '').strip()[:40]
     limit = request.args.get('limit', 20, type=int)
     limit = max(1, min(limit, 50))
 
@@ -613,10 +613,12 @@ def clientes_solicitudes_live():
 @login_required
 @cliente_required
 def listar_solicitudes():
-    q        = request.args.get('q', '').strip()
-    estado   = request.args.get('estado', '').strip()
+    q        = request.args.get('q', '').strip()[:120]
+    estado   = request.args.get('estado', '').strip()[:40]
     page     = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
+    page     = max(page, 1)
+    per_page = max(1, min(per_page, 50))
 
     query = Solicitud.query.filter(Solicitud.cliente_id == current_user.id)
 
@@ -1354,7 +1356,7 @@ def aceptar_politicas():
     return redirect(next_url if _is_safe_next(next_url) else url_for('clientes.dashboard'))
 
 
-@clientes_bp.route('/politicas/rechazar', methods=['GET'])
+@clientes_bp.route('/politicas/rechazar', methods=['POST'])
 @login_required
 def rechazar_politicas():
     logout_user()
@@ -1992,13 +1994,17 @@ def domestica_detalle(fila: int):
 @cliente_required
 @banco_domesticas_required
 def domestica_foto_perfil(fila: int):
-    if Candidata is None:
+    if Candidata is None or CandidataWeb is None:
         abort(404)
 
     from io import BytesIO
     import imghdr
 
     cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
+    if not ficha or not bool(getattr(ficha, 'visible', False)) or (getattr(ficha, 'estado_publico', '') != 'disponible'):
+        abort(404)
+
     blob = getattr(cand, 'foto_perfil', None)
     if not blob:
         abort(404)

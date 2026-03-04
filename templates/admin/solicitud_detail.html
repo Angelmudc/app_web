@@ -255,7 +255,7 @@
         ~ ('Niños: ' ~ (_ninos|string if _ninos is not none else '') ~ '\n' if (_ninos is not none and (_ninos|string)|trim != '' and (_ninos|string)|int > 0) else '')
         ~ ('Edades niños: ' ~ _edades_ninos ~ '\n' if (_edades_ninos|string)|trim != '' else '')
         ~ ('Mascota: ' ~ _mascota ~ '\n\n' if _mascota else '\n')
-        ~ 'Sueldo: $' ~ (_sueldo|string) ~ ' mensual' ~ (', más ayuda del pasaje' if _pasaje else '')
+        ~ 'Sueldo: $' ~ (_sueldo|string) ~ ' mensual' ~ (', incluye ayuda de pasaje' if _pasaje else ', no incluye ayuda de pasaje')
         ~ ('\n\nNotas: ' ~ _nota if (_nota|string)|trim != '' else '')
       ) %}
 
