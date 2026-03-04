@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import os
+from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import abort, flash, redirect, request, session, url_for
+from flask import abort, current_app, flash, redirect, request, session, url_for
+from flask_login import UserMixin
+from werkzeug.security import check_password_hash
 
 try:
     from flask_login import current_user
@@ -13,15 +16,28 @@ except Exception:
 from config_app import USUARIOS
 
 
+BREAKGLASS_USER_ID = "breakglass"
+
+
+class BreakglassUser(UserMixin):
+    id = BREAKGLASS_USER_ID
+    role = "admin"
+    is_active = True
+    is_anonymous = False
+
+    @property
+    def is_authenticated(self):
+        return True
+
+    def get_id(self):
+        return BREAKGLASS_USER_ID
+
+
 def _is_true_env(value: str, default: bool = False) -> bool:
     raw = (value or "").strip().lower()
     if not raw:
         return default
     return raw in ("1", "true", "yes", "on")
-
-
-def admin_legacy_enabled() -> bool:
-    return _is_true_env(os.getenv("ADMIN_LEGACY_ENABLED", "1"), default=True)
 
 
 def _safe_next() -> str:
@@ -34,8 +50,134 @@ def _safe_next() -> str:
     return "/"
 
 
+def admin_legacy_enabled() -> bool:
+    raw = os.getenv("ADMIN_LEGACY_ENABLED")
+    if raw is not None:
+        return _is_true_env(raw, default=False)
+    env = (os.getenv("FLASK_ENV", "") or os.getenv("ENV", "")).strip().lower()
+    if env == "production":
+        return False
+    return True
+
+
 def redirect_admin_login():
     return redirect(url_for("admin.login", next=_safe_next()))
+
+
+def is_breakglass_enabled() -> bool:
+    return _is_true_env(os.getenv("BREAKGLASS_ENABLED", "0"), default=False)
+
+
+def breakglass_username() -> str:
+    return (os.getenv("BREAKGLASS_USERNAME") or BREAKGLASS_USER_ID).strip() or BREAKGLASS_USER_ID
+
+
+def breakglass_password_hash() -> str:
+    return (os.getenv("BREAKGLASS_PASSWORD_HASH") or "").strip()
+
+
+def breakglass_ttl_seconds() -> int:
+    try:
+        return max(60, int((os.getenv("BREAKGLASS_SESSION_TTL_SECONDS") or "3600").strip()))
+    except Exception:
+        return 3600
+
+
+def breakglass_allowed_ip(ip: str) -> bool:
+    allow_raw = (os.getenv("BREAKGLASS_ALLOWED_IPS") or "").strip()
+    # Breakglass 100% amarrado por IP: si no hay allowlist, NO permite.
+    if not allow_raw:
+        return False
+    allow = {x.strip() for x in allow_raw.split(",") if x.strip()}
+    return (ip or "").strip() in allow
+
+
+def get_request_ip() -> str:
+    trust_xff = _is_true_env(os.getenv("TRUST_XFF", "0"), default=False)
+    if trust_xff:
+        cf_ip = (request.headers.get("CF-Connecting-IP") or "").strip()
+        if cf_ip:
+            return cf_ip[:64]
+
+        x_real = (request.headers.get("X-Real-IP") or "").strip()
+        if x_real:
+            return x_real[:64]
+
+        xff = (request.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip()[:64]
+
+    return (request.remote_addr or "0.0.0.0").strip()[:64]
+
+
+def check_breakglass_password(raw_password: str) -> bool:
+    pwd_hash = breakglass_password_hash()
+    if not pwd_hash:
+        return False
+    try:
+        return check_password_hash(pwd_hash, raw_password or "")
+    except Exception:
+        return False
+
+
+def breakglass_is_expired(sess=None) -> bool:
+    s = sess if sess is not None else session
+    expires_at = s.get("breakglass_expires_at")
+    if not expires_at:
+        return True
+    try:
+        return datetime.utcnow() >= datetime.fromisoformat(str(expires_at).strip())
+    except Exception:
+        return True
+
+
+def is_breakglass_session_valid(sess=None) -> bool:
+    s = sess if sess is not None else session
+    if not bool(s.get("is_breakglass")):
+        return False
+    return not breakglass_is_expired(s)
+
+
+def set_breakglass_session(sess=None):
+    s = sess if sess is not None else session
+    ttl = breakglass_ttl_seconds()
+    expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+    s["is_breakglass"] = True
+    s["breakglass_expires_at"] = expires_at.isoformat(timespec="seconds")
+    s["is_admin_session"] = True
+    s["usuario"] = breakglass_username()
+    s["role"] = "admin"
+
+
+def clear_breakglass_session(sess=None):
+    s = sess if sess is not None else session
+    s.pop("is_breakglass", None)
+    s.pop("breakglass_expires_at", None)
+
+
+def build_breakglass_user():
+    return BreakglassUser()
+
+
+def is_breakglass_user_obj(user_obj=None) -> bool:
+    u = user_obj if user_obj is not None else current_user
+    try:
+        if not u or not getattr(u, "is_authenticated", False):
+            return False
+        return str(u.get_id() or "").strip() == BREAKGLASS_USER_ID
+    except Exception:
+        return False
+
+
+def log_breakglass_attempt(success: bool, ip: str, ua: str):
+    msg = (
+        f"BREAKGLASS LOGIN {'SUCCESS' if success else 'FAIL'} "
+        f"ip={ip or '-'} ua={(ua or '-')[:240]}"
+    )
+    try:
+        current_app.logger.warning(msg)
+    except Exception:
+        pass
 
 
 def _legacy_user_exists(username: str) -> bool:
@@ -72,7 +214,6 @@ def _is_legacy_staff_login() -> bool:
     if not admin_legacy_enabled():
         return False
 
-    # Flask-Login (legacy user cargado por user_loader)
     try:
         if current_user and getattr(current_user, "is_authenticated", False):
             uid = str(current_user.get_id() or "").strip()
@@ -81,7 +222,6 @@ def _is_legacy_staff_login() -> bool:
     except Exception:
         pass
 
-    # Fallback por sesión antigua
     uname = (session.get("usuario") or "").strip()
     role = (session.get("role") or "").strip().lower()
     return bool(uname and role in ("admin", "secretaria") and _legacy_user_exists(uname))
@@ -89,6 +229,10 @@ def _is_legacy_staff_login() -> bool:
 
 def get_staff_role() -> str:
     role = _current_user_role()
+
+    if role == "admin" and is_breakglass_user_obj() and is_breakglass_session_valid():
+        return "admin"
+
     if role not in ("admin", "secretaria"):
         return ""
 

@@ -144,6 +144,13 @@
           </li>
           {% endif %}
 
+          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (current_user.role|default('') == 'admin') %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario'] %}active{% endif %}"
+               href="{{ url_for('admin.listar_usuarios') }}">Usuarios</a>
+          </li>
+          {% endif %}
+
           {# Reportes (puede existir con distintos nombres según tu blueprint) #}
           {% set ns_rep = namespace(url=None, ep=None) %}
           {% for ep in ['admin.reportes', 'admin.reporte', 'admin.reportes_view', 'reportes', 'reporte', 'reporte_pagos', 'admin.reporte_pagos', 'admin.reportes_pagos'] %}

@@ -4,22 +4,23 @@
 import os
 import re
 import json
+import click
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional
 
-from flask import Flask, request, redirect, url_for, abort
+from flask import Flask, request, redirect, url_for, abort, session
 from datetime import timedelta
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
 from flask_migrate import Migrate
-from flask_login import LoginManager, UserMixin
+from flask_login import LoginManager, UserMixin, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf import CSRFProtect
 
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.pool import NullPool
 
 # ─────────────────────────────────────────────────────────────
@@ -357,7 +358,7 @@ def create_app():
     app.jinja_env.globals["current_year"] = _dt.utcnow().year
 
     # ─────────────────────────────────────────────────────────
-    # Login manager (usuarios en memoria + clientes)
+    # Login manager (staff en BD + legacy en memoria + clientes)
     # ─────────────────────────────────────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
@@ -381,16 +382,161 @@ def create_app():
                 return False
             return check_password_hash(data["pwd_hash"], password)
 
+    from utils.staff_auth import (
+        BREAKGLASS_USER_ID,
+        build_breakglass_user,
+        clear_breakglass_session,
+        is_breakglass_session_valid,
+    )
+
     @login_manager.user_loader
     def load_user(user_id):
-        key, data = _get_admin_user_record(user_id)
-        if data:
-            return User(key, data["role"])
         try:
-            from models import Cliente
-            return Cliente.query.get(int(user_id))
+            from models import Cliente, StaffUser
         except Exception:
             return None
+
+        uid = (str(user_id or "").strip())
+        if not uid:
+            return None
+
+        if uid == BREAKGLASS_USER_ID:
+            if is_breakglass_session_valid(session):
+                return build_breakglass_user()
+            try:
+                logout_user()
+            except Exception:
+                pass
+            try:
+                clear_breakglass_session(session)
+                session.clear()
+            except Exception:
+                pass
+            return None
+
+        # Staff en BD: se restaura solo si la sesión pertenece al panel admin.
+        if uid.startswith("staff:"):
+            if not bool(session.get("is_admin_session")):
+                return None
+            raw = uid.split(":", 1)[1].strip()
+            if raw.isdigit():
+                return StaffUser.query.get(int(raw))
+            return None
+
+        # Compatibilidad por si alguna sesión previa guardó solo el id numérico.
+        if bool(session.get("is_admin_session")) and uid.isdigit():
+            su = StaffUser.query.get(int(uid))
+            if su is not None:
+                return su
+
+        key, data = _get_admin_user_record(uid)
+        if data:
+            return User(key, data["role"])
+
+        try:
+            if uid.isdigit():
+                return Cliente.query.get(int(uid))
+            return None
+        except Exception:
+            return None
+
+    def _staff_password_min_len() -> int:
+        try:
+            return max(8, int((os.getenv("STAFF_PASSWORD_MIN_LEN") or "8").strip()))
+        except Exception:
+            return 8
+
+    def _normalize_staff_role(role_raw: str) -> str:
+        role = (role_raw or "").strip().lower()
+        if role in {"admin", "secretaria"}:
+            return role
+        default_role = (os.getenv("ADMIN_DEFAULT_ROLE") or "secretaria").strip().lower()
+        return default_role if default_role in {"admin", "secretaria"} else "secretaria"
+
+    def _create_staff_user(username: str, role: str, password: str, email: str = "", is_active: bool = True):
+        from models import StaffUser
+
+        username_clean = (username or "").strip()
+        email_clean = (email or "").strip().lower() or None
+        role_clean = _normalize_staff_role(role)
+        min_len = _staff_password_min_len()
+
+        if not username_clean:
+            raise click.ClickException("Debes indicar --username.")
+        if not password or len(password) < min_len:
+            raise click.ClickException(f"La contraseña debe tener al menos {min_len} caracteres.")
+
+        exists_username = StaffUser.query.filter(
+            func.lower(StaffUser.username) == username_clean.lower()
+        ).first()
+        if exists_username:
+            raise click.ClickException("Ese username ya existe.")
+
+        if email_clean:
+            exists_email = StaffUser.query.filter(
+                func.lower(StaffUser.email) == email_clean
+            ).first()
+            if exists_email:
+                raise click.ClickException("Ese email ya existe.")
+
+        u = StaffUser(username=username_clean, email=email_clean, role=role_clean, is_active=bool(is_active))
+        u.set_password(password)
+        db.session.add(u)
+        db.session.commit()
+        click.echo(f"Staff creado: username={u.username} role={u.role} id={u.id} active={u.is_active}")
+
+    @app.cli.command("create-staff")
+    @click.option("--username", required=True, help="Usuario interno (único).")
+    @click.option("--role", required=False, default=lambda: os.getenv("ADMIN_DEFAULT_ROLE", "secretaria"), help="Rol: admin|secretaria.")
+    @click.option("--password", required=True, help="Contraseña inicial.")
+    @click.option("--email", required=False, default="", help="Email opcional (único).")
+    def create_staff_command(username: str, role: str, password: str, email: str):
+        """Crea un usuario interno en staff_users."""
+        _create_staff_user(username=username, role=role, password=password, email=email)
+
+    @app.cli.command("create-secretaria")
+    @click.option("--username", required=True, help="Usuario interno (único).")
+    @click.option("--password", required=True, help="Contraseña inicial.")
+    @click.option("--email", required=False, default="", help="Email opcional (único).")
+    def create_secretaria_command(username: str, password: str, email: str):
+        """Atajo para crear staff con rol secretaria."""
+        _create_staff_user(username=username, role="secretaria", password=password, email=email)
+
+    @app.cli.command("create-emergency-admin")
+    @click.option("--username", required=True, help="Username del admin de emergencia.")
+    @click.option("--email", required=False, default="", help="Email opcional.")
+    @click.option("--password", required=True, help="Contraseña.")
+    @click.option("--inactive/--active", default=True, help="Por defecto se crea inactivo.")
+    def create_emergency_admin_command(username: str, email: str, password: str, inactive: bool):
+        """Crea un admin de emergencia en staff_users (inactivo por defecto)."""
+        _create_staff_user(
+            username=username,
+            role="admin",
+            password=password,
+            email=email,
+            is_active=(not bool(inactive)),
+        )
+
+    @app.cli.command("set-staff-active")
+    @click.option("--username", required=True, help="Username o email del staff.")
+    @click.option("--active", required=True, type=int, help="1=activo, 0=inactivo.")
+    def set_staff_active_command(username: str, active: int):
+        """Activa o desactiva un usuario staff por username/email."""
+        from models import StaffUser
+
+        ident = (username or "").strip().lower()
+        if not ident:
+            raise click.ClickException("Debes indicar --username.")
+
+        user = StaffUser.query.filter(
+            (func.lower(StaffUser.username) == ident) | (func.lower(StaffUser.email) == ident)
+        ).first()
+        if not user:
+            raise click.ClickException("No se encontró usuario staff con ese username/email.")
+
+        user.is_active = bool(int(active) == 1)
+        db.session.commit()
+        click.echo(f"Actualizado: id={user.id} username={user.username} active={user.is_active}")
 
     # ─────────────────────────────────────────────────────────
     # Blueprints

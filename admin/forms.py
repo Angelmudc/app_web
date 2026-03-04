@@ -79,6 +79,56 @@ class AdminLoginForm(FlaskForm):
     submit = SubmitField('Iniciar sesión')
 
 
+class StaffUserCreateForm(FlaskForm):
+    username = StringField(
+        'Usuario',
+        validators=[
+            DataRequired("Ingresa el usuario."),
+            Length(min=3, max=80),
+            Regexp(r'^[a-zA-Z0-9._-]+$', message="Usa solo letras, números, ., _ o -."),
+        ],
+        filters=[lambda v: v.strip() if isinstance(v, str) else v],
+        render_kw={"autocomplete": "username"}
+    )
+    email = StringField(
+        'Email (opcional)',
+        validators=[Optional(), Email("Correo inválido."), Length(max=255)],
+        filters=[lambda v: v.strip().lower() if isinstance(v, str) else v],
+        render_kw={"autocomplete": "email"}
+    )
+    role = SelectField(
+        'Rol',
+        choices=[('secretaria', 'Secretaria'), ('admin', 'Admin')],
+        validators=[DataRequired("Selecciona un rol.")]
+    )
+    password = PasswordField(
+        'Contraseña inicial',
+        validators=[DataRequired("Ingresa una contraseña."), Length(min=8, max=128)],
+        render_kw={"autocomplete": "new-password"}
+    )
+    submit = SubmitField('Crear usuario')
+
+
+class StaffUserEditForm(FlaskForm):
+    email = StringField(
+        'Email (opcional)',
+        validators=[Optional(), Email("Correo inválido."), Length(max=255)],
+        filters=[lambda v: v.strip().lower() if isinstance(v, str) else v],
+        render_kw={"autocomplete": "email"}
+    )
+    role = SelectField(
+        'Rol',
+        choices=[('secretaria', 'Secretaria'), ('admin', 'Admin')],
+        validators=[DataRequired("Selecciona un rol.")]
+    )
+    new_password = PasswordField(
+        'Reset password (opcional)',
+        validators=[Optional(), Length(min=8, max=128)],
+        render_kw={"autocomplete": "new-password"}
+    )
+    submit = SubmitField('Guardar cambios')
+
+
 # =============================================================================
 #                                  CLIENTE
 # =============================================================================

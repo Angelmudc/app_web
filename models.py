@@ -5,6 +5,7 @@ from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum, LargeBinary, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import synonym
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from config_app import db
 
@@ -380,6 +381,38 @@ class EntrevistaRespuesta(db.Model):
     def __repr__(self):
         return f"<EntrevistaRespuesta entrevista={self.entrevista_id} pregunta={self.pregunta_id}>"
 
+
+
+class StaffUser(UserMixin, db.Model):
+    __tablename__ = 'staff_users'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(255), unique=True, nullable=True, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='secretaria')
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login_at = db.Column(db.DateTime, nullable=True)
+    last_login_ip = db.Column(db.String(64), nullable=True)
+
+    def get_id(self) -> str:
+        # Evita colisión con IDs numéricos de Cliente.
+        return f"staff:{self.id}"
+
+    @property
+    def is_admin(self) -> bool:
+        return (self.role or "").strip().lower() == "admin"
+
+    def set_password(self, raw_password: str) -> None:
+        self.password_hash = generate_password_hash(raw_password, method="pbkdf2:sha256")
+
+    def check_password(self, raw_password: str) -> bool:
+        try:
+            return check_password_hash(self.password_hash or "", raw_password or "")
+        except Exception:
+            return False
 
 
 class Cliente(UserMixin, db.Model):

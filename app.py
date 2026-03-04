@@ -88,6 +88,17 @@ def _is_admin_any() -> bool:
     return (str(session.get("role") or "").strip().lower() == "admin")
 
 
+def _is_staff_any() -> bool:
+    try:
+        if bool(getattr(current_user, "is_authenticated", False)):
+            role = (getattr(current_user, "role", None) or getattr(current_user, "rol", None) or "").strip().lower()
+            if role in ("admin", "secretaria"):
+                return True
+    except Exception:
+        pass
+    return (str(session.get("role") or "").strip().lower() in ("admin", "secretaria"))
+
+
 @app.before_request
 def _protect_sensitive_routes():
     path = (request.path or "").strip()
@@ -100,7 +111,7 @@ def _protect_sensitive_routes():
         return None
 
     if path.startswith("/admin/"):
-        if not _is_admin_any():
+        if not _is_staff_any():
             return redirect(url_for("admin.login", next=request.full_path or path))
         return None
 

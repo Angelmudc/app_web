@@ -18,8 +18,10 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from functools import wraps  # si otros decoradores locales lo usan
 
 from config_app import db, USUARIOS, cache
-from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente
+from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser
 from admin.forms import (
+    StaffUserCreateForm,
+    StaffUserEditForm,
     AdminClienteForm,
     AdminSolicitudForm,
     AdminPagoForm,
@@ -28,6 +30,19 @@ from admin.forms import (
     AdminReemplazoFinForm,  # 🔹 NUEVO FORM PARA FINALIZAR REEMPLAZO
 )
 from utils import letra_por_indice
+from utils.staff_auth import (
+    breakglass_allowed_ip,
+    get_request_ip,
+    breakglass_username,
+    build_breakglass_user,
+    check_breakglass_password,
+    is_breakglass_enabled,
+    log_breakglass_attempt,
+    set_breakglass_session,
+    is_breakglass_user_obj,
+    is_breakglass_session_valid,
+    clear_breakglass_session,
+)
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
@@ -59,6 +74,85 @@ class AdminUser:
 
     def get_id(self) -> str:
         return str(self.id)
+
+
+def _is_true_env(value: str, default: bool = False) -> bool:
+    raw = (value or "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+def _admin_legacy_enabled() -> bool:
+    raw = os.getenv("ADMIN_LEGACY_ENABLED")
+    if raw is not None:
+        return _is_true_env(raw, default=False)
+    env = (os.getenv("FLASK_ENV", "") or os.getenv("ENV", "")).strip().lower()
+    if env == "production":
+        return False
+    return True
+
+
+def _staff_password_min_len() -> int:
+    try:
+        return max(8, int((os.getenv("STAFF_PASSWORD_MIN_LEN") or "8").strip()))
+    except Exception:
+        return 8
+
+
+def _admin_default_role() -> str:
+    role = (os.getenv("ADMIN_DEFAULT_ROLE") or "secretaria").strip().lower()
+    return role if role in ("admin", "secretaria") else "secretaria"
+
+
+def _staff_users_count() -> int:
+    try:
+        return int(StaffUser.query.count() or 0)
+    except Exception:
+        return 0
+
+
+def _legacy_fallback_allowed() -> bool:
+    # Siempre permitir fallback si no hay staff en BD.
+    return _admin_legacy_enabled() or _staff_users_count() == 0
+
+
+def _emergency_hide_prefix() -> str:
+    return (os.getenv("EMERGENCY_ADMIN_HIDE_PREFIX") or "emergency_").strip().lower()
+
+
+def _emergency_hide_username() -> str:
+    return (os.getenv("EMERGENCY_ADMIN_USERNAME") or "").strip().lower()
+
+
+def _is_hidden_emergency_username(username: str) -> bool:
+    uname = (username or "").strip().lower()
+    if not uname:
+        return False
+    env_user = _emergency_hide_username()
+    if env_user and uname == env_user:
+        return True
+    pref = _emergency_hide_prefix()
+    return bool(pref and uname.startswith(pref))
+
+
+def _try_breakglass_login(usuario_norm: str, clave: str):
+    if not is_breakglass_enabled():
+        return None
+
+    ip = get_request_ip()
+    ua = request.headers.get("User-Agent") or ""
+
+    if usuario_norm != breakglass_username().strip().lower():
+        return None
+
+    if not breakglass_allowed_ip(ip):
+        log_breakglass_attempt(False, ip, ua)
+        return False
+
+    ok = check_breakglass_password(clave)
+    log_breakglass_attempt(ok, ip, ua)
+    return bool(ok)
 
 
 
@@ -452,6 +546,13 @@ def _admin_guard_and_rate_limit():
         # vía user_loader y puede no devolver la misma clase.
         def _is_admin_identity() -> bool:
             try:
+                role = (getattr(current_user, "role", "") or "").strip().lower()
+                if is_breakglass_user_obj(current_user):
+                    return (role == "admin") and is_breakglass_session_valid(session)
+
+                if isinstance(current_user, StaffUser):
+                    return bool(current_user.is_active) and role in ("admin", "secretaria")
+
                 uid = None
                 try:
                     uid = current_user.get_id()
@@ -922,17 +1023,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login de admin basado en diccionario USUARIOS.
-
-    Endurecido:
-      - Anti fuerza bruta por IP+usuario usando cache.
-      - Sanitiza inputs (strip + límites).
-      - Limpia sesión al autenticar (reduce session fixation).
-      - Evita open-redirect con ?next=...
-      - Honeypot opcional (anti-bots) via input hidden name="website".
-
-    Nota: Asegúrate de incluir {{ csrf_token() }} en admin/login.html.
-    """
+    """Login admin híbrido: BD (staff_users) + fallback legacy (USUARIOS)."""
     error = None
 
     if request.method == 'POST':
@@ -950,28 +1041,59 @@ def login():
             error = f'Has excedido el máximo de intentos. Intenta de nuevo en {mins} minutos.'
             return render_template('admin/login.html', error=error), 429
 
-        user_data = None
+        auth_ok = False
+        authenticated_user = None
+        authenticated_username = usuario_raw
+
+        # 1) Intento principal: staff_users (BD) por username o email
+        staff_user = None
         try:
-            # USUARIOS normalmente viene con keys exactas. Permitimos match case-insensitive.
-            # Primero intento exacto, luego busco por lower.
-            user_data = USUARIOS.get(usuario_raw) or USUARIOS.get(usuario_norm)
-            if user_data is None:
-                for k, v in (USUARIOS or {}).items():
-                    if str(k).strip().lower() == usuario_norm:
-                        user_data = v
-                        usuario_raw = k  # preserva el username real para role y session
-                        break
+            staff_user = StaffUser.query.filter(
+                or_(
+                    func.lower(StaffUser.username) == usuario_norm,
+                    func.lower(StaffUser.email) == usuario_norm,
+                )
+            ).first()
         except Exception:
+            staff_user = None
+
+        if staff_user and staff_user.is_active and staff_user.check_password(clave):
+            auth_ok = True
+            authenticated_user = staff_user
+            authenticated_username = staff_user.username
+
+        # 2) Breakglass por ENV (emergencia)
+        breakglass_ok = False
+        if not auth_ok:
+            bg = _try_breakglass_login(usuario_norm, clave)
+            breakglass_ok = bool(bg is True)
+            if breakglass_ok:
+                auth_ok = True
+                authenticated_user = build_breakglass_user()
+                authenticated_username = breakglass_username()
+
+        # 3) Fallback legacy (config) por ENV o si BD vacía
+        if not auth_ok and _legacy_fallback_allowed():
             user_data = None
+            try:
+                user_data = USUARIOS.get(usuario_raw) or USUARIOS.get(usuario_norm)
+                if user_data is None:
+                    for k, v in (USUARIOS or {}).items():
+                        if str(k).strip().lower() == usuario_norm:
+                            user_data = v
+                            authenticated_username = k
+                            break
+            except Exception:
+                user_data = None
 
-        ok = False
-        try:
-            if user_data and check_password_hash(user_data.get('pwd_hash', ''), clave):
-                ok = True
-        except Exception:
-            ok = False
+            try:
+                if user_data and check_password_hash(user_data.get('pwd_hash', ''), clave):
+                    auth_ok = True
+                    authenticated_user = AdminUser(str(authenticated_username))
+            except Exception:
+                auth_ok = False
 
-        if ok:
+        if auth_ok and authenticated_user is not None:
             # ✅ Login correcto
             try:
                 session.clear()
@@ -983,18 +1105,33 @@ def login():
             except Exception:
                 pass
 
-            login_user(AdminUser(str(usuario_raw)), remember=False)
+            login_user(authenticated_user, remember=False)
 
             # ✅ MARCAR ESTA SESIÓN COMO ADMIN (AISLAMIENTO REAL)
             try:
                 session[_ADMIN_SESSION_MARKER] = True
+                session["usuario"] = str(authenticated_username)
+                session["role"] = (getattr(authenticated_user, "role", "") or "").strip().lower()
+                if breakglass_ok:
+                    set_breakglass_session(session)
+                else:
+                    clear_breakglass_session(session)
                 session.modified = True
             except Exception:
                 pass
 
             # Reset locks
             _admin_reset_fail(usuario_norm)
-            _clear_security_layer_lock_admin(endpoint="/admin/login", usuario=str(usuario_raw))
+            _clear_security_layer_lock_admin(endpoint="/admin/login", usuario=str(authenticated_username))
+
+            # Auditoría de último login para staff en BD
+            if isinstance(authenticated_user, StaffUser):
+                try:
+                    authenticated_user.last_login_at = datetime.utcnow()
+                    authenticated_user.last_login_ip = _client_ip()
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
 
             fallback = url_for('admin.listar_clientes')
             return redirect(_safe_next_url(fallback))
@@ -1085,6 +1222,191 @@ def logout():
             pass
 
     return redirect(url_for('admin.login'))
+
+
+@admin_bp.route('/usuarios', methods=['GET'])
+@admin_required
+def listar_usuarios():
+    q = (request.args.get('q') or '').strip()
+    page = max(1, request.args.get('page', default=1, type=int) or 1)
+    per_page = request.args.get('per_page', default=20, type=int) or 20
+    per_page = max(10, min(per_page, 100))
+
+    query = StaffUser.query
+    hidden_username = _emergency_hide_username()
+    hidden_prefix = _emergency_hide_prefix()
+    if hidden_username:
+        query = query.filter(func.lower(StaffUser.username) != hidden_username)
+    if hidden_prefix:
+        query = query.filter(~func.lower(StaffUser.username).like(f"{hidden_prefix}%"))
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                StaffUser.username.ilike(like),
+                StaffUser.email.ilike(like),
+            )
+        )
+
+    total = query.count()
+    usuarios = (
+        query.order_by(StaffUser.created_at.desc(), StaffUser.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    last_page = max(1, (total + per_page - 1) // per_page)
+
+    return render_template(
+        'admin/usuarios_list.html',
+        usuarios=usuarios,
+        q=q,
+        page=page,
+        per_page=per_page,
+        total=total,
+        last_page=last_page,
+        min_password_len=_staff_password_min_len(),
+    )
+
+
+@admin_bp.route('/usuarios/nuevo', methods=['GET', 'POST'])
+@admin_required
+def crear_usuario():
+    form = StaffUserCreateForm()
+    form.role.data = form.role.data or _admin_default_role()
+    min_password_len = _staff_password_min_len()
+
+    if form.validate_on_submit():
+        username = (form.username.data or '').strip()
+        email = (form.email.data or '').strip().lower() or None
+        role = (form.role.data or '').strip().lower()
+        password = (form.password.data or '')
+
+        if role not in ('admin', 'secretaria'):
+            flash('Rol inválido.', 'danger')
+            return render_template('admin/usuario_form.html', form=form, nuevo=True, min_password_len=min_password_len)
+
+        if len(password) < min_password_len:
+            flash(f'La contraseña debe tener al menos {min_password_len} caracteres.', 'danger')
+            return render_template('admin/usuario_form.html', form=form, nuevo=True, min_password_len=min_password_len)
+
+        exists_username = StaffUser.query.filter(func.lower(StaffUser.username) == username.lower()).first()
+        if exists_username:
+            flash('El username ya existe.', 'danger')
+            return render_template('admin/usuario_form.html', form=form, nuevo=True, min_password_len=min_password_len)
+
+        if email:
+            exists_email = StaffUser.query.filter(func.lower(StaffUser.email) == email).first()
+            if exists_email:
+                flash('El email ya existe.', 'danger')
+                return render_template('admin/usuario_form.html', form=form, nuevo=True, min_password_len=min_password_len)
+
+        try:
+            u = StaffUser(username=username, email=email, role=role, is_active=True)
+            u.set_password(password)
+            db.session.add(u)
+            db.session.commit()
+            flash('Usuario creado correctamente.', 'success')
+            return redirect(url_for('admin.listar_usuarios'))
+        except IntegrityError:
+            db.session.rollback()
+            flash('No se pudo crear el usuario: username o email duplicado.', 'danger')
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('No se pudo crear el usuario por un error de base de datos.', 'danger')
+
+    return render_template('admin/usuario_form.html', form=form, nuevo=True, min_password_len=min_password_len)
+
+
+@admin_bp.route('/usuarios/<int:user_id>/editar', methods=['GET', 'POST'])
+@admin_required
+def editar_usuario(user_id: int):
+    user = StaffUser.query.get_or_404(user_id)
+    form = StaffUserEditForm(obj=user)
+    min_password_len = _staff_password_min_len()
+
+    if form.validate_on_submit():
+        email = (form.email.data or '').strip().lower() or None
+        role = (form.role.data or '').strip().lower()
+        new_password = (form.new_password.data or '')
+
+        if role not in ('admin', 'secretaria'):
+            flash('Rol inválido.', 'danger')
+            return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+
+        if email:
+            dup_email = StaffUser.query.filter(
+                func.lower(StaffUser.email) == email,
+                StaffUser.id != user.id
+            ).first()
+            if dup_email:
+                flash('El email ya está en uso por otro usuario.', 'danger')
+                return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+
+        if new_password and len(new_password) < min_password_len:
+            flash(f'La nueva contraseña debe tener al menos {min_password_len} caracteres.', 'danger')
+            return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+
+        try:
+            user.email = email
+            user.role = role
+            if new_password:
+                user.set_password(new_password)
+            db.session.commit()
+            flash('Usuario actualizado correctamente.', 'success')
+            return redirect(url_for('admin.listar_usuarios'))
+        except IntegrityError:
+            db.session.rollback()
+            flash('No se pudo guardar: email duplicado.', 'danger')
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('No se pudo guardar por un error de base de datos.', 'danger')
+
+    return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+
+
+@admin_bp.route('/usuarios/<int:user_id>/toggle-estado', methods=['POST'])
+@admin_required
+def toggle_usuario_estado(user_id: int):
+    user = StaffUser.query.get_or_404(user_id)
+    try:
+        if isinstance(current_user, StaffUser) and int(current_user.id) == int(user.id):
+            flash('No puedes desactivar tu propio usuario.', 'warning')
+            return redirect(url_for('admin.listar_usuarios'))
+    except Exception:
+        pass
+
+    try:
+        user.is_active = not bool(user.is_active)
+        db.session.commit()
+        estado = "activado" if user.is_active else "desactivado"
+        flash(f'Usuario {estado} correctamente.', 'success')
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('No se pudo actualizar el estado del usuario.', 'danger')
+    return redirect(url_for('admin.listar_usuarios'))
+
+
+@admin_bp.route('/usuarios/<int:user_id>/eliminar', methods=['POST'])
+@admin_required
+def eliminar_usuario(user_id: int):
+    user = StaffUser.query.get_or_404(user_id)
+    try:
+        if isinstance(current_user, StaffUser) and int(current_user.id) == int(user.id):
+            flash('No puedes eliminar tu propio usuario.', 'warning')
+            return redirect(url_for('admin.listar_usuarios'))
+    except Exception:
+        pass
+
+    try:
+        # Soft delete: desactiva usuario, no se elimina físicamente.
+        user.is_active = False
+        db.session.commit()
+        flash('Usuario desactivado (eliminación lógica).', 'success')
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('No se pudo eliminar el usuario.', 'danger')
+    return redirect(url_for('admin.listar_usuarios'))
 
 # =============================================================================
 #                 GUARD GLOBAL ADMIN (aislamiento real)

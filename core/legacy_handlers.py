@@ -48,6 +48,7 @@ from models import (
     CandidataWeb,
     Solicitud,
     Reemplazo,
+    StaffUser,
     Entrevista,
     EntrevistaPregunta,
     EntrevistaRespuesta,
@@ -59,6 +60,18 @@ from forms import LlamadaCandidataForm
 # Utils locales
 from utils_codigo import generar_codigo_unico  # tu función optimizada
 from utils.upload_security import validate_upload_file
+from utils.staff_auth import (
+    admin_legacy_enabled,
+    breakglass_allowed_ip,
+    get_request_ip,
+    breakglass_username,
+    build_breakglass_user,
+    check_breakglass_password,
+    clear_breakglass_session,
+    is_breakglass_enabled,
+    log_breakglass_attempt,
+    set_breakglass_session,
+)
 
 # Data / reportes
 import pandas as pd
@@ -786,24 +799,38 @@ def login():
                 mensaje=f"Demasiados intentos. Bloqueado por {LOGIN_LOCK_MINUTOS} minutos."
             ), 429
 
-        # ✅ Validación usando el USUARIOS importado desde config_app
-        # (mantengo tu lógica de intentar raw/lower/upper)
-        user_data = (
-            USUARIOS.get(usuario_raw)
-            or USUARIOS.get(usuario_raw.lower())
-            or USUARIOS.get(usuario_raw.upper())
-        )
+        # 1) Primero intentar StaffUser (BD) por username o email (case-insensitive)
+        staff_user = None
+        try:
+            staff_user = StaffUser.query.filter(
+                or_(
+                    func.lower(StaffUser.username) == usuario_norm,
+                    func.lower(StaffUser.email) == usuario_norm,
+                )
+            ).first()
+        except Exception:
+            staff_user = None
 
-        ok = False
-        if user_data:
-            stored = user_data.get("pwd_hash") or user_data.get("pwd")
-            if stored:
+        staff_ok = False
+        if staff_user and bool(getattr(staff_user, "is_active", True)):
+            role = (getattr(staff_user, "role", "") or "").strip().lower()
+            if role in ("admin", "secretaria"):
                 try:
-                    ok = check_password_hash(stored, clave)
+                    staff_ok = bool(staff_user.check_password(clave))
                 except Exception:
-                    ok = (stored == clave)
+                    staff_ok = False
 
-        if ok:
+        breakglass_ok = False
+        if not staff_ok and is_breakglass_enabled() and usuario_norm == breakglass_username().strip().lower():
+            ip = get_request_ip()
+            ua = request.headers.get("User-Agent") or ""
+            if breakglass_allowed_ip(ip) and check_breakglass_password(clave):
+                breakglass_ok = True
+                log_breakglass_attempt(True, ip, ua)
+            else:
+                log_breakglass_attempt(False, ip, ua)
+
+        if staff_ok:
             # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global (IP+endpoint+usuario)
             _reset_fail(usuario_norm)
 
@@ -826,11 +853,87 @@ def login():
             # 🔒 Regenerar sesión completamente al autenticar
             session.clear()
             session.permanent = False
-            session['usuario']   = usuario_raw
-            session['role']      = (user_data.get("role") or "admin")
+            login_user(staff_user, remember=False)
+            session['usuario'] = (staff_user.username or usuario_raw)
+            session['role'] = (staff_user.role or "secretaria")
+            session['is_staff'] = True
+            session['is_admin_session'] = True
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+            clear_breakglass_session(session)
             session.modified = True
 
+            # Auditoría de último login para StaffUser (incluye emergency admin activado).
+            try:
+                staff_user.last_login_at = datetime.utcnow()
+                staff_user.last_login_ip = _client_ip()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+            return safe_redirect_next('home')
+
+        if breakglass_ok:
+            _reset_fail(usuario_norm)
+            try:
+                clear_fn = current_app.extensions.get("clear_login_attempts")
+                if callable(clear_fn):
+                    ip = _client_ip()
+                    clear_fn(ip, "/login", usuario_norm)
+            except Exception:
+                pass
+            try:
+                _clear_security_layer_lock("/login", usuario_norm)
+            except Exception:
+                pass
+
+            session.clear()
+            session.permanent = False
+            login_user(build_breakglass_user(), remember=False)
+            set_breakglass_session(session)
+            session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+            session.modified = True
+            return safe_redirect_next('home')
+
+        # 2) Fallback legacy (config) solo si ADMIN_LEGACY_ENABLED=1
+        user_data = None
+        if admin_legacy_enabled():
+            user_data = (
+                USUARIOS.get(usuario_raw)
+                or USUARIOS.get(usuario_raw.lower())
+                or USUARIOS.get(usuario_raw.upper())
+            )
+
+        fallback_ok = False
+        if user_data:
+            stored = user_data.get("pwd_hash") or user_data.get("pwd")
+            if stored:
+                try:
+                    fallback_ok = check_password_hash(stored, clave)
+                except Exception:
+                    fallback_ok = (stored == clave)
+
+        if fallback_ok:
+            _reset_fail(usuario_norm)
+            try:
+                clear_fn = current_app.extensions.get("clear_login_attempts")
+                if callable(clear_fn):
+                    ip = _client_ip()
+                    clear_fn(ip, "/login", usuario_norm)
+            except Exception:
+                pass
+            try:
+                _clear_security_layer_lock("/login", usuario_norm)
+            except Exception:
+                pass
+
+            session.clear()
+            session.permanent = False
+            session['usuario'] = usuario_raw
+            session['role'] = (user_data.get("role") or "admin")
+            session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+            session['is_admin_session'] = True
+            clear_breakglass_session(session)
+            session.modified = True
             return safe_redirect_next('home')
 
         # ❌ Login incorrecto: registra intento
@@ -857,7 +960,7 @@ def logout():
     except Exception:
         pass
     session.clear()
-    return safe_redirect_next('admin.login')
+    return safe_redirect_next('login')
 
 
 # -----------------------------------------------------------------------------
