@@ -42,6 +42,22 @@ class _DummyQuery:
         return self._obj
 
 
+class _DummyCandidataJsonOnly:
+    def __init__(self):
+        self.fila = 1
+        self.nombre_completo = "Candidata JSON"
+        self.compat_ritmo_preferido = "activo"
+        self.compat_estilo_trabajo = "toma_iniciativa"
+        self.compat_relacion_ninos = "comoda"
+        self.compat_test_candidata_json = {
+            "profile": {
+                "comunicacion": "mixta",
+                "experiencia_nivel": "alta",
+                "puntualidad_1a5": 4,
+            }
+        }
+
+
 class CompatCandidataHorariosTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
@@ -86,10 +102,36 @@ class CompatCandidataHorariosTest(unittest.TestCase):
         self.assertIn(resp.status_code, (302, 303))
         commit_mock.assert_called()
         self.assertIsInstance(dummy.compat_test_candidata_json, dict)
+        self.assertEqual(dummy.compat_test_candidata_json.get("profile", {}).get("comunicacion"), "mixta")
+        self.assertEqual(dummy.compat_test_candidata_json.get("profile", {}).get("experiencia_nivel"), "alta")
+        self.assertEqual(dummy.compat_test_candidata_json.get("profile", {}).get("puntualidad_1a5"), 4)
         self.assertEqual(
             dummy.compat_test_candidata_json.get("profile", {}).get("disponibilidad_horarios"),
             ["9am-6pm", "fin_de_semana"],
         )
+
+    def test_secretaria_form_get_usa_fallback_desde_json_para_campos_sin_columna(self):
+        os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+
+        login_resp = self.client.post(
+            "/admin/login",
+            data={"usuario": "Karla", "clave": "9989"},
+            follow_redirects=False,
+        )
+        self.assertIn(login_resp.status_code, (302, 303))
+
+        dummy = _DummyCandidataJsonOnly()
+        with flask_app.app_context():
+            with patch.object(legacy_handlers.Candidata, "query", _DummyQuery(dummy)):
+                resp = self.client.get("/secretarias/compat/candidata?fila=1", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.data.decode("utf-8")
+        self.assertIn('id="comunicacion"', html)
+        self.assertIn('value="mixta" selected', html)
+        self.assertIn('id="experiencia_nivel"', html)
+        self.assertIn('value="alta" selected', html)
+        self.assertIn('name="puntualidad_1a5" value="4"', html)
 
 
 if __name__ == "__main__":

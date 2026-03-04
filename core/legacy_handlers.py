@@ -4794,13 +4794,25 @@ def compat_candidata():
         c = Candidata.query.get_or_404(fila)
 
         # Normalizaciones de selects/radios
+        raw_comunicacion = request.form.get('comunicacion')
+        raw_experiencia_nivel = request.form.get('experiencia_nivel')
+        raw_puntualidad_1a5 = request.form.get('puntualidad_1a5')
+
         ritmo     = _norm_choice(request.form.get('ritmo'),               {k for k, _ in COMPAT_RITMOS})
         estilo    = _norm_choice(request.form.get('estilo'),              {k for k, _ in COMPAT_ESTILOS})
-        comun     = _norm_choice(request.form.get('comunicacion'),        {k for k, _ in COMPAT_COMUNICACION})
+        comun     = _norm_choice(raw_comunicacion,                        {k for k, _ in COMPAT_COMUNICACION})
         rel_n     = _norm_choice(request.form.get('relacion_ninos'),      {k for k, _ in COMPAT_RELACION_NINOS})
-        exp_niv   = _norm_choice(request.form.get('experiencia_nivel'),   {k for k, _ in COMPAT_EXPERIENCIA_NIVEL})
+        exp_niv   = _norm_choice(raw_experiencia_nivel,                   {k for k, _ in COMPAT_EXPERIENCIA_NIVEL})
         mascotas  = _norm_choice(request.form.get('mascotas'),            {k for k, _ in COMPAT_MASCOTAS})
         puntual   = _int_1a5('puntualidad_1a5')
+        current_app.logger.debug(
+            "compat_candidata POST raw values fila=%s comunicacion=%r experiencia_nivel=%r puntualidad_1a5=%r",
+            fila, raw_comunicacion, raw_experiencia_nivel, raw_puntualidad_1a5
+        )
+        current_app.logger.debug(
+            "compat_candidata POST normalized fila=%s comun=%r exp_niv=%r puntual=%r",
+            fila, comun, exp_niv, puntual
+        )
 
         # Checkboxes (filtramos a los permitidos)
         fortalezas = _filter_allowed(_getlist_clean('fortalezas'),              {k for k, _ in FORTALEZAS})
@@ -4913,28 +4925,38 @@ def compat_candidata():
     # ── 2) FORMULARIO (GET con fila) ──────────────────────────
     if request.method == 'GET' and fila:
         c = Candidata.query.get_or_404(fila)
+        payload = getattr(c, 'compat_test_candidata_json', None) or {}
+        profile = payload.get('profile', {}) if isinstance(payload, dict) else {}
         data = {
             "ritmo":                   getattr(c, 'compat_ritmo_preferido', None),
             "estilo":                  getattr(c, 'compat_estilo_trabajo', None),
-            "comunicacion":            getattr(c, 'compat_comunicacion', None),
+            "comunicacion":            getattr(c, 'compat_comunicacion', None) or profile.get('comunicacion'),
             "relacion_ninos":          getattr(c, 'compat_relacion_ninos', None),
-            "experiencia_nivel":       getattr(c, 'compat_experiencia_nivel', None),
-            "puntualidad_1a5":         getattr(c, 'compat_puntualidad_1a5', None),
+            "experiencia_nivel":       getattr(c, 'compat_experiencia_nivel', None) or profile.get('experiencia_nivel'),
+            "puntualidad_1a5":         getattr(c, 'compat_puntualidad_1a5', None) or profile.get('puntualidad_1a5'),
             "fortalezas":              getattr(c, 'compat_habilidades_fuertes', None)
-                                       or getattr(c, 'compat_fortalezas', []) or [],
+                                       or getattr(c, 'compat_fortalezas', [])
+                                       or profile.get('fortalezas', []) or [],
             "tareas_evitar":           getattr(c, 'compat_habilidades_evitar', None)
-                                       or getattr(c, 'compat_tareas_evitar', []) or [],
-            "limites_no_negociables":  getattr(c, 'compat_limites_no_negociables', []) or [],
-            "disponibilidad_dias":     getattr(c, 'compat_disponibilidad_dias', []) or [],
+                                       or getattr(c, 'compat_tareas_evitar', [])
+                                       or profile.get('tareas_evitar', []) or [],
+            "limites_no_negociables":  getattr(c, 'compat_limites_no_negociables', [])
+                                       or profile.get('limites_no_negociables', []) or [],
+            "disponibilidad_dias":     getattr(c, 'compat_disponibilidad_dias', [])
+                                       or profile.get('disponibilidad_dias', []) or [],
             "disponibilidad_horarios": sorted(
-                normalize_horarios_tokens(getattr(c, 'compat_disponibilidad_horarios', []) or []),
+                normalize_horarios_tokens(
+                    getattr(c, 'compat_disponibilidad_horarios', [])
+                    or profile.get('disponibilidad_horarios', [])
+                    or []
+                ),
                 key=lambda t: HORARIO_ORDER.get(t, 999)
             ),
             "mascotas":                (getattr(c, 'compat_mascotas', None)
                                         if hasattr(c, 'compat_mascotas')
                                         else ('si' if getattr(c, 'compat_mascotas_ok', False) else 'no')
-                                        if hasattr(c, 'compat_mascotas_ok') else None),
-            "nota":                    getattr(c, 'compat_observaciones', '') or '',
+                                        if hasattr(c, 'compat_mascotas_ok') else profile.get('mascotas')),
+            "nota":                    getattr(c, 'compat_observaciones', '') or profile.get('nota', '') or '',
         }
         return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
 
