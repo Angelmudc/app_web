@@ -39,7 +39,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from config_app import db, csrf, cache, USUARIOS
 
 # Decoradores
-from decorators import roles_required, admin_required
+from decorators import roles_required, admin_required, staff_required
 
 # Modelos
 from models import (
@@ -852,8 +852,12 @@ def login():
 @app.route('/logout')
 @roles_required('admin', 'secretaria')
 def logout():
+    try:
+        logout_user()
+    except Exception:
+        pass
     session.clear()
-    return safe_redirect_next('login')
+    return safe_redirect_next('admin.login')
 
 
 # -----------------------------------------------------------------------------

@@ -5,6 +5,12 @@ from functools import wraps
 from datetime import datetime, timedelta
 
 from flask import abort, flash, redirect, request, session, url_for, current_app
+from utils.staff_auth import (
+    admin_required as _staff_admin_required,
+    staff_required as _staff_required_decorator,
+    get_staff_role as _get_staff_role,
+    redirect_admin_login as _redirect_admin_login,
+)
 
 # ─────────────────────────────────────────────────────────────
 # flask-login (carga segura)
@@ -127,38 +133,13 @@ def _get_session_ttl_seconds() -> int:
 # ─────────────────────────────────────────────────────────────
 
 def admin_required(view_func):
-    """
-    Acceso SOLO admin.
-    """
-    @wraps(view_func)
-    def wrapper(*args, **kwargs):
-        if not _is_authenticated():
-            flash("Debes iniciar sesión.", "warning")
-            return _redirect_login("admin.login")
-
-        if not _is_admin():
-            abort(403)
-
-        return view_func(*args, **kwargs)
-    return wrapper
+    """Acceso SOLO admin (StaffUser o fallback legacy habilitado)."""
+    return _staff_admin_required(view_func)
 
 
 def staff_required(view_func):
-    """
-    Acceso admin + secretaria.
-    """
-    @wraps(view_func)
-    def wrapper(*args, **kwargs):
-        if not _is_authenticated():
-            flash("Debes iniciar sesión.", "warning")
-            return _redirect_login("admin.login")
-
-        role = _get_role()
-        if role not in ("admin", "secretaria") and not _is_admin():
-            abort(403)
-
-        return view_func(*args, **kwargs)
-    return wrapper
+    """Acceso admin + secretaria (StaffUser o fallback legacy habilitado)."""
+    return _staff_required_decorator(view_func)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -215,20 +196,16 @@ def politicas_requeridas(view_func):
 # ─────────────────────────────────────────────────────────────
 
 def roles_required(*permitted_roles):
-    """
-    Decorador legacy por session.
-    """
+    """Decorador legacy compatible con StaffUser + Flask-Login."""
     permitted = [str(r).strip().lower() for r in permitted_roles]
 
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(*args, **kwargs):
-            usuario = session.get("usuario")
-            role = (session.get("role") or "").strip().lower()
-
-            if not usuario or not role:
+            role = _get_staff_role()
+            if not role:
                 flash("Debes iniciar sesión.", "warning")
-                return redirect(url_for("login", next=_safe_next()))
+                return _redirect_admin_login()
 
             logged_at = _parse_logged_at(session.get("logged_at"))
             if logged_at:
@@ -240,14 +217,14 @@ def roles_required(*permitted_roles):
                         except Exception:
                             pass
                         flash("Tu sesión expiró. Inicia sesión otra vez.", "warning")
-                        return redirect(url_for("login", next=_safe_next()))
+                        return _redirect_admin_login()
                 except Exception:
                     try:
                         session.clear()
                     except Exception:
                         pass
                     flash("Tu sesión expiró. Inicia sesión otra vez.", "warning")
-                    return redirect(url_for("login", next=_safe_next()))
+                    return _redirect_admin_login()
 
             if role not in permitted:
                 abort(403)
@@ -258,6 +235,11 @@ def roles_required(*permitted_roles):
 
 
 admin_required_session = roles_required("admin")
+
+# Compatibilidad de nombres legacy (no romper imports antiguos).
+login_required_admin = admin_required
+secretaria_or_admin_required = staff_required
+secretaria_required = staff_required
 
 
 def login_required_any(view_func):
