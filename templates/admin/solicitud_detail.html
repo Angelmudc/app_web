@@ -84,22 +84,39 @@
       {% set _rutas = (solicitud.rutas_cercanas or '') %}
       {% set _modalidad = (solicitud.modalidad_trabajo or '') %}
 
-      {# Edad: si existe texto libre, úsalo; si no, intenta construirlo desde edad_requerida/edad_otro (normalizado para lista/string) #}
+      {# Edad: combina opciones + "otro", evitando mostrar el literal "otro". #}
       {% set _edad_txt = (solicitud.edad_texto if solicitud.edad_texto is defined else '') %}
       {% if not _edad_txt %}
-        {% set _edad_txt = '' %}
+        {% set _edad_ns = namespace(items=[]) %}
         {% if solicitud.edad_requerida is defined and solicitud.edad_requerida %}
           {% if solicitud.edad_requerida is string %}
-            {% set _edad_txt = solicitud.edad_requerida %}
+            {% for _e in solicitud.edad_requerida.split(',') %}
+              {% set _e_clean = (_e|string)|trim %}
+              {% if _e_clean %}
+                {% set _ = _edad_ns.items.append(_e_clean) %}
+              {% endif %}
+            {% endfor %}
           {% else %}
-            {# si viene como lista (ej: ['25 en adelante']) #}
-            {% set _edad_txt = solicitud.edad_requerida | join(', ') %}
+            {% for _e in solicitud.edad_requerida %}
+              {% set _e_clean = (_e|string)|trim %}
+              {% if _e_clean %}
+                {% set _ = _edad_ns.items.append(_e_clean) %}
+              {% endif %}
+            {% endfor %}
           {% endif %}
         {% endif %}
-
-        {% if (not _edad_txt) and (solicitud.edad_otro is defined) and solicitud.edad_otro %}
-          {% set _edad_txt = solicitud.edad_otro %}
+        {% set _edad_filtrada = [] %}
+        {% for _e in _edad_ns.items %}
+          {% set _e_low = _e|lower %}
+          {% if _e_low not in ['otro', 'otro…', 'otro...'] %}
+            {% set _ = _edad_filtrada.append(_e) %}
+          {% endif %}
+        {% endfor %}
+        {% set _edad_otro = (solicitud.edad_otro|string if solicitud.edad_otro is defined and solicitud.edad_otro else '')|trim %}
+        {% if _edad_otro and _edad_otro not in _edad_filtrada %}
+          {% set _ = _edad_filtrada.append(_edad_otro) %}
         {% endif %}
+        {% set _edad_txt = _edad_filtrada | join(', ') %}
       {% endif %}
 
       {# Experiencia #}
@@ -111,19 +128,41 @@
       {# Horario #}
       {% set _horario = (solicitud.horario or '') %}
 
-      {# Funciones (puede venir como lista o string). Normalizamos a string. #}
-      {% set _funcs = '' %}
+      {# Funciones: combina selección + funciones_otro, evitando literal "otro". #}
+      {% set _funcs_ns = namespace(items=[]) %}
       {% if solicitud.funciones is defined and solicitud.funciones %}
         {% if solicitud.funciones is string %}
-          {% set _funcs = solicitud.funciones %}
+          {% for _f in solicitud.funciones.split(',') %}
+            {% set _f_clean = (_f|string)|trim %}
+            {% if _f_clean %}
+              {% set _ = _funcs_ns.items.append(_f_clean) %}
+            {% endif %}
+          {% endfor %}
         {% else %}
-          {% set _funcs = solicitud.funciones | join(', ') %}
+          {% for _f in solicitud.funciones %}
+            {% set _f_clean = (_f|string)|trim %}
+            {% if _f_clean %}
+              {% set _ = _funcs_ns.items.append(_f_clean) %}
+            {% endif %}
+          {% endfor %}
         {% endif %}
       {% endif %}
+      {% set _funcs_list = [] %}
+      {% for _f in _funcs_ns.items %}
+        {% set _f_low = _f|lower %}
+        {% if _f_low not in ['otro', 'otro…', 'otro...'] %}
+          {% set _ = _funcs_list.append(_f) %}
+        {% endif %}
+      {% endfor %}
+      {% set _func_otro = (solicitud.funciones_otro|string if solicitud.funciones_otro is defined and solicitud.funciones_otro else '')|trim %}
+      {% if _func_otro and _func_otro not in _funcs_list %}
+        {% set _ = _funcs_list.append(_func_otro) %}
+      {% endif %}
+      {% set _funcs = _funcs_list | join(', ') %}
 
       {# Tipo de lugar + detalles básicos #}
       {% set _tipo = (solicitud.tipo_lugar or '') %}
-      {% if _tipo == 'otro' and solicitud.tipo_lugar_otro is defined and solicitud.tipo_lugar_otro %}
+      {% if _tipo|lower == 'otro' and solicitud.tipo_lugar_otro is defined and solicitud.tipo_lugar_otro %}
         {% set _tipo = solicitud.tipo_lugar_otro %}
       {% endif %}
 
@@ -131,21 +170,36 @@
       {% set _ban = (solicitud.banos if solicitud.banos is defined else None) %}
 
       {# Areas comunes (puede venir como lista o string). Normalizamos a string. #}
-      {% set _areas = '' %}
+      {% set _areas_ns = namespace(items=[]) %}
       {% if solicitud.areas_comunes is defined and solicitud.areas_comunes %}
         {% if solicitud.areas_comunes is string %}
-          {% set _areas = solicitud.areas_comunes %}
+          {% for _a in solicitud.areas_comunes.split(',') %}
+            {% set _a_clean = (_a|string)|trim %}
+            {% if _a_clean %}
+              {% set _ = _areas_ns.items.append(_a_clean) %}
+            {% endif %}
+          {% endfor %}
         {% else %}
-          {% set _areas = solicitud.areas_comunes | join(', ') %}
+          {% for _a in solicitud.areas_comunes %}
+            {% set _a_clean = (_a|string)|trim %}
+            {% if _a_clean %}
+              {% set _ = _areas_ns.items.append(_a_clean) %}
+            {% endif %}
+          {% endfor %}
         {% endif %}
       {% endif %}
-      {% if solicitud.area_otro is defined and solicitud.area_otro %}
-        {% if _areas %}
-          {% set _areas = _areas ~ ', ' ~ solicitud.area_otro %}
-        {% else %}
-          {% set _areas = solicitud.area_otro %}
+      {% set _areas_list = [] %}
+      {% for _a in _areas_ns.items %}
+        {% set _a_low = _a|lower %}
+        {% if _a_low not in ['otro', 'otro…', 'otro...'] %}
+          {% set _ = _areas_list.append(_a) %}
         {% endif %}
+      {% endfor %}
+      {% set _area_otro = (solicitud.area_otro|string if solicitud.area_otro is defined and solicitud.area_otro else '')|trim %}
+      {% if _area_otro and _area_otro not in _areas_list %}
+        {% set _ = _areas_list.append(_area_otro) %}
       {% endif %}
+      {% set _areas = _areas_list | join(', ') %}
 
       {# Construcción de la línea de casa/apto #}
       {% set _casa_line = '' %}
@@ -179,6 +233,10 @@
       {# Sueldo + pasaje #}
       {% set _sueldo = (solicitud.sueldo or '') %}
       {% set _pasaje = (solicitud.pasaje_aporte if solicitud.pasaje_aporte is defined else False) %}
+      {% set _nota = (solicitud.nota_cliente if solicitud.nota_cliente is defined else '') %}
+      {% if (not _nota) and solicitud.notas is defined and solicitud.notas %}
+        {% set _nota = solicitud.notas %}
+      {% endif %}
 
       {# Texto final interno EXACTO en el formato que quieres copiar #}
       {% set _interno = (
@@ -198,6 +256,7 @@
         ~ ('Edades niños: ' ~ _edades_ninos ~ '\n' if (_edades_ninos|string)|trim != '' else '')
         ~ ('Mascota: ' ~ _mascota ~ '\n\n' if _mascota else '\n')
         ~ 'Sueldo: $' ~ (_sueldo|string) ~ ' mensual' ~ (', más ayuda del pasaje' if _pasaje else '')
+        ~ ('\n\nNotas: ' ~ _nota if (_nota|string)|trim != '' else '')
       ) %}
 
       {# Si el backend trae resumen_interno explícito, úsalo como prioridad (pero mantén el formato arriba como fallback) #}
