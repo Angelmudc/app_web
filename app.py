@@ -6,6 +6,8 @@ import os
 from datetime import timedelta
 
 from flask import session, request, redirect, url_for
+from flask_login import current_user
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config_app import create_app, db, csrf, cache, USUARIOS
 from core.routes import candidatas_bp, procesos_bp, entrevistas_bp, archivos_bp
@@ -45,6 +47,10 @@ app.config.setdefault("PERMANENT_SESSION_LIFETIME", timedelta(hours=8))
 app.config.setdefault("SESSION_PERMANENT", False)
 app.config.setdefault("WTF_CSRF_TIME_LIMIT", 60 * 60 * 8)
 
+# Refuerzo explícito para despliegues detrás de Render/Cloudflare
+if not isinstance(app.wsgi_app, ProxyFix):
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
 
 @app.after_request
 def security_headers(resp):
@@ -53,9 +59,67 @@ def security_headers(resp):
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+        if IS_PROD and request.is_secure:
+            resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     except Exception:
         pass
     return resp
+
+
+def _is_authenticated_any() -> bool:
+    try:
+        if bool(getattr(current_user, "is_authenticated", False)):
+            return True
+    except Exception:
+        pass
+    return bool(session.get("usuario") and session.get("role"))
+
+
+def _is_admin_any() -> bool:
+    try:
+        if bool(getattr(current_user, "is_authenticated", False)):
+            role = (getattr(current_user, "role", None) or getattr(current_user, "rol", None) or "").strip().lower()
+            if role == "admin" or bool(getattr(current_user, "is_admin", False)):
+                return True
+    except Exception:
+        pass
+    return (str(session.get("role") or "").strip().lower() == "admin")
+
+
+@app.before_request
+def _protect_sensitive_routes():
+    path = (request.path or "").strip()
+
+    if not path or path.startswith("/static/"):
+        return None
+
+    # Nunca interceptar logins/logout/health
+    if path in {"/login", "/logout", "/admin/login", "/clientes/login", "/health", "/healthz", "/ping"}:
+        return None
+
+    if path.startswith("/admin/"):
+        if not _is_admin_any():
+            return redirect(url_for("admin.login", next=request.full_path or path))
+        return None
+
+    if path.startswith("/clientes/"):
+        if not _is_authenticated_any():
+            return redirect(url_for("clientes.login", next=request.full_path or path))
+        return None
+
+    sensitive_prefixes = (
+        "/gestionar_archivos",
+        "/subir_fotos",
+        "/report",
+        "/pagos",
+        "/editar",
+    )
+    if any(path.startswith(p) for p in sensitive_prefixes):
+        if not _is_authenticated_any():
+            return redirect(url_for("login", next=request.full_path or path))
+    return None
 
 
 def _register_endpoint_aliases(app_obj, blueprint_name: str):

@@ -3,7 +3,12 @@
 
 import os
 import time
-from flask import request, abort, make_response
+from flask import request, abort, make_response, session
+
+try:
+    from flask_login import current_user
+except Exception:
+    current_user = None
 
 
 def _is_true(v: str) -> bool:
@@ -25,7 +30,10 @@ def _get_client_ip() -> str:
     """
     Saca la IP del cliente de forma segura.
 
-    - Si TRUST_XFF=1: intenta X-Real-IP y luego X-Forwarded-For (primera IP).
+    - Si TRUST_XFF=1: intenta en orden:
+      1) CF-Connecting-IP
+      2) X-Real-IP
+      3) X-Forwarded-For (primera IP)
     - Si no: usa request.remote_addr.
 
     Nota:
@@ -34,9 +42,13 @@ def _get_client_ip() -> str:
     ip = ""
 
     if _should_trust_xff():
+        cf_ip = (request.headers.get("CF-Connecting-IP") or "").strip()
+        if cf_ip:
+            ip = cf_ip
+
         # Algunos proxies mandan X-Real-IP
         x_real = (request.headers.get("X-Real-IP") or "").strip()
-        if x_real:
+        if (not ip) and x_real:
             ip = x_real
 
         if not ip:
@@ -94,6 +106,88 @@ def init_security(app, cache):
     HEALTH_PATHS = {
         "/health", "/healthz", "/ping", "/_health", "/_healthz"
     }
+
+    # Anti-scraping / anti-bots
+    SCRAPE_GLOBAL_WINDOW_SECONDS = int(os.getenv("SCRAPE_GLOBAL_WINDOW_SECONDS", "300"))
+    SCRAPE_GLOBAL_MAX_REQ = int(os.getenv("SCRAPE_GLOBAL_MAX_REQ", "300"))
+    SCRAPE_STRICT_WINDOW_SECONDS = int(os.getenv("SCRAPE_STRICT_WINDOW_SECONDS", "60"))
+    SCRAPE_LIST_MAX_REQ = int(os.getenv("SCRAPE_LIST_MAX_REQ", "30"))
+    SCRAPE_LIST_MAX_REQ_USER = int(os.getenv("SCRAPE_LIST_MAX_REQ_USER", "60"))
+    SCRAPE_ADMIN_MAX_REQ = int(os.getenv("SCRAPE_ADMIN_MAX_REQ", "60"))
+    SCRAPE_CLIENTES_MAX_REQ = int(os.getenv("SCRAPE_CLIENTES_MAX_REQ", "60"))
+    SCRAPE_UPLOAD_MAX_REQ = int(os.getenv("SCRAPE_UPLOAD_MAX_REQ", "30"))
+    SCRAPE_REPORTS_MAX_REQ = int(os.getenv("SCRAPE_REPORTS_MAX_REQ", "40"))
+    SCRAPE_404_WINDOW_SECONDS = int(os.getenv("SCRAPE_404_WINDOW_SECONDS", "120"))
+    SCRAPE_404_MAX = int(os.getenv("SCRAPE_404_MAX", "25"))
+    SCRAPE_BLOCK_SECONDS = int(os.getenv("SCRAPE_BLOCK_SECONDS", "600"))
+    SCRAPE_SLOWDOWN = _is_true(os.getenv("SCRAPE_SLOWDOWN", "1"))
+    SCRAPE_SLOWDOWN_MS = int(os.getenv("SCRAPE_SLOWDOWN_MS", "150"))
+
+    BOT_UA_PATTERNS = (
+        "curl",
+        "python-requests",
+        "python-urllib",
+        "httpx",
+        "wget",
+        "scrapy",
+        "aiohttp",
+        "go-http-client",
+        "libwww-perl",
+    )
+
+    def _is_exempt_path(path: str) -> bool:
+        if not path:
+            return True
+        if path.startswith("/static/"):
+            return True
+        if path in HEALTH_PATHS:
+            return True
+        return False
+
+    def _current_user_key() -> str:
+        try:
+            if current_user and getattr(current_user, "is_authenticated", False):
+                uid = (
+                    getattr(current_user, "id", None)
+                    or getattr(current_user, "pk", None)
+                    or getattr(current_user, "email", None)
+                    or getattr(current_user, "username", None)
+                )
+                if uid:
+                    return str(uid).strip()[:80]
+        except Exception:
+            pass
+
+        # Compatibilidad legacy por sesión
+        raw = (session.get("usuario") or "").strip()
+        return raw[:80] if raw else ""
+
+    def _is_likely_bot_ua() -> bool:
+        ua = (request.headers.get("User-Agent") or "").strip().lower()
+        if not ua:
+            return True
+        return any(p in ua for p in BOT_UA_PATTERNS)
+
+    def _bucket_inc(key: str, window_seconds: int) -> int:
+        cur = int(_cache_get(cache, key) or 0) + 1
+        _cache_set(cache, key, cur, timeout=max(1, int(window_seconds)))
+        return cur
+
+    def _match_scrape_group(path: str, endpoint: str) -> str:
+        ep = (endpoint or "").strip()
+        p = (path or "").strip()
+
+        if p == "/candidatas_db" or ep.endswith("list_candidatas_db"):
+            return "list_json"
+        if p.startswith("/admin/"):
+            return "admin"
+        if p.startswith("/clientes/"):
+            return "clientes"
+        if p.startswith("/gestionar_archivos") or p.startswith("/subir_fotos"):
+            return "upload"
+        if p.startswith("/reporte") or p.startswith("/report") or p.startswith("/pagos") or "/editar" in p:
+            return "reports"
+        return ""
 
     @app.after_request
     def _security_headers(resp):
@@ -182,10 +276,95 @@ def init_security(app, cache):
 
     @app.errorhandler(429)
     def _too_many_requests(e):
+        msg = getattr(e, "description", None) or "Demasiados intentos seguidos. Espera un momento y vuelve a intentar."
         return make_response(
-            "Demasiados intentos seguidos. Espera un momento y vuelve a intentar.",
+            msg,
             429
         )
+
+    @app.before_request
+    def _anti_scrape_guard():
+        path = (request.path or "")
+        if _is_exempt_path(path):
+            return
+
+        if request.method in ("OPTIONS", "HEAD"):
+            return
+
+        ip = _get_client_ip() or "0.0.0.0"
+        endpoint = (request.endpoint or "")
+        user_key = _current_user_key()
+        is_bot = _is_likely_bot_ua()
+
+        # Bloqueo temporal por comportamiento malicioso (ej. exceso de 404)
+        if _cache_get(cache, f"scrape:block:{ip}"):
+            abort(429, description="IP temporalmente bloqueada por actividad sospechosa. Intenta más tarde.")
+
+        bot_factor = 0.5 if is_bot else 1.0
+
+        # 1) Global soft limit por IP
+        global_max = max(10, int(SCRAPE_GLOBAL_MAX_REQ * bot_factor))
+        gcount = _bucket_inc(f"scrape:global:{ip}", SCRAPE_GLOBAL_WINDOW_SECONDS)
+        if gcount > global_max:
+            abort(429, description="Límite global de solicitudes excedido. Reduce la frecuencia e intenta luego.")
+
+        # 2) Límites estrictos por grupo de rutas
+        group = _match_scrape_group(path, endpoint)
+        if group:
+            limits = {
+                "list_json": SCRAPE_LIST_MAX_REQ,
+                "admin": SCRAPE_ADMIN_MAX_REQ,
+                "clientes": SCRAPE_CLIENTES_MAX_REQ,
+                "upload": SCRAPE_UPLOAD_MAX_REQ,
+                "reports": SCRAPE_REPORTS_MAX_REQ,
+            }
+            ip_limit = max(5, int(limits.get(group, SCRAPE_REPORTS_MAX_REQ) * bot_factor))
+            ip_count = _bucket_inc(f"scrape:{group}:ip:{ip}", SCRAPE_STRICT_WINDOW_SECONDS)
+
+            if ip_count > ip_limit:
+                abort(429, description="Demasiadas solicitudes para esta ruta. Intenta de nuevo en unos segundos.")
+
+            # Caso especial pedido: endpoint JSON grande limitado también por usuario autenticado
+            if group == "list_json" and user_key:
+                user_limit = max(10, int(SCRAPE_LIST_MAX_REQ_USER * bot_factor))
+                ucount = _bucket_inc(
+                    f"scrape:{group}:user:{user_key}",
+                    SCRAPE_STRICT_WINDOW_SECONDS
+                )
+                if ucount > user_limit:
+                    abort(429, description="Demasiadas solicitudes para este usuario en listados JSON.")
+
+            # 3) Slowdown progresivo cerca del límite
+            if SCRAPE_SLOWDOWN:
+                ratio = (ip_count / float(max(1, ip_limit)))
+                if ratio >= 0.8:
+                    ms = min(1000, max(50, SCRAPE_SLOWDOWN_MS))
+                    if ratio >= 0.95:
+                        ms = min(1200, int(ms * 2))
+                    time.sleep(ms / 1000.0)
+
+    @app.after_request
+    def _track_404_and_block(resp):
+        try:
+            path = (request.path or "")
+            if _is_exempt_path(path):
+                return resp
+
+            if int(getattr(resp, "status_code", 200)) != 404:
+                return resp
+
+            ip = _get_client_ip() or "0.0.0.0"
+            c404 = _bucket_inc(f"scrape:404:{ip}", SCRAPE_404_WINDOW_SECONDS)
+            if c404 > SCRAPE_404_MAX:
+                _cache_set(
+                    cache,
+                    f"scrape:block:{ip}",
+                    int(time.time()) + SCRAPE_BLOCK_SECONDS,
+                    timeout=SCRAPE_BLOCK_SECONDS,
+                )
+        except Exception:
+            pass
+        return resp
 
     def _looks_like_login_attempt() -> bool:
         """

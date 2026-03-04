@@ -27,7 +27,7 @@ from flask_wtf.csrf import generate_csrf
 from flask_login import login_user, logout_user, current_user
 
 # SQLAlchemy
-from sqlalchemy import or_, cast, String, func, and_
+from sqlalchemy import or_, cast, String, func, and_, Date
 from sqlalchemy.orm import subqueryload, joinedload, load_only
 from sqlalchemy.exc import OperationalError, IntegrityError, DBAPIError
 from sqlalchemy.sql import text
@@ -58,6 +58,7 @@ from forms import LlamadaCandidataForm
 
 # Utils locales
 from utils_codigo import generar_codigo_unico  # tu función optimizada
+from utils.upload_security import validate_upload_file
 
 # Data / reportes
 import pandas as pd
@@ -561,6 +562,16 @@ def safe_all(query):
     return run_db_safely(lambda: query.all(), retry_once=True, fallback=[])
 
 
+def _cache_key_with_role(prefix: str):
+    """Genera cache-key aislada por rol + querystring para evitar mezclar vistas."""
+    role = (session.get("role") or "anon")
+    try:
+        path_qs = request.full_path or request.path or ""
+    except Exception:
+        path_qs = ""
+    return f"{prefix}:{role}:{path_qs}"
+
+
 # -----------------------------------------------------------------------------
 # Normalizadores
 # -----------------------------------------------------------------------------
@@ -677,11 +688,19 @@ LOGIN_KEY_PREFIX   = "panel_login"
 
 def _client_ip() -> str:
     """Obtiene la IP del cliente.
-    - En local: NO confía en X-Forwarded-For.
-    - En producción detrás de proxy: solo confía si TRUST_XFF=1.
+    - En local: NO confía en cabeceras proxy.
+    - En producción detrás de proxy: orden CF-Connecting-IP, X-Real-IP, X-Forwarded-For.
     """
     trust_xff = (os.getenv("TRUST_XFF", "0").strip() == "1")
     if trust_xff:
+        cf_ip = (request.headers.get("CF-Connecting-IP") or "").strip()
+        if cf_ip:
+            return cf_ip[:64]
+
+        x_real = (request.headers.get("X-Real-IP") or "").strip()
+        if x_real:
+            return x_real[:64]
+
         xff = (request.headers.get("X-Forwarded-For") or "").strip()
         if xff:
             return xff.split(",")[0].strip()[:64]
@@ -792,8 +811,7 @@ def login():
             try:
                 clear_fn = current_app.extensions.get("clear_login_attempts")
                 if callable(clear_fn):
-                    xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-                    ip = xff or (request.remote_addr or "").strip()
+                    ip = _client_ip()
                     # Tu security_layer usa username lower para keys
                     clear_fn(ip, "/login", usuario_norm)
             except Exception:
@@ -1045,8 +1063,17 @@ def list_candidatas():
 
 @app.route('/candidatas_db')
 @roles_required('admin', 'secretaria')
+@cache.cached(
+    timeout=int(os.getenv("CACHE_CANDIDATAS_DB_SECONDS", "60")),
+    key_prefix=lambda: _cache_key_with_role("candidatas_db"),
+)
 def list_candidatas_db():
     try:
+        max_rows = min(
+            5000,
+            max(100, int(os.getenv("MAX_CANDIDATAS_DB_ROWS", "1500")))
+        )
+
         # Cargamos solo columnas necesarias para bajar peso/riesgo
         candidatas = (Candidata.query
                       .options(load_only(
@@ -1060,6 +1087,7 @@ def list_candidatas_db():
                           Candidata.cedula,
                           Candidata.codigo,
                       ))
+                      .limit(max_rows)
                       .all())
 
         resultado = []
@@ -1075,7 +1103,13 @@ def list_candidatas_db():
                 "cedula": c.cedula,
                 "codigo": c.codigo,
             })
-        return jsonify({"candidatas": resultado}), 200
+        return jsonify({
+            "candidatas": resultado,
+            "meta": {
+                "max_rows": max_rows,
+                "returned": len(resultado),
+            }
+        }), 200
 
     except Exception:
         app.logger.exception("❌ Error leyendo candidatas desde la DB")
@@ -1086,6 +1120,17 @@ def list_candidatas_db():
 # ENTREVISTAS (DB) - HELPERS
 # -----------------------------------------------------------------------------
 
+@cache.memoize(timeout=int(os.getenv("CACHE_PREGUNTAS_SECONDS", "300")))
+def _get_preguntas_db_por_tipo_cached(tipo_cached: str):
+    return (
+        EntrevistaPregunta.query
+        .filter(EntrevistaPregunta.activa.is_(True))
+        .filter(EntrevistaPregunta.clave.like(f"{tipo_cached}.%"))
+        .order_by(EntrevistaPregunta.orden.asc(), EntrevistaPregunta.id.asc())
+        .all()
+    )
+
+
 def _get_preguntas_db_por_tipo(tipo: str):
     """Devuelve preguntas activas para un tipo (domestica/enfermera/empleo_general)."""
     tipo = (tipo or "").strip().lower()
@@ -1093,13 +1138,7 @@ def _get_preguntas_db_por_tipo(tipo: str):
         return []
 
     # Clave: "domestica.xxx" | "enfermera.xxx" | "empleo_general.xxx"
-    return (
-        EntrevistaPregunta.query
-        .filter(EntrevistaPregunta.activa.is_(True))
-        .filter(EntrevistaPregunta.clave.like(f"{tipo}.%"))
-        .order_by(EntrevistaPregunta.orden.asc(), EntrevistaPregunta.id.asc())
-        .all()
-    )
+    return _get_preguntas_db_por_tipo_cached(tipo)
 
 
 def _safe_setattr(obj, name: str, value):
@@ -2491,6 +2530,10 @@ def reporte_inscripciones():
 
 @app.route('/reporte_pagos', methods=['GET'])
 @roles_required('admin', 'secretaria')
+@cache.cached(
+    timeout=int(os.getenv("CACHE_REPORTE_PAGOS_SECONDS", "45")),
+    key_prefix=lambda: _cache_key_with_role("reporte_pagos"),
+)
 def reporte_pagos():
     """
     Reporte de pagos pendientes (porciento > 0).
@@ -2743,27 +2786,15 @@ def subir_fotos():
             max_file = int(os.getenv("MAX_IMAGE_BYTES", str(3 * 1024 * 1024)))  # 3MB por archivo
 
             for campo, archivo in archivos_validos.items():
-                try:
-                    data = archivo.read()
-                except Exception:
-                    current_app.logger.exception("❌ Error leyendo archivo %s", campo)
-                    flash(f"❌ Error leyendo el archivo de {campo}. Intenta de nuevo.", "danger")
-                    tiene = _build_docs_flags(candidata)
-                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
-
-                if not data:
-                    current_app.logger.warning("⚠️ Archivo vacío para %s, no se guardará.", campo)
-                    continue
-
-                if len(data) > max_file:
-                    flash(f"❌ La imagen de {campo} es demasiado grande. Máximo {max_file // (1024*1024)}MB.", "danger")
-                    tiene = _build_docs_flags(candidata)
-                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
-
-                # Validar que realmente sea imagen por magic-bytes
-                mt, _ext = _detect_mimetype_and_ext(data)
-                if not mt.startswith("image/"):
-                    flash(f"❌ El archivo de {campo} no parece ser una imagen válida.", "danger")
+                ok, data, err, meta = validate_upload_file(archivo, max_bytes=max_file)
+                if not ok:
+                    current_app.logger.warning(
+                        "⚠️ Upload inválido campo=%s archivo=%s motivo=%s",
+                        campo,
+                        (meta or {}).get("filename_safe", ""),
+                        err,
+                    )
+                    flash(f"❌ Archivo inválido en {campo}: {err}", "danger")
                     tiene = _build_docs_flags(candidata)
                     return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
 
@@ -3400,6 +3431,10 @@ def referencias():
 # -----------------------------------------------------------------------------
 @app.route('/dashboard_procesos', methods=['GET'])
 @roles_required('admin', 'secretaria')
+@cache.cached(
+    timeout=int(os.getenv("CACHE_DASHBOARD_PROCESOS_SECONDS", "30")),
+    key_prefix=lambda: _cache_key_with_role("dashboard_procesos"),
+)
 def dashboard_procesos():
     estado_filtro = (request.args.get('estado') or '').strip()[:40]
     desde_str     = (request.args.get('desde') or '').strip()[:10]
@@ -3655,6 +3690,10 @@ def registrar_llamada_candidata(fila):
 
 @app.route('/candidatas/llamadas/reporte')
 @roles_required('admin')
+@cache.cached(
+    timeout=int(os.getenv("CACHE_REPORTE_LLAMADAS_SECONDS", "30")),
+    key_prefix=lambda: _cache_key_with_role("reporte_llamadas"),
+)
 def reporte_llamadas_candidatas():
     period         = (request.args.get('period') or 'week').strip()[:16]
     start_date_str = request.args.get('start_date', None)
@@ -3717,7 +3756,11 @@ def reporte_llamadas_candidatas():
     if start_dt:
         start_dt_dt = datetime.combine(start_dt, datetime.min.time())
         calls_q = calls_q.filter(LlamadaCandidata.fecha_llamada >= start_dt_dt)
-    calls_period = calls_q.all()
+    max_calls_period = min(
+        10000,
+        max(100, int(os.getenv("MAX_REPORT_CALLS_PERIOD_ROWS", "2500")))
+    )
+    calls_period = calls_q.limit(max_calls_period).all()
 
     filtros = []
     if start_dt:

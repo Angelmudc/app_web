@@ -258,3 +258,26 @@ def roles_required(*permitted_roles):
 
 
 admin_required_session = roles_required("admin")
+
+
+def login_required_any(view_func):
+    """
+    Requiere autenticación por Flask-Login o sesión legacy.
+    No fuerza rol específico; útil para rutas sensibles compartidas.
+    """
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        # Flask-Login
+        if _is_authenticated():
+            return view_func(*args, **kwargs)
+
+        # Sesión legacy
+        usuario = session.get("usuario")
+        role = (session.get("role") or "").strip().lower()
+        if usuario and role:
+            return view_func(*args, **kwargs)
+
+        flash("Debes iniciar sesión.", "warning")
+        return _redirect_login("login")
+
+    return wrapper
