@@ -86,6 +86,31 @@ def _register_endpoint_aliases(app_obj, blueprint_name: str):
         )
 
 
+def _register_endpoint_alias(app_obj, source_endpoint: str, alias_endpoint: str):
+    """Crea alias explícito entre endpoints, incluyendo endpoints legacy con namespace."""
+    if alias_endpoint in app_obj.url_map._rules_by_endpoint:
+        return
+
+    source_rules = list(app_obj.url_map._rules_by_endpoint.get(source_endpoint, []))
+    if not source_rules:
+        return
+
+    view_func = app_obj.view_functions.get(source_endpoint)
+    if view_func is None:
+        return
+
+    for rule in source_rules:
+        methods = sorted(m for m in rule.methods if m not in {"HEAD", "OPTIONS"})
+        app_obj.add_url_rule(
+            rule.rule,
+            endpoint=alias_endpoint,
+            view_func=view_func,
+            methods=methods,
+            defaults=rule.defaults,
+            strict_slashes=rule.strict_slashes,
+        )
+
+
 # Blueprints internos modularizados
 app.register_blueprint(candidatas_bp)
 app.register_blueprint(procesos_bp)
@@ -95,6 +120,10 @@ app.register_blueprint(archivos_bp)
 # Compatibilidad de endpoint names preexistentes
 for bp_name in ("candidatas_routes", "procesos_routes", "entrevistas_routes", "archivos_routes"):
     _register_endpoint_aliases(app, bp_name)
+
+# Compatibilidad legacy explícita para templates/flujo de archivos
+_register_endpoint_alias(app, "subir_fotos", "subir_fotos.subir_fotos")
+_register_endpoint_alias(app, "ver_imagen", "subir_fotos.ver_imagen")
 
 
 # Login routing por blueprint (mismo comportamiento esperado)
