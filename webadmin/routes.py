@@ -136,7 +136,7 @@ def _webadmin_guard():
 
 
 @webadmin_bp.route('/candidatas_web/<int:fila>/foto_perfil')
-@roles_required('admin')
+@roles_required(*WEBADMIN_ALLOWED_ROLES)
 def candidata_foto_perfil(fila: int):
     """Devuelve la foto_perfil (LargeBinary) como imagen."""
     from io import BytesIO
@@ -180,7 +180,7 @@ def candidata_foto_perfil(fila: int):
 
 
 @webadmin_bp.route('/candidatas_web', methods=['GET'])
-@roles_required('admin')
+@roles_required(*WEBADMIN_ALLOWED_ROLES)
 def listar_candidatas_web():
 
     # Paginación (evita cargar miles de filas de golpe)
@@ -304,7 +304,7 @@ def listar_candidatas_web():
 
 
 @webadmin_bp.route('/candidatas_web/<int:fila>/editar', methods=['GET', 'POST'])
-@roles_required('admin')
+@roles_required(*WEBADMIN_ALLOWED_ROLES)
 def editar_candidata_web(fila):
     """Editar la ficha pública de una candidata."""
     cand = Candidata.query.filter_by(fila=fila).first_or_404()
