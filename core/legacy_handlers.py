@@ -60,6 +60,7 @@ from forms import LlamadaCandidataForm
 # Utils locales
 from utils_codigo import generar_codigo_unico  # tu función optimizada
 from utils.upload_security import validate_upload_file
+from utils.compat_engine import ENGINE_VERSION, HORARIO_OPTIONS, normalize_horarios_tokens
 from utils.staff_auth import (
     admin_legacy_enabled,
     breakglass_allowed_ip,
@@ -4656,7 +4657,7 @@ def perfil_candidata():
 # ─────────────────────────────────────────────────────────────
 # SECRETARÍAS – TEST DE COMPATIBILIDAD PARA CANDIDATA
 # ─────────────────────────────────────────────────────────────
-COMPAT_TEST_CANDIDATA_VERSION = "v1.0"
+COMPAT_TEST_CANDIDATA_VERSION = "v2.0"
 
 # Catálogos (alineados con models.py)
 COMPAT_RITMOS = [
@@ -4724,11 +4725,15 @@ DIAS_SEMANA = [
     ('jue','Jueves'), ('vie','Viernes'), ('sab','Sábado'), ('dom','Domingo')
 ]
 HORARIOS = [
-    ('manana','Mañana'),
-    ('tarde','Tarde'),
-    ('noche','Noche'),
-    ('interna','Interna'),
-    ('flexible','Flexible'),
+    ("8am-5pm", "8:00 AM a 5:00 PM"),
+    ("9am-6pm", "9:00 AM a 6:00 PM"),
+    ("10am-6pm", "10:00 AM a 6:00 PM"),
+    ("medio_tiempo", "Medio tiempo"),
+    ("fin_de_semana", "Fin de semana"),
+    ("noche_solo", "Solo de noche"),
+    ("dormida_l-v", "Dormida (Lunes a Viernes)"),
+    ("dormida_l-s", "Dormida (Lunes a Sábado)"),
+    ("salida_quincenal", "Salida quincenal (cada 15 días)"),
 ]
 
 # ── Helpers de normalización ─────────────────────────────────
@@ -4767,6 +4772,7 @@ CHOICES_DICT = {
     "HORARIOS": HORARIOS,
     "MASCOTAS": COMPAT_MASCOTAS,
 }
+HORARIO_ORDER = {tok: idx for idx, (tok, _lbl) in enumerate(HORARIO_OPTIONS)}
 
 # ─────────────────────────────────────────────────────────────
 # RUTA PRINCIPAL
@@ -4801,7 +4807,12 @@ def compat_candidata():
         evitar     = _filter_allowed(_getlist_clean('tareas_evitar'),           {k for k, _ in TAREAS_EVITAR})
         limites    = _filter_allowed(_getlist_clean('limites_no_negociables'),  {k for k, _ in LIMITES_NO_NEG})
         dias       = _filter_allowed(_getlist_clean('disponibilidad_dias'),     {k for k, _ in DIAS_SEMANA})
-        horarios   = _filter_allowed(_getlist_clean('disponibilidad_horarios'), {k for k, _ in HORARIOS})
+        allowed_horarios = {k for k, _ in HORARIOS} | {
+            'interna', 'manana', 'mañana', 'tarde', 'noche', 'flexible',
+            'fin de semana', 'findesemana', 'weekend'
+        }
+        horarios_raw = _filter_allowed(_getlist_clean('disponibilidad_horarios'), allowed_horarios)
+        horarios = sorted(normalize_horarios_tokens(horarios_raw), key=lambda t: HORARIO_ORDER.get(t, 999))
 
         notas = (request.form.get('nota') or '').strip()[:2000]
 
@@ -4856,12 +4867,11 @@ def compat_candidata():
             if hasattr(c, 'compat_limites_no_negociables'):  c.compat_limites_no_negociables = limites
             if hasattr(c, 'compat_disponibilidad_dias'):     c.compat_disponibilidad_dias = dias
             if hasattr(c, 'compat_disponibilidad_horarios'): c.compat_disponibilidad_horarios = horarios
+            if hasattr(c, 'compat_disponibilidad_horario'):  c.compat_disponibilidad_horario = ", ".join(horarios)
 
             if hasattr(c, 'compat_observaciones'):           c.compat_observaciones = notas
 
-            payload = {
-                "version": COMPAT_TEST_CANDIDATA_VERSION,
-                "timestamp": datetime.utcnow().isoformat(),
+            profile = {
                 "ritmo": ritmo,
                 "estilo": estilo,
                 "comunicacion": comun,
@@ -4875,6 +4885,12 @@ def compat_candidata():
                 "disponibilidad_horarios": horarios,
                 "mascotas": mascotas,
                 "nota": notas,
+            }
+            payload = {
+                "version": COMPAT_TEST_CANDIDATA_VERSION,
+                "timestamp": datetime.utcnow().isoformat(),
+                "engine": ENGINE_VERSION,
+                "profile": profile,
             }
             if hasattr(c, 'compat_test_candidata_json'):     c.compat_test_candidata_json = payload
             if hasattr(c, 'compat_test_candidata_version'):  c.compat_test_candidata_version = COMPAT_TEST_CANDIDATA_VERSION
@@ -4910,7 +4926,10 @@ def compat_candidata():
                                        or getattr(c, 'compat_tareas_evitar', []) or [],
             "limites_no_negociables":  getattr(c, 'compat_limites_no_negociables', []) or [],
             "disponibilidad_dias":     getattr(c, 'compat_disponibilidad_dias', []) or [],
-            "disponibilidad_horarios": getattr(c, 'compat_disponibilidad_horarios', []) or [],
+            "disponibilidad_horarios": sorted(
+                normalize_horarios_tokens(getattr(c, 'compat_disponibilidad_horarios', []) or []),
+                key=lambda t: HORARIO_ORDER.get(t, 999)
+            ),
             "mascotas":                (getattr(c, 'compat_mascotas', None)
                                         if hasattr(c, 'compat_mascotas')
                                         else ('si' if getattr(c, 'compat_mascotas_ok', False) else 'no')

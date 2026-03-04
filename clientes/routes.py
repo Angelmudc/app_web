@@ -41,6 +41,13 @@ from .forms import (
 
 from . import clientes_bp
 from decorators import cliente_required, politicas_requeridas
+from utils.compat_engine import (
+    HORARIO_OPTIONS,
+    compute_match,
+    format_compat_result,
+    normalize_horarios_tokens,
+    persist_result_to_solicitud,
+)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1348,9 +1355,15 @@ def detalle_solicitud(id):
             'motivo': getattr(s, 'motivo_cancelacion', '')
         })
 
+    compat_result = None
+    if getattr(s, 'candidata_id', None) and getattr(s, 'candidata', None):
+        if getattr(s, 'compat_test_cliente_json', None) or getattr(s, 'compat_test_cliente', None):
+            compat_result = format_compat_result(compute_match(s, s.candidata))
+
     return render_template(
         'clientes/solicitud_detail.html',
         s=s,
+        compat=compat_result,
         envios=envios,
         cancelaciones=cancelaciones,
         hoy=date.today()
@@ -1497,7 +1510,8 @@ def rechazar_politicas():
 from json import dumps, loads
 
 PLANES_COMPATIBLES = {'premium', 'vip'}
-COMPAT_TEST_VERSION = 'v1.0'
+COMPAT_TEST_VERSION = 'v2.0'
+HORARIO_ORDER = {tok: idx for idx, (tok, _lbl) in enumerate(HORARIO_OPTIONS)}
 
 _RITMOS = {'tranquilo', 'activo', 'muy_activo'}
 _ESTILOS = {
@@ -1606,7 +1620,10 @@ def _normalize_payload_from_form(s: Solicitud) -> dict:
     exp = _norm_level(request.form.get('experiencia_deseada'))
     puntualidad = _parse_int_1a5(request.form.get('puntualidad_1a5'))
 
-    payload = {
+    horario_raw = _list_from_form('horario_tokens[]')
+    horario_tokens = sorted(normalize_horarios_tokens(horario_raw), key=lambda t: HORARIO_ORDER.get(t, 999))
+
+    profile = {
         "cliente_nombre": cliente_nombre,
         "cliente_codigo": cliente_codigo,
         "solicitud_codigo": s.codigo_solicitud,
@@ -1618,103 +1635,19 @@ def _normalize_payload_from_form(s: Solicitud) -> dict:
         "comunicacion": (request.form.get('comunicacion') or '').strip(),
         "direccion_trabajo": estilo,
         "experiencia_deseada": exp,
-        "horario_preferido": (request.form.get('horario_preferido') or getattr(s, 'horario', '') or '').strip(),
+        "horario_tokens": horario_tokens,
+        "horario_preferido": ", ".join(horario_tokens) if horario_tokens else (request.form.get('horario_preferido') or getattr(s, 'horario', '') or '').strip(),
         "no_negociables": _list_from_form('no_negociables[]'),
         "nota_cliente_test": (request.form.get('nota_cliente_test') or '').strip(),
+        "ninos": int(getattr(s, 'ninos', 0) or 0),
+        "mascota": (getattr(s, 'mascota', '') or '').strip(),
+    }
+    payload = {
         "version": COMPAT_TEST_VERSION,
         "timestamp": datetime.utcnow().isoformat(),
+        "profile": profile,
     }
     return payload
-
-
-def _calc_score_basico(s: Solicitud, payload: dict):
-    c = getattr(s, 'candidata', None)
-    if not c:
-        return None, None, "Aún no hay candidata asignada para calcular compatibilidad.", None
-
-    puntos = 0
-    total = 0
-    detalles = []
-    riesgos = []
-
-    total += 1
-    if payload.get('ritmo_hogar') and getattr(c, 'compat_ritmo_preferido', None):
-        if payload['ritmo_hogar'] == c.compat_ritmo_preferido:
-            puntos += 1
-            detalles.append("Ritmo compatible")
-        else:
-            riesgos.append(f"Ritmo distinto (cliente: {payload['ritmo_hogar']}, candidata: {c.compat_ritmo_preferido})")
-    else:
-        detalles.append("Ritmo: sin datos completos")
-
-    total += 1
-    if payload.get('direccion_trabajo') and getattr(c, 'compat_estilo_trabajo', None):
-        if payload['direccion_trabajo'] == c.compat_estilo_trabajo:
-            puntos += 1
-            detalles.append("Estilo compatible")
-        else:
-            riesgos.append("Preferencia diferente en instrucciones/iniciativa")
-    else:
-        detalles.append("Estilo: sin datos completos")
-
-    total += 1
-    relacion_c = getattr(c, 'compat_relacion_ninos', None)
-    tiene_ninos = (getattr(s, 'ninos', 0) or 0) > 0
-    if tiene_ninos and relacion_c:
-        if relacion_c == 'prefiere_evitar':
-            riesgos.append("La candidata prefiere evitar trabajar con niños")
-        else:
-            puntos += 1
-            detalles.append("Candidata apta con niños")
-    else:
-        puntos += 1
-        detalles.append("Sin niños o sin restricciones")
-
-    total += 1
-    no_neg = set([x.lower() for x in (payload.get('no_negociables') or [])])
-    limites = set([x.lower() for x in (getattr(c, 'compat_limites_no_negociables', []) or [])])
-    if no_neg and limites and (no_neg & limites):
-        riesgos.append(f"Choque en no negociables: {', '.join(sorted(no_neg & limites))}")
-    else:
-        puntos += 1
-        detalles.append("No hay choques en no-negociables")
-
-    total += 1
-    prios = set([x.lower() for x in (payload.get('prioridades') or [])])
-    forts = set([x.lower() for x in (getattr(c, 'compat_fortalezas', []) or [])])
-    if prios and forts and prios & forts:
-        puntos += 1
-        detalles.append(f"Prioridades alineadas ({', '.join(sorted(prios & forts))})")
-    else:
-        riesgos.append("La candidata no destaca en las prioridades clave del hogar")
-
-    score = int(round((puntos / max(total, 1)) * 100))
-    if score >= 80:
-        level = 'alta'
-    elif score >= 60:
-        level = 'media'
-    else:
-        level = 'baja'
-
-    resumen = "; ".join(detalles) if detalles else "Sin detalles."
-    riesgos_txt = "; ".join(riesgos) if riesgos else None
-    return score, level, resumen, riesgos_txt
-
-
-def _guardar_resultado_calculo(s: Solicitud, score, level, resumen, riesgos) -> bool:
-    try:
-        s.compat_calc_score = score
-        s.compat_calc_level = level
-        s.compat_calc_summary = resumen
-        s.compat_calc_risks = riesgos
-        s.compat_calc_at = datetime.utcnow()
-        if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = datetime.utcnow()
-        db.session.commit()
-        return True
-    except Exception:
-        db.session.rollback()
-        return False
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/compat/test', methods=['GET', 'POST'])
@@ -1732,11 +1665,11 @@ def compat_test_cliente(solicitud_id):
         payload = _normalize_payload_from_form(s)
         destino = _save_compat_cliente(s, payload)
 
-        score, level, resumen, riesgos = _calc_score_basico(s, payload)
-        if score is not None:
-            ok = _guardar_resultado_calculo(s, score, level, resumen, riesgos)
+        if getattr(s, 'candidata_id', None) and getattr(s, 'candidata', None):
+            result = compute_match(s, s.candidata)
+            ok = persist_result_to_solicitud(s, result)
             if ok:
-                flash(f'Test guardado y compatibilidad recalculada ({score}%).', 'success')
+                flash(f"Test guardado y compatibilidad recalculada ({result.get('score', 0)}%).", 'success')
             else:
                 flash('Test guardado, pero no se pudo persistir el resultado de compatibilidad.', 'warning')
         else:
@@ -1744,8 +1677,13 @@ def compat_test_cliente(solicitud_id):
 
         return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
 
-    initial = _load_compat_cliente(s) or {}
-    return render_template('clientes/compat_test_cliente.html', s=s, initial=initial)
+    initial_payload = _load_compat_cliente(s) or {}
+    initial = initial_payload.get('profile') if isinstance(initial_payload, dict) else {}
+    if not isinstance(initial, dict):
+        initial = initial_payload if isinstance(initial_payload, dict) else {}
+    raw_horario = initial.get('horario_tokens') or initial.get('horario_preferido') or getattr(s, 'horario', '')
+    initial['horario_tokens'] = sorted(normalize_horarios_tokens(raw_horario), key=lambda t: HORARIO_ORDER.get(t, 999))
+    return render_template('clientes/compat_test_cliente.html', s=s, initial=initial, HORARIO_CHOICES=HORARIO_OPTIONS)
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/compat/recalcular', methods=['POST'])
@@ -1764,14 +1702,14 @@ def compat_recalcular(solicitud_id):
         flash('Aún no hay un test de cliente para recalcular.', 'warning')
         return redirect(url_for('clientes.compat_test_cliente', solicitud_id=solicitud_id))
 
-    score, level, resumen, riesgos = _calc_score_basico(s, payload)
-    if score is None:
+    if not getattr(s, 'candidata_id', None) or not getattr(s, 'candidata', None):
         flash('No hay candidata asignada todavía. No se puede calcular el match.', 'info')
         return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
 
-    ok = _guardar_resultado_calculo(s, score, level, resumen, riesgos)
+    result = compute_match(s, s.candidata)
+    ok = persist_result_to_solicitud(s, result)
     if ok:
-        flash(f'Compatibilidad recalculada: {score}%.', 'success')
+        flash(f"Compatibilidad recalculada: {result.get('score', 0)}%.", 'success')
     else:
         flash('No se pudo guardar el resultado del cálculo.', 'danger')
 

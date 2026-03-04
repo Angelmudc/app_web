@@ -3,19 +3,62 @@
 
 {% block head %}
 <style>
-  .kard{background:#fff;border:0;border-radius:16px;box-shadow:0 10px 30px rgba(16,24,40,.08)}
-  .kard .kard-h{border-bottom:1px solid rgba(0,0,0,.06);padding:.9rem 1.1rem}
-  .kard .kard-b{padding:1.1rem}
-  .muted{color:#6b7280;font-size:.9rem}
-  .chips{display:flex;flex-wrap:wrap}
-  .chips label{display:inline-flex;align-items:center;gap:.45rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:999px;padding:.35rem .65rem;margin:.25rem .35rem;cursor:pointer;user-select:none}
-  .chips input[type="checkbox"], .chips input[type="radio"]{transform:scale(1.05)}
+  .compat-page { background:#fff !important; color:#111 !important; border-radius:16px; padding:1rem 0; }
+  .compat-page h1, .compat-page h2, .compat-page h3, .compat-page h4, .compat-page h5, .compat-page h6,
+  .compat-page p, .compat-page label, .compat-page small, .compat-page span { color:#111 !important; }
+  .compat-page .text-white, .compat-page .text-light, .compat-page .text-muted { color:#111 !important; }
+  .compat-page .text-primary { color:#2563eb !important; }
+  .compat-page .card, .compat-page .panel, .compat-page .box, .compat-page .kard {
+    background:#fff !important; color:#111 !important;
+  }
+  .compat-page .kard { border:0 !important; border-radius:16px; box-shadow:0 10px 30px rgba(16,24,40,.08); }
+  .compat-page .kard .kard-h {
+    border-bottom:1px solid rgba(0,0,0,.06); padding:.9rem 1.1rem; color:#111 !important;
+    background:#f8fafc !important;
+  }
+  .compat-page .kard .kard-b { padding:1.1rem; color:#111 !important; }
+  .compat-page .muted { color:#4b5563 !important; font-size:.9rem; }
+  .compat-page input, .compat-page select, .compat-page textarea,
+  .compat-page .form-control, .compat-page .form-select {
+    background:#fff !important;
+    color:#111 !important;
+    border:1px solid #d0d0d0 !important;
+  }
+  .compat-page input::placeholder, .compat-page textarea::placeholder {
+    color:#666 !important; opacity:1;
+  }
+  .compat-page select option {
+    background:#fff !important;
+    color:#111 !important;
+  }
+  .compat-page .form-select:focus,
+  .compat-page .form-control:focus {
+    background:#fff !important;
+    color:#111 !important;
+    border-color:#93c5fd !important;
+    box-shadow:0 0 0 .2rem rgba(37,99,235,.15) !important;
+  }
+  .compat-page .chips { display:flex; flex-wrap:wrap; }
+  .compat-page .chips label {
+    display:inline-flex; align-items:center; gap:.45rem;
+    background:#f3f4f6 !important; color:#111 !important;
+    border:1px solid #d1d5db !important; border-radius:999px;
+    padding:.35rem .65rem; margin:.25rem .35rem; cursor:pointer; user-select:none; transition:all .18s ease;
+  }
+  .compat-page .chips input[type="checkbox"], .compat-page .chips input[type="radio"] {
+    transform:scale(1.05); accent-color:#2563eb;
+  }
+  .compat-page .chips label:has(input:checked) {
+    background:#2563eb !important; color:#fff !important; border-color:#2563eb !important;
+  }
+  .compat-page .chips label:has(input:checked) span { color:#fff !important; }
+  .compat-page .btn-primary { color:#fff !important; }
   .section-gap{margin-top:1.15rem}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container" style="max-width: 980px;">
+<div class="container compat-page" style="max-width: 980px;">
   <div class="d-flex align-items-center justify-content-between mt-3 mb-3">
     <h1 class="h5 mb-0">Test de compatibilidad — <span class="text-primary">{{ candidata.nombre_completo }}</span></h1>
     <a class="btn btn-light" href="{{ url_for('compat_candidata') }}">
@@ -157,15 +200,17 @@
           </div>
         </div>
         <div class="col-md-6">
-          <label class="form-label">Horarios</label>
+          {% set horarios_sel = data.disponibilidad_horarios or [] %}
+          <label class="form-label">Bloques de horario disponibles</label>
           <div class="chips" role="group" aria-label="Horarios disponibles">
             {% for code, label in CHOICES.HORARIOS %}
               <label>
-                <input type="checkbox" name="disponibilidad_horarios" value="{{ code }}" {% if code in data.disponibilidad_horarios %}checked{% endif %}>
+                <input type="checkbox" name="disponibilidad_horarios" value="{{ code }}" {% if code in horarios_sel %}checked{% endif %}>
                 <span>{{ label }}</span>
               </label>
             {% endfor %}
           </div>
+          <div class="muted mt-1">Selecciona uno o más bloques para facilitar el match con horarios del cliente.</div>
         </div>
       </div>
 
