@@ -1836,6 +1836,89 @@ body.light .text-white{
 }
 
 /* =========================
+   101) GLOBAL FORM HARDENING
+   - Corrige checkbox/radio negros o invisibles.
+   - Corrige select/options sin contraste en light/dark.
+   - Aplica a toda la app (admin/public), sin tocar templates.
+========================= */
+
+/* Estado base (light por defecto) */
+:where(.form-check-input){
+  cursor: pointer;
+  border: 1px solid rgba(15,23,42,.35) !important;
+  background-color: #ffffff !important;
+}
+
+:where(.form-check-input[type="checkbox"], .form-check-input[type="radio"]){
+  accent-color: var(--accent-color, #0b66ff);
+}
+
+:where(.form-check-input:focus){
+  border-color: rgba(11,102,255,.62) !important;
+  box-shadow: 0 0 0 .18rem rgba(11,102,255,.24) !important;
+}
+
+:where(.form-check-input:checked){
+  background-color: #0b66ff !important;
+  border-color: #0b66ff !important;
+}
+
+:where(.form-check-label){
+  color: rgba(10,16,36,.90);
+}
+
+/* Select y opciones legibles en light */
+:where(.form-select, select){
+  color: rgba(10,16,36,.92);
+}
+
+:where(.form-select option, select option){
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+/* Dark mode: checkbox/radio y selects con contraste real */
+html[data-theme="dark"] :where(.form-check-input),
+body[data-theme="dark"] :where(.form-check-input),
+html.dark :where(.form-check-input),
+body.dark :where(.form-check-input){
+  border-color: rgba(234,240,255,.52) !important;
+  background-color: rgba(10,16,36,.88) !important;
+}
+
+html[data-theme="dark"] :where(.form-check-input:checked),
+body[data-theme="dark"] :where(.form-check-input:checked),
+html.dark :where(.form-check-input:checked),
+body.dark :where(.form-check-input:checked){
+  background-color: #38bdf8 !important;
+  border-color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] :where(.form-check-label),
+body[data-theme="dark"] :where(.form-check-label),
+html.dark :where(.form-check-label),
+body.dark :where(.form-check-label){
+  color: rgba(234,240,255,.94) !important;
+}
+
+html[data-theme="dark"] :where(.form-select, select),
+body[data-theme="dark"] :where(.form-select, select),
+html.dark :where(.form-select, select),
+body.dark :where(.form-select, select){
+  color: rgba(234,240,255,.96) !important;
+  background-color: rgba(255,255,255,.08) !important;
+  border-color: rgba(234,240,255,.25) !important;
+}
+
+html[data-theme="dark"] :where(.form-select option, select option),
+body[data-theme="dark"] :where(.form-select option, select option),
+html.dark :where(.form-select option, select option),
+body.dark :where(.form-select option, select option){
+  color: #eaf0ff !important;
+  background-color: #111a33 !important;
+}
+
+/* =========================
    19) PAGE FIX — ENTREVISTAS LISTA (sin CSS en el HTML)
    - Evita “cuadros blancos” en dark y asegura contraste en light.
    - Aplica aunque el template sea simple.
@@ -2078,4 +2161,3 @@ body.theme-light .btn-primary{
 /* =========================
    END
 ========================= */
-

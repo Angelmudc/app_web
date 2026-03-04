@@ -2482,6 +2482,16 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
                 form.ninera_tareas.data = data.get("tareas") or []
             if hasattr(form, 'ninera_tareas_otro'):
                 form.ninera_tareas_otro.data = data.get("tareas_otro") or ''
+            try:
+                if hasattr(form, 'ninera_tareas') and hasattr(form, 'ninera_tareas_otro'):
+                    if (form.ninera_tareas_otro.data or '').strip():
+                        allowed = _allowed_codes_from_choices(form.ninera_tareas.choices)
+                        if 'otro' in allowed:
+                            vals = set(_clean_list(form.ninera_tareas.data))
+                            vals.add('otro')
+                            form.ninera_tareas.data = list(vals)
+            except Exception:
+                pass
             if hasattr(form, 'ninera_condicion_especial'):
                 form.ninera_condicion_especial.data = data.get("condicion_especial") or ''
 
@@ -2499,6 +2509,16 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
                 form.enf_tareas.data = data.get("tareas") or []
             if hasattr(form, 'enf_tareas_otro'):
                 form.enf_tareas_otro.data = data.get("tareas_otro") or ''
+            try:
+                if hasattr(form, 'enf_tareas') and hasattr(form, 'enf_tareas_otro'):
+                    if (form.enf_tareas_otro.data or '').strip():
+                        allowed = _allowed_codes_from_choices(form.enf_tareas.choices)
+                        if 'otro' in allowed:
+                            vals = set(_clean_list(form.enf_tareas.data))
+                            vals.add('otro')
+                            form.enf_tareas.data = list(vals)
+            except Exception:
+                pass
 
         # ─────────────────────────────
         # CHOFER
@@ -2510,6 +2530,14 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
                 form.chofer_tipo_vehiculo.data = data.get("tipo_vehiculo") or ''
             if hasattr(form, 'chofer_tipo_vehiculo_otro'):
                 form.chofer_tipo_vehiculo_otro.data = data.get("tipo_vehiculo_otro") or ''
+            try:
+                if hasattr(form, 'chofer_tipo_vehiculo') and hasattr(form, 'chofer_tipo_vehiculo_otro'):
+                    if (form.chofer_tipo_vehiculo_otro.data or '').strip():
+                        allowed = _allowed_codes_from_choices(form.chofer_tipo_vehiculo.choices)
+                        if 'otro' in allowed:
+                            form.chofer_tipo_vehiculo.data = 'otro'
+            except Exception:
+                pass
             if hasattr(form, 'chofer_rutas'):
                 form.chofer_rutas.data = data.get("rutas") or ''
             if hasattr(form, 'chofer_viajes_largos'):
@@ -2766,6 +2794,16 @@ def editar_solicitud_admin(cliente_id, id):
             form.areas_comunes.data = _clean_list(s.areas_comunes)
         if hasattr(form, 'area_otro'):
             form.area_otro.data = (getattr(s, 'area_otro', '') or '')
+        try:
+            if hasattr(form, 'areas_comunes') and hasattr(form, 'area_otro'):
+                if (form.area_otro.data or '').strip():
+                    allowed_areas = _allowed_codes_from_choices(form.areas_comunes.choices)
+                    if 'otro' in allowed_areas:
+                        area_codes = set(_clean_list(form.areas_comunes.data))
+                        area_codes.add('otro')
+                        form.areas_comunes.data = list(area_codes)
+        except Exception:
+            pass
         if hasattr(form, 'pasaje_aporte'):
             form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
 

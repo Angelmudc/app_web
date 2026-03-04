@@ -1879,3 +1879,99 @@ body.dc-modal-open {
 :where(body.clientes, .clientes, [data-portal="clientes"]) .btn-dark{
   color: #ffffff !important;
 }
+
+/* =====================================================================
+   FIX ESPECIFICO: solicitud_form (solo portal clientes)
+   - Evita checkbox/radio en negro antes de pintar el check.
+   - Mejora contraste del select "Tipo de lugar" (ej. Casa).
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page #solicitud-form {
+  color-scheme: light;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page #solicitud-form .form-check-input {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(16, 24, 40, 0.34) !important;
+  box-shadow: none !important;
+  accent-color: #2f6cff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page #solicitud-form .form-check-input:not(:checked) {
+  background-image: none !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page #solicitud-form .form-check-input:checked {
+  background-color: #2f6cff !important;
+  border-color: #2f6cff !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page #solicitud-form .form-check-input:focus {
+  border-color: #2f6cff !important;
+  box-shadow: 0 0 0 0.2rem rgba(47, 108, 255, 0.2) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page #solicitud-form #tipo_lugar.form-select,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page #solicitud-form #tipo_lugar option {
+  background-color: #ffffff !important;
+  color: #101828 !important;
+}
+
+/* =====================================================================
+   GLOBAL FORM HARDENING (PORTAL CLIENTES)
+   - Cubre cualquier formulario del portal, no solo solicitud_form.
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .form-check-input{
+  cursor: pointer;
+  border: 1px solid rgba(16,24,40,.34) !important;
+  background-color: #ffffff !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .form-check-input[type="checkbox"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) .form-check-input[type="radio"]{
+  accent-color: #2f6cff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .form-check-input:checked{
+  background-color: #2f6cff !important;
+  border-color: #2f6cff !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .form-check-input:focus{
+  border-color: #2f6cff !important;
+  box-shadow: 0 0 0 .2rem rgba(47,108,255,.2) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .form-select,
+:where(body.clientes, .clientes, [data-portal="clientes"]) select{
+  color: #101828 !important;
+  background-color: #ffffff !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .form-select option,
+:where(body.clientes, .clientes, [data-portal="clientes"]) select option{
+  color: #101828 !important;
+  background-color: #ffffff !important;
+}
+
+html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="clientes"]) .form-check-input{
+  border-color: rgba(234,240,255,.52) !important;
+  background-color: rgba(10,16,36,.88) !important;
+}
+
+html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="clientes"]) .form-check-input:checked{
+  background-color: #38bdf8 !important;
+  border-color: #38bdf8 !important;
+}
+
+html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="clientes"]) .form-select,
+html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="clientes"]) select{
+  color: #eaf0ff !important;
+  background-color: #111a33 !important;
+  border-color: rgba(234,240,255,.25) !important;
+}
+
+html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="clientes"]) .form-select option,
+html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="clientes"]) select option{
+  color: #eaf0ff !important;
+  background-color: #111a33 !important;
+}

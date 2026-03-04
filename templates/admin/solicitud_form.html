@@ -114,7 +114,7 @@
           </div>
           {% endfor %}
         </div>
-        <div id="wrap-funciones-otro" class="mt-2 {{ 'd-block' if (form.funciones.data and ('otro' in form.funciones.data)) else 'd-none' }}">
+        <div id="wrap-funciones-otro" class="mt-2 {{ 'd-block' if ((form.funciones.data and ('otro' in form.funciones.data)) or (form.funciones_otro.data|default('')|trim != '')) else 'd-none' }}">
           <label class="form-label">{{ form.funciones_otro.label.text }}</label>
           {{ form.funciones_otro(class="form-control", placeholder="Puedes separar varias por coma") }}
         </div>
@@ -130,7 +130,7 @@
           </div>
           {% endfor %}
         </div>
-        <div id="wrap-edad-otro" class="mt-2 {{ 'd-block' if (form.edad_requerida.data and ('otro' in form.edad_requerida.data)) else 'd-none' }}">
+        <div id="wrap-edad-otro" class="mt-2 {{ 'd-block' if ((form.edad_requerida.data and ('otro' in form.edad_requerida.data)) or (form.edad_otro.data|default('')|trim != '')) else 'd-none' }}">
           <label class="form-label">{{ form.edad_otro.label.text }}</label>
           {{ form.edad_otro(class="form-control", placeholder="Ej. 30 a 40, 20-30…") }}
           <div class="hint">Si elegiste “Otro”, especifica aquí el rango.</div>
@@ -168,7 +168,7 @@
             </div>
             {% endfor %}
           </div>
-          <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-block' if (form.ninera_tareas.data and ('otro' in form.ninera_tareas.data)) else 'd-none' }}">
+          <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-block' if ((form.ninera_tareas.data and ('otro' in form.ninera_tareas.data)) or (form.ninera_tareas_otro.data|default('')|trim != '')) else 'd-none' }}">
             <label class="form-label">{{ form.ninera_tareas_otro.label.text }}</label>
             {{ form.ninera_tareas_otro(class="form-control", placeholder="Especifica otras tareas") }}
           </div>
@@ -209,7 +209,7 @@
             </div>
             {% endfor %}
           </div>
-          <div id="wrap-enf-tareas-otro" class="mt-2 {{ 'd-block' if (form.enf_tareas.data and ('otro' in form.enf_tareas.data)) else 'd-none' }}">
+          <div id="wrap-enf-tareas-otro" class="mt-2 {{ 'd-block' if ((form.enf_tareas.data and ('otro' in form.enf_tareas.data)) or (form.enf_tareas_otro.data|default('')|trim != '')) else 'd-none' }}">
             <label class="form-label">{{ form.enf_tareas_otro.label.text }}</label>
             {{ form.enf_tareas_otro(class="form-control", placeholder="Especifica otras tareas de cuidado") }}
           </div>
@@ -234,7 +234,7 @@
           <div class="col-md-6">
             <label class="form-label">{{ form.chofer_tipo_vehiculo.label.text }}</label>
             {{ form.chofer_tipo_vehiculo(class="form-select", id=form.chofer_tipo_vehiculo.id) }}
-            <div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if (form.chofer_tipo_vehiculo.data == 'otro') else 'd-none' }}">
+            <div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if ((form.chofer_tipo_vehiculo.data == 'otro') or (form.chofer_tipo_vehiculo_otro.data|default('')|trim != '')) else 'd-none' }}">
               <label class="form-label">{{ form.chofer_tipo_vehiculo_otro.label.text }}</label>
               {{ form.chofer_tipo_vehiculo_otro(class="form-control", placeholder="Ej. Minibús, camión ligero…") }}
             </div>
@@ -308,7 +308,7 @@
             {% endfor %}
           </div>
           {% if form.area_otro is defined %}
-          <div id="wrap-areas-otro" class="mt-2 {{ 'd-block' if (form.areas_comunes.data and ('otro' in form.areas_comunes.data)) else 'd-none' }}">
+          <div id="wrap-areas-otro" class="mt-2 {{ 'd-block' if ((form.areas_comunes.data and ('otro' in form.areas_comunes.data)) or (form.area_otro.data|default('')|trim != '')) else 'd-none' }}">
             <label class="form-label">{{ form.area_otro.label.text if form.area_otro.label else 'Otra área' }}</label>
             {{ form.area_otro(class="form-control", placeholder="Ej. Balcón, cuarto de juegos…") }}
             <div class="hint">Si elegiste “Otro”, especifica aquí el área adicional.</div>
@@ -421,19 +421,33 @@
 
   // Funciones -> Otro
   const funcWrap = document.getElementById('wrap-funciones-otro');
+  const funcOtroInput = document.getElementById('{{ form.funciones_otro.id }}');
   const funcChecks = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
+  const updateFuncOtro = () => {
+    const checkedOtro = [...funcChecks].some(c => c.value === 'otro' && c.checked);
+    const hasText = !!(funcOtroInput && funcOtroInput.value.trim());
+    setVisible(funcWrap, checkedOtro || hasText);
+  };
   funcChecks.forEach(ch => ch.addEventListener('change', () => {
-    setVisible(funcWrap, [...funcChecks].some(c => c.value === 'otro' && c.checked));
+    updateFuncOtro();
   }));
-  setVisible(funcWrap, [...funcChecks].some(c => c.value === 'otro' && c.checked));
+  if (funcOtroInput) funcOtroInput.addEventListener('input', updateFuncOtro);
+  updateFuncOtro();
 
   // Edad requerida -> Otro
   const edadWrap = document.getElementById('wrap-edad-otro');
+  const edadOtroInput = document.getElementById('{{ form.edad_otro.id }}');
   const edadChecks = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
+  const updateEdadOtro = () => {
+    const checkedOtro = [...edadChecks].some(c => c.value === 'otro' && c.checked);
+    const hasText = !!(edadOtroInput && edadOtroInput.value.trim());
+    setVisible(edadWrap, checkedOtro || hasText);
+  };
   edadChecks.forEach(ch => ch.addEventListener('change', () => {
-    setVisible(edadWrap, [...edadChecks].some(c => c.value === 'otro' && c.checked));
+    updateEdadOtro();
   }));
-  setVisible(edadWrap, [...edadChecks].some(c => c.value === 'otro' && c.checked));
+  if (edadOtroInput) edadOtroInput.addEventListener('input', updateEdadOtro);
+  updateEdadOtro();
 
   // Tipo de lugar -> Otro
   const tipoSel = document.getElementById('{{ form.tipo_lugar.id }}');
@@ -445,12 +459,16 @@
 
   // Áreas comunes -> Otro (descripciones del hogar)
   const areasWrap = document.getElementById('wrap-areas-otro');
+  const areaOtroInput = document.getElementById('{{ form.area_otro.id if form.area_otro is defined else "" }}');
   const areasChecks = document.querySelectorAll('input[name="{{ form.areas_comunes.name if form.areas_comunes is defined else "" }}"]');
   if (areasWrap && areasChecks && areasChecks.length) {
     const updateAreas = () => {
-      setVisible(areasWrap, [...areasChecks].some(c => c.value === 'otro' && c.checked));
+      const checkedOtro = [...areasChecks].some(c => c.value === 'otro' && c.checked);
+      const hasText = !!(areaOtroInput && areaOtroInput.value.trim());
+      setVisible(areasWrap, checkedOtro || hasText);
     };
     areasChecks.forEach(ch => ch.addEventListener('change', updateAreas));
+    if (areaOtroInput) areaOtroInput.addEventListener('input', updateAreas);
     updateAreas();
   }
 
@@ -493,28 +511,45 @@
 
   // Niñera tareas -> Otro
   const ninTareasWrap  = document.getElementById('wrap-ninera-tareas-otro');
+  const ninTareasOtroInput = document.getElementById('{{ form.ninera_tareas_otro.id }}');
   const ninTareasChecks = document.querySelectorAll('input[name="{{ form.ninera_tareas.name }}"]');
+  const updateNinTareasOtro = () => {
+    const checkedOtro = [...ninTareasChecks].some(c => c.value === 'otro' && c.checked);
+    const hasText = !!(ninTareasOtroInput && ninTareasOtroInput.value.trim());
+    setVisible(ninTareasWrap, checkedOtro || hasText);
+  };
   ninTareasChecks.forEach(ch => ch.addEventListener('change', () => {
-    setVisible(ninTareasWrap, [...ninTareasChecks].some(c => c.value === 'otro' && c.checked));
+    updateNinTareasOtro();
   }));
-  setVisible(ninTareasWrap, [...ninTareasChecks].some(c => c.value === 'otro' && c.checked));
+  if (ninTareasOtroInput) ninTareasOtroInput.addEventListener('input', updateNinTareasOtro);
+  updateNinTareasOtro();
 
   // Enfermera tareas -> Otro
   const enfTareasWrap  = document.getElementById('wrap-enf-tareas-otro');
+  const enfTareasOtroInput = document.getElementById('{{ form.enf_tareas_otro.id }}');
   const enfTareasChecks = document.querySelectorAll('input[name="{{ form.enf_tareas.name }}"]');
+  const updateEnfTareasOtro = () => {
+    const checkedOtro = [...enfTareasChecks].some(c => c.value === 'otro' && c.checked);
+    const hasText = !!(enfTareasOtroInput && enfTareasOtroInput.value.trim());
+    setVisible(enfTareasWrap, checkedOtro || hasText);
+  };
   enfTareasChecks.forEach(ch => ch.addEventListener('change', () => {
-    setVisible(enfTareasWrap, [...enfTareasChecks].some(c => c.value === 'otro' && c.checked));
+    updateEnfTareasOtro();
   }));
-  setVisible(enfTareasWrap, [...enfTareasChecks].some(c => c.value === 'otro' && c.checked));
+  if (enfTareasOtroInput) enfTareasOtroInput.addEventListener('input', updateEnfTareasOtro);
+  updateEnfTareasOtro();
 
   // Chofer tipo_vehiculo -> "otro"
   const choferTipoSelect  = document.getElementById('{{ form.chofer_tipo_vehiculo.id }}');
   const choferTipoWrap    = document.getElementById('wrap-chofer-tipo-otro');
+  const choferTipoOtroInput = document.getElementById('{{ form.chofer_tipo_vehiculo_otro.id }}');
   if (choferTipoSelect && choferTipoWrap) {
     const updateChoferTipo = () => {
-      setVisible(choferTipoWrap, choferTipoSelect.value === 'otro');
+      const hasText = !!(choferTipoOtroInput && choferTipoOtroInput.value.trim());
+      setVisible(choferTipoWrap, choferTipoSelect.value === 'otro' || hasText);
     };
     choferTipoSelect.addEventListener('change', updateChoferTipo);
+    if (choferTipoOtroInput) choferTipoOtroInput.addEventListener('input', updateChoferTipo);
     updateChoferTipo();
   }
 
