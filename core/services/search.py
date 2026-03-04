@@ -1,0 +1,9 @@
+from core import legacy_handlers as legacy
+
+normalize_query_text = legacy.normalize_query_text
+normalize_digits = legacy.normalize_digits
+normalize_code = legacy.normalize_code
+build_flexible_search_filters = legacy.build_flexible_search_filters
+apply_search_to_candidata_query = legacy.apply_search_to_candidata_query
+search_candidatas_limited = legacy.search_candidatas_limited
+get_candidata_by_id = legacy.get_candidata_by_id
