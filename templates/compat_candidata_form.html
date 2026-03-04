@@ -6,7 +6,10 @@
   .compat-page { background:#fff !important; color:#111 !important; border-radius:16px; padding:1rem 0; }
   .compat-page h1, .compat-page h2, .compat-page h3, .compat-page h4, .compat-page h5, .compat-page h6,
   .compat-page p, .compat-page label, .compat-page small, .compat-page span { color:#111 !important; }
-  .compat-page .text-white, .compat-page .text-light, .compat-page .text-muted { color:#111 !important; }
+  .compat-page .text-white, .compat-page .text-light, .compat-page .text-muted {
+    color:#111827 !important;
+    -webkit-text-fill-color:#111827 !important;
+  }
   .compat-page .text-primary { color:#2563eb !important; }
   .compat-page .card, .compat-page .panel, .compat-page .box, .compat-page .kard {
     background:#fff !important; color:#111 !important;
@@ -18,25 +21,34 @@
   }
   .compat-page .kard .kard-b { padding:1.1rem; color:#111 !important; }
   .compat-page .muted { color:#4b5563 !important; font-size:.9rem; }
-  .compat-page input, .compat-page select, .compat-page textarea,
-  .compat-page .form-control, .compat-page .form-select {
-    background:#fff !important;
-    color:#111 !important;
-    border:1px solid #d0d0d0 !important;
+  .compat-page input, .compat-page textarea,
+  .compat-page select, .compat-page .form-select, .compat-page .form-control {
+    background-color:#ffffff !important;
+    color:#111827 !important;
+    border:1px solid rgba(0,0,0,.2) !important;
+    -webkit-text-fill-color:#111827 !important;
+    caret-color:#111827 !important;
+  }
+  .compat-page select,
+  .compat-page .form-select {
+    appearance:auto !important;
+    -webkit-appearance:menulist !important;
+    -moz-appearance:menulist !important;
   }
   .compat-page input::placeholder, .compat-page textarea::placeholder {
     color:#666 !important; opacity:1;
   }
-  .compat-page select option {
-    background:#fff !important;
-    color:#111 !important;
+  .compat-page select option,
+  .compat-page select optgroup {
+    background-color:#ffffff !important;
+    color:#111827 !important;
   }
+  .compat-page select:focus,
   .compat-page .form-select:focus,
   .compat-page .form-control:focus {
-    background:#fff !important;
-    color:#111 !important;
-    border-color:#93c5fd !important;
-    box-shadow:0 0 0 .2rem rgba(37,99,235,.15) !important;
+    outline:none !important;
+    box-shadow:0 0 0 .2rem rgba(59,130,246,.25) !important;
+    border-color:rgba(59,130,246,.6) !important;
   }
   .compat-page .chips { display:flex; flex-wrap:wrap; }
   .compat-page .chips label {
