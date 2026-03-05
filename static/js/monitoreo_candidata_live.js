@@ -164,6 +164,7 @@
   }
 
   function startPresencePing() {
+    if (document.body && document.body.getAttribute('data-live-presence-enabled') === '1') return;
     if (!presencePingUrl) return;
     presencePing().catch(() => {});
     if (pingTimer) clearInterval(pingTimer);

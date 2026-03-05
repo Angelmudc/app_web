@@ -57,9 +57,9 @@
       {% for log in logs %}
         <tr data-log-id="{{ log.id }}">
           <td>{{ log.created_at }}</td>
-          <td>{% set u = user_map.get(log.actor_user_id) %}{{ u.username if u else '-' }}</td>
-          <td><code>{{ log.action_type }}</code></td>
-          <td>{{ log.entity_type or '-' }} {{ log.entity_id or '' }}</td>
+          <td>{{ log.actor_username or '-' }}</td>
+          <td>{{ log.action_human or log.action_type }}</td>
+          <td>{{ log.entity_display or ((log.entity_type or '-') ~ ' ' ~ (log.entity_id or '')) }}</td>
           <td>{{ log.summary or '-' }}</td>
           <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
         </tr>

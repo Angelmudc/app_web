@@ -33,6 +33,7 @@ except Exception:
 from utils import letra_por_indice
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
+from utils.audit_logger import log_action
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
@@ -596,6 +597,27 @@ def _json_no_cache(payload: dict, status: int = 200):
     return resp
 
 
+_CLIENTE_PRESENCE_TTL_SECONDS = 65
+_CLIENTE_PRESENCE_INDEX_KEY = "clientes_presence:index"
+
+
+def _cliente_presence_key(cliente_id: int) -> str:
+    return f"clientes_presence:{int(cliente_id)}"
+
+
+def _should_log_cliente_live_event(cliente_id: int, event_type: str, path: str) -> bool:
+    event = (event_type or "").strip().lower() or "heartbeat"
+    timeout = 30 if event == "heartbeat" else 6
+    key = f"cliente_live_event:{int(cliente_id)}:{event}:{(path or '')[:140]}"
+    try:
+        if cache.get(key):
+            return False
+        cache.set(key, 1, timeout=timeout)
+    except Exception:
+        return event != "heartbeat"
+    return True
+
+
 @clientes_bp.route('/ping', methods=['GET'])
 @login_required
 @cliente_required
@@ -606,6 +628,61 @@ def clientes_ping():
         'server_time': datetime.utcnow().isoformat() + 'Z',
         'cliente_id': int(getattr(current_user, 'id', 0) or 0),
     })
+
+
+@clientes_bp.route('/live/ping', methods=['POST'])
+@login_required
+@cliente_required
+def clientes_live_ping():
+    payload = request.get_json(silent=True) or {}
+    current_path = (payload.get('current_path') or request.path or '').strip()[:255]
+    event_type = (payload.get('event_type') or 'heartbeat').strip().lower()[:32]
+    action_hint = (payload.get('action_hint') or 'browsing').strip().lower()[:80]
+    solicitud_id = str(payload.get('solicitud_id') or '').strip()[:64]
+    cliente_id = int(getattr(current_user, 'id', 0) or 0)
+    if not cliente_id:
+        abort(403)
+
+    presence_payload = {
+        'cliente_id': cliente_id,
+        'cliente_codigo': str(getattr(current_user, 'codigo', '') or '')[:50],
+        'cliente_nombre': str(getattr(current_user, 'nombre_completo', '') or '')[:180],
+        'current_path': current_path,
+        'event_type': event_type,
+        'action_hint': action_hint,
+        'solicitud_id': solicitud_id,
+        'last_seen_at': datetime.utcnow().isoformat(timespec='seconds') + 'Z',
+    }
+    try:
+        cache.set(_cliente_presence_key(cliente_id), presence_payload, timeout=_CLIENTE_PRESENCE_TTL_SECONDS)
+        idx = cache.get(_CLIENTE_PRESENCE_INDEX_KEY) or []
+        try:
+            idx = [int(x) for x in idx]
+        except Exception:
+            idx = []
+        if cliente_id not in idx:
+            idx.append(cliente_id)
+        idx = idx[-2000:]
+        cache.set(_CLIENTE_PRESENCE_INDEX_KEY, idx, timeout=max(3600, _CLIENTE_PRESENCE_TTL_SECONDS * 20))
+    except Exception:
+        pass
+
+    if _should_log_cliente_live_event(cliente_id, event_type, current_path):
+        meta = {
+            'event_type': event_type,
+            'action_hint': action_hint,
+            'solicitud_id': solicitud_id or None,
+            'scope': 'clientes',
+        }
+        log_action(
+            action_type='CLIENTE_LIVE_EVENT',
+            entity_type='cliente',
+            entity_id=str(cliente_id),
+            summary=f'Cliente activo en {current_path}'[:255],
+            metadata=meta,
+            success=True,
+        )
+    return _json_no_cache({'ok': True, 'cliente_id': cliente_id})
 
 
 @clientes_bp.route('/solicitudes/live', methods=['GET'])

@@ -159,7 +159,10 @@
 
   {% block head %}{% endblock %}
 </head>
-<body class="clientes d-flex flex-column min-vh-100" data-portal="clientes">
+<body class="clientes d-flex flex-column min-vh-100"
+      data-portal="clientes"
+      data-live-presence-enabled="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}1{% else %}0{% endif %}"
+      data-live-presence-url="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}{{ url_for('clientes.clientes_live_ping') }}{% endif %}">
   {% set is_login_page = (request.endpoint == 'clientes.login') %}
   {% set is_authed = (current_user.is_authenticated if current_user is defined else false) %}
   {% set show_shell = (is_authed and (not is_login_page)) %}
@@ -367,6 +370,7 @@
 
   <!-- JS del portal de clientes (aislado del admin) -->
   <script src="{{ url_for('static', filename='clientes/js/clientes.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/client_notifications.js') }}" defer></script>
 
   {% if show_shell %}

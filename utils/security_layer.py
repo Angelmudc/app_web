@@ -112,6 +112,8 @@ def init_security(app, cache):
         "/admin/monitoreo/stream",
         "/admin/monitoreo/logs.json",
         "/admin/monitoreo/summary.json",
+        "/clientes/live/ping",
+        "/live/ping",
     }
 
     # Anti-scraping / anti-bots

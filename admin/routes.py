@@ -5,6 +5,7 @@ import re
 import os
 import time
 import json
+from urllib.parse import parse_qs, urlparse
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -1435,8 +1436,8 @@ def _parse_monitoreo_date(raw: str, end_of_day: bool = False):
         return None
 
 
-_PRESENCE_TTL_SECONDS = 60
-_PRESENCE_ACTIVE_SECONDS = 30
+_PRESENCE_TTL_SECONDS = 65
+_PRESENCE_ACTIVE_SECONDS = 45
 _PRESENCE_INDEX_KEY = "staff_presence:index"
 _PRODUCTIVITY_ACTIONS = (
     "CANDIDATA_EDIT",
@@ -1447,6 +1448,300 @@ _PRODUCTIVITY_ACTIONS = (
     "CANDIDATA_MARK_LISTA",
     "CANDIDATA_MARK_TRABAJANDO",
 )
+_LIVE_EVENT_PREFIX = "staff_live_event"
+_HUMAN_ACTION_MAP = {
+    "STAFF_POST": "Actualizo datos",
+    "CANDIDATA_EDIT": "Editando candidata",
+    "CANDIDATA_INTERVIEW_NEW_CREATE": "Guardo entrevista",
+    "CANDIDATA_INTERVIEW_LEGACY_SAVE": "Guardo entrevista",
+    "CANDIDATA_UPLOAD_DOCS": "Guardo documentos",
+    "CANDIDATA_MARK_LISTA": "Marco candidata lista para trabajar",
+    "CANDIDATA_MARK_TRABAJANDO": "Marco candidata trabajando",
+    "MATCHING_SEND": "Envio candidata a solicitud",
+    "SOLICITUD_CREATE": "Creo solicitud",
+    "SOLICITUD_UPDATE": "Actualizo solicitud",
+    "SOLICITUD_PUBLICAR": "Publico solicitud",
+    "LIVE_PAGE_LOAD": "Entro a una pantalla",
+    "LIVE_HEARTBEAT": "Activo en pantalla",
+    "LIVE_TAB_FOCUS": "Volvio a la pestana",
+    "LIVE_OPEN_ENTITY": "Abrio entidad",
+}
+
+
+def _normalize_entity_type(value: str | None) -> str:
+    txt = (value or "").strip().lower()
+    if txt in {"candidata", "candidatas", "candidate"}:
+        return "candidata"
+    if txt in {"solicitud", "solicitudes", "request"}:
+        return "solicitud"
+    if txt in {"cliente", "clientes", "client"}:
+        return "cliente"
+    return txt
+
+
+def _human_entity_display(name: str | None, code: str | None) -> str | None:
+    nm = (name or "").strip()
+    if not nm:
+        return None
+    cd = (code or "").strip()
+    return f"{nm} - {cd}" if cd else f"{nm} - (sin codigo)"
+
+
+def _infer_action_hint_from_path(path: str | None) -> str:
+    p = (path or "").strip().lower()
+    if not p:
+        return "browsing"
+    if "matching" in p:
+        return "matching"
+    if "entrevista" in p:
+        return "editing_interview"
+    if "referencia" in p:
+        return "editing_references"
+    if "solicitud" in p:
+        return "editing_request"
+    if "editar" in p or "edit" in p:
+        return "editing"
+    if "buscar" in p:
+        return "searching"
+    return "browsing"
+
+
+def _humanize_action(
+    action_type: str | None,
+    summary: str | None = None,
+    metadata: dict | None = None,
+    route: str | None = None,
+    action_hint: str | None = None,
+) -> str:
+    at = (action_type or "").strip().upper()
+    if at in _HUMAN_ACTION_MAP:
+        return _HUMAN_ACTION_MAP[at]
+
+    hint = (action_hint or "").strip().lower() or _infer_action_hint_from_path(route)
+    hint_map = {
+        "editing": "Editando registro",
+        "editing_interview": "Editando entrevista",
+        "editing_references": "Editando referencias",
+        "editing_candidate": "Editando candidata",
+        "editing_request": "Editando solicitud",
+        "matching": "Revisando matching de solicitudes",
+        "searching": "Buscando registros",
+        "browsing": "Navegando en la app",
+    }
+    if hint in hint_map:
+        return hint_map[hint]
+
+    txt = (summary or "").strip()
+    if txt and not txt.isupper():
+        return txt[:120]
+    return "Actividad en la app"
+
+
+def _extract_entity_context(payload: dict | None, current_path: str | None = None) -> dict:
+    src = dict(payload or {})
+    ctx = {
+        "entity_type": _normalize_entity_type(src.get("entity_type")),
+        "entity_id": (src.get("entity_id") or "").strip(),
+        "entity_name": (src.get("entity_name") or "").strip(),
+        "entity_code": (src.get("entity_code") or "").strip(),
+    }
+    if not ctx["entity_id"]:
+        for key, etype in (
+            ("candidata_id", "candidata"),
+            ("solicitud_id", "solicitud"),
+            ("cliente_id", "cliente"),
+        ):
+            value = str(src.get(key) or "").strip()
+            if value:
+                ctx["entity_type"] = etype
+                ctx["entity_id"] = value
+                break
+
+    path = (current_path or "").strip()
+    if not path:
+        return ctx
+
+    parsed = urlparse(path)
+    q = parse_qs(parsed.query)
+    if not ctx["entity_id"]:
+        for key, etype in (
+            ("candidata_id", "candidata"),
+            ("solicitud_id", "solicitud"),
+            ("cliente_id", "cliente"),
+        ):
+            value = (q.get(key) or [None])[0]
+            value = str(value or "").strip()
+            if value:
+                ctx["entity_type"] = etype
+                ctx["entity_id"] = value
+                break
+
+    path_only = (parsed.path or "").strip().lower()
+    if (not ctx["entity_id"]) and path_only:
+        m = re.search(r"/candidatas?/([a-z0-9_-]+)", path_only)
+        if m:
+            ctx["entity_type"] = "candidata"
+            ctx["entity_id"] = m.group(1)
+        m = re.search(r"/solicitudes?/([a-z0-9_-]+)", path_only)
+        if m and not ctx["entity_id"]:
+            ctx["entity_type"] = "solicitud"
+            ctx["entity_id"] = m.group(1)
+
+    return ctx
+
+
+def _format_candidata_display(cand: Candidata | None) -> str | None:
+    if cand is None:
+        return None
+    return _human_entity_display(cand.nombre_completo, cand.codigo)
+
+
+def _format_cliente_display(cli: Cliente | None) -> str | None:
+    if cli is None:
+        return None
+    return _human_entity_display(cli.nombre_completo, cli.codigo)
+
+
+def _format_solicitud_display(sol: Solicitud | None) -> str | None:
+    if sol is None:
+        return None
+    base = (sol.codigo_solicitud or f"Solicitud #{sol.id}")
+    cli = _format_cliente_display(getattr(sol, "cliente", None))
+    return f"{base} - {cli}" if cli else base
+
+
+def _build_entity_display_map(logs: list[StaffAuditLog] | None) -> dict[tuple[str, str], str]:
+    logs = logs or []
+    cand_ids: set[int] = set()
+    cand_codes: set[str] = set()
+    sol_ids: set[int] = set()
+    sol_codes: set[str] = set()
+    cli_ids: set[int] = set()
+    cli_codes: set[str] = set()
+
+    for log in logs:
+        et = _normalize_entity_type(getattr(log, "entity_type", None))
+        eid = str(getattr(log, "entity_id", "") or "").strip()
+        if not et or not eid:
+            continue
+        if et == "candidata":
+            if eid.isdigit():
+                cand_ids.add(int(eid))
+            else:
+                cand_codes.add(eid)
+        elif et == "solicitud":
+            if eid.isdigit():
+                sol_ids.add(int(eid))
+            else:
+                sol_codes.add(eid)
+        elif et == "cliente":
+            if eid.isdigit():
+                cli_ids.add(int(eid))
+            else:
+                cli_codes.add(eid)
+
+    out: dict[tuple[str, str], str] = {}
+    if cand_ids or cand_codes:
+        try:
+            cand_q = Candidata.query
+            filters = []
+            if cand_ids:
+                filters.append(Candidata.fila.in_(cand_ids))
+            if cand_codes:
+                filters.append(Candidata.codigo.in_(cand_codes))
+            for cand in cand_q.filter(or_(*filters)).all():
+                label = _format_candidata_display(cand)
+                if not label:
+                    continue
+                out[("candidata", str(cand.fila))] = label
+                if (cand.codigo or "").strip():
+                    out[("candidata", str(cand.codigo).strip())] = label
+        except Exception:
+            pass
+
+    if sol_ids or sol_codes:
+        try:
+            sol_q = Solicitud.query.options(joinedload(Solicitud.cliente))
+            filters = []
+            if sol_ids:
+                filters.append(Solicitud.id.in_(sol_ids))
+            if sol_codes:
+                filters.append(Solicitud.codigo_solicitud.in_(sol_codes))
+            for sol in sol_q.filter(or_(*filters)).all():
+                label = _format_solicitud_display(sol)
+                if not label:
+                    continue
+                out[("solicitud", str(sol.id))] = label
+                if (sol.codigo_solicitud or "").strip():
+                    out[("solicitud", str(sol.codigo_solicitud).strip())] = label
+        except Exception:
+            pass
+
+    if cli_ids or cli_codes:
+        try:
+            cli_q = Cliente.query
+            filters = []
+            if cli_ids:
+                filters.append(Cliente.id.in_(cli_ids))
+            if cli_codes:
+                filters.append(Cliente.codigo.in_(cli_codes))
+            for cli in cli_q.filter(or_(*filters)).all():
+                label = _format_cliente_display(cli)
+                if not label:
+                    continue
+                out[("cliente", str(cli.id))] = label
+                if (cli.codigo or "").strip():
+                    out[("cliente", str(cli.codigo).strip())] = label
+        except Exception:
+            pass
+    return out
+
+
+def _entity_display_from_metadata(metadata: dict | None, entity_type: str | None, entity_id: str | None) -> str | None:
+    meta = dict(metadata or {})
+    direct = (meta.get("entity_display") or "").strip()
+    if direct:
+        return direct
+    name = (meta.get("entity_name") or meta.get("nombre") or "").strip()
+    code = (meta.get("entity_code") or meta.get("codigo") or "").strip()
+    if name:
+        return _human_entity_display(name, code)
+    et = _normalize_entity_type(entity_type)
+    eid = (entity_id or "").strip()
+    if et and eid:
+        return f"{et} {eid}"
+    return None
+
+
+def _is_valid_live_action_type(raw: str) -> bool:
+    txt = (raw or "").strip().upper()
+    if not txt or len(txt) > 80:
+        return False
+    return re.fullmatch(r"[A-Z0-9_]+", txt) is not None
+
+
+def _map_event_to_action_type(event_type: str | None) -> str:
+    ev = (event_type or "").strip().lower()
+    if ev == "page_load":
+        return "LIVE_PAGE_LOAD"
+    if ev == "tab_focus":
+        return "LIVE_TAB_FOCUS"
+    if ev == "open_entity":
+        return "LIVE_OPEN_ENTITY"
+    return "LIVE_HEARTBEAT"
+
+
+def _should_log_live_event(user_id: int, event_type: str, path: str, action_hint: str, entity_id: str) -> bool:
+    ev = (event_type or "").strip().lower() or "heartbeat"
+    base = f"{_LIVE_EVENT_PREFIX}:{int(user_id)}:{ev}:{(path or '')[:120]}:{(action_hint or '')[:60]}:{(entity_id or '')[:40]}"
+    timeout = 30 if ev == "heartbeat" else 5
+    try:
+        if cache.get(base):
+            return False
+        cache.set(base, 1, timeout=timeout)
+    except Exception:
+        return ev != "heartbeat"
+    return True
 
 
 def _presence_key(user_id: int) -> str:
@@ -1469,6 +1764,15 @@ def _touch_staff_presence(
     current_path: str | None = None,
     page_title: str | None = None,
     last_action_hint: str | None = None,
+    event_type: str | None = None,
+    action_type: str | None = None,
+    action_hint: str | None = None,
+    action_human: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    entity_name: str | None = None,
+    entity_code: str | None = None,
+    log_event: bool = False,
 ) -> None:
     try:
         if not bool(session.get("is_admin_session")):
@@ -1479,28 +1783,72 @@ def _touch_staff_presence(
             return
 
         now = datetime.utcnow()
+        uid = int(current_user.id)
+        prev = cache.get(_presence_key(uid)) or {}
+        effective_path = (current_path or prev.get("current_path") or request.path or "")[:255]
+        effective_hint = (action_hint or last_action_hint or prev.get("action_hint") or _infer_action_hint_from_path(effective_path))[:80]
+        effective_action_type = (action_type or prev.get("action_type") or "LIVE_HEARTBEAT")[:80]
+        effective_entity_type = _normalize_entity_type(entity_type or prev.get("entity_type"))
+        effective_entity_id = (entity_id or prev.get("entity_id") or "")[:64]
+        effective_entity_display = _human_entity_display(entity_name, entity_code) or prev.get("entity_display")
+        if not effective_entity_display and effective_entity_type and effective_entity_id:
+            fake_log = StaffAuditLog(entity_type=effective_entity_type, entity_id=effective_entity_id)
+            mapped = _build_entity_display_map([fake_log])
+            effective_entity_display = mapped.get((effective_entity_type, effective_entity_id))
+        effective_action_human = (action_human or prev.get("current_action_human") or _humanize_action(effective_action_type, route=effective_path, action_hint=effective_hint))[:120]
+
         payload = {
-            "user_id": int(current_user.id),
+            "user_id": uid,
             "username": (current_user.username or str(current_user.id)),
             "role": (current_user.role or "").strip().lower(),
-            "current_path": (current_path or request.path or "")[:255],
+            "current_path": effective_path,
             "page_title": (page_title or request.endpoint or request.path or "")[:160],
             "last_action_hint": (last_action_hint or "")[:120],
+            "event_type": (event_type or prev.get("event_type") or "heartbeat")[:32],
+            "action_type": effective_action_type,
+            "action_hint": effective_hint,
+            "current_action_human": effective_action_human,
+            "entity_type": effective_entity_type,
+            "entity_id": effective_entity_id,
+            "entity_display": (effective_entity_display or "")[:200],
             "last_seen_at": now.isoformat(timespec="seconds") + "Z",
             "ip": (_client_ip() or "")[:64],
             "user_agent": (request.headers.get("User-Agent") or "")[:255],
         }
-        cache.set(_presence_key(current_user.id), payload, timeout=_PRESENCE_TTL_SECONDS)
+        cache.set(_presence_key(uid), payload, timeout=_PRESENCE_TTL_SECONDS)
 
         idx = cache.get(_PRESENCE_INDEX_KEY) or []
         try:
             idx = [int(x) for x in idx]
         except Exception:
             idx = []
-        if int(current_user.id) not in idx:
-            idx.append(int(current_user.id))
+        if uid not in idx:
+            idx.append(uid)
         idx = idx[-500:]
         cache.set(_PRESENCE_INDEX_KEY, idx, timeout=max(3600, _PRESENCE_TTL_SECONDS * 20))
+
+        if log_event and _should_log_live_event(
+            user_id=uid,
+            event_type=(event_type or "heartbeat"),
+            path=effective_path,
+            action_hint=effective_hint,
+            entity_id=effective_entity_id,
+        ):
+            meta = {
+                "event_type": (event_type or "heartbeat"),
+                "action_hint": effective_hint,
+                "entity_display": effective_entity_display,
+                "entity_name": (entity_name or "")[:120],
+                "entity_code": (entity_code or "")[:60],
+            }
+            _audit_log(
+                action_type=effective_action_type,
+                entity_type=effective_entity_type or None,
+                entity_id=effective_entity_id or None,
+                summary=effective_action_human,
+                metadata=meta,
+                success=True,
+            )
     except Exception:
         return
 
@@ -1544,6 +1892,15 @@ def _presence_rows() -> list[dict]:
         for item in rows:
             last_action_map[int(item.actor_user_id)] = item
 
+    last_serialized_map: dict[int, dict] = {}
+    if last_action_map:
+        logs = list(last_action_map.values())
+        entity_map = _build_entity_display_map(logs)
+        for item in logs:
+            if item.actor_user_id is None:
+                continue
+            last_serialized_map[int(item.actor_user_id)] = _serialize_log_item(item, entity_display_map=entity_map)
+
     out = []
     for p in presence_raw:
         uid = int(p.get("user_id"))
@@ -1553,6 +1910,15 @@ def _presence_rows() -> list[dict]:
         delta = max(0, int((now - seen_at).total_seconds()))
         status = "active" if delta < _PRESENCE_ACTIVE_SECONDS else "inactive"
         last = last_action_map.get(uid)
+        last_serialized = last_serialized_map.get(uid) or {}
+        current_action_human = (p.get("current_action_human") or last_serialized.get("action_human") or _humanize_action(
+            getattr(last, "action_type", None),
+            getattr(last, "summary", None),
+            getattr(last, "metadata_json", {}),
+            route=p.get("current_path"),
+            action_hint=p.get("action_hint"),
+        ))[:120]
+        entity_display = (p.get("entity_display") or last_serialized.get("entity_display") or "").strip()
         out.append(
             {
                 "user_id": uid,
@@ -1563,6 +1929,12 @@ def _presence_rows() -> list[dict]:
                 "page_title": p.get("page_title"),
                 "last_seen_seconds": delta,
                 "last_action_hint": p.get("last_action_hint"),
+                "action_type": p.get("action_type"),
+                "action_hint": p.get("action_hint"),
+                "current_action_human": current_action_human,
+                "entity_type": p.get("entity_type"),
+                "entity_id": p.get("entity_id"),
+                "entity_display": entity_display,
                 "last_action_type": getattr(last, "action_type", None),
                 "last_action_summary": getattr(last, "summary", None),
                 "last_action_at": (getattr(last, "created_at", None).isoformat() + "Z") if getattr(last, "created_at", None) else None,
@@ -1573,12 +1945,33 @@ def _presence_rows() -> list[dict]:
     return out
 
 
-def _serialize_log_item(log: StaffAuditLog, username_map: dict[int, str] | None = None) -> dict:
+def _serialize_log_item(
+    log: StaffAuditLog,
+    username_map: dict[int, str] | None = None,
+    entity_display_map: dict[tuple[str, str], str] | None = None,
+) -> dict:
     username_map = username_map or {}
+    entity_display_map = entity_display_map or {}
     metadata = dict(getattr(log, "metadata_json", {}) or {})
     changes = getattr(log, "changes_json", None)
     for key in ("telefono", "numero_telefono", "phone", "phone_number", "whatsapp"):
         metadata.pop(key, None)
+    entity_type = _normalize_entity_type(log.entity_type)
+    entity_id = str(log.entity_id or "").strip()
+    entity_display = None
+    if entity_type and entity_id:
+        entity_display = entity_display_map.get((entity_type, entity_id))
+    if not entity_display:
+        entity_display = _entity_display_from_metadata(metadata, entity_type, entity_id)
+
+    action_hint = (metadata.get("action_hint") or "").strip().lower()
+    action_human = _humanize_action(
+        log.action_type,
+        summary=log.summary,
+        metadata=metadata,
+        route=log.route,
+        action_hint=action_hint,
+    )
     return {
         "id": int(log.id),
         "created_at": log.created_at.isoformat() + "Z" if log.created_at else None,
@@ -1586,8 +1979,10 @@ def _serialize_log_item(log: StaffAuditLog, username_map: dict[int, str] | None 
         "actor_username": username_map.get(int(log.actor_user_id)) if log.actor_user_id else None,
         "actor_role": log.actor_role,
         "action_type": log.action_type,
-        "entity_type": log.entity_type,
-        "entity_id": log.entity_id,
+        "entity_type": entity_type or log.entity_type,
+        "entity_id": entity_id or log.entity_id,
+        "entity_display": entity_display,
+        "action_human": action_human,
         "summary": log.summary,
         "route": log.route,
         "method": log.method,
@@ -1809,6 +2204,12 @@ def monitoreo_staff():
     )
     users = StaffUser.query.order_by(StaffUser.username.asc()).all()
     user_map = {u.id: u for u in users}
+    username_map = {int(u.id): u.username for u in users}
+    latest_entity_map = _build_entity_display_map(latest_logs)
+    latest_logs_items = [
+        _serialize_log_item(log, username_map=username_map, entity_display_map=latest_entity_map)
+        for log in latest_logs
+    ]
 
     ranking_today = _activity_ranking(day_start)
     ranking_week = _activity_ranking(now - timedelta(days=7))
@@ -1821,7 +2222,7 @@ def monitoreo_staff():
         total_week=total_week,
         metrics=metrics,
         per_day_rows=per_day_rows,
-        latest_logs=latest_logs,
+        latest_logs=latest_logs_items,
         users=users,
         user_map=user_map,
         ranking_today=ranking_today,
@@ -1844,10 +2245,16 @@ def monitoreo_logs():
     action_types = [r[0] for r in db.session.query(StaffAuditLog.action_type).distinct().order_by(StaffAuditLog.action_type.asc()).all()]
     entity_types = [r[0] for r in db.session.query(StaffAuditLog.entity_type).filter(StaffAuditLog.entity_type.isnot(None)).distinct().order_by(StaffAuditLog.entity_type.asc()).all()]
     user_map = {u.id: u for u in users}
+    username_map = {int(u.id): u.username for u in users}
+    entity_display_map = _build_entity_display_map(list(pagination.items))
+    logs_items = [
+        _serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map)
+        for log in pagination.items
+    ]
 
     return render_template(
         "admin/monitoreo_logs.html",
-        logs=pagination.items,
+        logs=logs_items,
         pagination=pagination,
         users=users,
         user_map=user_map,
@@ -1917,7 +2324,8 @@ def monitoreo_candidata_historial(candidata_entity_id: str):
     if actor_ids:
         users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
         username_map = {int(u.id): u.username for u in users}
-    items = [_serialize_log_item(log, username_map=username_map) for log in logs]
+    entity_display_map = _build_entity_display_map(logs)
+    items = [_serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map) for log in logs]
     for item in items:
         item["metadata_json"] = _sanitize_monitoreo_metadata(item.get("metadata_json"))
     return render_template(
@@ -1993,7 +2401,8 @@ def monitoreo_logs_json():
         rows = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
         username_map = {int(u.id): u.username for u in rows}
 
-    items = [_serialize_log_item(log, username_map=username_map) for log in logs]
+    entity_display_map = _build_entity_display_map(logs)
+    items = [_serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map) for log in logs]
     last_id = max([i["id"] for i in items], default=(since_id or 0))
     return jsonify({"items": items, "last_id": int(last_id)})
 
@@ -2041,7 +2450,8 @@ def monitoreo_candidata_logs_json(candidata_entity_id: str):
     if actor_ids:
         users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
         username_map = {int(u.id): u.username for u in users}
-    items = [_serialize_log_item(log, username_map=username_map) for log in logs]
+    entity_display_map = _build_entity_display_map(logs)
+    items = [_serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map) for log in logs]
     for item in items:
         item["metadata_json"] = _sanitize_monitoreo_metadata(item.get("metadata_json"))
     last_id = max([i["id"] for i in items], default=(since_id or 0))
@@ -2086,8 +2496,9 @@ def monitoreo_stream():
                     if actor_ids:
                         users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
                         username_map = {int(u.id): u.username for u in users}
+                    entity_display_map = _build_entity_display_map(new_logs)
                     for log in new_logs:
-                        item = _serialize_log_item(log, username_map=username_map)
+                        item = _serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map)
                         yield _sse("log", item)
                         last_id = max(last_id, int(log.id))
 
@@ -2156,8 +2567,9 @@ def monitoreo_candidata_stream(candidata_entity_id: str):
                 if actor_ids:
                     users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
                     username_map = {int(u.id): u.username for u in users}
+                entity_display_map = _build_entity_display_map(new_logs)
                 for log in new_logs:
-                    item = _serialize_log_item(log, username_map=username_map)
+                    item = _serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map)
                     item["metadata_json"] = _sanitize_monitoreo_metadata(item.get("metadata_json"))
                     yield _sse("candidatelog", item)
                     last_id = max(last_id, int(log.id))
@@ -2191,8 +2603,32 @@ def monitoreo_presence_ping():
     payload = request.get_json(silent=True) or {}
     current_path = (payload.get("current_path") or request.path or "").strip()[:255]
     page_title = (payload.get("page_title") or request.endpoint or "").strip()[:160]
-    last_action_hint = (payload.get("last_action_hint") or "").strip()[:120]
-    _touch_staff_presence(current_path=current_path, page_title=page_title, last_action_hint=last_action_hint)
+    event_type = (payload.get("event_type") or "heartbeat").strip().lower()[:32]
+    if event_type not in {"page_load", "heartbeat", "tab_focus", "open_entity"}:
+        event_type = "heartbeat"
+
+    raw_action_type = (payload.get("action_type") or "").strip().upper()
+    action_type = raw_action_type if _is_valid_live_action_type(raw_action_type) else _map_event_to_action_type(event_type)
+    action_hint = (payload.get("action_hint") or payload.get("last_action_hint") or "").strip().lower()[:80]
+    if not action_hint:
+        action_hint = _infer_action_hint_from_path(current_path)[:80]
+    ctx = _extract_entity_context(payload, current_path=current_path)
+    action_human = _humanize_action(action_type, route=current_path, action_hint=action_hint)
+
+    _touch_staff_presence(
+        current_path=current_path,
+        page_title=page_title,
+        last_action_hint=action_hint,
+        event_type=event_type,
+        action_type=action_type,
+        action_hint=action_hint,
+        action_human=action_human,
+        entity_type=ctx.get("entity_type"),
+        entity_id=ctx.get("entity_id"),
+        entity_name=ctx.get("entity_name"),
+        entity_code=ctx.get("entity_code"),
+        log_event=True,
+    )
     return jsonify({"ok": True})
 
 # =============================================================================

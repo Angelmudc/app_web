@@ -5,6 +5,7 @@
   <title>{% block title %}Doméstica del Cibao A&D{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Agencia profesional de domésticas en el Cibao. Selección, filtro y garantía para tu hogar.">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='public/css/styles.css') }}">
   <link rel="icon" href="{{ url_for('static', filename='public/img/logo/logo_domestica.png') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,7 +21,7 @@
     referrerpolicy="no-referrer"
   />
 </head>
-<body>
+<body data-live-presence-enabled="1" data-live-presence-url="{{ url_for('public.public_live_ping') }}">
 
   <!-- NAVBAR -->
   <nav class="navbar">
@@ -94,6 +95,7 @@
 
 
   <script src="{{ url_for('static', filename='public/js/main.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
 
   <!-- AUTO-REFRESH SUAVE (solo cuando el usuario está inactivo) -->
   <script>

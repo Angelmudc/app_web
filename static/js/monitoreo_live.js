@@ -75,8 +75,8 @@
     tr.innerHTML = [
       '<td>' + formatDate(item.created_at) + '</td>',
       '<td>' + (item.actor_username || '-') + '</td>',
-      '<td><code>' + (item.action_type || '-') + '</code></td>',
-      '<td>' + (item.entity_type || '-') + ' ' + (item.entity_id || '') + '</td>',
+      '<td>' + (item.action_human || item.action_type || '-') + '</td>',
+      '<td>' + (item.entity_display || ((item.entity_type || '-') + ' ' + (item.entity_id || ''))) + '</td>',
       '<td>' + (item.summary || '-') + '</td>',
       '<td>' + resultBadge(Boolean(item.success)) + '</td>'
     ].join('');
@@ -114,7 +114,7 @@
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!Array.isArray(presence) || !presence.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin presencia reciente.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Sin presencia reciente.</td></tr>';
       return;
     }
     presence.forEach((p) => {
@@ -124,7 +124,8 @@
         '<td>' + (p.username || '-') + ' <small class="text-muted">(' + (p.role || '-') + ')</small></td>',
         '<td><span class="badge ' + badge + '">' + String(p.status || '').toUpperCase() + '</span></td>',
         '<td><small>' + (p.current_path || '-') + '</small></td>',
-        '<td><small>' + (p.last_action_type || p.last_action_hint || 'sin acciones registradas') + (p.last_action_summary ? ' — ' + p.last_action_summary : '') + '</small></td>',
+        '<td><small>' + (p.current_action_human || p.last_action_type || p.last_action_hint || 'sin acciones registradas') + '</small></td>',
+        '<td><small>' + (p.entity_display || '-') + '</small></td>',
         '<td>' + (p.last_seen_seconds || 0) + 's</td>'
       ].join('');
       tbody.appendChild(tr);
@@ -343,6 +344,7 @@
   }
 
   function startPresencePing() {
+    if (document.body && document.body.getAttribute('data-live-presence-enabled') === '1') return;
     if (!presencePingUrl) return;
     presencePingDelayMs = 10000;
     schedulePresencePing(0);

@@ -80,18 +80,19 @@
       <h2 class="h6">Usuarios activos ahora</h2>
       <div class="table-responsive">
         <table class="table table-sm table-striped" id="presenceTable">
-          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Última acción</th><th>Hace</th></tr></thead>
+          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Acción</th><th>Entidad</th><th>Hace</th></tr></thead>
           <tbody>
             {% for p in summary_payload.presence %}
             <tr>
               <td>{{ p.username }} <small class="text-muted">({{ p.role }})</small></td>
               <td><span class="badge {% if p.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">{{ p.status|upper }}</span></td>
               <td><small>{{ p.current_path or '-' }}</small></td>
-              <td><small>{{ p.last_action_type or p.last_action_hint or 'sin acciones registradas' }}{% if p.last_action_summary %} — {{ p.last_action_summary }}{% endif %}</small></td>
+              <td><small>{{ p.current_action_human or p.last_action_type or p.last_action_hint or 'sin acciones registradas' }}</small></td>
+              <td><small>{{ p.entity_display or '-' }}</small></td>
               <td>{{ p.last_seen_seconds }}s</td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-muted">Sin presencia reciente.</td></tr>
+            <tr><td colspan="6" class="text-muted">Sin presencia reciente.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -121,9 +122,9 @@
       {% for log in latest_logs %}
         <tr data-log-id="{{ log.id }}">
           <td>{{ log.created_at }}</td>
-          <td>{% set u = user_map.get(log.actor_user_id) %}{{ u.username if u else '-' }}</td>
-          <td><code>{{ log.action_type }}</code></td>
-          <td>{{ log.entity_type or '-' }} {{ log.entity_id or '' }}</td>
+          <td>{{ log.actor_username or '-' }}</td>
+          <td>{{ log.action_human or log.action_type }}</td>
+          <td>{{ log.entity_display or ((log.entity_type or '-') ~ ' ' ~ (log.entity_id or '')) }}</td>
           <td>{{ log.summary or '-' }}</td>
           <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
         </tr>

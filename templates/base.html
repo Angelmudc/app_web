@@ -9,6 +9,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
 
   {#
     ✅ Base sólida y segura para producción (sin romper CDNs)
@@ -59,7 +60,10 @@
   {% block head %}{% endblock %}
 </head>
 
-<body data-theme="light" class="{{ body_class|default('') }}">
+<body data-theme="light"
+      class="{{ body_class|default('') }}"
+      data-live-presence-enabled="{% if current_user.is_authenticated and (current_user.role|default('') in ['admin', 'secretaria']) %}1{% else %}0{% endif %}"
+      data-live-presence-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['admin', 'secretaria']) %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}">
 
   <noscript>
     <div class="container mt-3">
@@ -271,6 +275,7 @@
   <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
 
 </body>
 <script defer>

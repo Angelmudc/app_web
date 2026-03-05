@@ -4,6 +4,8 @@ from flask import render_template, abort, request, redirect, jsonify, make_respo
 from . import public_bp
 
 from datetime import datetime
+from config_app import cache
+from utils.audit_logger import log_action
 
 # Límite de paginación pública
 PUBLIC_MAX_PAGE = 50
@@ -45,6 +47,56 @@ def public_ping():
         'public_enabled': bool(PUBLIC_SITE_ENABLED),
         'server_time': datetime.utcnow().isoformat() + 'Z',
     })
+
+
+@public_bp.route('/live/ping', methods=['POST'])
+def public_live_ping():
+    payload = request.get_json(silent=True) or {}
+    current_path = (payload.get('current_path') or request.path or '').strip()[:255]
+    event_type = (payload.get('event_type') or 'heartbeat').strip().lower()[:32]
+    page_title = (payload.get('page_title') or '').strip()[:160]
+    ua = (request.headers.get("User-Agent") or "").strip().lower()
+    is_bot = any(tok in ua for tok in ("bot", "crawler", "spider", "curl", "python-requests"))
+
+    # Muestreo liviano para no generar ruido ni costo de escritura innecesario.
+    if (event_type == "heartbeat") and is_bot:
+        return _json_no_cache({'ok': True, 'sampled': False})
+
+    minute_key = datetime.utcnow().strftime("%Y%m%d%H%M")
+    route_key = f"public_live:{minute_key}:{current_path}"
+    count = 0
+    try:
+        count = int(cache.get(route_key) or 0) + 1
+        cache.set(route_key, count, timeout=180)
+    except Exception:
+        count = 0
+
+    # Persistencia en auditoria con dedupe por minuto/ruta/evento.
+    dedupe_key = f"public_live_log:{minute_key}:{event_type}:{current_path}"
+    should_log = (event_type != "heartbeat")
+    try:
+        if should_log or not cache.get(dedupe_key):
+            cache.set(dedupe_key, 1, timeout=180)
+            should_log = True
+    except Exception:
+        pass
+
+    if should_log:
+        log_action(
+            action_type="PUBLIC_LIVE_EVENT",
+            entity_type="public_route",
+            entity_id=current_path[:64] or "home",
+            summary=f"Visita publica {current_path}"[:255],
+            metadata={
+                "scope": "public",
+                "event_type": event_type,
+                "page_title": page_title,
+                "route_hits_minute": count,
+            },
+            success=True,
+        )
+
+    return _json_no_cache({'ok': True, 'sampled': True, 'route_hits_minute': count})
 
 
 @public_bp.route("/")
