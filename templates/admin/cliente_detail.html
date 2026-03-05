@@ -319,6 +319,7 @@
                 {% set badge_class =
                   'bg-secondary' if est == 'proceso' else
                   'bg-primary'   if est == 'activa'  else
+                  'bg-warning text-dark' if est == 'espera_pago' else
                   'bg-success'   if est == 'pagada'  else
                   'bg-warning'   if est == 'cancelada' else
                   'bg-info'      if est == 'reemplazo' else

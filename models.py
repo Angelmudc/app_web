@@ -636,11 +636,26 @@ class Solicitud(db.Model):
     abono                  = db.Column(db.String(100), nullable=True)
     estado                 = db.Column(
                                 SAEnum(
-                                    'proceso','activa','pagada','cancelada','reemplazo',
+                                    'proceso','activa','pagada','cancelada','reemplazo','espera_pago',
                                     name='estado_solicitud_enum'
                                 ),
                                 nullable=False,
                                 default='proceso'
+                             )
+    estado_previo_espera_pago = db.Column(
+                                db.String(50),
+                                nullable=True,
+                                comment="Estado previo usado para restaurar al quitar espera de pago"
+                             )
+    fecha_cambio_espera_pago = db.Column(
+                                db.DateTime,
+                                nullable=True,
+                                comment="Fecha del ultimo cambio de espera de pago"
+                             )
+    usuario_cambio_espera_pago = db.Column(
+                                db.String(100),
+                                nullable=True,
+                                comment="Usuario que cambio espera de pago"
                              )
 
     # Ubicación y rutas
@@ -1001,6 +1016,11 @@ class Reemplazo(db.Model):
 
     # Notas internas del reemplazo
     nota_adicional         = db.Column(db.Text,    nullable=True)
+    estado_previo_solicitud = db.Column(
+        db.String(50),
+        nullable=True,
+        comment="Estado de la solicitud justo antes de abrir el reemplazo"
+    )
 
     # Registro técnico
     created_at             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

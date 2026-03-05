@@ -10,6 +10,11 @@
         Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong>
         {% if solicitud.cliente %} · Cliente: {{ solicitud.cliente.nombre_completo }}{% endif %}
       </div>
+      {% if has_reemplazo_activo or solicitud.estado == 'reemplazo' %}
+      <div class="mt-1">
+        <span class="badge bg-warning text-dark">Solicitud en reemplazo activo</span>
+      </div>
+      {% endif %}
     </div>
     <a href="{{ url_for('admin.matching_solicitudes') }}" class="btn btn-outline-secondary">Volver</a>
   </div>

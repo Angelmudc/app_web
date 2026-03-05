@@ -3678,6 +3678,7 @@ def registrar_pago(cliente_id, id):
 
         s.candidata_id = cand.fila
         _sync_solicitud_candidatas_after_assignment(s, cand.fila)
+        _mark_candidata_estado(cand, "trabajando")
 
         # Monto pagado
         s.monto_pagado = _parse_money_to_decimal_str(form.monto_pagado.data)
@@ -3760,6 +3761,7 @@ def nuevo_reemplazo(s_id):
     )
 
     form = AdminReemplazoForm()
+    reemplazo_activo = _active_reemplazo_for_solicitud(sol)
 
     # ✅ SIEMPRE usar la candidata asignada originalmente a la solicitud (por relación)
     assigned_id = getattr(sol, 'candidata_id', None)
@@ -3771,6 +3773,9 @@ def nuevo_reemplazo(s_id):
             'danger'
         )
         return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
+    if reemplazo_activo:
+        flash('Ya existe un reemplazo activo para esta solicitud.', 'warning')
+        return redirect(url_for('admin.detalle_solicitud', cliente_id=sol.cliente_id, id=sol.id))
 
     # Prefill (por si tu form/template muestra campos)
     # No hay búsqueda ni selección manual: todo viene de sol.candidata
@@ -3794,26 +3799,38 @@ def nuevo_reemplazo(s_id):
                 flash('No se encontró la candidata asignada a esta solicitud.', 'danger')
                 return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
 
+            descalificar = str(request.form.get('descalificar_candidata_fallida') or '').strip().lower() in ('1', 'true', 'on', 'yes')
+            motivo_descalificacion = (request.form.get('motivo_descalificacion') or '').strip()
+            if descalificar and not motivo_descalificacion:
+                flash('Debes indicar el motivo de descalificación.', 'warning')
+                return render_template('admin/reemplazo_inicio.html', form=form, solicitud=sol)
+
             r = Reemplazo(
                 solicitud_id=sol.id,
                 candidata_old_id=cand_old.fila,
                 motivo_fallo=(form.motivo_fallo.data or '').strip(),
+                estado_previo_solicitud=(sol.estado or '').strip().lower() or None,
             )
 
             ahora = datetime.utcnow()
             r.fecha_fallo = ahora
-            r.fecha_inicio_reemplazo = ahora
-            r.oportunidad_nueva = True
+            r.iniciar_reemplazo()
+            if getattr(r, 'fecha_inicio_reemplazo', None) is None:
+                r.fecha_inicio_reemplazo = ahora
+                r.oportunidad_nueva = True
 
             sol.estado = 'reemplazo'
             sol.fecha_ultima_actividad = ahora
             sol.fecha_ultima_modificacion = ahora
 
+            if descalificar:
+                _mark_candidata_estado(cand_old, 'descalificada', nota_descalificacion=motivo_descalificacion)
+
             db.session.add(r)
             db.session.commit()
 
             flash('Reemplazo iniciado correctamente.', 'success')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
+            return redirect(url_for('admin.detalle_solicitud', cliente_id=sol.cliente_id, id=sol.id))
 
         except Exception:
             db.session.rollback()
@@ -4010,10 +4027,14 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             elif hasattr(r, 'fecha_fin'):
                 r.fecha_fin = ahora
 
-            # Reasignar solicitud (mantener pagada)
+            # Reasignar solicitud
             s.candidata_id = cand_new.fila
-            s.estado = 'pagada'
+            estado_restore = (getattr(r, "estado_previo_solicitud", None) or "activa").strip().lower()
+            if estado_restore == "reemplazo":
+                estado_restore = "activa"
+            s.estado = estado_restore
             _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
+            _mark_candidata_estado(cand_new, "trabajando")
 
             # ✅ Timestamps (solo si existen en tu modelo)
             if hasattr(s, 'fecha_ultima_actividad'):
@@ -4081,6 +4102,100 @@ def finalizar_reemplazo(s_id, reemplazo_id):
         candidatas=candidatas
     )
 
+
+@admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/cancelar', methods=['POST'])
+@login_required
+@admin_required
+@admin_action_limit(bucket="reemplazos", max_actions=15, window_sec=60)
+def cancelar_reemplazo(s_id, reemplazo_id):
+    s = Solicitud.query.filter_by(id=s_id).first_or_404()
+    r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
+
+    if getattr(r, "fecha_fin_reemplazo", None):
+        flash("Este reemplazo ya está cerrado.", "warning")
+        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+
+    try:
+        r.cerrar_reemplazo()
+        if hasattr(r, "oportunidad_nueva"):
+            r.oportunidad_nueva = False
+
+        estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
+        if estado_restore not in ("proceso", "activa", "pagada", "cancelada"):
+            estado_restore = "activa"
+        s.estado = estado_restore
+        if hasattr(s, "fecha_ultima_actividad"):
+            s.fecha_ultima_actividad = datetime.utcnow()
+        if hasattr(s, "fecha_ultima_modificacion"):
+            s.fecha_ultima_modificacion = datetime.utcnow()
+
+        db.session.commit()
+        flash("Reemplazo cancelado correctamente.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo cancelar el reemplazo.", "danger")
+
+    return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+
+
+@admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/cerrar_asignando', methods=['POST'])
+@login_required
+@staff_required
+@admin_action_limit(bucket="reemplazos", max_actions=20, window_sec=60)
+def cerrar_reemplazo_asignando(s_id, reemplazo_id):
+    s = Solicitud.query.filter_by(id=s_id).first_or_404()
+    r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
+
+    if getattr(r, "fecha_fin_reemplazo", None):
+        flash("Este reemplazo ya está cerrado.", "warning")
+        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+
+    try:
+        nueva_id = int((request.form.get("candidata_new_id") or "").strip())
+    except Exception:
+        nueva_id = 0
+    if nueva_id <= 0:
+        flash("Debes indicar la candidata nueva para cerrar el reemplazo.", "warning")
+        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+
+    cand_new = Candidata.query.filter_by(fila=nueva_id).first()
+    if not cand_new:
+        flash("La candidata seleccionada no existe.", "danger")
+        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+
+    blocked = assert_candidata_no_descalificada(
+        cand_new,
+        action="asignar a solicitud",
+        redirect_endpoint="admin.detalle_solicitud",
+        redirect_kwargs={"cliente_id": s.cliente_id, "id": s.id},
+    )
+    if blocked is not None:
+        return blocked
+
+    try:
+        r.cerrar_reemplazo(cand_new.fila)
+
+        s.candidata_id = cand_new.fila
+        estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
+        if estado_restore in ("", "reemplazo", "cancelada"):
+            estado_restore = "activa"
+        s.estado = estado_restore
+
+        _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
+        _mark_candidata_estado(cand_new, "trabajando")
+        if hasattr(s, "fecha_ultima_actividad"):
+            s.fecha_ultima_actividad = datetime.utcnow()
+        if hasattr(s, "fecha_ultima_modificacion"):
+            s.fecha_ultima_modificacion = datetime.utcnow()
+
+        db.session.commit()
+        flash("Reemplazo cerrado y nueva candidata asignada.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo cerrar el reemplazo.", "danger")
+
+    return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
 @login_required
 @staff_required
@@ -4105,6 +4220,7 @@ def detalle_solicitud(cliente_id, id):
 
     reemplazos_ordenados = sorted(list(s.reemplazos or []),
                                   key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min)
+    reemplazo_activo = _active_reemplazo_for_solicitud(s)
     for idx, r in enumerate(reemplazos_ordenados, start=1):
         if r.candidata_new:
             envios.append({
@@ -4123,6 +4239,11 @@ def detalle_solicitud(cliente_id, id):
 
     # 👉 Resumen listo para enviar al cliente (helper que ya te di antes)
     resumen_cliente = build_resumen_cliente_solicitud(s)
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+    is_admin_role = role == "admin"
 
     return render_template(
         'admin/solicitud_detail.html',
@@ -4130,7 +4251,9 @@ def detalle_solicitud(cliente_id, id):
         envios         = envios,
         cancelaciones  = cancelaciones,
         reemplazos     = reemplazos_ordenados,
-        resumen_cliente=resumen_cliente
+        reemplazo_activo=reemplazo_activo,
+        resumen_cliente=resumen_cliente,
+        is_admin_role=is_admin_role,
     )
 
 from datetime import datetime, timedelta
@@ -4640,6 +4763,44 @@ def _sync_solicitud_candidatas_after_assignment(solicitud: Solicitud, assigned_c
         row.breakdown_snapshot = snapshot
 
 
+def _staff_actor_name() -> str:
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
+    return str(actor)[:100]
+
+
+def _mark_candidata_estado(cand: Candidata, nuevo_estado: str, *, nota_descalificacion: str | None = None) -> None:
+    if not cand:
+        return
+    cand.estado = str(nuevo_estado or "").strip().lower()
+    if hasattr(cand, "fecha_cambio_estado"):
+        cand.fecha_cambio_estado = datetime.utcnow()
+    if hasattr(cand, "usuario_cambio_estado"):
+        cand.usuario_cambio_estado = _staff_actor_name()
+    if nota_descalificacion is not None and hasattr(cand, "nota_descalificacion"):
+        cand.nota_descalificacion = (nota_descalificacion or "").strip() or None
+
+
+def _active_reemplazo_for_solicitud(solicitud: Solicitud):
+    if not solicitud:
+        return None
+    activos = [
+        r for r in (getattr(solicitud, "reemplazos", None) or [])
+        if bool(getattr(r, "fecha_inicio_reemplazo", None)) and not bool(getattr(r, "fecha_fin_reemplazo", None))
+    ]
+    if not activos:
+        return None
+    return sorted(
+        activos,
+        key=lambda rr: getattr(rr, "fecha_inicio_reemplazo", None) or getattr(rr, "created_at", None) or datetime.min,
+        reverse=True,
+    )[0]
+
+
 @admin_bp.route('/matching/solicitudes')
 @login_required
 @staff_required
@@ -4661,10 +4822,11 @@ def matching_solicitudes():
 def matching_detalle_solicitud(solicitud_id: int):
     solicitud = (
         Solicitud.query
-        .options(joinedload(Solicitud.cliente))
+        .options(joinedload(Solicitud.cliente), joinedload(Solicitud.reemplazos))
         .filter_by(id=solicitud_id)
         .first_or_404()
     )
+    has_reemplazo_activo = _active_reemplazo_for_solicitud(solicitud) is not None
     ranked_candidates = rank_candidates(solicitud, top_k=30)
     ranked_candidate_ids = []
     for item in ranked_candidates:
@@ -4692,6 +4854,7 @@ def matching_detalle_solicitud(solicitud_id: int):
         blocked_candidate_ids=blocked_candidate_ids,
         rejected_candidate_ids=rejected_candidate_ids,
         disqualified_candidate_ids=disqualified_candidate_ids,
+        has_reemplazo_activo=has_reemplazo_activo,
     )
 
 
@@ -6063,6 +6226,78 @@ def activar_solicitud_directa(id):
         flash('Ocurrió un error al activar la solicitud.', 'danger')
 
     return redirect(url_for('admin.acciones_solicitudes_proceso'))
+
+
+@admin_bp.route('/solicitudes/<int:id>/poner_espera_pago', methods=['POST'])
+@login_required
+@staff_required
+def poner_espera_pago_solicitud(id):
+    s = Solicitud.query.get_or_404(id)
+    next_url = request.form.get('next') or request.referrer
+    fallback = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
+
+    if s.estado == 'espera_pago':
+        flash('La solicitud ya está en espera de pago.', 'info')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    estado_actual = (s.estado or '').strip().lower()
+    if estado_actual in ('cancelada',):
+        flash('No se puede poner en espera de pago una solicitud cancelada.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        if hasattr(s, 'estado_previo_espera_pago'):
+            s.estado_previo_espera_pago = estado_actual or 'activa'
+        s.estado = 'espera_pago'
+        if hasattr(s, 'fecha_cambio_espera_pago'):
+            s.fecha_cambio_espera_pago = datetime.utcnow()
+        if hasattr(s, 'usuario_cambio_espera_pago'):
+            s.usuario_cambio_espera_pago = _staff_actor_name()
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = datetime.utcnow()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        flash('Solicitud marcada en espera de pago.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo cambiar la solicitud a espera de pago.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/solicitudes/<int:id>/quitar_espera_pago', methods=['POST'])
+@login_required
+@staff_required
+def quitar_espera_pago_solicitud(id):
+    s = Solicitud.query.get_or_404(id)
+    next_url = request.form.get('next') or request.referrer
+    fallback = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
+
+    if s.estado != 'espera_pago':
+        flash('La solicitud no está en espera de pago.', 'info')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
+        if restore in ('', 'espera_pago', 'cancelada'):
+            restore = 'activa'
+        s.estado = restore
+        if hasattr(s, 'fecha_cambio_espera_pago'):
+            s.fecha_cambio_espera_pago = datetime.utcnow()
+        if hasattr(s, 'usuario_cambio_espera_pago'):
+            s.usuario_cambio_espera_pago = _staff_actor_name()
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = datetime.utcnow()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        flash(f'Solicitud reactivada desde espera de pago a {restore}.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo quitar espera de pago.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
 # -----------------------------------------------------------------------------
 # Cancelación con confirmación (GET muestra formulario, POST ejecuta)

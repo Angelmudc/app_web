@@ -17,14 +17,30 @@
           'badge-proceso' if solicitud.estado == 'proceso' else
           'badge-cancelada' if solicitud.estado == 'cancelada' else
           'badge-pagada' if solicitud.estado == 'pagada' else
+          'bg-warning text-dark' if solicitud.estado == 'espera_pago' else
           'badge-reemplazo' if solicitud.estado == 'reemplazo' else 'bg-secondary'
         %}
         <span class="badge {{ estado_class }}">{{ solicitud.estado }}</span>
       </div>
     </div>
-    <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary">
-      <i class="bi bi-arrow-left-circle me-1"></i> Volver al Cliente
-    </a>
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+      {% if solicitud.estado != 'espera_pago' %}
+      <form method="post" action="{{ url_for('admin.poner_espera_pago_solicitud', id=solicitud.id) }}" class="d-inline">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button type="submit" class="btn btn-outline-warning">Poner en espera de pago</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('admin.quitar_espera_pago_solicitud', id=solicitud.id) }}" class="d-inline">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button type="submit" class="btn btn-outline-success">Quitar espera de pago</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left-circle me-1"></i> Volver al Cliente
+      </a>
+    </div>
   </div>
 
   <!-- Información general -->
@@ -50,6 +66,73 @@
       <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
       {% endif %}
     </dl>
+  </div>
+
+  <div class="glass-card mb-4">
+    <div class="glass-header bg-warning text-dark">
+      <i class="bi bi-arrow-repeat"></i> Reemplazo
+    </div>
+    <div class="p-4">
+      {% if reemplazo_activo %}
+        <div class="alert alert-warning mb-3">
+          <strong>Reemplazo activo.</strong> Inicie nueva búsqueda en Matching.
+        </div>
+        <p class="mb-2">
+          <strong>Candidata que falló:</strong>
+          {{ reemplazo_activo.candidata_old.nombre_completo if reemplazo_activo.candidata_old else ('ID ' ~ reemplazo_activo.candidata_old_id) }}
+        </p>
+        <p class="mb-3"><strong>Motivo:</strong> {{ reemplazo_activo.motivo_fallo }}</p>
+
+        {% if reemplazo_activo.candidata_old and reemplazo_activo.candidata_old.estado != 'descalificada' %}
+          <form method="post"
+                action="{{ url_for('admin.marcar_candidata_lista_para_trabajar', candidata_id=reemplazo_activo.candidata_old.fila) }}"
+                class="d-inline-block mb-3">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Volver a Lista para Trabajar</button>
+          </form>
+        {% endif %}
+
+        <form method="post"
+              action="{{ url_for('admin.cerrar_reemplazo_asignando', s_id=solicitud.id, reemplazo_id=reemplazo_activo.id) }}"
+              class="row g-2 align-items-end mb-2">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <div class="col-md-6">
+            <label class="form-label mb-1">Candidata nueva (ID)</label>
+            <input type="number" min="1" class="form-control" name="candidata_new_id" required>
+          </div>
+          <div class="col-md-6 d-flex gap-2">
+            <button type="submit" class="btn btn-success">Cerrar reemplazo asignando nueva candidata</button>
+          </div>
+        </form>
+
+        {% if is_admin_role %}
+        <form method="post"
+              action="{{ url_for('admin.cancelar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo_activo.id) }}"
+              class="mt-2">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <button type="submit" class="btn btn-outline-danger btn-sm">Cancelar reemplazo</button>
+        </form>
+        {% endif %}
+      {% else %}
+        <form method="post" action="{{ url_for('admin.nuevo_reemplazo', s_id=solicitud.id) }}">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <div class="mb-3">
+            <label class="form-label">Motivo del fallo</label>
+            <textarea class="form-control" name="motivo_fallo" rows="3" required></textarea>
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" value="1" id="descalificar_check" name="descalificar_candidata_fallida">
+            <label class="form-check-label" for="descalificar_check">¿Descalificar candidata que falló?</label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Motivo descalificación (obligatorio si marcas la casilla)</label>
+            <textarea class="form-control" name="motivo_descalificacion" rows="3"></textarea>
+          </div>
+          <button type="submit" class="btn btn-warning text-dark">Abrir reemplazo</button>
+        </form>
+      {% endif %}
+    </div>
   </div>
 
   <!-- 🔥 Resumen listo para enviar al cliente -->

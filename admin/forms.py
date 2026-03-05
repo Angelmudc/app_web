@@ -754,6 +754,19 @@ class AdminReemplazoForm(FlaskForm):
         }
     )
 
+    descalificar_candidata_fallida = BooleanField(
+        "¿Descalificar candidata que falló?"
+    )
+
+    motivo_descalificacion = TextAreaField(
+        "Motivo descalificación",
+        validators=[Optional(), Length(max=1000)],
+        render_kw={
+            "rows": 3,
+            "placeholder": "Obligatorio si marcas descalificación."
+        }
+    )
+
     nota_adicional = TextAreaField(
         'Nota interna (opcional)',
         validators=[Optional(), Length(max=1000)],
@@ -763,7 +776,7 @@ class AdminReemplazoForm(FlaskForm):
         }
     )
 
-    submit = SubmitField('Activar reemplazo')
+    submit = SubmitField('Abrir reemplazo')
 
 
 class AdminReemplazoFinForm(FlaskForm):

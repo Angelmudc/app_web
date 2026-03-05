@@ -82,6 +82,25 @@
       </div>
       {% endif %}
 
+      {% if form.descalificar_candidata_fallida %}
+      <div class="form-check mb-3">
+        {{ form.descalificar_candidata_fallida(class="form-check-input", id="descalificar_old") }}
+        <label class="form-check-label" for="descalificar_old">
+          {{ form.descalificar_candidata_fallida.label.text }}
+        </label>
+      </div>
+      {% endif %}
+
+      {% if form.motivo_descalificacion %}
+      <div class="mb-4">
+        <label class="form-label">
+          <i class="bi bi-shield-exclamation text-danger me-1"></i>
+          {{ form.motivo_descalificacion.label.text }}
+        </label>
+        {{ form.motivo_descalificacion(class="form-control", rows=3) }}
+      </div>
+      {% endif %}
+
       <!-- Botones -->
       <div class="d-flex justify-content-end gap-2 mt-4">
         <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-secondary">
