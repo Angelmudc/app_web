@@ -106,6 +106,13 @@ def init_security(app, cache):
     HEALTH_PATHS = {
         "/health", "/healthz", "/ping", "/_health", "/_healthz"
     }
+    # Endpoints internos de realtime de monitoreo (solo bypass de rate-limit).
+    REALTIME_MONITOREO_PATHS = {
+        "/admin/monitoreo/presence/ping",
+        "/admin/monitoreo/stream",
+        "/admin/monitoreo/logs.json",
+        "/admin/monitoreo/summary.json",
+    }
 
     # Anti-scraping / anti-bots
     SCRAPE_GLOBAL_WINDOW_SECONDS = int(os.getenv("SCRAPE_GLOBAL_WINDOW_SECONDS", "300"))
@@ -143,6 +150,14 @@ def init_security(app, cache):
         if path in HEALTH_PATHS:
             return True
         return False
+
+    def _is_realtime_monitoreo_path(path: str) -> bool:
+        p = (path or "").strip()
+        if not p:
+            return False
+        if p != "/":
+            p = p.rstrip("/")
+        return p in REALTIME_MONITOREO_PATHS
 
     def _current_user_key() -> str:
         try:
@@ -289,6 +304,10 @@ def init_security(app, cache):
 
         path = (request.path or "")
         if _is_exempt_path(path):
+            return
+        if _is_realtime_monitoreo_path(path):
+            # Importante: no desactiva headers/CSP/CSRF/autorización,
+            # solo evita 429 falsos del rate-limit global para realtime interno.
             return
 
         if request.method in ("OPTIONS", "HEAD"):

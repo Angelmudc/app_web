@@ -22,10 +22,12 @@
   let summaryPollTimer = null;
   let presencePollTimer = null;
   let presencePingTimer = null;
+  let presencePingDelayMs = 10000;
+  let presencePingStatus = 'live';
 
   function setLiveStatus(isLive) {
     if (!liveStatus || !liveToggleBtn) return;
-    if (isLive && !paused) {
+    if (isLive && !paused && presencePingStatus !== 'paused') {
       liveStatus.textContent = '● EN VIVO';
       liveStatus.classList.remove('paused');
       liveStatus.classList.add('live');
@@ -36,6 +38,18 @@
     liveStatus.classList.remove('live');
     liveStatus.classList.add('paused');
     liveToggleBtn.textContent = 'Reanudar';
+  }
+
+  function updatePresencePingState(nextState, reason) {
+    if (presencePingStatus === nextState) return;
+    presencePingStatus = nextState;
+    if (nextState === 'paused') {
+      setLiveStatus(false);
+      console.warn('[monitoreo] presence ping pausado: ' + reason);
+      return;
+    }
+    if (!paused) setLiveStatus(true);
+    console.warn('[monitoreo] presence ping reanudado');
   }
 
   function formatDate(iso) {
@@ -241,19 +255,39 @@
     };
     const headers = { 'Content-Type': 'application/json' };
     if (csrfToken) headers['X-CSRFToken'] = csrfToken;
-    await fetch(presencePingUrl, {
+    const resp = await fetch(presencePingUrl, {
       method: 'POST',
       credentials: 'same-origin',
       headers,
       body: JSON.stringify(body),
     });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  }
+
+  function schedulePresencePing(delayMs) {
+    if (presencePingTimer) clearTimeout(presencePingTimer);
+    presencePingTimer = setTimeout(runPresencePing, delayMs);
+  }
+
+  async function runPresencePing() {
+    if (!presencePingUrl) return;
+    try {
+      await presencePing();
+      presencePingDelayMs = 10000;
+      updatePresencePingState('live', 'ok');
+    } catch (err) {
+      presencePingDelayMs = Math.min(60000, presencePingDelayMs * 2);
+      const reason = (err && err.message) ? err.message : 'network_error';
+      updatePresencePingState('paused', reason);
+    } finally {
+      schedulePresencePing(presencePingDelayMs);
+    }
   }
 
   function startPresencePing() {
     if (!presencePingUrl) return;
-    presencePing().catch(() => {});
-    if (presencePingTimer) clearInterval(presencePingTimer);
-    presencePingTimer = setInterval(() => presencePing().catch(() => {}), 10000);
+    presencePingDelayMs = 10000;
+    schedulePresencePing(0);
   }
 
   if (liveToggleBtn) {

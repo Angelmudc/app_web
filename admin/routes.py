@@ -1998,56 +1998,60 @@ def monitoreo_stream():
 
     @stream_with_context
     def generate():
-        if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
-            yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+        try:
+            if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
+                yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+                return
+
+            last_id = request.args.get("last_id", type=int) or 0
+            if last_id <= 0:
+                max_id = db.session.query(func.max(StaffAuditLog.id)).scalar()
+                last_id = int(max_id or 0)
+
+            last_summary_at = 0.0
+            last_presence_at = 0.0
+            last_heartbeat_at = 0.0
+            while True:
+                now_ts = time.time()
+
+                new_logs = (
+                    StaffAuditLog.query
+                    .filter(StaffAuditLog.id > last_id)
+                    .order_by(StaffAuditLog.id.asc())
+                    .limit(100)
+                    .all()
+                )
+                if new_logs:
+                    actor_ids = sorted({int(l.actor_user_id) for l in new_logs if l.actor_user_id is not None})
+                    username_map = {}
+                    if actor_ids:
+                        users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
+                        username_map = {int(u.id): u.username for u in users}
+                    for log in new_logs:
+                        item = _serialize_log_item(log, username_map=username_map)
+                        yield _sse("log", item)
+                        last_id = max(last_id, int(log.id))
+
+                if (now_ts - last_summary_at) >= 10.0:
+                    summary = _build_monitoreo_summary_payload()
+                    summary.pop("presence", None)
+                    yield _sse("summary", summary)
+                    last_summary_at = now_ts
+
+                if (now_ts - last_presence_at) >= 7.0:
+                    yield _sse("presence", {"items": _presence_rows()})
+                    last_presence_at = now_ts
+
+                if (now_ts - last_heartbeat_at) >= 15.0:
+                    yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+                    last_heartbeat_at = now_ts
+
+                time.sleep(2.0)
+        except (GeneratorExit, ConnectionError, OSError):
             return
 
-        last_id = request.args.get("last_id", type=int) or 0
-        if last_id <= 0:
-            max_id = db.session.query(func.max(StaffAuditLog.id)).scalar()
-            last_id = int(max_id or 0)
-
-        last_summary_at = 0.0
-        last_presence_at = 0.0
-        last_heartbeat_at = 0.0
-        while True:
-            now_ts = time.time()
-
-            new_logs = (
-                StaffAuditLog.query
-                .filter(StaffAuditLog.id > last_id)
-                .order_by(StaffAuditLog.id.asc())
-                .limit(100)
-                .all()
-            )
-            if new_logs:
-                actor_ids = sorted({int(l.actor_user_id) for l in new_logs if l.actor_user_id is not None})
-                username_map = {}
-                if actor_ids:
-                    users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
-                    username_map = {int(u.id): u.username for u in users}
-                for log in new_logs:
-                    item = _serialize_log_item(log, username_map=username_map)
-                    yield _sse("log", item)
-                    last_id = max(last_id, int(log.id))
-
-            if (now_ts - last_summary_at) >= 10.0:
-                summary = _build_monitoreo_summary_payload()
-                summary.pop("presence", None)
-                yield _sse("summary", summary)
-                last_summary_at = now_ts
-
-            if (now_ts - last_presence_at) >= 7.0:
-                yield _sse("presence", {"items": _presence_rows()})
-                last_presence_at = now_ts
-
-            if (now_ts - last_heartbeat_at) >= 15.0:
-                yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
-                last_heartbeat_at = now_ts
-
-            time.sleep(2.0)
-
     headers = {
+        "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
         "Connection": "keep-alive",
@@ -2114,11 +2118,15 @@ def monitoreo_candidata_stream(candidata_entity_id: str):
 
 @admin_bp.route('/monitoreo/presence/ping', methods=['POST'])
 @login_required
-@staff_required
 def monitoreo_presence_ping():
     if not bool(session.get("is_admin_session")):
         abort(403)
     if not isinstance(current_user, StaffUser):
+        abort(403)
+    if not bool(getattr(current_user, "is_active", False)):
+        abort(403)
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    if role not in ("admin", "secretaria"):
         abort(403)
 
     payload = request.get_json(silent=True) or {}
