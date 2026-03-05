@@ -128,6 +128,23 @@
   {% if _role in ['admin', 'secretaria'] %}
     <div class="mb-5">
       <h2 class="section-title">
+        <i class="fa-solid fa-clipboard-check me-2 text-primary"></i> Auditoría Staff
+      </h2>
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        <div class="col">
+          <div class="dashboard-card">
+            <h5>Auditoría de completitud de candidatas</h5>
+            <p>Revisión solo lectura de candidatas oficiales con código para detectar faltantes.</p>
+            <a href="{{ url_for('admin.candidatas_auditoria_completitud') }}" class="btn btn-outline-primary w-100">
+              Abrir auditoría
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mb-5">
+      <h2 class="section-title">
         <i class="fa-solid fa-people-arrows me-2 text-primary"></i> Compatibilidad
       </h2>
       <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">

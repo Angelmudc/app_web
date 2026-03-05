@@ -13,12 +13,16 @@ _REF_PLACEHOLDERS = {
     "null",
     "sin",
     "pendiente",
+    "vacio",
+    "vacío",
+    "--",
+    "-",
 }
 
 
 def entrevista_ok(entrevista_legacy: str | None, entrevistas_nuevas_count: int | None) -> bool:
     legacy = (entrevista_legacy or "").strip()
-    if legacy:
+    if legacy and legacy.lower() not in _REF_PLACEHOLDERS:
         return True
     try:
         return int(entrevistas_nuevas_count or 0) > 0
@@ -51,6 +55,10 @@ def referencias_ok(texto: str | None) -> bool:
     return clean.lower() not in _REF_PLACEHOLDERS
 
 
+def candidata_tiene_codigo_valido(codigo: str | None) -> bool:
+    return bool((codigo or "").strip())
+
+
 def faltantes_desde_flags(flags: dict[str, bool]) -> list[str]:
     return [key for key, ok in flags.items() if not ok]
 
@@ -66,7 +74,7 @@ def solo_criticos(faltantes: Iterable[str]) -> bool:
 
 def solo_sin_documentos(faltantes: Iterable[str]) -> bool:
     fs = set(faltantes or [])
-    return bool(fs.intersection({"foto_perfil", "depuracion", "perfil", "cedula1", "cedula2"}))
+    return bool(fs.intersection({"depuracion", "perfil", "cedula1", "cedula2"}))
 
 
 def solo_sin_referencias(faltantes: Iterable[str]) -> bool:

@@ -97,7 +97,7 @@
           <td>{{ c.codigo or '—' }}</td>
           <td>
             <div class="small">
-              {% for key in ['entrevista','foto_perfil','depuracion','perfil','cedula1','cedula2','referencias_laboral','referencias_familiares'] %}
+              {% for key in ['entrevista','depuracion','perfil','cedula1','cedula2','referencias_laboral','referencias_familiares'] %}
                 <span class="d-inline-block me-2 mb-1">
                   {% if row.flags[key] %}✅{% else %}❌{% endif %}
                   {{ labels[key] }}

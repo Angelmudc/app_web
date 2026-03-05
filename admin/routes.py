@@ -41,6 +41,7 @@ from utils.candidata_completitud_audit import (
     entrevista_ok,
     binario_ok,
     referencias_ok,
+    candidata_tiene_codigo_valido,
     faltantes_desde_flags,
     es_incompleta,
     solo_criticos,
@@ -5045,6 +5046,10 @@ def _build_auditoria_completitud_rows(q: str = "") -> list[dict]:
             Candidata.referencias_laboral,
             Candidata.referencias_familiares,
         )
+    ).filter(
+        Candidata.codigo.isnot(None),
+        Candidata.codigo != "",
+        func.length(func.trim(Candidata.codigo)) > 0,
     )
     if q:
         like = f"%{q}%"
@@ -5069,7 +5074,6 @@ def _build_auditoria_completitud_rows(q: str = "") -> list[dict]:
         base.outerjoin(entrevistas_subq, entrevistas_subq.c.candidata_id == Candidata.fila)
         .add_columns(
             func.coalesce(entrevistas_subq.c.entrevistas_count, 0).label("entrevistas_count"),
-            _blob_len_expr(Candidata.foto_perfil).label("foto_perfil_len"),
             _blob_len_expr(Candidata.depuracion).label("depuracion_len"),
             _blob_len_expr(Candidata.perfil).label("perfil_len"),
             _blob_len_expr(Candidata.cedula1).label("cedula1_len"),
@@ -5080,10 +5084,9 @@ def _build_auditoria_completitud_rows(q: str = "") -> list[dict]:
     )
 
     audits: list[dict] = []
-    for cand, entrevistas_count, foto_len, dep_len, perfil_len, ced1_len, ced2_len in rows:
+    for cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len in rows:
         flags = {
             "entrevista": entrevista_ok(getattr(cand, "entrevista", None), entrevistas_count),
-            "foto_perfil": binario_ok(foto_len),
             "depuracion": binario_ok(dep_len),
             "perfil": binario_ok(perfil_len),
             "cedula1": binario_ok(ced1_len),
@@ -5113,13 +5116,6 @@ def _links_completar_por_faltantes(candidata_id: int, faltantes: list[str]) -> l
             {
                 "label": "Documentos",
                 "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
-            }
-        )
-    if "foto_perfil" in faltantes_set:
-        links.append(
-            {
-                "label": "Foto perfil",
-                "url": url_for("finalizar_proceso", fila=candidata_id),
             }
         )
     if "entrevista" in faltantes_set:
@@ -5156,8 +5152,15 @@ def candidatas_auditoria_completitud():
 
     audits_all = _build_auditoria_completitud_rows(q=q)
     total_analizadas = len(audits_all)
-    completas = sum(1 for a in audits_all if not a["incompleta"])
-    incompletas = [a for a in audits_all if a["incompleta"]]
+    completas = sum(
+        1
+        for a in audits_all
+        if candidata_tiene_codigo_valido(getattr(a.get("candidata"), "codigo", None)) and not a["incompleta"]
+    )
+    incompletas = [
+        a for a in audits_all
+        if candidata_tiene_codigo_valido(getattr(a.get("candidata"), "codigo", None)) and a["incompleta"]
+    ]
 
     if solo_criticas:
         incompletas = [a for a in incompletas if solo_criticos(a["faltantes"])]
@@ -5168,7 +5171,6 @@ def candidatas_auditoria_completitud():
 
     labels = {
         "entrevista": "Entrevista",
-        "foto_perfil": "Foto perfil",
         "depuracion": "Depuración",
         "perfil": "Perfil",
         "cedula1": "Cédula 1",

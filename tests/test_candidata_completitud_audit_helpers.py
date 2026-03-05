@@ -6,10 +6,17 @@ from utils.candidata_completitud_audit import (
     entrevista_ok,
     binario_ok,
     referencias_ok,
+    candidata_tiene_codigo_valido,
 )
 
 
 class CandidataCompletitudAuditHelpersTest(unittest.TestCase):
+    def test_codigo_valido(self):
+        self.assertTrue(candidata_tiene_codigo_valido("C-001"))
+        self.assertFalse(candidata_tiene_codigo_valido(None))
+        self.assertFalse(candidata_tiene_codigo_valido(""))
+        self.assertFalse(candidata_tiene_codigo_valido("   "))
+
     def test_entrevista_vieja_llena_es_ok(self):
         self.assertTrue(entrevista_ok("Entrevista legacy", 0))
 
@@ -27,8 +34,13 @@ class CandidataCompletitudAuditHelpersTest(unittest.TestCase):
     def test_referencias_placeholders_y_texto_util(self):
         self.assertFalse(referencias_ok("node"))
         self.assertFalse(referencias_ok("none"))
+        self.assertFalse(referencias_ok("vacío"))
+        self.assertFalse(referencias_ok("--"))
         self.assertFalse(referencias_ok("  "))
-        self.assertTrue(referencias_ok("Recomendable, trabajó 2 años"))
+        self.assertTrue(referencias_ok("Trabajó 3 años cuidando niños"))
+
+    def test_entrevista_placeholder_no_valida_como_legacy(self):
+        self.assertFalse(entrevista_ok("none", 0))
 
 
 if __name__ == "__main__":

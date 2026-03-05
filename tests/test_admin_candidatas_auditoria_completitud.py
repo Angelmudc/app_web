@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 
 import os
 import unittest
@@ -15,11 +16,11 @@ def _mk_row(
     incompleta: bool,
     faltantes: list[str],
     tiene: list[str],
+    codigo: str | None = None,
     estado: str = "lista_para_trabajar",
 ):
     flags = {
         "entrevista": "entrevista" not in faltantes,
-        "foto_perfil": "foto_perfil" not in faltantes,
         "depuracion": "depuracion" not in faltantes,
         "perfil": "perfil" not in faltantes,
         "cedula1": "cedula1" not in faltantes,
@@ -32,7 +33,7 @@ def _mk_row(
             fila=fila,
             nombre_completo=nombre,
             cedula=f"001-000000{fila}-0",
-            codigo=f"C-{fila}",
+            codigo=(f"C-{fila}" if codigo is None else codigo),
             estado=estado,
         ),
         "flags": flags,
@@ -63,14 +64,14 @@ class AdminCandidatasAuditoriaCompletitudTest(unittest.TestCase):
         else:
             self.assertIn(login_resp.status_code, (302, 303))
 
-    def test_render_200_y_links_reales(self):
+    def test_render_200_links_reales_y_reglas_completitud(self):
         rows = [
             _mk_row(
                 fila=10,
                 nombre="Ana Incompleta",
                 incompleta=True,
-                faltantes=["entrevista", "cedula1", "referencias_laboral", "foto_perfil"],
-                tiene=["depuracion", "perfil", "cedula2", "referencias_familiares"],
+                faltantes=["entrevista", "perfil", "cedula1", "referencias_laboral"],
+                tiene=["depuracion", "cedula2", "referencias_familiares"],
                 estado="descalificada",
             ),
             _mk_row(
@@ -80,7 +81,6 @@ class AdminCandidatasAuditoriaCompletitudTest(unittest.TestCase):
                 faltantes=[],
                 tiene=[
                     "entrevista",
-                    "foto_perfil",
                     "depuracion",
                     "perfil",
                     "cedula1",
@@ -88,6 +88,14 @@ class AdminCandidatasAuditoriaCompletitudTest(unittest.TestCase):
                     "referencias_laboral",
                     "referencias_familiares",
                 ],
+            ),
+            _mk_row(
+                fila=12,
+                nombre="Carla Sin Código",
+                codigo=" ",
+                incompleta=True,
+                faltantes=["perfil"],
+                tiene=["entrevista", "depuracion", "cedula1", "cedula2", "referencias_laboral", "referencias_familiares"],
             ),
         ]
 
@@ -100,11 +108,20 @@ class AdminCandidatasAuditoriaCompletitudTest(unittest.TestCase):
 
         self.assertIn("Ana Incompleta", html)
         self.assertNotIn("Bea Completa", html)
+        self.assertNotIn("Carla Sin Código", html)
         self.assertIn("/subir_fotos", html)
-        self.assertIn("/finalizar_proceso", html)
         self.assertIn("/entrevistas/candidata/10", html)
         self.assertIn("/referencias?candidata=10", html)
         self.assertIn("/buscar?candidata_id=10", html)
+        self.assertNotIn("foto_perfil", html.lower())
+        self.assertIn("Perfil", html)
+
+    def test_home_muestra_link_auditoria_para_staff(self):
+        resp = self.client.get("/home")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("Auditoría de completitud de candidatas", html)
+        self.assertIn("/admin/candidatas/auditoria-completitud", html)
 
     def test_endpoints_existen_en_url_map(self):
         rules = flask_app.url_map._rules_by_endpoint
