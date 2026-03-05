@@ -189,6 +189,14 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
         flask_app.config["WTF_CSRF_ENABLED"] = False
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+        self._p_lock = patch("admin.routes._admin_action_is_locked", return_value=False)
+        self._p_reg = patch("admin.routes._admin_action_register", return_value=1)
+        self._p_lock.start()
+        self._p_reg.start()
+
+    def tearDown(self):
+        self._p_reg.stop()
+        self._p_lock.stop()
 
     def _login(self, usuario, clave):
         resp = self.client.post("/admin/login", data={"usuario": usuario, "clave": clave}, follow_redirects=False)

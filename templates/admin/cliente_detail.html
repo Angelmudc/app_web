@@ -370,25 +370,59 @@
                   </a>
                   {% endif %}
 
-                  <!-- Reemplazo: INICIO -->
-                  <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}"
-                     class="btn btn-sm btn-secondary"
-                     data-bs-toggle="tooltip"
-                     title="Activar reemplazo (registrar candidata que falló)"
-                     aria-label="Activar reemplazo">
-                    🔁 <i class="bi bi-arrow-repeat ms-1"></i><span class="sr-only">Activar reemplazo</span>
-                  </a>
+                  {% if s.estado != 'espera_pago' %}
+                  <form method="post"
+                        action="{{ url_for('admin.poner_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
+                        class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ back_to }}">
+                    <button class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Poner en espera de pago">
+                      ⏸️
+                    </button>
+                  </form>
+                  {% else %}
+                  <form method="post"
+                        action="{{ url_for('admin.quitar_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
+                        class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ back_to }}">
+                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Quitar espera de pago">
+                      ▶️
+                    </button>
+                  </form>
+                  {% endif %}
 
-                  <!-- Reemplazo: FIN -->
-                  {% if s.estado == 'reemplazo' and s.reemplazos %}
-                    {% set r_ultimo = s.reemplazos[-1] %}
-                    <a href="{{ url_for('admin.finalizar_reemplazo', s_id=s.id, reemplazo_id=r_ultimo.id) }}"
-                       class="btn btn-sm btn-dark"
-                       data-bs-toggle="tooltip"
-                       title="Finalizar reemplazo (nueva candidata enviada)"
-                       aria-label="Finalizar reemplazo">
-                      ✅ <i class="bi bi-check2-circle ms-1"></i><span class="sr-only">Finalizar reemplazo</span>
-                    </a>
+                  {% if not repl_activo %}
+                  <button type="button"
+                          class="btn btn-sm btn-secondary"
+                          data-bs-toggle="modal"
+                          data-bs-target="#modal-abrir-reemplazo-{{ s.id }}"
+                          {% if not s.candidata_id %}disabled{% endif %}
+                          title="Abrir reemplazo">
+                    🔁
+                  </button>
+                  {% else %}
+                    {% if is_admin_role %}
+                    <form method="post"
+                          action="{{ url_for('admin.cancelar_reemplazo', s_id=s.id, reemplazo_id=repl_activo.id) }}"
+                          class="d-inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="next" value="{{ back_to }}">
+                      <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Cancelar reemplazo">
+                        🛑
+                      </button>
+                    </form>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Cancelar reemplazo (solo admin)">🛑</button>
+                    {% endif %}
+
+                    <button type="button"
+                            class="btn btn-sm btn-dark"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-culminar-reemplazo-{{ s.id }}"
+                            title="Culminar reemplazo">
+                      ✅
+                    </button>
                   {% endif %}
 
                   {% if s.candidata_id %}
@@ -428,52 +462,47 @@
                     </a>
                   {% endif %}
                 </div>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="8" class="bg-light-subtle">
-                <div class="p-2 border rounded">
-                  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                    <strong>Mini Panel Operativo</strong>
-                    <div class="small text-muted">Solicitud {{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</div>
-                  </div>
 
-                  <div class="d-flex flex-wrap gap-2 mb-3">
-                    {% if s.estado != 'espera_pago' %}
-                    <form method="post" action="{{ url_for('admin.poner_espera_pago_solicitud', id=s.id) }}" class="d-inline">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="next" value="{{ back_to }}">
-                      <button type="submit" class="btn btn-sm btn-outline-warning">Poner en espera de pago</button>
-                    </form>
-                    {% else %}
-                    <form method="post" action="{{ url_for('admin.quitar_espera_pago_solicitud', id=s.id) }}" class="d-inline">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="next" value="{{ back_to }}">
-                      <button type="submit" class="btn btn-sm btn-outline-success">Quitar espera de pago</button>
-                    </form>
-                    {% endif %}
+                <div>
+                  <div class="modal fade" id="modal-abrir-reemplazo-{{ s.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">Abrir reemplazo</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form method="post" action="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}">
+                          <div class="modal-body text-start">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="next" value="{{ back_to }}">
+                            <div class="mb-2">
+                              <label class="form-label">Motivo del fallo</label>
+                              <textarea class="form-control" name="motivo_fallo" rows="3" required></textarea>
+                            </div>
+                            <div class="form-check mb-2">
+                              <input class="form-check-input" type="checkbox" name="descalificar_candidata_fallida" value="1" id="dcf-modal-{{ s.id }}">
+                              <label class="form-check-label" for="dcf-modal-{{ s.id }}">
+                                Descalificar candidata que falló
+                              </label>
+                            </div>
+                            <div class="mb-2">
+                              <label class="form-label">Motivo descalificación (si aplica)</label>
+                              <textarea class="form-control" name="motivo_descalificacion" rows="2"></textarea>
+                            </div>
+                            <small class="text-muted">
+                              Si no se descalifica, se intenta volver a lista para trabajar según readiness.
+                            </small>
+                          </div>
+                          <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                            <button type="submit" class="btn btn-primary">Abrir reemplazo</button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
                   </div>
 
                   {% if repl_activo %}
-                  <div class="alert alert-warning py-2 mb-2">
-                    Reemplazo activo: busque candidata en matching.
-                  </div>
-                  <div class="d-flex flex-wrap gap-2">
-                    {% if is_admin_role %}
-                    <form method="post" action="{{ url_for('admin.cancelar_reemplazo', s_id=s.id, reemplazo_id=repl_activo.id) }}" class="d-inline">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="next" value="{{ back_to }}">
-                      <button type="submit" class="btn btn-sm btn-outline-danger">Cancelar reemplazo</button>
-                    </form>
-                    {% else %}
-                    <button type="button" class="btn btn-sm btn-outline-danger" disabled title="Solo admin">Cancelar reemplazo</button>
-                    {% endif %}
-
-                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#modal-culminar-reemplazo-{{ s.id }}">
-                      Culminar reemplazo
-                    </button>
-                  </div>
-
                   <div class="modal fade" id="modal-culminar-reemplazo-{{ s.id }}" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-dialog-centered">
                       <div class="modal-content">
@@ -482,12 +511,12 @@
                           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <form method="post" action="{{ url_for('admin.cerrar_reemplazo_asignando', s_id=s.id, reemplazo_id=repl_activo.id) }}">
-                          <div class="modal-body">
+                          <div class="modal-body text-start">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ back_to }}">
                             <label class="form-label">ID candidata nueva</label>
                             <input type="number" min="1" class="form-control" name="candidata_new_id" required>
-                            <div class="form-text">Se bloquea si está descalificada.</div>
+                            <div class="form-text">Se bloquea si la candidata está descalificada.</div>
                           </div>
                           <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
@@ -497,35 +526,6 @@
                       </div>
                     </div>
                   </div>
-                  {% else %}
-                  <form method="post" action="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}" class="row g-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="next" value="{{ back_to }}">
-                    <div class="col-md-5">
-                      <label class="form-label mb-1">Motivo fallo</label>
-                      <input type="text" name="motivo_fallo" class="form-control form-control-sm" required>
-                    </div>
-                    <div class="col-md-3">
-                      <label class="form-label mb-1">Descalificar</label>
-                      <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="descalificar_candidata_fallida" value="1" id="dcf-{{ s.id }}">
-                        <label class="form-check-label" for="dcf-{{ s.id }}">Sí</label>
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <label class="form-label mb-1">Motivo descalificación</label>
-                      <input type="text" name="motivo_descalificacion" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-12">
-                      {% if s.candidata_id %}
-                      <button type="submit" class="btn btn-sm btn-outline-dark">Abrir reemplazo</button>
-                      <small class="text-muted ms-2">Si no descalifica, se intentará volver a lista para trabajar según readiness.</small>
-                      {% else %}
-                      <button type="button" class="btn btn-sm btn-outline-dark" disabled>Abrir reemplazo</button>
-                      <small class="text-muted ms-2">Asigna candidata primero.</small>
-                      {% endif %}
-                    </div>
-                  </form>
                   {% endif %}
                 </div>
               </td>

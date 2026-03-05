@@ -6291,6 +6291,44 @@ def poner_espera_pago_solicitud(id):
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
 
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/espera_pago/poner', methods=['POST'])
+@login_required
+@staff_required
+def poner_espera_pago_solicitud_cliente(cliente_id, id):
+    s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+    next_url = request.form.get('next') or request.referrer
+    fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id) + f"#sol-{s.id}"
+
+    if s.estado == 'espera_pago':
+        flash('La solicitud ya está en espera de pago.', 'info')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    estado_actual = (s.estado or '').strip().lower()
+    if estado_actual in ('cancelada',):
+        flash('No se puede poner en espera de pago una solicitud cancelada.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        if hasattr(s, 'estado_previo_espera_pago'):
+            s.estado_previo_espera_pago = estado_actual or 'activa'
+        s.estado = 'espera_pago'
+        if hasattr(s, 'fecha_cambio_espera_pago'):
+            s.fecha_cambio_espera_pago = datetime.utcnow()
+        if hasattr(s, 'usuario_cambio_espera_pago'):
+            s.usuario_cambio_espera_pago = _staff_actor_name()
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = datetime.utcnow()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        flash('Solicitud marcada en espera de pago.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo cambiar la solicitud a espera de pago.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
 @admin_bp.route('/solicitudes/<int:id>/quitar_espera_pago', methods=['POST'])
 @login_required
 @staff_required
@@ -6298,6 +6336,40 @@ def quitar_espera_pago_solicitud(id):
     s = Solicitud.query.get_or_404(id)
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
+
+    if s.estado != 'espera_pago':
+        flash('La solicitud no está en espera de pago.', 'info')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
+        if restore in ('', 'espera_pago', 'cancelada'):
+            restore = 'activa'
+        s.estado = restore
+        if hasattr(s, 'fecha_cambio_espera_pago'):
+            s.fecha_cambio_espera_pago = datetime.utcnow()
+        if hasattr(s, 'usuario_cambio_espera_pago'):
+            s.usuario_cambio_espera_pago = _staff_actor_name()
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = datetime.utcnow()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = datetime.utcnow()
+        db.session.commit()
+        flash(f'Solicitud reactivada desde espera de pago a {restore}.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo quitar espera de pago.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/espera_pago/quitar', methods=['POST'])
+@login_required
+@staff_required
+def quitar_espera_pago_solicitud_cliente(cliente_id, id):
+    s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+    next_url = request.form.get('next') or request.referrer
+    fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id) + f"#sol-{s.id}"
 
     if s.estado != 'espera_pago':
         flash('La solicitud no está en espera de pago.', 'info')
