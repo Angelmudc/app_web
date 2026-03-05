@@ -5,7 +5,7 @@ import os
 import re
 import json
 import hashlib
-from urllib.parse import quote
+import urllib.parse
 from typing import Optional  # ✅ PARA PYTHON 3.9
 
 from flask import (
@@ -1694,12 +1694,10 @@ def solicitar_entrevista_whatsapp(solicitud_id, sc_id):
     codigo_candidata = getattr(sc.candidata, 'codigo', None) or '(sin código)'
     nombre_candidata = getattr(sc.candidata, 'nombre_completo', None) or 'Sin nombre'
 
-    mensaje = (
-        f"Hola, soy {cliente_nombre}. Para mi solicitud {codigo_solicitud}, "
-        f"quiero entrevistar a esta candidata: Código: {codigo_candidata} - "
-        f"Nombre: {nombre_candidata}. Gracias."
-    )
-    wa_url = f"https://wa.me/8094296892?text={quote(mensaje)}"
+    mensaje = f"Hola, quiero entrevistar a la candidata {nombre_candidata} ({codigo_candidata}). Solicitud {codigo_solicitud}."
+    encoded = urllib.parse.quote(mensaje, safe="")
+    agency_phone = "18094296892"
+    wa_url = f"https://wa.me/{agency_phone}?text={encoded}"
     return redirect(wa_url)
 
 

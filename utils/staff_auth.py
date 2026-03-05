@@ -200,6 +200,17 @@ def _current_user_role() -> str:
         return ""
 
 
+def _normalize_staff_role_name(role_value: str) -> str:
+    role = (role_value or "").strip().lower()
+    if not role:
+        return ""
+    if role in ("admin",):
+        return "admin"
+    if role in ("secretaria", "secretary", "secre", "secretaría"):
+        return "secretaria"
+    return role
+
+
 def _is_staff_user_model() -> bool:
     try:
         if not current_user or not getattr(current_user, "is_authenticated", False):
@@ -228,7 +239,7 @@ def _is_legacy_staff_login() -> bool:
 
 
 def get_staff_role() -> str:
-    role = _current_user_role()
+    role = _normalize_staff_role_name(_current_user_role())
 
     if role == "admin" and is_breakglass_user_obj() and is_breakglass_session_valid():
         return "admin"

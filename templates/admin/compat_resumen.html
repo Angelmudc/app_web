@@ -2,6 +2,7 @@
 {% block title %}Compatibilidad – {{ cliente.nombre_completo }} / {{ candidata.nombre_completo }}{% endblock %}
 
 {% block content %}
+{% set compat = compat|compat_fmt %}
 <div class="container py-4" style="max-width: 1000px;">
 
   <!-- Encabezado -->
@@ -16,6 +17,11 @@
     </div>
     <div class="text-end">
       <div class="display-6 fw-bold">{{ compat.score }}<span class="fs-5">/100</span></div>
+      <div class="mt-1">
+        <span class="badge {{ 'bg-success' if compat.level == 'alta' else ('bg-warning text-dark' if compat.level == 'media' else 'bg-danger') }}">
+          {{ compat.level|title }}
+        </span>
+      </div>
       <div class="text-muted small">puntaje total</div>
     </div>
   </div>
@@ -30,11 +36,16 @@
         <div class="card-body">
           {% if compat.breakdown and compat.breakdown|length %}
             <ul class="list-group list-group-flush">
-              {% for label, pts in compat.breakdown %}
+              {% for item in compat.breakdown %}
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                  <span>{{ label }}</span>
-                  <span class="badge {{ 'bg-success' if pts > 0 else ('bg-danger' if pts < 0 else 'bg-secondary') }}">
-                    {{ pts if pts >= 0 else ('−' ~ (pts|abs)) }}
+                  <span>
+                    <strong>{{ item.title }}</strong>
+                    {% if item.notes %}
+                      <div class="small text-muted">{{ item.notes }}</div>
+                    {% endif %}
+                  </span>
+                  <span class="badge {{ 'bg-success' if item.score >= 18 else ('bg-warning text-dark' if item.score >= 10 else 'bg-danger') }}">
+                    {{ item.score }}/25
                   </span>
                 </li>
               {% endfor %}
@@ -70,7 +81,7 @@
 
             <dt class="col-5">Funciones</dt>
             <dd class="col-7">
-              {% if solicitud.funciones %}{{ solicitud.funciones | join(', ') }}{% else %}—{% endif %}
+              {{ (solicitud.funciones | funciones_fmt(solicitud.funciones_otro)) or '—' }}
             </dd>
 
             <dt class="col-5">Niños</dt>
@@ -82,6 +93,25 @@
             <dt class="col-5">Mascota</dt>
             <dd class="col-7">{{ solicitud.mascota or '—' }}</dd>
           </dl>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm rounded-4 mb-3">
+        <div class="card-header bg-light rounded-top-4 fw-semibold">
+          Resumen ejecutivo
+        </div>
+        <div class="card-body small">
+          <p class="mb-2">{{ compat.summary }}</p>
+          {% if compat.risks %}
+            <div class="fw-semibold mb-1">Riesgos a validar</div>
+            <ul class="mb-0 ps-3">
+              {% for r in compat.risks %}
+                <li>{{ r }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">Sin alertas críticas detectadas.</div>
+          {% endif %}
         </div>
       </div>
 

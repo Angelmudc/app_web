@@ -128,37 +128,9 @@
       {# Horario #}
       {% set _horario = (solicitud.horario or '') %}
 
-      {# Funciones: combina selección + funciones_otro, evitando literal "otro". #}
-      {% set _funcs_ns = namespace(items=[]) %}
-      {% if solicitud.funciones is defined and solicitud.funciones %}
-        {% if solicitud.funciones is string %}
-          {% for _f in solicitud.funciones.split(',') %}
-            {% set _f_clean = (_f|string)|trim %}
-            {% if _f_clean %}
-              {% set _ = _funcs_ns.items.append(_f_clean) %}
-            {% endif %}
-          {% endfor %}
-        {% else %}
-          {% for _f in solicitud.funciones %}
-            {% set _f_clean = (_f|string)|trim %}
-            {% if _f_clean %}
-              {% set _ = _funcs_ns.items.append(_f_clean) %}
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-      {% endif %}
-      {% set _funcs_list = [] %}
-      {% for _f in _funcs_ns.items %}
-        {% set _f_low = _f|lower %}
-        {% if _f_low not in ['otro', 'otro…', 'otro...'] %}
-          {% set _ = _funcs_list.append(_f) %}
-        {% endif %}
-      {% endfor %}
-      {% set _func_otro = (solicitud.funciones_otro|string if solicitud.funciones_otro is defined and solicitud.funciones_otro else '')|trim %}
-      {% if _func_otro and _func_otro not in _funcs_list %}
-        {% set _ = _funcs_list.append(_func_otro) %}
-      {% endif %}
-      {% set _funcs = _funcs_list | join(', ') %}
+      {% set _funcs = (solicitud.funciones if solicitud.funciones is defined else None) | funciones_fmt(
+        solicitud.funciones_otro if solicitud.funciones_otro is defined else None
+      ) %}
 
       {# Tipo de lugar + detalles básicos #}
       {% set _tipo = (solicitud.tipo_lugar or '') %}
@@ -284,9 +256,9 @@
                   </small>
                 </div>
 
-                {% if solicitud.funciones %}
+                {% if _funcs %}
                 <div class="mt-1">
-                  <small><strong>Funciones:</strong> {{ solicitud.funciones if (solicitud.funciones is string) else (solicitud.funciones | join(', ')) }}</small>
+                  <small><strong>Funciones:</strong> {{ _funcs }}</small>
                 </div>
                 {% endif %}
               </div>

@@ -22,6 +22,8 @@ from flask_wtf import CSRFProtect
 
 from sqlalchemy import text, func
 from sqlalchemy.pool import NullPool
+from utils.compat_engine import format_compat_result
+from utils.funciones_formatter import format_funciones, format_funciones_display
 
 # ─────────────────────────────────────────────────────────────
 # Carga .env (siempre desde la raíz del proyecto)
@@ -356,6 +358,12 @@ def create_app():
     from datetime import datetime as _dt
     app.jinja_env.globals["now"] = _dt.utcnow
     app.jinja_env.globals["current_year"] = _dt.utcnow().year
+    app.jinja_env.globals["format_funciones"] = format_funciones
+    app.jinja_env.filters["funciones_fmt"] = format_funciones
+    app.jinja_env.globals["format_funciones_display"] = format_funciones_display
+    app.jinja_env.filters["format_funciones_display"] = format_funciones_display
+    app.jinja_env.globals["format_compat_result"] = format_compat_result
+    app.jinja_env.filters["compat_fmt"] = format_compat_result
 
     # ─────────────────────────────────────────────────────────
     # Login manager (staff en BD + legacy en memoria + clientes)

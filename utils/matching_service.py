@@ -18,6 +18,7 @@ from utils.text_normalizer import infer_city, location_tokens, normalize_text, s
 DEFAULT_PREFILTER_LIMIT = 250
 DEFAULT_TOP_K = 30
 logger = logging.getLogger(__name__)
+_ACTIVE_ASSIGNMENT_STATUS = ("enviada", "vista", "seleccionada")
 
 
 def _to_set(value: Any) -> Set[str]:
@@ -401,6 +402,55 @@ def _bonus_from_test(solicitud, cand) -> tuple[int, str]:
         return 0, "Bonus test: +0"
 
 
+def _candidate_history_flags(solicitud, cand) -> tuple[bool, bool]:
+    """
+    Retorna (bloqueada_por_otro_cliente, rechazada_por_mismo_cliente).
+    No afecta score; solo explica restricciones operativas de envío.
+    """
+    try:
+        from models import Solicitud, SolicitudCandidata
+    except Exception:
+        return False, False
+
+    if not getattr(solicitud, "id", None) or not getattr(cand, "fila", None):
+        return False, False
+
+    blocked = False
+    rejected_same_client = False
+    try:
+        blocked_row = (
+            SolicitudCandidata.query
+            .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
+            .filter(
+                SolicitudCandidata.candidata_id == cand.fila,
+                SolicitudCandidata.status.in_(_ACTIVE_ASSIGNMENT_STATUS),
+                SolicitudCandidata.solicitud_id != solicitud.id,
+                Solicitud.cliente_id != solicitud.cliente_id,
+            )
+            .first()
+        )
+        blocked = blocked_row is not None
+    except Exception:
+        blocked = False
+
+    try:
+        rejected_row = (
+            SolicitudCandidata.query
+            .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
+            .filter(
+                SolicitudCandidata.candidata_id == cand.fila,
+                SolicitudCandidata.status == "descartada",
+                Solicitud.cliente_id == solicitud.cliente_id,
+            )
+            .first()
+        )
+        rejected_same_client = rejected_row is not None
+    except Exception:
+        rejected_same_client = False
+
+    return blocked, rejected_same_client
+
+
 def _score_candidate(solicitud, cand) -> Dict[str, Any]:
     sol_profile = build_solicitud_profile(solicitud)
 
@@ -422,6 +472,7 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
 
     penalties_dict, penalty_reasons = _penalties(sol_profile, cand)
     penalties_total = sum(penalties_dict.values())
+    blocked_other_client, rejected_same_client = _candidate_history_flags(solicitud, cand)
 
     base_score = ubicacion_pts + modalidad_pts + horario_pts + funciones_pts + experiencia_pts + edad_pts
     operational_score = max(0, min(100, base_score + penalties_total))
@@ -453,6 +504,10 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
         explain["mascota_penalty"],
         explain["test_bonus"],
     ]
+    if blocked_other_client:
+        reasons.append("Bloqueada: ya fue enviada a otro cliente y no ha sido rechazada.")
+    if rejected_same_client:
+        reasons.append("Historial: esta candidata fue rechazada anteriormente por este cliente.")
     reasons.extend(missing_skill_notes)
 
     component_rows = [
@@ -481,6 +536,7 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
         "edad_rules": [r.label() for r in edad_rules],
         "edad_match": edad_match,
         "edad_pts": edad_pts,
+        "modalidad_pts": modalidad_pts,
         "components": {
             "ubicacion_pts": ubicacion_pts,
             "modalidad_pts": modalidad_pts,
@@ -500,6 +556,8 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
         "candidata_modalidad_norm": modalidad_eval["candidata_modalidad_norm"],
         "modalidad_match": modalidad_eval["modalidad_match"],
         "modalidad_reason": modalidad_eval["modalidad_reason"],
+        "blocked_other_client": bool(blocked_other_client),
+        "rejected_same_client": bool(rejected_same_client),
     }
 
     return {

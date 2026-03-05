@@ -22,6 +22,7 @@
   </style>
 </head>
 <body>
+  {% set compat = compat|compat_fmt %}
 
   <table style="width:100%; margin-bottom: 10px;">
     <tr>
@@ -35,6 +36,7 @@
       </td>
       <td class="right">
         <div class="score">{{ compat.score }}/100</div>
+        <div><span class="pill">{{ compat.level|upper }}</span></div>
         <div class="muted">Generado: {{ generado_en.strftime('%Y-%m-%d %H:%M UTC') }}</div>
       </td>
     </tr>
@@ -48,10 +50,13 @@
           <tr><th>Factor</th><th class="right">Pts</th></tr>
         </thead>
         <tbody>
-          {% for label, pts in compat.breakdown %}
+          {% for item in compat.breakdown %}
           <tr>
-            <td>{{ label }}</td>
-            <td class="right">{{ pts if pts >= 0 else ('−' ~ (pts|abs)) }}</td>
+            <td>
+              <strong>{{ item.title }}</strong>
+              {% if item.notes %}<div class="muted">{{ item.notes }}</div>{% endif %}
+            </td>
+            <td class="right">{{ item.score }}/25</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -65,13 +70,26 @@
       <div class="row"><div class="label">Modalidad</div><div>{{ solicitud.modalidad_trabajo or solicitud.modalidad or '—' }}</div></div>
       <div class="row"><div class="label">Horario</div><div>{{ solicitud.horario or '—' }}</div></div>
       <div class="row"><div class="label">Funciones</div>
-        <div>{% if solicitud.funciones %}{{ solicitud.funciones | join(', ') }}{% else %}—{% endif %}</div>
+        <div>{{ (solicitud.funciones | funciones_fmt(solicitud.funciones_otro)) or '—' }}</div>
       </div>
       <div class="row"><div class="label">Niños</div>
         <div>{% set n = solicitud.ninos or solicitud.cantidad_ninos %}{{ n if n is not none else '—' }}</div>
       </div>
       <div class="row"><div class="label">Mascota</div><div>{{ solicitud.mascota or '—' }}</div></div>
     </div>
+  </div>
+
+  <div class="card" style="margin-top: 10px;">
+    <h2>Resumen ejecutivo</h2>
+    <div>{{ compat.summary }}</div>
+    {% if compat.risks %}
+      <h2>Riesgos a validar</h2>
+      <ul>
+        {% for r in compat.risks %}
+          <li>{{ r }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
   </div>
 
   <div class="card" style="margin-top: 10px;">

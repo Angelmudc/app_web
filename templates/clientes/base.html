@@ -367,7 +367,7 @@
 
   <!-- JS del portal de clientes (aislado del admin) -->
   <script src="{{ url_for('static', filename='clientes/js/clientes.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/client_notifications.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/client_notifications.js') }}" defer></script>
 
   {% if show_shell %}
   <script>

@@ -62,9 +62,10 @@
               </small>
             </div>
 
-            {% if s.funcs and s.funcs|length > 0 %}
+            {% set _funcs = s.funcs | funciones_fmt %}
+            {% if _funcs %}
             <div class="mt-1">
-              <small><strong>Funciones:</strong> {{ s.funcs | join(', ') }}</small>
+              <small><strong>Funciones:</strong> {{ _funcs }}</small>
             </div>
             {% endif %}
 

@@ -50,7 +50,7 @@
       </div>
     </div>
     <div class="card-footer bg-white d-flex flex-wrap gap-2">
-      <form method="post" action="{{ url_for('clientes.solicitar_entrevista_whatsapp', solicitud_id=solicitud.id, sc_id=card.sc.id) }}" class="d-inline">
+      <form method="post" action="{{ url_for('clientes.solicitar_entrevista_whatsapp', solicitud_id=solicitud.id, sc_id=card.sc.id) }}" class="d-inline" target="_blank" rel="noopener">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-success">
           <i class="bi bi-whatsapp me-1"></i> Solicitar entrevista por WhatsApp

@@ -14,6 +14,8 @@ class _DummySolicitud:
     def __init__(self, solicitud_id: int, codigo: str):
         self.id = solicitud_id
         self.codigo_solicitud = codigo
+        self.candidata_id = None
+        self.candidata = None
 
 
 class _DummyNotif:
@@ -30,6 +32,26 @@ class _DummyNotif:
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
         self.solicitud = _DummySolicitud(solicitud_id, f"SOL-{solicitud_id:03d}")
+
+
+class _DummyCandidate:
+    def __init__(self):
+        self.fila = 501
+        self.codigo = "C-501"
+        self.nombre_completo = "Ana Perez"
+        self.edad = "30"
+        self.modalidad_trabajo_preferida = "salida diaria"
+
+
+class _DummySC:
+    def __init__(self):
+        self.id = 91
+        self.solicitud_id = 10
+        self.candidata_id = 501
+        self.status = "enviada"
+        self.score_snapshot = 88
+        self.breakdown_snapshot = {}
+        self.candidata = _DummyCandidate()
 
 
 class _NotifQuery:
@@ -184,6 +206,25 @@ class ClienteNotificacionesFlowTest(unittest.TestCase):
         self.assertTrue(resp.location.endswith("/clientes/notificaciones"))
         self.assertTrue(notif.is_deleted)
         commit_mock.assert_called_once()
+
+    def test_solicitud_candidatas_template_includes_csrf_meta_and_notifications_js(self):
+        fake_user = SimpleNamespace(id=7, nombre_completo="Cliente Demo")
+        solicitud = _DummySolicitud(10, "SOL-010")
+        sc = _DummySC()
+
+        target = clientes_routes.solicitud_candidatas
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with flask_app.app_context():
+            with patch.object(clientes_routes, "current_user", fake_user), \
+                 patch.object(clientes_routes, "_get_solicitud_cliente_or_404", return_value=solicitud), \
+                 patch.object(clientes_routes.SolicitudCandidata, "query", _NotifQuery([sc])):
+                with flask_app.test_request_context("/clientes/solicitudes/10/candidatas", method="GET"):
+                    html = target(10)
+
+        self.assertIn('meta name="csrf-token"', html)
+        self.assertIn("client_notifications.js", html)
 
 
 if __name__ == "__main__":

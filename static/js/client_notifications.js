@@ -75,7 +75,17 @@
       },
       body: body.toString(),
     });
-    if (!res.ok) throw new Error("Accion no disponible");
+    if (!res.ok) {
+      let raw = "";
+      try {
+        raw = await res.text();
+      } catch (_e) {
+        raw = "";
+      }
+      const msg = `Notificacion fetch error status=${res.status} body=${(raw || "").slice(0, 300)}`;
+      console.error(msg);
+      throw new Error(msg);
+    }
     return res.json();
   }
 
@@ -114,18 +124,23 @@
     if (!id || !action) return;
 
     if (action === "view") {
+      btn.classList.add("is-loading");
       btn.disabled = true;
       try {
         const payload = await postAction(`/clientes/notificaciones/${id}/ver`);
         setUnreadCount(payload.unread_count || 0);
         window.location.href = payload.redirect_url || btn.getAttribute("data-url") || "/clientes/solicitudes";
       } catch (_e) {
+        // no-op: se registra en postAction
+      } finally {
+        btn.classList.remove("is-loading");
         btn.disabled = false;
       }
       return;
     }
 
     if (action === "delete") {
+      btn.classList.add("is-loading");
       btn.disabled = true;
       try {
         const payload = await postAction(`/clientes/notificaciones/${id}/eliminar`);
@@ -136,6 +151,9 @@
           listNode.innerHTML = '<div class="text-muted small py-3">No tienes notificaciones recientes.</div>';
         }
       } catch (_e) {
+        // no-op: se registra en postAction
+      } finally {
+        btn.classList.remove("is-loading");
         btn.disabled = false;
       }
     }

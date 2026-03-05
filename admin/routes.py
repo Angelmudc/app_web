@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from functools import wraps  # si otros decoradores locales lo usan
 
 from config_app import db, USUARIOS, cache
-from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata
+from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata, ClienteNotificacion
 from admin.forms import (
     StaffUserCreateForm,
     StaffUserEditForm,
@@ -3662,6 +3662,7 @@ def registrar_pago(cliente_id, id):
             return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
 
         s.candidata_id = cand.fila
+        _sync_solicitud_candidatas_after_assignment(s, cand.fila)
 
         # Monto pagado
         s.monto_pagado = _parse_money_to_decimal_str(form.monto_pagado.data)
@@ -3988,6 +3989,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             # Reasignar solicitud (mantener pagada)
             s.candidata_id = cand_new.fila
             s.estado = 'pagada'
+            _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
 
             # ✅ Timestamps (solo si existen en tu modelo)
             if hasattr(s, 'fecha_ultima_actividad'):
@@ -4469,6 +4471,151 @@ def _matching_created_by() -> str:
     return str(session.get("usuario") or "sistema")
 
 
+_NOTIF_TIPO_CANDIDATAS_ENVIADAS = "candidatas_enviadas"
+_ACTIVE_ASSIGNMENT_STATUS = ("enviada", "vista", "seleccionada")
+_ASSIGNMENT_CLOSEABLE_STATUS = ("sugerida", "enviada", "vista", "seleccionada")
+
+
+def _upsert_cliente_notificacion_candidatas(solicitud: Solicitud, count: int) -> None:
+    if not solicitud or not getattr(solicitud, "cliente_id", None) or int(count or 0) <= 0:
+        return
+
+    now = datetime.utcnow()
+    recent_from = now - timedelta(hours=24)
+    titulo = "Candidatas enviadas"
+    cuerpo = (
+        f"La agencia te envio candidatas compatibles para la solicitud "
+        f"{(getattr(solicitud, 'codigo_solicitud', None) or f'SOL-{solicitud.id}') }."
+    )
+
+    existing = (
+        ClienteNotificacion.query
+        .filter_by(
+            cliente_id=solicitud.cliente_id,
+            solicitud_id=solicitud.id,
+            tipo=_NOTIF_TIPO_CANDIDATAS_ENVIADAS,
+            is_read=False,
+            is_deleted=False,
+        )
+        .filter(ClienteNotificacion.created_at >= recent_from)
+        .order_by(ClienteNotificacion.id.desc())
+        .first()
+    )
+
+    if existing:
+        prev_payload = existing.payload if isinstance(existing.payload, dict) else {}
+        prev_count = 0
+        try:
+            prev_count = int(prev_payload.get("count") or 0)
+        except Exception:
+            prev_count = 0
+        existing.payload = {"count": max(0, prev_count) + int(count)}
+        existing.titulo = titulo
+        existing.cuerpo = cuerpo
+        existing.updated_at = now
+        return
+
+    notif = ClienteNotificacion(
+        cliente_id=solicitud.cliente_id,
+        solicitud_id=solicitud.id,
+        tipo=_NOTIF_TIPO_CANDIDATAS_ENVIADAS,
+        titulo=titulo,
+        cuerpo=cuerpo,
+        payload={"count": int(count)},
+        is_read=False,
+        is_deleted=False,
+    )
+    db.session.add(notif)
+
+
+def _matching_candidate_flags(solicitud: Solicitud, candidata_ids: list[int]) -> tuple[set[int], set[int]]:
+    """Devuelve (bloqueadas_por_otro_cliente, rechazadas_por_mismo_cliente)."""
+    blocked_ids: set[int] = set()
+    rejected_ids: set[int] = set()
+    if not solicitud or not candidata_ids:
+        return blocked_ids, rejected_ids
+
+    try:
+        active_rows = (
+            db.session.query(SolicitudCandidata.candidata_id)
+            .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
+            .filter(
+                SolicitudCandidata.candidata_id.in_(candidata_ids),
+                SolicitudCandidata.status.in_(_ACTIVE_ASSIGNMENT_STATUS),
+                SolicitudCandidata.solicitud_id != solicitud.id,
+                Solicitud.cliente_id != solicitud.cliente_id,
+            )
+            .all()
+        )
+        blocked_ids = {int(row[0]) for row in active_rows if row and row[0] is not None}
+    except Exception:
+        blocked_ids = set()
+
+    try:
+        rejected_rows = (
+            db.session.query(SolicitudCandidata.candidata_id)
+            .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
+            .filter(
+                SolicitudCandidata.candidata_id.in_(candidata_ids),
+                SolicitudCandidata.status == "descartada",
+                Solicitud.cliente_id == solicitud.cliente_id,
+            )
+            .all()
+        )
+        rejected_ids = {int(row[0]) for row in rejected_rows if row and row[0] is not None}
+    except Exception:
+        rejected_ids = set()
+
+    return blocked_ids, rejected_ids
+
+
+def _sync_solicitud_candidatas_after_assignment(solicitud: Solicitud, assigned_candidata_id: int, actor: str = "") -> None:
+    """
+    Al asignar una candidata en Solicitud:
+    - candidata asignada => status 'seleccionada'
+    - resto de candidatas de esa solicitud en estados abiertos => status 'liberada'
+    """
+    if not solicitud or not getattr(solicitud, "id", None) or not assigned_candidata_id:
+        return
+
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    actor_value = actor or _matching_created_by()
+
+    assigned_row = (
+        SolicitudCandidata.query
+        .filter_by(solicitud_id=solicitud.id, candidata_id=int(assigned_candidata_id))
+        .first()
+    )
+    if assigned_row:
+        assigned_row.status = "seleccionada"
+        assigned_row.created_by = actor_value
+    else:
+        assigned_row = SolicitudCandidata(
+            solicitud_id=solicitud.id,
+            candidata_id=int(assigned_candidata_id),
+            status="seleccionada",
+            created_by=actor_value,
+        )
+        db.session.add(assigned_row)
+
+    rows = (
+        SolicitudCandidata.query
+        .filter_by(solicitud_id=solicitud.id)
+        .all()
+    )
+    for row in rows:
+        if int(getattr(row, "candidata_id", 0) or 0) == int(assigned_candidata_id):
+            continue
+        if (getattr(row, "status", None) or "") not in _ASSIGNMENT_CLOSEABLE_STATUS:
+            continue
+        row.status = "liberada"
+        snapshot = row.breakdown_snapshot if isinstance(row.breakdown_snapshot, dict) else {}
+        snapshot["client_action"] = "liberada_por_asignacion"
+        snapshot["client_action_at"] = now_iso
+        snapshot["assigned_candidata_id"] = int(assigned_candidata_id)
+        row.breakdown_snapshot = snapshot
+
+
 @admin_bp.route('/matching/solicitudes')
 @login_required
 @staff_required
@@ -4495,6 +4642,13 @@ def matching_detalle_solicitud(solicitud_id: int):
         .first_or_404()
     )
     ranked_candidates = rank_candidates(solicitud, top_k=30)
+    ranked_candidate_ids = []
+    for item in ranked_candidates:
+        try:
+            ranked_candidate_ids.append(int(item["candidate"].fila))
+        except Exception:
+            continue
+    blocked_candidate_ids, rejected_candidate_ids = _matching_candidate_flags(solicitud, ranked_candidate_ids)
     sent_candidates = (
         SolicitudCandidata.query
         .filter_by(solicitud_id=solicitud.id)
@@ -4506,6 +4660,8 @@ def matching_detalle_solicitud(solicitud_id: int):
         solicitud=solicitud,
         ranked_candidates=ranked_candidates,
         sent_candidates=sent_candidates,
+        blocked_candidate_ids=blocked_candidate_ids,
+        rejected_candidate_ids=rejected_candidate_ids,
     )
 
 
@@ -4527,6 +4683,24 @@ def matching_enviar_candidatas(solicitud_id: int):
 
     if not candidata_ids:
         flash("Selecciona al menos una candidata para enviar.", "warning")
+        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+    force_send = str(request.form.get("force_send") or "").strip() in ("1", "true", "on", "yes")
+    blocked_candidate_ids, rejected_candidate_ids = _matching_candidate_flags(solicitud, candidata_ids)
+    selected_blocked = sorted(set(candidata_ids) & blocked_candidate_ids)
+    if selected_blocked:
+        flash(
+            "Esta candidata ya fue enviada a otro cliente. Solo puede enviarse a otro cuando sea rechazada.",
+            "danger",
+        )
+        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+    selected_rejected = sorted(set(candidata_ids) & rejected_candidate_ids)
+    if selected_rejected and not force_send:
+        flash(
+            "⚠️ Esta candidata fue rechazada por este cliente anteriormente. Marca 'Enviar de todas formas' para confirmar.",
+            "warning",
+        )
         return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
 
     ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
@@ -4575,6 +4749,7 @@ def matching_enviar_candidatas(solicitud_id: int):
             processed += 1
 
         if processed:
+            _upsert_cliente_notificacion_candidatas(solicitud, processed)
             db.session.commit()
             flash(f"Candidata enviada al cliente. Total procesadas: {processed}.", "success")
         else:

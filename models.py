@@ -1564,6 +1564,7 @@ class SolicitudCandidata(db.Model):
             "vista",
             "descartada",
             "seleccionada",
+            "liberada",
             name="solicitud_candidata_status_enum",
         ),
         nullable=False,
@@ -1580,4 +1581,42 @@ class SolicitudCandidata(db.Model):
         return (
             f"<SolicitudCandidata id={self.id} solicitud_id={self.solicitud_id} "
             f"candidata_id={self.candidata_id} status={self.status}>"
+        )
+
+
+class ClienteNotificacion(db.Model):
+    __tablename__ = "clientes_notificaciones"
+    __table_args__ = (
+        db.Index("ix_clientes_notif_cliente_read_deleted", "cliente_id", "is_read", "is_deleted"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(
+        db.Integer,
+        db.ForeignKey("clientes.id"),
+        nullable=False,
+        index=True,
+    )
+    solicitud_id = db.Column(
+        db.Integer,
+        db.ForeignKey("solicitudes.id"),
+        nullable=True,
+        index=True,
+    )
+    tipo = db.Column(db.String(80), nullable=False, index=True)
+    titulo = db.Column(db.String(200), nullable=False)
+    cuerpo = db.Column(db.Text, nullable=True)
+    payload = db.Column(JSONB, nullable=True)
+    is_read = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    cliente = db.relationship("Cliente", lazy="joined")
+    solicitud = db.relationship("Solicitud", lazy="joined")
+
+    def __repr__(self) -> str:
+        return (
+            f"<ClienteNotificacion id={self.id} cliente_id={self.cliente_id} "
+            f"solicitud_id={self.solicitud_id} tipo={self.tipo} is_read={self.is_read}>"
         )

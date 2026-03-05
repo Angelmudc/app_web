@@ -16,6 +16,7 @@ class _DummyCliente:
 
 class _DummySolicitud:
     id = 10
+    cliente_id = 7
     codigo_solicitud = "SOL-010"
     cliente = _DummyCliente()
     estado = "activa"
@@ -89,6 +90,64 @@ class _ExistingSolicitudCandidata:
         self.candidata = _DummyCandidata(candidata_id)
 
 
+class _DummyNotificacion:
+    def __init__(self, payload=None):
+        self.payload = payload or {}
+        self.titulo = ""
+        self.cuerpo = ""
+        self.updated_at = None
+
+
+class _ClienteNotificacionQuery:
+    def __init__(self, existing=None):
+        self.existing = existing
+
+    def filter_by(self, **kwargs):
+        return self
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def first(self):
+        return self.existing
+
+
+class _SyncSCQuery:
+    def __init__(self, rows):
+        self.rows = rows
+        self.kwargs = {}
+
+    def filter_by(self, **kwargs):
+        self.kwargs = kwargs
+        return self
+
+    def first(self):
+        for row in self.rows:
+            ok = True
+            for k, v in self.kwargs.items():
+                if getattr(row, k, None) != v:
+                    ok = False
+                    break
+            if ok:
+                return row
+        return None
+
+    def all(self):
+        out = []
+        for row in self.rows:
+            ok = True
+            for k, v in self.kwargs.items():
+                if getattr(row, k, None) != v:
+                    ok = False
+                    break
+            if ok:
+                out.append(row)
+        return out
+
+
 class AdminMatchingRoutesTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
@@ -147,6 +206,8 @@ class AdminMatchingRoutesTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
                  patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
                  patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
                  patch("admin.routes.rank_candidates", return_value=ranked), \
                  patch("admin.routes.db.session.add") as add_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
@@ -157,7 +218,7 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
 
             self.assertEqual(resp.status_code, 302)
-            self.assertEqual(add_mock.call_count, 2)
+            self.assertEqual(add_mock.call_count, 3)
             commit_mock.assert_called_once()
 
             first_row = add_mock.call_args_list[0][0][0]
@@ -184,6 +245,8 @@ class AdminMatchingRoutesTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
                  patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
                  patch.object(admin_routes.SolicitudCandidata, "query", sc_query), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
                  patch("admin.routes.rank_candidates", return_value=ranked), \
                  patch("admin.routes.db.session.add") as add_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
@@ -194,11 +257,59 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
 
         self.assertEqual(resp.status_code, 302)
-        add_mock.assert_not_called()
+        add_mock.assert_called_once()
         commit_mock.assert_called_once()
         self.assertEqual(existing.status, "enviada")
         self.assertEqual(existing.score_snapshot, 90)
         self.assertEqual(existing.breakdown_snapshot, {"city_detectada": "Santiago"})
+
+    def test_crea_notificacion_al_enviar_candidata(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 70, "breakdown_snapshot": {"x": "y"}}]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes.db.session.add") as add_mock, \
+                 patch("admin.routes.db.session.commit"):
+                resp = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"]},
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp.status_code, 302)
+        notif_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.ClienteNotificacion)]
+        self.assertEqual(len(notif_rows), 1)
+        self.assertEqual(notif_rows[0].tipo, "candidatas_enviadas")
+        self.assertEqual(notif_rows[0].cliente_id, 7)
+        self.assertEqual(notif_rows[0].solicitud_id, 10)
+        self.assertEqual(notif_rows[0].payload.get("count"), 1)
+
+    def test_upsert_notificacion_reciente_no_leida(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 70, "breakdown_snapshot": {"x": "y"}}]
+        existing_notif = _DummyNotificacion(payload={"count": 2})
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery(existing=existing_notif)), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes.db.session.add") as add_mock, \
+                 patch("admin.routes.db.session.commit"):
+                resp = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"]},
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 302)
+        notif_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.ClienteNotificacion)]
+        self.assertEqual(len(notif_rows), 0)
+        self.assertEqual(existing_notif.payload.get("count"), 3)
 
     def test_post_enviar_with_csrf_token_returns_redirect_not_400(self):
         flask_app.config["WTF_CSRF_ENABLED"] = True
@@ -233,6 +344,8 @@ class AdminMatchingRoutesTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
                  patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
                  patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery(all_rows=[sent_row])), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
                  patch("admin.routes.rank_candidates", return_value=ranked), \
                  patch("admin.routes.db.session.add") as add_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
@@ -252,7 +365,7 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
 
             self.assertIn(post_resp.status_code, (302, 303))
-            add_mock.assert_called_once()
+            self.assertEqual(add_mock.call_count, 2)
             commit_mock.assert_called_once()
 
     def test_post_enviar_without_csrf_token_returns_400(self):
@@ -267,6 +380,76 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
 
         self.assertEqual(resp.status_code, 400)
+
+    def test_post_enviar_bloquea_si_activa_en_otro_cliente(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 88, "breakdown_snapshot": {"x": "y"}}]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=({101}, set())), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes.db.session.add") as add_mock, \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"]},
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp.status_code, 302)
+        add_mock.assert_not_called()
+        commit_mock.assert_not_called()
+
+    def test_post_enviar_rechazada_previa_requiere_force_send(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 88, "breakdown_snapshot": {"x": "y"}}]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), {101})), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes.db.session.add") as add_mock, \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp_no_force = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"]},
+                    follow_redirects=False,
+                )
+                resp_force = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"], "force_send": "1"},
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp_no_force.status_code, 302)
+        self.assertEqual(resp_force.status_code, 302)
+        self.assertEqual(add_mock.call_count, 2)
+        self.assertEqual(commit_mock.call_count, 1)
+
+    def test_assignment_sync_marks_others_as_liberada_without_delete(self):
+        solicitud = _DummySolicitud()
+        row_assigned = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=101, status="enviada")
+        row_other_1 = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=102, status="vista")
+        row_other_2 = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=103, status="sugerida")
+        rows = [row_assigned, row_other_1, row_other_2]
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.SolicitudCandidata, "query", _SyncSCQuery(rows)), \
+                 patch("admin.routes.db.session.add") as add_mock:
+                admin_routes._sync_solicitud_candidatas_after_assignment(solicitud, 101, actor="tester")
+
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(row_assigned.status, "seleccionada")
+        self.assertEqual(row_other_1.status, "liberada")
+        self.assertEqual(row_other_1.breakdown_snapshot.get("client_action"), "liberada_por_asignacion")
+        self.assertEqual(row_other_1.breakdown_snapshot.get("assigned_candidata_id"), 101)
+        self.assertEqual(row_other_2.status, "liberada")
+        add_mock.assert_not_called()
+
+    def test_active_blocking_statuses_exclude_liberada(self):
+        self.assertEqual(tuple(admin_routes._ACTIVE_ASSIGNMENT_STATUS), ("enviada", "vista", "seleccionada"))
+        self.assertNotIn("liberada", admin_routes._ACTIVE_ASSIGNMENT_STATUS)
 
 
 if __name__ == "__main__":
