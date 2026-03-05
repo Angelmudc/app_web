@@ -28,6 +28,11 @@ def candidata_esta_descalificada(candidata) -> bool:
     return bool(getattr(candidata, "is_descalificada", False))
 
 
+def is_candidata_descalificada(candidata) -> bool:
+    """Alias canónico para reglas de negocio."""
+    return candidata_esta_descalificada(candidata)
+
+
 def candidatas_activas_filter(model_cls):
     """Filtro SQL reutilizable: excluye descalificadas sin asumir NOT NULL."""
     return or_(model_cls.estado.is_(None), model_cls.estado != _DESCALIFICADA_ESTADO)
@@ -64,3 +69,8 @@ def assert_candidata_no_descalificada(
         return redirect(url_for(redirect_endpoint, **(redirect_kwargs or {})))
 
     abort(403, description=mensaje)
+
+
+def require_not_descalificada(candidata, action_name: str = "", **kwargs):
+    """Alias canónico para bloqueo operativo."""
+    return assert_candidata_no_descalificada(candidata, action=action_name, **kwargs)

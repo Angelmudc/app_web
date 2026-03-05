@@ -39,6 +39,30 @@ class _DummyCandidata:
         self.solicitudes = [SimpleNamespace(id=99)]
 
 
+class _PaginationStub:
+    def __init__(self, items):
+        self.items = items
+        self.pages = 1
+        self.has_prev = False
+        self.has_next = False
+        self.prev_num = 1
+        self.next_num = 1
+
+
+class _DescalificacionListQuery:
+    def __init__(self, cand):
+        self.cand = cand
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def paginate(self, *args, **kwargs):
+        return _PaginationStub([self.cand])
+
+
 class _CandidataAdminQuery:
     def __init__(self, cand):
         self.cand = cand
@@ -252,7 +276,8 @@ class DescalificacionFlowTest(unittest.TestCase):
                     follow_redirects=False,
                 )
 
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn(b"descalificada", resp.data.lower())
         add_mock.assert_not_called()
         commit_mock.assert_not_called()
 
@@ -310,10 +335,45 @@ class DescalificacionFlowTest(unittest.TestCase):
                 resp = self.client.get("/subir_fotos/imagen/1/perfil", follow_redirects=False)
                 self.assertEqual(resp.status_code, 200)
 
+            with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
+                 patch("core.legacy_handlers.validate_upload_file", return_value=(True, b"binario", "", {"filename_safe": "doc.jpg"})), \
+                 patch("core.legacy_handlers.db.session.commit") as commit_upload:
+                resp = self.client.post(
+                    "/subir_fotos?accion=subir&fila=1",
+                    data={"depuracion": (io.BytesIO(b"file"), "depuracion.jpg")},
+                    content_type="multipart/form-data",
+                    follow_redirects=False,
+                )
+                self.assertEqual(resp.status_code, 302)
+                commit_upload.assert_called_once()
+
             with patch("core.legacy_handlers._get_candidata_safe_by_pk", return_value=cand), \
                  patch("core.legacy_handlers.render_template", return_value="OK"):
                 resp = self.client.get("/candidata/perfil?fila=1", follow_redirects=False)
                 self.assertEqual(resp.status_code, 200)
+
+    def test_modulo_descalificacion_visible_en_admin_y_reactivacion_solo_admin(self):
+        cand = _DummyCandidata(fila=1, estado="descalificada")
+        cand.nota_descalificacion = "Motivo demo"
+
+        self._login_admin()
+        home_resp = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home_resp.status_code, 200)
+        self.assertIn(b"Descalificaci", home_resp.data)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Candidata, "query", _DescalificacionListQuery(cand)):
+                resp = self.client.get("/admin/candidatas/descalificacion?q=ana", follow_redirects=False)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Descalificaci", resp.data)
+        self.assertIn(b"Reactivar", resp.data)
+
+        self._login_secretaria()
+        with flask_app.app_context():
+            with patch.object(admin_routes.Candidata, "query", _DescalificacionListQuery(cand)):
+                resp = self.client.get("/admin/candidatas/descalificacion?q=ana", follow_redirects=False)
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn(b"Reactivar", resp.data)
 
     def test_no_aparece_en_detalle_publico_si_descalificada(self):
         cand = _DummyCandidata(fila=1, estado="descalificada")

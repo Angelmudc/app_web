@@ -2190,6 +2190,7 @@ def filtrar():
         filtros.append(Candidata.estado == estado_norm)
 
     # Reglas fijas
+    filtros.append(candidatas_activas_filter(Candidata))
     filtros.append(Candidata.codigo.isnot(None))
     filtros.append(or_(Candidata.porciento.is_(None), Candidata.porciento == 0))
 
@@ -2241,7 +2242,6 @@ def filtrar():
         'inscrita_incompleta',
         'lista_para_trabajar',
         'trabajando',
-        'descalificada'
     ]
 
     return render_template(

@@ -4738,11 +4738,12 @@ def matching_enviar_candidatas(solicitud_id: int):
         if candidata_esta_descalificada(c)
     }
     if selected_disqualified:
-        flash(
-            "No se puede enviar una candidata descalificada al cliente.",
-            "danger",
+        abort(
+            403,
+            description=(
+                "No se puede enviar una candidata descalificada al cliente."
+            ),
         )
-        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
 
     ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
     created_by = _matching_created_by()
@@ -4801,6 +4802,46 @@ def matching_enviar_candidatas(solicitud_id: int):
         flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")
 
     return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+
+@admin_bp.route('/candidatas/descalificacion', methods=['GET'])
+@login_required
+@staff_required
+def candidatas_descalificacion():
+    q = (request.args.get("q") or "").strip()[:128]
+    page = max(1, request.args.get("page", default=1, type=int))
+    per_page = min(100, max(1, request.args.get("per_page", default=25, type=int)))
+
+    base = Candidata.query
+    if q:
+        like = f"%{q}%"
+        base = base.filter(
+            or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+            )
+        )
+
+    pagination = (
+        base.order_by(Candidata.fila.desc())
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+    is_admin_role = role == "admin"
+    return render_template(
+        "admin/candidatas_descalificacion.html",
+        q=q,
+        candidatas=pagination.items,
+        pagination=pagination,
+        page=page,
+        per_page=per_page,
+        is_admin_role=is_admin_role,
+    )
 
 
 @admin_bp.route('/candidatas/<int:candidata_id>/descalificar', methods=['POST'])

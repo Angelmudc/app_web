@@ -37,7 +37,17 @@
         <td>{{ c.fila }}</td>
         <td>{{ c.nombre_completo }}</td>
         <td>{{ c.cedula }}</td>
-        <td>{{ c.estado.replace('_',' ') | capitalize }}</td>
+        <td>
+          {% set est = (c.estado or '')|lower %}
+          {% if est == 'descalificada' %}
+            <span class="badge bg-danger">Descalificada</span>
+            {% if c.nota_descalificacion %}
+              <div class="small text-muted mt-1">Motivo: {{ c.nota_descalificacion }}</div>
+            {% endif %}
+          {% else %}
+            <span class="badge bg-secondary">{{ (c.estado or 'sin estado').replace('_',' ') | capitalize }}</span>
+          {% endif %}
+        </td>
         <td class="d-flex gap-2">
           <!-- Ver perfil -->
           <a
