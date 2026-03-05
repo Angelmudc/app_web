@@ -12,13 +12,13 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from sqlalchemy import or_, func, cast, desc
 from sqlalchemy.types import Numeric
-from sqlalchemy.orm import joinedload  # ➜ para evitar N+1 en copiar_solicitudes
+from sqlalchemy.orm import joinedload, load_only  # ➜ para evitar N+1 en copiar_solicitudes
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from functools import wraps  # si otros decoradores locales lo usan
 
 from config_app import db, USUARIOS, cache
-from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata, ClienteNotificacion
+from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata, ClienteNotificacion, Entrevista
 from admin.forms import (
     StaffUserCreateForm,
     StaffUserEditForm,
@@ -37,6 +37,16 @@ from utils.guards import (
     candidatas_activas_filter,
 )
 from utils.candidata_readiness import candidata_is_ready_to_send
+from utils.candidata_completitud_audit import (
+    entrevista_ok,
+    binario_ok,
+    referencias_ok,
+    faltantes_desde_flags,
+    es_incompleta,
+    solo_criticos,
+    solo_sin_documentos,
+    solo_sin_referencias,
+)
 from utils.matching_service import rank_candidates
 from utils.funciones_formatter import format_funciones
 from utils.staff_auth import (
@@ -5006,6 +5016,184 @@ def matching_enviar_candidatas(solicitud_id: int):
         flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")
 
     return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+
+def _blob_len_expr(col):
+    dialect = ""
+    try:
+        bind = db.session.get_bind()
+        if bind is not None and bind.dialect is not None:
+            dialect = str(bind.dialect.name or "").lower()
+    except Exception:
+        dialect = ""
+
+    if dialect == "postgresql":
+        return func.coalesce(func.octet_length(col), 0)
+    return func.coalesce(func.length(col), 0)
+
+
+def _build_auditoria_completitud_rows(q: str = "") -> list[dict]:
+    q = (q or "").strip()[:128]
+    base = Candidata.query.options(
+        load_only(
+            Candidata.fila,
+            Candidata.nombre_completo,
+            Candidata.cedula,
+            Candidata.codigo,
+            Candidata.estado,
+            Candidata.entrevista,
+            Candidata.referencias_laboral,
+            Candidata.referencias_familiares,
+        )
+    )
+    if q:
+        like = f"%{q}%"
+        base = base.filter(
+            or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+            )
+        )
+
+    entrevistas_subq = (
+        db.session.query(
+            Entrevista.candidata_id.label("candidata_id"),
+            func.count(Entrevista.id).label("entrevistas_count"),
+        )
+        .group_by(Entrevista.candidata_id)
+        .subquery()
+    )
+
+    rows = (
+        base.outerjoin(entrevistas_subq, entrevistas_subq.c.candidata_id == Candidata.fila)
+        .add_columns(
+            func.coalesce(entrevistas_subq.c.entrevistas_count, 0).label("entrevistas_count"),
+            _blob_len_expr(Candidata.foto_perfil).label("foto_perfil_len"),
+            _blob_len_expr(Candidata.depuracion).label("depuracion_len"),
+            _blob_len_expr(Candidata.perfil).label("perfil_len"),
+            _blob_len_expr(Candidata.cedula1).label("cedula1_len"),
+            _blob_len_expr(Candidata.cedula2).label("cedula2_len"),
+        )
+        .order_by(Candidata.fila.desc())
+        .all()
+    )
+
+    audits: list[dict] = []
+    for cand, entrevistas_count, foto_len, dep_len, perfil_len, ced1_len, ced2_len in rows:
+        flags = {
+            "entrevista": entrevista_ok(getattr(cand, "entrevista", None), entrevistas_count),
+            "foto_perfil": binario_ok(foto_len),
+            "depuracion": binario_ok(dep_len),
+            "perfil": binario_ok(perfil_len),
+            "cedula1": binario_ok(ced1_len),
+            "cedula2": binario_ok(ced2_len),
+            "referencias_laboral": referencias_ok(getattr(cand, "referencias_laboral", None)),
+            "referencias_familiares": referencias_ok(getattr(cand, "referencias_familiares", None)),
+        }
+        faltantes = faltantes_desde_flags(flags)
+        audits.append(
+            {
+                "candidata": cand,
+                "flags": flags,
+                "faltantes": faltantes,
+                "tiene": [k for k, ok in flags.items() if ok],
+                "incompleta": es_incompleta(flags),
+            }
+        )
+    return audits
+
+
+def _links_completar_por_faltantes(candidata_id: int, faltantes: list[str]) -> list[dict]:
+    faltantes_set = set(faltantes or [])
+    links: list[dict] = []
+
+    if faltantes_set.intersection({"depuracion", "perfil", "cedula1", "cedula2"}):
+        links.append(
+            {
+                "label": "Documentos",
+                "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
+            }
+        )
+    if "foto_perfil" in faltantes_set:
+        links.append(
+            {
+                "label": "Foto perfil",
+                "url": url_for("finalizar_proceso", fila=candidata_id),
+            }
+        )
+    if "entrevista" in faltantes_set:
+        links.append(
+            {
+                "label": "Entrevista",
+                "url": url_for("entrevistas_de_candidata", fila=candidata_id),
+            }
+        )
+    if faltantes_set.intersection({"referencias_laboral", "referencias_familiares"}):
+        links.append(
+            {
+                "label": "Referencias",
+                "url": url_for("referencias", candidata=candidata_id),
+            }
+        )
+    links.append(
+        {
+            "label": "Editar candidata",
+            "url": url_for("buscar_candidata", candidata_id=candidata_id),
+        }
+    )
+    return links
+
+
+@admin_bp.route('/candidatas/auditoria-completitud', methods=['GET'])
+@login_required
+@staff_required
+def candidatas_auditoria_completitud():
+    q = (request.args.get("q") or "").strip()[:128]
+    solo_criticas = (request.args.get("solo_criticas") or "").strip() in ("1", "true", "on")
+    solo_docs = (request.args.get("solo_docs") or "").strip() in ("1", "true", "on")
+    solo_refs = (request.args.get("solo_refs") or "").strip() in ("1", "true", "on")
+
+    audits_all = _build_auditoria_completitud_rows(q=q)
+    total_analizadas = len(audits_all)
+    completas = sum(1 for a in audits_all if not a["incompleta"])
+    incompletas = [a for a in audits_all if a["incompleta"]]
+
+    if solo_criticas:
+        incompletas = [a for a in incompletas if solo_criticos(a["faltantes"])]
+    if solo_docs:
+        incompletas = [a for a in incompletas if solo_sin_documentos(a["faltantes"])]
+    if solo_refs:
+        incompletas = [a for a in incompletas if solo_sin_referencias(a["faltantes"])]
+
+    labels = {
+        "entrevista": "Entrevista",
+        "foto_perfil": "Foto perfil",
+        "depuracion": "Depuración",
+        "perfil": "Perfil",
+        "cedula1": "Cédula 1",
+        "cedula2": "Cédula 2",
+        "referencias_laboral": "Ref laboral",
+        "referencias_familiares": "Ref familiar",
+    }
+    for row in incompletas:
+        cand = row["candidata"]
+        row["tiene_labels"] = [labels[k] for k in row["tiene"]]
+        row["faltantes_labels"] = [labels[k] for k in row["faltantes"]]
+        row["links_completar"] = _links_completar_por_faltantes(cand.fila, row["faltantes"])
+
+    return render_template(
+        "admin/candidatas_auditoria_completitud.html",
+        q=q,
+        total_analizadas=total_analizadas,
+        total_completas=completas,
+        total_incompletas=len(incompletas),
+        auditorias=incompletas,
+        solo_criticas=solo_criticas,
+        solo_docs=solo_docs,
+        solo_refs=solo_refs,
+        labels=labels,
+    )
 
 
 @admin_bp.route('/candidatas/descalificacion', methods=['GET'])

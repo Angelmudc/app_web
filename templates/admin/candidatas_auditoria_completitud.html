@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Auditoría de Completitud de Candidatas{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h4 mb-1">Auditoría de Completitud de Candidatas</h1>
+      <div class="text-muted small">Solo lectura. Muestra únicamente candidatas incompletas.</div>
+    </div>
+    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">Volver</a>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-4">
+      <div class="card card-body">
+        <div class="small text-muted">Total analizadas</div>
+        <div class="h4 mb-0">{{ total_analizadas }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card card-body border-warning">
+        <div class="small text-muted">Incompletas (listadas)</div>
+        <div class="h4 mb-0 text-warning-emphasis">{{ total_incompletas }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card card-body border-success">
+        <div class="small text-muted">Completas</div>
+        <div class="h4 mb-0 text-success-emphasis">{{ total_completas }}</div>
+      </div>
+    </div>
+  </div>
+
+  <form method="get" class="card card-body mb-3">
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label mb-1">Buscar</label>
+        <input
+          type="text"
+          class="form-control"
+          name="q"
+          value="{{ q or '' }}"
+          placeholder="Nombre, cédula o código"
+        >
+      </div>
+      <div class="col-md-6 d-flex align-items-end gap-3 flex-wrap">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="solo_criticas" value="1" id="solo_criticas" {% if solo_criticas %}checked{% endif %}>
+          <label class="form-check-label" for="solo_criticas">Solo faltantes críticos</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="solo_docs" value="1" id="solo_docs" {% if solo_docs %}checked{% endif %}>
+          <label class="form-check-label" for="solo_docs">Solo sin documentos</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="solo_refs" value="1" id="solo_refs" {% if solo_refs %}checked{% endif %}>
+          <label class="form-check-label" for="solo_refs">Solo sin referencias</label>
+        </div>
+        <button class="btn btn-primary ms-auto" type="submit">Aplicar</button>
+      </div>
+    </div>
+  </form>
+
+  {% if auditorias %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Cédula</th>
+          <th>Código</th>
+          <th>Checklist</th>
+          <th>Tiene</th>
+          <th>Le falta</th>
+          <th>Completar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in auditorias %}
+        {% set c = row.candidata %}
+        {% set estado = (c.estado or '')|lower %}
+        <tr>
+          <td>{{ c.fila }}</td>
+          <td>
+            <div>{{ c.nombre_completo or 'Sin nombre' }}</div>
+            <div class="mt-1">
+              {% if estado == 'descalificada' %}
+                <span class="badge bg-danger">Descalificada</span>
+              {% elif estado == 'trabajando' %}
+                <span class="badge bg-info text-dark">Trabajando</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>{{ c.cedula or '—' }}</td>
+          <td>{{ c.codigo or '—' }}</td>
+          <td>
+            <div class="small">
+              {% for key in ['entrevista','foto_perfil','depuracion','perfil','cedula1','cedula2','referencias_laboral','referencias_familiares'] %}
+                <span class="d-inline-block me-2 mb-1">
+                  {% if row.flags[key] %}✅{% else %}❌{% endif %}
+                  {{ labels[key] }}
+                </span>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="small">{{ row.tiene_labels|join(', ') or '—' }}</td>
+          <td class="small text-danger-emphasis">{{ row.faltantes_labels|join(', ') or '—' }}</td>
+          <td>
+            <div class="d-flex flex-wrap gap-1">
+              {% for link in row.links_completar %}
+                <a class="btn btn-sm btn-outline-primary" href="{{ link.url }}">{{ link.label }}</a>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-light border mb-0">
+    No hay candidatas incompletas con los filtros actuales.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
