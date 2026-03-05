@@ -45,7 +45,69 @@ class _DummyCandidate:
         self.compat_test_candidata_json = None
 
 
+class _PrefilterQuery:
+    def __init__(self, rows):
+        self._rows = list(rows)
+        self._state_eq = None
+        self._state_in = None
+        self._exclude_descalificadas = False
+
+    def filter(self, *criteria):
+        for crit in criteria:
+            try:
+                params = crit.compile().params
+            except Exception:
+                params = {}
+            for val in params.values():
+                if val == "descalificada":
+                    self._exclude_descalificadas = True
+                elif val in ("lista_para_trabajar", "inscrita"):
+                    if " IN " in str(crit):
+                        self._state_in = ("lista_para_trabajar", "inscrita")
+                    else:
+                        self._state_eq = val
+        return self
+
+    def options(self, *args, **kwargs):
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def limit(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        out = list(self._rows)
+        if self._exclude_descalificadas:
+            out = [r for r in out if getattr(r, "estado", None) != "descalificada"]
+        if self._state_eq is not None:
+            out = [r for r in out if getattr(r, "estado", None) == self._state_eq]
+        elif self._state_in is not None:
+            out = [r for r in out if getattr(r, "estado", None) in set(self._state_in)]
+        return out
+
+
 class MatchingServiceTest(unittest.TestCase):
+    def test_prefilter_excluye_descalificadas(self):
+        solicitud = _DummySolicitud()
+        solicitud.ciudad_sector = ""
+        solicitud.rutas_cercanas = ""
+
+        cand_ok = _DummyCandidate(201, "Activa")
+        cand_ok.estado = "lista_para_trabajar"
+        cand_bad = _DummyCandidate(202, "Descalificada")
+        cand_bad.estado = "descalificada"
+
+        rows = matching_service.candidate_query_prefilter(
+            solicitud,
+            base_query=_PrefilterQuery([cand_ok, cand_bad]),
+        )
+
+        ids = {c.fila for c in rows}
+        self.assertIn(201, ids)
+        self.assertNotIn(202, ids)
+
     def test_modalidad_con_dormida_vs_dormida_match_fuerte(self):
         solicitud = _DummySolicitud()
         solicitud.modalidad_trabajo = "con dormida 💤 lunes a viernes"

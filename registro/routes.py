@@ -5,8 +5,10 @@ from datetime import datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
-from config_app import db, normalize_cedula
+from config_app import db
 from models import Candidata
+from utils.cedula_guard import duplicate_cedula_message, find_duplicate_candidata_by_cedula
+from utils.cedula_normalizer import normalize_cedula_for_compare, normalize_cedula_for_store
 
 # Blueprint dedicado (NO es el "public" del website)
 # OJO: el nombre del blueprint es "registro_publico" para que los url_for queden estables.
@@ -44,7 +46,7 @@ def registro_publico():
     ref_lab      = (request.form.get('contactos_referencias_laborales') or '').strip()[:500]
     ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
     acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
-    cedula_raw   = (request.form.get('cedula') or '').strip()[:20]
+    cedula_raw   = (request.form.get('cedula') or '').strip()[:50]
 
     # --- Validaciones mínimas y mensajes claros ---
     faltantes = []
@@ -80,10 +82,11 @@ def registro_publico():
         faltantes.append("Edad (número)")
         edad_num = None
 
-    cedula_norm = normalize_cedula(cedula_raw)
-    if not cedula_norm:
-        flash("📛 Cédula inválida. Debe contener 11 dígitos.", "warning")
+    if not cedula_raw:
+        flash("📛 Cédula requerida.", "warning")
         return render_template('registro/registro_publico.html'), 400
+
+    cedula_digits_input = normalize_cedula_for_compare(cedula_raw)
 
     if faltantes:
         flash("Por favor completa: " + ", ".join(faltantes), "warning")
@@ -94,16 +97,25 @@ def registro_publico():
     sabe_planchar = (planchar_raw == 'si')
     acepta_pct    = (acepta_raw == '1')
 
-    # --- Comprobación de duplicado por cédula (pre-check) ---
+    # --- Comprobación de duplicado por cédula (DB-safe) ---
     try:
-        dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
+        dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
     except OperationalError:
         _safe_dispose_pool()
         db.session.rollback()
-        dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
+        dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
 
     if dup:
-        flash("⚠️ Ya existe una candidata registrada con esta cédula.", "warning")
+        flash(duplicate_cedula_message(dup), "warning")
+        return render_template('registro/registro_publico.html'), 400
+
+    if len(cedula_digits_input) != 11:
+        flash("📛 Cédula inválida. Debe contener 11 dígitos.", "warning")
+        return render_template('registro/registro_publico.html'), 400
+
+    cedula_store = normalize_cedula_for_store(cedula_raw)
+    if not cedula_store:
+        flash("📛 Cédula requerida.", "warning")
         return render_template('registro/registro_publico.html'), 400
 
     # --- Crear objeto y guardar ---
@@ -122,7 +134,7 @@ def registro_publico():
         contactos_referencias_laborales = ref_lab,
         referencias_familiares_detalle  = ref_fam,
         acepta_porcentaje_sueldo        = acepta_pct,
-        cedula                          = cedula_norm,
+        cedula                          = cedula_store,
         medio_inscripcion               = "Web",
         estado                          = "en_proceso",
         fecha_cambio_estado             = datetime.utcnow(),
@@ -142,7 +154,7 @@ def registro_publico():
             db.session.commit()
         except IntegrityError:
             db.session.rollback()
-            flash("⚠️ Ya existe una candidata registrada con esta cédula.", "warning")
+            flash("⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).", "warning")
             return render_template('registro/registro_publico.html'), 400
         except Exception:
             db.session.rollback()
@@ -150,7 +162,7 @@ def registro_publico():
             return render_template('registro/registro_publico.html'), 503
     except IntegrityError:
         db.session.rollback()
-        flash("⚠️ Ya existe una candidata registrada con esta cédula.", "warning")
+        flash("⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).", "warning")
         return render_template('registro/registro_publico.html'), 400
     except SQLAlchemyError as e:
         db.session.rollback()

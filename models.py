@@ -1,8 +1,9 @@
-﻿from datetime import datetime
+﻿import re
+from datetime import datetime
 from typing import Optional, Dict
 
 from flask_login import UserMixin
-from sqlalchemy import Enum as SAEnum, LargeBinary, text
+from sqlalchemy import Enum as SAEnum, LargeBinary, event, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import synonym
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -36,6 +37,12 @@ class Candidata(db.Model):
         comment="Si acepta que se cobre un porcentaje de su sueldo (true=Sí, false=No)"
     )
     cedula                          = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    cedula_norm_digits              = db.Column(
+        db.String(11),
+        nullable=True,
+        index=True,
+        comment="solo dígitos; usada para prevenir duplicados en nuevas altas"
+    )
     codigo                          = db.Column(db.String(50), unique=True, index=True)
     medio_inscripcion               = db.Column(db.String(100))
     inscripcion                     = db.Column(db.Boolean, server_default=text('false'), nullable=False)
@@ -209,6 +216,25 @@ class Candidata(db.Model):
         self.referencias_familiares_detalle = val or None
         # Mantener compatibilidad con el campo antiguo
         self.referencias_familiares = val or None
+
+
+def _cedula_digits_only(value: str) -> str:
+    return re.sub(r"\D+", "", value or "")
+
+
+def _sync_cedula_norm_digits(target: "Candidata") -> None:
+    digits = _cedula_digits_only(getattr(target, "cedula", None))
+    target.cedula_norm_digits = digits if len(digits) == 11 else None
+
+
+@event.listens_for(Candidata, "before_insert")
+def _candidata_before_insert(mapper, connection, target):  # pragma: no cover
+    _sync_cedula_norm_digits(target)
+
+
+@event.listens_for(Candidata, "before_update")
+def _candidata_before_update(mapper, connection, target):  # pragma: no cover
+    _sync_cedula_norm_digits(target)
 # ─────────────────────────────────────────────────────────────
 # ENTREVISTAS ESTRUCTURADAS (NUEVO – NO ROMPE LO EXISTENTE)
 # ─────────────────────────────────────────────────────────────

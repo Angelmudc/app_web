@@ -6,9 +6,11 @@ import unittest
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
+from werkzeug.exceptions import NotFound
 
 from app import app as flask_app
 import admin.routes as admin_routes
+import clientes.routes as clientes_routes
 import core.legacy_handlers as legacy_handlers
 
 
@@ -126,6 +128,25 @@ class _CandidataMatchingQuery:
 
 class _Preg:
     id = 1
+
+
+class _OneCandidataQuery:
+    def __init__(self, cand):
+        self.cand = cand
+
+    def filter_by(self, **kwargs):
+        return self
+
+    def first_or_404(self):
+        return self.cand
+
+
+class _DummyQuery:
+    def __init__(self, obj):
+        self._obj = obj
+
+    def get_or_404(self, _fila):
+        return self._obj
 
 
 class DescalificacionFlowTest(unittest.TestCase):
@@ -252,9 +273,23 @@ class DescalificacionFlowTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 302)
         commit_mock.assert_not_called()
 
+    def test_no_permite_compat_en_candidata_descalificada(self):
+        self._login_secretaria()
+        cand = _DummyCandidata(fila=1, estado="descalificada")
+
+        with flask_app.app_context():
+            with patch.object(legacy_handlers.Candidata, "query", _DummyQuery(cand)):
+                resp = self.client.get(
+                    "/secretarias/compat/candidata?fila=1",
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 302)
+
     def test_editar_y_subir_archivos_siguen_funcionando_descalificada(self):
         self._login_secretaria()
         cand = _DummyCandidata(fila=1, estado="descalificada")
+        cand.perfil = b"\x89PNG\r\n\x1a\nabc"
 
         with flask_app.app_context():
             with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
@@ -271,22 +306,44 @@ class DescalificacionFlowTest(unittest.TestCase):
                 self.assertEqual(resp.status_code, 302)
                 commit_mock.assert_called_once()
 
-            with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
-                 patch("core.legacy_handlers.validate_upload_file", return_value=(True, b"img", "", {"filename_safe": "a.png"})), \
-                 patch("core.legacy_handlers.db.session.commit") as commit_mock:
-                resp = self.client.post(
-                    "/subir_fotos?accion=subir&fila=1",
-                    data={"depuracion": (io.BytesIO(b"fake"), "depuracion.png")},
-                    content_type="multipart/form-data",
-                    follow_redirects=False,
-                )
-                self.assertEqual(resp.status_code, 302)
-                commit_mock.assert_called_once()
+            with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand):
+                resp = self.client.get("/subir_fotos/imagen/1/perfil", follow_redirects=False)
+                self.assertEqual(resp.status_code, 200)
+
+            with patch("core.legacy_handlers._get_candidata_safe_by_pk", return_value=cand), \
+                 patch("core.legacy_handlers.render_template", return_value="OK"):
+                resp = self.client.get("/candidata/perfil?fila=1", follow_redirects=False)
+                self.assertEqual(resp.status_code, 200)
+
+    def test_no_aparece_en_detalle_publico_si_descalificada(self):
+        cand = _DummyCandidata(fila=1, estado="descalificada")
+
+        detail_target = clientes_routes.domestica_detalle
+        for _ in range(4):
+            detail_target = detail_target.__wrapped__
+
+        with flask_app.app_context():
+            with patch.object(clientes_routes.Candidata, "query", _OneCandidataQuery(cand)):
+                with flask_app.test_request_context("/clientes/domesticas/1", method="GET"):
+                    with self.assertRaises(NotFound):
+                        detail_target(1)
 
     def test_historial_no_se_borra_al_descalificar(self):
         self._login_admin()
         cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
+        cand.inscripcion = True
+        cand.entrevista = "Texto"
+        cand.perfil = b"perfil"
+        cand.depuracion = b"dep"
         prev_historial = list(cand.solicitudes)
+        snapshot = {
+            "codigo": cand.codigo,
+            "cedula": cand.cedula,
+            "inscripcion": cand.inscripcion,
+            "entrevista": cand.entrevista,
+            "perfil": cand.perfil,
+            "depuracion": cand.depuracion,
+        }
 
         with flask_app.app_context():
             with patch.object(admin_routes.Candidata, "query", _CandidataAdminQuery(cand)), \
@@ -300,6 +357,12 @@ class DescalificacionFlowTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(len(cand.solicitudes), len(prev_historial))
         self.assertEqual(cand.solicitudes[0].id, prev_historial[0].id)
+        self.assertEqual(cand.codigo, snapshot["codigo"])
+        self.assertEqual(cand.cedula, snapshot["cedula"])
+        self.assertEqual(cand.inscripcion, snapshot["inscripcion"])
+        self.assertEqual(cand.entrevista, snapshot["entrevista"])
+        self.assertEqual(cand.perfil, snapshot["perfil"])
+        self.assertEqual(cand.depuracion, snapshot["depuracion"])
 
 
 if __name__ == "__main__":

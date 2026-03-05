@@ -65,6 +65,7 @@ from utils.cedula_normalizer import (
     normalize_cedula_for_compare,
     normalize_cedula_for_store,
 )
+from utils.cedula_guard import find_duplicate_candidata_by_cedula, duplicate_cedula_message
 from utils.compat_engine import (
     ENGINE_VERSION,
     HORARIO_OPTIONS,
@@ -74,7 +75,7 @@ from utils.compat_engine import (
     normalize_mascotas_importancia,
     normalize_mascotas_token,
 )
-from utils.guards import assert_candidata_no_descalificada
+from utils.guards import assert_candidata_no_descalificada, candidatas_activas_filter
 from utils.staff_auth import (
     admin_legacy_enabled,
     breakglass_allowed_ip,
@@ -639,42 +640,6 @@ def normalize_cedula(raw: str) -> Optional[str]:
     return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
 
 
-def _find_candidata_by_cedula_digits(digits_input: str, exclude_fila: Optional[int] = None):
-    """Busca candidata por cédula comparando solo dígitos.
-
-    No toca schema ni datos existentes.
-    """
-    digits = (digits_input or "").strip()
-    if not digits:
-        return None
-
-    query = Candidata.query
-    if exclude_fila is not None:
-        query = query.filter(Candidata.fila != int(exclude_fila))
-
-    try:
-        clean_expr = func.regexp_replace(Candidata.cedula, r'[^0-9]', '', 'g')
-        return query.filter(clean_expr == digits).first()
-    except Exception:
-        try:
-            clean_expr = Candidata.cedula
-            for token in ("-", " ", "/", ".", ",", ":", ";", "_", "\\"):
-                clean_expr = func.replace(clean_expr, token, "")
-            return query.filter(clean_expr == digits).first()
-        except Exception:
-            return None
-
-
-def _cedula_duplicate_message(existing) -> str:
-    estado = (getattr(existing, "estado", None) or "").strip().lower()
-    if estado == "descalificada":
-        return (
-            "Esta cédula ya pertenece a una candidata DEScalificada. "
-            "No se puede volver a inscribir. Contacte a la agencia."
-        )
-    return "Esta cédula ya está registrada en el sistema. No se puede crear otra candidata con la misma cédula."
-
-
 def normalize_nombre(raw: str) -> str:
     if not raw:
         return ''
@@ -1108,9 +1073,9 @@ def registro_interno():
         faltantes.append('Edad (número)')
         edad_num = None
 
-    # Validación de cédula por dígitos (solo para comparar duplicados)
+    # Validación de cédula
     cedula_digits_input = normalize_cedula_for_compare(cedula_raw)
-    if not cedula_digits_input:
+    if not cedula_raw:
         flash('📛 Cédula requerida.', 'warning')
         return render_template('registro_interno.html'), 400
 
@@ -1123,9 +1088,9 @@ def registro_interno():
     sabe_planchar = (planchar_raw == 'si')
     acepta_pct    = (acepta_raw == '1')
 
-    # --- Comprobación de duplicado por cédula (solo dígitos) ---
+    # --- Comprobación de duplicado por cédula (DB-safe) ---
     try:
-        dup = _find_candidata_by_cedula_digits(cedula_digits_input)
+        dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
     except OperationalError:
         # reconecta/dispose y reintenta una vez
         try:
@@ -1136,10 +1101,14 @@ def registro_interno():
             _get_engine().dispose()
         except Exception:
             pass
-        dup = _find_candidata_by_cedula_digits(cedula_digits_input)
+        dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
 
     if dup:
-        flash(_cedula_duplicate_message(dup), 'warning')
+        flash(duplicate_cedula_message(dup), 'warning')
+        return render_template('registro_interno.html'), 400
+
+    if len(cedula_digits_input) != 11:
+        flash('📛 Cédula inválida. Debe contener 11 dígitos.', 'warning')
         return render_template('registro_interno.html'), 400
 
     # Guardado normalizado SOLO para altas nuevas
@@ -1196,7 +1165,7 @@ def registro_interno():
 
         except IntegrityError:
             db.session.rollback()
-            flash('⚠️ Esta cédula ya está registrada en el sistema. No se puede crear otra candidata con la misma cédula.', 'warning')
+            flash('⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).', 'warning')
             return render_template('registro_interno.html'), 400
 
         except Exception:
@@ -1206,7 +1175,7 @@ def registro_interno():
 
     except IntegrityError:
         db.session.rollback()
-        flash('⚠️ Esta cédula ya está registrada en el sistema. No se puede crear otra candidata con la misma cédula.', 'warning')
+        flash('⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).', 'warning')
         return render_template('registro_interno.html'), 400
 
     except SQLAlchemyError as e:
@@ -1373,7 +1342,10 @@ def entrevistas_buscar():
     if q:
         try:
             filas = (
-                apply_search_to_candidata_query(Candidata.query, q)
+                apply_search_to_candidata_query(
+                    Candidata.query.filter(candidatas_activas_filter(Candidata)),
+                    q
+                )
                 .order_by(Candidata.nombre_completo.asc())
                 .limit(200)
                 .all()
@@ -2081,12 +2053,12 @@ def buscar_candidata():
                             mensaje=mensaje
                         )
 
-                    dup = _find_candidata_by_cedula_digits(
-                        cedula_edit_digits,
+                    dup, _ = find_duplicate_candidata_by_cedula(
+                        cedula_edit_raw,
                         exclude_fila=getattr(obj, 'fila', None)
                     )
                     if dup:
-                        mensaje = _cedula_duplicate_message(dup)
+                        mensaje = duplicate_cedula_message(dup)
                         candidata = obj
                         return render_template(
                             'buscar.html',
@@ -2117,6 +2089,9 @@ def buscar_candidata():
                     db.session.commit()
                     flash("✅ Datos actualizados correctamente.", "success")
                     return redirect(url_for('buscar_candidata', candidata_id=cid))
+                except IntegrityError:
+                    db.session.rollback()
+                    mensaje = "⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente)."
                 except Exception:
                     db.session.rollback()
                     app.logger.exception("❌ Error al guardar edición de candidata")
@@ -4921,6 +4896,13 @@ def compat_candidata():
     # ── 1) GUARDAR (POST) ────────────────────────────────────
     if request.method == 'POST' and request.form.get('accion') == 'guardar' and fila:
         c = Candidata.query.get_or_404(fila)
+        blocked = assert_candidata_no_descalificada(
+            c,
+            action="test de compatibilidad",
+            redirect_endpoint="compat_candidata",
+        )
+        if blocked is not None:
+            return blocked
 
         # Normalizaciones de selects/radios
         raw_comunicacion = request.form.get('comunicacion')
@@ -5059,6 +5041,13 @@ def compat_candidata():
     # ── 2) FORMULARIO (GET con fila) ──────────────────────────
     if request.method == 'GET' and fila:
         c = Candidata.query.get_or_404(fila)
+        blocked = assert_candidata_no_descalificada(
+            c,
+            action="test de compatibilidad",
+            redirect_endpoint="compat_candidata",
+        )
+        if blocked is not None:
+            return blocked
         payload = getattr(c, 'compat_test_candidata_json', None) or {}
         profile = payload.get('profile', {}) if isinstance(payload, dict) else {}
         data = {
@@ -5108,6 +5097,7 @@ def compat_candidata():
             resultados = search_candidatas_limited(
                 q,
                 limit=80,
+                base_query=Candidata.query.filter(candidatas_activas_filter(Candidata)),
                 minimal_fields=True,
                 order_mode="id_desc",
                 log_label="compat_candidata",

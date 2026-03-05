@@ -56,59 +56,59 @@ class CedulaIngresoValidationTest(unittest.TestCase):
         self.assertEqual(normalize_cedula_for_store("ABC-123"), "ABC-123")
 
     def test_duplicado_detectado_por_formatos_distintos_bloquea(self):
-        existing = SimpleNamespace(cedula="123-456789-0", estado="en_proceso")
+        existing = SimpleNamespace(cedula="123-4567890-1", estado="en_proceso")
 
         with flask_app.app_context():
-            with patch("core.legacy_handlers._find_candidata_by_cedula_digits", return_value=existing) as find_mock, \
+            with patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(existing, "12345678901")) as find_mock, \
                  patch("core.legacy_handlers.db.session.add") as add_mock, \
                  patch("core.legacy_handlers.flash") as flash_mock:
                 resp = self.client.post(
                     "/registro_interno/",
-                    data=_base_ingreso_data("123 456789/0"),
+                    data=_base_ingreso_data("123 4567890/1"),
                     follow_redirects=False,
                 )
 
         self.assertEqual(resp.status_code, 400)
-        find_mock.assert_called_once_with("1234567890")
+        find_mock.assert_called_once_with("123 4567890/1")
         add_mock.assert_not_called()
-        self.assertTrue(any("ya está registrada" in str(call.args[0]) for call in flash_mock.call_args_list))
+        self.assertTrue(any("Ya existe una candidata con esta cédula" in str(call.args[0]) for call in flash_mock.call_args_list))
 
     def test_duplicado_al_reves_tambien_bloquea(self):
-        existing = SimpleNamespace(cedula="123 456789/0", estado="en_proceso")
+        existing = SimpleNamespace(cedula="123 4567890/1", estado="en_proceso")
 
         with flask_app.app_context():
-            with patch("core.legacy_handlers._find_candidata_by_cedula_digits", return_value=existing) as find_mock, \
+            with patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(existing, "12345678901")) as find_mock, \
                  patch("core.legacy_handlers.db.session.add") as add_mock:
                 resp = self.client.post(
                     "/registro_interno/",
-                    data=_base_ingreso_data("123-456789-0"),
+                    data=_base_ingreso_data("123-4567890-1"),
                     follow_redirects=False,
                 )
 
         self.assertEqual(resp.status_code, 400)
-        find_mock.assert_called_once_with("1234567890")
+        find_mock.assert_called_once_with("123-4567890-1")
         add_mock.assert_not_called()
 
     def test_duplicado_descalificada_mensaje_especial(self):
-        existing = SimpleNamespace(cedula="123-456789-0", estado="descalificada")
+        existing = SimpleNamespace(cedula="123-4567890-1", estado="descalificada")
 
         with flask_app.app_context():
-            with patch("core.legacy_handlers._find_candidata_by_cedula_digits", return_value=existing), \
+            with patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(existing, "12345678901")), \
                  patch("core.legacy_handlers.db.session.add") as add_mock, \
                  patch("core.legacy_handlers.flash") as flash_mock:
                 resp = self.client.post(
                     "/registro_interno/",
-                    data=_base_ingreso_data("123 456789/0"),
+                    data=_base_ingreso_data("123 4567890/1"),
                     follow_redirects=False,
                 )
 
         self.assertEqual(resp.status_code, 400)
         add_mock.assert_not_called()
-        self.assertTrue(any("DEScalificada" in str(call.args[0]) for call in flash_mock.call_args_list))
+        self.assertTrue(any("descalificada" in str(call.args[0]).lower() for call in flash_mock.call_args_list))
 
     def test_alta_normaliza_guardado_en_creacion(self):
         with flask_app.app_context():
-            with patch("core.legacy_handlers._find_candidata_by_cedula_digits", return_value=None), \
+            with patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(None, "12345678901")), \
                  patch("core.legacy_handlers.db.session.flush"), \
                  patch("core.legacy_handlers.db.session.commit"), \
                  patch("core.legacy_handlers.db.session.add") as add_mock:
@@ -123,15 +123,15 @@ class CedulaIngresoValidationTest(unittest.TestCase):
         self.assertEqual(nueva.cedula, "123-4567890-1")
 
     def test_no_toca_datos_existentes_en_bloqueo(self):
-        existing = SimpleNamespace(cedula="123 456789/0", estado="en_proceso")
+        existing = SimpleNamespace(cedula="123 4567890/1", estado="en_proceso")
         original = existing.cedula
 
         with flask_app.app_context():
-            with patch("core.legacy_handlers._find_candidata_by_cedula_digits", return_value=existing), \
+            with patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(existing, "12345678901")), \
                  patch("core.legacy_handlers.db.session.add") as add_mock:
                 resp = self.client.post(
                     "/registro_interno/",
-                    data=_base_ingreso_data("123-456789-0"),
+                    data=_base_ingreso_data("123-4567890-1"),
                     follow_redirects=False,
                 )
 
