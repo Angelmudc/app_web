@@ -2610,6 +2610,12 @@ def detalle_cliente(cliente_id):
         )
         .all()
     )
+    reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+    is_admin_role = role == "admin"
 
     return render_template(
         'admin/cliente_detail.html',
@@ -2617,7 +2623,9 @@ def detalle_cliente(cliente_id):
         solicitudes=solicitudes,
         kpi_cliente=kpi_cliente,
         timeline=timeline,
-        tareas=tareas
+        tareas=tareas,
+        reemplazos_activos=reemplazos_activos,
+        is_admin_role=is_admin_role,
     )
 
 
@@ -3762,6 +3770,8 @@ def nuevo_reemplazo(s_id):
 
     form = AdminReemplazoForm()
     reemplazo_activo = _active_reemplazo_for_solicitud(sol)
+    next_url = (request.form.get("next") or request.args.get("next") or "").strip()
+    fallback_detail = url_for('admin.detalle_cliente', cliente_id=sol.cliente_id)
 
     # ✅ SIEMPRE usar la candidata asignada originalmente a la solicitud (por relación)
     assigned_id = getattr(sol, 'candidata_id', None)
@@ -3772,10 +3782,10 @@ def nuevo_reemplazo(s_id):
             'Esta solicitud no tiene candidata asignada. Primero asigna una candidata (por pago/asignación) antes de iniciar un reemplazo.',
             'danger'
         )
-        return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
     if reemplazo_activo:
         flash('Ya existe un reemplazo activo para esta solicitud.', 'warning')
-        return redirect(url_for('admin.detalle_solicitud', cliente_id=sol.cliente_id, id=sol.id))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
 
     # Prefill (por si tu form/template muestra campos)
     # No hay búsqueda ni selección manual: todo viene de sol.candidata
@@ -3797,7 +3807,7 @@ def nuevo_reemplazo(s_id):
             cand_old = sol.candidata
             if not cand_old:
                 flash('No se encontró la candidata asignada a esta solicitud.', 'danger')
-                return redirect(url_for('admin.detalle_cliente', cliente_id=sol.cliente_id))
+                return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
 
             descalificar = str(request.form.get('descalificar_candidata_fallida') or '').strip().lower() in ('1', 'true', 'on', 'yes')
             motivo_descalificacion = (request.form.get('motivo_descalificacion') or '').strip()
@@ -3841,7 +3851,7 @@ def nuevo_reemplazo(s_id):
             db.session.commit()
 
             flash('Reemplazo iniciado correctamente.', 'success')
-            return redirect(url_for('admin.detalle_solicitud', cliente_id=sol.cliente_id, id=sol.id))
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
 
         except Exception:
             db.session.rollback()
@@ -4595,20 +4605,11 @@ def api_candidatas():
 @login_required
 @staff_required
 def listar_solicitudes():
-    """Panel operativo de solicitudes con acciones rápidas STAFF."""
-    q = (request.args.get("q") or "").strip()
-    estado = (request.args.get("estado") or "").strip().lower()
-    try:
-        page = max(1, int(request.args.get("page", 1) or 1))
-    except Exception:
-        page = 1
-    try:
-        per_page = int(request.args.get("per_page", 25) or 25)
-    except Exception:
-        per_page = 25
-    per_page = max(10, min(per_page, 100))
-
-    allowed_states = ("proceso", "activa", "reemplazo", "espera_pago", "pagada", "cancelada")
+    """
+    Muestra contadores clave:
+    - En proceso
+    - Copiables (activa/reemplazo) cuya última copia fue antes del inicio del día UTC actual
+    """
     proc_count = Solicitud.query.filter_by(estado='proceso').count()
 
     # Consistencia UTC para "copiable hasta hoy"
@@ -4624,55 +4625,10 @@ def listar_solicitudes():
         .count()
     )
 
-    query = (
-        Solicitud.query
-        .options(
-            joinedload(Solicitud.cliente),
-            joinedload(Solicitud.reemplazos),
-            joinedload(Solicitud.candidata),
-        )
-    )
-    if estado in allowed_states:
-        query = query.filter(Solicitud.estado == estado)
-    if q:
-        like = f"%{q}%"
-        query = query.join(Cliente, Solicitud.cliente_id == Cliente.id).filter(
-            or_(
-                Solicitud.codigo_solicitud.ilike(like),
-                Solicitud.ciudad_sector.ilike(like),
-                Cliente.nombre_completo.ilike(like),
-                Cliente.codigo.ilike(like),
-            )
-        )
-
-    total = query.count()
-    solicitudes = (
-        query.order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
-    )
-    reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
-    role = (
-        str(getattr(current_user, "role", "") or "").strip().lower()
-        or str(session.get("role", "") or "").strip().lower()
-    )
-    is_admin_role = role == "admin"
-
     return render_template(
         'admin/solicitudes_list.html',
         proc_count=proc_count,
-        copiable_count=copiable_count,
-        solicitudes=solicitudes,
-        reemplazos_activos=reemplazos_activos,
-        is_admin_role=is_admin_role,
-        q=q,
-        estado=estado,
-        page=page,
-        per_page=per_page,
-        total=total,
-        has_more=(page * per_page) < total,
-        allowed_states=allowed_states,
+        copiable_count=copiable_count
     )
 
 
