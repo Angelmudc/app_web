@@ -6,6 +6,7 @@
   const streamUrl = root.dataset.streamUrl || '';
   const logsUrl = root.dataset.logsUrl || '';
   const summaryUrl = root.dataset.summaryUrl || '';
+  const productivityUrl = root.dataset.productivityUrl || '';
   const presenceUrl = root.dataset.presenceUrl || '';
   const presencePingUrl = root.dataset.presencePingUrl || '';
   const hasFilters = String(root.dataset.hasFilters || '0') === '1';
@@ -20,6 +21,7 @@
   let sse = null;
   let logsPollTimer = null;
   let summaryPollTimer = null;
+  let productivityPollTimer = null;
   let presencePollTimer = null;
   let presencePingTimer = null;
   let presencePingDelayMs = 10000;
@@ -129,6 +131,49 @@
     });
   }
 
+  function updateProductivity(payload) {
+    const tbody = document.querySelector('#productivityTable tbody');
+    const topBadge = document.getElementById('productivityTopBadge');
+    if (!tbody) return;
+
+    const users = (payload && Array.isArray(payload.users)) ? payload.users : [];
+    const previousTotals = {};
+    tbody.querySelectorAll('tr[data-user-id]').forEach((tr) => {
+      const uid = Number(tr.getAttribute('data-user-id') || 0);
+      previousTotals[uid] = Number(tr.getAttribute('data-total') || 0);
+    });
+    tbody.innerHTML = '';
+
+    if (!users.length) {
+      if (topBadge) topBadge.style.display = 'none';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin actividad operativa hoy.</td></tr>';
+      return;
+    }
+
+    if (topBadge) topBadge.style.display = '';
+    users.forEach((row, idx) => {
+      const userId = Number(row.user_id || 0);
+      const prevTotal = Object.prototype.hasOwnProperty.call(previousTotals, userId) ? previousTotals[userId] : Number(row.total || 0);
+      const changed = Object.prototype.hasOwnProperty.call(previousTotals, userId) && prevTotal !== Number(row.total || 0);
+      const tr = document.createElement('tr');
+      tr.dataset.userId = String(userId);
+      tr.dataset.total = String(Number(row.total || 0));
+      if (idx === 0) tr.classList.add('table-warning');
+      if (changed) tr.classList.add('table-info');
+      tr.innerHTML = [
+        '<td>' + (row.username || '-') + ' <small class="text-muted">(' + (row.role || '-') + ')</small>' + (idx === 0 ? '<span class="badge bg-dark ms-1">Top</span>' : '') + '</td>',
+        '<td>' + Number(row.edits || 0) + '</td>',
+        '<td>' + Number(row.interviews || 0) + '</td>',
+        '<td>' + Number(row.sent || 0) + '</td>',
+        '<td><strong>' + Number(row.total || 0) + '</strong></td>'
+      ].join('');
+      tbody.appendChild(tr);
+      if (changed) {
+        setTimeout(() => tr.classList.remove('table-info'), 1200);
+      }
+    });
+  }
+
   function updateMetrics(summary) {
     if (!summary) return;
     const map = {
@@ -146,6 +191,9 @@
     updateTopList(summary.top || []);
     if (Array.isArray(summary.presence)) {
       updatePresenceTable(summary.presence);
+    }
+    if (summary.productivity) {
+      updateProductivity(summary.productivity);
     }
   }
 
@@ -180,6 +228,12 @@
     updatePresenceTable((data && data.items) || []);
   }
 
+  async function pollProductivity() {
+    if (paused || !productivityUrl) return;
+    const data = await fetchJson(productivityUrl);
+    updateProductivity(data || {});
+  }
+
   function stopSSE() {
     if (sse) {
       sse.close();
@@ -190,9 +244,11 @@
   function stopPolling() {
     if (logsPollTimer) clearInterval(logsPollTimer);
     if (summaryPollTimer) clearInterval(summaryPollTimer);
+    if (productivityPollTimer) clearInterval(productivityPollTimer);
     if (presencePollTimer) clearInterval(presencePollTimer);
     logsPollTimer = null;
     summaryPollTimer = null;
+    productivityPollTimer = null;
     presencePollTimer = null;
   }
 
@@ -201,9 +257,11 @@
     setLiveStatus(true);
     pollLogs().catch(() => {});
     pollSummary().catch(() => {});
+    pollProductivity().catch(() => {});
     pollPresence().catch(() => {});
     logsPollTimer = setInterval(() => pollLogs().catch(() => {}), 4000);
     summaryPollTimer = setInterval(() => pollSummary().catch(() => {}), 10000);
+    productivityPollTimer = setInterval(() => pollProductivity().catch(() => {}), 15000);
     presencePollTimer = setInterval(() => pollPresence().catch(() => {}), 10000);
   }
 

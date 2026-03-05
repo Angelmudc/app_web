@@ -12,7 +12,7 @@ from flask import render_template, redirect, url_for, flash, request, jsonify, a
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 
-from sqlalchemy import or_, func, cast, desc
+from sqlalchemy import or_, func, cast, desc, case
 from sqlalchemy.types import Numeric
 from sqlalchemy.orm import joinedload, load_only  # ➜ para evitar N+1 en copiar_solicitudes
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -1438,6 +1438,15 @@ def _parse_monitoreo_date(raw: str, end_of_day: bool = False):
 _PRESENCE_TTL_SECONDS = 60
 _PRESENCE_ACTIVE_SECONDS = 30
 _PRESENCE_INDEX_KEY = "staff_presence:index"
+_PRODUCTIVITY_ACTIONS = (
+    "CANDIDATA_EDIT",
+    "CANDIDATA_INTERVIEW_NEW_CREATE",
+    "CANDIDATA_INTERVIEW_LEGACY_SAVE",
+    "MATCHING_SEND",
+    "CANDIDATA_UPLOAD_DOCS",
+    "CANDIDATA_MARK_LISTA",
+    "CANDIDATA_MARK_TRABAJANDO",
+)
 
 
 def _presence_key(user_id: int) -> str:
@@ -1663,6 +1672,46 @@ def _window_metrics_payload(start_dt: datetime, end_dt: datetime | None = None) 
     }
 
 
+def _build_productivity_today_payload() -> dict:
+    now = datetime.utcnow()
+    day_start = datetime(now.year, now.month, now.day)
+    interview_actions = ("CANDIDATA_INTERVIEW_NEW_CREATE", "CANDIDATA_INTERVIEW_LEGACY_SAVE")
+
+    rows = (
+        db.session.query(
+            StaffAuditLog.actor_user_id.label("user_id"),
+            StaffUser.username.label("username"),
+            StaffUser.role.label("role"),
+            func.sum(case((StaffAuditLog.action_type == "CANDIDATA_EDIT", 1), else_=0)).label("edits"),
+            func.sum(case((StaffAuditLog.action_type.in_(interview_actions), 1), else_=0)).label("interviews"),
+            func.sum(case((StaffAuditLog.action_type == "MATCHING_SEND", 1), else_=0)).label("sent"),
+            func.count(StaffAuditLog.id).label("total"),
+        )
+        .join(StaffUser, StaffUser.id == StaffAuditLog.actor_user_id)
+        .filter(StaffAuditLog.created_at >= day_start)
+        .filter(StaffAuditLog.actor_user_id.isnot(None))
+        .filter(StaffAuditLog.action_type.in_(_PRODUCTIVITY_ACTIONS))
+        .group_by(StaffAuditLog.actor_user_id, StaffUser.username, StaffUser.role)
+        .order_by(desc("total"), StaffUser.username.asc())
+        .all()
+    )
+
+    users = []
+    for row in rows:
+        users.append(
+            {
+                "user_id": int(row.user_id),
+                "username": row.username,
+                "role": row.role,
+                "edits": int(row.edits or 0),
+                "interviews": int(row.interviews or 0),
+                "sent": int(row.sent or 0),
+                "total": int(row.total or 0),
+            }
+        )
+    return {"users": users}
+
+
 def _build_monitoreo_summary_payload() -> dict:
     now = datetime.utcnow()
     day_start = datetime(now.year, now.month, now.day)
@@ -1684,6 +1733,7 @@ def _build_monitoreo_summary_payload() -> dict:
             for r in top[:10]
         ],
         "presence": _presence_rows(),
+        "productivity": _build_productivity_today_payload(),
     }
 
 
@@ -1953,6 +2003,15 @@ def monitoreo_logs_json():
 @admin_required
 def monitoreo_summary_json():
     return jsonify(_build_monitoreo_summary_payload())
+
+
+@admin_bp.route('/monitoreo/productividad.json', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_productividad_json():
+    if not bool(session.get("is_admin_session")):
+        abort(403)
+    return jsonify(_build_productivity_today_payload())
 
 
 @admin_bp.route('/monitoreo/presence.json', methods=['GET'])

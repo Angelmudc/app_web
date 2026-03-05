@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/monitoreo_live.css') }}">
 {% endblock %}
 {% block content %}
-<div class="container py-4" data-monitoreo-page="logs" data-initial-last-id="{{ initial_last_id }}" data-stream-url="{{ url_for('admin.monitoreo_stream') }}" data-logs-url="{{ url_for('admin.monitoreo_logs_json') }}" data-summary-url="{{ url_for('admin.monitoreo_summary_json') }}" data-presence-url="{{ url_for('admin.monitoreo_presence_json') }}" data-presence-ping-url="{{ url_for('admin.monitoreo_presence_ping') }}" data-has-filters="{{ 1 if has_active_filters else 0 }}">
+<div class="container py-4" data-monitoreo-page="logs" data-initial-last-id="{{ initial_last_id }}" data-stream-url="{{ url_for('admin.monitoreo_stream') }}" data-logs-url="{{ url_for('admin.monitoreo_logs_json') }}" data-summary-url="{{ url_for('admin.monitoreo_summary_json') }}" data-productivity-url="{{ url_for('admin.monitoreo_productividad_json') }}" data-presence-url="{{ url_for('admin.monitoreo_presence_json') }}" data-presence-ping-url="{{ url_for('admin.monitoreo_presence_ping') }}" data-has-filters="{{ 1 if has_active_filters else 0 }}">
   <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
     <h1 class="h3 mb-0">Logs de Monitoreo Staff</h1>
     <div class="d-flex align-items-center gap-2">
