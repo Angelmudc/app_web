@@ -22,12 +22,13 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from config_app import db, cache
 try:
-    from models import Cliente, Solicitud, Candidata, CandidataWeb, SolicitudCandidata
+    from models import Cliente, Solicitud, Candidata, CandidataWeb, SolicitudCandidata, ClienteNotificacion
 except Exception:
     from models import Cliente, Solicitud
     Candidata = None
     CandidataWeb = None
     SolicitudCandidata = None
+    ClienteNotificacion = None
 
 from utils import letra_por_indice
 from utils.matching_explain import client_bullets_from_breakdown
@@ -441,6 +442,25 @@ def login():
         return redirect(next_url)
 
     return render_template('clientes/login.html', form=form, next_url=next_url)
+
+
+@clientes_bp.app_context_processor
+def _inject_client_notif_unread_count():
+    unread = 0
+    try:
+        if (
+            ClienteNotificacion is not None
+            and getattr(current_user, "is_authenticated", False)
+            and isinstance(current_user, Cliente)
+        ):
+            unread = (
+                ClienteNotificacion.query
+                .filter_by(cliente_id=current_user.id, is_read=False, is_deleted=False)
+                .count()
+            )
+    except Exception:
+        unread = 0
+    return {"notif_unread_count": int(unread or 0)}
 
 
 @clientes_bp.route('/logout', methods=['POST'])
@@ -1370,7 +1390,7 @@ def detalle_solicitud(id):
     candidatas_enviadas = []
     candidatas_enviadas_cards = []
     if SolicitudCandidata is not None:
-        visible_status = ('enviada', 'vista', 'seleccionada', 'descartada')
+        visible_status = ('enviada', 'vista', 'seleccionada')
         candidatas_enviadas = (
             SolicitudCandidata.query
             .filter(
@@ -1380,6 +1400,7 @@ def detalle_solicitud(id):
             .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
             .all()
         )
+        candidatas_enviadas = [sc for sc in candidatas_enviadas if getattr(sc, "status", None) in visible_status]
         candidatas_enviadas_cards = [_candidate_public_payload(sc) for sc in candidatas_enviadas]
 
     return render_template(
@@ -1395,7 +1416,137 @@ def detalle_solicitud(id):
     )
 
 
-_CLIENTE_VISIBLE_MATCH_STATUS = ('enviada', 'vista', 'seleccionada', 'descartada')
+_NOTIF_TIPO_CANDIDATAS_ENVIADAS = "candidatas_enviadas"
+
+
+def _cliente_notif_query_base():
+    if ClienteNotificacion is None:
+        abort(404)
+    return ClienteNotificacion.query.filter_by(cliente_id=current_user.id, is_deleted=False)
+
+
+def _get_cliente_notificacion_or_404(notificacion_id: int):
+    return (
+        _cliente_notif_query_base()
+        .filter_by(id=notificacion_id)
+        .first_or_404()
+    )
+
+
+def _notificacion_target_url(notif) -> str:
+    solicitud_id = getattr(notif, "solicitud_id", None)
+    if solicitud_id:
+        return url_for("clientes.solicitud_candidatas", solicitud_id=solicitud_id) + "#candidatas-enviadas"
+    return url_for("clientes.listar_solicitudes")
+
+
+def _notif_wants_json() -> bool:
+    accept = (request.headers.get("Accept") or "").lower()
+    xr = (request.headers.get("X-Requested-With") or "").lower()
+    if "application/json" in accept:
+        return True
+    if xr == "xmlhttprequest":
+        return True
+    if str(request.args.get("ajax") or "").strip() == "1":
+        return True
+    return False
+
+
+@clientes_bp.route('/notificaciones')
+@login_required
+@cliente_required
+def notificaciones_list():
+    flash("Revisa tus notificaciones en la campana.", "info")
+    return redirect(url_for("clientes.dashboard"))
+
+
+@clientes_bp.route('/notificaciones.json')
+@login_required
+@cliente_required
+def notificaciones_json():
+    if ClienteNotificacion is None:
+        return jsonify({"ok": False, "error": "Notificaciones no disponibles"}), 404
+
+    limit = request.args.get("limit", 10, type=int)
+    limit = max(1, min(int(limit or 10), 15))
+
+    items = (
+        _cliente_notif_query_base()
+        .order_by(ClienteNotificacion.created_at.desc(), ClienteNotificacion.id.desc())
+        .limit(limit)
+        .all()
+    )
+    unread_count = (
+        ClienteNotificacion.query
+        .filter_by(cliente_id=current_user.id, is_read=False, is_deleted=False)
+        .count()
+    )
+    data = []
+    for n in items:
+        data.append(
+            {
+                "id": int(n.id),
+                "title": n.titulo or "Notificacion",
+                "body": n.cuerpo or "",
+                "created_at": n.created_at.isoformat() + "Z" if n.created_at else None,
+                "is_read": bool(n.is_read),
+                "url": _notificacion_target_url(n),
+            }
+        )
+    return jsonify({"unread_count": int(unread_count or 0), "items": data})
+
+
+@clientes_bp.route('/notificaciones/<int:notificacion_id>/ver', methods=['POST'])
+@login_required
+@cliente_required
+def notificacion_ver(notificacion_id):
+    notif = _get_cliente_notificacion_or_404(notificacion_id)
+    if not notif.is_read:
+        notif.is_read = True
+        notif.updated_at = datetime.utcnow()
+        db.session.commit()
+    target = _notificacion_target_url(notif)
+    if _notif_wants_json():
+        unread_count = (
+            ClienteNotificacion.query
+            .filter_by(cliente_id=current_user.id, is_read=False, is_deleted=False)
+            .count()
+        )
+        return jsonify({"ok": True, "redirect_url": target, "unread_count": int(unread_count or 0)})
+    return redirect(target)
+
+
+@clientes_bp.route('/notificaciones/<int:notificacion_id>/marcar-leida', methods=['POST'])
+@login_required
+@cliente_required
+def notificacion_marcar_leida(notificacion_id):
+    notif = _get_cliente_notificacion_or_404(notificacion_id)
+    if not notif.is_read:
+        notif.is_read = True
+        notif.updated_at = datetime.utcnow()
+        db.session.commit()
+    return redirect(url_for("clientes.notificaciones_list"))
+
+
+@clientes_bp.route('/notificaciones/<int:notificacion_id>/eliminar', methods=['POST'])
+@login_required
+@cliente_required
+def notificacion_eliminar(notificacion_id):
+    notif = _get_cliente_notificacion_or_404(notificacion_id)
+    notif.is_deleted = True
+    notif.updated_at = datetime.utcnow()
+    db.session.commit()
+    if _notif_wants_json():
+        unread_count = (
+            ClienteNotificacion.query
+            .filter_by(cliente_id=current_user.id, is_read=False, is_deleted=False)
+            .count()
+        )
+        return jsonify({"ok": True, "deleted_id": int(notif.id), "unread_count": int(unread_count or 0)})
+    return redirect(url_for("clientes.notificaciones_list"))
+
+
+_CLIENTE_VISIBLE_MATCH_STATUS = ('enviada', 'vista', 'seleccionada')
 _MATCH_STATUS_LABELS = {
     'enviada': 'Enviada',
     'vista': 'Vista',
@@ -1483,11 +1634,32 @@ def solicitud_candidatas(solicitud_id):
         .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
         .all()
     )
-    cards = [_candidate_public_payload(sc) for sc in items]
+    items = [sc for sc in items if getattr(sc, "status", None) in _CLIENTE_VISIBLE_MATCH_STATUS]
+    assigned_card = None
+    if getattr(solicitud, "candidata_id", None):
+        assigned_sc = None
+        for sc in items:
+            if int(getattr(sc, "candidata_id", 0) or 0) == int(solicitud.candidata_id):
+                assigned_sc = sc
+                break
+        if assigned_sc is None and getattr(solicitud, "candidata", None):
+            fallback_sc = SolicitudCandidata()
+            fallback_sc.id = 0
+            fallback_sc.candidata_id = solicitud.candidata_id
+            fallback_sc.score_snapshot = 0
+            fallback_sc.status = "seleccionada"
+            fallback_sc.breakdown_snapshot = {}
+            fallback_sc.candidata = solicitud.candidata
+            assigned_sc = fallback_sc
+        if assigned_sc is not None:
+            assigned_card = _candidate_public_payload(assigned_sc)
+
+    cards = [] if assigned_card else [_candidate_public_payload(sc) for sc in items]
     return render_template(
         'clientes/solicitud_candidatas.html',
         solicitud=solicitud,
         cards=cards,
+        assigned_card=assigned_card,
     )
 
 
@@ -1537,6 +1709,13 @@ def solicitar_entrevista_whatsapp(solicitud_id, sc_id):
 def descartar_candidata_enviada(solicitud_id, sc_id):
     solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
     sc.status = 'descartada'
+    snapshot = sc.breakdown_snapshot if isinstance(sc.breakdown_snapshot, dict) else {}
+    snapshot["client_action"] = "rechazada"
+    snapshot["client_action_at"] = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    reason = (request.form.get("client_reason") or "").strip()
+    if reason:
+        snapshot["client_reason"] = reason[:500]
+    sc.breakdown_snapshot = snapshot
     db.session.commit()
     flash('Candidata descartada.', 'info')
     return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))

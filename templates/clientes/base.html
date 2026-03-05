@@ -31,6 +31,7 @@
   <link href="{{ url_for('static', filename='clientes/css/clientes.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='clientes/css/clientes_components.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='clientes/css/clientes_pages.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/client_notifications.css') }}" rel="stylesheet">
 
   <!-- Hotfix UI: evita que el CSS del portal pise estilos de Bootstrap en la navbar/dropdown -->
   <style>
@@ -308,6 +309,34 @@
   {% endif %}
 
   {% if show_shell %}
+  <button
+    type="button"
+    class="client-bell-fab"
+    id="clientNotifBell"
+    aria-label="Abrir notificaciones"
+    data-unread="{{ notif_unread_count or 0 }}"
+  >
+    <i class="bi bi-bell-fill"></i>
+    <span class="client-bell-badge {% if not notif_unread_count %}d-none{% endif %}" id="clientNotifBadge">
+      {{ notif_unread_count or 0 }}
+    </span>
+  </button>
+
+  <div class="client-notif-overlay d-none" id="clientNotifOverlay" aria-hidden="true">
+    <div class="client-notif-modal" role="dialog" aria-modal="true" aria-labelledby="clientNotifTitle">
+      <div class="client-notif-header">
+        <h2 class="h6 mb-0" id="clientNotifTitle">Notificaciones</h2>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="clientNotifClose" aria-label="Cerrar">Cerrar</button>
+      </div>
+      <div class="client-notif-body" id="clientNotifList">
+        <div class="text-muted small py-3">Cargando notificaciones...</div>
+      </div>
+      <div class="client-notif-footer">
+        <span class="small text-muted">Gestiona tus notificaciones desde esta ventana.</span>
+      </div>
+    </div>
+  </div>
+
   <!-- FAB WhatsApp -->
   <a class="fab-whatsapp" href="https://wa.me/18094296892?text=Hola%2C%20necesito%20ayuda%20con%20mi%20servicio"
      target="_blank" rel="noopener" aria-label="Chatear por WhatsApp">
@@ -338,6 +367,7 @@
 
   <!-- JS del portal de clientes (aislado del admin) -->
   <script src="{{ url_for('static', filename='clientes/js/clientes.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/client_notifications.js') }}"></script>
 
   {% if show_shell %}
   <script>
