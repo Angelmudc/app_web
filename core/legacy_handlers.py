@@ -61,6 +61,10 @@ from forms import LlamadaCandidataForm
 # Utils locales
 from utils_codigo import generar_codigo_unico  # tu función optimizada
 from utils.upload_security import validate_upload_file
+from utils.cedula_normalizer import (
+    normalize_cedula_for_compare,
+    normalize_cedula_for_store,
+)
 from utils.compat_engine import (
     ENGINE_VERSION,
     HORARIO_OPTIONS,
@@ -635,6 +639,42 @@ def normalize_cedula(raw: str) -> Optional[str]:
     return f"{digits[:3]}-{digits[3:9]}-{digits[9:]}"
 
 
+def _find_candidata_by_cedula_digits(digits_input: str, exclude_fila: Optional[int] = None):
+    """Busca candidata por cédula comparando solo dígitos.
+
+    No toca schema ni datos existentes.
+    """
+    digits = (digits_input or "").strip()
+    if not digits:
+        return None
+
+    query = Candidata.query
+    if exclude_fila is not None:
+        query = query.filter(Candidata.fila != int(exclude_fila))
+
+    try:
+        clean_expr = func.regexp_replace(Candidata.cedula, r'[^0-9]', '', 'g')
+        return query.filter(clean_expr == digits).first()
+    except Exception:
+        try:
+            clean_expr = Candidata.cedula
+            for token in ("-", " ", "/", ".", ",", ":", ";", "_", "\\"):
+                clean_expr = func.replace(clean_expr, token, "")
+            return query.filter(clean_expr == digits).first()
+        except Exception:
+            return None
+
+
+def _cedula_duplicate_message(existing) -> str:
+    estado = (getattr(existing, "estado", None) or "").strip().lower()
+    if estado == "descalificada":
+        return (
+            "Esta cédula ya pertenece a una candidata DEScalificada. "
+            "No se puede volver a inscribir. Contacte a la agencia."
+        )
+    return "Esta cédula ya está registrada en el sistema. No se puede crear otra candidata con la misma cédula."
+
+
 def normalize_nombre(raw: str) -> str:
     if not raw:
         return ''
@@ -1032,7 +1072,7 @@ def registro_interno():
     ref_lab      = (request.form.get('contactos_referencias_laborales') or '').strip()[:500]
     ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
     acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
-    cedula_raw   = (request.form.get('cedula') or '').strip()[:20]
+    cedula_raw   = (request.form.get('cedula') or '').strip()[:50]
 
     # --- Validaciones mínimas y mensajes claros ---
     faltantes = []
@@ -1068,10 +1108,10 @@ def registro_interno():
         faltantes.append('Edad (número)')
         edad_num = None
 
-    # Usa el normalizador existente en app.py
-    cedula_norm = normalize_cedula(cedula_raw)
-    if not cedula_norm:
-        flash('📛 Cédula inválida. Debe contener 11 dígitos.', 'warning')
+    # Validación de cédula por dígitos (solo para comparar duplicados)
+    cedula_digits_input = normalize_cedula_for_compare(cedula_raw)
+    if not cedula_digits_input:
+        flash('📛 Cédula requerida.', 'warning')
         return render_template('registro_interno.html'), 400
 
     if faltantes:
@@ -1083,9 +1123,9 @@ def registro_interno():
     sabe_planchar = (planchar_raw == 'si')
     acepta_pct    = (acepta_raw == '1')
 
-    # --- Comprobación de duplicado por cédula (pre-check) ---
+    # --- Comprobación de duplicado por cédula (solo dígitos) ---
     try:
-        dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
+        dup = _find_candidata_by_cedula_digits(cedula_digits_input)
     except OperationalError:
         # reconecta/dispose y reintenta una vez
         try:
@@ -1096,10 +1136,16 @@ def registro_interno():
             _get_engine().dispose()
         except Exception:
             pass
-        dup = Candidata.query.filter(Candidata.cedula == cedula_norm).first()
+        dup = _find_candidata_by_cedula_digits(cedula_digits_input)
 
     if dup:
-        flash('⚠️ Ya existe una candidata registrada con esta cédula.', 'warning')
+        flash(_cedula_duplicate_message(dup), 'warning')
+        return render_template('registro_interno.html'), 400
+
+    # Guardado normalizado SOLO para altas nuevas
+    cedula_store = normalize_cedula_for_store(cedula_raw)
+    if not cedula_store:
+        flash('📛 Cédula requerida.', 'warning')
         return render_template('registro_interno.html'), 400
 
     usuario = (session.get('usuario') or 'secretaria').strip()[:64]
@@ -1120,7 +1166,7 @@ def registro_interno():
         contactos_referencias_laborales = ref_lab,
         referencias_familiares_detalle  = ref_fam,
         acepta_porcentaje_sueldo        = acepta_pct,
-        cedula                          = cedula_norm,
+        cedula                          = cedula_store,
         medio_inscripcion               = 'Oficina',
         estado                          = 'en_proceso',
         fecha_cambio_estado             = datetime.utcnow(),
@@ -1150,7 +1196,7 @@ def registro_interno():
 
         except IntegrityError:
             db.session.rollback()
-            flash('⚠️ Ya existe una candidata registrada con esta cédula.', 'warning')
+            flash('⚠️ Esta cédula ya está registrada en el sistema. No se puede crear otra candidata con la misma cédula.', 'warning')
             return render_template('registro_interno.html'), 400
 
         except Exception:
@@ -1160,7 +1206,7 @@ def registro_interno():
 
     except IntegrityError:
         db.session.rollback()
-        flash('⚠️ Ya existe una candidata registrada con esta cédula.', 'warning')
+        flash('⚠️ Esta cédula ya está registrada en el sistema. No se puede crear otra candidata con la misma cédula.', 'warning')
         return render_template('registro_interno.html'), 400
 
     except SQLAlchemyError as e:
@@ -2021,7 +2067,37 @@ def buscar_candidata():
                 obj.areas_experiencia                = (request.form.get('areas_experiencia') or '').strip()[:200] or obj.areas_experiencia
                 obj.contactos_referencias_laborales  = (request.form.get('contactos_referencias_laborales') or '').strip()[:250] or obj.contactos_referencias_laborales
                 obj.referencias_familiares_detalle   = (request.form.get('referencias_familiares_detalle') or '').strip()[:250] or obj.referencias_familiares_detalle
-                obj.cedula                           = (request.form.get('cedula') or '').strip()[:20] or obj.cedula
+                cedula_edit_raw = (request.form.get('cedula') or '').strip()[:50]
+                if cedula_edit_raw:
+                    cedula_edit_digits = normalize_cedula_for_compare(cedula_edit_raw)
+                    if not cedula_edit_digits:
+                        mensaje = "❌ Cédula inválida."
+                        candidata = obj
+                        return render_template(
+                            'buscar.html',
+                            busqueda=busqueda,
+                            resultados=resultados,
+                            candidata=candidata,
+                            mensaje=mensaje
+                        )
+
+                    dup = _find_candidata_by_cedula_digits(
+                        cedula_edit_digits,
+                        exclude_fila=getattr(obj, 'fila', None)
+                    )
+                    if dup:
+                        mensaje = _cedula_duplicate_message(dup)
+                        candidata = obj
+                        return render_template(
+                            'buscar.html',
+                            busqueda=busqueda,
+                            resultados=resultados,
+                            candidata=candidata,
+                            mensaje=mensaje
+                        )
+
+                    # En edición no se reescribe formato automáticamente.
+                    obj.cedula = cedula_edit_raw
                 # ⚠️ IMPORTANTE:
                 # Los campos booleanos NO deben resetearse a False si el formulario no los trae.
                 # (Checkboxes no marcados a veces NO se envían; eso estaba borrando valores.)
