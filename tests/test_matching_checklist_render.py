@@ -35,7 +35,6 @@ class _DummyCandidate:
         self.perfil = b"perfil-ok"
         self.cedula1 = b"ced1-ok"
         self.cedula2 = b"ced2-ok"
-        self.foto_perfil = b"foto-ok"
 
 
 class _SolicitudQuery:
@@ -98,9 +97,8 @@ class MatchingChecklistRenderTest(unittest.TestCase):
                                 "perfil": True,
                                 "cedula1": True,
                                 "cedula2": True,
-                                "foto_perfil": True,
                             },
-                            "required": {"foto_perfil": True},
+                            "required": {},
                         },
                     }
                 },
@@ -127,7 +125,6 @@ class MatchingChecklistRenderTest(unittest.TestCase):
             "Perfil:",
             "Cédula 1:",
             "Cédula 2:",
-            "Foto perfil:",
         ):
             self.assertIn(label, html)
 

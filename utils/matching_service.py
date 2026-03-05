@@ -161,7 +161,6 @@ def _build_base_query(base_query=None):
             Candidata.perfil,
             Candidata.cedula1,
             Candidata.cedula2,
-            Candidata.foto_perfil,
             Candidata.direccion_completa,
             Candidata.rutas_cercanas,
             Candidata.modalidad_trabajo_preferida,

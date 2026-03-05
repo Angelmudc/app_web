@@ -8,7 +8,6 @@ from utils.guards import candidata_esta_descalificada
 
 _READY_BASE_STATES = {"lista_para_trabajar", "inscrita"}
 _NOT_READY_STATES = {"en_proceso", "proceso_inscripcion", "inscrita_incompleta"}
-_FOTO_REQUIRED_FOR_READY = False
 
 
 def _has_blob(value: Any) -> bool:
@@ -55,21 +54,18 @@ def candidata_docs_complete(candidata) -> Dict[str, Any]:
     perfil = _has_blob(getattr(candidata, "perfil", None))
     cedula1 = _has_blob(getattr(candidata, "cedula1", None))
     cedula2 = _has_blob(getattr(candidata, "cedula2", None))
-    foto_perfil = _has_blob(getattr(candidata, "foto_perfil", None))
 
     required = {
         "depuracion": True,
         "perfil": True,
         "cedula1": True,
         "cedula2": True,
-        "foto_perfil": bool(_FOTO_REQUIRED_FOR_READY),
     }
     flags = {
         "depuracion": depuracion,
         "perfil": perfil,
         "cedula1": cedula1,
         "cedula2": cedula2,
-        "foto_perfil": foto_perfil,
     }
 
     missing_required = [
@@ -77,16 +73,12 @@ def candidata_docs_complete(candidata) -> Dict[str, Any]:
         for key, req in required.items()
         if req and not flags.get(key, False)
     ]
-    warnings = []
-    if not required["foto_perfil"] and not flags["foto_perfil"]:
-        warnings.append("foto_perfil")
-
     return {
         "complete": len(missing_required) == 0,
         "required": required,
         "flags": flags,
         "missing_required": missing_required,
-        "warnings": warnings,
+        "warnings": [],
     }
 
 

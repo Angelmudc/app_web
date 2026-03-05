@@ -31,7 +31,6 @@
       {% set ready_check = (item.breakdown_snapshot.ready_check if item.breakdown_snapshot is defined and item.breakdown_snapshot and item.breakdown_snapshot.ready_check is defined else {}) %}
       {% set docs_check = (ready_check.docs if ready_check and ready_check.docs is defined else {}) %}
       {% set docs_flags = (docs_check.flags if docs_check and docs_check.flags is defined else {}) %}
-      {% set docs_required = (docs_check.required if docs_check and docs_check.required is defined else {}) %}
       {% set is_ready = (ready_check.ready if ready_check and ready_check.ready is defined else true) %}
       {% set ready_reasons = (ready_check.reasons if ready_check and ready_check.reasons is defined else []) %}
       <div class="col-12 col-lg-6">
@@ -122,16 +121,6 @@
                 <li>Perfil: {% if docs_flags.get('perfil') %}✅{% else %}❌{% endif %}</li>
                 <li>Cédula 1: {% if docs_flags.get('cedula1') %}✅{% else %}❌{% endif %}</li>
                 <li>Cédula 2: {% if docs_flags.get('cedula2') %}✅{% else %}❌{% endif %}</li>
-                <li>
-                  Foto perfil:
-                  {% if docs_flags.get('foto_perfil') %}
-                    ✅
-                  {% elif docs_required.get('foto_perfil') %}
-                    ❌
-                  {% else %}
-                    ⚠️
-                  {% endif %}
-                </li>
               </ul>
             </div>
 
