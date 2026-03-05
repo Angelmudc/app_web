@@ -31,6 +31,13 @@ class _DummyCandidata:
         self.numero_telefono = "8090000000"
         self.codigo = f"C-{fila}"
         self.estado = "lista_para_trabajar"
+        self.entrevista = "ok"
+        self.entrevistas_nuevas = []
+        self.depuracion = b"dep"
+        self.perfil = b"perfil"
+        self.cedula1 = b"c1"
+        self.cedula2 = b"c2"
+        self.foto_perfil = None
 
 
 class _SolicitudQuery:

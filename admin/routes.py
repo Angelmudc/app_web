@@ -36,6 +36,7 @@ from utils.guards import (
     candidata_esta_descalificada,
     candidatas_activas_filter,
 )
+from utils.candidata_readiness import candidata_is_ready_to_send
 from utils.matching_service import rank_candidates
 from utils.funciones_formatter import format_funciones
 from utils.staff_auth import (
@@ -4745,6 +4746,21 @@ def matching_enviar_candidatas(solicitud_id: int):
             ),
         )
 
+    selected_not_ready = {}
+    for c in Candidata.query.filter(Candidata.fila.in_(candidata_ids)).all():
+        ready_ok, reasons = candidata_is_ready_to_send(c)
+        if ready_ok:
+            continue
+        selected_not_ready[int(c.fila)] = [
+            r for r in (reasons or []) if not str(r).lower().startswith("advertencia:")
+        ]
+    if selected_not_ready:
+        sample_id = sorted(selected_not_ready.keys())[0]
+        reasons = selected_not_ready.get(sample_id) or ["Faltan requisitos de completitud."]
+        details = "; ".join(reasons[:4])
+        flash(f"Esta candidata no está lista para enviar: {details}", "danger")
+        abort(400, description=f"Esta candidata no está lista para enviar: {details}")
+
     ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
     created_by = _matching_created_by()
     processed = 0
@@ -4910,6 +4926,84 @@ def reactivar_candidata(candidata_id: int):
     except Exception:
         db.session.rollback()
         flash("No se pudo reactivar la candidata.", "danger")
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/candidatas/<int:candidata_id>/marcar_trabajando', methods=['POST'])
+@login_required
+@staff_required
+def marcar_candidata_trabajando(candidata_id: int):
+    cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
+    next_url = (request.form.get("next") or "").strip()
+    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+
+    if candidata_esta_descalificada(cand):
+        flash("No se puede marcar como trabajando una candidata descalificada.", "danger")
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    cand.estado = "trabajando"
+    if hasattr(cand, "fecha_cambio_estado"):
+        cand.fecha_cambio_estado = datetime.utcnow()
+    if hasattr(cand, "usuario_cambio_estado"):
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        cand.usuario_cambio_estado = str(actor)[:100]
+
+    try:
+        db.session.commit()
+        flash("Candidata marcada como trabajando.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo actualizar el estado a trabajando.", "danger")
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/candidatas/<int:candidata_id>/marcar_lista_para_trabajar', methods=['POST'])
+@login_required
+@staff_required
+def marcar_candidata_lista_para_trabajar(candidata_id: int):
+    cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
+    next_url = (request.form.get("next") or "").strip()
+    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+
+    if candidata_esta_descalificada(cand):
+        flash("No se puede marcar como lista para trabajar una candidata descalificada.", "danger")
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    ready_ok, reasons = candidata_is_ready_to_send(cand)
+    blocking = [r for r in (reasons or []) if not str(r).lower().startswith("advertencia:")]
+    if not ready_ok or blocking:
+        flash(
+            "No se puede pasar a lista para trabajar. Falta: "
+            + "; ".join(blocking[:4]),
+            "warning",
+        )
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    cand.estado = "lista_para_trabajar"
+    if hasattr(cand, "fecha_cambio_estado"):
+        cand.fecha_cambio_estado = datetime.utcnow()
+    if hasattr(cand, "usuario_cambio_estado"):
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        cand.usuario_cambio_estado = str(actor)[:100]
+
+    try:
+        db.session.commit()
+        flash("Candidata marcada como lista para trabajar.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo actualizar el estado a lista para trabajar.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 

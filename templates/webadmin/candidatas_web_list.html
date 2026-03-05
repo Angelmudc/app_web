@@ -136,7 +136,7 @@
               <th>Estado interno</th>
               <th>Estado web</th>
               <th>Visible</th>
-              <th style="width: 170px;" class="text-center">Acción</th>
+              <th style="width: 260px;" class="text-center">Acción</th>
             </tr>
           </thead>
           <tbody>
@@ -181,11 +181,20 @@
                 {% endif %}
               </td>
               <td class="text-center">
-                <a
-                  href="{{ url_for('webadmin.editar_candidata_web', fila=cand.fila) }}"
-                  class="btn btn-sm btn-outline-primary">
-                  <i class="fa-solid fa-pen-to-square me-1"></i> Configurar web
-                </a>
+                <div class="d-flex justify-content-center gap-2 flex-wrap">
+                  <a
+                    href="{{ url_for('webadmin.editar_candidata_web', fila=cand.fila) }}"
+                    class="btn btn-sm btn-outline-primary">
+                    <i class="fa-solid fa-pen-to-square me-1"></i> Configurar web
+                  </a>
+                  <form method="post" action="{{ url_for('webadmin.marcar_lista_para_trabajar_web', fila=cand.fila) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="q" value="{{ q or '' }}">
+                    <button type="submit" class="btn btn-sm btn-outline-success">
+                      Pasar a Lista para trabajar
+                    </button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

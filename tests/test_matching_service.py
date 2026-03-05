@@ -30,6 +30,13 @@ class _DummyCandidate:
         self.numero_telefono = "8090000000"
         self.codigo = f"C-{fila}"
         self.estado = "lista_para_trabajar"
+        self.entrevista = "entrevista ok"
+        self.entrevistas_nuevas = []
+        self.depuracion = b"dep"
+        self.perfil = b"perfil"
+        self.cedula1 = b"c1"
+        self.cedula2 = b"c2"
+        self.foto_perfil = None
         self.direccion_completa = "Avenida Nueva Stgo Villa Maria"
         self.rutas_cercanas = "Cienfuegos"
         self.modalidad_trabajo_preferida = "salida diaria"

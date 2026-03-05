@@ -76,6 +76,7 @@ from utils.compat_engine import (
     normalize_mascotas_token,
 )
 from utils.guards import assert_candidata_no_descalificada, candidatas_activas_filter
+from utils.candidata_readiness import maybe_update_estado_por_completitud
 from utils.staff_auth import (
     admin_legacy_enabled,
     breakglass_allowed_ip,
@@ -1200,7 +1201,10 @@ def list_candidatas():
     per_page = min(200, max(1, request.args.get('per_page', default=80, type=int)))
 
     try:
-        base = Candidata.query
+        base = Candidata.query.filter(
+            candidatas_activas_filter(Candidata),
+            Candidata.estado != 'trabajando',
+        )
         if q:
             base = apply_search_to_candidata_query(base, q)
 
@@ -1493,6 +1497,17 @@ def entrevista_nueva_db(fila, tipo):
                 _safe_setattr(r, 'creada_en', datetime.utcnow())
                 db.session.add(r)
 
+            try:
+                actor = (
+                    getattr(current_user, "username", None)
+                    or getattr(current_user, "id", None)
+                    or session.get("usuario")
+                    or "sistema"
+                )
+                maybe_update_estado_por_completitud(candidata, actor=str(actor))
+            except Exception:
+                pass
+
             db.session.commit()
             flash("✅ Entrevista guardada.", "success")
             return redirect(url_for('entrevistas_de_candidata', fila=fila))
@@ -1595,6 +1610,16 @@ def entrevista_editar_db(entrevista_id):
             _safe_setattr(entrevista, 'actualizada_en', datetime.utcnow())
             _safe_setattr(entrevista, 'estado', 'completa')
             _safe_setattr(entrevista, 'tipo', tipo)
+            try:
+                actor = (
+                    getattr(current_user, "username", None)
+                    or getattr(current_user, "id", None)
+                    or session.get("usuario")
+                    or "sistema"
+                )
+                maybe_update_estado_por_completitud(candidata, actor=str(actor))
+            except Exception:
+                pass
 
             db.session.commit()
             flash("✅ Entrevista actualizada.", "success")
@@ -2301,6 +2326,16 @@ def inscripcion():
 
             obj.fecha_cambio_estado    = datetime.utcnow()
             obj.usuario_cambio_estado  = session.get('usuario', 'desconocido')[:64]
+            try:
+                actor = (
+                    getattr(current_user, "username", None)
+                    or getattr(current_user, "id", None)
+                    or session.get("usuario")
+                    or "sistema"
+                )
+                maybe_update_estado_por_completitud(obj, actor=str(actor))
+            except Exception:
+                pass
 
             try:
                 db.session.commit()
@@ -3013,6 +3048,17 @@ def subir_fotos():
 
                 # Guardar binario
                 setattr(candidata, campo, data)
+
+            try:
+                actor = (
+                    getattr(current_user, "username", None)
+                    or getattr(current_user, "id", None)
+                    or session.get("usuario")
+                    or "sistema"
+                )
+                maybe_update_estado_por_completitud(candidata, actor=str(actor))
+            except Exception:
+                pass
 
             db.session.commit()
             flash("✅ Imágenes subidas/actualizadas correctamente.", "success")
@@ -4652,17 +4698,14 @@ def finalizar_proceso():
         if not _save_grupos_empleo_safe(candidata, grupos_sel):
             flash("No se encontró columna para guardar los grupos (grupos_empleo / grupos / grupos_empleo_json).", "warning")
 
-    # Estado si están los 3 archivos
     try:
-        tiene_foto = bool(getattr(candidata, 'foto_perfil', None) or getattr(candidata, 'perfil', None))
-        tiene_ced1 = bool(getattr(candidata, 'cedula1', None))
-        tiene_ced2 = bool(getattr(candidata, 'cedula2', None))
-        if tiene_foto and tiene_ced1 and tiene_ced2 and hasattr(candidata, 'estado'):
-            candidata.estado = 'lista_para_trabajar'
-            if hasattr(candidata, 'fecha_cambio_estado'):
-                candidata.fecha_cambio_estado = datetime.utcnow()
-            if hasattr(candidata, 'usuario_cambio_estado'):
-                candidata.usuario_cambio_estado = session.get('usuario', 'sistema')
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        maybe_update_estado_por_completitud(candidata, actor=str(actor))
     except Exception:
         pass
 

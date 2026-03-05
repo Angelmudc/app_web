@@ -9,6 +9,7 @@ from unittest.mock import patch
 from werkzeug.exceptions import NotFound
 
 from app import app as flask_app
+from config_app import cache
 import admin.routes as admin_routes
 import clientes.routes as clientes_routes
 import core.legacy_handlers as legacy_handlers
@@ -190,6 +191,10 @@ class DescalificacionFlowTest(unittest.TestCase):
         flask_app.config["WTF_CSRF_ENABLED"] = False
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+        try:
+            cache.clear()
+        except Exception:
+            pass
 
     def _login_admin(self):
         resp = self.client.post(

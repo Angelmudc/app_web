@@ -38,6 +38,7 @@ def roles_required(*roles):
 
 from . import webadmin_bp
 from models import Candidata, CandidataWeb, db
+from utils.candidata_readiness import candidata_is_ready_to_send
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 
 # Roles permitidos para entrar a WEBADMIN
@@ -205,7 +206,10 @@ def listar_candidatas_web():
     query = (
         db.session.query(Candidata, CandidataWeb)
         .outerjoin(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
-        .filter(candidatas_activas_filter(Candidata))
+        .filter(
+            candidatas_activas_filter(Candidata),
+            Candidata.estado != "trabajando",
+        )
     )
 
     # Si no hay búsqueda, NO cargamos candidatas (solo mostramos la barra de búsqueda)
@@ -383,3 +387,41 @@ def editar_candidata_web(fila):
         cand=cand,
         ficha=ficha,
     )
+
+
+@webadmin_bp.route('/candidatas_web/<int:fila>/marcar_lista_para_trabajar', methods=['POST'])
+@roles_required(*WEBADMIN_ALLOWED_ROLES)
+def marcar_lista_para_trabajar_web(fila: int):
+    cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    q = (request.form.get("q") or request.args.get("q") or "").strip()
+    next_url = url_for("webadmin.listar_candidatas_web", q=q) if q else url_for("webadmin.listar_candidatas_web")
+
+    if candidata_esta_descalificada(cand):
+        flash("No se puede pasar a lista: candidata descalificada.", "warning")
+        return redirect(next_url)
+
+    ready_ok, reasons = candidata_is_ready_to_send(cand)
+    blocking = [r for r in (reasons or []) if not str(r).lower().startswith("advertencia:")]
+    if not ready_ok or blocking:
+        flash("No se puede pasar a lista para trabajar. Falta: " + "; ".join(blocking[:4]), "warning")
+        return redirect(next_url)
+
+    cand.estado = "lista_para_trabajar"
+    if hasattr(cand, "fecha_cambio_estado"):
+        cand.fecha_cambio_estado = datetime.utcnow()
+    if hasattr(cand, "usuario_cambio_estado"):
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        cand.usuario_cambio_estado = str(actor)[:100]
+
+    try:
+        db.session.commit()
+        flash("Candidata marcada como lista para trabajar.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo actualizar el estado.", "danger")
+    return redirect(next_url)

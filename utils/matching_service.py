@@ -12,6 +12,7 @@ from sqlalchemy.orm import load_only
 from models import Candidata
 from utils.age_normalizer import parse_candidata_age_int, parse_solicitud_age_rules
 from utils.compat_engine import compute_match, normalize_horarios_tokens
+from utils.candidata_readiness import candidata_docs_complete, candidata_has_interview, candidata_is_ready_to_send
 from utils.guards import candidatas_activas_filter
 from utils.modality_normalizer import evaluate_modalidad_match
 from utils.text_normalizer import infer_city, location_tokens, normalize_text, skill_tokens, tokens
@@ -155,6 +156,12 @@ def _build_base_query(base_query=None):
             Candidata.cedula,
             Candidata.codigo,
             Candidata.estado,
+            Candidata.entrevista,
+            Candidata.depuracion,
+            Candidata.perfil,
+            Candidata.cedula1,
+            Candidata.cedula2,
+            Candidata.foto_perfil,
             Candidata.direccion_completa,
             Candidata.rutas_cercanas,
             Candidata.modalidad_trabajo_preferida,
@@ -190,7 +197,10 @@ def candidate_query_prefilter(solicitud, base_query=None):
 
     base = _build_base_query(base_query)
 
-    q_primary = base.filter(Candidata.estado == "lista_para_trabajar")
+    q_primary = base.filter(
+        Candidata.estado == "lista_para_trabajar",
+        Candidata.estado != "trabajando",
+    )
     if city:
         q_primary = _apply_city_filter(q_primary, city)
 
@@ -204,7 +214,10 @@ def candidate_query_prefilter(solicitud, base_query=None):
         )
         return primary_rows
 
-    q_fallback = base.filter(Candidata.estado.in_(("lista_para_trabajar", "inscrita")))
+    q_fallback = base.filter(
+        Candidata.estado.in_(("lista_para_trabajar", "inscrita")),
+        Candidata.estado != "trabajando",
+    )
     if city:
         q_fallback = _apply_city_filter(q_fallback, city)
 
@@ -454,6 +467,9 @@ def _candidate_history_flags(solicitud, cand) -> tuple[bool, bool]:
 
 def _score_candidate(solicitud, cand) -> Dict[str, Any]:
     sol_profile = build_solicitud_profile(solicitud)
+    ready_ok, ready_reasons = candidata_is_ready_to_send(cand)
+    docs = candidata_docs_complete(cand)
+    has_interview = candidata_has_interview(cand)
 
     ubicacion_pts, loc_info = _location_component(sol_profile, cand)
     modalidad_eval = _modalidad_component(sol_profile, cand)
@@ -559,6 +575,13 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
         "modalidad_reason": modalidad_eval["modalidad_reason"],
         "blocked_other_client": bool(blocked_other_client),
         "rejected_same_client": bool(rejected_same_client),
+        "ready_check": {
+            "ready": bool(ready_ok),
+            "reasons": list(ready_reasons),
+            "has_code": bool((getattr(cand, "codigo", None) or "").strip()),
+            "has_interview": bool(has_interview),
+            "docs": docs,
+        },
     }
 
     return {
@@ -587,7 +610,24 @@ def rank_candidates(
     if prefilter_limit:
         pool = list(pool)[: max(1, min(int(prefilter_limit), DEFAULT_PREFILTER_LIMIT))]
 
-    ranked = [_score_candidate(solicitud, cand) for cand in pool]
+    excluded_not_ready: List[Dict[str, Any]] = []
+    ready_pool: List[Candidata] = []
+    for cand in pool:
+        ready_ok, reasons = candidata_is_ready_to_send(cand)
+        if ready_ok:
+            ready_pool.append(cand)
+            continue
+        excluded_not_ready.append(
+            {
+                "fila": getattr(cand, "fila", None),
+                "ready_check": {
+                    "ready": False,
+                    "reasons": list(reasons),
+                },
+            }
+        )
+
+    ranked = [_score_candidate(solicitud, cand) for cand in ready_pool]
     ranked.sort(
         key=lambda item: (
             int(item.get("score") or 0),
@@ -598,7 +638,13 @@ def rank_candidates(
     )
 
     dt_ms = int((perf_counter() - t0) * 1000)
-    logger.info("matching.rank pool_size=%s dt_ms=%s", len(pool), dt_ms)
+    logger.info(
+        "matching.rank pool_size=%s ready_pool=%s excluded_not_ready=%s dt_ms=%s",
+        len(pool),
+        len(ready_pool),
+        len(excluded_not_ready),
+        dt_ms,
+    )
 
     sliced = ranked[: max(1, int(top_k))]
     for row in sliced:

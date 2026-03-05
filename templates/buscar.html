@@ -158,11 +158,13 @@
     <input type="hidden" name="busqueda" value="{{ busqueda or '' }}">
     <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
     <input type="hidden" name="guardar_edicion" value="1">
+    <input type="hidden" name="next" value="{{ request.full_path }}">
 
     {# --- TOOLBAR SUPERIOR --- #}
     {% set role_cur = (current_user.role if current_user and current_user.is_authenticated and current_user.role is defined else '') %}
     {% set role_sess = session.get('role', '') %}
     {% set es_admin = ((role_cur|string|lower) == 'admin') or ((role_sess|string|lower) == 'admin') %}
+    {% set es_staff = ((role_cur|string|lower) in ['admin', 'secretaria']) or ((role_sess|string|lower) in ['admin', 'secretaria']) %}
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
       <a href="{{ url_for('buscar_candidata', busqueda=busqueda) }}" class="btn btn-outline-secondary">
         <i class="fa-solid fa-arrow-left-long me-1"></i> Volver
@@ -185,6 +187,34 @@
           <div class="small mt-1">Motivo: {{ candidata.nota_descalificacion }}</div>
         {% endif %}
       </div>
+    {% endif %}
+
+    {% if es_staff %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <button
+            type="submit"
+            class="btn btn-outline-dark"
+            formaction="{{ url_for('admin.marcar_candidata_trabajando', candidata_id=candidata.fila) }}"
+            formmethod="post"
+            formnovalidate
+          >
+            Marcar como TRABAJANDO
+          </button>
+          <button
+            type="submit"
+            class="btn btn-outline-success"
+            formaction="{{ url_for('admin.marcar_candidata_lista_para_trabajar', candidata_id=candidata.fila) }}"
+            formmethod="post"
+            formnovalidate
+          >
+            Marcar como LISTA PARA TRABAJAR
+          </button>
+          <span class="text-muted small">La acción a lista valida entrevista, código y documentos.</span>
+        </div>
+      </div>
+    </div>
     {% endif %}
 
     {% if es_admin %}
