@@ -6,6 +6,7 @@
   const streamUrl = root.dataset.streamUrl || '';
   const logsUrl = root.dataset.logsUrl || '';
   const summaryUrl = root.dataset.summaryUrl || '';
+  const presenceUrl = root.dataset.presenceUrl || '';
   const presencePingUrl = root.dataset.presencePingUrl || '';
   const hasFilters = String(root.dataset.hasFilters || '0') === '1';
 
@@ -19,6 +20,7 @@
   let sse = null;
   let logsPollTimer = null;
   let summaryPollTimer = null;
+  let presencePollTimer = null;
   let presencePingTimer = null;
 
   function setLiveStatus(isLive) {
@@ -106,7 +108,7 @@
         '<td>' + (p.username || '-') + ' <small class="text-muted">(' + (p.role || '-') + ')</small></td>',
         '<td><span class="badge ' + badge + '">' + String(p.status || '').toUpperCase() + '</span></td>',
         '<td><small>' + (p.current_path || '-') + '</small></td>',
-        '<td><small>' + (p.last_action_type || 'sin acciones registradas') + (p.last_action_summary ? ' — ' + p.last_action_summary : '') + '</small></td>',
+        '<td><small>' + (p.last_action_type || p.last_action_hint || 'sin acciones registradas') + (p.last_action_summary ? ' — ' + p.last_action_summary : '') + '</small></td>',
         '<td>' + (p.last_seen_seconds || 0) + 's</td>'
       ].join('');
       tbody.appendChild(tr);
@@ -128,7 +130,9 @@
     });
 
     updateTopList(summary.top || []);
-    updatePresenceTable(summary.presence || []);
+    if (Array.isArray(summary.presence)) {
+      updatePresenceTable(summary.presence);
+    }
   }
 
   async function fetchJson(url) {
@@ -156,6 +160,12 @@
     updateMetrics(data);
   }
 
+  async function pollPresence() {
+    if (paused || !presenceUrl) return;
+    const data = await fetchJson(presenceUrl);
+    updatePresenceTable((data && data.items) || []);
+  }
+
   function stopSSE() {
     if (sse) {
       sse.close();
@@ -166,8 +176,10 @@
   function stopPolling() {
     if (logsPollTimer) clearInterval(logsPollTimer);
     if (summaryPollTimer) clearInterval(summaryPollTimer);
+    if (presencePollTimer) clearInterval(presencePollTimer);
     logsPollTimer = null;
     summaryPollTimer = null;
+    presencePollTimer = null;
   }
 
   function startPolling() {
@@ -175,8 +187,10 @@
     setLiveStatus(true);
     pollLogs().catch(() => {});
     pollSummary().catch(() => {});
+    pollPresence().catch(() => {});
     logsPollTimer = setInterval(() => pollLogs().catch(() => {}), 4000);
     summaryPollTimer = setInterval(() => pollSummary().catch(() => {}), 10000);
+    presencePollTimer = setInterval(() => pollPresence().catch(() => {}), 10000);
   }
 
   function startSSE() {
@@ -197,6 +211,13 @@
       try {
         const data = JSON.parse(ev.data || '{}');
         updateMetrics(data);
+      } catch (_) {}
+    });
+
+    sse.addEventListener('presence', (ev) => {
+      try {
+        const data = JSON.parse(ev.data || '{}');
+        updatePresenceTable((data && data.items) || []);
       } catch (_) {}
     });
 

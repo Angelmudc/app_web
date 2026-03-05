@@ -66,6 +66,10 @@ from utils.staff_auth import (
     clear_breakglass_session,
 )
 from utils.audit_logger import log_action
+from utils.audit_entity import (
+    candidata_entity_meta,
+    log_candidata_action,
+)
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
@@ -1452,7 +1456,11 @@ def _parse_iso_utc(raw: str | None):
         return None
 
 
-def _touch_staff_presence(current_path: str | None = None, page_title: str | None = None) -> None:
+def _touch_staff_presence(
+    current_path: str | None = None,
+    page_title: str | None = None,
+    last_action_hint: str | None = None,
+) -> None:
     try:
         if not bool(session.get("is_admin_session")):
             return
@@ -1468,6 +1476,7 @@ def _touch_staff_presence(current_path: str | None = None, page_title: str | Non
             "role": (current_user.role or "").strip().lower(),
             "current_path": (current_path or request.path or "")[:255],
             "page_title": (page_title or request.endpoint or request.path or "")[:160],
+            "last_action_hint": (last_action_hint or "")[:120],
             "last_seen_at": now.isoformat(timespec="seconds") + "Z",
             "ip": (_client_ip() or "")[:64],
             "user_agent": (request.headers.get("User-Agent") or "")[:255],
@@ -1544,6 +1553,7 @@ def _presence_rows() -> list[dict]:
                 "current_path": p.get("current_path"),
                 "page_title": p.get("page_title"),
                 "last_seen_seconds": delta,
+                "last_action_hint": p.get("last_action_hint"),
                 "last_action_type": getattr(last, "action_type", None),
                 "last_action_summary": getattr(last, "summary", None),
                 "last_action_at": (getattr(last, "created_at", None).isoformat() + "Z") if getattr(last, "created_at", None) else None,
@@ -1556,6 +1566,10 @@ def _presence_rows() -> list[dict]:
 
 def _serialize_log_item(log: StaffAuditLog, username_map: dict[int, str] | None = None) -> dict:
     username_map = username_map or {}
+    metadata = dict(getattr(log, "metadata_json", {}) or {})
+    changes = getattr(log, "changes_json", None)
+    for key in ("telefono", "numero_telefono", "phone", "phone_number", "whatsapp"):
+        metadata.pop(key, None)
     return {
         "id": int(log.id),
         "created_at": log.created_at.isoformat() + "Z" if log.created_at else None,
@@ -1569,6 +1583,8 @@ def _serialize_log_item(log: StaffAuditLog, username_map: dict[int, str] | None 
         "route": log.route,
         "method": log.method,
         "success": bool(log.success),
+        "metadata_json": metadata,
+        "changes_json": changes,
     }
 
 
@@ -1590,7 +1606,10 @@ def _logs_filtered_query(args=None):
     if action_type:
         q = q.filter(StaffAuditLog.action_type == action_type)
     if entity_type:
-        q = q.filter(StaffAuditLog.entity_type == entity_type)
+        if entity_type.lower() == "candidata":
+            q = q.filter(func.lower(StaffAuditLog.entity_type).in_(["candidata"]))
+        else:
+            q = q.filter(StaffAuditLog.entity_type == entity_type)
     if date_from:
         q = q.filter(StaffAuditLog.created_at >= date_from)
     if date_to:
@@ -1666,6 +1685,46 @@ def _build_monitoreo_summary_payload() -> dict:
         ],
         "presence": _presence_rows(),
     }
+
+
+def _resolve_candidata_from_entity_id(entity_id: str):
+    val = (entity_id or "").strip()
+    if not val:
+        return None
+    cand = None
+    if val.isdigit():
+        cand = Candidata.query.filter_by(fila=int(val)).first()
+    if cand is None:
+        cand = Candidata.query.filter(Candidata.codigo == val).first()
+    return cand
+
+
+def _sanitize_monitoreo_metadata(meta: dict | None) -> dict:
+    out = dict(meta or {})
+    for key in ("telefono", "numero_telefono", "phone", "phone_number", "whatsapp"):
+        out.pop(key, None)
+    return out
+
+
+def _candidata_logs_query(candidata_entity_id: str, filter_tag: str = ""):
+    q = (
+        StaffAuditLog.query
+        .filter(func.lower(StaffAuditLog.entity_type) == "candidata")
+        .filter(StaffAuditLog.entity_id == str(candidata_entity_id))
+    )
+
+    tag = (filter_tag or "").strip().lower()
+    if tag == "edits":
+        q = q.filter(StaffAuditLog.action_type.in_(["CANDIDATA_EDIT"]))
+    elif tag == "entrevistas":
+        q = q.filter(StaffAuditLog.action_type.in_(["CANDIDATA_INTERVIEW_NEW_CREATE", "CANDIDATA_INTERVIEW_LEGACY_SAVE"]))
+    elif tag == "docs":
+        q = q.filter(StaffAuditLog.action_type.in_(["CANDIDATA_UPLOAD_DOCS"]))
+    elif tag == "matching":
+        q = q.filter(StaffAuditLog.action_type.in_(["MATCHING_SEND"]))
+    elif tag == "fallos":
+        q = q.filter(StaffAuditLog.success.is_(False))
+    return q
 
 
 @admin_bp.route('/monitoreo', methods=['GET'])
@@ -1758,6 +1817,70 @@ def monitoreo_logs():
     )
 
 
+@admin_bp.route('/monitoreo/candidatas', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_candidatas_search():
+    q = (request.args.get("q") or "").strip()[:128]
+    limit = min(50, max(1, request.args.get("limit", default=20, type=int)))
+    rows = []
+    if q:
+        like = f"%{q}%"
+        digits = re.sub(r"\D+", "", q)
+        filters = [
+            Candidata.nombre_completo.ilike(like),
+            Candidata.cedula.ilike(like),
+            Candidata.codigo.ilike(like),
+            cast(Candidata.fila, db.String).ilike(like),
+        ]
+        if digits:
+            filters.append(Candidata.cedula_norm_digits.ilike(f"%{digits}%"))
+        rows = (
+            Candidata.query
+            .filter(or_(*filters))
+            .order_by(Candidata.fila.desc())
+            .limit(limit)
+            .all()
+        )
+    return render_template(
+        "admin/monitoreo_candidatas_search.html",
+        q=q,
+        limit=limit,
+        rows=rows,
+    )
+
+
+@admin_bp.route('/monitoreo/candidatas/<candidata_entity_id>', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_candidata_historial(candidata_entity_id: str):
+    filter_tag = (request.args.get("filter") or "").strip().lower()
+    cand = _resolve_candidata_from_entity_id(candidata_entity_id)
+    logs = (
+        _candidata_logs_query(candidata_entity_id, filter_tag)
+        .order_by(StaffAuditLog.created_at.desc())
+        .limit(300)
+        .all()
+    )
+    actor_ids = sorted({int(l.actor_user_id) for l in logs if l.actor_user_id is not None})
+    username_map = {}
+    if actor_ids:
+        users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
+        username_map = {int(u.id): u.username for u in users}
+    items = [_serialize_log_item(log, username_map=username_map) for log in logs]
+    for item in items:
+        item["metadata_json"] = _sanitize_monitoreo_metadata(item.get("metadata_json"))
+    return render_template(
+        "admin/monitoreo_candidata_historial.html",
+        candidata_entity_id=str(candidata_entity_id),
+        candidata=cand,
+        candidata_meta=(candidata_entity_meta(cand) if cand else {}),
+        logs=items,
+        active_filter=filter_tag,
+        initial_last_id=max([i["id"] for i in items], default=0),
+    )
+
+
 @admin_bp.route('/monitoreo/secretarias/<int:user_id>', methods=['GET'])
 @login_required
 @admin_required
@@ -1832,6 +1955,40 @@ def monitoreo_summary_json():
     return jsonify(_build_monitoreo_summary_payload())
 
 
+@admin_bp.route('/monitoreo/presence.json', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_presence_json():
+    return jsonify({"items": _presence_rows()})
+
+
+@admin_bp.route('/monitoreo/candidatas/<candidata_entity_id>/logs.json', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_candidata_logs_json(candidata_entity_id: str):
+    since_id = request.args.get("since_id", type=int) or 0
+    limit = min(300, max(1, request.args.get("limit", default=50, type=int)))
+    filter_tag = (request.args.get("filter") or "").strip().lower()
+    query = _candidata_logs_query(candidata_entity_id, filter_tag)
+    if since_id > 0:
+        query = query.filter(StaffAuditLog.id > since_id)
+        logs = query.order_by(StaffAuditLog.id.asc()).limit(limit).all()
+    else:
+        logs = query.order_by(StaffAuditLog.id.desc()).limit(limit).all()
+        logs = list(reversed(logs))
+
+    actor_ids = sorted({int(l.actor_user_id) for l in logs if l.actor_user_id is not None})
+    username_map = {}
+    if actor_ids:
+        users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
+        username_map = {int(u.id): u.username for u in users}
+    items = [_serialize_log_item(log, username_map=username_map) for log in logs]
+    for item in items:
+        item["metadata_json"] = _sanitize_monitoreo_metadata(item.get("metadata_json"))
+    last_id = max([i["id"] for i in items], default=(since_id or 0))
+    return jsonify({"items": items, "last_id": int(last_id)})
+
+
 @admin_bp.route('/monitoreo/stream', methods=['GET'])
 @login_required
 @admin_required
@@ -1851,6 +2008,7 @@ def monitoreo_stream():
             last_id = int(max_id or 0)
 
         last_summary_at = 0.0
+        last_presence_at = 0.0
         last_heartbeat_at = 0.0
         while True:
             now_ts = time.time()
@@ -1874,13 +2032,76 @@ def monitoreo_stream():
                     last_id = max(last_id, int(log.id))
 
             if (now_ts - last_summary_at) >= 10.0:
-                yield _sse("summary", _build_monitoreo_summary_payload())
+                summary = _build_monitoreo_summary_payload()
+                summary.pop("presence", None)
+                yield _sse("summary", summary)
                 last_summary_at = now_ts
+
+            if (now_ts - last_presence_at) >= 7.0:
+                yield _sse("presence", {"items": _presence_rows()})
+                last_presence_at = now_ts
 
             if (now_ts - last_heartbeat_at) >= 15.0:
                 yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
                 last_heartbeat_at = now_ts
 
+            time.sleep(2.0)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
+    return Response(generate(), mimetype="text/event-stream", headers=headers)
+
+
+@admin_bp.route('/monitoreo/candidatas/<candidata_entity_id>/stream', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_candidata_stream(candidata_entity_id: str):
+    def _sse(event: str, payload: dict) -> str:
+        return f"event: {event}\\ndata: {json.dumps(payload, ensure_ascii=False)}\\n\\n"
+
+    @stream_with_context
+    def generate():
+        if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
+            yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+            return
+
+        last_id = request.args.get("last_id", type=int) or 0
+        if last_id <= 0:
+            max_id = (
+                _candidata_logs_query(candidata_entity_id)
+                .with_entities(func.max(StaffAuditLog.id))
+                .scalar()
+            )
+            last_id = int(max_id or 0)
+
+        last_heartbeat_at = 0.0
+        while True:
+            now_ts = time.time()
+            new_logs = (
+                _candidata_logs_query(candidata_entity_id)
+                .filter(StaffAuditLog.id > last_id)
+                .order_by(StaffAuditLog.id.asc())
+                .limit(100)
+                .all()
+            )
+            if new_logs:
+                actor_ids = sorted({int(l.actor_user_id) for l in new_logs if l.actor_user_id is not None})
+                username_map = {}
+                if actor_ids:
+                    users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
+                    username_map = {int(u.id): u.username for u in users}
+                for log in new_logs:
+                    item = _serialize_log_item(log, username_map=username_map)
+                    item["metadata_json"] = _sanitize_monitoreo_metadata(item.get("metadata_json"))
+                    yield _sse("candidatelog", item)
+                    last_id = max(last_id, int(log.id))
+
+            if (now_ts - last_heartbeat_at) >= 15.0:
+                yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+                last_heartbeat_at = now_ts
             time.sleep(2.0)
 
     headers = {
@@ -1903,7 +2124,8 @@ def monitoreo_presence_ping():
     payload = request.get_json(silent=True) or {}
     current_path = (payload.get("current_path") or request.path or "").strip()[:255]
     page_title = (payload.get("page_title") or request.endpoint or "").strip()[:160]
-    _touch_staff_presence(current_path=current_path, page_title=page_title)
+    last_action_hint = (payload.get("last_action_hint") or "").strip()[:120]
+    _touch_staff_presence(current_path=current_path, page_title=page_title, last_action_hint=last_action_hint)
     return jsonify({"ok": True})
 
 # =============================================================================
@@ -4327,6 +4549,18 @@ def nuevo_reemplazo(s_id):
                 summary=f"Reemplazo iniciado para solicitud {sol.codigo_solicitud or sol.id}",
                 metadata={"reemplazo_id": r.id, "candidata_old_id": cand_old.fila, "descalificar": bool(descalificar)},
             )
+            log_candidata_action(
+                action_type="REEMPLAZO_OPEN",
+                candidata=cand_old,
+                summary=f"Reemplazo abierto para candidata en solicitud {sol.codigo_solicitud or sol.id}",
+                metadata={
+                    "reemplazo_id": r.id,
+                    "solicitud_id": sol.id,
+                    "cliente_id": sol.cliente_id,
+                    "descalificar": bool(descalificar),
+                },
+                success=True,
+            )
 
             flash('Reemplazo iniciado correctamente.', 'success')
             return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
@@ -4338,6 +4572,14 @@ def nuevo_reemplazo(s_id):
                 entity_type="Solicitud",
                 entity_id=sol.id,
                 summary=f"Fallo iniciando reemplazo para solicitud {sol.id}",
+                success=False,
+                error="Error al iniciar reemplazo.",
+            )
+            log_candidata_action(
+                action_type="REEMPLAZO_OPEN",
+                candidata=cand_old if 'cand_old' in locals() else None,
+                summary=f"Fallo iniciando reemplazo para solicitud {sol.id}",
+                metadata={"solicitud_id": sol.id, "cliente_id": sol.cliente_id},
                 success=False,
                 error="Error al iniciar reemplazo.",
             )
@@ -4589,6 +4831,22 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                 summary=f"Reemplazo finalizado para solicitud {s.codigo_solicitud or s.id}",
                 metadata={"reemplazo_id": r.id, "candidata_new_id": cand_new.fila},
             )
+            cand_old = Candidata.query.filter_by(fila=getattr(r, "candidata_old_id", None)).first()
+            if cand_old is not None:
+                log_candidata_action(
+                    action_type="REEMPLAZO_CLOSE",
+                    candidata=cand_old,
+                    summary=f"Reemplazo cerrado (sale candidata) en solicitud {s.codigo_solicitud or s.id}",
+                    metadata={"reemplazo_id": r.id, "solicitud_id": s.id, "cliente_id": s.cliente_id, "candidata_new_id": cand_new.fila},
+                    success=True,
+                )
+            log_candidata_action(
+                action_type="REEMPLAZO_CLOSE",
+                candidata=cand_new,
+                summary=f"Reemplazo cerrado (entra candidata) en solicitud {s.codigo_solicitud or s.id}",
+                metadata={"reemplazo_id": r.id, "solicitud_id": s.id, "cliente_id": s.cliente_id},
+                success=True,
+            )
             flash('Reemplazo finalizado correctamente.', 'success')
             return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
 
@@ -4610,6 +4868,15 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                 success=False,
                 error=str(e),
             )
+            if 'cand_new' in locals() and cand_new is not None:
+                log_candidata_action(
+                    action_type="REEMPLAZO_CLOSE",
+                    candidata=cand_new,
+                    summary=f"Fallo cerrando reemplazo para solicitud {s.id}",
+                    metadata={"reemplazo_id": r.id, "solicitud_id": s.id, "cliente_id": s.cliente_id},
+                    success=False,
+                    error=str(e),
+                )
             flash('Error al finalizar el reemplazo.', 'danger')
 
     elif request.method == 'POST':
@@ -4739,6 +5006,22 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
             summary=f"Reemplazo cerrado asignando candidata en solicitud {s.codigo_solicitud or s.id}",
             metadata={"reemplazo_id": r.id, "candidata_new_id": cand_new.fila},
         )
+        cand_old = Candidata.query.filter_by(fila=getattr(r, "candidata_old_id", None)).first()
+        if cand_old is not None:
+            log_candidata_action(
+                action_type="REEMPLAZO_CLOSE",
+                candidata=cand_old,
+                summary=f"Reemplazo cerrado (sale candidata) en solicitud {s.codigo_solicitud or s.id}",
+                metadata={"reemplazo_id": r.id, "solicitud_id": s.id, "cliente_id": s.cliente_id, "candidata_new_id": cand_new.fila},
+                success=True,
+            )
+        log_candidata_action(
+            action_type="REEMPLAZO_CLOSE",
+            candidata=cand_new,
+            summary=f"Reemplazo cerrado (entra candidata) en solicitud {s.codigo_solicitud or s.id}",
+            metadata={"reemplazo_id": r.id, "solicitud_id": s.id, "cliente_id": s.cliente_id},
+            success=True,
+        )
         flash("Reemplazo cerrado y nueva candidata asignada.", "success")
     except Exception:
         db.session.rollback()
@@ -4751,6 +5034,15 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
             success=False,
             error="No se pudo cerrar el reemplazo.",
         )
+        if cand_new is not None:
+            log_candidata_action(
+                action_type="REEMPLAZO_CLOSE",
+                candidata=cand_new,
+                summary=f"Fallo cerrando reemplazo por asignación en solicitud {s.id}",
+                metadata={"reemplazo_id": r.id, "solicitud_id": s.id, "cliente_id": s.cliente_id},
+                success=False,
+                error="No se pudo cerrar el reemplazo.",
+            )
         flash("No se pudo cerrar el reemplazo.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
@@ -5486,6 +5778,7 @@ def matching_enviar_candidatas(solicitud_id: int):
     ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
     created_by = _matching_created_by()
     processed = 0
+    processed_candidates = []
 
     try:
         for candidata_id in candidata_ids:
@@ -5527,6 +5820,7 @@ def matching_enviar_candidatas(solicitud_id: int):
                 )
                 db.session.add(row)
             processed += 1
+            processed_candidates.append(cand)
 
         if processed:
             _upsert_cliente_notificacion_candidatas(solicitud, processed)
@@ -5538,6 +5832,14 @@ def matching_enviar_candidatas(solicitud_id: int):
                 summary=f"Envío de candidatas en matching para solicitud {solicitud.codigo_solicitud or solicitud.id}",
                 metadata={"candidata_ids": candidata_ids, "processed": processed},
             )
+            for cand in processed_candidates:
+                log_candidata_action(
+                    action_type="MATCHING_SEND",
+                    candidata=cand,
+                    summary=f"Candidata enviada en matching a solicitud {solicitud.codigo_solicitud or solicitud.id}",
+                    metadata={"solicitud_id": solicitud.id, "cliente_id": getattr(solicitud, "cliente_id", None)},
+                    success=True,
+                )
             flash(f"Candidata enviada al cliente. Total procesadas: {processed}.", "success")
         else:
             db.session.rollback()
@@ -5553,6 +5855,15 @@ def matching_enviar_candidatas(solicitud_id: int):
             success=False,
             error="No se pudieron enviar candidatas.",
         )
+        for cand in processed_candidates:
+            log_candidata_action(
+                action_type="MATCHING_SEND",
+                candidata=cand,
+                summary=f"Fallo enviando candidata en matching para solicitud {solicitud.id}",
+                metadata={"solicitud_id": solicitud.id, "cliente_id": getattr(solicitud, "cliente_id", None)},
+                success=False,
+                error="No se pudieron enviar candidatas.",
+            )
         flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")
 
     return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
@@ -5814,6 +6125,14 @@ def descalificar_candidata(candidata_id: int):
             metadata={"motivo": motivo},
             changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
         )
+        log_candidata_action(
+            action_type="CANDIDATA_DESQUALIFY",
+            candidata=cand,
+            summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+            metadata={"motivo": motivo},
+            changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
+            success=True,
+        )
         flash("Candidata descalificada correctamente.", "success")
     except Exception:
         db.session.rollback()
@@ -5821,6 +6140,14 @@ def descalificar_candidata(candidata_id: int):
             action_type="CANDIDATA_DESCALIFICAR",
             entity_type="Candidata",
             entity_id=cand.fila,
+            summary=f"Fallo descalificando candidata {cand.fila}",
+            metadata={"motivo": motivo},
+            success=False,
+            error="No se pudo descalificar la candidata.",
+        )
+        log_candidata_action(
+            action_type="CANDIDATA_DESQUALIFY",
+            candidata=cand,
             summary=f"Fallo descalificando candidata {cand.fila}",
             metadata={"motivo": motivo},
             success=False,
@@ -5863,6 +6190,13 @@ def reactivar_candidata(candidata_id: int):
             summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
             changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
         )
+        log_candidata_action(
+            action_type="CANDIDATA_REACTIVATE",
+            candidata=cand,
+            summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+            success=True,
+        )
         flash("Candidata reactivada correctamente.", "success")
     except Exception:
         db.session.rollback()
@@ -5870,6 +6204,13 @@ def reactivar_candidata(candidata_id: int):
             action_type="CANDIDATA_REACTIVAR",
             entity_type="Candidata",
             entity_id=cand.fila,
+            summary=f"Fallo reactivando candidata {cand.fila}",
+            success=False,
+            error="No se pudo reactivar la candidata.",
+        )
+        log_candidata_action(
+            action_type="CANDIDATA_REACTIVATE",
+            candidata=cand,
             summary=f"Fallo reactivando candidata {cand.fila}",
             success=False,
             error="No se pudo reactivar la candidata.",
@@ -5912,9 +6253,23 @@ def marcar_candidata_trabajando(candidata_id: int):
             summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
             changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
         )
+        log_candidata_action(
+            action_type="CANDIDATA_MARK_TRABAJANDO",
+            candidata=cand,
+            summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
+            success=True,
+        )
         flash("Candidata marcada como trabajando.", "success")
     except Exception:
         db.session.rollback()
+        log_candidata_action(
+            action_type="CANDIDATA_MARK_TRABAJANDO",
+            candidata=cand,
+            summary=f"Fallo marcando candidata trabajando {cand.fila}",
+            success=False,
+            error="No se pudo actualizar estado a trabajando.",
+        )
         flash("No se pudo actualizar el estado a trabajando.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
@@ -5963,9 +6318,23 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
             summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
             changes={"estado": {"from": "trabajando", "to": "lista_para_trabajar"}},
         )
+        log_candidata_action(
+            action_type="CANDIDATA_MARK_LISTA",
+            candidata=cand,
+            summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "trabajando", "to": "lista_para_trabajar"}},
+            success=True,
+        )
         flash("Candidata marcada como lista para trabajar.", "success")
     except Exception:
         db.session.rollback()
+        log_candidata_action(
+            action_type="CANDIDATA_MARK_LISTA",
+            candidata=cand,
+            summary=f"Fallo marcando candidata lista para trabajar {cand.fila}",
+            success=False,
+            error="No se pudo actualizar estado a lista para trabajar.",
+        )
         flash("No se pudo actualizar el estado a lista para trabajar.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)

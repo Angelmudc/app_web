@@ -133,6 +133,12 @@ def test_audit_logs_created_on_actions():
     with flask_app.app_context():
         edit_log = StaffAuditLog.query.filter_by(action_type='CANDIDATA_EDIT').order_by(StaffAuditLog.id.desc()).first()
         send_log = StaffAuditLog.query.filter_by(action_type='MATCHING_SEND').order_by(StaffAuditLog.id.desc()).first()
+        send_log_solicitud = (
+            StaffAuditLog.query
+            .filter_by(action_type='MATCHING_SEND', entity_type='Solicitud')
+            .order_by(StaffAuditLog.id.desc())
+            .first()
+        )
         desc_log = StaffAuditLog.query.filter_by(action_type='CANDIDATA_DESCALIFICAR').order_by(StaffAuditLog.id.desc()).first()
 
         assert edit_log is not None
@@ -143,11 +149,12 @@ def test_audit_logs_created_on_actions():
         assert int(send_log.actor_user_id) == int(actor_id)
         assert int(desc_log.actor_user_id) == int(actor_id)
 
-        assert edit_log.entity_type == 'Candidata'
+        assert (edit_log.entity_type or '').lower() == 'candidata'
         assert str(edit_log.entity_id) == '15'
 
-        assert send_log.entity_type == 'Solicitud'
-        assert str(send_log.entity_id) == '10'
+        assert send_log_solicitud is not None
+        assert send_log_solicitud.entity_type == 'Solicitud'
+        assert str(send_log_solicitud.entity_id) == '10'
 
         assert desc_log.entity_type == 'Candidata'
         assert str(desc_log.entity_id) == '88'

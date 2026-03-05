@@ -89,6 +89,7 @@ from utils.staff_auth import (
     set_breakglass_session,
 )
 from utils.audit_logger import log_action, snapshot_model_fields, diff_snapshots
+from utils.audit_entity import log_candidata_action
 
 # Data / reportes
 import pandas as pd
@@ -1467,12 +1468,27 @@ def entrevista_nueva_db(fila, tipo):
                 pass
 
             db.session.commit()
+            log_candidata_action(
+                action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
+                candidata=candidata,
+                summary=f"Entrevista nueva guardada ({(tipo or '').strip().lower() or 'domestica'})",
+                metadata={"entrevista_id": entrevista.id, "tipo": (tipo or "").strip().lower()},
+                success=True,
+            )
             flash("✅ Entrevista guardada.", "success")
             return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
         except Exception:
             db.session.rollback()
             current_app.logger.exception("❌ Error guardando entrevista (DB)")
+            log_candidata_action(
+                action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
+                candidata=candidata,
+                summary=f"Fallo guardando entrevista nueva ({(tipo or '').strip().lower() or 'domestica'})",
+                metadata={"tipo": (tipo or "").strip().lower()},
+                success=False,
+                error="No se pudo guardar la entrevista nueva.",
+            )
             flash("❌ Error al guardar la entrevista.", "danger")
             return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo))
 
@@ -1580,12 +1596,27 @@ def entrevista_editar_db(entrevista_id):
                 pass
 
             db.session.commit()
+            log_candidata_action(
+                action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
+                candidata=candidata,
+                summary=f"Entrevista actualizada ({tipo})",
+                metadata={"entrevista_id": entrevista.id, "tipo": tipo},
+                success=True,
+            )
             flash("✅ Entrevista actualizada.", "success")
             return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
         except Exception:
             db.session.rollback()
             current_app.logger.exception("❌ Error actualizando entrevista (DB)")
+            log_candidata_action(
+                action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
+                candidata=candidata,
+                summary=f"Fallo actualizando entrevista ({tipo})",
+                metadata={"entrevista_id": entrevista.id, "tipo": tipo},
+                success=False,
+                error="No se pudo actualizar la entrevista.",
+            )
             flash("❌ Error al actualizar la entrevista.", "danger")
             return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id))
 
@@ -2089,10 +2120,9 @@ def buscar_candidata():
                     db.session.commit()
                     after_snapshot = snapshot_model_fields(obj, audit_fields)
                     changes = diff_snapshots(before_snapshot, after_snapshot)
-                    log_action(
+                    log_candidata_action(
                         action_type="CANDIDATA_EDIT",
-                        entity_type="Candidata",
-                        entity_id=obj.fila,
+                        candidata=obj,
                         summary=f"Edición de candidata {obj.nombre_completo or obj.fila}",
                         metadata={"candidata_id": obj.fila},
                         changes=changes,
@@ -2102,10 +2132,9 @@ def buscar_candidata():
                     return redirect(url_for('buscar_candidata', candidata_id=cid))
                 except IntegrityError:
                     db.session.rollback()
-                    log_action(
+                    log_candidata_action(
                         action_type="CANDIDATA_EDIT",
-                        entity_type="Candidata",
-                        entity_id=obj.fila,
+                        candidata=obj,
                         summary=f"Fallo edición de candidata {obj.fila}",
                         success=False,
                         error="Conflicto de cédula duplicada.",
@@ -2114,10 +2143,9 @@ def buscar_candidata():
                 except Exception:
                     db.session.rollback()
                     app.logger.exception("❌ Error al guardar edición de candidata")
-                    log_action(
+                    log_candidata_action(
                         action_type="CANDIDATA_EDIT",
-                        entity_type="Candidata",
-                        entity_id=obj.fila,
+                        candidata=obj,
                         summary=f"Fallo edición de candidata {obj.fila}",
                         success=False,
                         error="Error al guardar edición de candidata.",
@@ -3063,12 +3091,30 @@ def subir_fotos():
                 pass
 
             db.session.commit()
+            log_candidata_action(
+                action_type="CANDIDATA_UPLOAD_DOCS",
+                candidata=candidata,
+                summary="Carga/actualización de documentos de candidata",
+                metadata={
+                    "fields": sorted(list(archivos_validos.keys())),
+                    "source": "subir_fotos",
+                },
+                success=True,
+            )
             flash("✅ Imágenes subidas/actualizadas correctamente.", "success")
             return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 
         except Exception:
             db.session.rollback()
             current_app.logger.exception("❌ Error guardando imágenes en la BD")
+            log_candidata_action(
+                action_type="CANDIDATA_UPLOAD_DOCS",
+                candidata=candidata,
+                summary="Fallo al subir/actualizar documentos de candidata",
+                metadata={"fields": sorted(list(archivos_validos.keys())), "source": "subir_fotos"},
+                success=False,
+                error="Error guardando imágenes en base de datos.",
+            )
             flash("❌ Ocurrió un error guardando en la base de datos.", "danger")
             tiene = _build_docs_flags(candidata)
             return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
@@ -4713,10 +4759,25 @@ def finalizar_proceso():
 
     try:
         db.session.commit()
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS",
+            candidata=candidata,
+            summary="Finalización de proceso con carga de documentos",
+            metadata={"fields": ["foto_perfil", "cedula1", "cedula2"], "source": "finalizar_proceso"},
+            success=True,
+        )
         flash("✅ Proceso finalizado y datos guardados correctamente.", "success")
         return redirect(url_for('candidata_ver_perfil', fila=candidata.fila))
     except SQLAlchemyError as e:
         db.session.rollback()
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS",
+            candidata=candidata,
+            summary="Fallo finalizando proceso con documentos",
+            metadata={"source": "finalizar_proceso"},
+            success=False,
+            error=str(e),
+        )
         flash(f"❌ Error guardando en la base de datos: {e}", "danger")
         return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
 

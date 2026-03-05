@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Monitoreo · Buscar candidata{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+    <h1 class="h3 mb-0">Buscar candidata</h1>
+    <a class="btn btn-outline-dark btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver a monitoreo</a>
+  </div>
+
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-md-9">
+      <input class="form-control" type="text" name="q" value="{{ q }}" placeholder="Nombre, cédula, código o fila">
+    </div>
+    <div class="col-md-1">
+      <input class="form-control" type="number" min="1" max="50" name="limit" value="{{ limit or 20 }}">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" type="submit">Buscar</button>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Cédula</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        {% for c in rows %}
+        <tr>
+          <td>{{ c.fila }}</td>
+          <td>{{ c.codigo or '-' }}</td>
+          <td>{{ c.nombre_completo or '-' }}</td>
+          <td>{{ c.cedula or '-' }}</td>
+          <td>{{ c.estado or '-' }}</td>
+          <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=c.fila) }}">Ver historial</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">Sin resultados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

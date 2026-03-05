@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}Monitoreo · Historial candidata{% endblock %}
+{% block extra_head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/monitoreo_live.css') }}">
+{% endblock %}
+{% block content %}
+<div class="container py-4" data-monitoreo-page="candidata-historial" data-initial-last-id="{{ initial_last_id }}" data-candidata-stream-url="{{ url_for('admin.monitoreo_candidata_stream', candidata_entity_id=candidata_entity_id) }}" data-candidata-logs-url="{{ url_for('admin.monitoreo_candidata_logs_json', candidata_entity_id=candidata_entity_id) }}" data-presence-ping-url="{{ url_for('admin.monitoreo_presence_ping') }}" data-active-filter="{{ active_filter or '' }}">
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+    <h1 class="h3 mb-0">Historial por candidata</h1>
+    <div class="d-flex align-items-center gap-2">
+      <span id="liveStatus" class="live-badge paused">● PAUSADO</span>
+      <button id="liveToggleBtn" class="btn btn-outline-dark btn-sm" type="button">Reanudar</button>
+      <a class="btn btn-outline-dark btn-sm" href="{{ url_for('admin.monitoreo_candidatas_search') }}">Volver al buscador</a>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <div><strong>Nombre:</strong> {{ candidata_meta.nombre if candidata_meta else (candidata.nombre_completo if candidata else '-') }}</div>
+      <div><strong>Código:</strong> {{ candidata_meta.codigo if candidata_meta else (candidata.codigo if candidata else '-') }}</div>
+      <div><strong>Cédula:</strong> {{ candidata_meta.cedula if candidata_meta else (candidata.cedula if candidata else '-') }}</div>
+      <div><strong>Estado:</strong> {{ candidata_meta.estado if candidata_meta else (candidata.estado if candidata else '-') }}</div>
+      <div><strong>Entity ID:</strong> {{ candidata_entity_id }}</div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 flex-wrap mb-3">
+    {% set f = active_filter or '' %}
+    <a class="btn btn-sm {{ 'btn-dark' if not f else 'btn-outline-dark' }}" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id) }}">Todo</a>
+    <a class="btn btn-sm {{ 'btn-dark' if f=='edits' else 'btn-outline-dark' }}" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='edits') }}">Edits</a>
+    <a class="btn btn-sm {{ 'btn-dark' if f=='entrevistas' else 'btn-outline-dark' }}" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='entrevistas') }}">Entrevistas</a>
+    <a class="btn btn-sm {{ 'btn-dark' if f=='docs' else 'btn-outline-dark' }}" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='docs') }}">Docs</a>
+    <a class="btn btn-sm {{ 'btn-dark' if f=='matching' else 'btn-outline-dark' }}" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='matching') }}">Matching/envíos</a>
+    <a class="btn btn-sm {{ 'btn-dark' if f=='fallos' else 'btn-outline-dark' }}" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='fallos') }}">Fallos</a>
+  </div>
+
+  <div id="candidataTimeline" class="vstack gap-2">
+    {% for log in logs %}
+    <article class="card" data-log-id="{{ log.id }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+          <div>
+            <div><strong>{{ log.actor_username or '-' }}</strong> <small class="text-muted">({{ log.actor_role or '-' }})</small></div>
+            <div><code>{{ log.action_type or '-' }}</code> · {{ log.summary or '-' }}</div>
+          </div>
+          <div class="text-end">
+            <div><small>{{ log.created_at or '-' }}</small></div>
+            <div>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</div>
+          </div>
+        </div>
+        <div class="text-muted"><small>{{ log.method or '-' }} {{ log.route or '-' }}</small></div>
+        <div><a class="btn btn-link btn-sm p-0" href="{{ url_for('admin.monitoreo_logs', entity_type='candidata', search=candidata_entity_id) }}">Ver en logs</a></div>
+        {% if log.changes_json %}
+        <details class="mt-2"><summary>Cambios</summary><pre class="mb-0">{{ log.changes_json | tojson(indent=2) }}</pre></details>
+        {% endif %}
+        {% if log.metadata_json %}
+        <details class="mt-2"><summary>Metadata</summary><pre class="mb-0">{{ log.metadata_json | tojson(indent=2) }}</pre></details>
+        {% endif %}
+      </div>
+    </article>
+    {% else %}
+    <div class="text-muted">Sin logs para esta candidata.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/monitoreo_candidata_live.js') }}" defer></script>
+{% endblock %}

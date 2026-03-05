@@ -25,6 +25,10 @@
   animation: logFlash 1s ease;
 }
 
+.log-new {
+  animation: logFlash 1s ease;
+}
+
 @keyframes logFlash {
   0% { background-color: #fff6d9; }
   100% { background-color: transparent; }
