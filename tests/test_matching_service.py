@@ -9,7 +9,7 @@ from utils import matching_service
 class _DummySolicitud:
     def __init__(self):
         self.horario = "8:00 a.m. - 5:00 p.m."
-        self.modalidad_trabajo = "Tiempo completo"
+        self.modalidad_trabajo = "salida diaria - lunes a viernes"
         self.ciudad_sector = "Villa Maria, Santiago"
         self.rutas_cercanas = "Cienfuegos"
         self.funciones = ["limpieza", "cocina", "cuidar_ninos"]
@@ -32,7 +32,7 @@ class _DummyCandidate:
         self.estado = "lista_para_trabajar"
         self.direccion_completa = "Avenida Nueva Stgo Villa Maria"
         self.rutas_cercanas = "Cienfuegos"
-        self.modalidad_trabajo_preferida = "tiempo completo"
+        self.modalidad_trabajo_preferida = "salida diaria"
         self.compat_disponibilidad_horario = "8am-5pm"
         self.compat_disponibilidad_dias = ["lun", "mar", "mie", "jue", "vie"]
         self.compat_fortalezas = []
@@ -46,6 +46,98 @@ class _DummyCandidate:
 
 
 class MatchingServiceTest(unittest.TestCase):
+    def test_modalidad_con_dormida_vs_dormida_match_fuerte(self):
+        solicitud = _DummySolicitud()
+        solicitud.modalidad_trabajo = "con dormida 💤 lunes a viernes"
+        cand = _DummyCandidate(101, "Dormida Match")
+        cand.modalidad_trabajo_preferida = "dormida"
+
+        with patch("utils.matching_service.candidate_query_prefilter", return_value=[cand]):
+            ranked = matching_service.rank_candidates(solicitud, top_k=1)
+
+        row = ranked[0]
+        snap = row["breakdown_snapshot"]
+        self.assertEqual(snap["components"]["modalidad_pts"], 20)
+        self.assertTrue(snap["modalidad_match"])
+        self.assertEqual(snap["solicitud_modalidad_norm"], "dormida")
+        self.assertEqual(snap["candidata_modalidad_norm"], "dormida")
+
+    def test_modalidad_con_dormida_vs_salida_diaria_mismatch(self):
+        solicitud = _DummySolicitud()
+        solicitud.modalidad_trabajo = "con dormida 💤 salida quincenal"
+        cand = _DummyCandidate(102, "Dormida Mismatch")
+        cand.modalidad_trabajo_preferida = "salida diaria"
+
+        with patch("utils.matching_service.candidate_query_prefilter", return_value=[cand]):
+            ranked = matching_service.rank_candidates(solicitud, top_k=1)
+
+        row = ranked[0]
+        snap = row["breakdown_snapshot"]
+        self.assertEqual(snap["components"]["modalidad_pts"], 0)
+        self.assertFalse(snap["modalidad_match"])
+        self.assertEqual(snap["solicitud_modalidad_norm"], "dormida")
+        self.assertEqual(snap["candidata_modalidad_norm"], "salida_diaria")
+
+    def test_modalidad_tres_dias_vs_salida_diaria_match(self):
+        solicitud = _DummySolicitud()
+        solicitud.modalidad_trabajo = "3 dias a la semana"
+        cand = _DummyCandidate(103, "Dias Match")
+        cand.modalidad_trabajo_preferida = "salida diaria"
+
+        with patch("utils.matching_service.candidate_query_prefilter", return_value=[cand]):
+            ranked = matching_service.rank_candidates(solicitud, top_k=1)
+
+        row = ranked[0]
+        snap = row["breakdown_snapshot"]
+        self.assertEqual(snap["components"]["modalidad_pts"], 20)
+        self.assertTrue(snap["modalidad_match"])
+        self.assertEqual(snap["solicitud_modalidad_norm"], "salida_diaria")
+
+    def test_modalidad_salida_diaria_lunes_viernes_match(self):
+        solicitud = _DummySolicitud()
+        solicitud.modalidad_trabajo = "salida diaria - lunes a viernes"
+        cand = _DummyCandidate(104, "Salida Diaria Match")
+        cand.modalidad_trabajo_preferida = "salida diaria"
+
+        with patch("utils.matching_service.candidate_query_prefilter", return_value=[cand]):
+            ranked = matching_service.rank_candidates(solicitud, top_k=1)
+
+        row = ranked[0]
+        snap = row["breakdown_snapshot"]
+        self.assertEqual(snap["components"]["modalidad_pts"], 20)
+        self.assertTrue(snap["modalidad_match"])
+        self.assertEqual(snap["solicitud_modalidad_norm"], "salida_diaria")
+
+    def test_modalidad_lunes_sabado_sin_dormida_match(self):
+        solicitud = _DummySolicitud()
+        solicitud.modalidad_trabajo = "lunes a sabado"
+        cand = _DummyCandidate(105, "Lun Sab Match")
+        cand.modalidad_trabajo_preferida = "salida diaria"
+
+        with patch("utils.matching_service.candidate_query_prefilter", return_value=[cand]):
+            ranked = matching_service.rank_candidates(solicitud, top_k=1)
+
+        row = ranked[0]
+        snap = row["breakdown_snapshot"]
+        self.assertEqual(snap["components"]["modalidad_pts"], 20)
+        self.assertTrue(snap["modalidad_match"])
+        self.assertEqual(snap["solicitud_modalidad_norm"], "salida_diaria")
+
+    def test_modalidad_no_inferible_or_none_no_evaluable(self):
+        solicitud = _DummySolicitud()
+        solicitud.modalidad_trabajo = None
+        cand = _DummyCandidate(106, "No Evaluable")
+        cand.modalidad_trabajo_preferida = "salida diaria"
+
+        with patch("utils.matching_service.candidate_query_prefilter", return_value=[cand]):
+            ranked = matching_service.rank_candidates(solicitud, top_k=1)
+
+        row = ranked[0]
+        snap = row["breakdown_snapshot"]
+        self.assertEqual(snap["components"]["modalidad_pts"], 0)
+        self.assertIsNone(snap["modalidad_match"])
+        self.assertIsNone(snap["solicitud_modalidad_norm"])
+
     def test_funciones_overlap_three_gives_20_and_score_over_75_without_bonus(self):
         solicitud = _DummySolicitud()
         cand = _DummyCandidate(1, "Operativa")

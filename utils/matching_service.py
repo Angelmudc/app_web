@@ -12,6 +12,7 @@ from sqlalchemy.orm import load_only
 from models import Candidata
 from utils.age_normalizer import parse_candidata_age_int, parse_solicitud_age_rules
 from utils.compat_engine import compute_match, normalize_horarios_tokens
+from utils.modality_normalizer import evaluate_modalidad_match
 from utils.text_normalizer import infer_city, location_tokens, normalize_text, skill_tokens, tokens
 
 DEFAULT_PREFILTER_LIMIT = 250
@@ -275,23 +276,12 @@ def _location_component(sol_profile: Dict[str, Any], cand) -> tuple[int, Dict[st
     }
 
 
-def _modalidad_component(sol_profile: Dict[str, Any], cand) -> tuple[int, str]:
-    sol_txt = _as_text(sol_profile.get("modalidad_text"))
-    cand_txt = _as_text(getattr(cand, "modalidad_trabajo_preferida", None))
-    if not sol_txt or not cand_txt:
-        return 0, "Modalidad sin datos suficientes"
-
-    sol_norm = normalize_text(sol_txt)
-    cand_norm = normalize_text(cand_txt)
-    if sol_norm == cand_norm:
-        return 20, "Modalidad compatible (exacta)"
-
-    sol_tk = set(sol_profile.get("modalidad_tokens") or set())
-    cand_tk = _normalize_modalidad_tokens(cand_txt)
-    if sol_tk & cand_tk:
-        return 12, "Modalidad compatible (parcial/sinonimos)"
-
-    return 0, "Modalidad sin coincidencia fuerte"
+def _modalidad_component(sol_profile: Dict[str, Any], cand) -> Dict[str, Any]:
+    return evaluate_modalidad_match(
+        sol_profile.get("modalidad_text"),
+        getattr(cand, "modalidad_trabajo_preferida", None),
+        max_points=20,
+    )
 
 
 def _horario_component(sol_profile: Dict[str, Any], cand) -> tuple[int, str]:
@@ -415,7 +405,9 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
     sol_profile = build_solicitud_profile(solicitud)
 
     ubicacion_pts, loc_info = _location_component(sol_profile, cand)
-    modalidad_pts, modalidad_note = _modalidad_component(sol_profile, cand)
+    modalidad_eval = _modalidad_component(sol_profile, cand)
+    modalidad_pts = int(modalidad_eval["modalidad_pts"])
+    modalidad_note = modalidad_eval["modalidad_reason"]
     horario_pts, horario_note = _horario_component(sol_profile, cand)
     (
         funciones_pts,
@@ -502,6 +494,12 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
             "final_score": final_score,
         },
         "component_rows": component_rows,
+        "solicitud_modalidad_raw": modalidad_eval["solicitud_modalidad_raw"],
+        "solicitud_modalidad_norm": modalidad_eval["solicitud_modalidad_norm"],
+        "candidata_modalidad_raw": modalidad_eval["candidata_modalidad_raw"],
+        "candidata_modalidad_norm": modalidad_eval["candidata_modalidad_norm"],
+        "modalidad_match": modalidad_eval["modalidad_match"],
+        "modalidad_reason": modalidad_eval["modalidad_reason"],
     }
 
     return {
