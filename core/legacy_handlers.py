@@ -5312,6 +5312,21 @@ def eliminar_candidata():
     # 1) CONFIRMAR ELIMINACIÓN (POST)
     # ─────────────────────────────────────────────────────────────
     if request.method == 'POST' and request.form.get('confirmar_eliminacion'):
+        role = (
+            str(getattr(current_user, "role", "") or "").strip().lower()
+            or str(session.get("role", "") or "").strip().lower()
+        )
+        if role != "admin":
+            mensaje = "❌ Solo admin puede confirmar la eliminación definitiva de candidatas."
+            return render_template(
+                'candidata_eliminar.html',
+                busqueda=busqueda,
+                resultados=resultados,
+                candidata=None,
+                mensaje=mensaje,
+                docs_info=docs_info,
+            )
+
         cid = (request.form.get('candidata_id') or '').strip()
 
         if not cid.isdigit():

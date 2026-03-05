@@ -29,7 +29,8 @@ from utils.funciones_formatter import format_funciones, format_funciones_display
 # Carga .env (siempre desde la raíz del proyecto)
 # ─────────────────────────────────────────────────────────────
 env_path = Path(__file__).parent / ".env"
-load_dotenv(env_path, override=True)
+# Respetar variables de entorno del proceso (por ejemplo pytest/CI) por encima de .env.
+load_dotenv(env_path, override=False)
 
 # ─────────────────────────────────────────────────────────────
 # Instancias globales
@@ -94,6 +95,10 @@ def _normalize_db_url(url: str) -> str:
         raise RuntimeError("❌ Debes definir DATABASE_URL en tu .env (URL REMOTA).")
 
     url = url.strip()
+
+    # Permite SQLite para testing local/pytest sin forzar parámetros de Postgres.
+    if url.startswith("sqlite:"):
+        return url
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
@@ -249,41 +254,51 @@ def create_app():
             app.config["WTF_CSRF_SSL_STRICT"] = False
 
     # ─────────────────────────────────────────────────────────
-    # Base de datos remota
+    # Base de datos (Postgres en prod, SQLite aislada para tests)
     # ─────────────────────────────────────────────────────────
-    raw_db_url = os.getenv("DATABASE_URL", "")
+    raw_db_url = (os.getenv("DATABASE_URL", "") or "").strip()
+    if env in ("test", "testing"):
+        # En tests siempre usar SQLite aislada para evitar tocar BD real.
+        if not raw_db_url.startswith("sqlite:"):
+            raw_db_url = "sqlite:///:memory:"
     db_url = _normalize_db_url(raw_db_url)
+    is_sqlite = db_url.startswith("sqlite:")
 
     pool_mode = (os.getenv("DB_POOL_MODE", "") or "").lower()
     use_null_pool = pool_mode in ("pgbouncer", "nullpool", "off")
 
-    connect_args = {
-        "sslmode": "require",
-        "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "8")),
-        "keepalives": int(os.getenv("DB_KEEPALIVES", "1")),
-        "keepalives_idle": int(os.getenv("DB_KEEPALIVES_IDLE", "30")),
-        "keepalives_interval": int(os.getenv("DB_KEEPALIVES_INTERVAL", "10")),
-        "keepalives_count": int(os.getenv("DB_KEEPALIVES_COUNT", "3")),
-        "application_name": os.getenv("DB_APPNAME", "app_web"),
-    }
-
-    engine_opts = {
-        "pool_pre_ping": True,
-        "pool_reset_on_return": "rollback",
-        "connect_args": connect_args,
-    }
-
-    if use_null_pool:
-        engine_opts["poolclass"] = NullPool
+    if is_sqlite:
+        engine_opts = {
+            "pool_pre_ping": True,
+        }
     else:
-        engine_opts.update(
-            {
-                "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "300")),
-                "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
-                "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "5")),
-                "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
-            }
-        )
+        connect_args = {
+            "sslmode": "require",
+            "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "8")),
+            "keepalives": int(os.getenv("DB_KEEPALIVES", "1")),
+            "keepalives_idle": int(os.getenv("DB_KEEPALIVES_IDLE", "30")),
+            "keepalives_interval": int(os.getenv("DB_KEEPALIVES_INTERVAL", "10")),
+            "keepalives_count": int(os.getenv("DB_KEEPALIVES_COUNT", "3")),
+            "application_name": os.getenv("DB_APPNAME", "app_web"),
+        }
+
+        engine_opts = {
+            "pool_pre_ping": True,
+            "pool_reset_on_return": "rollback",
+            "connect_args": connect_args,
+        }
+
+        if use_null_pool:
+            engine_opts["poolclass"] = NullPool
+        else:
+            engine_opts.update(
+                {
+                    "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "300")),
+                    "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
+                    "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "5")),
+                    "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
+                }
+            )
 
     app.config.update(
         {

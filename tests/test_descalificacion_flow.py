@@ -173,6 +173,17 @@ class _DummyQuery:
         return self._obj
 
 
+class _ScalarQueryStub:
+    def __init__(self, value):
+        self._value = value
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def scalar(self):
+        return self._value
+
+
 class DescalificacionFlowTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
@@ -423,6 +434,79 @@ class DescalificacionFlowTest(unittest.TestCase):
         self.assertEqual(cand.entrevista, snapshot["entrevista"])
         self.assertEqual(cand.perfil, snapshot["perfil"])
         self.assertEqual(cand.depuracion, snapshot["depuracion"])
+
+    def test_secretaria_no_puede_confirmar_eliminacion_definitiva(self):
+        self._login_secretaria()
+        cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
+
+        with flask_app.app_context():
+            with patch("core.legacy_handlers.db.session.get", return_value=cand), \
+                 patch("core.legacy_handlers.db.session.delete") as delete_mock, \
+                 patch("core.legacy_handlers.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/candidatas/eliminar",
+                    data={
+                        "confirmar_eliminacion": "1",
+                        "candidata_id": "1",
+                        "busqueda": "ana",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Solo admin puede confirmar la eliminaci", resp.data)
+        delete_mock.assert_not_called()
+        commit_mock.assert_not_called()
+
+    def test_eliminacion_bloqueada_si_tiene_historial(self):
+        self._login_admin()
+        cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
+        cand.solicitudes = [SimpleNamespace(id=10)]
+        cand.llamadas = []
+
+        with flask_app.app_context():
+            with patch("core.legacy_handlers.db.session.get", return_value=cand), \
+                 patch("core.legacy_handlers.db.session.delete") as delete_mock, \
+                 patch("core.legacy_handlers.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/candidatas/eliminar",
+                    data={
+                        "confirmar_eliminacion": "1",
+                        "candidata_id": "1",
+                        "busqueda": "ana",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"No se puede eliminar esta candidata porque tiene historial", resp.data)
+        delete_mock.assert_not_called()
+        commit_mock.assert_not_called()
+
+    def test_eliminacion_admin_sin_historial_llama_delete(self):
+        self._login_admin()
+        cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
+        cand.solicitudes = []
+        cand.llamadas = []
+
+        with flask_app.app_context():
+            with patch("core.legacy_handlers.db.session.get", return_value=cand), \
+                 patch("core.legacy_handlers.db.session.query", return_value=_ScalarQueryStub(0)), \
+                 patch("core.legacy_handlers.db.session.delete") as delete_mock, \
+                 patch("core.legacy_handlers.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/candidatas/eliminar",
+                    data={
+                        "confirmar_eliminacion": "1",
+                        "candidata_id": "1",
+                        "busqueda": "ana",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertIn(resp.status_code, (302, 303))
+        delete_mock.assert_called_once_with(cand)
+        commit_mock.assert_called_once()
 
 
 if __name__ == "__main__":
