@@ -2158,6 +2158,19 @@ body.theme-light .btn-primary{
   color: #fff !important;
 }
 
+/* Matching: evita texto claro sobre fondo claro en checklist de envío */
+.matching-checklist-card{
+  background: var(--surface-2);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.matching-checklist-card ul,
+.matching-checklist-card li,
+.matching-checklist-card strong{
+  color: inherit;
+}
+
 /* =========================
    END
 ========================= */
