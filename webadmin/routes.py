@@ -38,6 +38,7 @@ def roles_required(*roles):
 
 from . import webadmin_bp
 from models import Candidata, CandidataWeb, db
+from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 
 # Roles permitidos para entrar a WEBADMIN
 WEBADMIN_ALLOWED_ROLES = ("admin", "secretaria")
@@ -143,6 +144,8 @@ def candidata_foto_perfil(fila: int):
     import imghdr
 
     cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    if candidata_esta_descalificada(cand):
+        abort(404)
     blob = cand.foto_perfil
 
     if not blob:
@@ -202,6 +205,7 @@ def listar_candidatas_web():
     query = (
         db.session.query(Candidata, CandidataWeb)
         .outerjoin(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(candidatas_activas_filter(Candidata))
     )
 
     # Si no hay búsqueda, NO cargamos candidatas (solo mostramos la barra de búsqueda)
@@ -308,6 +312,9 @@ def listar_candidatas_web():
 def editar_candidata_web(fila):
     """Editar la ficha pública de una candidata."""
     cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    if candidata_esta_descalificada(cand):
+        flash("Esta candidata está descalificada y no puede mostrarse en la web pública.", "warning")
+        return redirect(url_for("webadmin.listar_candidatas_web", q=(cand.nombre_completo or "")))
 
     ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
     if not ficha:

@@ -66,6 +66,9 @@ class _NotifQuery:
     def filter(self, *args, **kwargs):
         return self
 
+    def join(self, *args, **kwargs):
+        return self
+
     def order_by(self, *args, **kwargs):
         return self
 

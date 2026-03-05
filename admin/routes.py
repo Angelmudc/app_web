@@ -31,6 +31,11 @@ from admin.forms import (
 )
 from utils import letra_por_indice
 from utils.compat_engine import compute_match, format_compat_result
+from utils.guards import (
+    assert_candidata_no_descalificada,
+    candidata_esta_descalificada,
+    candidatas_activas_filter,
+)
 from utils.matching_service import rank_candidates
 from utils.funciones_formatter import format_funciones
 from utils.staff_auth import (
@@ -3297,6 +3302,7 @@ def _load_candidatas_choices(q: str, limit: int = 50):
 
     candidatas = (
         Candidata.query
+        .filter(candidatas_activas_filter(Candidata))
         .filter(
             or_(
                 Candidata.nombre_completo.ilike(like),
@@ -3623,7 +3629,7 @@ def registrar_pago(cliente_id, id):
     q = (request.args.get('q') or request.form.get('q') or '').strip()
 
     def _build_candidata_choices(search_text):
-        query = Candidata.query
+        query = Candidata.query.filter(candidatas_activas_filter(Candidata))
         if search_text:
             like = f"%{search_text}%"
             query = query.filter(
@@ -3660,6 +3666,14 @@ def registrar_pago(cliente_id, id):
         if not cand:
             flash('Candidata inválida.', 'danger')
             return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
+        blocked = assert_candidata_no_descalificada(
+            cand,
+            action="asignar a solicitud",
+            redirect_endpoint="admin.registrar_pago",
+            redirect_kwargs={"cliente_id": cliente_id, "id": id, "q": q},
+        )
+        if blocked is not None:
+            return blocked
 
         s.candidata_id = cand.fila
         _sync_solicitud_candidatas_after_assignment(s, cand.fila)
@@ -3852,6 +3866,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
         like = f"%{search_text}%"
         return (
             Candidata.query
+            .filter(candidatas_activas_filter(Candidata))
             .filter(
                 or_(
                     Candidata.nombre_completo.ilike(like),
@@ -3972,6 +3987,14 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     pick_name=pick_name,
                     candidatas=candidatas
                 )
+            blocked = assert_candidata_no_descalificada(
+                cand_new,
+                action="asignar a solicitud",
+                redirect_endpoint="admin.finalizar_reemplazo",
+                redirect_kwargs={"s_id": s_id, "reemplazo_id": reemplazo_id, "q": q},
+            )
+            if blocked is not None:
+                return blocked
 
             ahora = datetime.utcnow()
 
@@ -4649,6 +4672,11 @@ def matching_detalle_solicitud(solicitud_id: int):
         except Exception:
             continue
     blocked_candidate_ids, rejected_candidate_ids = _matching_candidate_flags(solicitud, ranked_candidate_ids)
+    disqualified_candidate_ids = {
+        int(item["candidate"].fila)
+        for item in ranked_candidates
+        if candidata_esta_descalificada(item.get("candidate"))
+    }
     sent_candidates = (
         SolicitudCandidata.query
         .filter_by(solicitud_id=solicitud.id)
@@ -4662,6 +4690,7 @@ def matching_detalle_solicitud(solicitud_id: int):
         sent_candidates=sent_candidates,
         blocked_candidate_ids=blocked_candidate_ids,
         rejected_candidate_ids=rejected_candidate_ids,
+        disqualified_candidate_ids=disqualified_candidate_ids,
     )
 
 
@@ -4700,6 +4729,18 @@ def matching_enviar_candidatas(solicitud_id: int):
         flash(
             "⚠️ Esta candidata fue rechazada por este cliente anteriormente. Marca 'Enviar de todas formas' para confirmar.",
             "warning",
+        )
+        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+    selected_disqualified = {
+        int(c.fila)
+        for c in Candidata.query.filter(Candidata.fila.in_(candidata_ids)).all()
+        if candidata_esta_descalificada(c)
+    }
+    if selected_disqualified:
+        flash(
+            "No se puede enviar una candidata descalificada al cliente.",
+            "danger",
         )
         return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
 
@@ -4760,6 +4801,76 @@ def matching_enviar_candidatas(solicitud_id: int):
         flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")
 
     return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+
+@admin_bp.route('/candidatas/<int:candidata_id>/descalificar', methods=['POST'])
+@login_required
+@admin_required
+def descalificar_candidata(candidata_id: int):
+    cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
+    motivo = (request.form.get("motivo") or "").strip()
+    next_url = (request.form.get("next") or "").strip()
+    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+
+    if not motivo:
+        flash("Debes indicar el motivo de descalificación.", "warning")
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    cand.estado = "descalificada"
+    if hasattr(cand, "nota_descalificacion"):
+        cand.nota_descalificacion = motivo
+    if hasattr(cand, "fecha_cambio_estado"):
+        cand.fecha_cambio_estado = datetime.utcnow()
+    if hasattr(cand, "usuario_cambio_estado"):
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        cand.usuario_cambio_estado = str(actor)[:100]
+
+    try:
+        db.session.commit()
+        flash("Candidata descalificada correctamente.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo descalificar la candidata.", "danger")
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/candidatas/<int:candidata_id>/reactivar', methods=['POST'])
+@login_required
+@admin_required
+def reactivar_candidata(candidata_id: int):
+    cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
+    next_url = (request.form.get("next") or "").strip()
+    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+
+    # Estado operativo por defecto para volver a usar en matching/banco.
+    cand.estado = "lista_para_trabajar"
+    if hasattr(cand, "nota_descalificacion"):
+        cand.nota_descalificacion = None
+    if hasattr(cand, "fecha_cambio_estado"):
+        cand.fecha_cambio_estado = datetime.utcnow()
+    if hasattr(cand, "usuario_cambio_estado"):
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        cand.usuario_cambio_estado = str(actor)[:100]
+
+    try:
+        db.session.commit()
+        flash("Candidata reactivada correctamente.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo reactivar la candidata.", "danger")
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
 
 # ============================================================

@@ -12,6 +12,7 @@ from sqlalchemy.orm import load_only
 from models import Candidata
 from utils.age_normalizer import parse_candidata_age_int, parse_solicitud_age_rules
 from utils.compat_engine import compute_match, normalize_horarios_tokens
+from utils.guards import candidatas_activas_filter
 from utils.modality_normalizer import evaluate_modalidad_match
 from utils.text_normalizer import infer_city, location_tokens, normalize_text, skill_tokens, tokens
 
@@ -146,7 +147,7 @@ def build_solicitud_profile(solicitud) -> Dict[str, Any]:
 
 def _build_base_query(base_query=None):
     q = base_query or Candidata.query
-    return q.options(
+    return q.filter(candidatas_activas_filter(Candidata)).options(
         load_only(
             Candidata.fila,
             Candidata.nombre_completo,

@@ -30,6 +30,7 @@ class _DummyCandidata:
         self.cedula = "000-0000000-0"
         self.numero_telefono = "8090000000"
         self.codigo = f"C-{fila}"
+        self.estado = "lista_para_trabajar"
 
 
 class _SolicitudQuery:
@@ -44,9 +45,25 @@ class _SolicitudQuery:
 
 
 class _CandidataQuery:
+    def __init__(self):
+        self.kwargs = {}
+        self._ids = []
+
     def filter_by(self, **kwargs):
         self.kwargs = kwargs
         return self
+
+    def filter(self, *args, **kwargs):
+        # Para tests no evaluamos expresiones SQL; devolvemos candidatas solicitadas.
+        return self
+
+    def all(self):
+        if self._ids:
+            return [_DummyCandidata(i) for i in self._ids]
+        fila = self.kwargs.get("fila")
+        if fila is None:
+            return []
+        return [_DummyCandidata(int(fila))]
 
     def first(self):
         fila = int(self.kwargs.get("fila"))

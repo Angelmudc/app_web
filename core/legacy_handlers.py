@@ -70,6 +70,7 @@ from utils.compat_engine import (
     normalize_mascotas_importancia,
     normalize_mascotas_token,
 )
+from utils.guards import assert_candidata_no_descalificada
 from utils.staff_auth import (
     admin_legacy_enabled,
     breakglass_allowed_ip,
@@ -1437,6 +1438,14 @@ def entrevista_nueva_db(fila, tipo):
     if not candidata:
         flash("⚠️ Candidata no encontrada.", "warning")
         return redirect(url_for('entrevistas_buscar'))
+    blocked = assert_candidata_no_descalificada(
+        candidata,
+        action="crear entrevista",
+        redirect_endpoint="entrevistas_de_candidata",
+        redirect_kwargs={"fila": fila},
+    )
+    if blocked is not None:
+        return blocked
 
     preguntas = _get_preguntas_db_por_tipo(tipo)
     if not preguntas:
@@ -1508,6 +1517,14 @@ def entrevista_editar_db(entrevista_id):
     if not candidata:
         flash("⚠️ Candidata no encontrada.", "warning")
         return redirect(url_for('entrevistas_buscar'))
+    blocked = assert_candidata_no_descalificada(
+        candidata,
+        action="editar entrevista",
+        redirect_endpoint="entrevistas_de_candidata",
+        redirect_kwargs={"fila": fila},
+    )
+    if blocked is not None:
+        return blocked
 
     # Cargar respuestas actuales
     respuestas = (

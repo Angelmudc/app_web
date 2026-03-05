@@ -160,6 +160,9 @@
     <input type="hidden" name="guardar_edicion" value="1">
 
     {# --- TOOLBAR SUPERIOR --- #}
+    {% set role_cur = (current_user.role if current_user and current_user.is_authenticated and current_user.role is defined else '') %}
+    {% set role_sess = session.get('role', '') %}
+    {% set es_admin = ((role_cur|string|lower) == 'admin') or ((role_sess|string|lower) == 'admin') %}
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
       <a href="{{ url_for('buscar_candidata', busqueda=busqueda) }}" class="btn btn-outline-secondary">
         <i class="fa-solid fa-arrow-left-long me-1"></i> Volver
@@ -174,6 +177,55 @@
         <i class="fa-regular fa-clock"></i> Última edición visual: <span id="lastSaved">—</span>
       </span>
     </div>
+
+    {% if (candidata.estado or '')|lower == 'descalificada' %}
+      <div class="alert alert-danger mb-3">
+        <strong>DESCALIFICADA</strong>
+        {% if candidata.nota_descalificacion %}
+          <div class="small mt-1">Motivo: {{ candidata.nota_descalificacion }}</div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if es_admin %}
+    <div class="card mb-3">
+      <div class="card-body">
+        {% if (candidata.estado or '')|lower != 'descalificada' %}
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-9">
+              <label class="form-label mb-1" for="motivo_descalificacion">Motivo de descalificación</label>
+              <input id="motivo_descalificacion" name="motivo" class="form-control" required maxlength="500">
+            </div>
+            <div class="col-md-3 d-grid">
+              <button
+                type="submit"
+                class="btn btn-danger"
+                formaction="{{ url_for('admin.descalificar_candidata', candidata_id=candidata.fila) }}"
+                formmethod="post"
+              >
+                Descalificar
+              </button>
+            </div>
+          </div>
+        {% else %}
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <div class="d-flex gap-2 align-items-center">
+            <button
+              type="submit"
+              class="btn btn-success"
+              formaction="{{ url_for('admin.reactivar_candidata', candidata_id=candidata.fila) }}"
+              formmethod="post"
+              formnovalidate
+            >
+              Reactivar
+            </button>
+            <span class="text-muted small">La candidata volverá al estado <code>lista_para_trabajar</code>.</span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     {# --- IDENTIDAD --- #}
     <div class="card mb-3">

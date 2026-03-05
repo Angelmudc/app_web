@@ -22,6 +22,7 @@
       {% set c = item.candidate %}
       {% set is_blocked = (blocked_candidate_ids and c.fila in blocked_candidate_ids) %}
       {% set is_rejected = (rejected_candidate_ids and c.fila in rejected_candidate_ids) %}
+      {% set is_disqualified = (disqualified_candidate_ids and c.fila in disqualified_candidate_ids) %}
       <div class="col-12 col-lg-6">
         <div class="card h-100 shadow-sm border-0">
           <div class="card-body">
@@ -42,6 +43,9 @@
               {% endif %}
               {% if is_rejected %}
               <span class="badge bg-warning text-dark ms-1">Rechazada antes por este cliente</span>
+              {% endif %}
+              {% if is_disqualified %}
+              <span class="badge bg-danger ms-1">Descalificada</span>
               {% endif %}
             </div>
 
@@ -101,11 +105,15 @@
             <div class="d-flex gap-2 mt-2">
               <a class="btn btn-sm btn-outline-primary" href="{{ url_for('candidata_ver_perfil', fila=c.fila) }}">Ver perfil candidata</a>
               <div class="form-check m-0 d-flex align-items-center">
-                <input class="form-check-input" type="checkbox" name="candidata_ids" value="{{ c.fila }}" id="cand_{{ c.fila }}" {% if is_blocked %}disabled{% endif %}>
+                <input class="form-check-input" type="checkbox" name="candidata_ids" value="{{ c.fila }}" id="cand_{{ c.fila }}" {% if is_blocked or is_disqualified %}disabled{% endif %}>
                 <label class="form-check-label ms-2" for="cand_{{ c.fila }}">Seleccionar</label>
               </div>
             </div>
-            {% if is_blocked %}
+            {% if is_disqualified %}
+            <div class="alert alert-danger py-2 px-3 small mt-2 mb-0">
+              Esta candidata está descalificada y no puede enviarse al cliente.
+            </div>
+            {% elif is_blocked %}
             <div class="alert alert-danger py-2 px-3 small mt-2 mb-0">
               Esta candidata ya fue enviada a otro cliente. Solo puede enviarse cuando el otro cliente la rechace.
             </div>

@@ -31,6 +31,7 @@ except Exception:
     ClienteNotificacion = None
 
 from utils import letra_por_indice
+from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
@@ -1604,14 +1605,16 @@ def _candidate_public_payload(sc: SolicitudCandidata) -> dict:
 
 def _get_cliente_sc_or_404(solicitud_id: int, sc_id: int) -> tuple[Solicitud, SolicitudCandidata]:
     solicitud = _get_solicitud_cliente_or_404(solicitud_id)
-    if SolicitudCandidata is None:
+    if SolicitudCandidata is None or Candidata is None:
         abort(404)
     sc = (
         SolicitudCandidata.query
+        .join(Candidata, Candidata.fila == SolicitudCandidata.candidata_id)
         .filter(
             SolicitudCandidata.id == sc_id,
             SolicitudCandidata.solicitud_id == solicitud.id,
             SolicitudCandidata.status.in_(_CLIENTE_VISIBLE_MATCH_STATUS),
+            candidatas_activas_filter(Candidata),
         )
         .first_or_404()
     )
@@ -1623,13 +1626,15 @@ def _get_cliente_sc_or_404(solicitud_id: int, sc_id: int) -> tuple[Solicitud, So
 @cliente_required
 def solicitud_candidatas(solicitud_id):
     solicitud = _get_solicitud_cliente_or_404(solicitud_id)
-    if SolicitudCandidata is None:
+    if SolicitudCandidata is None or Candidata is None:
         abort(404)
     items = (
         SolicitudCandidata.query
+        .join(Candidata, Candidata.fila == SolicitudCandidata.candidata_id)
         .filter(
             SolicitudCandidata.solicitud_id == solicitud.id,
             SolicitudCandidata.status.in_(_CLIENTE_VISIBLE_MATCH_STATUS),
+            candidatas_activas_filter(Candidata),
         )
         .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
         .all()
@@ -1642,7 +1647,11 @@ def solicitud_candidatas(solicitud_id):
             if int(getattr(sc, "candidata_id", 0) or 0) == int(solicitud.candidata_id):
                 assigned_sc = sc
                 break
-        if assigned_sc is None and getattr(solicitud, "candidata", None):
+        if (
+            assigned_sc is None
+            and getattr(solicitud, "candidata", None)
+            and not candidata_esta_descalificada(solicitud.candidata)
+        ):
             fallback_sc = SolicitudCandidata()
             fallback_sc.id = 0
             fallback_sc.candidata_id = solicitud.candidata_id
@@ -1686,6 +1695,8 @@ def solicitud_candidata_detalle(solicitud_id, sc_id):
 @cliente_required
 def solicitar_entrevista_whatsapp(solicitud_id, sc_id):
     solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
+    if candidata_esta_descalificada(getattr(sc, "candidata", None)):
+        abort(403)
     sc.status = 'seleccionada'
     db.session.commit()
 
@@ -2276,6 +2287,7 @@ def banco_domesticas():
     query = (
         db.session.query(Candidata, CandidataWeb)
         .join(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(candidatas_activas_filter(Candidata))
         .filter(CandidataWeb.visible.is_(True))
         .filter(CandidataWeb.estado_publico == 'disponible')
         .order_by(
@@ -2346,8 +2358,10 @@ def banco_domesticas():
     try:
         base_opts = (
             db.session.query(CandidataWeb)
+            .join(Candidata, Candidata.fila == CandidataWeb.candidata_id)
             .filter(CandidataWeb.visible.is_(True))
             .filter(CandidataWeb.estado_publico == 'disponible')
+            .filter(candidatas_activas_filter(Candidata))
         )
         ciudades_disponibles = sorted({
             (x.ciudad_publica or '').strip()
@@ -2393,6 +2407,8 @@ def domestica_detalle(fila: int):
         abort(404)
 
     cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    if candidata_esta_descalificada(cand):
+        abort(404)
     ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
 
     if not ficha or not getattr(ficha, 'visible', False) or getattr(ficha, 'estado_publico', '') != 'disponible':
@@ -2459,6 +2475,8 @@ def domestica_foto_perfil(fila: int):
     import imghdr
 
     cand = Candidata.query.filter_by(fila=fila).first_or_404()
+    if candidata_esta_descalificada(cand):
+        abort(404)
     ficha = CandidataWeb.query.filter_by(candidata_id=cand.fila).first()
     if not ficha or not bool(getattr(ficha, 'visible', False)) or (getattr(ficha, 'estado_publico', '') != 'disponible'):
         abort(404)
