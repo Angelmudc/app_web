@@ -114,7 +114,7 @@
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!Array.isArray(presence) || !presence.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Sin presencia reciente.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin presencia reciente.</td></tr>';
       return;
     }
     presence.forEach((p) => {
@@ -123,13 +123,54 @@
       tr.innerHTML = [
         '<td>' + (p.username || '-') + ' <small class="text-muted">(' + (p.role || '-') + ')</small></td>',
         '<td><span class="badge ' + badge + '">' + String(p.status || '').toUpperCase() + '</span></td>',
-        '<td><small>' + (p.current_path || '-') + '</small></td>',
+        '<td><small>' + (p.route_human || '-') + '</small></td>',
+        '<td><small title="' + (p.current_path || '-') + '">' + (p.current_path || '-') + '</small></td>',
         '<td><small>' + (p.current_action_human || p.last_action_type || p.last_action_hint || 'sin acciones registradas') + '</small></td>',
         '<td><small>' + (p.entity_display || '-') + '</small></td>',
         '<td>' + (p.last_seen_seconds || 0) + 's</td>'
       ].join('');
       tbody.appendChild(tr);
     });
+  }
+
+  function updateOperations(metrics) {
+    const src = metrics || {};
+    ['active_secretarias', 'candidatas_editing_now', 'solicitudes_en_proceso', 'entrevistas_hoy', 'matching_hoy'].forEach((k) => {
+      const el = document.querySelector('[data-op-metric="' + k + '"]');
+      if (el && src[k] !== undefined && src[k] !== null) el.textContent = String(src[k]);
+    });
+  }
+
+  function updateConflicts(conflicts) {
+    const box = document.getElementById('conflictsBox');
+    if (!box) return;
+    const rows = Array.isArray(conflicts) ? conflicts : [];
+    if (!rows.length) {
+      box.innerHTML = '';
+      return;
+    }
+    box.innerHTML = rows.map((c) => {
+      const users = Array.isArray(c.users) ? c.users.join(', ') : '';
+      return '<div class="alert alert-warning py-2 mb-2"><strong>Conflicto:</strong> ' + (c.message || 'Conflicto de edicion') + ' - ' + (c.entity_display || '-') + (users ? ' (' + users + ')' : '') + '</div>';
+    }).join('');
+  }
+
+  function updateActivityStream(items) {
+    const root = document.getElementById('activityStream');
+    if (!root) return;
+    const rows = Array.isArray(items) ? items.slice(-20).reverse() : [];
+    if (!rows.length) {
+      root.innerHTML = '<div class="text-muted">Sin actividad reciente.</div>';
+      return;
+    }
+    root.innerHTML = rows.map((item) => {
+      return [
+        '<div class="border rounded p-2 mb-2" data-activity-id="' + (item.id || '') + '">',
+        '<div><strong>' + (item.actor_username || '-') + '</strong> - ' + (item.action_human || item.action_type || '-') + '</div>',
+        '<div class="small text-muted">' + (item.entity_display || '-') + ' | ' + (item.route_human || item.route || '-') + '</div>',
+        '</div>',
+      ].join('');
+    }).join('');
   }
 
   function updateProductivity(payload) {
@@ -195,6 +236,15 @@
     }
     if (summary.productivity) {
       updateProductivity(summary.productivity);
+    }
+    if (summary.operations) {
+      updateOperations(summary.operations);
+    }
+    if (summary.presence_conflicts) {
+      updateConflicts(summary.presence_conflicts);
+    }
+    if (summary.activity_stream) {
+      updateActivityStream(summary.activity_stream);
     }
   }
 
@@ -263,7 +313,7 @@
     logsPollTimer = setInterval(() => pollLogs().catch(() => {}), 4000);
     summaryPollTimer = setInterval(() => pollSummary().catch(() => {}), 10000);
     productivityPollTimer = setInterval(() => pollProductivity().catch(() => {}), 15000);
-    presencePollTimer = setInterval(() => pollPresence().catch(() => {}), 10000);
+    presencePollTimer = setInterval(() => pollPresence().catch(() => {}), 2000);
   }
 
   function startSSE() {
@@ -291,6 +341,28 @@
       try {
         const data = JSON.parse(ev.data || '{}');
         updatePresenceTable((data && data.items) || []);
+      } catch (_) {}
+    });
+
+    sse.addEventListener('active_snapshot', (ev) => {
+      try {
+        const data = JSON.parse(ev.data || '{}');
+        updatePresenceTable((data && data.items) || []);
+        updateConflicts((data && data.conflicts) || []);
+      } catch (_) {}
+    });
+
+    sse.addEventListener('operations', (ev) => {
+      try {
+        const data = JSON.parse(ev.data || '{}');
+        updateOperations((data && data.metrics) || {});
+      } catch (_) {}
+    });
+
+    sse.addEventListener('activity', (ev) => {
+      try {
+        const data = JSON.parse(ev.data || '{}');
+        updateActivityStream((data && data.items) || []);
       } catch (_) {}
     });
 

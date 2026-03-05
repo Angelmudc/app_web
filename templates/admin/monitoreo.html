@@ -75,24 +75,44 @@
     <div class="col-md-3"><div class="card"><div class="card-body"><small>Candidatas enviadas (semana)</small><div class="h4 mb-0" data-metric="week.candidatas_enviadas">{{ summary_payload.week.candidatas_enviadas }}</div></div></div></div>
   </div>
 
+  <div class="row g-3 mb-4" id="operationsCards">
+    <div class="col-md-2"><div class="card"><div class="card-body"><small>Secretarias activas</small><div class="h4 mb-0" data-op-metric="active_secretarias">{{ summary_payload.operations.active_secretarias if summary_payload.operations else 0 }}</div></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><small>Candidatas en edicion</small><div class="h4 mb-0" data-op-metric="candidatas_editing_now">{{ summary_payload.operations.candidatas_editing_now if summary_payload.operations else 0 }}</div></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><small>Solicitudes en proceso</small><div class="h4 mb-0" data-op-metric="solicitudes_en_proceso">{{ summary_payload.operations.solicitudes_en_proceso if summary_payload.operations else 0 }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Entrevistas hoy</small><div class="h4 mb-0" data-op-metric="entrevistas_hoy">{{ summary_payload.operations.entrevistas_hoy if summary_payload.operations else 0 }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Matching hoy</small><div class="h4 mb-0" data-op-metric="matching_hoy">{{ summary_payload.operations.matching_hoy if summary_payload.operations else 0 }}</div></div></div></div>
+  </div>
+
+  <div id="conflictsBox" class="mb-4">
+    {% set conflicts = summary_payload.presence_conflicts or [] %}
+    {% if conflicts %}
+      {% for c in conflicts %}
+      <div class="alert alert-warning py-2 mb-2">
+        <strong>Conflicto:</strong> {{ c.message }} - {{ c.entity_display }} ({{ c.users|join(', ') }})
+      </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+
   <div class="row g-4 mb-4">
     <div class="col-lg-5">
       <h2 class="h6">Usuarios activos ahora</h2>
       <div class="table-responsive">
         <table class="table table-sm table-striped" id="presenceTable">
-          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Acción</th><th>Entidad</th><th>Hace</th></tr></thead>
+          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Ruta real</th><th>Acción</th><th>Entidad</th><th>Hace</th></tr></thead>
           <tbody>
             {% for p in summary_payload.presence %}
             <tr>
               <td>{{ p.username }} <small class="text-muted">({{ p.role }})</small></td>
               <td><span class="badge {% if p.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">{{ p.status|upper }}</span></td>
-              <td><small>{{ p.current_path or '-' }}</small></td>
+              <td><small>{{ p.route_human or '-' }}</small></td>
+              <td><small title="{{ p.current_path or '-' }}">{{ p.current_path or '-' }}</small></td>
               <td><small>{{ p.current_action_human or p.last_action_type or p.last_action_hint or 'sin acciones registradas' }}</small></td>
               <td><small>{{ p.entity_display or '-' }}</small></td>
               <td>{{ p.last_seen_seconds }}s</td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="text-muted">Sin presencia reciente.</td></tr>
+            <tr><td colspan="7" class="text-muted">Sin presencia reciente.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -111,6 +131,23 @@
           <li class="list-group-item text-muted">Sin actividad.</li>
         {% endfor %}
       </ul>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h6">Operaciones en tiempo real</h2>
+      <div id="activityStream">
+        {% set stream = summary_payload.activity_stream or [] %}
+        {% for item in stream %}
+          <div class="border rounded p-2 mb-2" data-activity-id="{{ item.id }}">
+            <div><strong>{{ item.actor_username or '-' }}</strong> - {{ item.action_human or item.action_type }}</div>
+            <div class="small text-muted">{{ item.entity_display or '-' }} | {{ item.route_human or item.route or '-' }}</div>
+          </div>
+        {% else %}
+          <div class="text-muted">Sin actividad reciente.</div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 

@@ -1461,10 +1461,12 @@ _HUMAN_ACTION_MAP = {
     "SOLICITUD_CREATE": "Creo solicitud",
     "SOLICITUD_UPDATE": "Actualizo solicitud",
     "SOLICITUD_PUBLICAR": "Publico solicitud",
-    "LIVE_PAGE_LOAD": "Entro a una pantalla",
-    "LIVE_HEARTBEAT": "Activo en pantalla",
-    "LIVE_TAB_FOCUS": "Volvio a la pestana",
+    "LIVE_PAGE_LOAD": "Abrio pantalla",
+    "LIVE_HEARTBEAT": "Activo",
+    "LIVE_TAB_FOCUS": "Volvio a la app",
     "LIVE_OPEN_ENTITY": "Abrio entidad",
+    "LIVE_SUBMIT": "Envio formulario",
+    "LIVE_INTENT_CHANGE": "Cambio de actividad",
 }
 
 
@@ -1493,10 +1495,18 @@ def _infer_action_hint_from_path(path: str | None) -> str:
         return "browsing"
     if "matching" in p:
         return "matching"
+    if "pago" in p:
+        return "pagos"
+    if "entrevistas/" in p or "/entrevistas" in p:
+        return "interview"
     if "entrevista" in p:
         return "editing_interview"
+    if "referencias/" in p or "/referencias" in p:
+        return "references"
     if "referencia" in p:
         return "editing_references"
+    if "solicitudes/" in p or "/solicitudes" in p:
+        return "solicitudes"
     if "solicitud" in p:
         return "editing_request"
     if "editar" in p or "edit" in p:
@@ -1519,13 +1529,17 @@ def _humanize_action(
 
     hint = (action_hint or "").strip().lower() or _infer_action_hint_from_path(route)
     hint_map = {
-        "editing": "Editando registro",
+        "editing": "Editando",
         "editing_interview": "Editando entrevista",
         "editing_references": "Editando referencias",
         "editing_candidate": "Editando candidata",
         "editing_request": "Editando solicitud",
-        "matching": "Revisando matching de solicitudes",
-        "searching": "Buscando registros",
+        "matching": "En Matching",
+        "searching": "Buscando",
+        "interview": "En Entrevista",
+        "references": "En Referencias",
+        "solicitudes": "En Solicitudes",
+        "pagos": "En Pagos",
         "browsing": "Navegando en la app",
     }
     if hint in hint_map:
@@ -1608,6 +1622,35 @@ def _format_solicitud_display(sol: Solicitud | None) -> str | None:
     base = (sol.codigo_solicitud or f"Solicitud #{sol.id}")
     cli = _format_cliente_display(getattr(sol, "cliente", None))
     return f"{base} - {cli}" if cli else base
+
+
+def _humanize_route(path: str | None) -> str:
+    raw = (path or "").strip()
+    if not raw:
+        return "-"
+    parsed = urlparse(raw)
+    p = (parsed.path or "").strip().lower()
+
+    route_map = (
+        ("/entrevistas/buscar", "Entrevistas: buscar"),
+        ("/admin/matching", "Matching"),
+        ("/admin/solicitudes", "Solicitudes"),
+        ("/referencias", "Referencias"),
+        ("/admin/entrevista", "Entrevista"),
+        ("/admin/monitoreo", "Control Room"),
+        ("/admin/pagos", "Pagos"),
+    )
+    for prefix, label in route_map:
+        if p.startswith(prefix):
+            return label
+
+    chunks = [c for c in p.split("/") if c]
+    if not chunks:
+        return "Inicio"
+    tail = chunks[-1].replace("-", " ").replace("_", " ").strip()
+    if tail:
+        return tail[:1].upper() + tail[1:]
+    return raw[:80]
 
 
 def _build_entity_display_map(logs: list[StaffAuditLog] | None) -> dict[tuple[str, str], str]:
@@ -1709,7 +1752,7 @@ def _entity_display_from_metadata(metadata: dict | None, entity_type: str | None
     et = _normalize_entity_type(entity_type)
     eid = (entity_id or "").strip()
     if et and eid:
-        return f"{et} {eid}"
+        return f"{et[:1].upper() + et[1:]} ID {eid}"
     return None
 
 
@@ -1728,13 +1771,17 @@ def _map_event_to_action_type(event_type: str | None) -> str:
         return "LIVE_TAB_FOCUS"
     if ev == "open_entity":
         return "LIVE_OPEN_ENTITY"
+    if ev == "submit":
+        return "LIVE_SUBMIT"
+    if ev == "intent_change":
+        return "LIVE_INTENT_CHANGE"
     return "LIVE_HEARTBEAT"
 
 
 def _should_log_live_event(user_id: int, event_type: str, path: str, action_hint: str, entity_id: str) -> bool:
     ev = (event_type or "").strip().lower() or "heartbeat"
     base = f"{_LIVE_EVENT_PREFIX}:{int(user_id)}:{ev}:{(path or '')[:120]}:{(action_hint or '')[:60]}:{(entity_id or '')[:40]}"
-    timeout = 30 if ev == "heartbeat" else 5
+    timeout = 25 if ev == "heartbeat" else 2
     try:
         if cache.get(base):
             return False
@@ -1926,6 +1973,7 @@ def _presence_rows() -> list[dict]:
                 "role": p.get("role"),
                 "status": status,
                 "current_path": p.get("current_path"),
+                "route_human": _humanize_route(p.get("current_path")),
                 "page_title": p.get("page_title"),
                 "last_seen_seconds": delta,
                 "last_action_hint": p.get("last_action_hint"),
@@ -1943,6 +1991,98 @@ def _presence_rows() -> list[dict]:
 
     out.sort(key=lambda x: (x.get("status") != "active", x.get("last_seen_seconds", 999999)))
     return out
+
+
+def _presence_active_rows(rows: list[dict] | None = None) -> list[dict]:
+    src = rows if rows is not None else _presence_rows()
+    return [r for r in (src or []) if (r.get("status") == "active")]
+
+
+def _build_presence_conflicts(active_rows: list[dict] | None = None) -> list[dict]:
+    active_rows = active_rows if active_rows is not None else _presence_active_rows()
+    by_entity: dict[str, list[dict]] = {}
+    for row in active_rows:
+        if (row.get("entity_type") or "") != "candidata":
+            continue
+        hint = (row.get("action_hint") or "").strip().lower()
+        if "edit" not in hint and hint not in {"interview", "references"}:
+            continue
+        key = str(row.get("entity_id") or "").strip()
+        if not key:
+            continue
+        by_entity.setdefault(key, []).append(row)
+
+    out: list[dict] = []
+    for entity_id, rows in by_entity.items():
+        usernames = sorted({str(r.get("username") or "") for r in rows if r.get("username")})
+        if len(usernames) < 2:
+            continue
+        out.append(
+            {
+                "entity_type": "candidata",
+                "entity_id": entity_id,
+                "entity_display": rows[0].get("entity_display") or f"Candidata ID {entity_id}",
+                "users": usernames,
+                "message": "Dos usuarias editando la misma candidata",
+            }
+        )
+    return out
+
+
+def _build_operations_metrics_payload(active_rows: list[dict] | None = None) -> dict:
+    active_rows = active_rows if active_rows is not None else _presence_active_rows()
+    now = datetime.utcnow()
+    day_start = datetime(now.year, now.month, now.day)
+    active_secretarias = len([r for r in active_rows if (r.get("role") or "").lower() == "secretaria"])
+    candidatas_editing = len(
+        [
+            r for r in active_rows
+            if (r.get("entity_type") == "candidata")
+            and ("edit" in (r.get("action_hint") or "").lower() or (r.get("action_hint") in {"interview", "references"}))
+        ]
+    )
+    entrevistas_hoy = (
+        StaffAuditLog.query
+        .filter(StaffAuditLog.created_at >= day_start)
+        .filter(StaffAuditLog.action_type.in_(["CANDIDATA_INTERVIEW_NEW_CREATE", "CANDIDATA_INTERVIEW_LEGACY_SAVE"]))
+        .count()
+    )
+    matching_hoy = (
+        StaffAuditLog.query
+        .filter(StaffAuditLog.created_at >= day_start, StaffAuditLog.action_type == "MATCHING_SEND")
+        .count()
+    )
+    try:
+        solicitudes_en_proceso = Solicitud.query.filter(Solicitud.estado == "proceso").count()
+    except Exception:
+        solicitudes_en_proceso = 0
+    return {
+        "active_secretarias": int(active_secretarias),
+        "candidatas_editing_now": int(candidatas_editing),
+        "solicitudes_en_proceso": int(solicitudes_en_proceso),
+        "entrevistas_hoy": int(entrevistas_hoy),
+        "matching_hoy": int(matching_hoy),
+    }
+
+
+def _build_activity_stream_payload(limit: int = 20) -> list[dict]:
+    logs = (
+        StaffAuditLog.query
+        .order_by(StaffAuditLog.id.desc())
+        .limit(min(100, max(5, int(limit))))
+        .all()
+    )
+    if not logs:
+        return []
+    logs = list(reversed(logs))
+    actor_ids = sorted({int(l.actor_user_id) for l in logs if l.actor_user_id is not None})
+    username_map = {}
+    if actor_ids:
+        users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
+        username_map = {int(u.id): u.username for u in users}
+    entity_display_map = _build_entity_display_map(logs)
+    items = [_serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map) for log in logs]
+    return items[-limit:]
 
 
 def _serialize_log_item(
@@ -1985,6 +2125,7 @@ def _serialize_log_item(
         "action_human": action_human,
         "summary": log.summary,
         "route": log.route,
+        "route_human": _humanize_route(log.route),
         "method": log.method,
         "success": bool(log.success),
         "metadata_json": metadata,
@@ -2113,6 +2254,9 @@ def _build_monitoreo_summary_payload() -> dict:
     week_start = now - timedelta(days=7)
     month_start = now - timedelta(days=30)
     top = _activity_ranking(month_start, only_secretarias=True)
+    presence = _presence_rows()
+    active_presence = _presence_active_rows(presence)
+    conflicts = _build_presence_conflicts(active_presence)
     return {
         "generated_at": now.isoformat() + "Z",
         "today": _window_metrics_payload(day_start),
@@ -2127,8 +2271,12 @@ def _build_monitoreo_summary_payload() -> dict:
             }
             for r in top[:10]
         ],
-        "presence": _presence_rows(),
+        "presence": presence,
+        "presence_active_count": len(active_presence),
+        "presence_conflicts": conflicts,
         "productivity": _build_productivity_today_payload(),
+        "operations": _build_operations_metrics_payload(active_presence),
+        "activity_stream": _build_activity_stream_payload(limit=20),
     }
 
 
@@ -2469,6 +2617,8 @@ def monitoreo_stream():
     def generate():
         try:
             if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
+                snapshot = _presence_active_rows()
+                yield _sse("active_snapshot", {"items": snapshot, "interval_sec": 1})
                 yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
                 return
 
@@ -2479,6 +2629,8 @@ def monitoreo_stream():
 
             last_summary_at = 0.0
             last_presence_at = 0.0
+            last_operations_at = 0.0
+            last_activity_at = 0.0
             last_heartbeat_at = 0.0
             while True:
                 now_ts = time.time()
@@ -2502,21 +2654,33 @@ def monitoreo_stream():
                         yield _sse("log", item)
                         last_id = max(last_id, int(log.id))
 
-                if (now_ts - last_summary_at) >= 10.0:
+                if (now_ts - last_presence_at) >= 1.0:
+                    active = _presence_active_rows()
+                    conflicts = _build_presence_conflicts(active)
+                    yield _sse("active_snapshot", {"items": active, "conflicts": conflicts, "interval_sec": 1})
+                    last_presence_at = now_ts
+
+                if (now_ts - last_summary_at) >= 5.0:
                     summary = _build_monitoreo_summary_payload()
                     summary.pop("presence", None)
+                    summary.pop("activity_stream", None)
                     yield _sse("summary", summary)
                     last_summary_at = now_ts
 
-                if (now_ts - last_presence_at) >= 7.0:
-                    yield _sse("presence", {"items": _presence_rows()})
-                    last_presence_at = now_ts
+                if (now_ts - last_operations_at) >= 2.0:
+                    active = _presence_active_rows()
+                    yield _sse("operations", {"metrics": _build_operations_metrics_payload(active)})
+                    last_operations_at = now_ts
+
+                if (now_ts - last_activity_at) >= 2.0:
+                    yield _sse("activity", {"items": _build_activity_stream_payload(limit=20)})
+                    last_activity_at = now_ts
 
                 if (now_ts - last_heartbeat_at) >= 15.0:
                     yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
                     last_heartbeat_at = now_ts
 
-                time.sleep(2.0)
+                time.sleep(1.0)
         except (GeneratorExit, ConnectionError, OSError):
             return
 
@@ -2604,7 +2768,7 @@ def monitoreo_presence_ping():
     current_path = (payload.get("current_path") or request.path or "").strip()[:255]
     page_title = (payload.get("page_title") or request.endpoint or "").strip()[:160]
     event_type = (payload.get("event_type") or "heartbeat").strip().lower()[:32]
-    if event_type not in {"page_load", "heartbeat", "tab_focus", "open_entity"}:
+    if event_type not in {"page_load", "heartbeat", "tab_focus", "open_entity", "submit", "intent_change"}:
         event_type = "heartbeat"
 
     raw_action_type = (payload.get("action_type") or "").strip().upper()
