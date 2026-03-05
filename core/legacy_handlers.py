@@ -37,7 +37,7 @@ from sqlalchemy.sql import text
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # ✅ App factory / DB / CSRF / CACHE / usuarios en memoria
-from config_app import db, csrf, cache, USUARIOS
+from config_app import db, csrf, cache
 
 # Decoradores
 from decorators import roles_required, admin_required, staff_required
@@ -78,7 +78,6 @@ from utils.compat_engine import (
 from utils.guards import assert_candidata_no_descalificada, candidatas_activas_filter
 from utils.candidata_readiness import maybe_update_estado_por_completitud
 from utils.staff_auth import (
-    admin_legacy_enabled,
     breakglass_allowed_ip,
     get_request_ip,
     breakglass_username,
@@ -89,6 +88,7 @@ from utils.staff_auth import (
     log_breakglass_attempt,
     set_breakglass_session,
 )
+from utils.audit_logger import log_action, snapshot_model_fields, diff_snapshots
 
 # Data / reportes
 import pandas as pd
@@ -720,7 +720,7 @@ def robots_txt():
 # -----------------------------------------------------------------------------
 # AUTH (panel interno por sesión simple)
 #  Nota de seguridad:
-#  - Mantengo el esquema actual (USUARIOS en memoria) para no romper nada.
+#  - Autenticación staff basada en tabla staff_users.
 #  - Endurecí el login: limpio inputs, corto longitud, y roto sesión al autenticar.
 #  - Si usas CSRF con Flask-WTF, asegúrate de incluir {{ csrf_token() }} en login.html.
 # -----------------------------------------------------------------------------
@@ -936,48 +936,6 @@ def login():
             login_user(build_breakglass_user(), remember=False)
             set_breakglass_session(session)
             session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
-            session.modified = True
-            return safe_redirect_next('home')
-
-        # 2) Fallback legacy (config) solo si ADMIN_LEGACY_ENABLED=1
-        user_data = None
-        if admin_legacy_enabled():
-            user_data = (
-                USUARIOS.get(usuario_raw)
-                or USUARIOS.get(usuario_raw.lower())
-                or USUARIOS.get(usuario_raw.upper())
-            )
-
-        fallback_ok = False
-        if user_data:
-            stored = user_data.get("pwd_hash") or user_data.get("pwd")
-            if stored:
-                try:
-                    fallback_ok = check_password_hash(stored, clave)
-                except Exception:
-                    fallback_ok = (stored == clave)
-
-        if fallback_ok:
-            _reset_fail(usuario_norm)
-            try:
-                clear_fn = current_app.extensions.get("clear_login_attempts")
-                if callable(clear_fn):
-                    ip = _client_ip()
-                    clear_fn(ip, "/login", usuario_norm)
-            except Exception:
-                pass
-            try:
-                _clear_security_layer_lock("/login", usuario_norm)
-            except Exception:
-                pass
-
-            session.clear()
-            session.permanent = False
-            session['usuario'] = usuario_raw
-            session['role'] = (user_data.get("role") or "admin")
-            session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
-            session['is_admin_session'] = True
-            clear_breakglass_session(session)
             session.modified = True
             return safe_redirect_next('home')
 
@@ -2052,6 +2010,23 @@ def buscar_candidata():
         if cid.isdigit():
             obj = get_candidata_by_id(cid)
             if obj:
+                audit_fields = [
+                    "nombre_completo",
+                    "edad",
+                    "numero_telefono",
+                    "direccion_completa",
+                    "modalidad_trabajo_preferida",
+                    "rutas_cercanas",
+                    "empleo_anterior",
+                    "anos_experiencia",
+                    "areas_experiencia",
+                    "contactos_referencias_laborales",
+                    "referencias_familiares_detalle",
+                    "cedula",
+                    "sabe_planchar",
+                    "acepta_porcentaje_sueldo",
+                ]
+                before_snapshot = snapshot_model_fields(obj, audit_fields)
                 # Limites razonables por campo para evitar payloads enormes
                 obj.nombre_completo                  = (request.form.get('nombre') or '').strip()[:150] or obj.nombre_completo
                 obj.edad                             = (request.form.get('edad') or '').strip()[:10] or obj.edad
@@ -2112,14 +2087,41 @@ def buscar_candidata():
 
                 try:
                     db.session.commit()
+                    after_snapshot = snapshot_model_fields(obj, audit_fields)
+                    changes = diff_snapshots(before_snapshot, after_snapshot)
+                    log_action(
+                        action_type="CANDIDATA_EDIT",
+                        entity_type="Candidata",
+                        entity_id=obj.fila,
+                        summary=f"Edición de candidata {obj.nombre_completo or obj.fila}",
+                        metadata={"candidata_id": obj.fila},
+                        changes=changes,
+                        success=True,
+                    )
                     flash("✅ Datos actualizados correctamente.", "success")
                     return redirect(url_for('buscar_candidata', candidata_id=cid))
                 except IntegrityError:
                     db.session.rollback()
+                    log_action(
+                        action_type="CANDIDATA_EDIT",
+                        entity_type="Candidata",
+                        entity_id=obj.fila,
+                        summary=f"Fallo edición de candidata {obj.fila}",
+                        success=False,
+                        error="Conflicto de cédula duplicada.",
+                    )
                     mensaje = "⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente)."
                 except Exception:
                     db.session.rollback()
                     app.logger.exception("❌ Error al guardar edición de candidata")
+                    log_action(
+                        action_type="CANDIDATA_EDIT",
+                        entity_type="Candidata",
+                        entity_id=obj.fila,
+                        summary=f"Fallo edición de candidata {obj.fila}",
+                        success=False,
+                        error="Error al guardar edición de candidata.",
+                    )
                     mensaje = "❌ Error al guardar. Intenta de nuevo."
             else:
                 mensaje = "⚠️ Candidata no encontrada."

@@ -9,7 +9,7 @@ from flask import session, request, redirect, url_for
 from flask_login import current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from config_app import create_app, db, csrf, cache, USUARIOS
+from config_app import create_app, db, csrf, cache
 from core.routes import candidatas_bp, procesos_bp, entrevistas_bp, archivos_bp
 
 

@@ -441,6 +441,34 @@ class StaffUser(UserMixin, db.Model):
             return False
 
 
+class StaffAuditLog(db.Model):
+    __tablename__ = 'staff_audit_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    actor_user_id = db.Column(db.Integer, db.ForeignKey('staff_users.id'), nullable=True, index=True)
+    actor_role = db.Column(db.String(20), nullable=True)
+
+    action_type = db.Column(db.String(80), nullable=False, index=True)
+    entity_type = db.Column(db.String(80), nullable=True, index=True)
+    entity_id = db.Column(db.String(64), nullable=True, index=True)
+
+    route = db.Column(db.String(255), nullable=True)
+    method = db.Column(db.String(10), nullable=True)
+    ip = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(512), nullable=True)
+    summary = db.Column(db.String(255), nullable=True)
+
+    metadata_json = db.Column(db.JSON, nullable=False, default=dict)
+    changes_json = db.Column(db.JSON, nullable=True)
+
+    success = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    error_message = db.Column(db.Text, nullable=True)
+
+    actor_user = db.relationship('StaffUser', backref=db.backref('audit_logs', lazy='dynamic'))
+
+
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 

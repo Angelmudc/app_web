@@ -15,8 +15,7 @@ from datetime import timedelta
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
 from flask_migrate import Migrate
-from flask_login import LoginManager, UserMixin, logout_user
-from werkzeug.security import check_password_hash, generate_password_hash
+from flask_login import LoginManager, logout_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf import CSRFProtect
 
@@ -39,38 +38,6 @@ db = SQLAlchemy()
 cache = Cache()
 migrate = Migrate()
 csrf = CSRFProtect()
-
-# ─────────────────────────────────────────────────────────────
-# Usuarios en memoria (para login admin/secretaria)
-# ─────────────────────────────────────────────────────────────
-
-USUARIOS = {
-    "Cruz":   {"pwd_hash": generate_password_hash("8998", method="pbkdf2:sha256"), "role": "admin"},
-    "Karla":  {"pwd_hash": generate_password_hash("9989", method="pbkdf2:sha256"), "role": "secretaria"},
-    "Anyi": {"pwd_hash": generate_password_hash("0931", method="pbkdf2:sha256"), "role": "secretaria"},
-}
-
-# Helper: get admin user record by username, case-insensitive
-def _get_admin_user_record(raw_username: str):
-    """Devuelve (key_canonica, data) para USUARIOS, tolerando mayúsc/minúsc.
-
-    Esto evita loops de login cuando el username se guarda con otro casing.
-    """
-    u = (raw_username or "").strip()
-    if not u:
-        return None, None
-
-    # 1) Exact match
-    if u in USUARIOS:
-        return u, USUARIOS[u]
-
-    # 2) Case-insensitive match
-    ul = u.lower()
-    for k, v in USUARIOS.items():
-        if str(k).lower() == ul:
-            return k, v
-
-    return None, None
 
 # ─────────────────────────────────────────────────────────────
 # Utilidad: normalizar cédula (devuelve 11 dígitos sin guiones)
@@ -381,7 +348,7 @@ def create_app():
     app.jinja_env.filters["compat_fmt"] = format_compat_result
 
     # ─────────────────────────────────────────────────────────
-    # Login manager (staff en BD + legacy en memoria + clientes)
+    # Login manager (staff en BD + clientes)
     # ─────────────────────────────────────────────────────────
     login_manager = LoginManager()
     login_manager.init_app(app)
@@ -393,17 +360,6 @@ def create_app():
         if request.path.startswith("/clientes"):
             return redirect(url_for("clientes.login", next=next_url))
         return redirect(url_for("admin.login", next=next_url))
-
-    class User(UserMixin):
-        def __init__(self, username, role):
-            self.id = username
-            self.role = role
-
-        def check_password(self, password):
-            key, data = _get_admin_user_record(self.id)
-            if not data:
-                return False
-            return check_password_hash(data["pwd_hash"], password)
 
     from utils.staff_auth import (
         BREAKGLASS_USER_ID,
@@ -451,10 +407,6 @@ def create_app():
             su = StaffUser.query.get(int(uid))
             if su is not None:
                 return su
-
-        key, data = _get_admin_user_record(uid)
-        if data:
-            return User(key, data["role"])
 
         try:
             if uid.isdigit():
@@ -560,6 +512,38 @@ def create_app():
         user.is_active = bool(int(active) == 1)
         db.session.commit()
         click.echo(f"Actualizado: id={user.id} username={user.username} active={user.is_active}")
+
+    def _seed_testing_staff_users() -> None:
+        if env not in ("test", "testing"):
+            return
+        from models import StaffUser
+
+        seed = [
+            ("Cruz", "admin", "8998"),
+            ("Karla", "secretaria", "9989"),
+            ("Anyi", "secretaria", "0931"),
+        ]
+        for username, role, password in seed:
+            exists = StaffUser.query.filter(func.lower(StaffUser.username) == username.lower()).first()
+            if exists:
+                continue
+            u = StaffUser(username=username, role=role, is_active=True)
+            u.set_password(password)
+            db.session.add(u)
+        db.session.commit()
+
+    if env in ("test", "testing"):
+        with app.app_context():
+            from models import StaffUser, StaffAuditLog
+            StaffUser.__table__.create(bind=db.engine, checkfirst=True)
+            StaffAuditLog.__table__.create(bind=db.engine, checkfirst=True)
+            _seed_testing_staff_users()
+
+    from utils.audit_logger import log_staff_post_fallback
+
+    @app.after_request
+    def _staff_audit_post_fallback(resp):
+        return log_staff_post_fallback(resp)
 
     # ─────────────────────────────────────────────────────────
     # Blueprints

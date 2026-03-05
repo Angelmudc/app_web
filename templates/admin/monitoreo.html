@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}Monitoreo de Secretarias{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Monitoreo de Secretarias</h1>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Ver logs completos</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Acciones hoy</small><div class="h4 mb-0">{{ total_today }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Acciones 7 días</small><div class="h4 mb-0">{{ total_week }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Solicitudes creadas (7d)</small><div class="h4 mb-0">{{ metrics.solicitudes_creadas }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Candidatas enviadas (7d)</small><div class="h4 mb-0">{{ metrics.candidatas_enviadas }}</div></div></div></div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <div class="col-lg-4">
+      <h2 class="h6">Ranking hoy</h2>
+      <ul class="list-group">
+        {% for row in ranking_today %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <a href="{{ url_for('admin.monitoreo_secretaria', user_id=row.actor_user_id) }}">{{ row.username }}</a>
+            <span class="badge bg-primary">{{ row.total }}</span>
+          </li>
+        {% else %}
+          <li class="list-group-item text-muted">Sin actividad</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="col-lg-4">
+      <h2 class="h6">Ranking semana</h2>
+      <ul class="list-group">
+        {% for row in ranking_week %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <a href="{{ url_for('admin.monitoreo_secretaria', user_id=row.actor_user_id) }}">{{ row.username }}</a>
+            <span class="badge bg-secondary">{{ row.total }}</span>
+          </li>
+        {% else %}
+          <li class="list-group-item text-muted">Sin actividad</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="col-lg-4">
+      <h2 class="h6">Ranking mes</h2>
+      <ul class="list-group">
+        {% for row in ranking_month %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <a href="{{ url_for('admin.monitoreo_secretaria', user_id=row.actor_user_id) }}">{{ row.username }}</a>
+            <span class="badge bg-dark">{{ row.total }}</span>
+          </li>
+        {% else %}
+          <li class="list-group-item text-muted">Sin actividad</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="h6">Acciones por día (7d)</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-sm table-striped">
+      <thead><tr><th>Fecha</th><th>Total</th></tr></thead>
+      <tbody>
+      {% for day, total in per_day_rows %}
+        <tr><td>{{ day }}</td><td>{{ total }}</td></tr>
+      {% else %}
+        <tr><td colspan="2" class="text-muted">Sin registros.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="h6">Últimos logs</h2>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover">
+      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th></tr></thead>
+      <tbody>
+      {% for log in latest_logs %}
+        <tr>
+          <td>{{ log.created_at }}</td>
+          <td>{% set u = user_map.get(log.actor_user_id) %}{{ u.username if u else '-' }}</td>
+          <td><code>{{ log.action_type }}</code></td>
+          <td>{{ log.entity_type or '-' }} {{ log.entity_id or '' }}</td>
+          <td>{{ log.summary or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="text-muted">Sin registros.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

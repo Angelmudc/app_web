@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import generate_password_hash
 
 from sqlalchemy import or_, func, cast, desc
 from sqlalchemy.types import Numeric
@@ -17,8 +17,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from functools import wraps  # si otros decoradores locales lo usan
 
-from config_app import db, USUARIOS, cache
-from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata, ClienteNotificacion, Entrevista
+from config_app import db, cache
+from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata, ClienteNotificacion, Entrevista, StaffAuditLog
 from admin.forms import (
     StaffUserCreateForm,
     StaffUserEditForm,
@@ -63,54 +63,18 @@ from utils.staff_auth import (
     is_breakglass_session_valid,
     clear_breakglass_session,
 )
+from utils.audit_logger import log_action
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
 
 from clientes.routes import generar_token_publico_cliente
 
-# =============================================================================
-#                                AUTH
-# =============================================================================
-class AdminUser:
-    """Wrapper mínimo para flask-login basado en USUARIOS del config."""
-
-    def __init__(self, username: str):
-        self.id = username
-        self.role = USUARIOS[username]["role"]
-
-    # Flask-Login interface mínima
-    @property
-    def is_authenticated(self) -> bool:
-        return True
-
-    @property
-    def is_active(self) -> bool:
-        return True
-
-    @property
-    def is_anonymous(self) -> bool:
-        return False
-
-    def get_id(self) -> str:
-        return str(self.id)
-
-
 def _is_true_env(value: str, default: bool = False) -> bool:
     raw = (value or "").strip().lower()
     if not raw:
         return default
     return raw in ("1", "true", "yes", "on")
-
-
-def _admin_legacy_enabled() -> bool:
-    raw = os.getenv("ADMIN_LEGACY_ENABLED")
-    if raw is not None:
-        return _is_true_env(raw, default=False)
-    env = (os.getenv("FLASK_ENV", "") or os.getenv("ENV", "")).strip().lower()
-    if env == "production":
-        return False
-    return True
 
 
 def _staff_password_min_len() -> int:
@@ -123,18 +87,6 @@ def _staff_password_min_len() -> int:
 def _admin_default_role() -> str:
     role = (os.getenv("ADMIN_DEFAULT_ROLE") or "secretaria").strip().lower()
     return role if role in ("admin", "secretaria") else "secretaria"
-
-
-def _staff_users_count() -> int:
-    try:
-        return int(StaffUser.query.count() or 0)
-    except Exception:
-        return 0
-
-
-def _legacy_fallback_allowed() -> bool:
-    # Siempre permitir fallback si no hay staff en BD.
-    return _admin_legacy_enabled() or _staff_users_count() == 0
 
 
 def _emergency_hide_prefix() -> str:
@@ -173,6 +125,31 @@ def _try_breakglass_login(usuario_norm: str, clave: str):
     ok = check_breakglass_password(clave)
     log_breakglass_attempt(ok, ip, ua)
     return bool(ok)
+
+
+def _audit_log(
+    action_type: str,
+    entity_type: str | None = None,
+    entity_id=None,
+    summary: str | None = None,
+    metadata: dict | None = None,
+    changes: dict | None = None,
+    success: bool = True,
+    error: str | None = None,
+) -> None:
+    try:
+        log_action(
+            action_type=action_type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            summary=summary,
+            metadata=metadata,
+            changes=changes,
+            success=success,
+            error=error,
+        )
+    except Exception:
+        return
 
 
 
@@ -572,29 +549,6 @@ def _admin_guard_and_rate_limit():
 
                 if isinstance(current_user, StaffUser):
                     return bool(current_user.is_active) and role in ("admin", "secretaria")
-
-                uid = None
-                try:
-                    uid = current_user.get_id()
-                except Exception:
-                    uid = getattr(current_user, "id", None)
-
-                if uid is None:
-                    return False
-
-                uid_str = str(uid).strip()
-                if not uid_str:
-                    return False
-
-                # Match exacto o case-insensitive contra USUARIOS
-                if uid_str in (USUARIOS or {}):
-                    return True
-
-                uid_norm = uid_str.lower()
-                for k in (USUARIOS or {}).keys():
-                    if str(k).strip().lower() == uid_norm:
-                        return True
-
                 return False
             except Exception:
                 return False
@@ -1043,7 +997,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login admin híbrido: BD (staff_users) + fallback legacy (USUARIOS)."""
+    """Login admin: StaffUser en BD + breakglass."""
     error = None
 
     if request.method == 'POST':
@@ -1092,27 +1046,6 @@ def login():
                 authenticated_user = build_breakglass_user()
                 authenticated_username = breakglass_username()
 
-        # 3) Fallback legacy (config) por ENV o si BD vacía
-        if not auth_ok and _legacy_fallback_allowed():
-            user_data = None
-            try:
-                user_data = USUARIOS.get(usuario_raw) or USUARIOS.get(usuario_norm)
-                if user_data is None:
-                    for k, v in (USUARIOS or {}).items():
-                        if str(k).strip().lower() == usuario_norm:
-                            user_data = v
-                            authenticated_username = k
-                            break
-            except Exception:
-                user_data = None
-
-            try:
-                if user_data and check_password_hash(user_data.get('pwd_hash', ''), clave):
-                    auth_ok = True
-                    authenticated_user = AdminUser(str(authenticated_username))
-            except Exception:
-                auth_ok = False
-
         if auth_ok and authenticated_user is not None:
             # ✅ Login correcto
             try:
@@ -1150,6 +1083,12 @@ def login():
                     authenticated_user.last_login_at = datetime.utcnow()
                     authenticated_user.last_login_ip = _client_ip()
                     db.session.commit()
+                    _audit_log(
+                        action_type="STAFF_LOGIN_SUCCESS",
+                        entity_type="StaffUser",
+                        entity_id=authenticated_user.id,
+                        summary=f"Login staff exitoso: {authenticated_user.username}",
+                    )
                 except Exception:
                     db.session.rollback()
 
@@ -1158,6 +1097,14 @@ def login():
 
         # ❌ Login incorrecto
         _admin_register_fail(usuario_norm)
+        _audit_log(
+            action_type="STAFF_LOGIN_FAIL",
+            entity_type="StaffUser",
+            entity_id=usuario_norm or None,
+            summary=f"Intento fallido de login staff: {usuario_norm or 'sin_usuario'}",
+            success=False,
+            error="Credenciales inválidas",
+        )
         error = 'Credenciales inválidas.'
 
     return render_template('admin/login.html', error=error)
@@ -1428,44 +1375,199 @@ def eliminar_usuario(user_id: int):
         flash('No se pudo eliminar el usuario.', 'danger')
     return redirect(url_for('admin.listar_usuarios'))
 
+
+def _parse_monitoreo_date(raw: str, end_of_day: bool = False):
+    txt = (raw or "").strip()
+    if not txt:
+        return None
+    try:
+        d = datetime.strptime(txt, "%Y-%m-%d")
+        if end_of_day:
+            return d + timedelta(days=1)
+        return d
+    except Exception:
+        return None
+
+
+def _logs_filtered_query():
+    q = StaffAuditLog.query
+
+    user_id = request.args.get("user_id", type=int)
+    action_type = (request.args.get("action_type") or "").strip()
+    entity_type = (request.args.get("entity_type") or "").strip()
+    date_from = _parse_monitoreo_date(request.args.get("date_from"))
+    date_to = _parse_monitoreo_date(request.args.get("date_to"), end_of_day=True)
+    search = (request.args.get("search") or "").strip()[:100]
+
+    if user_id:
+        q = q.filter(StaffAuditLog.actor_user_id == user_id)
+    if action_type:
+        q = q.filter(StaffAuditLog.action_type == action_type)
+    if entity_type:
+        q = q.filter(StaffAuditLog.entity_type == entity_type)
+    if date_from:
+        q = q.filter(StaffAuditLog.created_at >= date_from)
+    if date_to:
+        q = q.filter(StaffAuditLog.created_at < date_to)
+    if search:
+        like = f"%{search}%"
+        q = q.filter(or_(StaffAuditLog.entity_id.ilike(like), StaffAuditLog.summary.ilike(like)))
+
+    return q.order_by(StaffAuditLog.created_at.desc())
+
+
+def _activity_ranking(since_dt: datetime):
+    rows = (
+        db.session.query(
+            StaffAuditLog.actor_user_id,
+            StaffUser.username,
+            func.count(StaffAuditLog.id).label("total"),
+        )
+        .join(StaffUser, StaffUser.id == StaffAuditLog.actor_user_id)
+        .filter(StaffAuditLog.created_at >= since_dt)
+        .group_by(StaffAuditLog.actor_user_id, StaffUser.username)
+        .order_by(desc("total"), StaffUser.username.asc())
+        .all()
+    )
+    return rows
+
+
+@admin_bp.route('/monitoreo', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_staff():
+    now = datetime.utcnow()
+    day_start = datetime(now.year, now.month, now.day)
+    week_start = now - timedelta(days=7)
+
+    total_today = StaffAuditLog.query.filter(StaffAuditLog.created_at >= day_start).count()
+    total_week = StaffAuditLog.query.filter(StaffAuditLog.created_at >= week_start).count()
+
+    metric_map = {
+        "solicitudes_creadas": "SOLICITUD_CREATE",
+        "solicitudes_publicadas": "SOLICITUD_PUBLICAR",
+        "candidatas_editadas": "CANDIDATA_EDIT",
+        "candidatas_enviadas": "MATCHING_SEND",
+    }
+    metrics = {}
+    for key, action in metric_map.items():
+        metrics[key] = StaffAuditLog.query.filter(
+            StaffAuditLog.created_at >= week_start,
+            StaffAuditLog.action_type == action,
+            StaffAuditLog.success.is_(True),
+        ).count()
+
+    per_day_rows = (
+        db.session.query(
+            func.date(StaffAuditLog.created_at).label("day"),
+            func.count(StaffAuditLog.id).label("total"),
+        )
+        .filter(StaffAuditLog.created_at >= week_start)
+        .group_by(func.date(StaffAuditLog.created_at))
+        .order_by(func.date(StaffAuditLog.created_at).asc())
+        .all()
+    )
+
+    latest_logs = (
+        StaffAuditLog.query
+        .order_by(StaffAuditLog.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    users = StaffUser.query.order_by(StaffUser.username.asc()).all()
+    user_map = {u.id: u for u in users}
+
+    ranking_today = _activity_ranking(day_start)
+    ranking_week = _activity_ranking(now - timedelta(days=7))
+    ranking_month = _activity_ranking(now - timedelta(days=30))
+
+    return render_template(
+        "admin/monitoreo.html",
+        now=now,
+        total_today=total_today,
+        total_week=total_week,
+        metrics=metrics,
+        per_day_rows=per_day_rows,
+        latest_logs=latest_logs,
+        users=users,
+        user_map=user_map,
+        ranking_today=ranking_today,
+        ranking_week=ranking_week,
+        ranking_month=ranking_month,
+    )
+
+
+@admin_bp.route('/monitoreo/logs', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_logs():
+    page = max(1, request.args.get("page", default=1, type=int))
+    per_page = min(100, max(10, request.args.get("per_page", default=25, type=int)))
+    pagination = _logs_filtered_query().paginate(page=page, per_page=per_page, error_out=False)
+
+    users = StaffUser.query.order_by(StaffUser.username.asc()).all()
+    action_types = [r[0] for r in db.session.query(StaffAuditLog.action_type).distinct().order_by(StaffAuditLog.action_type.asc()).all()]
+    entity_types = [r[0] for r in db.session.query(StaffAuditLog.entity_type).filter(StaffAuditLog.entity_type.isnot(None)).distinct().order_by(StaffAuditLog.entity_type.asc()).all()]
+    user_map = {u.id: u for u in users}
+
+    return render_template(
+        "admin/monitoreo_logs.html",
+        logs=pagination.items,
+        pagination=pagination,
+        users=users,
+        user_map=user_map,
+        action_types=action_types,
+        entity_types=entity_types,
+    )
+
+
+@admin_bp.route('/monitoreo/secretarias/<int:user_id>', methods=['GET'])
+@login_required
+@admin_required
+def monitoreo_secretaria(user_id: int):
+    user = StaffUser.query.get_or_404(user_id)
+    page = max(1, request.args.get("page", default=1, type=int))
+    per_page = min(100, max(10, request.args.get("per_page", default=25, type=int)))
+
+    date_from = _parse_monitoreo_date(request.args.get("date_from"))
+    date_to = _parse_monitoreo_date(request.args.get("date_to"), end_of_day=True)
+
+    q = StaffAuditLog.query.filter(StaffAuditLog.actor_user_id == user.id)
+    if date_from:
+        q = q.filter(StaffAuditLog.created_at >= date_from)
+    if date_to:
+        q = q.filter(StaffAuditLog.created_at < date_to)
+    q = q.order_by(StaffAuditLog.created_at.desc())
+
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+
+    now = datetime.utcnow()
+    since = now - timedelta(days=30)
+    per_day_rows = (
+        db.session.query(
+            func.date(StaffAuditLog.created_at).label("day"),
+            func.count(StaffAuditLog.id).label("total"),
+        )
+        .filter(StaffAuditLog.actor_user_id == user.id, StaffAuditLog.created_at >= since)
+        .group_by(func.date(StaffAuditLog.created_at))
+        .order_by(func.date(StaffAuditLog.created_at).asc())
+        .all()
+    )
+
+    return render_template(
+        "admin/monitoreo_secretaria.html",
+        target_user=user,
+        logs=pagination.items,
+        pagination=pagination,
+        per_day_rows=per_day_rows,
+    )
+
 # =============================================================================
 #                 GUARD GLOBAL ADMIN (aislamiento real)
 # =============================================================================
 
 def _is_admin_identity_LEGACY() -> bool:
-    """True si el current_user pertenece a USUARIOS (admin/staff/secretaria).
-    Esto evita que un cliente autenticado (con otra sesión) pueda tocar /admin/*
-    aunque haya un bug de roles.
-    """
-    try:
-        if not current_user or not getattr(current_user, "is_authenticated", False):
-            return False
-
-        uid = None
-        try:
-            uid = current_user.get_id()
-        except Exception:
-            uid = getattr(current_user, "id", None)
-
-        if uid is None:
-            return False
-
-        uid_str = str(uid).strip()
-        if not uid_str:
-            return False
-
-        # Match exacto o case-insensitive contra USUARIOS
-        if uid_str in (USUARIOS or {}):
-            return True
-
-        uid_norm = uid_str.lower()
-        for k in (USUARIOS or {}).keys():
-            if str(k).strip().lower() == uid_norm:
-                return True
-
-        return False
-    except Exception:
-        return False
+    return False
 
 
 @admin_bp.before_request
@@ -3077,6 +3179,13 @@ def nueva_solicitud_admin(cliente_id):
             c.fecha_ultima_actividad = datetime.utcnow()
 
             db.session.commit()
+            _audit_log(
+                action_type="SOLICITUD_CREATE",
+                entity_type="Solicitud",
+                entity_id=s.id,
+                summary=f"Solicitud creada: {s.codigo_solicitud or s.id}",
+                metadata={"cliente_id": c.id, "tipo_servicio": s.tipo_servicio},
+            )
             flash(f'Solicitud {nuevo_codigo} creada.', 'success')
             return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
@@ -3276,6 +3385,13 @@ def editar_solicitud_admin(cliente_id, id):
             s.detalles_servicio = _build_detalles_servicio_from_form(form)
 
             db.session.commit()
+            _audit_log(
+                action_type="SOLICITUD_EDIT",
+                entity_type="Solicitud",
+                entity_id=s.id,
+                summary=f"Solicitud editada: {s.codigo_solicitud or s.id}",
+                metadata={"cliente_id": s.cliente_id, "tipo_servicio": s.tipo_servicio},
+            )
             flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
             return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
@@ -3860,12 +3976,27 @@ def nuevo_reemplazo(s_id):
 
             db.session.add(r)
             db.session.commit()
+            _audit_log(
+                action_type="REEMPLAZO_ABRIR",
+                entity_type="Solicitud",
+                entity_id=sol.id,
+                summary=f"Reemplazo iniciado para solicitud {sol.codigo_solicitud or sol.id}",
+                metadata={"reemplazo_id": r.id, "candidata_old_id": cand_old.fila, "descalificar": bool(descalificar)},
+            )
 
             flash('Reemplazo iniciado correctamente.', 'success')
             return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
 
         except Exception:
             db.session.rollback()
+            _audit_log(
+                action_type="REEMPLAZO_ABRIR",
+                entity_type="Solicitud",
+                entity_id=sol.id,
+                summary=f"Fallo iniciando reemplazo para solicitud {sol.id}",
+                success=False,
+                error="Error al iniciar reemplazo.",
+            )
             flash('Error al iniciar el reemplazo.', 'danger')
 
     # 👇 Ya no se manda "q" porque eliminamos búsqueda
@@ -4107,6 +4238,13 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     pass
 
             db.session.commit()
+            _audit_log(
+                action_type="REEMPLAZO_CERRAR",
+                entity_type="Solicitud",
+                entity_id=s.id,
+                summary=f"Reemplazo finalizado para solicitud {s.codigo_solicitud or s.id}",
+                metadata={"reemplazo_id": r.id, "candidata_new_id": cand_new.fila},
+            )
             flash('Reemplazo finalizado correctamente.', 'success')
             return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
 
@@ -4119,6 +4257,15 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                 traceback.print_exc()
             except Exception:
                 pass
+            _audit_log(
+                action_type="REEMPLAZO_CERRAR",
+                entity_type="Solicitud",
+                entity_id=s.id,
+                summary=f"Fallo finalizando reemplazo para solicitud {s.id}",
+                metadata={"reemplazo_id": r.id},
+                success=False,
+                error=str(e),
+            )
             flash('Error al finalizar el reemplazo.', 'danger')
 
     elif request.method == 'POST':
@@ -4164,9 +4311,25 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             s.fecha_ultima_modificacion = datetime.utcnow()
 
         db.session.commit()
+        _audit_log(
+            action_type="REEMPLAZO_CANCELAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Reemplazo cancelado para solicitud {s.codigo_solicitud or s.id}",
+            metadata={"reemplazo_id": r.id},
+        )
         flash("Reemplazo cancelado correctamente.", "success")
     except Exception:
         db.session.rollback()
+        _audit_log(
+            action_type="REEMPLAZO_CANCELAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Fallo cancelando reemplazo para solicitud {s.id}",
+            metadata={"reemplazo_id": r.id},
+            success=False,
+            error="No se pudo cancelar el reemplazo.",
+        )
         flash("No se pudo cancelar el reemplazo.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
@@ -4225,9 +4388,25 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
             s.fecha_ultima_modificacion = datetime.utcnow()
 
         db.session.commit()
+        _audit_log(
+            action_type="REEMPLAZO_CERRAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Reemplazo cerrado asignando candidata en solicitud {s.codigo_solicitud or s.id}",
+            metadata={"reemplazo_id": r.id, "candidata_new_id": cand_new.fila},
+        )
         flash("Reemplazo cerrado y nueva candidata asignada.", "success")
     except Exception:
         db.session.rollback()
+        _audit_log(
+            action_type="REEMPLAZO_CERRAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Fallo cerrando reemplazo por asignación en solicitud {s.id}",
+            metadata={"reemplazo_id": r.id, "candidata_new_id": cand_new.fila if cand_new else None},
+            success=False,
+            error="No se pudo cerrar el reemplazo.",
+        )
         flash("No se pudo cerrar el reemplazo.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
@@ -5008,12 +5187,28 @@ def matching_enviar_candidatas(solicitud_id: int):
         if processed:
             _upsert_cliente_notificacion_candidatas(solicitud, processed)
             db.session.commit()
+            _audit_log(
+                action_type="MATCHING_SEND",
+                entity_type="Solicitud",
+                entity_id=solicitud.id,
+                summary=f"Envío de candidatas en matching para solicitud {solicitud.codigo_solicitud or solicitud.id}",
+                metadata={"candidata_ids": candidata_ids, "processed": processed},
+            )
             flash(f"Candidata enviada al cliente. Total procesadas: {processed}.", "success")
         else:
             db.session.rollback()
             flash("No se encontraron candidatas válidas para enviar.", "warning")
     except Exception:
         db.session.rollback()
+        _audit_log(
+            action_type="MATCHING_SEND",
+            entity_type="Solicitud",
+            entity_id=solicitud.id,
+            summary=f"Fallo enviando candidatas en matching para solicitud {solicitud.id}",
+            metadata={"candidata_ids": candidata_ids},
+            success=False,
+            error="No se pudieron enviar candidatas.",
+        )
         flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")
 
     return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
@@ -5267,9 +5462,26 @@ def descalificar_candidata(candidata_id: int):
 
     try:
         db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_DESCALIFICAR",
+            entity_type="Candidata",
+            entity_id=cand.fila,
+            summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+            metadata={"motivo": motivo},
+            changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
+        )
         flash("Candidata descalificada correctamente.", "success")
     except Exception:
         db.session.rollback()
+        _audit_log(
+            action_type="CANDIDATA_DESCALIFICAR",
+            entity_type="Candidata",
+            entity_id=cand.fila,
+            summary=f"Fallo descalificando candidata {cand.fila}",
+            metadata={"motivo": motivo},
+            success=False,
+            error="No se pudo descalificar la candidata.",
+        )
         flash("No se pudo descalificar la candidata.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
@@ -5300,9 +5512,24 @@ def reactivar_candidata(candidata_id: int):
 
     try:
         db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_REACTIVAR",
+            entity_type="Candidata",
+            entity_id=cand.fila,
+            summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+        )
         flash("Candidata reactivada correctamente.", "success")
     except Exception:
         db.session.rollback()
+        _audit_log(
+            action_type="CANDIDATA_REACTIVAR",
+            entity_type="Candidata",
+            entity_id=cand.fila,
+            summary=f"Fallo reactivando candidata {cand.fila}",
+            success=False,
+            error="No se pudo reactivar la candidata.",
+        )
         flash("No se pudo reactivar la candidata.", "danger")
 
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
@@ -5334,6 +5561,13 @@ def marcar_candidata_trabajando(candidata_id: int):
 
     try:
         db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_ESTADO_TRABAJANDO",
+            entity_type="Candidata",
+            entity_id=cand.fila,
+            summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
+        )
         flash("Candidata marcada como trabajando.", "success")
     except Exception:
         db.session.rollback()
@@ -5378,6 +5612,13 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
 
     try:
         db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_ESTADO_LISTA",
+            entity_type="Candidata",
+            entity_id=cand.fila,
+            summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "trabajando", "to": "lista_para_trabajar"}},
+        )
         flash("Candidata marcada como lista para trabajar.", "success")
     except Exception:
         db.session.rollback()
@@ -6264,6 +6505,12 @@ def copiar_solicitud(id):
     try:
         s.last_copiado_at = func.now()
         db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_PUBLICAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud marcada como publicada/copiada: {s.codigo_solicitud or s.id}",
+        )
         flash(f'Solicitud { _s(s.codigo_solicitud) } copiada. Ya no se mostrará hasta mañana.', 'success')
     except SQLAlchemyError:
         db.session.rollback()
@@ -6473,6 +6720,13 @@ def poner_espera_pago_solicitud(id):
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = datetime.utcnow()
         db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_ESPERA_PAGO_PONER",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud puesta en espera de pago: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": estado_actual, "to": "espera_pago"}},
+        )
         flash('Solicitud marcada en espera de pago.', 'success')
     except Exception:
         db.session.rollback()
@@ -6511,6 +6765,13 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = datetime.utcnow()
         db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_ESPERA_PAGO_PONER",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud puesta en espera de pago: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": estado_actual, "to": "espera_pago"}},
+        )
         flash('Solicitud marcada en espera de pago.', 'success')
     except Exception:
         db.session.rollback()
@@ -6545,6 +6806,13 @@ def quitar_espera_pago_solicitud(id):
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = datetime.utcnow()
         db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_ESPERA_PAGO_QUITAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud reactivada desde espera de pago: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": "espera_pago", "to": restore}},
+        )
         flash(f'Solicitud reactivada desde espera de pago a {restore}.', 'success')
     except Exception:
         db.session.rollback()
@@ -6579,6 +6847,13 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = datetime.utcnow()
         db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_ESPERA_PAGO_QUITAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud reactivada desde espera de pago: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": "espera_pago", "to": restore}},
+        )
         flash(f'Solicitud reactivada desde espera de pago a {restore}.', 'success')
     except Exception:
         db.session.rollback()

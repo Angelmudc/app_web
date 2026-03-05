@@ -143,6 +143,25 @@
       </div>
     </div>
 
+    {% if _role == 'admin' %}
+    <div class="mb-5">
+      <h2 class="section-title">
+        <i class="fa-solid fa-user-shield me-2 text-primary"></i> Monitoreo
+      </h2>
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        <div class="col">
+          <div class="dashboard-card">
+            <h5>Monitoreo de Secretarias</h5>
+            <p>Timeline, filtros, métricas y ranking de actividad staff.</p>
+            <a href="{{ url_for('admin.monitoreo_staff') }}" class="btn btn-outline-primary w-100">
+              Abrir monitoreo
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="mb-5">
       <h2 class="section-title">
         <i class="fa-solid fa-people-arrows me-2 text-primary"></i> Compatibilidad

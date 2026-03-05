@@ -13,9 +13,6 @@ try:
 except Exception:
     current_user = None
 
-from config_app import USUARIOS
-
-
 BREAKGLASS_USER_ID = "breakglass"
 
 
@@ -48,16 +45,6 @@ def _safe_next() -> str:
     if nxt.startswith("/") and not nxt.startswith("//"):
         return nxt
     return "/"
-
-
-def admin_legacy_enabled() -> bool:
-    raw = os.getenv("ADMIN_LEGACY_ENABLED")
-    if raw is not None:
-        return _is_true_env(raw, default=False)
-    env = (os.getenv("FLASK_ENV", "") or os.getenv("ENV", "")).strip().lower()
-    if env == "production":
-        return False
-    return True
 
 
 def redirect_admin_login():
@@ -180,16 +167,6 @@ def log_breakglass_attempt(success: bool, ip: str, ua: str):
         pass
 
 
-def _legacy_user_exists(username: str) -> bool:
-    uname = (username or "").strip()
-    if not uname:
-        return False
-    if uname in USUARIOS:
-        return True
-    ul = uname.lower()
-    return any(str(k).strip().lower() == ul for k in (USUARIOS or {}).keys())
-
-
 def _current_user_role() -> str:
     try:
         if not current_user:
@@ -221,23 +198,6 @@ def _is_staff_user_model() -> bool:
         return False
 
 
-def _is_legacy_staff_login() -> bool:
-    if not admin_legacy_enabled():
-        return False
-
-    try:
-        if current_user and getattr(current_user, "is_authenticated", False):
-            uid = str(current_user.get_id() or "").strip()
-            if _legacy_user_exists(uid):
-                return True
-    except Exception:
-        pass
-
-    uname = (session.get("usuario") or "").strip()
-    role = (session.get("role") or "").strip().lower()
-    return bool(uname and role in ("admin", "secretaria") and _legacy_user_exists(uname))
-
-
 def get_staff_role() -> str:
     role = _normalize_staff_role_name(_current_user_role())
 
@@ -253,9 +213,6 @@ def get_staff_role() -> str:
                 return ""
         except Exception:
             return ""
-        return role
-
-    if _is_legacy_staff_login():
         return role
 
     return ""

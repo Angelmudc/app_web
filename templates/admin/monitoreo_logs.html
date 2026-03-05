@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Logs de Monitoreo{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h3 mb-3">Logs de Monitoreo Staff</h1>
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-md-2">
+      <select class="form-select" name="user_id">
+        <option value="">Todas las usuarias</option>
+        {% for u in users %}
+          <option value="{{ u.id }}" {% if request.args.get('user_id') == (u.id|string) %}selected{% endif %}>{{ u.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="action_type">
+        <option value="">Todas las acciones</option>
+        {% for a in action_types %}
+          <option value="{{ a }}" {% if request.args.get('action_type') == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="entity_type">
+        <option value="">Todas las entidades</option>
+        {% for e in entity_types %}
+          <option value="{{ e }}" {% if request.args.get('entity_type') == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2"><input class="form-control" type="date" name="date_from" value="{{ request.args.get('date_from','') }}"></div>
+    <div class="col-md-2"><input class="form-control" type="date" name="date_to" value="{{ request.args.get('date_to','') }}"></div>
+    <div class="col-md-2"><input class="form-control" type="text" name="search" placeholder="entity_id/resumen" value="{{ request.args.get('search','') }}"></div>
+    <div class="col-12 d-flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Filtrar</button>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Limpiar</a>
+      <a class="btn btn-outline-dark btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver</a>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th><th>Cambios</th><th>Resultado</th></tr></thead>
+      <tbody>
+      {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at }}</td>
+          <td>{% set u = user_map.get(log.actor_user_id) %}{{ u.username if u else '-' }}</td>
+          <td><code>{{ log.action_type }}</code></td>
+          <td>{{ log.entity_type or '-' }} {{ log.entity_id or '' }}</td>
+          <td>{{ log.summary or '-' }}</td>
+          <td><small>{{ log.changes_json if log.changes_json else '-' }}</small></td>
+          <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="text-muted">No hay logs para este filtro.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <nav>
+    <ul class="pagination pagination-sm">
+      {% if pagination.has_prev %}
+        <li class="page-item"><a class="page-link" href="{{ url_for('admin.monitoreo_logs', page=pagination.prev_num, user_id=request.args.get('user_id'), action_type=request.args.get('action_type'), entity_type=request.args.get('entity_type'), date_from=request.args.get('date_from'), date_to=request.args.get('date_to'), search=request.args.get('search')) }}">Anterior</a></li>
+      {% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ pagination.page }} / {{ pagination.pages or 1 }}</span></li>
+      {% if pagination.has_next %}
+        <li class="page-item"><a class="page-link" href="{{ url_for('admin.monitoreo_logs', page=pagination.next_num, user_id=request.args.get('user_id'), action_type=request.args.get('action_type'), entity_type=request.args.get('entity_type'), date_from=request.args.get('date_from'), date_to=request.args.get('date_to'), search=request.args.get('search')) }}">Siguiente</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+</div>
+{% endblock %}
