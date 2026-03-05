@@ -28,6 +28,7 @@ class _DummyCandidata:
         self.nombre_completo = f"Cand {fila}"
         self.cedula = "000-0000000-0"
         self.numero_telefono = "8090000000"
+        self.codigo = f"C-{fila}"
 
 
 class _SolicitudQuery:
@@ -52,11 +53,40 @@ class _CandidataQuery:
 
 
 class _SolicitudCandidataQuery:
+    def __init__(self, existing=None, all_rows=None):
+        self._existing = existing or {}
+        self._all_rows = all_rows or []
+        self.kwargs = {}
+
     def filter_by(self, **kwargs):
+        self.kwargs = kwargs
         return self
 
     def first(self):
-        return None
+        key = (self.kwargs.get("solicitud_id"), self.kwargs.get("candidata_id"))
+        return self._existing.get(key)
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        solicitud_id = self.kwargs.get("solicitud_id")
+        if solicitud_id is None:
+            return list(self._all_rows)
+        return [r for r in self._all_rows if getattr(r, "solicitud_id", None) == solicitud_id]
+
+
+class _ExistingSolicitudCandidata:
+    def __init__(self, solicitud_id, candidata_id, status="descartada"):
+        self.solicitud_id = solicitud_id
+        self.candidata_id = candidata_id
+        self.status = status
+        self.score_snapshot = 0
+        self.breakdown_snapshot = {}
+        self.created_by = None
+        self.id = 77
+        self.created_at = datetime.utcnow()
+        self.candidata = _DummyCandidata(candidata_id)
 
 
 class AdminMatchingRoutesTest(unittest.TestCase):
@@ -136,6 +166,39 @@ class AdminMatchingRoutesTest(unittest.TestCase):
             self.assertIsInstance(first_row.breakdown_snapshot, dict)
             self.assertTrue(bool(first_row.breakdown_snapshot))
             self.assertIn("city_detectada", first_row.breakdown_snapshot)
+            self.assertEqual(first_row.status, "enviada")
+
+    def test_post_enviar_updates_existing_relation_to_enviada(self):
+        ranked = [
+            {
+                "candidate": _DummyCandidata(101),
+                "score": 90,
+                "breakdown_snapshot": {"city_detectada": "Santiago"},
+                "breakdown": [],
+            }
+        ]
+        existing = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=101, status="descartada")
+        sc_query = _SolicitudCandidataQuery(existing={(10, 101): existing})
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", sc_query), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes.db.session.add") as add_mock, \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"]},
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 302)
+        add_mock.assert_not_called()
+        commit_mock.assert_called_once()
+        self.assertEqual(existing.status, "enviada")
+        self.assertEqual(existing.score_snapshot, 90)
+        self.assertEqual(existing.breakdown_snapshot, {"city_detectada": "Santiago"})
 
     def test_post_enviar_with_csrf_token_returns_redirect_not_400(self):
         flask_app.config["WTF_CSRF_ENABLED"] = True
@@ -166,9 +229,10 @@ class AdminMatchingRoutesTest(unittest.TestCase):
         ]
 
         with flask_app.app_context():
+            sent_row = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=101, status="vista")
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
                  patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
-                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery(all_rows=[sent_row])), \
                  patch("admin.routes.rank_candidates", return_value=ranked), \
                  patch("admin.routes.db.session.add") as add_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
@@ -176,6 +240,7 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 self.assertEqual(get_resp.status_code, 200)
 
                 html = get_resp.get_data(as_text=True)
+                self.assertIn("Enviadas al cliente", html)
                 m = re.search(r'name="csrf_token"\s+value="([^"]+)"', html)
                 self.assertIsNotNone(m, "No se encontró csrf_token en el HTML de matching_detalle")
                 csrf_token = m.group(1)

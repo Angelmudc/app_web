@@ -1,0 +1,61 @@
+{% extends "clientes/base.html" %}
+{% block title %}Candidatas enviadas | {{ solicitud.codigo_solicitud }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">Candidatas compatibles enviadas por la agencia</h1>
+      <div class="text-muted small">Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong></div>
+    </div>
+    <a href="{{ url_for('clientes.detalle_solicitud', id=solicitud.id) }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver a solicitud
+    </a>
+  </div>
+
+  {% if cards %}
+  <div class="row g-3">
+    {% for card in cards %}
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h5 class="mb-1">{{ card.nombre_publico }}</h5>
+              <div class="small text-muted">Código: {{ card.codigo }}</div>
+            </div>
+            <span class="badge bg-primary">{{ card.match_score }}%</span>
+          </div>
+
+          <div class="small text-muted mt-2">
+            Edad: {{ card.edad or '—' }} · Modalidad: {{ card.modalidad or '—' }}
+          </div>
+          <div class="mt-2">
+            <span class="badge bg-secondary">{{ card.status_label }}</span>
+          </div>
+
+          <div class="mt-3">
+            <strong class="small">Por qué te la enviamos</strong>
+            <ul class="small mb-0 mt-1">
+              {% for bullet in card.porque_bullets %}
+              <li>{{ bullet }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <div class="card-footer bg-white border-0 pt-0">
+          <a href="{{ url_for('clientes.solicitud_candidata_detalle', solicitud_id=solicitud.id, sc_id=card.sc.id) }}" class="btn btn-outline-primary btn-sm">
+            Ver detalle
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="alert alert-light border mb-0">
+    Todavía no hay candidatas enviadas para esta solicitud.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

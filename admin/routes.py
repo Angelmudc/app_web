@@ -4495,10 +4495,17 @@ def matching_detalle_solicitud(solicitud_id: int):
         .first_or_404()
     )
     ranked_candidates = rank_candidates(solicitud, top_k=30)
+    sent_candidates = (
+        SolicitudCandidata.query
+        .filter_by(solicitud_id=solicitud.id)
+        .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
+        .all()
+    )
     return render_template(
         "admin/matching_detalle.html",
         solicitud=solicitud,
         ranked_candidates=ranked_candidates,
+        sent_candidates=sent_candidates,
     )
 
 
@@ -4524,7 +4531,7 @@ def matching_enviar_candidatas(solicitud_id: int):
 
     ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
     created_by = _matching_created_by()
-    inserted = 0
+    processed = 0
 
     try:
         for candidata_id in candidata_ids:
@@ -4537,27 +4544,42 @@ def matching_enviar_candidatas(solicitud_id: int):
                 .filter_by(solicitud_id=solicitud.id, candidata_id=candidata_id)
                 .first()
             )
+
+            ranked_item = ranking_map.get(candidata_id) or {"score": 0, "breakdown_snapshot": {}}
+            breakdown_snapshot = ranked_item.get("breakdown_snapshot") or {
+                "city_detectada": "Ciudad no detectada",
+                "tokens_match": "Tokens sin coincidencia fuerte",
+                "rutas_match": "Rutas sin coincidencia fuerte",
+                "modalidad_match": "Sin datos",
+                "horario_match": "Sin datos",
+                "skills_match": "Sin datos",
+                "mascota_penalty": "Sin datos",
+                "test_bonus": "Bonus test: +0",
+                "components": list(ranked_item.get("breakdown") or []),
+            }
             if exists:
-                continue
+                exists.score_snapshot = int(ranked_item.get("score") or 0)
+                exists.breakdown_snapshot = breakdown_snapshot
+                exists.status = "enviada"
+                exists.created_by = created_by
+            else:
+                row = SolicitudCandidata(
+                    solicitud_id=solicitud.id,
+                    candidata_id=candidata_id,
+                    score_snapshot=int(ranked_item.get("score") or 0),
+                    breakdown_snapshot=breakdown_snapshot,
+                    status="enviada",
+                    created_by=created_by,
+                )
+                db.session.add(row)
+            processed += 1
 
-            ranked_item = ranking_map.get(candidata_id) or {"score": 0, "breakdown": []}
-            row = SolicitudCandidata(
-                solicitud_id=solicitud.id,
-                candidata_id=candidata_id,
-                score_snapshot=int(ranked_item.get("score") or 0),
-                breakdown_snapshot=ranked_item.get("breakdown") or [],
-                status="enviada",
-                created_by=created_by,
-            )
-            db.session.add(row)
-            inserted += 1
-
-        if inserted:
+        if processed:
             db.session.commit()
-            flash(f"Se enviaron {inserted} candidatas para la solicitud {solicitud.codigo_solicitud}.", "success")
+            flash(f"Candidata enviada al cliente. Total procesadas: {processed}.", "success")
         else:
             db.session.rollback()
-            flash("No se guardaron candidatas nuevas (ya estaban enviadas o no existen).", "warning")
+            flash("No se encontraron candidatas válidas para enviar.", "warning")
     except Exception:
         db.session.rollback()
         flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")

@@ -5,6 +5,7 @@ import os
 import re
 import json
 import hashlib
+from urllib.parse import quote
 from typing import Optional  # ✅ PARA PYTHON 3.9
 
 from flask import (
@@ -21,13 +22,15 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from config_app import db, cache
 try:
-    from models import Cliente, Solicitud, Candidata, CandidataWeb
+    from models import Cliente, Solicitud, Candidata, CandidataWeb, SolicitudCandidata
 except Exception:
     from models import Cliente, Solicitud
     Candidata = None
     CandidataWeb = None
+    SolicitudCandidata = None
 
 from utils import letra_por_indice
+from utils.matching_explain import client_bullets_from_breakdown
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
@@ -1364,14 +1367,179 @@ def detalle_solicitud(id):
         if getattr(s, 'compat_test_cliente_json', None) or getattr(s, 'compat_test_cliente', None):
             compat_result = format_compat_result(compute_match(s, s.candidata))
 
+    candidatas_enviadas = []
+    candidatas_enviadas_cards = []
+    if SolicitudCandidata is not None:
+        visible_status = ('enviada', 'vista', 'seleccionada', 'descartada')
+        candidatas_enviadas = (
+            SolicitudCandidata.query
+            .filter(
+                SolicitudCandidata.solicitud_id == s.id,
+                SolicitudCandidata.status.in_(visible_status),
+            )
+            .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
+            .all()
+        )
+        candidatas_enviadas_cards = [_candidate_public_payload(sc) for sc in candidatas_enviadas]
+
     return render_template(
         'clientes/solicitud_detail.html',
         s=s,
         compat=compat_result,
         envios=envios,
         cancelaciones=cancelaciones,
-        hoy=date.today()
+        hoy=date.today(),
+        candidatas_enviadas=candidatas_enviadas,
+        candidatas_enviadas_cards=candidatas_enviadas_cards,
+        candidatas_enviadas_count=len(candidatas_enviadas),
     )
+
+
+_CLIENTE_VISIBLE_MATCH_STATUS = ('enviada', 'vista', 'seleccionada', 'descartada')
+_MATCH_STATUS_LABELS = {
+    'enviada': 'Enviada',
+    'vista': 'Vista',
+    'seleccionada': 'Seleccionada',
+    'descartada': 'Descartada',
+}
+
+
+def _safe_location_summary(breakdown: dict) -> str:
+    if not isinstance(breakdown, dict):
+        return ''
+
+    def _clean(v):
+        return re.sub(r'\s+', ' ', str(v or '')).strip()
+
+    def _tokens(v):
+        raw = _clean(v).lower()
+        found = re.findall(r'[a-z0-9áéíóúñ]{2,24}', raw)
+        blocked = {'tokens', 'coinciden', 'rutas', 'ruta', 'ciudad', 'detectada', 'sin', 'datos'}
+        keep = []
+        for tok in found:
+            if tok in blocked or tok in keep:
+                continue
+            keep.append(tok)
+            if len(keep) >= 2:
+                break
+        return keep
+
+    city = _clean(breakdown.get('city_detectada'))
+    sector_tokens = _tokens(breakdown.get('tokens_match'))
+    if city and sector_tokens:
+        return f"{city} · Sectores cercanos: {', '.join(sector_tokens)}"
+    if city:
+        return city
+    if sector_tokens:
+        return f"Sectores cercanos: {', '.join(sector_tokens)}"
+    return ''
+
+
+def _candidate_public_payload(sc: SolicitudCandidata) -> dict:
+    cand = getattr(sc, 'candidata', None)
+    breakdown = sc.breakdown_snapshot if isinstance(sc.breakdown_snapshot, dict) else {}
+    return {
+        'sc': sc,
+        'codigo': getattr(cand, 'codigo', None) or '(sin código)',
+        'nombre_publico': getattr(cand, 'nombre_completo', None) or 'Sin nombre',
+        'edad': getattr(cand, 'edad', None),
+        'modalidad': getattr(cand, 'modalidad_trabajo_preferida', None),
+        'match_score': int(sc.score_snapshot or 0),
+        'status_label': _MATCH_STATUS_LABELS.get(sc.status, sc.status),
+        'porque_bullets': client_bullets_from_breakdown(breakdown),
+        'ubicacion_resumen': _safe_location_summary(breakdown),
+    }
+
+
+def _get_cliente_sc_or_404(solicitud_id: int, sc_id: int) -> tuple[Solicitud, SolicitudCandidata]:
+    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
+    if SolicitudCandidata is None:
+        abort(404)
+    sc = (
+        SolicitudCandidata.query
+        .filter(
+            SolicitudCandidata.id == sc_id,
+            SolicitudCandidata.solicitud_id == solicitud.id,
+            SolicitudCandidata.status.in_(_CLIENTE_VISIBLE_MATCH_STATUS),
+        )
+        .first_or_404()
+    )
+    return solicitud, sc
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/candidatas')
+@login_required
+@cliente_required
+def solicitud_candidatas(solicitud_id):
+    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
+    if SolicitudCandidata is None:
+        abort(404)
+    items = (
+        SolicitudCandidata.query
+        .filter(
+            SolicitudCandidata.solicitud_id == solicitud.id,
+            SolicitudCandidata.status.in_(_CLIENTE_VISIBLE_MATCH_STATUS),
+        )
+        .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
+        .all()
+    )
+    cards = [_candidate_public_payload(sc) for sc in items]
+    return render_template(
+        'clientes/solicitud_candidatas.html',
+        solicitud=solicitud,
+        cards=cards,
+    )
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/candidatas/<int:sc_id>')
+@login_required
+@cliente_required
+def solicitud_candidata_detalle(solicitud_id, sc_id):
+    solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
+
+    if sc.status == 'enviada':
+        sc.status = 'vista'
+        db.session.commit()
+
+    card = _candidate_public_payload(sc)
+    return render_template(
+        'clientes/solicitud_candidata_detalle.html',
+        solicitud=solicitud,
+        card=card,
+    )
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/candidatas/<int:sc_id>/solicitar-entrevista', methods=['POST'])
+@login_required
+@cliente_required
+def solicitar_entrevista_whatsapp(solicitud_id, sc_id):
+    solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
+    sc.status = 'seleccionada'
+    db.session.commit()
+
+    cliente_nombre = (getattr(current_user, 'nombre_completo', None) or 'Cliente').strip()
+    codigo_solicitud = getattr(solicitud, 'codigo_solicitud', None) or f"SOL-{solicitud.id}"
+    codigo_candidata = getattr(sc.candidata, 'codigo', None) or '(sin código)'
+    nombre_candidata = getattr(sc.candidata, 'nombre_completo', None) or 'Sin nombre'
+
+    mensaje = (
+        f"Hola, soy {cliente_nombre}. Para mi solicitud {codigo_solicitud}, "
+        f"quiero entrevistar a esta candidata: Código: {codigo_candidata} - "
+        f"Nombre: {nombre_candidata}. Gracias."
+    )
+    wa_url = f"https://wa.me/8094296892?text={quote(mensaje)}"
+    return redirect(wa_url)
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/candidatas/<int:sc_id>/descartar', methods=['POST'])
+@login_required
+@cliente_required
+def descartar_candidata_enviada(solicitud_id, sc_id):
+    solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
+    sc.status = 'descartada'
+    db.session.commit()
+    flash('Candidata descartada.', 'info')
+    return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
 
 
 # ─────────────────────────────────────────────────────────────

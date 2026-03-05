@@ -1,0 +1,68 @@
+{% extends "clientes/base.html" %}
+{% block title %}Detalle candidata | {{ solicitud.codigo_solicitud }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">{{ card.nombre_publico }}</h1>
+      <div class="text-muted small">
+        Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong> · Código candidata: {{ card.codigo }}
+      </div>
+    </div>
+    <a href="{{ url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id) }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left-short me-1"></i> Volver al listado
+    </a>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <dl class="row mb-0">
+            <dt class="col-5">Nombre</dt>
+            <dd class="col-7">{{ card.nombre_publico }}</dd>
+            <dt class="col-5">Código</dt>
+            <dd class="col-7">{{ card.codigo }}</dd>
+            <dt class="col-5">Edad</dt>
+            <dd class="col-7">{{ card.edad or '—' }}</dd>
+            <dt class="col-5">Modalidad</dt>
+            <dd class="col-7">{{ card.modalidad or '—' }}</dd>
+            <dt class="col-5">Match</dt>
+            <dd class="col-7">{{ card.match_score }}%</dd>
+            <dt class="col-5">Estado</dt>
+            <dd class="col-7"><span class="badge bg-secondary">{{ card.status_label }}</span></dd>
+          </dl>
+        </div>
+        <div class="col-md-6">
+          <div class="small fw-semibold mb-1">Por qué te la enviamos</div>
+          <ul class="small mb-0">
+            {% for bullet in card.porque_bullets %}
+            <li>{{ bullet }}</li>
+            {% endfor %}
+          </ul>
+          {% if card.ubicacion_resumen %}
+          <div class="mt-3 small text-muted">
+            <strong>Ubicación resumida:</strong> {{ card.ubicacion_resumen }}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="card-footer bg-white d-flex flex-wrap gap-2">
+      <form method="post" action="{{ url_for('clientes.solicitar_entrevista_whatsapp', solicitud_id=solicitud.id, sc_id=card.sc.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-whatsapp me-1"></i> Solicitar entrevista por WhatsApp
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('clientes.descartar_candidata_enviada', solicitud_id=solicitud.id, sc_id=card.sc.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline-danger">
+          Descartar candidata
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

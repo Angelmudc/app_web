@@ -2,6 +2,7 @@
 {% block title %}Detalle {{ s.codigo_solicitud }} | Doméstica del Cibao A&D{% endblock %}
 
 {% block content %}
+{% set compat_ui = compat|compat_fmt if compat else None %}
 <div class="container py-4">
 
   <!-- Header -->
@@ -23,6 +24,10 @@
       </a>
       <a href="{{ url_for('clientes.seguimiento_solicitud', id=s.id) }}" class="btn btn-outline-primary">
         <i class="bi bi-clock-history me-1"></i> Seguimiento
+      </a>
+      <a href="{{ url_for('clientes.solicitud_candidatas', solicitud_id=s.id) }}" class="btn btn-outline-success">
+        <i class="bi bi-people me-1"></i> Candidatas enviadas
+        <span class="badge bg-success ms-1">{{ candidatas_enviadas_count or 0 }}</span>
       </a>
       <button class="btn btn-outline-secondary" onclick="window.print()">
         <i class="bi bi-printer me-1"></i> Imprimir
@@ -88,9 +93,111 @@
           {# Feedback si ya existe test guardado en esta solicitud #}
           {% if s.compat_test_cliente_json or s.compat_test_cliente %}
             <span class="chip"><i class="bi bi-check2-circle"></i> Test guardado</span>
+            {% if s.candidata_id %}
+              <form method="post" action="{{ url_for('clientes.compat_recalcular', solicitud_id=s.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-secondary btn-sm no-print">
+                  <i class="bi bi-arrow-repeat me-1"></i> Recalcular match
+                </button>
+              </form>
+            {% endif %}
           {% endif %}
         {% endif %}
       </div>
+    </div>
+  </div>
+
+  {% if compat_ui %}
+  <div class="kard mb-4 print-zone">
+    <div class="kard-h bg-primary bg-opacity-10 d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-clipboard2-check me-2"></i>Compatibilidad</div>
+      <div>
+        <span class="badge {{ 'bg-success' if compat_ui.level == 'alta' else ('bg-warning text-dark' if compat_ui.level == 'media' else 'bg-danger') }}">
+          {{ compat_ui.level|title }} · {{ compat_ui.score }}/100
+        </span>
+      </div>
+    </div>
+    <div class="kard-b">
+      <p class="mb-3">{{ compat_ui.summary }}</p>
+      <div class="row g-2">
+        {% for item in compat_ui.breakdown %}
+          <div class="col-md-6">
+            <div class="border rounded p-2 h-100">
+              <div class="d-flex justify-content-between">
+                <strong>{{ item.title }}</strong>
+                <span class="text-muted">{{ item.score }}/25</span>
+              </div>
+              <div class="small text-muted mt-1">{{ item.notes }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      {% if compat_ui.risks %}
+        <div class="mt-3">
+          <div class="fw-semibold mb-1">Riesgos a validar</div>
+          <ul class="mb-0">
+            {% for r in compat_ui.risks %}
+              <li>{{ r }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="kard mb-4 print-zone">
+    <div class="kard-h bg-info bg-opacity-10 d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-people me-2"></i>Candidatas compatibles enviadas por la agencia</div>
+      <a href="{{ url_for('clientes.solicitud_candidatas', solicitud_id=s.id) }}" class="btn btn-sm btn-outline-primary no-print">
+        Ver todas
+      </a>
+    </div>
+    <div class="kard-b">
+      {% if candidatas_enviadas_cards %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nombre</th>
+              <th>Edad</th>
+              <th>Modalidad</th>
+              <th>Match</th>
+              <th>Por qué te la enviamos</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for card in candidatas_enviadas_cards %}
+            <tr>
+              <td>{{ card.codigo }}</td>
+              <td>{{ card.nombre_publico }}</td>
+              <td>{{ card.edad or '—' }}</td>
+              <td>{{ card.modalidad or '—' }}</td>
+              <td>{{ card.match_score }}%</td>
+              <td>
+                <ul class="small mb-0 ps-3">
+                  {% for bullet in card.porque_bullets[:3] %}
+                  <li>{{ bullet }}</li>
+                  {% endfor %}
+                </ul>
+              </td>
+              <td><span class="badge bg-secondary">{{ card.status_label }}</span></td>
+              <td>
+                <a href="{{ url_for('clientes.solicitud_candidata_detalle', solicitud_id=s.id, sc_id=card.sc.id) }}" class="btn btn-sm btn-outline-primary">
+                  Ver detalle
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-muted">Aún no hay candidatas enviadas para esta solicitud.</div>
+      {% endif %}
     </div>
   </div>
 
@@ -116,7 +223,7 @@
             <dd class="col-7">{{ (s.edad_requerida or [])|join(', ') or '—' }}</dd>
 
             <dt class="col-5">Funciones</dt>
-            <dd class="col-7">{{ (s.funciones or [])|join(', ') or '—' }}</dd>
+            <dd class="col-7">{{ (s.funciones | funciones_fmt(s.funciones_otro)) or '—' }}</dd>
 
             <dt class="col-5">Experiencia</dt><dd class="col-7">{{ s.experiencia or '—' }}</dd>
 

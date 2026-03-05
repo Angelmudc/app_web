@@ -110,5 +110,43 @@
       <button type="submit" class="btn btn-success">Enviar candidatas seleccionadas</button>
     </div>
   </form>
+
+  <div class="card mt-4 shadow-sm border-0">
+    <div class="card-header bg-light">
+      <strong>Enviadas al cliente</strong>
+    </div>
+    <div class="card-body p-0">
+      {% if sent_candidates %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Código</th>
+              <th>Candidata</th>
+              <th>Status</th>
+              <th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for sc in sent_candidates %}
+            <tr>
+              <td>{{ sc.id }}</td>
+              <td>{{ sc.candidata.codigo if sc.candidata and sc.candidata.codigo else '(sin código)' }}</td>
+              <td>{{ sc.candidata.nombre_completo if sc.candidata and sc.candidata.nombre_completo else 'Sin nombre' }}</td>
+              <td>
+                <span class="badge bg-secondary">{{ sc.status }}</span>
+              </td>
+              <td>{{ sc.created_at.strftime('%d/%m/%Y %H:%M') if sc.created_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-3 text-muted">Aún no hay candidatas enviadas para esta solicitud.</div>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}
