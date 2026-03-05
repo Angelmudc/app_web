@@ -90,6 +90,12 @@ from utils.staff_auth import (
 )
 from utils.audit_logger import log_action, snapshot_model_fields, diff_snapshots
 from utils.audit_entity import log_candidata_action
+from utils.robust_save import (
+    execute_robust_save,
+    binary_has_content,
+    safe_bytes_length,
+    legacy_text_is_useful,
+)
 
 # Data / reportes
 import pandas as pd
@@ -1275,6 +1281,63 @@ def _safe_setattr(obj, name: str, value):
             return False
     return False
 
+
+def _current_staff_actor() -> str:
+    return str(
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
+
+
+def _safe_seek_upload(file_storage) -> None:
+    try:
+        if file_storage is not None and getattr(file_storage, "stream", None) is not None:
+            file_storage.stream.seek(0)
+    except Exception:
+        return
+
+
+def _verify_candidata_docs_saved(candidata_id: int, expected_fields: dict[str, int]) -> bool:
+    cand = _get_candidata_by_fila_or_pk(candidata_id)
+    if not cand:
+        return False
+    for field_name in (expected_fields or {}).keys():
+        val = getattr(cand, field_name, None)
+        if not binary_has_content(val):
+            return False
+    return True
+
+
+def _verify_interview_new_saved(entrevista_id: int) -> bool:
+    if not int(entrevista_id or 0):
+        return False
+    exists = (
+        Entrevista.query
+        .filter(Entrevista.id == int(entrevista_id))
+        .count()
+    )
+    if int(exists or 0) <= 0:
+        return False
+    answers_count = (
+        EntrevistaRespuesta.query
+        .filter(EntrevistaRespuesta.entrevista_id == int(entrevista_id))
+        .count()
+    )
+    return int(answers_count or 0) > 0
+
+
+def _build_legacy_interview_text(preguntas, respuestas_por_pregunta: dict[int, str]) -> str:
+    lines = []
+    for p in (preguntas or []):
+        q = (getattr(p, "enunciado", None) or getattr(p, "clave", None) or f"Pregunta {getattr(p, 'id', '')}").strip()
+        a = (respuestas_por_pregunta.get(getattr(p, "id", 0)) or "").strip()
+        if not q:
+            continue
+        lines.append(f"{q}: {a if a else '-'}")
+    return "\n".join(lines).strip()[:12000]
+
 # -----------------------------------------------------------------------------
 # ENTREVISTAS (DB) - Secretarias/Admin
 #   Usa EntrevistaPregunta (sembradas) + Entrevista + EntrevistaRespuesta
@@ -1434,20 +1497,29 @@ def entrevista_nueva_db(fila, tipo):
         return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
     if request.method == "POST":
-        try:
+        respuestas_payload = {}
+        for p in preguntas:
+            field = f"q_{p.id}"
+            respuestas_payload[int(p.id)] = (request.form.get(field) or "").strip()
+
+        if not any(legacy_text_is_useful(v) for v in respuestas_payload.values()):
+            flash("❌ La entrevista está vacía o no es válida. Completa al menos una respuesta útil.", "danger")
+            return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo))
+
+        state = {"entrevista_id": 0, "legacy_text": ""}
+
+        def _persist_interview(_attempt: int):
             entrevista = Entrevista(candidata_id=fila)
             _safe_setattr(entrevista, 'estado', 'completa')
             _safe_setattr(entrevista, 'creada_en', datetime.utcnow())
             _safe_setattr(entrevista, 'actualizada_en', None)
             _safe_setattr(entrevista, 'tipo', (tipo or '').strip().lower())
-
             db.session.add(entrevista)
-            db.session.flush()  # para obtener entrevista.id
+            db.session.flush()
+            state["entrevista_id"] = int(getattr(entrevista, "id", 0) or 0)
 
             for p in preguntas:
-                field = f"q_{p.id}"
-                valor = (request.form.get(field) or "").strip()
-
+                valor = respuestas_payload.get(int(p.id), "")
                 r = EntrevistaRespuesta(
                     entrevista_id=entrevista.id,
                     pregunta_id=p.id,
@@ -1456,41 +1528,77 @@ def entrevista_nueva_db(fila, tipo):
                 _safe_setattr(r, 'creada_en', datetime.utcnow())
                 db.session.add(r)
 
+            state["legacy_text"] = _build_legacy_interview_text(preguntas, respuestas_payload)
+            if legacy_text_is_useful(state["legacy_text"]):
+                candidata.entrevista = state["legacy_text"]
+
             try:
-                actor = (
-                    getattr(current_user, "username", None)
-                    or getattr(current_user, "id", None)
-                    or session.get("usuario")
-                    or "sistema"
-                )
-                maybe_update_estado_por_completitud(candidata, actor=str(actor))
+                maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())
             except Exception:
                 pass
 
-            db.session.commit()
+        result = execute_robust_save(
+            session=db.session,
+            persist_fn=_persist_interview,
+            verify_fn=lambda: _verify_interview_new_saved(int(state.get("entrevista_id") or 0)),
+        )
+
+        if result.ok:
+            metadata_ok = {
+                "candidata_id": int(fila),
+                "entrevista_nueva": True,
+                "entrevista_legacy": bool(legacy_text_is_useful(state.get("legacy_text") or "")),
+                "attempt_count": int(result.attempts),
+                "bytes_length": {},
+            }
+            log_candidata_action(
+                action_type="CANDIDATA_INTERVIEW_SAVE_OK",
+                candidata=candidata,
+                summary=f"Guardado robusto entrevista OK ({(tipo or '').strip().lower() or 'domestica'})",
+                metadata=metadata_ok,
+                success=True,
+            )
             log_candidata_action(
                 action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
                 candidata=candidata,
                 summary=f"Entrevista nueva guardada ({(tipo or '').strip().lower() or 'domestica'})",
-                metadata={"entrevista_id": entrevista.id, "tipo": (tipo or "").strip().lower()},
+                metadata={"entrevista_id": int(state.get("entrevista_id") or 0), "tipo": (tipo or "").strip().lower()},
                 success=True,
             )
             flash("✅ Entrevista guardada.", "success")
             return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception("❌ Error guardando entrevista (DB)")
-            log_candidata_action(
-                action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
-                candidata=candidata,
-                summary=f"Fallo guardando entrevista nueva ({(tipo or '').strip().lower() or 'domestica'})",
-                metadata={"tipo": (tipo or "").strip().lower()},
-                success=False,
-                error="No se pudo guardar la entrevista nueva.",
-            )
-            flash("❌ Error al guardar la entrevista.", "danger")
-            return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo))
+        current_app.logger.error(
+            "❌ Error guardando entrevista (robust_save) fila=%s attempts=%s error=%s",
+            fila,
+            result.attempts,
+            result.error_message,
+        )
+        log_candidata_action(
+            action_type="CANDIDATA_INTERVIEW_SAVE_FAIL",
+            candidata=candidata,
+            summary=f"Fallo guardado robusto entrevista ({(tipo or '').strip().lower() or 'domestica'})",
+            metadata={
+                "candidata_id": int(fila),
+                "entrevista_nueva": True,
+                "entrevista_legacy": bool(legacy_text_is_useful(state.get("legacy_text") or "")),
+                "attempt_count": int(result.attempts),
+                "error_message": (result.error_message or "")[:200],
+                "bytes_length": {},
+            },
+            success=False,
+            error="No se pudo guardar entrevista nueva de forma verificada.",
+        )
+        log_candidata_action(
+            action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
+            candidata=candidata,
+            summary=f"Fallo guardando entrevista nueva ({(tipo or '').strip().lower() or 'domestica'})",
+            metadata={"tipo": (tipo or "").strip().lower()},
+            success=False,
+            error="No se pudo guardar la entrevista nueva.",
+        )
+        flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
+        return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo))
 
     return render_template(
         "entrevistas/entrevista_form.html",
@@ -1559,11 +1667,18 @@ def entrevista_editar_db(entrevista_id):
         return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
     if request.method == "POST":
-        try:
-            for p in preguntas:
-                field = f"q_{p.id}"
-                valor = (request.form.get(field) or "").strip()
+        respuestas_payload = {}
+        for p in preguntas:
+            field = f"q_{p.id}"
+            respuestas_payload[int(p.id)] = (request.form.get(field) or "").strip()
 
+        if not any(legacy_text_is_useful(v) for v in respuestas_payload.values()):
+            flash("❌ La entrevista está vacía o no es válida. Completa al menos una respuesta útil.", "danger")
+            return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id))
+
+        def _persist_interview_update(_attempt: int):
+            for p in preguntas:
+                valor = respuestas_payload.get(int(p.id), "")
                 r = (
                     EntrevistaRespuesta.query
                     .filter_by(entrevista_id=entrevista.id, pregunta_id=p.id)
@@ -1584,18 +1699,37 @@ def entrevista_editar_db(entrevista_id):
             _safe_setattr(entrevista, 'actualizada_en', datetime.utcnow())
             _safe_setattr(entrevista, 'estado', 'completa')
             _safe_setattr(entrevista, 'tipo', tipo)
+
+            legacy_text = _build_legacy_interview_text(preguntas, respuestas_payload)
+            if legacy_text_is_useful(legacy_text):
+                candidata.entrevista = legacy_text
+
             try:
-                actor = (
-                    getattr(current_user, "username", None)
-                    or getattr(current_user, "id", None)
-                    or session.get("usuario")
-                    or "sistema"
-                )
-                maybe_update_estado_por_completitud(candidata, actor=str(actor))
+                maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())
             except Exception:
                 pass
 
-            db.session.commit()
+        result = execute_robust_save(
+            session=db.session,
+            persist_fn=_persist_interview_update,
+            verify_fn=lambda: _verify_interview_new_saved(int(getattr(entrevista, "id", 0) or 0)),
+        )
+
+        if result.ok:
+            log_candidata_action(
+                action_type="CANDIDATA_INTERVIEW_SAVE_OK",
+                candidata=candidata,
+                summary=f"Guardado robusto entrevista OK ({tipo})",
+                metadata={
+                    "candidata_id": int(fila),
+                    "entrevista_id": int(getattr(entrevista, "id", 0) or 0),
+                    "entrevista_nueva": True,
+                    "entrevista_legacy": True,
+                    "attempt_count": int(result.attempts),
+                    "bytes_length": {},
+                },
+                success=True,
+            )
             log_candidata_action(
                 action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
                 candidata=candidata,
@@ -1606,19 +1740,38 @@ def entrevista_editar_db(entrevista_id):
             flash("✅ Entrevista actualizada.", "success")
             return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception("❌ Error actualizando entrevista (DB)")
-            log_candidata_action(
-                action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
-                candidata=candidata,
-                summary=f"Fallo actualizando entrevista ({tipo})",
-                metadata={"entrevista_id": entrevista.id, "tipo": tipo},
-                success=False,
-                error="No se pudo actualizar la entrevista.",
-            )
-            flash("❌ Error al actualizar la entrevista.", "danger")
-            return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id))
+        current_app.logger.error(
+            "❌ Error actualizando entrevista (robust_save) entrevista_id=%s attempts=%s error=%s",
+            entrevista.id,
+            result.attempts,
+            result.error_message,
+        )
+        log_candidata_action(
+            action_type="CANDIDATA_INTERVIEW_SAVE_FAIL",
+            candidata=candidata,
+            summary=f"Fallo guardado robusto entrevista ({tipo})",
+            metadata={
+                "candidata_id": int(fila),
+                "entrevista_id": int(getattr(entrevista, "id", 0) or 0),
+                "entrevista_nueva": True,
+                "entrevista_legacy": True,
+                "attempt_count": int(result.attempts),
+                "error_message": (result.error_message or "")[:200],
+                "bytes_length": {},
+            },
+            success=False,
+            error="No se pudo guardar entrevista de forma verificada.",
+        )
+        log_candidata_action(
+            action_type="CANDIDATA_INTERVIEW_NEW_CREATE",
+            candidata=candidata,
+            summary=f"Fallo actualizando entrevista ({tipo})",
+            metadata={"entrevista_id": entrevista.id, "tipo": tipo},
+            success=False,
+            error="No se pudo actualizar la entrevista.",
+        )
+        flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
+        return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id))
 
     return render_template(
         "entrevistas/entrevista_form.html",
@@ -3062,8 +3215,10 @@ def subir_fotos():
         try:
             # Límite por archivo (extra) para evitar cargas enormes aunque MAX_CONTENT_LENGTH exista
             max_file = int(os.getenv("MAX_IMAGE_BYTES", str(3 * 1024 * 1024)))  # 3MB por archivo
+            payload_bytes = {}
 
             for campo, archivo in archivos_validos.items():
+                _safe_seek_upload(archivo)
                 ok, data, err, meta = validate_upload_file(archivo, max_bytes=max_file)
                 if not ok:
                     current_app.logger.warning(
@@ -3075,28 +3230,75 @@ def subir_fotos():
                     flash(f"❌ Archivo inválido en {campo}: {err}", "danger")
                     tiene = _build_docs_flags(candidata)
                     return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+                payload_bytes[campo] = data
 
-                # Guardar binario
-                setattr(candidata, campo, data)
+            if not payload_bytes:
+                flash("⚠️ Debes seleccionar al menos una imagen para subir.", "warning")
+                tiene = _build_docs_flags(candidata)
+                return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
 
-            try:
-                actor = (
-                    getattr(current_user, "username", None)
-                    or getattr(current_user, "id", None)
-                    or session.get("usuario")
-                    or "sistema"
+            def _persist_docs(_attempt: int):
+                for campo, data in payload_bytes.items():
+                    setattr(candidata, campo, data)
+                try:
+                    maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())
+                except Exception:
+                    pass
+
+            expected_lengths = {k: safe_bytes_length(v) for k, v in payload_bytes.items()}
+            result = execute_robust_save(
+                session=db.session,
+                persist_fn=_persist_docs,
+                verify_fn=lambda: _verify_candidata_docs_saved(int(fila_id), expected_lengths),
+            )
+
+            metadata_base = {
+                "candidata_id": int(fila_id),
+                "fields": sorted(list(payload_bytes.keys())),
+                "source": "subir_fotos",
+                "attempt_count": int(result.attempts),
+                "bytes_length": expected_lengths,
+            }
+            if not result.ok:
+                current_app.logger.error(
+                    "❌ Error guardando imágenes (robust_save) fila=%s attempts=%s error=%s",
+                    fila_id,
+                    result.attempts,
+                    result.error_message,
                 )
-                maybe_update_estado_por_completitud(candidata, actor=str(actor))
-            except Exception:
-                pass
+                log_candidata_action(
+                    action_type="CANDIDATA_UPLOAD_DOCS_SAVE_FAIL",
+                    candidata=candidata,
+                    summary="Fallo guardado robusto de documentos de candidata",
+                    metadata={**metadata_base, "error_message": (result.error_message or "")[:200]},
+                    success=False,
+                    error="No se pudo guardar documentos de forma verificada.",
+                )
+                log_candidata_action(
+                    action_type="CANDIDATA_UPLOAD_DOCS",
+                    candidata=candidata,
+                    summary="Fallo al subir/actualizar documentos de candidata",
+                    metadata={"fields": sorted(list(payload_bytes.keys())), "source": "subir_fotos"},
+                    success=False,
+                    error="Error guardando imágenes en base de datos.",
+                )
+                flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
+                tiene = _build_docs_flags(candidata)
+                return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
 
-            db.session.commit()
+            log_candidata_action(
+                action_type="CANDIDATA_UPLOAD_DOCS_SAVE_OK",
+                candidata=candidata,
+                summary="Guardado robusto de documentos de candidata",
+                metadata=metadata_base,
+                success=True,
+            )
             log_candidata_action(
                 action_type="CANDIDATA_UPLOAD_DOCS",
                 candidata=candidata,
                 summary="Carga/actualización de documentos de candidata",
                 metadata={
-                    "fields": sorted(list(archivos_validos.keys())),
+                    "fields": sorted(list(payload_bytes.keys())),
                     "source": "subir_fotos",
                 },
                 success=True,
@@ -3108,14 +3310,20 @@ def subir_fotos():
             db.session.rollback()
             current_app.logger.exception("❌ Error guardando imágenes en la BD")
             log_candidata_action(
-                action_type="CANDIDATA_UPLOAD_DOCS",
+                action_type="CANDIDATA_UPLOAD_DOCS_SAVE_FAIL",
                 candidata=candidata,
-                summary="Fallo al subir/actualizar documentos de candidata",
-                metadata={"fields": sorted(list(archivos_validos.keys())), "source": "subir_fotos"},
+                summary="Fallo guardado robusto de documentos de candidata",
+                metadata={
+                    "candidata_id": int(fila_id),
+                    "fields": sorted(list(archivos_validos.keys())),
+                    "source": "subir_fotos",
+                    "attempt_count": 1,
+                    "bytes_length": {},
+                },
                 success=False,
-                error="Error guardando imágenes en base de datos.",
+                error="No se pudo guardar documentos de forma verificada.",
             )
-            flash("❌ Ocurrió un error guardando en la base de datos.", "danger")
+            flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
             tiene = _build_docs_flags(candidata)
             return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
 
