@@ -3825,6 +3825,17 @@ def nuevo_reemplazo(s_id):
 
             if descalificar:
                 _mark_candidata_estado(cand_old, 'descalificada', nota_descalificacion=motivo_descalificacion)
+            else:
+                ready_ok, reasons = candidata_is_ready_to_send(cand_old)
+                blocking = [rr for rr in (reasons or []) if not str(rr).lower().startswith("advertencia:")]
+                if ready_ok and not blocking:
+                    _mark_candidata_estado(cand_old, 'lista_para_trabajar')
+                elif blocking:
+                    flash(
+                        "La candidata que falló no pudo volver a lista para trabajar. Falta: "
+                        + "; ".join(blocking[:4]),
+                        "warning",
+                    )
 
             db.session.add(r)
             db.session.commit()
@@ -4110,10 +4121,12 @@ def finalizar_reemplazo(s_id, reemplazo_id):
 def cancelar_reemplazo(s_id, reemplazo_id):
     s = Solicitud.query.filter_by(id=s_id).first_or_404()
     r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
+    next_url = (request.form.get("next") or request.args.get("next") or "").strip()
+    fallback = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
 
     if getattr(r, "fecha_fin_reemplazo", None):
         flash("Este reemplazo ya está cerrado.", "warning")
-        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     try:
         r.cerrar_reemplazo()
@@ -4135,7 +4148,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         db.session.rollback()
         flash("No se pudo cancelar el reemplazo.", "danger")
 
-    return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/cerrar_asignando', methods=['POST'])
@@ -4145,10 +4158,12 @@ def cancelar_reemplazo(s_id, reemplazo_id):
 def cerrar_reemplazo_asignando(s_id, reemplazo_id):
     s = Solicitud.query.filter_by(id=s_id).first_or_404()
     r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
+    next_url = (request.form.get("next") or request.args.get("next") or "").strip()
+    fallback = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
 
     if getattr(r, "fecha_fin_reemplazo", None):
         flash("Este reemplazo ya está cerrado.", "warning")
-        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     try:
         nueva_id = int((request.form.get("candidata_new_id") or "").strip())
@@ -4156,12 +4171,12 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
         nueva_id = 0
     if nueva_id <= 0:
         flash("Debes indicar la candidata nueva para cerrar el reemplazo.", "warning")
-        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     cand_new = Candidata.query.filter_by(fila=nueva_id).first()
     if not cand_new:
         flash("La candidata seleccionada no existe.", "danger")
-        return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     blocked = assert_candidata_no_descalificada(
         cand_new,
@@ -4194,7 +4209,7 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
         db.session.rollback()
         flash("No se pudo cerrar el reemplazo.", "danger")
 
-    return redirect(url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id))
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
 @login_required
@@ -4580,11 +4595,20 @@ def api_candidatas():
 @login_required
 @staff_required
 def listar_solicitudes():
-    """
-    Muestra contadores clave:
-    - En proceso
-    - Copiables (activa/reemplazo) cuya última copia fue antes del inicio del día UTC actual
-    """
+    """Panel operativo de solicitudes con acciones rápidas STAFF."""
+    q = (request.args.get("q") or "").strip()
+    estado = (request.args.get("estado") or "").strip().lower()
+    try:
+        page = max(1, int(request.args.get("page", 1) or 1))
+    except Exception:
+        page = 1
+    try:
+        per_page = int(request.args.get("per_page", 25) or 25)
+    except Exception:
+        per_page = 25
+    per_page = max(10, min(per_page, 100))
+
+    allowed_states = ("proceso", "activa", "reemplazo", "espera_pago", "pagada", "cancelada")
     proc_count = Solicitud.query.filter_by(estado='proceso').count()
 
     # Consistencia UTC para "copiable hasta hoy"
@@ -4600,10 +4624,55 @@ def listar_solicitudes():
         .count()
     )
 
+    query = (
+        Solicitud.query
+        .options(
+            joinedload(Solicitud.cliente),
+            joinedload(Solicitud.reemplazos),
+            joinedload(Solicitud.candidata),
+        )
+    )
+    if estado in allowed_states:
+        query = query.filter(Solicitud.estado == estado)
+    if q:
+        like = f"%{q}%"
+        query = query.join(Cliente, Solicitud.cliente_id == Cliente.id).filter(
+            or_(
+                Solicitud.codigo_solicitud.ilike(like),
+                Solicitud.ciudad_sector.ilike(like),
+                Cliente.nombre_completo.ilike(like),
+                Cliente.codigo.ilike(like),
+            )
+        )
+
+    total = query.count()
+    solicitudes = (
+        query.order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+    is_admin_role = role == "admin"
+
     return render_template(
         'admin/solicitudes_list.html',
         proc_count=proc_count,
-        copiable_count=copiable_count
+        copiable_count=copiable_count,
+        solicitudes=solicitudes,
+        reemplazos_activos=reemplazos_activos,
+        is_admin_role=is_admin_role,
+        q=q,
+        estado=estado,
+        page=page,
+        per_page=per_page,
+        total=total,
+        has_more=(page * per_page) < total,
+        allowed_states=allowed_states,
     )
 
 

@@ -281,8 +281,8 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
         self.assertEqual(cand_old.nota_descalificacion, "Incumplimiento confirmado")
         commit_mock.assert_called_once()
 
-    def test_abrir_reemplazo_sin_descalificar_y_volver_lista_requiere_readiness(self):
-        self._login("Karla", "9989")
+    def test_abrir_reemplazo_sin_descalificar_y_readiness_ok_pasa_a_lista(self):
+        self._login("Cruz", "8998")
         cand_old = _DummyCandidata(fila=1, estado="trabajando")
         sol = _DummySolicitud(estado="activa", candidata=cand_old)
 
@@ -290,33 +290,34 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryByObject(sol)), \
                  patch("admin.routes.AdminReemplazoForm", _FakeReemplazoOpenForm), \
                  patch("admin.routes.Reemplazo", _DummyReemplazo), \
-                 patch("admin.routes.db.session.add"), \
-                 patch("admin.routes.db.session.commit"):
-                self.client.post("/admin/solicitudes/10/reemplazos/nuevo", data={"motivo_fallo": "No se presentó"}, follow_redirects=False)
-
-            with patch.object(admin_routes.Candidata, "query", _CandidataQueryPago(cand_old)), \
-                 patch("admin.routes.candidata_is_ready_to_send", return_value=(False, ["Falta documento requerido: cedula2."])), \
-                 patch("admin.routes.db.session.commit") as commit_block_mock:
-                resp_block = self.client.post(
-                    "/admin/candidatas/1/marcar_lista_para_trabajar",
-                    data={"next": "/admin/clientes/7/solicitudes/10"},
-                    follow_redirects=False,
-                )
-
-            with patch.object(admin_routes.Candidata, "query", _CandidataQueryPago(cand_old)), \
                  patch("admin.routes.candidata_is_ready_to_send", return_value=(True, [])), \
+                 patch("admin.routes.db.session.add"), \
                  patch("admin.routes.db.session.commit") as commit_ok_mock:
-                resp_ok = self.client.post(
-                    "/admin/candidatas/1/marcar_lista_para_trabajar",
-                    data={"next": "/admin/clientes/7/solicitudes/10"},
-                    follow_redirects=False,
-                )
+                resp_ok = self.client.post("/admin/solicitudes/10/reemplazos/nuevo", data={"motivo_fallo": "No se presentó"}, follow_redirects=False)
 
-        self.assertIn(resp_block.status_code, (302, 303))
         self.assertIn(resp_ok.status_code, (302, 303))
         self.assertEqual(cand_old.estado, "lista_para_trabajar")
-        commit_block_mock.assert_not_called()
         commit_ok_mock.assert_called_once()
+
+    def test_abrir_reemplazo_sin_descalificar_y_readiness_fail_no_cambia_estado(self):
+        self._login("Cruz", "8998")
+        cand_old = _DummyCandidata(fila=1, estado="trabajando")
+        sol = _DummySolicitud(estado="activa", candidata=cand_old)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryByObject(sol)), \
+                 patch("admin.routes.AdminReemplazoForm", _FakeReemplazoOpenForm), \
+                 patch("admin.routes.Reemplazo", _DummyReemplazo), \
+                 patch("admin.routes.candidata_is_ready_to_send", return_value=(False, ["Falta documento requerido: cedula2."])), \
+                 patch("admin.routes.flash") as flash_mock, \
+                 patch("admin.routes.db.session.add"), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post("/admin/solicitudes/10/reemplazos/nuevo", data={"motivo_fallo": "No se presentó"}, follow_redirects=False)
+
+        self.assertIn(resp.status_code, (302, 303))
+        self.assertEqual(cand_old.estado, "trabajando")
+        self.assertTrue(any("Falta documento requerido" in str(c.args[0]) for c in flash_mock.call_args_list))
+        commit_mock.assert_called_once()
 
     def test_cancelar_reemplazo_lo_cierra_y_restaura_estado(self):
         self._login("Cruz", "8998")
