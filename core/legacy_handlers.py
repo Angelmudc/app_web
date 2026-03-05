@@ -61,6 +61,7 @@ from forms import LlamadaCandidataForm
 # Utils locales
 from utils_codigo import generar_codigo_unico  # tu función optimizada
 from utils.upload_security import validate_upload_file
+from utils.upload_limits import MAX_FILE_BYTES, get_filestorage_size, file_too_large, human_size
 from utils.cedula_normalizer import (
     normalize_cedula_for_compare,
     normalize_cedula_for_store,
@@ -3116,6 +3117,17 @@ def _build_docs_flags(cand):
         'cedula2': bool(getattr(cand, 'cedula2', None)),
     }
 
+
+def _upload_limits_view_context() -> dict:
+    max_file_bytes = int(MAX_FILE_BYTES(current_app))
+    max_file_mb = max_file_bytes / float(1024 * 1024)
+    total_limit = int(current_app.config.get("MAX_CONTENT_LENGTH") or 0)
+    return {
+        "upload_max_file_bytes": max_file_bytes,
+        "upload_max_file_mb": f"{max_file_mb:.1f}",
+        "upload_total_limit_text": human_size(total_limit) if total_limit > 0 else "sin límite",
+    }
+
 # -----------------------------------------------------------------------------
 # SUBIR FOTOS (BINARIOS EN DB)
 # -----------------------------------------------------------------------------
@@ -3165,7 +3177,7 @@ def subir_fotos():
                     for c in filas
                 ]
 
-        return render_template('subir_fotos.html', accion='buscar', resultados=resultados)
+        return render_template('subir_fotos.html', accion='buscar', resultados=resultados, **_upload_limits_view_context())
 
     # ========================= MODO SUBIR =========================
     if accion == 'subir':
@@ -3185,7 +3197,8 @@ def subir_fotos():
                 'subir_fotos.html',
                 accion='subir',
                 fila=fila_id,
-                tiene=tiene
+                tiene=tiene,
+                **_upload_limits_view_context(),
             )
 
         # POST: guardar archivos
@@ -3209,13 +3222,37 @@ def subir_fotos():
                 'subir_fotos.html',
                 accion='subir',
                 fila=fila_id,
-                tiene=tiene
+                tiene=tiene,
+                **_upload_limits_view_context(),
             )
 
         try:
-            # Límite por archivo (extra) para evitar cargas enormes aunque MAX_CONTENT_LENGTH exista
-            max_file = int(os.getenv("MAX_IMAGE_BYTES", str(3 * 1024 * 1024)))  # 3MB por archivo
+            max_file = int(MAX_FILE_BYTES(current_app))
             payload_bytes = {}
+
+            for campo, archivo in archivos_validos.items():
+                if not archivo or not getattr(archivo, "filename", ""):
+                    continue
+                if file_too_large(archivo, max_file):
+                    detected_size = int(get_filestorage_size(archivo) or 0)
+                    max_txt = human_size(max_file)
+                    size_txt = human_size(detected_size)
+                    log_candidata_action(
+                        action_type="CANDIDATA_UPLOAD_DOCS_SIZE_REJECT",
+                        candidata=candidata,
+                        summary=f"Archivo rechazado por tamaño en {campo}",
+                        metadata={
+                            "candidata_id": int(fila_id),
+                            "field": campo,
+                            "max_bytes": int(max_file),
+                            "size_bytes": int(detected_size),
+                            "source": "subir_fotos",
+                        },
+                        success=False,
+                        error="Archivo supera límite por campo.",
+                    )
+                    flash(f"Archivo demasiado pesado para {campo}. Máximo: {max_txt}. Tu archivo: {size_txt}.", "danger")
+                    return redirect(url_for('subir_fotos.subir_fotos', accion='subir', fila=fila_id))
 
             for campo, archivo in archivos_validos.items():
                 _safe_seek_upload(archivo)
@@ -3229,13 +3266,13 @@ def subir_fotos():
                     )
                     flash(f"❌ Archivo inválido en {campo}: {err}", "danger")
                     tiene = _build_docs_flags(candidata)
-                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene, **_upload_limits_view_context())
                 payload_bytes[campo] = data
 
             if not payload_bytes:
                 flash("⚠️ Debes seleccionar al menos una imagen para subir.", "warning")
                 tiene = _build_docs_flags(candidata)
-                return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+                return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene, **_upload_limits_view_context())
 
             def _persist_docs(_attempt: int):
                 for campo, data in payload_bytes.items():
@@ -3284,7 +3321,7 @@ def subir_fotos():
                 )
                 flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
                 tiene = _build_docs_flags(candidata)
-                return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+                return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene, **_upload_limits_view_context())
 
             log_candidata_action(
                 action_type="CANDIDATA_UPLOAD_DOCS_SAVE_OK",
@@ -3325,7 +3362,7 @@ def subir_fotos():
             )
             flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
             tiene = _build_docs_flags(candidata)
-            return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene)
+            return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene, **_upload_limits_view_context())
 
     return redirect(url_for('subir_fotos.subir_fotos', accion='buscar'))
 

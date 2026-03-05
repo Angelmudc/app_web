@@ -11,6 +11,7 @@ from typing import Optional
 
 from flask import Flask, request, redirect, url_for, abort, session
 from datetime import timedelta
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
@@ -180,7 +181,15 @@ def create_app():
     )
 
     # ✅ Limitar tamaño de requests (evita payloads gigantes)
-    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH", str(4 * 1024 * 1024)))  # 4MB
+    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH", str(4 * 1024 * 1024)))  # 4MB total request
+    try:
+        app_max_file_mb = float((os.getenv("APP_MAX_FILE_MB") or "3").strip())
+    except Exception:
+        app_max_file_mb = 3.0
+    if app_max_file_mb <= 0:
+        app_max_file_mb = 3.0
+    app.config["APP_MAX_FILE_MB"] = app_max_file_mb
+    app.config["APP_MAX_FILE_BYTES"] = int(app_max_file_mb * 1024 * 1024)
 
     # ─────────────────────────────────────────────────────────
     # CSRF
@@ -333,6 +342,24 @@ def create_app():
             resp.headers.setdefault("Cross-Origin-Embedder-Policy", "require-corp")
 
         return resp
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def _handle_request_entity_too_large(_err):
+        msg = "El archivo o la solicitud excede el límite permitido. Reduce el tamaño e intenta de nuevo."
+        wants_json = False
+        try:
+            wants_json = bool(request.accept_mimetypes.best == "application/json")
+        except Exception:
+            wants_json = False
+        if wants_json:
+            return {"error": msg}, 413
+
+        try:
+            from flask import flash
+            flash(msg, "danger")
+            return redirect(request.url)
+        except Exception:
+            return msg, 413
 
     # ─────────────────────────────────────────────────────────
     # Helpers globales para templates

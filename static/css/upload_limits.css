@@ -1,0 +1,15 @@
+.upload-limits-note {
+  font-weight: 600;
+}
+
+.upload-limit-message {
+  margin-top: 0.5rem;
+  color: #b42318;
+  font-size: 0.85rem;
+}
+
+.upload-file-meta {
+  margin-top: 0.4rem;
+  color: #344054;
+  font-size: 0.82rem;
+}
