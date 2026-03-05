@@ -1,9 +1,21 @@
 {% extends 'base.html' %}
 {% block title %}Logs de Monitoreo{% endblock %}
+{% block extra_head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/monitoreo_live.css') }}">
+{% endblock %}
 {% block content %}
-<div class="container py-4">
-  <h1 class="h3 mb-3">Logs de Monitoreo Staff</h1>
-  <form method="get" class="row g-2 mb-3">
+<div class="container py-4" data-monitoreo-page="logs" data-initial-last-id="{{ initial_last_id }}" data-stream-url="{{ url_for('admin.monitoreo_stream') }}" data-logs-url="{{ url_for('admin.monitoreo_logs_json') }}" data-summary-url="{{ url_for('admin.monitoreo_summary_json') }}" data-presence-ping-url="{{ url_for('admin.monitoreo_presence_ping') }}" data-has-filters="{{ 1 if has_active_filters else 0 }}">
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+    <h1 class="h3 mb-0">Logs de Monitoreo Staff</h1>
+    <div class="d-flex align-items-center gap-2">
+      <span id="liveStatus" class="live-badge paused">● PAUSADO</span>
+      <button id="liveToggleBtn" class="btn btn-outline-dark btn-sm" type="button">Reanudar</button>
+      <a class="btn btn-outline-dark btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver</a>
+    </div>
+  </div>
+
+  <form method="get" class="row g-2 mb-3" id="monitoreo-filters">
     <div class="col-md-2">
       <select class="form-select" name="user_id">
         <option value="">Todas las usuarias</option>
@@ -34,26 +46,24 @@
     <div class="col-12 d-flex gap-2">
       <button class="btn btn-primary btn-sm" type="submit">Filtrar</button>
       <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Limpiar</a>
-      <a class="btn btn-outline-dark btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver</a>
     </div>
   </form>
 
   <div class="table-responsive">
-    <table class="table table-sm table-striped">
-      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th><th>Cambios</th><th>Resultado</th></tr></thead>
+    <table class="table table-sm table-striped" id="liveLogsTable">
+      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th><th>Resultado</th></tr></thead>
       <tbody>
       {% for log in logs %}
-        <tr>
+        <tr data-log-id="{{ log.id }}">
           <td>{{ log.created_at }}</td>
           <td>{% set u = user_map.get(log.actor_user_id) %}{{ u.username if u else '-' }}</td>
           <td><code>{{ log.action_type }}</code></td>
           <td>{{ log.entity_type or '-' }} {{ log.entity_id or '' }}</td>
           <td>{{ log.summary or '-' }}</td>
-          <td><small>{{ log.changes_json if log.changes_json else '-' }}</small></td>
           <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
         </tr>
       {% else %}
-        <tr><td colspan="7" class="text-muted">No hay logs para este filtro.</td></tr>
+        <tr><td colspan="6" class="text-muted">No hay logs para este filtro.</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -71,4 +81,7 @@
     </ul>
   </nav>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/monitoreo_live.js') }}" defer></script>
 {% endblock %}

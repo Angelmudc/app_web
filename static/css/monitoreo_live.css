@@ -1,0 +1,31 @@
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+
+.live-badge.live {
+  color: #0a7a2f;
+  background: #e9f8ef;
+  border-color: #8bd5a4;
+}
+
+.live-badge.paused {
+  color: #7c5700;
+  background: #fff7e0;
+  border-color: #f0d58c;
+}
+
+#liveLogsTable tr.log-new {
+  animation: logFlash 1s ease;
+}
+
+@keyframes logFlash {
+  0% { background-color: #fff6d9; }
+  100% { background-color: transparent; }
+}

@@ -1,93 +1,87 @@
 {% extends 'base.html' %}
 {% block title %}Monitoreo de Secretarias{% endblock %}
+{% block extra_head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/monitoreo_live.css') }}">
+{% endblock %}
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="container py-4" data-monitoreo-page="dashboard" data-initial-last-id="{{ initial_last_id }}" data-stream-url="{{ url_for('admin.monitoreo_stream') }}" data-logs-url="{{ url_for('admin.monitoreo_logs_json') }}" data-summary-url="{{ url_for('admin.monitoreo_summary_json') }}" data-presence-ping-url="{{ url_for('admin.monitoreo_presence_ping') }}">
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
     <h1 class="h3 mb-0">Monitoreo de Secretarias</h1>
-    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Ver logs completos</a>
+    <div class="d-flex align-items-center gap-2">
+      <span id="liveStatus" class="live-badge paused">● PAUSADO</span>
+      <button id="liveToggleBtn" class="btn btn-outline-dark btn-sm" type="button">Reanudar</button>
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Ver logs completos</a>
+    </div>
   </div>
 
-  <div class="row g-3 mb-4">
-    <div class="col-md-3"><div class="card"><div class="card-body"><small>Acciones hoy</small><div class="h4 mb-0">{{ total_today }}</div></div></div></div>
-    <div class="col-md-3"><div class="card"><div class="card-body"><small>Acciones 7 días</small><div class="h4 mb-0">{{ total_week }}</div></div></div></div>
-    <div class="col-md-3"><div class="card"><div class="card-body"><small>Solicitudes creadas (7d)</small><div class="h4 mb-0">{{ metrics.solicitudes_creadas }}</div></div></div></div>
-    <div class="col-md-3"><div class="card"><div class="card-body"><small>Candidatas enviadas (7d)</small><div class="h4 mb-0">{{ metrics.candidatas_enviadas }}</div></div></div></div>
+  <div class="row g-3 mb-4" id="metricsCards">
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Acciones hoy</small><div class="h4 mb-0" data-metric="today.total_actions">{{ summary_payload.today.total_actions }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Acciones semana</small><div class="h4 mb-0" data-metric="week.total_actions">{{ summary_payload.week.total_actions }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Acciones mes</small><div class="h4 mb-0" data-metric="month.total_actions">{{ summary_payload.month.total_actions }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><small>Candidatas enviadas (semana)</small><div class="h4 mb-0" data-metric="week.candidatas_enviadas">{{ summary_payload.week.candidatas_enviadas }}</div></div></div></div>
   </div>
 
   <div class="row g-4 mb-4">
-    <div class="col-lg-4">
-      <h2 class="h6">Ranking hoy</h2>
-      <ul class="list-group">
-        {% for row in ranking_today %}
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <a href="{{ url_for('admin.monitoreo_secretaria', user_id=row.actor_user_id) }}">{{ row.username }}</a>
-            <span class="badge bg-primary">{{ row.total }}</span>
-          </li>
-        {% else %}
-          <li class="list-group-item text-muted">Sin actividad</li>
-        {% endfor %}
-      </ul>
+    <div class="col-lg-5">
+      <h2 class="h6">Usuarios activos ahora</h2>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped" id="presenceTable">
+          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Última acción</th><th>Hace</th></tr></thead>
+          <tbody>
+            {% for p in summary_payload.presence %}
+            <tr>
+              <td>{{ p.username }} <small class="text-muted">({{ p.role }})</small></td>
+              <td><span class="badge {% if p.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">{{ p.status|upper }}</span></td>
+              <td><small>{{ p.current_path or '-' }}</small></td>
+              <td><small>{{ p.last_action_type or 'sin acciones registradas' }}{% if p.last_action_summary %} — {{ p.last_action_summary }}{% endif %}</small></td>
+              <td>{{ p.last_seen_seconds }}s</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted">Sin presencia reciente.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-    <div class="col-lg-4">
-      <h2 class="h6">Ranking semana</h2>
-      <ul class="list-group">
-        {% for row in ranking_week %}
+
+    <div class="col-lg-7">
+      <h2 class="h6">Top secretarias (mes)</h2>
+      <ul class="list-group" id="topList">
+        {% for row in summary_payload.top %}
           <li class="list-group-item d-flex justify-content-between align-items-center">
-            <a href="{{ url_for('admin.monitoreo_secretaria', user_id=row.actor_user_id) }}">{{ row.username }}</a>
-            <span class="badge bg-secondary">{{ row.total }}</span>
+            <a href="{{ url_for('admin.monitoreo_secretaria', user_id=row.user_id) }}">{{ row.username }}</a>
+            <span class="badge bg-dark">{{ row.total_actions }}</span>
           </li>
         {% else %}
-          <li class="list-group-item text-muted">Sin actividad</li>
-        {% endfor %}
-      </ul>
-    </div>
-    <div class="col-lg-4">
-      <h2 class="h6">Ranking mes</h2>
-      <ul class="list-group">
-        {% for row in ranking_month %}
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <a href="{{ url_for('admin.monitoreo_secretaria', user_id=row.actor_user_id) }}">{{ row.username }}</a>
-            <span class="badge bg-dark">{{ row.total }}</span>
-          </li>
-        {% else %}
-          <li class="list-group-item text-muted">Sin actividad</li>
+          <li class="list-group-item text-muted">Sin actividad.</li>
         {% endfor %}
       </ul>
     </div>
   </div>
 
-  <h2 class="h6">Acciones por día (7d)</h2>
-  <div class="table-responsive mb-4">
-    <table class="table table-sm table-striped">
-      <thead><tr><th>Fecha</th><th>Total</th></tr></thead>
-      <tbody>
-      {% for day, total in per_day_rows %}
-        <tr><td>{{ day }}</td><td>{{ total }}</td></tr>
-      {% else %}
-        <tr><td colspan="2" class="text-muted">Sin registros.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <h2 class="h6">Últimos logs</h2>
+  <h2 class="h6">Últimos logs (en vivo)</h2>
   <div class="table-responsive">
-    <table class="table table-sm table-hover">
-      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th></tr></thead>
+    <table class="table table-sm table-hover" id="liveLogsTable">
+      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th><th>Resultado</th></tr></thead>
       <tbody>
       {% for log in latest_logs %}
-        <tr>
+        <tr data-log-id="{{ log.id }}">
           <td>{{ log.created_at }}</td>
           <td>{% set u = user_map.get(log.actor_user_id) %}{{ u.username if u else '-' }}</td>
           <td><code>{{ log.action_type }}</code></td>
           <td>{{ log.entity_type or '-' }} {{ log.entity_id or '' }}</td>
           <td>{{ log.summary or '-' }}</td>
+          <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="text-muted">Sin registros.</td></tr>
+        <tr><td colspan="6" class="text-muted">Sin registros.</td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/monitoreo_live.js') }}" defer></script>
 {% endblock %}

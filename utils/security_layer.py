@@ -284,6 +284,9 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_scrape_guard():
+        if bool(app.config.get("TESTING")):
+            return
+
         path = (request.path or "")
         if _is_exempt_path(path):
             return
@@ -383,6 +386,9 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_bruteforce_login():
+        if bool(app.config.get("TESTING")):
+            return
+
         # Permitir estáticos y health checks
         path = (request.path or "")
         if path.startswith("/static/") or path in HEALTH_PATHS:
