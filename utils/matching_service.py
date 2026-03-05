@@ -12,7 +12,12 @@ from sqlalchemy.orm import load_only
 from models import Candidata
 from utils.age_normalizer import parse_candidata_age_int, parse_solicitud_age_rules
 from utils.compat_engine import compute_match, normalize_horarios_tokens
-from utils.candidata_readiness import candidata_docs_complete, candidata_has_interview, candidata_is_ready_to_send
+from utils.candidata_readiness import (
+    candidata_docs_complete,
+    candidata_has_interview,
+    candidata_is_ready_to_send,
+    candidata_referencias_complete,
+)
 from utils.guards import candidatas_activas_filter
 from utils.modality_normalizer import evaluate_modalidad_match
 from utils.text_normalizer import infer_city, location_tokens, normalize_text, skill_tokens, tokens
@@ -469,6 +474,7 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
     ready_ok, ready_reasons = candidata_is_ready_to_send(cand)
     docs = candidata_docs_complete(cand)
     has_interview = candidata_has_interview(cand)
+    refs = candidata_referencias_complete(cand)
 
     ubicacion_pts, loc_info = _location_component(sol_profile, cand)
     modalidad_eval = _modalidad_component(sol_profile, cand)
@@ -579,6 +585,8 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
             "reasons": list(ready_reasons),
             "has_code": bool((getattr(cand, "codigo", None) or "").strip()),
             "has_interview": bool(has_interview),
+            "has_referencias_laboral": bool(refs.get("referencias_laboral")),
+            "has_referencias_familiares": bool(refs.get("referencias_familiares")),
             "docs": docs,
         },
     }

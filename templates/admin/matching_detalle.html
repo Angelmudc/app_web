@@ -121,6 +121,14 @@
                 <li>Perfil: {% if docs_flags.get('perfil') %}✅{% else %}❌{% endif %}</li>
                 <li>Cédula 1: {% if docs_flags.get('cedula1') %}✅{% else %}❌{% endif %}</li>
                 <li>Cédula 2: {% if docs_flags.get('cedula2') %}✅{% else %}❌{% endif %}</li>
+                <li>
+                  Referencias (Laboral/Familiar):
+                  {% if ready_check and ready_check.has_referencias_laboral and ready_check.has_referencias_familiares %}
+                    ✅
+                  {% else %}
+                    ❌
+                  {% endif %}
+                </li>
               </ul>
             </div>
 

@@ -37,7 +37,8 @@ class _DummyCandidata:
         self.perfil = b"perfil"
         self.cedula1 = b"c1"
         self.cedula2 = b"c2"
-        self.foto_perfil = None
+        self.referencias_laboral = "Ref laboral"
+        self.referencias_familiares = "Ref familiar"
 
 
 class _SolicitudQuery:

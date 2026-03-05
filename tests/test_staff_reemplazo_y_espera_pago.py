@@ -299,6 +299,7 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
                  patch("admin.routes.AdminReemplazoForm", _FakeReemplazoOpenForm), \
                  patch("admin.routes.Reemplazo", _DummyReemplazo), \
                  patch("admin.routes.candidata_is_ready_to_send", return_value=(True, [])), \
+                 patch("admin.routes.log_candidata_action") as log_mock, \
                  patch("admin.routes.db.session.add"), \
                  patch("admin.routes.db.session.commit") as commit_ok_mock:
                 resp_ok = self.client.post("/admin/solicitudes/10/reemplazos/nuevo", data={"motivo_fallo": "No se presentó"}, follow_redirects=False)
@@ -306,6 +307,11 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
         self.assertIn(resp_ok.status_code, (302, 303))
         self.assertEqual(cand_old.estado, "lista_para_trabajar")
         commit_ok_mock.assert_called_once()
+        mark_logs = [c.kwargs for c in log_mock.call_args_list if c.kwargs.get("action_type") == "CANDIDATA_MARK_LISTA"]
+        self.assertEqual(len(mark_logs), 1)
+        self.assertEqual(mark_logs[0].get("metadata", {}).get("reason"), "readiness_ok")
+        self.assertEqual(mark_logs[0].get("metadata", {}).get("source"), "auto")
+        self.assertEqual(mark_logs[0].get("metadata", {}).get("faltantes"), [])
 
     def test_abrir_reemplazo_sin_descalificar_y_readiness_fail_no_cambia_estado(self):
         self._login("Cruz", "8998")

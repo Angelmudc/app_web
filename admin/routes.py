@@ -4592,6 +4592,7 @@ def nuevo_reemplazo(s_id):
             sol.estado = 'reemplazo'
             sol.fecha_ultima_actividad = ahora
             sol.fecha_ultima_modificacion = ahora
+            mark_lista_from_state = None
 
             if descalificar:
                 _mark_candidata_estado(cand_old, 'descalificada', nota_descalificacion=motivo_descalificacion)
@@ -4599,6 +4600,7 @@ def nuevo_reemplazo(s_id):
                 ready_ok, reasons = candidata_is_ready_to_send(cand_old)
                 blocking = [rr for rr in (reasons or []) if not str(rr).lower().startswith("advertencia:")]
                 if ready_ok and not blocking:
+                    mark_lista_from_state = (getattr(cand_old, "estado", None) or "").strip().lower()
                     _mark_candidata_estado(cand_old, 'lista_para_trabajar')
                 elif blocking:
                     flash(
@@ -4628,6 +4630,13 @@ def nuevo_reemplazo(s_id):
                 },
                 success=True,
             )
+            if not descalificar and (getattr(cand_old, "estado", None) or "").strip().lower() == "lista_para_trabajar":
+                _log_lista_state_change(
+                    cand_old,
+                    source="auto",
+                    faltantes=[],
+                    from_state=mark_lista_from_state,
+                )
 
             flash('Reemplazo iniciado correctamente.', 'success')
             return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
@@ -5703,6 +5712,25 @@ def _mark_candidata_estado(cand: Candidata, nuevo_estado: str, *, nota_descalifi
         cand.nota_descalificacion = (nota_descalificacion or "").strip() or None
 
 
+def _log_lista_state_change(cand: Candidata, *, source: str, faltantes: list[str] | None = None, from_state: str | None = None) -> None:
+    if not cand:
+        return
+    from_value = (from_state or "").strip().lower() or None
+    to_value = (getattr(cand, "estado", None) or "").strip().lower() or "lista_para_trabajar"
+    log_candidata_action(
+        action_type="CANDIDATA_MARK_LISTA",
+        candidata=cand,
+        summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
+        metadata={
+            "reason": "readiness_ok",
+            "faltantes": list(faltantes or []),
+            "source": (source or "manual").strip().lower(),
+        },
+        changes={"estado": {"from": from_value, "to": to_value}},
+        success=True,
+    )
+
+
 def _active_reemplazo_for_solicitud(solicitud: Solicitud):
     if not solicitud:
         return None
@@ -6364,6 +6392,7 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
         )
         return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
+    estado_previo = (getattr(cand, "estado", None) or "").strip().lower()
     cand.estado = "lista_para_trabajar"
     if hasattr(cand, "fecha_cambio_estado"):
         cand.fecha_cambio_estado = datetime.utcnow()
@@ -6383,13 +6412,20 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
             entity_type="Candidata",
             entity_id=cand.fila,
             summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "trabajando", "to": "lista_para_trabajar"}},
+            changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+        )
+        _log_lista_state_change(
+            cand,
+            source="manual",
+            faltantes=[],
+            from_state=estado_previo,
         )
         log_candidata_action(
-            action_type="CANDIDATA_MARK_LISTA",
+            action_type="CANDIDATA_ESTADO_LISTA",
             candidata=cand,
-            summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "trabajando", "to": "lista_para_trabajar"}},
+            summary=f"Estado candidata actualizado a lista para trabajar: {cand.nombre_completo or cand.fila}",
+            metadata={"source": "manual"},
+            changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
             success=True,
         )
         flash("Candidata marcada como lista para trabajar.", "success")

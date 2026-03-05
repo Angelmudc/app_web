@@ -45,7 +45,8 @@ class _Cand:
         self.perfil = b"perfil" if docs else None
         self.cedula1 = b"c1" if docs else None
         self.cedula2 = b"c2" if docs else None
-        self.foto_perfil = None
+        self.referencias_laboral = "Ref laboral"
+        self.referencias_familiares = "Ref familiar"
         self.direccion_completa = "Santiago"
         self.rutas_cercanas = "Cienfuegos"
         self.modalidad_trabajo_preferida = "salida diaria"

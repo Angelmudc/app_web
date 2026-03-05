@@ -36,7 +36,8 @@ class _DummyCandidate:
         self.perfil = b"perfil"
         self.cedula1 = b"c1"
         self.cedula2 = b"c2"
-        self.foto_perfil = None
+        self.referencias_laboral = "Ref laboral"
+        self.referencias_familiares = "Ref familiar"
         self.direccion_completa = "Avenida Nueva Stgo Villa Maria"
         self.rutas_cercanas = "Cienfuegos"
         self.modalidad_trabajo_preferida = "salida diaria"

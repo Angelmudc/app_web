@@ -83,6 +83,7 @@ class AdminStateButtonsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Candidata, "query", _CandidataAdminQuery(cand)), \
                  patch("admin.routes.candidata_is_ready_to_send", return_value=(True, [])), \
+                 patch("admin.routes.log_candidata_action") as log_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/candidatas/1/marcar_lista_para_trabajar",
@@ -95,6 +96,11 @@ class AdminStateButtonsTest(unittest.TestCase):
         self.assertIsNotNone(cand.fecha_cambio_estado)
         self.assertTrue(bool(cand.usuario_cambio_estado))
         commit_mock.assert_called_once()
+        mark_logs = [c.kwargs for c in log_mock.call_args_list if c.kwargs.get("action_type") == "CANDIDATA_MARK_LISTA"]
+        self.assertEqual(len(mark_logs), 1)
+        self.assertEqual(mark_logs[0].get("metadata", {}).get("reason"), "readiness_ok")
+        self.assertEqual(mark_logs[0].get("metadata", {}).get("source"), "manual")
+        self.assertEqual(mark_logs[0].get("metadata", {}).get("faltantes"), [])
 
 
 if __name__ == "__main__":

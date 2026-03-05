@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
+from utils.candidata_completitud_audit import entrevista_ok, referencias_ok
 from utils.guards import candidata_esta_descalificada
 
 _READY_BASE_STATES = {"lista_para_trabajar", "inscrita"}
@@ -28,25 +29,39 @@ def _has_blob(value: Any) -> bool:
 
 def candidata_has_interview(candidata) -> bool:
     legacy = (getattr(candidata, "entrevista", None) or "").strip()
-    if legacy:
-        return True
-
     entrevistas_rel = getattr(candidata, "entrevistas_nuevas", None)
-    if entrevistas_rel is None:
-        return False
+    entrevistas_count = 0
+    if entrevistas_rel is not None:
+        # Relación dynamic -> query.count()
+        if hasattr(entrevistas_rel, "count"):
+            try:
+                entrevistas_count = int(entrevistas_rel.count() or 0)
+            except Exception:
+                entrevistas_count = 0
+        else:
+            # Relación eager/lista
+            try:
+                entrevistas_count = len(list(entrevistas_rel or []))
+            except Exception:
+                entrevistas_count = 0
+    return entrevista_ok(legacy, entrevistas_count)
 
-    # Relación dynamic -> query.count()
-    if hasattr(entrevistas_rel, "count"):
-        try:
-            return int(entrevistas_rel.count() or 0) > 0
-        except Exception:
-            pass
 
-    # Relación eager/lista
-    try:
-        return len(list(entrevistas_rel or [])) > 0
-    except Exception:
-        return False
+def candidata_referencias_complete(candidata) -> Dict[str, bool]:
+    ref_laboral = (
+        getattr(candidata, "referencias_laborales_texto", None)
+        or getattr(candidata, "contactos_referencias_laborales", None)
+        or getattr(candidata, "referencias_laboral", None)
+    )
+    ref_familiar = (
+        getattr(candidata, "referencias_familiares_texto", None)
+        or getattr(candidata, "referencias_familiares_detalle", None)
+        or getattr(candidata, "referencias_familiares", None)
+    )
+    return {
+        "referencias_laboral": referencias_ok(ref_laboral),
+        "referencias_familiares": referencias_ok(ref_familiar),
+    }
 
 
 def candidata_docs_complete(candidata) -> Dict[str, Any]:
@@ -103,6 +118,12 @@ def candidata_is_ready_to_send(candidata) -> Tuple[bool, List[str]]:
 
     if not candidata_has_interview(candidata):
         reasons.append("Falta entrevista (legacy o nueva).")
+
+    referencias = candidata_referencias_complete(candidata)
+    if not referencias.get("referencias_laboral"):
+        reasons.append("Falta referencias_laboral válida.")
+    if not referencias.get("referencias_familiares"):
+        reasons.append("Falta referencias_familiares válida.")
 
     docs = candidata_docs_complete(candidata)
     for key in docs.get("missing_required", []):

@@ -91,6 +91,8 @@ class MatchingChecklistRenderTest(unittest.TestCase):
                         "ready": True,
                         "has_code": True,
                         "has_interview": True,
+                        "has_referencias_laboral": True,
+                        "has_referencias_familiares": True,
                         "docs": {
                             "flags": {
                                 "depuracion": True,
@@ -117,6 +119,7 @@ class MatchingChecklistRenderTest(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn("Checklist listo para enviar", html)
         self.assertIn("matching-checklist-card", html)
+        self.assertNotIn("Foto perfil", html)
 
         for label in (
             "Código:",
@@ -125,6 +128,7 @@ class MatchingChecklistRenderTest(unittest.TestCase):
             "Perfil:",
             "Cédula 1:",
             "Cédula 2:",
+            "Referencias (Laboral/Familiar):",
         ):
             self.assertIn(label, html)
 
