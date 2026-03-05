@@ -17,20 +17,40 @@ branch_labels = None
 depends_on = None
 
 
-status_enum = sa.Enum(
+status_enum = postgresql.ENUM(
     "sugerida",
     "enviada",
     "vista",
     "descartada",
     "seleccionada",
     name="solicitud_candidata_status_enum",
+    create_type=False,
 )
 
 
 def upgrade():
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        status_enum.create(bind, checkfirst=True)
+        op.execute(
+            """
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_type
+                WHERE typname = 'solicitud_candidata_status_enum'
+              ) THEN
+                CREATE TYPE solicitud_candidata_status_enum AS ENUM (
+                  'sugerida',
+                  'enviada',
+                  'vista',
+                  'descartada',
+                  'seleccionada'
+                );
+              END IF;
+            END$$;
+            """
+        )
 
     op.create_table(
         "solicitudes_candidatas",
@@ -57,7 +77,4 @@ def downgrade():
     op.drop_index(op.f("ix_solicitudes_candidatas_candidata_id"), table_name="solicitudes_candidatas")
     op.drop_index(op.f("ix_solicitudes_candidatas_solicitud_id"), table_name="solicitudes_candidatas")
     op.drop_table("solicitudes_candidatas")
-
-    bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
-        status_enum.drop(bind, checkfirst=True)
+    # No se elimina el TYPE para evitar romper otras dependencias en BD.
