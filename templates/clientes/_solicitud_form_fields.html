@@ -11,6 +11,30 @@
 {% set _pasaje_mode_value = public_pasaje_mode if public_pasaje_mode is defined and public_pasaje_mode else _pasaje_mode_default %}
 {% set _pasaje_otro_value = public_pasaje_otro if public_pasaje_otro is defined else '' %}
 {% set _pisos_value = public_pisos_value if public_pisos_value is defined and public_pisos_value else ('2' if (form.dos_pisos is defined and form.dos_pisos.data) else '1') %}
+{% set _modalidad_grupos = [
+  ('con_dormida', 'Con dormida'),
+  ('con_salida_diaria', 'Con salida diaria')
+] %}
+{% set _modalidad_especificas = {
+  'con_salida_diaria': [
+    'Un día a la semana',
+    'Dos días a la semana',
+    'Tres días a la semana',
+    'Lunes a Viernes',
+    'Viernes a Lunes',
+    'Sábado y Domingo',
+    'Lunes a Sábado',
+    'Otro'
+  ],
+  'con_dormida': [
+    'Lunes a sábado, sale sábado después del medio día',
+    'Salida Quincenal, sale viernes después del medio día',
+    'Lunes a Viernes',
+    'Viernes a Lunes',
+    'Sábado y Domingo',
+    'Otro'
+  ]
+} %}
 
 {% macro render_errors(field) -%}
   {% if field.errors %}
@@ -309,7 +333,42 @@
         {{ render_field(form.ciudad_sector) }}
       {% endif %}
       {{ render_field(form.rutas_cercanas) }}
-      {{ render_field(form.modalidad_trabajo, hint='Ejemplo: dormida, salida diaria o por dias.') }}
+      <div class="public-field public-full" id="wrap_modalidad_guiada">
+        <label class="public-field-label">Modalidad de trabajo</label>
+        {{ form.modalidad_trabajo(class='form-control d-none' ~ (' is-invalid' if form.modalidad_trabajo.errors else ''), id='modalidad_trabajo_hidden') }}
+
+        <div class="public-field-hint mb-2">Primero selecciona el tipo principal y luego la modalidad específica.</div>
+
+        <div class="public-segmented" id="modalidad_grupo_wrap">
+          {% for group_value, group_label in _modalidad_grupos %}
+            <label class="public-segmented-item">
+              <input type="radio" name="modalidad_grupo" value="{{ group_value }}">
+              <span>{{ group_label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <div class="mt-2" id="wrap_modalidad_especifica" style="display:none;">
+          <label class="public-field-label mb-1" for="modalidad_especifica_select">Modalidad específica</label>
+          <select class="form-select" id="modalidad_especifica_select" name="modalidad_especifica">
+            <option value="">Selecciona una opción</option>
+          </select>
+        </div>
+
+        <div class="mt-2" id="wrap_modalidad_otro" style="display:none;">
+          <label class="public-field-label mb-1" for="modalidad_otro_text">Especifica otra modalidad</label>
+          <input
+            type="text"
+            class="form-control"
+            id="modalidad_otro_text"
+            name="modalidad_otro_text"
+            maxlength="100"
+            placeholder="Escribe la modalidad"
+          >
+        </div>
+
+        {{ render_errors(form.modalidad_trabajo) }}
+      </div>
       {{ render_field(form.horario, title='Horario / Define el horario de trabajo', hint='Indica dias y rango horario esperado.') }}
     </div>
   </section>
@@ -362,9 +421,9 @@
       {{ render_field(form.areas_comunes, hint='Puedes marcar "Todas las anteriores" para mayor rapidez.', wrapper_class='public-full public-areas-field') }}
       {{ render_field(form.area_otro, wrapper_id='wrap_area_otro', wrapper_class='public-full') }}
       {{ render_field(form.adultos) }}
-      {{ render_field(form.ninos) }}
-      {{ render_field(form.edades_ninos) }}
-      {{ render_field(form.mascota) }}
+      {{ render_field(form.ninos, wrapper_id='wrap_ninos') }}
+      {{ render_field(form.edades_ninos, wrapper_id='wrap_edades_ninos') }}
+      {{ render_field(form.mascota, wrapper_id='wrap_mascota') }}
     </div>
   </section>
 
@@ -428,6 +487,11 @@
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function stripAccents(v) {
+    if (!v || !String.prototype.normalize) return (v || '');
+    return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
   function getFieldsByName(name) {
@@ -523,6 +587,189 @@
 
   function selectedByName(name, value) {
     return document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+  }
+
+  var MODALIDAD_OPTIONS = {{ _modalidad_especificas | tojson }};
+  var MODALIDAD_GROUP_LABELS = {
+    "con_dormida": "Con dormida",
+    "con_salida_diaria": "Con salida diaria"
+  };
+
+  function normModal(v) {
+    return stripAccents(norm(v))
+      .replace(/[.,;:()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function inferModalidadGroup(textNorm) {
+    if (!textNorm) return '';
+    if (
+      textNorm.indexOf('con dormida') >= 0 ||
+      textNorm.indexOf('dormida') >= 0 ||
+      textNorm.indexOf('interna') >= 0 ||
+      textNorm.indexOf('se queda a dormir') >= 0 ||
+      textNorm.indexOf('quincenal') >= 0
+    ) {
+      return 'con_dormida';
+    }
+    if (
+      textNorm.indexOf('salida diaria') >= 0 ||
+      textNorm.indexOf('sin dormida') >= 0 ||
+      textNorm.indexOf('por dia') >= 0 ||
+      textNorm.indexOf('dias a la semana') >= 0
+    ) {
+      return 'con_salida_diaria';
+    }
+    return '';
+  }
+
+  function parseStoredModalidad(rawValue) {
+    var raw = (rawValue || '').toString().trim();
+    if (!raw) return { group: '', specific: '', other: '' };
+
+    var textNorm = normModal(raw);
+    var group = '';
+    var specific = '';
+    var other = '';
+    var rest = raw;
+
+    if (textNorm.indexOf('con dormida -') === 0) {
+      group = 'con_dormida';
+      rest = raw.replace(/^con\s+dormida\s*-\s*/i, '').trim();
+    } else if (textNorm.indexOf('con salida diaria -') === 0) {
+      group = 'con_salida_diaria';
+      rest = raw.replace(/^con\s+salida\s+diaria\s*-\s*/i, '').trim();
+    } else {
+      group = inferModalidadGroup(textNorm);
+    }
+
+    var restNorm = normModal(rest);
+    var allGroups = ['con_dormida', 'con_salida_diaria'];
+    var resolvedGroup = group;
+    for (var gi = 0; gi < allGroups.length; gi++) {
+      var g = allGroups[gi];
+      var opts = MODALIDAD_OPTIONS[g] || [];
+      for (var oi = 0; oi < opts.length; oi++) {
+        var opt = opts[oi];
+        if (normModal(opt) === restNorm || normModal(opt) === textNorm) {
+          specific = opt;
+          if (!resolvedGroup) resolvedGroup = g;
+          break;
+        }
+      }
+      if (specific) break;
+    }
+
+    if (!resolvedGroup) {
+      resolvedGroup = inferModalidadGroup(textNorm) || 'con_salida_diaria';
+    }
+
+    if (!specific) {
+      var otherRaw = rest;
+      if (!otherRaw || normModal(otherRaw) === normModal(MODALIDAD_GROUP_LABELS[resolvedGroup])) {
+        otherRaw = raw;
+      }
+      otherRaw = otherRaw.replace(/^otro\s*:\s*/i, '').trim();
+      if (otherRaw) {
+        specific = 'Otro';
+        other = otherRaw;
+      }
+    }
+
+    return { group: resolvedGroup, specific: specific, other: other };
+  }
+
+  function composeModalidadValue(group, specific, otherText) {
+    var gLabel = MODALIDAD_GROUP_LABELS[group] || '';
+    var s = (specific || '').trim();
+    var o = (otherText || '').trim();
+    if (!gLabel) return '';
+    if (!s) return gLabel;
+    if (normModal(s) === 'otro') {
+      return o ? (gLabel + ' - Otro: ' + o) : (gLabel + ' - Otro');
+    }
+    return gLabel + ' - ' + s;
+  }
+
+  function syncModalidadGuided(fromUserEvent) {
+    var hidden = byId('modalidad_trabajo_hidden');
+    var select = byId('modalidad_especifica_select');
+    var otherInput = byId('modalidad_otro_text');
+    var wrapSelect = byId('wrap_modalidad_especifica');
+    var wrapOther = byId('wrap_modalidad_otro');
+    var groupNode = document.querySelector('input[name="modalidad_grupo"]:checked');
+    var group = groupNode ? groupNode.value : '';
+
+    if (select) {
+      var current = select.value;
+      select.innerHTML = '<option value="">Selecciona una opción</option>';
+      var opts = MODALIDAD_OPTIONS[group] || [];
+      for (var i = 0; i < opts.length; i++) {
+        var op = document.createElement('option');
+        op.value = opts[i];
+        op.textContent = opts[i];
+        select.appendChild(op);
+      }
+      if (current && (MODALIDAD_OPTIONS[group] || []).indexOf(current) >= 0) {
+        select.value = current;
+      }
+    }
+
+    var selectedSpecific = select ? select.value : '';
+    var isOther = normModal(selectedSpecific) === 'otro';
+    if (wrapSelect) wrapSelect.style.display = group ? '' : 'none';
+    if (wrapOther) wrapOther.style.display = (group && isOther) ? '' : 'none';
+    if (otherInput) {
+      if (!isOther && fromUserEvent) otherInput.value = '';
+    }
+    if (hidden) {
+      hidden.value = composeModalidadValue(group, selectedSpecific, otherInput ? otherInput.value : '');
+    }
+  }
+
+  function initModalidadGuided() {
+    var hidden = byId('modalidad_trabajo_hidden');
+    var select = byId('modalidad_especifica_select');
+    var otherInput = byId('modalidad_otro_text');
+    var parsed = parseStoredModalidad(hidden ? hidden.value : '');
+    if (parsed.group) {
+      var groupRadio = selectedByName('modalidad_grupo', parsed.group);
+      if (groupRadio) groupRadio.checked = true;
+    }
+    syncModalidadGuided(false);
+    if (select && parsed.specific && (MODALIDAD_OPTIONS[parsed.group] || []).indexOf(parsed.specific) >= 0) {
+      select.value = parsed.specific;
+    }
+    if (otherInput && parsed.other) {
+      otherInput.value = parsed.other;
+    }
+    syncModalidadGuided(false);
+  }
+
+  function syncNinosRules(fromUserEvent) {
+    var ninosInput = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
+    var edadesInput = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
+    var requiereCuidado = hasSelectedValue('funciones', 'ninos');
+    var ninosCnt = 0;
+
+    if (ninosInput) {
+      ninosInput.required = !!requiereCuidado;
+      ninosCnt = parseInt(ninosInput.value || '0', 10);
+      if (!isFinite(ninosCnt)) ninosCnt = 0;
+    }
+
+    var showEdades = !!(requiereCuidado && ninosCnt > 0);
+    var wrapEdades = byId('wrap_edades_ninos');
+    if (wrapEdades) {
+      wrapEdades.style.display = showEdades ? '' : 'none';
+    }
+    if (edadesInput) {
+      edadesInput.required = showEdades;
+      if (!showEdades && fromUserEvent && !norm(edadesInput.value)) {
+        edadesInput.value = '';
+      }
+    }
   }
 
   function extractMarker(noteText, prefix) {
@@ -635,11 +882,13 @@
     pasajeHiddenField.dataset.fieldType = "{{ 'radio' if _pasaje_is_radio else 'boolean' }}";
   }
 
+  initModalidadGuided();
   syncOtherFields(false);
   setupAreasTodas();
   syncFromExistingMarkers();
   syncPisosAndPasaje();
   syncChoiceSelectedState();
+  syncNinosRules(false);
 
   document.addEventListener('change', function (ev) {
     var name = (ev.target && ev.target.name) || '';
@@ -651,16 +900,41 @@
     ) {
       syncOtherFields(true);
       syncChoiceSelectedState();
+      syncNinosRules(true);
     }
 
     if (name === 'pisos_selector' || name === 'pasaje_mode') {
       syncPisosAndPasaje();
     }
+
+    if (name === 'modalidad_grupo' || name === 'modalidad_especifica') {
+      syncModalidadGuided(true);
+    }
+
+    if (name === '{{ form.ninos.name if form.ninos is defined else "" }}') {
+      syncNinosRules(true);
+    }
   });
+
+  var modalidadOtroInput = byId('modalidad_otro_text');
+  if (modalidadOtroInput) {
+    modalidadOtroInput.addEventListener('input', function () {
+      syncModalidadGuided(false);
+    });
+  }
+
+  var ninosInputNode = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
+  if (ninosInputNode) {
+    ninosInputNode.addEventListener('input', function () {
+      syncNinosRules(true);
+    });
+  }
 
   var hostForm = document.querySelector('form');
   if (hostForm) {
     hostForm.addEventListener('submit', function () {
+      syncModalidadGuided(false);
+      syncNinosRules(false);
       var note = document.querySelector('textarea[name="nota_cliente"]');
       if (!note) return;
       var modeNode = document.querySelector('input[name="pasaje_mode"]:checked');

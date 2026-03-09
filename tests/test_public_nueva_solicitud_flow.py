@@ -99,6 +99,8 @@ def test_new_public_form_token_get_renders_personal_block_and_shared_request_bod
     assert "Número de teléfono" in html
     assert "Informacion del servicio" in html
     assert "Requisitos y perfil" in html
+    assert 'name="modalidad_grupo" value="con_dormida"' in html
+    assert 'name="modalidad_grupo" value="con_salida_diaria"' in html
 
 
 def test_new_public_form_token_invalid_returns_controlled_response():

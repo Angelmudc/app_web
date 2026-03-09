@@ -29,7 +29,7 @@ def test_shared_partial_keeps_core_order_aligned():
 
     idx_ciudad = partial.find("{{ render_field(form.ciudad_sector) }}")
     idx_rutas = partial.find("{{ render_field(form.rutas_cercanas) }}")
-    idx_modalidad = partial.find("{{ render_field(form.modalidad_trabajo")
+    idx_modalidad = partial.find("id=\"wrap_modalidad_guiada\"")
     idx_horario = partial.find("{{ render_field(form.horario")
     assert -1 not in (idx_ciudad, idx_rutas, idx_modalidad, idx_horario)
     assert idx_ciudad < idx_rutas < idx_modalidad < idx_horario
@@ -46,9 +46,9 @@ def test_shared_partial_keeps_core_order_aligned():
     idx_pisos = partial.find("Cantidad de pisos")
     idx_areas = partial.find("{{ render_field(form.areas_comunes")
     idx_ad = partial.find("{{ render_field(form.adultos) }}")
-    idx_ni = partial.find("{{ render_field(form.ninos) }}")
-    idx_ed = partial.find("{{ render_field(form.edades_ninos) }}")
-    idx_mas = partial.find("{{ render_field(form.mascota) }}")
+    idx_ni = partial.find("{{ render_field(form.ninos, wrapper_id='wrap_ninos') }}")
+    idx_ed = partial.find("{{ render_field(form.edades_ninos, wrapper_id='wrap_edades_ninos') }}")
+    idx_mas = partial.find("{{ render_field(form.mascota, wrapper_id='wrap_mascota') }}")
     assert -1 not in (idx_tl, idx_hab, idx_banos, idx_pisos, idx_areas, idx_ad, idx_ni, idx_ed, idx_mas)
     assert idx_tl < idx_hab < idx_banos < idx_pisos < idx_areas < idx_ad < idx_ni < idx_ed < idx_mas
 
@@ -59,3 +59,21 @@ def test_shared_partial_renders_pasaje_three_options_and_otro_field():
     assert "name=\"pasaje_mode\" value=\"aparte\"" in partial
     assert "name=\"pasaje_mode\" value=\"otro\"" in partial
     assert "name=\"pasaje_otro_text\"" in partial
+
+
+def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "name=\"modalidad_grupo\"" in partial
+    assert "('con_dormida', 'Con dormida')" in partial
+    assert "('con_salida_diaria', 'Con salida diaria')" in partial
+    assert "id=\"modalidad_especifica_select\"" in partial
+    assert "id=\"wrap_modalidad_otro\"" in partial
+    assert "id='modalidad_trabajo_hidden'" in partial
+    assert "function parseStoredModalidad(rawValue)" in partial
+    assert "function composeModalidadValue(group, specific, otherText)" in partial
+
+
+def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optional_copy():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "wrapper_id='wrap_edades_ninos'" in partial
+    assert "function syncNinosRules(fromUserEvent)" in partial

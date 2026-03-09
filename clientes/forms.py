@@ -253,14 +253,14 @@ class SolicitudForm(FlaskForm):
     )
     ninos = IntegerField(
         "Cantidad de niños",
-        validators=[DataRequired("Indica cuántos niños."), NumberRange(min=0)],
+        validators=[Optional(), NumberRange(min=0)],
         render_kw={"min": 0}
     )
     edades_ninos = StringField(
         "Edades de los niños",
         validators=[Optional(), Length(max=120)],
         filters=STRIP,
-        render_kw={"placeholder": "Ej. 2 y 6 años (opcional)"}
+        render_kw={"placeholder": "Ej. 2 y 6 años"}
     )
 
     # Mascota (NUEVO)
@@ -268,7 +268,7 @@ class SolicitudForm(FlaskForm):
         "Mascota",
         validators=[Optional(), Length(max=100)],
         filters=STRIP,
-        render_kw={"placeholder": "Ej. Perro, Gato (opcional)"}
+        render_kw={"placeholder": "Ej. Perro, Gato"}
     )
 
     # Compensación
@@ -306,6 +306,26 @@ class SolicitudForm(FlaskForm):
 
     submit = SubmitField("Enviar")
 
+    def validate(self, extra_validators=None):
+        ok = super().validate(extra_validators=extra_validators)
+        funciones = self.funciones.data or []
+
+        try:
+            ninos_cnt = int(self.ninos.data) if self.ninos.data is not None else 0
+        except Exception:
+            ninos_cnt = 0
+
+        if 'ninos' in funciones and self.ninos.data is None:
+            self.ninos.errors.append("Indica cuántos niños.")
+            ok = False
+
+        if 'ninos' in funciones and ninos_cnt > 0:
+            if not (self.edades_ninos.data and str(self.edades_ninos.data).strip()):
+                self.edades_ninos.errors.append("Debes indicar las edades de los niños.")
+                ok = False
+
+        return ok
+
     # ───────── Validaciones cruzadas (para 'Otro') ─────────
     def validate_ciudad_sector(self, field):
         _solo_texto(field.data)
@@ -314,18 +334,6 @@ class SolicitudForm(FlaskForm):
         if field.data and len((field.data or '').strip()) < 5:
             raise ValidationError("Describe un poco más la experiencia requerida.")
 
-    def validate_edades_ninos(self, field):
-        """Si se marca 'Cuidar Niños' y hay niños > 0, las edades son obligatorias."""
-        funciones = self.funciones.data or []
-        try:
-            ninos_cnt = int(self.ninos.data or 0)
-        except Exception:
-            ninos_cnt = 0
-
-        requiere = ('ninos' in funciones) and (ninos_cnt > 0)
-        if requiere:
-            if not (field.data and str(field.data).strip()):
-                raise ValidationError("Debes indicar las edades de los niños.")
     def validate_edad_requerida(self, field):
         data = field.data or []
         if 'otro' in data and not (self.edad_otro.data and self.edad_otro.data.strip()):

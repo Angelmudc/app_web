@@ -36,6 +36,7 @@ class _FakePublicForm:
         self.areas_comunes = _FakeField([])
         self.funciones = _FakeField([])
         self.edad_requerida = _FakeField([])
+        self.modalidad_trabajo = _FakeField("Con salida diaria - Lunes a Viernes")
         self.dos_pisos = _FakeField(False)
         self.pasaje_aporte = _FakeField(False)
         self.nota_cliente = _FakeField("")
@@ -146,6 +147,43 @@ def test_public_link_form_renders_pasaje_three_options_and_otro_input():
     assert "Pasaje aparte" in html
     assert "Otro" in html
     assert 'name="pasaje_otro_text"' in html
+
+
+def test_public_link_form_renders_guided_modalidad_with_two_main_groups():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'name="modalidad_grupo" value="con_dormida"' in html
+    assert 'name="modalidad_grupo" value="con_salida_diaria"' in html
+    assert "Con dormida" in html
+    assert "Con salida diaria" in html
+    assert '"con_salida_diaria"' in html
+    assert '"con_dormida"' in html
+    assert 'id="modalidad_otro_text"' in html
+
+
+def test_public_link_form_ui_does_not_show_optional_word_for_mascota_or_edades_ninos():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Mascota (opcional)" not in html
+    assert "Edades de los niños (opcional)" not in html
 
 
 def test_public_link_invalid_token_returns_controlled_response():
@@ -396,6 +434,31 @@ def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_requ
     assert "Revisa los campos marcados para continuar con el envío." in html
     assert "The CSRF tokens do not match." not in html
     assert "Bad Request" not in html
+
+
+def test_public_link_post_rerender_preserves_modalidad_value_on_validation_error():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = True
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+    modalidad_value = "Con dormida - Otro: Turno especial feriados"
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        get_resp = client.get("/clientes/solicitudes/publica/tok123")
+        csrf_token = _extract_csrf(get_resp.get_data(as_text=True))
+        post_resp = client.post(
+            "/clientes/solicitudes/publica/tok123",
+            data={
+                "csrf_token": csrf_token,
+                "token": "tok123",
+                "modalidad_trabajo": modalidad_value,
+            },
+        )
+
+    assert post_resp.status_code == 200
+    html = post_resp.get_data(as_text=True)
+    assert modalidad_value in html
 
 
 def test_public_link_post_with_invalid_csrf_returns_controlled_public_message():
