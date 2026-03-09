@@ -24,13 +24,22 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from config_app import db, cache
 try:
-    from models import Cliente, Solicitud, Candidata, CandidataWeb, SolicitudCandidata, ClienteNotificacion
+    from models import (
+        Cliente,
+        Solicitud,
+        Candidata,
+        CandidataWeb,
+        SolicitudCandidata,
+        ClienteNotificacion,
+        PublicSolicitudTokenUso,
+    )
 except Exception:
     from models import Cliente, Solicitud
     Candidata = None
     CandidataWeb = None
     SolicitudCandidata = None
     ClienteNotificacion = None
+    PublicSolicitudTokenUso = None
 
 from utils import letra_por_indice
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
@@ -317,6 +326,40 @@ def _public_link_max_age_seconds() -> int:
 
 def _public_link_token_hash(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _public_link_token_hash_storage(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+_PUBLIC_TOKEN_USAGE_TABLE_READY = False
+
+
+def _ensure_public_token_usage_table() -> bool:
+    global _PUBLIC_TOKEN_USAGE_TABLE_READY
+    if _PUBLIC_TOKEN_USAGE_TABLE_READY:
+        return True
+    if PublicSolicitudTokenUso is None:
+        return False
+    if bool(current_app.config.get("TESTING")):
+        _PUBLIC_TOKEN_USAGE_TABLE_READY = True
+        return True
+    try:
+        PublicSolicitudTokenUso.__table__.create(bind=db.engine, checkfirst=True)
+        _PUBLIC_TOKEN_USAGE_TABLE_READY = True
+        return True
+    except Exception:
+        current_app.logger.exception("No se pudo asegurar la tabla de tokens publicos usados")
+        return False
+
+
+def _public_link_usage_by_hash(token_hash: str):
+    if PublicSolicitudTokenUso is None or not token_hash:
+        return None
+    try:
+        return PublicSolicitudTokenUso.query.filter_by(token_hash=token_hash).first()
+    except Exception:
+        return None
 
 
 def _cliente_public_link_fingerprint(cliente: Cliente) -> str:
@@ -2293,6 +2336,33 @@ def compat_recalcular(solicitud_id):
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 def solicitud_publica(token):
+    if not _ensure_public_token_usage_table():
+        flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key="invalid",
+            status_code=503,
+        ), 503
+
+    token_hash_storage = _public_link_token_hash_storage(token)
+    used_row = _public_link_usage_by_hash(token_hash_storage)
+    if used_row is not None:
+        _log_public_link_event(
+            "PUBLIC_LINK_VIEW_FAIL",
+            token,
+            success=False,
+            reason="token_already_used",
+            cliente_id=int(getattr(used_row, "cliente_id", 0) or 0) or None,
+            metadata_extra={"method": request.method, "status_code": 410},
+        )
+        return render_template(
+            'clientes/public_link_used.html',
+            used_at=getattr(used_row, "used_at", None),
+            solicitud=getattr(used_row, "solicitud", None),
+            solicitud_id=getattr(used_row, "solicitud_id", None),
+            status_code=410,
+        ), 410
+
     form = SolicitudPublicaForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
@@ -2405,6 +2475,7 @@ def solicitud_publica(token):
             return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True, cliente=c, latest_solicitud=latest_solicitud), 403
 
         codigo_holder: dict[str, str] = {"value": ""}
+        solicitud_id_holder: dict[str, int] = {"value": 0}
         now_ref = datetime.utcnow()
 
         def _persist_public_solicitud(_attempt: int) -> None:
@@ -2465,6 +2536,20 @@ def solicitud_publica(token):
                 s.fecha_ultima_modificacion = now_ref
 
             db.session.add(s)
+            db.session.flush()
+            solicitud_id_holder["value"] = int(getattr(s, "id", 0) or 0)
+
+            existing_usage = _public_link_usage_by_hash(token_hash_storage)
+            if existing_usage is not None:
+                raise RuntimeError("token_already_used")
+            db.session.add(
+                PublicSolicitudTokenUso(
+                    token_hash=token_hash_storage,
+                    cliente_id=int(c.id),
+                    solicitud_id=int(getattr(s, "id", 0) or 0) or None,
+                    used_at=now_ref,
+                )
+            )
 
             c.total_solicitudes = (c.total_solicitudes or 0) + 1
             c.fecha_ultima_solicitud = now_ref
@@ -2476,6 +2561,13 @@ def solicitud_publica(token):
                 return False
             row = Solicitud.query.filter_by(codigo_solicitud=codigo, cliente_id=c.id).first()
             if not row:
+                return False
+            usage = _public_link_usage_by_hash(token_hash_storage)
+            if usage is None:
+                return False
+            if int(getattr(usage, "cliente_id", 0) or 0) != int(c.id):
+                return False
+            if int(getattr(usage, "solicitud_id", 0) or 0) != int(getattr(row, "id", 0) or 0):
                 return False
             return bool(getattr(c, "fecha_ultima_solicitud", None))
 
@@ -2502,6 +2594,15 @@ def solicitud_publica(token):
             )
             flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente.", "success")
             return redirect(url_for('clientes.solicitud_publica', token=token))
+        usage_after_fail = _public_link_usage_by_hash(token_hash_storage)
+        if usage_after_fail is not None:
+            return render_template(
+                'clientes/public_link_used.html',
+                used_at=getattr(usage_after_fail, "used_at", None),
+                solicitud=getattr(usage_after_fail, "solicitud", None),
+                solicitud_id=getattr(usage_after_fail, "solicitud_id", None),
+                status_code=410,
+            ), 410
         _log_public_link_event(
             "PUBLIC_LINK_VIEW_FAIL",
             token,

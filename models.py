@@ -477,6 +477,24 @@ class StaffAuditLog(db.Model):
     actor_user = db.relationship('StaffUser', backref=db.backref('audit_logs', lazy='dynamic'))
 
 
+class PublicSolicitudTokenUso(db.Model):
+    __tablename__ = "public_solicitud_tokens_usados"
+
+    id = db.Column(db.Integer, primary_key=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=False, index=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
+
+    used_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    cliente = db.relationship("Cliente", lazy="joined")
+    solicitud = db.relationship("Solicitud", lazy="joined")
+
+    def __repr__(self):
+        return f"<PublicSolicitudTokenUso id={self.id} cliente_id={self.cliente_id} solicitud_id={self.solicitud_id}>"
+
+
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 
