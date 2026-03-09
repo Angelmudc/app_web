@@ -1,414 +1,370 @@
-{# templates/clientes/_solicitud_form_fields.html
-   Renderiza TODOS los campos del SolicitudForm, pero:
-   - Mueve areas_comunes y area_otro justo debajo de banos.
-   - No inventa campos: todo se valida con "is defined".
-   - Evita duplicados (usa namespace para que el flag funcione bien).
-   - ✅ Mejora UX:
-       1) Campos "*_otro" se OCULTAN y solo aparecen cuando el usuario marca "Otro".
-       2) En áreas_comunes: si marcan "todas_anteriores" => marca todas menos "otro".
-          Y si desmarcan alguna => quita "todas_anteriores".
-#}
+{% set excluded = ['csrf_token', 'token', 'hp', 'codigo_cliente', 'nombre_cliente', 'email_cliente'] %}
+{% set ordered_names = [
+  'modalidad_trabajo', 'horario', 'ciudad_sector', 'rutas_cercanas',
+  'tipo_lugar', 'tipo_lugar_otro', 'funciones', 'funciones_otro',
+  'experiencia', 'edad_requerida', 'edad_otro', 'habitaciones',
+  'banos', 'dos_pisos', 'adultos', 'ninos', 'edades_ninos',
+  'mascota', 'areas_comunes', 'area_otro', 'sueldo', 'pasaje_aporte',
+  'nota_cliente'
+] %}
 
-{% set excluir = ['csrf_token', 'token', 'hp', 'codigo_cliente', 'nombre_cliente', 'email_cliente'] %}
-
-{# ✅ Flag persistente (no se pierde dentro del loop) #}
-{% set ns = namespace(areas_rendered=false) %}
-
-{# ─────────────────────────────────────────────
-   Macros: render de campos y errores
-   ───────────────────────────────────────────── #}
 {% macro render_errors(field) -%}
   {% if field.errors %}
-    <div style="margin-top:6px;">
-      {% for e in field.errors %}
-        <small style="color:#d33; display:block;">{{ e }}</small>
-      {% endfor %}
+    {% for e in field.errors %}
+      <div class="invalid-feedback">{{ e }}</div>
+    {% endfor %}
+  {% endif %}
+{%- endmacro %}
+
+{% macro render_field(field, title='', hint='', wrapper_id='') -%}
+  {% if field is defined and field is not none %}
+    {% set css_invalid = ' is-invalid' if field.errors else '' %}
+    <div class="public-field" {% if wrapper_id %}id="{{ wrapper_id }}"{% endif %}>
+      {% if field.type != 'BooleanField' %}
+        <label class="public-field-label" for="{{ field.id }}">{{ title or field.label.text }}</label>
+      {% endif %}
+
+      {% if field.type == 'TextAreaField' %}
+        {{ field(class='form-control' + css_invalid, rows=4) }}
+
+      {% elif field.type == 'BooleanField' %}
+        <div class="form-check form-switch public-switch-wrap">
+          {{ field(class='form-check-input' + css_invalid) }}
+          <label class="form-check-label public-switch-label" for="{{ field.id }}">{{ title or field.label.text }}</label>
+        </div>
+
+      {% elif field.type == 'SelectField' %}
+        {{ field(class='form-select' + css_invalid) }}
+
+      {% elif field.type == 'SelectMultipleField' %}
+        <div class="public-choice-grid{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}">
+          {% for sub in field %}
+            <label class="public-choice-item">
+              {{ sub(class='form-check-input') }}
+              <span>{{ sub.label.text }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+      {% elif field.type == 'HiddenField' %}
+        {{ field() }}
+
+      {% else %}
+        {{ field(class='form-control' + css_invalid) }}
+      {% endif %}
+
+      {% if hint %}<div class="public-field-hint">{{ hint }}</div>{% endif %}
+      {{ render_errors(field) }}
     </div>
   {% endif %}
 {%- endmacro %}
 
-{# Render normal de un field con wrapper opcional #}
-{% macro render_field(field, wrapper_id=None, wrapper_style=None, data_field=None, extra_class=None) -%}
-  {% if field is not defined or field is none %}
-    {# No hace nada si no existe #}
-  {% else %}
-    {% if field.type == 'HiddenField' %}
-      {{ field() }}
-    {% else %}
-      <div
-        class="form-group {{ extra_class or '' }}"
-        style="margin-top: 12px;"
-        {% if wrapper_style %}data-extra-style="{{ wrapper_style }}"{% endif %}
-        {% if wrapper_id %}id="{{ wrapper_id }}"{% endif %}
-        {% if data_field %}data-field="{{ data_field }}"{% endif %}
-      >
-
-        {% if field.label %}
-          <label for="{{ field.id }}">{{ field.label.text }}</label>
-        {% endif %}
-
-        {% if field.type == 'TextAreaField' %}
-          {{ field(class="form-control", rows=4) }}
-
-        {% elif field.type == 'BooleanField' %}
-          <div style="display:flex; align-items:center; gap:10px;">
-            {{ field() }}
-            <span style="opacity:.9;">
-              {{ field.label.text if field.label else field.name }}
-            </span>
-          </div>
-
-        {% elif field.type == 'RadioField' %}
-          <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:6px;">
-            {% for sub in field %}
-              <label style="display:flex; align-items:center; gap:8px; margin:0;">
-                {{ sub() }}
-                <span>{{ sub.label.text }}</span>
-              </label>
-            {% endfor %}
-          </div>
-
-        {% elif field.type in ['SelectMultipleField', 'SelectField'] %}
-          {# OJO: si tu SelectMultipleField usa ListWidget (checkboxes),
-             WTForms igual lo renderiza como lista cuando haces {{ field() }} en vez de form-control.
-             Pero aquí lo dejamos como está para no romper lo que ya te funciona. #}
-          {{ field(class="form-control") }}
-
-        {% else %}
-          {{ field(class="form-control") }}
-        {% endif %}
-
-        {{ render_errors(field) }}
-      </div>
-    {% endif %}
-  {% endif %}
-{%- endmacro %}
-
-{# ─────────────────────────────────────────────
-   Render principal con reordenamiento + UX "Otro"
-   ───────────────────────────────────────────── #}
-
-{% for field in form %}
-  {% if field.name not in excluir %}
-
-    {# Sacamos areas_comunes y area_otro del flujo normal para imprimirlas debajo de banos #}
-    {% if field.name in ['areas_comunes', 'area_otro'] %}
-      {# no imprimir aquí #}
-
-    {% else %}
-
-      {# ✅ Ocultar campos *_otro por defecto (se muestran con JS al marcar "otro") #}
-      {% if field.name in ['edad_otro', 'funciones_otro', 'tipo_lugar_otro'] %}
-        {{ render_field(field, wrapper_id="wrap_" ~ field.name, wrapper_style="display:none;", data_field=field.name) }}
-      {% else %}
-        {{ render_field(field) }}
-      {% endif %}
-
-      {# ✅ Justo después de BAÑOS, metemos Áreas comunes UNA sola vez #}
-      {% if field.name == 'banos' and not ns.areas_rendered %}
-
-        {% if form.areas_comunes is defined %}
-          {# wrapper para que el JS encuentre el bloque de áreas_comunes #}
-          {{ render_field(form.areas_comunes, wrapper_id="wrap_areas_comunes", data_field="areas_comunes") }}
-        {% endif %}
-
-        {% if form.area_otro is defined %}
-          {# area_otro se oculta por defecto #}
-          {{ render_field(form.area_otro, wrapper_id="wrap_area_otro", wrapper_style="display:none;", data_field="area_otro") }}
-        {% endif %}
-
-        {% set ns.areas_rendered = true %}
-      {% endif %}
-
-    {% endif %}
-  {% endif %}
-{% endfor %}
-
-{# ✅ Fallback SOLO si no se imprimieron (por ejemplo si no existe 'banos') #}
-{% if not ns.areas_rendered %}
-  {% if form.areas_comunes is defined %}
-    {{ render_field(form.areas_comunes, wrapper_id="wrap_areas_comunes", data_field="areas_comunes") }}
-  {% endif %}
-  {% if form.area_otro is defined %}
-    {{ render_field(form.area_otro, wrapper_id="wrap_area_otro", wrapper_style="display:none;", data_field="area_otro") }}
-  {% endif %}
-{% endif %}
-
-{# ─────────────────────────────────────────────
-   JS: "Otro" dinámico + "todas_anteriores" áreas comunes
-   (versión ES5, sin optional chaining, sin arrow functions)
-   ───────────────────────────────────────────── #}
-<script>
-(function () {
-  // Evita doble inicialización si el partial se incluye más de una vez
-  if (window.__solicitudFieldsInit__) return;
-  window.__solicitudFieldsInit__ = true;
-
-  function norm(v) {
-    return (v || "").toString().trim().toLowerCase();
+<style>
+  .public-form-sections {
+    display: grid;
+    gap: 14px;
   }
 
-  function show(el) { if (el) el.style.display = ""; }
-  function hide(el) { if (el) el.style.display = "none"; }
+  .public-form-card {
+    border: 1px solid #d9e2ee;
+    border-radius: 16px;
+    background: #fcfdff;
+    padding: 15px;
+  }
 
-  function getWrap(id) {
+  .public-form-card-header {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed #d5deea;
+  }
+
+  .public-form-card-title {
+    margin: 0;
+    font-size: .99rem;
+    font-weight: 700;
+    color: #223246;
+  }
+
+  .public-form-card-desc {
+    margin: 4px 0 0;
+    font-size: .88rem;
+    color: #5b6a7c;
+  }
+
+  .public-fields-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .public-field { min-width: 0; }
+
+  .public-field-label {
+    display: inline-block;
+    margin-bottom: 6px;
+    font-size: .84rem;
+    font-weight: 700;
+    color: #304257;
+  }
+
+  .public-field-hint {
+    margin-top: 5px;
+    color: #68788b;
+    font-size: .8rem;
+  }
+
+  .public-choice-grid {
+    border: 1px solid #ced9e6;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .public-choice-grid.is-invalid {
+    border-color: #ef9a9a;
+    box-shadow: inset 0 0 0 1px rgba(180, 35, 24, 0.2);
+  }
+
+  .public-choice-item {
+    margin: 0;
+    min-height: 36px;
+    border: 1px solid #dbe4ef;
+    border-radius: 10px;
+    background: #f8fbff;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    font-size: .88rem;
+    color: #25364c;
+  }
+
+  .public-switch-wrap {
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid #ced9e6;
+    background: #ffffff;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .public-switch-label {
+    font-weight: 600;
+    color: #304257;
+  }
+
+  .public-full { grid-column: 1 / -1; }
+
+  @media (max-width: 767.98px) {
+    .public-fields-grid { grid-template-columns: 1fr; }
+    .public-choice-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="public-form-sections">
+  <section class="public-form-card">
+    <header class="public-form-card-header">
+      <h3 class="public-form-card-title">Informacion del servicio</h3>
+      <p class="public-form-card-desc">Define modalidad, horario y ubicacion del servicio solicitado.</p>
+    </header>
+    <div class="public-fields-grid">
+      {{ render_field(form.modalidad_trabajo, hint='Ejemplo: dormida, salida diaria o por dias.') }}
+      {{ render_field(form.horario, hint='Indica dias y rango horario esperado.') }}
+      {{ render_field(form.ciudad_sector) }}
+      {{ render_field(form.rutas_cercanas) }}
+      {{ render_field(form.tipo_lugar) }}
+      {{ render_field(form.tipo_lugar_otro, wrapper_id='wrap_tipo_lugar_otro') }}
+    </div>
+  </section>
+
+  <section class="public-form-card">
+    <header class="public-form-card-header">
+      <h3 class="public-form-card-title">Requisitos y perfil</h3>
+      <p class="public-form-card-desc">Especifica funciones, experiencia y rango de edad requerido.</p>
+    </header>
+    <div class="public-fields-grid">
+      {{ render_field(form.funciones, hint='Marca una o varias funciones principales.') }}
+      {{ render_field(form.funciones_otro, wrapper_id='wrap_funciones_otro') }}
+      {{ render_field(form.experiencia, wrapper_id='wrap_experiencia', hint='Describe el tipo de experiencia que necesitas.') }}
+      {{ render_field(form.edad_requerida, hint='Selecciona una o mas opciones.') }}
+      {{ render_field(form.edad_otro, wrapper_id='wrap_edad_otro') }}
+    </div>
+  </section>
+
+  <section class="public-form-card">
+    <header class="public-form-card-header">
+      <h3 class="public-form-card-title">Detalles del hogar o lugar</h3>
+      <p class="public-form-card-desc">Incluye datos practicos para asignar el perfil correcto.</p>
+    </header>
+    <div class="public-fields-grid">
+      {{ render_field(form.habitaciones) }}
+      {{ render_field(form.banos) }}
+      {{ render_field(form.dos_pisos) }}
+      {{ render_field(form.adultos) }}
+      {{ render_field(form.ninos) }}
+      {{ render_field(form.edades_ninos) }}
+      {{ render_field(form.mascota) }}
+      {{ render_field(form.areas_comunes, hint='Puedes marcar "Todas las anteriores" para mayor rapidez.') }}
+      {{ render_field(form.area_otro, wrapper_id='wrap_area_otro') }}
+    </div>
+  </section>
+
+  <section class="public-form-card">
+    <header class="public-form-card-header">
+      <h3 class="public-form-card-title">Confirmacion final</h3>
+      <p class="public-form-card-desc">Completa compensacion y cualquier nota adicional relevante.</p>
+    </header>
+    <div class="public-fields-grid">
+      {{ render_field(form.sueldo, hint='Monto estimado en pesos dominicanos.') }}
+      {{ render_field(form.pasaje_aporte) }}
+      <div class="public-full">{{ render_field(form.nota_cliente) }}</div>
+    </div>
+  </section>
+
+  {% for field in form %}
+    {% if field.name not in excluded and field.name not in ordered_names %}
+      <section class="public-form-card">
+        <header class="public-form-card-header">
+          <h3 class="public-form-card-title">Informacion adicional</h3>
+        </header>
+        <div class="public-fields-grid">
+          <div class="public-full">{{ render_field(field) }}</div>
+        </div>
+      </section>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<script>
+(function () {
+  if (window.__publicSolicitudFieldsInit__) return;
+  window.__publicSolicitudFieldsInit__ = true;
+
+  function norm(v) {
+    return (v || '').toString().trim().toLowerCase();
+  }
+
+  function byId(id) {
     return document.getElementById(id);
   }
 
-  function closestFormGroup(el) {
-    var cur = el;
-    while (cur && cur !== document) {
-      if (cur.classList && cur.classList.contains("form-group")) return cur;
-      cur = cur.parentNode;
-    }
-    return null;
+  function getGroup(name) {
+    var group = byId('wrap_' + name);
+    if (!group) return [];
+    return group.querySelectorAll('input[type="checkbox"], input[type="radio"], select');
   }
 
-  function toArray(nodeList) {
-    var arr = [];
-    if (!nodeList) return arr;
-    for (var i = 0; i < nodeList.length; i++) arr.push(nodeList[i]);
-    return arr;
-  }
-
-  // Encuentra inputs/checkboxes de un grupo por wrapper (checkbox-list o select multiple)
-  function groupHasValue(wrapper, valueWanted) {
-    if (!wrapper) return false;
-    var wanted = norm(valueWanted);
-
-    // Caso 1: checkbox/radio list
-    var inputs = wrapper.querySelectorAll('input[type="checkbox"], input[type="radio"]');
-    if (inputs && inputs.length) {
-      for (var i = 0; i < inputs.length; i++) {
-        var v = norm(inputs[i].value);
-        if (v === wanted && inputs[i].checked) return true;
-      }
-      return false;
-    }
-
-    // Caso 2: select multiple / select
-    var sel = wrapper.querySelector('select');
-    if (sel) {
-      if (sel.multiple) {
-        for (var j = 0; j < sel.options.length; j++) {
-          var opt = sel.options[j];
-          if (norm(opt.value) === wanted && opt.selected) return true;
+  function hasCheckedValue(name, wanted) {
+    var nodes = getGroup(name);
+    var target = norm(wanted);
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if (n.tagName === 'SELECT') {
+        if (n.multiple) {
+          for (var j = 0; j < n.options.length; j++) {
+            var opt = n.options[j];
+            if (norm(opt.value) === target && opt.selected) return true;
+          }
+        } else if (norm(n.value) === target) {
+          return true;
         }
-        return false;
-      } else {
-        return norm(sel.value) === wanted;
+        continue;
       }
+      if (norm(n.value) === target && n.checked) return true;
     }
-
     return false;
   }
 
-  function clearTextInputs(wrapper) {
-    if (!wrapper) return;
-    var inputs = wrapper.querySelectorAll('input[type="text"], textarea');
-    inputs = toArray(inputs);
-    for (var i = 0; i < inputs.length; i++) inputs[i].value = "";
-  }
-
-  // ✅ Toggle "Otro" fields
-  function syncOtro() {
-    // Edad
-    var edadEl = document.getElementById("edad_requerida");
-    var wrapEdad = document.getElementById("wrap_edad_requerida") || (edadEl ? closestFormGroup(edadEl) : null);
-    var wrapEdadOtro = getWrap("wrap_edad_otro");
-    if (wrapEdadOtro) {
-      if (groupHasValue(wrapEdad, "otro")) {
-        show(wrapEdadOtro);
-      } else {
-        hide(wrapEdadOtro);
-        clearTextInputs(wrapEdadOtro);
-      }
-    }
-
-    // Funciones
-    var funEl = document.getElementById("funciones");
-    var wrapFun = document.getElementById("wrap_funciones") || (funEl ? closestFormGroup(funEl) : null);
-    var wrapFunOtro = getWrap("wrap_funciones_otro");
-    if (wrapFunOtro) {
-      if (groupHasValue(wrapFun, "otro")) {
-        show(wrapFunOtro);
-      } else {
-        hide(wrapFunOtro);
-        clearTextInputs(wrapFunOtro);
-      }
-    }
-
-    // Tipo lugar
-    var tlEl = document.getElementById("tipo_lugar");
-    var wrapTL = document.getElementById("wrap_tipo_lugar") || (tlEl ? closestFormGroup(tlEl) : null);
-    var wrapTLOtro = getWrap("wrap_tipo_lugar_otro");
-    if (wrapTLOtro) {
-      if (groupHasValue(wrapTL, "otro")) {
-        show(wrapTLOtro);
-      } else {
-        hide(wrapTLOtro);
-        clearTextInputs(wrapTLOtro);
-      }
-    }
-
-    // Áreas comunes: area_otro depende de "otro" en areas_comunes
-    var wrapAreas = getWrap("wrap_areas_comunes");
-    var wrapAreaOtro = getWrap("wrap_area_otro");
-    if (wrapAreaOtro) {
-      if (groupHasValue(wrapAreas, "otro")) {
-        show(wrapAreaOtro);
-      } else {
-        hide(wrapAreaOtro);
-        clearTextInputs(wrapAreaOtro);
-      }
+  function toggleWrapper(id, show) {
+    var wrap = byId(id);
+    if (!wrap) return;
+    wrap.style.display = show ? '' : 'none';
+    if (!show) {
+      var txts = wrap.querySelectorAll('input[type="text"], textarea');
+      for (var i = 0; i < txts.length; i++) txts[i].value = '';
     }
   }
 
-  // ✅ Áreas comunes: "todas_anteriores" marca todas menos "otro"
-  function syncAreasTodas() {
-    var wrapAreas = getWrap("wrap_areas_comunes");
-    if (!wrapAreas) return;
+  function syncOtroFields() {
+    toggleWrapper('wrap_edad_otro', hasCheckedValue('edad_requerida', 'otro'));
+    toggleWrapper('wrap_funciones_otro', hasCheckedValue('funciones', 'otro'));
+    toggleWrapper('wrap_tipo_lugar_otro', hasCheckedValue('tipo_lugar', 'otro'));
+    toggleWrapper('wrap_area_otro', hasCheckedValue('areas_comunes', 'otro'));
+  }
 
-    // Caso checkbox-list
-    var inputs = wrapAreas.querySelectorAll('input[type="checkbox"]');
-    if (inputs && inputs.length) {
-      inputs = toArray(inputs);
+  function setupAreasTodas() {
+    var wrap = byId('wrap_areas_comunes');
+    if (!wrap) return;
 
-      var todas = null;
-      for (var i = 0; i < inputs.length; i++) {
-        if (norm(inputs[i].value) === "todas_anteriores") {
-          todas = inputs[i];
-          break;
+    var boxes = wrap.querySelectorAll('input[type="checkbox"]');
+    if (!boxes.length) return;
+
+    var master = null;
+    for (var i = 0; i < boxes.length; i++) {
+      if (norm(boxes[i].value) === 'todas_anteriores') {
+        master = boxes[i];
+        break;
+      }
+    }
+    if (!master) return;
+
+    function setAll(checked) {
+      for (var i = 0; i < boxes.length; i++) {
+        var v = norm(boxes[i].value);
+        if (v === 'todas_anteriores') continue;
+        if (v === 'otro') {
+          boxes[i].checked = false;
+          continue;
         }
+        boxes[i].checked = !!checked;
       }
-      if (!todas) return;
-
-      function setAllExceptOtro(checked) {
-        for (var k = 0; k < inputs.length; k++) {
-          var v = norm(inputs[k].value);
-          if (v === "todas_anteriores") continue;
-          if (v === "otro") {
-            inputs[k].checked = false;
-            continue;
-          }
-          inputs[k].checked = !!checked;
-        }
-      }
-
-      function allNormalsChecked() {
-        for (var t = 0; t < inputs.length; t++) {
-          var vv = norm(inputs[t].value);
-          if (vv === "todas_anteriores" || vv === "otro") continue;
-          if (!inputs[t].checked) return false;
-        }
-        return true;
-      }
-
-      if (todas.checked) setAllExceptOtro(true);
-
-      // Listeners
-      for (var m = 0; m < inputs.length; m++) {
-        (function (inp) {
-          inp.addEventListener("change", function () {
-            var v = norm(inp.value);
-
-            if (v === "todas_anteriores") {
-              if (inp.checked) setAllExceptOtro(true);
-            } else if (v === "otro") {
-              if (inp.checked) todas.checked = false;
-            } else {
-              if (!inp.checked) {
-                todas.checked = false;
-              } else {
-                if (allNormalsChecked()) {
-                  todas.checked = true;
-                  // asegura que "otro" no se marque
-                  for (var x = 0; x < inputs.length; x++) {
-                    if (norm(inputs[x].value) === "otro") inputs[x].checked = false;
-                  }
-                }
-              }
-            }
-
-            syncOtro();
-          });
-        })(inputs[m]);
-      }
-
-      return;
     }
 
-    // Caso select multiple
-    var sel = wrapAreas.querySelector("select");
-    if (sel && sel.multiple) {
-      sel.addEventListener("change", function () {
-        var selected = [];
-        for (var i2 = 0; i2 < sel.options.length; i2++) {
-          if (sel.options[i2].selected) selected.push(norm(sel.options[i2].value));
-        }
+    function allRegularChecked() {
+      for (var i = 0; i < boxes.length; i++) {
+        var v = norm(boxes[i].value);
+        if (v === 'todas_anteriores' || v === 'otro') continue;
+        if (!boxes[i].checked) return false;
+      }
+      return true;
+    }
 
-        var hasTodas = false;
-        for (var j2 = 0; j2 < selected.length; j2++) {
-          if (selected[j2] === "todas_anteriores") { hasTodas = true; break; }
+    for (var i = 0; i < boxes.length; i++) {
+      boxes[i].addEventListener('change', function () {
+        var v = norm(this.value);
+        if (v === 'todas_anteriores') {
+          setAll(this.checked);
+        } else if (v === 'otro') {
+          if (this.checked) master.checked = false;
+        } else if (!this.checked) {
+          master.checked = false;
+        } else if (allRegularChecked()) {
+          master.checked = true;
         }
-
-        if (hasTodas) {
-          for (var k2 = 0; k2 < sel.options.length; k2++) {
-            var v2 = norm(sel.options[k2].value);
-            if (v2 === "otro") sel.options[k2].selected = false;
-            else if (v2 !== "todas_anteriores") sel.options[k2].selected = true;
-          }
-        } else {
-          var hasOtro = false;
-          for (var z = 0; z < selected.length; z++) {
-            if (selected[z] === "otro") { hasOtro = true; break; }
-          }
-          if (hasOtro) {
-            for (var p = 0; p < sel.options.length; p++) {
-              if (norm(sel.options[p].value) === "todas_anteriores") sel.options[p].selected = false;
-            }
-          }
-        }
-
-        syncOtro();
+        syncOtroFields();
       });
     }
+
+    if (master.checked) setAll(true);
   }
 
-  // Listeners generales para cambios (edad, funciones, tipo_lugar)
-  function attachGeneralListeners() {
-    var ids = ["edad_requerida", "funciones", "tipo_lugar"];
+  syncOtroFields();
+  setupAreasTodas();
 
-    for (var i = 0; i < ids.length; i++) {
-      (function (id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener("change", syncOtro);
-
-        var wrap = document.getElementById("wrap_" + id) || (el ? closestFormGroup(el) : null);
-        if (wrap) {
-          var ins = wrap.querySelectorAll('input[type="checkbox"], input[type="radio"]');
-          ins = toArray(ins);
-          for (var j = 0; j < ins.length; j++) ins[j].addEventListener("change", syncOtro);
-        }
-      })(ids[i]);
+  document.addEventListener('change', function (ev) {
+    var id = (ev.target && ev.target.id) || '';
+    if (
+      id.indexOf('edad_requerida') === 0 ||
+      id.indexOf('funciones') === 0 ||
+      id.indexOf('tipo_lugar') === 0 ||
+      id.indexOf('areas_comunes') === 0
+    ) {
+      syncOtroFields();
     }
-
-    syncAreasTodas();
-  }
-
-  document.addEventListener("DOMContentLoaded", function () {
-    // Aplica estilos extra inyectados por Jinja sin romper el parser CSS del editor
-    var extraNodes = document.querySelectorAll('[data-extra-style]');
-    for (var ei = 0; ei < extraNodes.length; ei++) {
-      var extra = extraNodes[ei].getAttribute('data-extra-style');
-      if (extra) {
-        // concatena al style actual
-        extraNodes[ei].style.cssText = (extraNodes[ei].style.cssText || '') + ';' + extra;
-      }
-    }
-    attachGeneralListeners();
-    syncOtro();
-    syncAreasTodas();
   });
 })();
 </script>

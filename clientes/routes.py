@@ -2336,6 +2336,8 @@ def compat_recalcular(solicitud_id):
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 def solicitud_publica(token):
+    token_max_age_days = max(1, int(_public_link_max_age_seconds() // 86400))
+
     if not _ensure_public_token_usage_table():
         flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
@@ -2347,6 +2349,22 @@ def solicitud_publica(token):
     token_hash_storage = _public_link_token_hash_storage(token)
     used_row = _public_link_usage_by_hash(token_hash_storage)
     if used_row is not None:
+        success_state = session.get("public_solicitud_success") or {}
+        show_success = (
+            request.method == "GET"
+            and (request.args.get("estado") or "").strip().lower() == "enviado"
+            and bool(success_state)
+            and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
+        )
+        if show_success:
+            session.pop("public_solicitud_success", None)
+            return render_template(
+                'clientes/public_link_success.html',
+                used_at=getattr(used_row, "used_at", None),
+                solicitud=getattr(used_row, "solicitud", None),
+                solicitud_id=getattr(used_row, "solicitud_id", None),
+                status_code=200,
+            ), 200
         _log_public_link_event(
             "PUBLIC_LINK_VIEW_FAIL",
             token,
@@ -2448,7 +2466,14 @@ def solicitud_publica(token):
                 metadata_extra={"method": request.method, "status_code": 403},
             )
             flash("El código no coincide con este enlace.", "danger")
-            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True, cliente=c, latest_solicitud=latest_solicitud), 403
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                latest_solicitud=latest_solicitud,
+                public_token_max_age_days=token_max_age_days,
+            ), 403
 
         if _norm_email(getattr(form, 'email_cliente', type('x',(object,),{'data':''})).data) != _norm_email(c.email):
             _log_public_link_event(
@@ -2460,7 +2485,14 @@ def solicitud_publica(token):
                 metadata_extra={"method": request.method, "status_code": 403},
             )
             flash("El Gmail no coincide con ese código.", "danger")
-            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True, cliente=c, latest_solicitud=latest_solicitud), 403
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                latest_solicitud=latest_solicitud,
+                public_token_max_age_days=token_max_age_days,
+            ), 403
 
         if _norm_text(getattr(form, 'nombre_cliente', type('x',(object,),{'data':''})).data) != _norm_text(c.nombre_completo):
             _log_public_link_event(
@@ -2472,7 +2504,14 @@ def solicitud_publica(token):
                 metadata_extra={"method": request.method, "status_code": 403},
             )
             flash("El nombre no coincide con ese código.", "danger")
-            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True, cliente=c, latest_solicitud=latest_solicitud), 403
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                latest_solicitud=latest_solicitud,
+                public_token_max_age_days=token_max_age_days,
+            ), 403
 
         codigo_holder: dict[str, str] = {"value": ""}
         solicitud_id_holder: dict[str, int] = {"value": 0}
@@ -2593,7 +2632,11 @@ def solicitud_publica(token):
                 },
             )
             flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente.", "success")
-            return redirect(url_for('clientes.solicitud_publica', token=token))
+            session["public_solicitud_success"] = {
+                "token_hash": token_hash_storage,
+                "solicitud_id": int(solicitud_id_holder.get("value") or 0),
+            }
+            return redirect(url_for('clientes.solicitud_publica', token=token, estado="enviado"))
         usage_after_fail = _public_link_usage_by_hash(token_hash_storage)
         if usage_after_fail is not None:
             return render_template(
@@ -2629,7 +2672,7 @@ def solicitud_publica(token):
         nuevo=True,
         cliente=c,
         latest_solicitud=latest_solicitud,
-        public_token_max_age_days=max(1, int(_public_link_max_age_seconds() // 86400)),
+        public_token_max_age_days=token_max_age_days,
     )
 
 

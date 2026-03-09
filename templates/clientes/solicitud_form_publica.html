@@ -4,196 +4,268 @@
 
 {% block head %}
 <style>
-  .public-solicitud-page {
-    --public-bg-1: #f8fafc;
-    --public-bg-2: #eef2ff;
-    --public-text: #0f172a;
-    --public-muted: #475569;
-    --public-card: #ffffff;
-    --public-border: #dbe4f0;
-    --public-accent: #0f766e;
-    --public-accent-soft: #ccfbf1;
-    --public-danger: #b42318;
+  .public-flow-page {
+    --pf-bg: #f3f6fb;
+    --pf-ink: #112031;
+    --pf-muted: #5d6b7b;
+    --pf-panel: #ffffff;
+    --pf-border: #d9e2ee;
+    --pf-brand: #0f6a7f;
+    --pf-brand-soft: #e8f4f7;
+    --pf-ok-bg: #e8f7ee;
+    --pf-ok-ink: #146c43;
+    --pf-shadow: 0 22px 44px rgba(16, 24, 40, 0.10);
   }
 
-  .public-solicitud-page {
-    background:
-      radial-gradient(circle at 10% 10%, rgba(59, 130, 246, 0.08), transparent 42%),
-      radial-gradient(circle at 85% 0%, rgba(20, 184, 166, 0.10), transparent 35%),
-      linear-gradient(180deg, var(--public-bg-2) 0%, var(--public-bg-1) 62%, #ffffff 100%);
+  .public-flow-page {
     min-height: calc(100vh - 90px);
-    color: var(--public-text);
+    background:
+      radial-gradient(circle at 0% 0%, rgba(15, 106, 127, 0.12), transparent 40%),
+      radial-gradient(circle at 100% 0%, rgba(23, 74, 136, 0.08), transparent 32%),
+      linear-gradient(180deg, #f8fbff 0%, var(--pf-bg) 46%, #ffffff 100%);
+    color: var(--pf-ink);
   }
 
-  .public-shell {
-    max-width: 1120px;
+  .public-flow-shell {
+    max-width: 1160px;
     margin: 0 auto;
-    padding: 24px 12px 42px;
+    padding: 28px 14px 46px;
   }
 
-  .public-hero {
-    background: linear-gradient(140deg, #0f172a 0%, #1e293b 62%, #0b4f59 100%);
-    border-radius: 20px;
-    padding: 20px;
-    color: #f8fafc;
-    box-shadow: 0 24px 40px rgba(15, 23, 42, 0.22);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+  .public-flow-hero {
+    background: linear-gradient(130deg, #112031 0%, #1f3650 58%, #14566a 100%);
+    color: #f8fbff;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 28px 44px rgba(15, 23, 42, 0.20);
+    padding: 24px;
   }
 
-  .public-hero small { color: rgba(248, 250, 252, 0.86); }
-
-  .public-chip {
-    border: 1px solid rgba(255, 255, 255, 0.28);
-    border-radius: 999px;
-    padding: 6px 12px;
-    font-size: .85rem;
-    font-weight: 600;
-    letter-spacing: .02em;
-  }
-
-  .public-grid {
-    display: grid;
-    grid-template-columns: 1.1fr 1.9fr;
-    gap: 16px;
-    margin-top: 16px;
-  }
-
-  .public-card {
-    background: var(--public-card);
-    border: 1px solid var(--public-border);
-    border-radius: 18px;
-    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
-  }
-
-  .public-card .card-body {
-    padding: 20px;
-  }
-
-  .public-kv {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .public-kv strong {
-    color: var(--public-text);
-    display: block;
-    margin-bottom: 2px;
-    font-size: .92rem;
-  }
-
-  .public-kv span {
-    color: var(--public-muted);
-    font-size: .92rem;
-    word-break: break-word;
-  }
-
-  .public-status {
-    font-weight: 700;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    padding: 6px 12px;
-    font-size: .78rem;
-    letter-spacing: .02em;
-  }
-
-  .st-proceso { background: #e2e8f0; color: #334155; }
-  .st-activa { background: #dcfce7; color: #166534; }
-  .st-espera_pago { background: #fef3c7; color: #92400e; }
-  .st-reemplazo { background: #ede9fe; color: #5b21b6; }
-  .st-pagada { background: #d1fae5; color: #065f46; }
-  .st-cancelada { background: #fee2e2; color: #991b1b; }
-
-  .public-progress {
-    border-top: 1px dashed #d8e0ec;
-    margin-top: 16px;
-    padding-top: 14px;
-  }
-
-  .progress-track {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .progress-step {
-    border-radius: 12px;
-    border: 1px solid #d7e0ec;
-    background: #f8fafc;
-    padding: 10px;
-    min-height: 72px;
-  }
-
-  .progress-step.done {
-    background: #ecfeff;
-    border-color: #99f6e4;
-  }
-
-  .progress-step.active {
-    background: #eff6ff;
-    border-color: #bfdbfe;
-  }
-
-  .progress-step .k {
-    font-size: .73rem;
-    text-transform: uppercase;
-    color: #64748b;
-    letter-spacing: .04em;
-    font-weight: 700;
-  }
-
-  .progress-step .v {
-    margin-top: 4px;
-    font-size: .92rem;
-    font-weight: 600;
-    color: #0f172a;
-  }
-
-  .secure-box {
-    border: 1px solid #b7d9ff;
-    background: linear-gradient(180deg, #eef6ff 0%, #f8fbff 100%);
-    border-radius: 12px;
-    padding: 12px;
-    color: #1d4f91;
-    font-size: .92rem;
-  }
-
-  .public-form-title {
-    font-size: 1.14rem;
-    font-weight: 700;
-    margin-bottom: 12px;
-  }
-
-  .public-submit {
-    min-height: 48px;
+  .public-flow-title {
+    margin: 0;
+    font-size: 1.52rem;
     font-weight: 700;
     letter-spacing: .01em;
   }
 
-  .public-helper {
-    color: #64748b;
-    font-size: .86rem;
-    margin-top: 6px;
+  .public-flow-subtitle {
+    margin: 8px 0 0;
+    font-size: .98rem;
+    color: rgba(248, 251, 255, 0.9);
+    max-width: 66ch;
+  }
+
+  .public-flow-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 7px 13px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: .82rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .public-flow-layout {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .public-panel {
+    border: 1px solid var(--pf-border);
+    border-radius: 20px;
+    background: var(--pf-panel);
+    box-shadow: var(--pf-shadow);
+  }
+
+  .public-panel-body {
+    padding: 22px;
+  }
+
+  .public-side-title {
+    font-size: .95rem;
+    margin-bottom: 14px;
+    color: #344459;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-weight: 700;
+  }
+
+  .public-kv { display: grid; gap: 13px; }
+
+  .public-kv-label {
+    font-size: .78rem;
+    color: var(--pf-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-weight: 700;
+    margin-bottom: 3px;
+  }
+
+  .public-kv-value {
+    font-size: .95rem;
+    color: #1d2b3a;
+    font-weight: 600;
+    word-break: break-word;
+  }
+
+  .public-state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: .8rem;
+    font-weight: 700;
+    background: #edf2f8;
+    color: #35506f;
+    border: 1px solid #d3deeb;
+  }
+
+  .public-state-pill.ok {
+    background: var(--pf-ok-bg);
+    color: var(--pf-ok-ink);
+    border-color: #b9e3c8;
+  }
+
+  .public-security-note {
+    margin-top: 16px;
+    border: 1px solid #c9d7e8;
+    background: #f7fbff;
+    border-radius: 14px;
+    padding: 12px;
+    font-size: .9rem;
+    color: #2c4f78;
+  }
+
+  .public-form-main-header {
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed #d5deea;
+  }
+
+  .public-form-main-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+  }
+
+  .public-form-main-header p {
+    margin: 6px 0 0;
+    color: var(--pf-muted);
+    font-size: .95rem;
+  }
+
+  .public-identity-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .public-input-block label {
+    display: inline-block;
+    margin-bottom: 6px;
+    font-size: .84rem;
+    color: #304257;
+    font-weight: 700;
+  }
+
+  .public-input-block .form-control,
+  .public-input-block .form-select {
+    border-radius: 12px;
+    border: 1px solid #ced9e6;
+    min-height: 44px;
+    font-size: .95rem;
+    padding: .55rem .72rem;
+  }
+
+  .public-input-block .form-control:focus,
+  .public-input-block .form-select:focus,
+  .public-form-main .form-control:focus,
+  .public-form-main .form-select:focus,
+  .public-form-main .form-check-input:focus {
+    border-color: #4f87b3;
+    box-shadow: 0 0 0 .24rem rgba(56, 117, 167, 0.16);
+  }
+
+  .public-input-block .invalid-feedback,
+  .public-form-main .invalid-feedback {
+    display: block;
+    margin-top: 5px;
+    font-size: .8rem;
+    color: #b42318;
+    font-weight: 600;
+  }
+
+  .public-form-main .form-control,
+  .public-form-main .form-select {
+    border-radius: 12px;
+    border: 1px solid #ced9e6;
+    min-height: 44px;
+    font-size: .95rem;
+  }
+
+  .public-form-main .form-check-input {
+    width: 1.05rem;
+    height: 1.05rem;
+    border-color: #9fb3ca;
+  }
+
+  .public-submit-wrap {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed #d5deea;
+  }
+
+  .public-submit-btn {
+    min-height: 48px;
+    border-radius: 12px;
+    padding-inline: 18px;
+    font-weight: 700;
+    letter-spacing: .01em;
+  }
+
+  .public-submit-help {
+    margin-top: 9px;
+    color: var(--pf-muted);
+    font-size: .84rem;
+  }
+
+  .public-validation-banner {
+    border: 1px solid #fecaca;
+    color: #9b1c1c;
+    background: #fff1f2;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-size: .9rem;
   }
 
   @media (max-width: 991.98px) {
-    .public-grid { grid-template-columns: 1fr; }
-    .progress-track { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .public-flow-layout { grid-template-columns: 1fr; }
+    .public-identity-grid { grid-template-columns: 1fr 1fr; }
   }
 
   @media (max-width: 575.98px) {
-    .public-shell { padding-inline: 10px; }
-    .public-hero { border-radius: 16px; }
-    .public-card { border-radius: 14px; }
-    .progress-track { grid-template-columns: 1fr; }
+    .public-flow-shell { padding: 20px 10px 36px; }
+    .public-flow-hero,
+    .public-panel { border-radius: 16px; }
+    .public-panel-body { padding: 16px; }
+    .public-flow-title { font-size: 1.28rem; }
+    .public-identity-grid { grid-template-columns: 1fr; }
+    .public-submit-btn { width: 100%; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<section class="public-solicitud-page">
-  <div class="public-shell">
+<section class="public-flow-page">
+  <div class="public-flow-shell">
 
     {% set estado = (latest_solicitud.estado if latest_solicitud else 'proceso') %}
     {% set estado_label = {
@@ -205,78 +277,69 @@
       'cancelada': 'Cerrada'
     }.get(estado, estado|replace('_', ' ')|title) %}
 
-    <header class="public-hero">
-      <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+    <header class="public-flow-hero">
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
         <div>
-          <h1 class="h4 mb-1 fw-bold">Solicitud del cliente</h1>
-          <small>Enlace seguro para consultar contexto y registrar una solicitud nueva.</small>
+          <h1 class="public-flow-title">Formulario de solicitud del cliente</h1>
+          <p class="public-flow-subtitle">Completa esta información para registrar tu solicitud. Al enviarla, el enlace quedará cerrado automáticamente por seguridad.</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
           {% if latest_solicitud %}
-          <span class="public-chip">Código actual: {{ latest_solicitud.codigo_solicitud }}</span>
+          <span class="public-flow-chip"><i class="bi bi-hash"></i> Código actual: {{ latest_solicitud.codigo_solicitud }}</span>
           {% endif %}
-          <span class="public-chip">Enlace temporal: {{ public_token_max_age_days }} días</span>
+          <span class="public-flow-chip"><i class="bi bi-shield-lock"></i> Vigencia: {{ public_token_max_age_days }} días</span>
         </div>
       </div>
     </header>
 
-    <div class="public-grid">
-      <article class="public-card">
-        <div class="card-body">
-          <h2 class="h6 fw-bold mb-3">Resumen del cliente</h2>
+    <div class="public-flow-layout">
+      <aside class="public-panel">
+        <div class="public-panel-body">
+          <h2 class="public-side-title">Resumen</h2>
 
           <div class="public-kv">
             <div>
-              <strong>Nombre</strong>
-              <span>{{ cliente.nombre_completo or 'No disponible' }}</span>
+              <div class="public-kv-label">Cliente</div>
+              <div class="public-kv-value">{{ cliente.nombre_completo or 'No disponible' }}</div>
             </div>
             <div>
-              <strong>Código</strong>
-              <span>{{ cliente.codigo or 'No disponible' }}</span>
+              <div class="public-kv-label">Código</div>
+              <div class="public-kv-value">{{ cliente.codigo or 'No disponible' }}</div>
             </div>
             <div>
-              <strong>Última solicitud</strong>
-              <span>
+              <div class="public-kv-label">Última solicitud</div>
+              <div class="public-kv-value">
                 {% if latest_solicitud and latest_solicitud.fecha_solicitud %}
                   {{ latest_solicitud.fecha_solicitud.strftime('%d/%m/%Y %I:%M %p') }}
                 {% else %}
                   Sin solicitudes registradas
                 {% endif %}
-              </span>
+              </div>
             </div>
             <div>
-              <strong>Estado de seguimiento</strong>
-              <span class="public-status st-{{ estado|replace('-', '_') }}">{{ estado_label }}</span>
+              <div class="public-kv-label">Estado</div>
+              <span class="public-state-pill {% if estado in ['activa', 'pagada'] %}ok{% endif %}">{{ estado_label }}</span>
             </div>
           </div>
 
-          <div class="public-progress">
-            <div class="progress-track">
-              {% set progress_steps = [
-                ('1', 'Solicitud recibida', estado in ['proceso', 'activa', 'espera_pago', 'reemplazo', 'pagada', 'cancelada']),
-                ('2', 'En seguimiento', estado in ['activa', 'espera_pago', 'reemplazo', 'pagada']),
-                ('3', 'Validación de pago', estado in ['espera_pago', 'pagada']),
-                ('4', 'Cierre / reemplazo', estado in ['reemplazo', 'pagada', 'cancelada'])
-              ] %}
-              {% for idx, label, done in progress_steps %}
-              <div class="progress-step {% if done %}done{% endif %} {% if loop.last and estado in ['reemplazo', 'pagada', 'cancelada'] %}active{% endif %}">
-                <div class="k">Paso {{ idx }}</div>
-                <div class="v">{{ label }}</div>
-              </div>
-              {% endfor %}
-            </div>
+          <div class="public-security-note">
+            <strong>Verificación obligatoria:</strong> confirma código, nombre y correo del cliente antes de enviar para prevenir usos no autorizados.
           </div>
         </div>
-      </article>
+      </aside>
 
-      <article class="public-card">
-        <div class="card-body">
-          <div class="secure-box mb-3">
-            <strong>Verificación adicional requerida.</strong>
-            Confirma código, nombre y correo del cliente antes de enviar. Esto evita accesos indebidos si el enlace fue compartido por error.
+      <main class="public-panel">
+        <div class="public-panel-body public-form-main">
+          <div class="public-form-main-header">
+            <h2>Nueva solicitud</h2>
+            <p>Completa los campos por secciones. Si hay errores, se mostrarán debajo de cada campo.</p>
           </div>
 
-          <h2 class="public-form-title">Crear nueva solicitud</h2>
+          {% if form.errors %}
+            <div class="public-validation-banner" role="alert">
+              Revisa los campos marcados para continuar con el envío.
+            </div>
+          {% endif %}
 
           <form method="post" id="publicSolicitudForm" novalidate>
             {{ form.hidden_tag() }}
@@ -284,41 +347,42 @@
               {{ form.token(value=form.token.data or request.view_args.get('token', '')) }}
             {% endif %}
 
-            <div class="row g-3">
-              <div class="col-md-4">
-                <label class="form-label fw-semibold" for="{{ form.codigo_cliente.id }}">{{ form.codigo_cliente.label.text }}</label>
-                {{ form.codigo_cliente(class='form-control', placeholder='Ej. CL-001') }}
+            <section class="public-form-section">
+              <div class="public-identity-grid">
+                <div class="public-input-block">
+                  <label for="{{ form.codigo_cliente.id }}">{{ form.codigo_cliente.label.text }}</label>
+                  {{ form.codigo_cliente(class='form-control' ~ (' is-invalid' if form.codigo_cliente.errors else ''), placeholder='Ej. CL-001') }}
+                  {% for e in form.codigo_cliente.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+                </div>
+                <div class="public-input-block">
+                  <label for="{{ form.nombre_cliente.id }}">{{ form.nombre_cliente.label.text }}</label>
+                  {{ form.nombre_cliente(class='form-control' ~ (' is-invalid' if form.nombre_cliente.errors else ''), placeholder='Nombre completo del titular') }}
+                  {% for e in form.nombre_cliente.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+                </div>
+                <div class="public-input-block">
+                  <label for="{{ form.email_cliente.id }}">{{ form.email_cliente.label.text }}</label>
+                  {{ form.email_cliente(class='form-control' ~ (' is-invalid' if form.email_cliente.errors else ''), placeholder='correo@dominio.com') }}
+                  {% for e in form.email_cliente.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+                </div>
               </div>
-              <div class="col-md-4">
-                <label class="form-label fw-semibold" for="{{ form.nombre_cliente.id }}">{{ form.nombre_cliente.label.text }}</label>
-                {{ form.nombre_cliente(class='form-control', placeholder='Nombre completo del titular') }}
-              </div>
-              <div class="col-md-4">
-                <label class="form-label fw-semibold" for="{{ form.email_cliente.id }}">{{ form.email_cliente.label.text }}</label>
-                {{ form.email_cliente(class='form-control', placeholder='correo@dominio.com') }}
-              </div>
-            </div>
+            </section>
 
             {% if form.hp is defined %}
-              <div class="d-none" aria-hidden="true">
-                {{ form.hp() }}
-              </div>
+              <div class="d-none" aria-hidden="true">{{ form.hp() }}</div>
             {% endif %}
-
-            <hr class="my-4">
 
             {% include 'clientes/_solicitud_form_fields.html' %}
 
-            <div class="mt-4 d-grid d-md-flex gap-2">
-              <button class="btn btn-primary public-submit" type="submit" id="publicSubmitBtn">
+            <div class="public-submit-wrap">
+              <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitBtn">
                 <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitSpinner" aria-hidden="true"></span>
-                <span id="publicSubmitLabel">Enviar solicitud segura</span>
+                <span id="publicSubmitLabel">Enviar solicitud</span>
               </button>
+              <div class="public-submit-help">Este enlace es de un solo uso. Al finalizar, no podrá reutilizarse.</div>
             </div>
-            <div class="public-helper">Si este enlace no funciona, solicita uno nuevo a la agencia para proteger tus datos.</div>
           </form>
         </div>
-      </article>
+      </main>
     </div>
   </div>
 </section>
@@ -331,11 +395,17 @@
   var btn = document.getElementById('publicSubmitBtn');
   var spinner = document.getElementById('publicSubmitSpinner');
   var label = document.getElementById('publicSubmitLabel');
+  var isSubmitting = false;
 
   if (!form || !btn) return;
 
   form.addEventListener('submit', function () {
+    if (isSubmitting) {
+      return false;
+    }
+    isSubmitting = true;
     btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
     if (spinner) spinner.classList.remove('d-none');
     if (label) label.textContent = 'Enviando...';
   });

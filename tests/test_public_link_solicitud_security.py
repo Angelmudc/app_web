@@ -80,7 +80,7 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert resp.headers.get("Expires") == "0"
 
     html = resp.get_data(as_text=True)
-    assert "Solicitud del cliente" in html
+    assert "Formulario de solicitud del cliente" in html
     assert "nota interna" not in html
     assert "809" not in html
 
@@ -97,7 +97,7 @@ def test_public_link_invalid_token_returns_controlled_response():
         resp = client.get("/clientes/solicitudes/publica/token-invalido")
 
     assert resp.status_code == 404
-    assert "No fue posible abrir esta solicitud" in resp.get_data(as_text=True)
+    assert "Este enlace no es valido o ha expirado" in resp.get_data(as_text=True)
 
     actions = [k.get("action_type") for _a, k in log_mock.call_args_list if isinstance(k, dict)]
     assert "PUBLIC_LINK_VIEW_FAIL" in actions
@@ -203,7 +203,45 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
     assert resp.status_code in (302, 303)
     assert "/clientes/solicitudes/publica/tok123" in (resp.location or "")
     assert second.status_code == 410
-    assert "Este enlace ya fue usado correctamente" in second.get_data(as_text=True)
+    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
+
+
+def test_public_link_successful_save_shows_professional_success_page_once():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    c = _dummy_cliente()
+    fake_form = _FakePublicForm(token="tok123", codigo="CL-001", nombre="Cliente Uno", email="cliente@example.com")
+    used_state = {"used": False}
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=102,
+        used_at=datetime.utcnow(),
+        solicitud=SimpleNamespace(codigo_solicitud="CL-001-C"),
+    )
+
+    def _usage_side_effect(_token_hash):
+        if used_state["used"]:
+            return used_row
+        return None
+
+    def _save_ok(*args, **kwargs):
+        used_state["used"] = True
+        return RobustSaveResult(ok=True, attempts=1, error_message="")
+
+    with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._latest_solicitud_publica_cliente", return_value=None), \
+         patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
+        success = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=True)
+        later = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert success.status_code == 200
+    assert "Tu solicitud fue enviada correctamente" in success.get_data(as_text=True)
+    assert later.status_code == 410
+    assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 
 
 def test_public_link_renders_without_previous_solicitud():
@@ -229,7 +267,7 @@ def test_public_link_tampered_token_is_rejected():
 
     resp = client.get("/clientes/solicitudes/publica/tok123tampered")
     assert resp.status_code == 404
-    assert "No fue posible abrir esta solicitud" in resp.get_data(as_text=True)
+    assert "Este enlace no es valido o ha expirado" in resp.get_data(as_text=True)
 
 
 def test_public_link_used_is_blocked_with_controlled_response():

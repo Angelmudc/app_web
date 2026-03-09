@@ -62,25 +62,26 @@
       <div class="card-body">
         {% set expired = (reason_key == 'expired') %}
         <div class="invalid-badge">
+          <i class="bi bi-shield-exclamation"></i>
           {% if expired %}
             Enlace expirado
           {% else %}
-            Enlace no válido
+            Enlace no valido
           {% endif %}
         </div>
 
-        <h1 class="h4 fw-bold mt-3 mb-2">No fue posible abrir esta solicitud</h1>
+        <h1 class="h4 fw-bold mt-3 mb-2">Este enlace no es valido o ha expirado</h1>
         <p class="text-secondary mb-0">
           {% if expired %}
-            Este enlace superó su tiempo de validez por seguridad.
+            Por seguridad, este acceso ya supero su tiempo de validez.
           {% else %}
-            El enlace no coincide con un acceso público activo o pudo haber sido alterado.
+            El enlace no coincide con una solicitud publica activa o fue alterado.
           {% endif %}
         </p>
 
         <div class="invalid-note">
-          Solicita a la agencia que genere un enlace nuevo para continuar.
-          {% if status_code %}<span class="d-block mt-1 small">Código de referencia: HTTP {{ status_code }}</span>{% endif %}
+          Solicita a la agencia un nuevo enlace para continuar.
+          {% if status_code %}<span class="d-block mt-1 small">Referencia: HTTP {{ status_code }}</span>{% endif %}
         </div>
       </div>
     </article>
