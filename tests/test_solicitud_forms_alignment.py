@@ -64,13 +64,18 @@ def test_shared_partial_renders_pasaje_three_options_and_otro_field():
 def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "name=\"modalidad_grupo\"" in partial
-    assert "('con_dormida', 'Con dormida')" in partial
-    assert "('con_salida_diaria', 'Con salida diaria')" in partial
+    assert "('con_dormida', 'Con dormida 💤')" in partial
+    assert "('con_salida_diaria', 'Salida diaria')" in partial
+    assert "'label': 'Con dormida 💤 quincenal'" in partial
+    assert "'label': 'Salida diaria - 1 día a la semana'" in partial
+    assert "'label': 'Salida diaria - lunes a viernes'" in partial
     assert "id=\"modalidad_especifica_select\"" in partial
     assert "id=\"wrap_modalidad_otro\"" in partial
     assert "id='modalidad_trabajo_hidden'" in partial
     assert "function parseStoredModalidad(rawValue)" in partial
     assert "function composeModalidadValue(group, specific, otherText)" in partial
+    assert "Salida Quincenal, sale viernes después del medio día" in partial
+    assert "Lunes a sábado, sale sábado después del medio día" in partial
 
 
 def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optional_copy():

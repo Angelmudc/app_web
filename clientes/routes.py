@@ -2584,10 +2584,6 @@ def solicitud_publica_nueva_token(token):
         if pasaje_mode_post in ("incluido", "aparte", "otro"):
             public_pasaje_mode = pasaje_mode_post
         public_pasaje_otro = (request.form.get("pasaje_otro_text") or "").strip()[:120]
-
-        ciudad_personal = (form.ciudad_cliente.data or '').strip()
-        sector_personal = (form.sector_cliente.data or '').strip()
-        form.ciudad_sector.data = " ".join([x for x in [ciudad_personal, sector_personal] if x]).strip()
         if hasattr(form, "dos_pisos"):
             form.dos_pisos.data = (public_pisos_value in ("2", "3+"))
         if hasattr(form, "pasaje_aporte"):
@@ -2694,12 +2690,7 @@ def solicitud_publica_nueva_token(token):
                 if hasattr(s, 'sueldo'):
                     s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x', (object,), {'data': None})).data)
 
-                s.ciudad_sector = " ".join([
-                    x for x in [
-                        (form.ciudad_cliente.data or '').strip(),
-                        (form.sector_cliente.data or '').strip(),
-                    ] if x
-                ]).strip()
+                s.ciudad_sector = (form.ciudad_sector.data or '').strip()
                 if hasattr(s, 'fecha_ultima_modificacion'):
                     s.fecha_ultima_modificacion = now_ref
 
@@ -2792,7 +2783,8 @@ def solicitud_publica_nueva_token(token):
         public_pisos_value=public_pisos_value,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
-        hide_ciudad_sector=True,
+        service_section_title="Seccion 2 - Datos de la solicitud",
+        service_section_desc="Completa los detalles del servicio y la ubicacion especifica donde se trabajara.",
     )
 
 

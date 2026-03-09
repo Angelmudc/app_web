@@ -93,14 +93,52 @@ def test_new_public_form_token_get_renders_personal_block_and_shared_request_bod
 
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Información del cliente" in html
+    assert "Seccion 1 - Datos del cliente" in html
     assert "Nombre completo" in html
     assert "Correo electrónico / Gmail" in html
     assert "Número de teléfono" in html
-    assert "Informacion del servicio" in html
+    assert "Seccion 2 - Datos de la solicitud" in html
+    assert "Ciudad / Sector" in html
+    assert 'name="ciudad_sector"' in html
     assert "Requisitos y perfil" in html
     assert 'name="modalidad_grupo" value="con_dormida"' in html
     assert 'name="modalidad_grupo" value="con_salida_diaria"' in html
+
+
+def test_new_public_post_keeps_cliente_city_sector_separate_from_solicitud_ciudad_sector():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    fake_form = _FakeNewPublicForm()
+    fake_form.ciudad_cliente.data = "Santiago"
+    fake_form.sector_cliente.data = "Los Jardines"
+    fake_form.ciudad_sector.data = "Puerto Plata / Centro"
+    captured = {"cliente_ciudad": "", "cliente_sector": "", "solicitud_ciudad_sector": ""}
+
+    def _capture_save(**kwargs):
+        persist_fn = kwargs.get("persist_fn")
+        freevars = list(getattr(persist_fn.__code__, "co_freevars", ()))
+        cells = [cell.cell_contents for cell in (persist_fn.__closure__ or [])]
+        env = dict(zip(freevars, cells))
+        form = env.get("form")
+        captured["cliente_ciudad"] = getattr(getattr(form, "ciudad_cliente", None), "data", "")
+        captured["cliente_sector"] = getattr(getattr(form, "sector_cliente", None), "data", "")
+        captured["solicitud_ciudad_sector"] = getattr(getattr(form, "ciudad_sector", None), "data", "")
+        return RobustSaveResult(ok=False, attempts=1, error_message="forced")
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
+         patch("clientes.routes.execute_robust_save", side_effect=_capture_save):
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert captured["cliente_ciudad"] == "Santiago"
+    assert captured["cliente_sector"] == "Los Jardines"
+    assert captured["solicitud_ciudad_sector"] == "Puerto Plata / Centro"
 
 
 def test_new_public_form_token_invalid_returns_controlled_response():

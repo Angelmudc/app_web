@@ -163,10 +163,12 @@ def test_public_link_form_renders_guided_modalidad_with_two_main_groups():
     html = resp.get_data(as_text=True)
     assert 'name="modalidad_grupo" value="con_dormida"' in html
     assert 'name="modalidad_grupo" value="con_salida_diaria"' in html
-    assert "Con dormida" in html
-    assert "Con salida diaria" in html
+    assert "Con dormida 💤" in html
+    assert "Salida diaria" in html
     assert '"con_salida_diaria"' in html
     assert '"con_dormida"' in html
+    assert '"cd_quincenal"' in html
+    assert '"sd_l_v"' in html
     assert 'id="modalidad_otro_text"' in html
 
 
@@ -184,6 +186,29 @@ def test_public_link_form_ui_does_not_show_optional_word_for_mascota_or_edades_n
     html = resp.get_data(as_text=True)
     assert "Mascota (opcional)" not in html
     assert "Edades de los niños (opcional)" not in html
+
+
+def test_public_link_form_modalidad_options_keep_prefixes_for_each_group():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert '"cd_l_v"' in html
+    assert '"cd_l_s"' in html
+    assert '"cd_fin_semana"' in html
+    assert '"sd_1_dia"' in html
+    assert '"sd_2_dias"' in html
+    assert '"sd_3_dias"' in html
+    assert '"sd_fin_semana"' in html
+    assert '"Salida Quincenal, sale viernes despu\\u00e9s del medio d\\u00eda"' in html
+    assert '"Lunes a s\\u00e1bado, sale s\\u00e1bado despu\\u00e9s del medio d\\u00eda"' in html
 
 
 def test_public_link_invalid_token_returns_controlled_response():

@@ -11,28 +11,30 @@
 {% set _pasaje_mode_value = public_pasaje_mode if public_pasaje_mode is defined and public_pasaje_mode else _pasaje_mode_default %}
 {% set _pasaje_otro_value = public_pasaje_otro if public_pasaje_otro is defined else '' %}
 {% set _pisos_value = public_pisos_value if public_pisos_value is defined and public_pisos_value else ('2' if (form.dos_pisos is defined and form.dos_pisos.data) else '1') %}
+{% set _service_title = service_section_title if service_section_title is defined else 'Informacion del servicio' %}
+{% set _service_desc = service_section_desc if service_section_desc is defined else 'Primero ubica el sector y transporte, luego define modalidad y horario.' %}
 {% set _modalidad_grupos = [
-  ('con_dormida', 'Con dormida'),
-  ('con_salida_diaria', 'Con salida diaria')
+  ('con_dormida', 'Con dormida 💤'),
+  ('con_salida_diaria', 'Salida diaria')
 ] %}
-{% set _modalidad_especificas = {
+{% set _modalidad_specs = {
   'con_salida_diaria': [
-    'Un día a la semana',
-    'Dos días a la semana',
-    'Tres días a la semana',
-    'Lunes a Viernes',
-    'Viernes a Lunes',
-    'Sábado y Domingo',
-    'Lunes a Sábado',
-    'Otro'
+    {'key': 'sd_1_dia', 'label': 'Salida diaria - 1 día a la semana', 'aliases': ['1 día a la semana', 'Un día a la semana']},
+    {'key': 'sd_2_dias', 'label': 'Salida diaria - 2 días a la semana', 'aliases': ['2 días a la semana', 'Dos días a la semana']},
+    {'key': 'sd_3_dias', 'label': 'Salida diaria - 3 días a la semana', 'aliases': ['3 días a la semana', 'Tres días a la semana']},
+    {'key': 'sd_l_v', 'label': 'Salida diaria - lunes a viernes', 'aliases': ['Lunes a Viernes']},
+    {'key': 'sd_l_s', 'label': 'Salida diaria - lunes a sábado', 'aliases': ['Lunes a Sábado']},
+    {'key': 'sd_v_l', 'label': 'Salida diaria - viernes a lunes', 'aliases': ['Viernes a Lunes']},
+    {'key': 'sd_fin_semana', 'label': 'Salida diaria - fin de semana', 'aliases': ['Sábado y Domingo']},
+    {'key': 'otro', 'label': 'Salida diaria otro', 'aliases': ['Otro', 'Salida diaria - Otro']}
   ],
   'con_dormida': [
-    'Lunes a sábado, sale sábado después del medio día',
-    'Salida Quincenal, sale viernes después del medio día',
-    'Lunes a Viernes',
-    'Viernes a Lunes',
-    'Sábado y Domingo',
-    'Otro'
+    {'key': 'cd_l_v', 'label': 'Con dormida 💤 lunes a viernes', 'aliases': ['Lunes a Viernes', 'Con dormida - Lunes a Viernes']},
+    {'key': 'cd_l_s', 'label': 'Con dormida 💤 lunes a sábado', 'aliases': ['Lunes a sábado, sale sábado después del medio día']},
+    {'key': 'cd_quincenal', 'label': 'Con dormida 💤 quincenal', 'aliases': ['Salida Quincenal, sale viernes después del medio día']},
+    {'key': 'cd_v_l', 'label': 'Con dormida 💤 viernes a lunes', 'aliases': ['Viernes a Lunes']},
+    {'key': 'cd_fin_semana', 'label': 'Con dormida 💤 fin de semana', 'aliases': ['Sábado y Domingo']},
+    {'key': 'otro', 'label': 'Con dormida 💤 otro', 'aliases': ['Otro', 'Con dormida - Otro']}
   ]
 } %}
 
@@ -325,8 +327,8 @@
 <div class="public-form-sections">
   <section class="public-form-card">
     <header class="public-form-card-header">
-      <h3 class="public-form-card-title">Informacion del servicio</h3>
-      <p class="public-form-card-desc">Primero ubica el sector y transporte, luego define modalidad y horario.</p>
+      <h3 class="public-form-card-title">{{ _service_title }}</h3>
+      <p class="public-form-card-desc">{{ _service_desc }}</p>
     </header>
     <div class="public-fields-grid">
       {% if not hide_ciudad_sector %}
@@ -589,11 +591,35 @@
     return document.querySelector('input[name="' + name + '"][value="' + value + '"]');
   }
 
-  var MODALIDAD_OPTIONS = {{ _modalidad_especificas | tojson }};
+  var MODALIDAD_SPECS = {{ _modalidad_specs | tojson }};
+  var MODALIDAD_OPTIONS = {};
+  var MODALIDAD_OPTION_BY_LABEL = {};
   var MODALIDAD_GROUP_LABELS = {
-    "con_dormida": "Con dormida",
-    "con_salida_diaria": "Con salida diaria"
+    "con_dormida": "Con dormida 💤",
+    "con_salida_diaria": "Salida diaria"
   };
+
+  function initModalidadMaps() {
+    var groups = Object.keys(MODALIDAD_SPECS || {});
+    for (var gi = 0; gi < groups.length; gi++) {
+      var g = groups[gi];
+      var specs = MODALIDAD_SPECS[g] || [];
+      MODALIDAD_OPTIONS[g] = [];
+      for (var si = 0; si < specs.length; si++) {
+        var spec = specs[si] || {};
+        var label = (spec.label || '').trim();
+        if (!label) continue;
+        MODALIDAD_OPTIONS[g].push(label);
+        MODALIDAD_OPTION_BY_LABEL[normModal(label)] = { group: g, label: label, key: spec.key || '' };
+        var aliases = spec.aliases || [];
+        for (var ai = 0; ai < aliases.length; ai++) {
+          var aliasNorm = normModal(aliases[ai]);
+          if (!aliasNorm) continue;
+          MODALIDAD_OPTION_BY_LABEL[aliasNorm] = { group: g, label: label, key: spec.key || '' };
+        }
+      }
+    }
+  }
 
   function normModal(v) {
     return stripAccents(norm(v))
@@ -634,31 +660,25 @@
     var other = '';
     var rest = raw;
 
-    if (textNorm.indexOf('con dormida -') === 0) {
+    if (textNorm.indexOf('con dormida') === 0) {
       group = 'con_dormida';
-      rest = raw.replace(/^con\s+dormida\s*-\s*/i, '').trim();
-    } else if (textNorm.indexOf('con salida diaria -') === 0) {
+      rest = raw.replace(/^con\s+dormida(?:\s*💤)?\s*-?\s*/i, '').trim();
+    } else if (textNorm.indexOf('salida diaria') === 0 || textNorm.indexOf('con salida diaria') === 0) {
       group = 'con_salida_diaria';
-      rest = raw.replace(/^con\s+salida\s+diaria\s*-\s*/i, '').trim();
+      rest = raw.replace(/^(?:con\s+)?salida\s+diaria\s*-?\s*/i, '').trim();
     } else {
       group = inferModalidadGroup(textNorm);
     }
 
     var restNorm = normModal(rest);
-    var allGroups = ['con_dormida', 'con_salida_diaria'];
-    var resolvedGroup = group;
-    for (var gi = 0; gi < allGroups.length; gi++) {
-      var g = allGroups[gi];
-      var opts = MODALIDAD_OPTIONS[g] || [];
-      for (var oi = 0; oi < opts.length; oi++) {
-        var opt = opts[oi];
-        if (normModal(opt) === restNorm || normModal(opt) === textNorm) {
-          specific = opt;
-          if (!resolvedGroup) resolvedGroup = g;
-          break;
-        }
-      }
-      if (specific) break;
+    var resolvedGroup = group || '';
+    var match = MODALIDAD_OPTION_BY_LABEL[restNorm] || MODALIDAD_OPTION_BY_LABEL[textNorm] || null;
+    if (!match && resolvedGroup) {
+      match = MODALIDAD_OPTION_BY_LABEL[normModal((MODALIDAD_GROUP_LABELS[resolvedGroup] || '') + ' ' + rest)] || null;
+    }
+    if (match) {
+      specific = match.label;
+      resolvedGroup = resolvedGroup || match.group;
     }
 
     if (!resolvedGroup) {
@@ -670,9 +690,10 @@
       if (!otherRaw || normModal(otherRaw) === normModal(MODALIDAD_GROUP_LABELS[resolvedGroup])) {
         otherRaw = raw;
       }
-      otherRaw = otherRaw.replace(/^otro\s*:\s*/i, '').trim();
+      otherRaw = otherRaw.replace(/^(?:con\s+dormida(?:\s*💤)?|(?:con\s+)?salida\s+diaria)\s*-?\s*/i, '').trim();
+      otherRaw = otherRaw.replace(/^otro\s*[:\-]?\s*/i, '').trim();
       if (otherRaw) {
-        specific = 'Otro';
+        specific = resolvedGroup === 'con_dormida' ? 'Con dormida 💤 otro' : 'Salida diaria otro';
         other = otherRaw;
       }
     }
@@ -686,10 +707,10 @@
     var o = (otherText || '').trim();
     if (!gLabel) return '';
     if (!s) return gLabel;
-    if (normModal(s) === 'otro') {
-      return o ? (gLabel + ' - Otro: ' + o) : (gLabel + ' - Otro');
+    if (normModal(s).indexOf('otro') >= 0) {
+      return o ? (s + ': ' + o) : s;
     }
-    return gLabel + ' - ' + s;
+    return s;
   }
 
   function syncModalidadGuided(fromUserEvent) {
@@ -882,6 +903,7 @@
     pasajeHiddenField.dataset.fieldType = "{{ 'radio' if _pasaje_is_radio else 'boolean' }}";
   }
 
+  initModalidadMaps();
   initModalidadGuided();
   syncOtherFields(false);
   setupAreasTodas();
