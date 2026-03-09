@@ -4001,6 +4001,7 @@ AREAS_COMUNES_CHOICES = [
     ('estudio', 'Estudio'), ('patio', 'Patio'),
     ('piscina', 'Piscina'), ('marquesina', 'Marquesina'),
     ('todas_anteriores', 'Todas las anteriores'),
+    ('otro', 'Otro'),
 ]
 
 

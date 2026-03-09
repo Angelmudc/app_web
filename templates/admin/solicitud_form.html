@@ -26,6 +26,14 @@
     box-shadow: 0 10px 24px rgba(8, 13, 20, 0.35);
   }
 
+  .admin-solicitud-form .public-form-sections {
+    gap: 14px;
+  }
+
+  .admin-solicitud-form .public-fields-grid {
+    gap: 14px;
+  }
+
   .admin-solicitud-form .public-form-card-header {
     border-bottom-color: rgba(145, 173, 202, 0.28);
   }
@@ -41,6 +49,7 @@
 
   .admin-solicitud-form .public-field-label {
     color: var(--asf-label);
+    margin-bottom: 7px;
   }
 
   .admin-solicitud-form .form-control,
@@ -48,10 +57,15 @@
     background: var(--asf-input-bg);
     border-color: var(--asf-input-border);
     color: var(--asf-input-text);
+    min-height: 46px;
   }
 
   .admin-solicitud-form .form-control::placeholder {
     color: #8fa4ba;
+  }
+
+  .admin-solicitud-form textarea.form-control {
+    min-height: 110px;
   }
 
   .admin-solicitud-form .form-control:focus,
@@ -66,6 +80,7 @@
   .admin-solicitud-form .public-switch-wrap {
     background: rgba(15, 22, 31, 0.55);
     border-color: var(--asf-border);
+    padding: 10px;
   }
 
   .admin-solicitud-form .public-choice-item,
@@ -73,6 +88,10 @@
     background: var(--asf-chip-bg);
     border-color: var(--asf-chip-border);
     color: #d5e4f5;
+  }
+
+  .admin-solicitud-form .public-segmented-item span {
+    min-height: 40px;
   }
 
   .admin-solicitud-form .public-choice-item:hover,
@@ -102,6 +121,14 @@
   .admin-solicitud-form .text-danger,
   .admin-solicitud-form .invalid-feedback {
     color: #ffb3b3 !important;
+  }
+
+  .admin-solicitud-form #wrap_edad_otro,
+  .admin-solicitud-form #wrap_funciones_otro,
+  .admin-solicitud-form #wrap_tipo_lugar_otro,
+  .admin-solicitud-form #wrap_area_otro,
+  .admin-solicitud-form #wrap_pasaje_otro {
+    margin-top: 4px;
   }
 </style>
 {% endblock %}

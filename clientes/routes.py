@@ -1498,11 +1498,13 @@ def editar_solicitud(id):
         try:
             allowed_fun = {str(v) for v, _ in form.funciones.choices}
             custom_fun = [v for v in (s.funciones or []) if v and v not in allowed_fun]
-            if custom_fun and hasattr(form, 'funciones_otro'):
+            base_otro = (getattr(s, 'funciones_otro', '') or '').strip()
+            if hasattr(form, 'funciones_otro'):
+                form.funciones_otro.data = ', '.join(custom_fun) if custom_fun else base_otro
+            if (custom_fun or base_otro) and hasattr(form, 'funciones_otro'):
                 data = set(form.funciones.data or [])
                 data.add('otro')
                 form.funciones.data = list(data)
-                form.funciones_otro.data = ', '.join(custom_fun)
         except Exception:
             pass
 
@@ -1511,6 +1513,16 @@ def editar_solicitud(id):
             if s.tipo_lugar and s.tipo_lugar not in allowed_tl and hasattr(form, 'tipo_lugar_otro'):
                 form.tipo_lugar.data = 'otro'
                 form.tipo_lugar_otro.data = s.tipo_lugar
+        except Exception:
+            pass
+
+        try:
+            if hasattr(form, 'areas_comunes') and hasattr(form, 'area_otro'):
+                form.area_otro.data = (getattr(s, 'area_otro', '') or '').strip()
+                if (form.area_otro.data or '').strip():
+                    area_codes = set(_clean_list(form.areas_comunes.data))
+                    area_codes.add('otro')
+                    form.areas_comunes.data = list(area_codes)
         except Exception:
             pass
 

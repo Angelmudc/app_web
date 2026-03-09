@@ -428,14 +428,12 @@
     return document.getElementById(id);
   }
 
-  function getGroup(name) {
-    var group = byId('wrap_' + name);
-    if (!group) return [];
-    return group.querySelectorAll('input[type="checkbox"], input[type="radio"], select');
+  function getFieldsByName(name) {
+    return document.querySelectorAll('[name="' + name + '"]');
   }
 
-  function hasCheckedValue(name, wanted) {
-    var nodes = getGroup(name);
+  function hasSelectedValue(name, wanted) {
+    var nodes = getFieldsByName(name);
     var target = norm(wanted);
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i];
@@ -455,21 +453,34 @@
     return false;
   }
 
-  function toggleWrapper(id, show) {
+  function toggleWrapper(id, show, clearOnHide) {
     var wrap = byId(id);
     if (!wrap) return;
     wrap.style.display = show ? '' : 'none';
-    if (!show) {
+    if (!show && clearOnHide) {
       var txts = wrap.querySelectorAll('input[type="text"], textarea');
       for (var i = 0; i < txts.length; i++) txts[i].value = '';
     }
   }
 
-  function syncOtroFields() {
-    toggleWrapper('wrap_edad_otro', hasCheckedValue('edad_requerida', 'otro'));
-    toggleWrapper('wrap_funciones_otro', hasCheckedValue('funciones', 'otro'));
-    toggleWrapper('wrap_tipo_lugar_otro', hasCheckedValue('tipo_lugar', 'otro'));
-    toggleWrapper('wrap_area_otro', hasCheckedValue('areas_comunes', 'otro'));
+  function syncOtherField(cfg, fromUserEvent) {
+    var showByChoice = hasSelectedValue(cfg.groupName, 'otro');
+    var txt = byId(cfg.textInputId);
+    var hasValue = !!(txt && norm(txt.value));
+    var show = showByChoice || (!fromUserEvent && hasValue);
+    toggleWrapper(cfg.targetId, show, !!fromUserEvent);
+  }
+
+  function syncOtherFields(fromUserEvent) {
+    var configs = [
+      { groupName: 'edad_requerida', targetId: 'wrap_edad_otro', textInputId: '{{ form.edad_otro.id if form.edad_otro is defined else "" }}' },
+      { groupName: 'funciones', targetId: 'wrap_funciones_otro', textInputId: '{{ form.funciones_otro.id if form.funciones_otro is defined else "" }}' },
+      { groupName: 'tipo_lugar', targetId: 'wrap_tipo_lugar_otro', textInputId: '{{ form.tipo_lugar_otro.id if form.tipo_lugar_otro is defined else "" }}' },
+      { groupName: 'areas_comunes', targetId: 'wrap_area_otro', textInputId: '{{ form.area_otro.id if form.area_otro is defined else "" }}' }
+    ];
+    for (var i = 0; i < configs.length; i++) {
+      syncOtherField(configs[i], !!fromUserEvent);
+    }
   }
 
   function syncChoiceSelectedState() {
@@ -609,7 +620,7 @@
         } else if (allRegularChecked()) {
           master.checked = true;
         }
-        syncOtroFields();
+        syncOtherFields(true);
         syncChoiceSelectedState();
       });
     }
@@ -622,22 +633,21 @@
     pasajeHiddenField.dataset.fieldType = "{{ 'radio' if _pasaje_is_radio else 'boolean' }}";
   }
 
-  syncOtroFields();
+  syncOtherFields(false);
   setupAreasTodas();
   syncFromExistingMarkers();
   syncPisosAndPasaje();
   syncChoiceSelectedState();
 
   document.addEventListener('change', function (ev) {
-    var id = (ev.target && ev.target.id) || '';
     var name = (ev.target && ev.target.name) || '';
     if (
-      id.indexOf('edad_requerida') === 0 ||
-      id.indexOf('funciones') === 0 ||
-      id.indexOf('tipo_lugar') === 0 ||
-      id.indexOf('areas_comunes') === 0
+      name === 'edad_requerida' ||
+      name === 'funciones' ||
+      name === 'tipo_lugar' ||
+      name === 'areas_comunes'
     ) {
-      syncOtroFields();
+      syncOtherFields(true);
       syncChoiceSelectedState();
     }
 
