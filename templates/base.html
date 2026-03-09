@@ -172,13 +172,6 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.admin_roles') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.admin_roles'] %}active{% endif %}"
-               href="{{ url_for('admin.admin_roles') }}">Roles</a>
-          </li>
-          {% endif %}
-
           {% if has_endpoint('admin.alertas_canales') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.alertas_canales'] %}active{% endif %}"
@@ -186,10 +179,10 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.crear_usuario') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
+          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario'] %}active{% endif %}"
-               href="{{ url_for('admin.crear_usuario') }}">Crear usuario</a>
+            <a class="nav-link {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles'] %}active{% endif %}"
+               href="{{ url_for('admin.listar_usuarios') }}">Usuarios y roles</a>
           </li>
           {% endif %}
 

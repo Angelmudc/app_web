@@ -16,10 +16,12 @@ def test_owner_sees_create_user_link_and_can_open_route():
 
     home = client.get("/home", follow_redirects=False)
     assert home.status_code == 200
-    assert b'href="/admin/usuarios/nuevo"' in home.data
-    assert "Crear usuario".encode("utf-8") in home.data
+    assert b'href="/admin/usuarios"' in home.data
+    assert "Usuarios y roles".encode("utf-8") in home.data
     assert "Registrar candidata".encode("utf-8") in home.data
 
+    users_module = client.get("/admin/usuarios", follow_redirects=False)
+    assert users_module.status_code == 200
     create_user = client.get("/admin/usuarios/nuevo", follow_redirects=False)
     assert create_user.status_code == 200
 
@@ -34,7 +36,7 @@ def test_admin_sees_register_candidate_link_and_can_open_route():
     home = client.get("/home", follow_redirects=False)
     assert home.status_code == 200
     assert "Registrar candidata".encode("utf-8") in home.data
-    assert "Crear usuario".encode("utf-8") not in home.data
+    assert "Usuarios y roles".encode("utf-8") not in home.data
 
     reg_candidata = client.get("/registro_interno/", follow_redirects=False)
     assert reg_candidata.status_code == 200
@@ -49,7 +51,7 @@ def test_secretaria_does_not_see_admin_menu_links():
 
     home = client.get("/home", follow_redirects=False)
     assert home.status_code == 200
-    assert "Crear usuario".encode("utf-8") not in home.data
+    assert "Usuarios y roles".encode("utf-8") not in home.data
     assert "Registrar candidata".encode("utf-8") not in home.data
 
     # Seguridad existente: crear usuario es owner-only.

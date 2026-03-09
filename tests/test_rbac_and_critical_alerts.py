@@ -75,7 +75,8 @@ def test_owner_can_access_roles_and_alert_channels():
 
     client = flask_app.test_client()
     assert _login(client, 'Owner', '8899').status_code in (302, 303)
-    assert client.get('/admin/roles', follow_redirects=False).status_code == 200
+    assert client.get('/admin/roles', follow_redirects=False).status_code in (302, 303)
+    assert client.get('/admin/roles', follow_redirects=True).status_code == 200
     assert client.get('/admin/alertas/canales', follow_redirects=False).status_code == 200
 
 

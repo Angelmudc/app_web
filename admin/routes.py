@@ -1567,22 +1567,22 @@ def admin_roles():
         new_role = normalize_staff_role(request.form.get("role"))
         if not raw_user_id.isdigit():
             flash("Usuario inválido.", "danger")
-            return redirect(url_for("admin.admin_roles"))
+            return redirect(url_for("admin.listar_usuarios"))
         if new_role not in {"owner", "admin", "secretaria"}:
             flash("Rol inválido.", "danger")
-            return redirect(url_for("admin.admin_roles"))
+            return redirect(url_for("admin.listar_usuarios"))
 
         user = StaffUser.query.filter_by(id=int(raw_user_id)).first_or_404()
         old_role = normalize_staff_role(user.role)
         if old_role == new_role:
             flash("Ese usuario ya tiene ese rol.", "info")
-            return redirect(url_for("admin.admin_roles"))
+            return redirect(url_for("admin.listar_usuarios"))
 
         if old_role == "owner" and new_role != "owner":
             owners = StaffUser.query.filter(func.lower(StaffUser.role) == "owner", StaffUser.is_active.is_(True)).count()
             if int(owners or 0) <= 1:
                 flash("Debe existir al menos un Owner activo.", "warning")
-                return redirect(url_for("admin.admin_roles"))
+                return redirect(url_for("admin.listar_usuarios"))
 
         user.role = new_role
         try:
@@ -1600,10 +1600,9 @@ def admin_roles():
             db.session.rollback()
             flash("No se pudo actualizar el rol.", "danger")
 
-        return redirect(url_for("admin.admin_roles"))
+        return redirect(url_for("admin.listar_usuarios"))
 
-    users = StaffUser.query.order_by(StaffUser.username.asc()).all()
-    return render_template("admin/roles.html", users=users, current_role=_current_staff_role())
+    return redirect(url_for("admin.listar_usuarios"))
 
 
 @admin_bp.route('/usuarios/<int:user_id>/eliminar', methods=['POST'])

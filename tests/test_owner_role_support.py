@@ -29,10 +29,12 @@ def test_owner_has_admin_access():
 
     assert _login(client, "Owner", "8899").status_code in (302, 303)
 
+    usuarios = client.get("/admin/usuarios", follow_redirects=False)
     crear_usuario = client.get("/admin/usuarios/nuevo", follow_redirects=False)
     monitoreo = client.get("/admin/monitoreo", follow_redirects=False)
     metricas = client.get("/admin/metricas", follow_redirects=False)
 
+    assert usuarios.status_code == 200
     assert crear_usuario.status_code == 200
     assert monitoreo.status_code == 200
     assert metricas.status_code == 200
@@ -63,7 +65,8 @@ def test_menu_visibility_for_owner():
     assert _login(owner_client, "Owner", "8899").status_code in (302, 303)
     owner_home = owner_client.get("/home", follow_redirects=False)
     assert owner_home.status_code == 200
-    assert b'href="/admin/usuarios/nuevo"' in owner_home.data
+    assert b'href="/admin/usuarios"' in owner_home.data
+    assert "Usuarios y roles".encode("utf-8") in owner_home.data
     assert b'href="/admin/monitoreo"' in owner_home.data
     assert b'href="/admin/metricas"' in owner_home.data
 
@@ -73,13 +76,13 @@ def test_menu_visibility_for_owner():
     assert admin_home.status_code == 200
     assert b'href="/admin/monitoreo"' in admin_home.data
     assert b'href="/admin/metricas"' in admin_home.data
-    assert b'href="/admin/usuarios/nuevo"' not in admin_home.data
+    assert b'href="/admin/usuarios"' not in admin_home.data
 
     sec_client = flask_app.test_client()
     assert _login(sec_client, "Karla", "9989").status_code in (302, 303)
     sec_home = sec_client.get("/home", follow_redirects=False)
     assert sec_home.status_code == 200
-    assert b'href="/admin/usuarios/nuevo"' not in sec_home.data
+    assert b'href="/admin/usuarios"' not in sec_home.data
     assert b'href="/admin/monitoreo"' not in sec_home.data
     assert b'href="/admin/metricas"' not in sec_home.data
 
