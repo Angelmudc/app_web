@@ -62,8 +62,8 @@
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
-      data-live-presence-enabled="0"
-      data-live-presence-url=""
+      data-live-presence-enabled="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}1{% else %}0{% endif %}"
+      data-live-presence-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}"
       data-entity-lock-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
       data-entity-lock-takeover-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
       data-staff-role="{{ current_user.role|default('') if current_user.is_authenticated else '' }}">

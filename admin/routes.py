@@ -53,6 +53,12 @@ from utils.candidata_completitud_audit import (
 )
 from utils.matching_service import rank_candidates
 from utils.funciones_formatter import format_funciones
+from utils.audit_labels import (
+    humanize_audit_field,
+    humanize_audit_value,
+    humanize_change,
+    summarize_changed_fields,
+)
 from utils.staff_auth import (
     breakglass_allowed_ip,
     get_request_ip,
@@ -1925,42 +1931,11 @@ def _action_icon(action_type: str | None, success: bool = True) -> tuple[str, st
 
 
 def _humanize_field_name(name: str | None) -> str:
-    raw = (name or "").strip().lower()
-    labels = {
-        "nombre_completo": "Nombre completo",
-        "codigo": "Codigo",
-        "estado": "Estado",
-        "modalidad_trabajo": "Modalidad",
-        "horario": "Horario",
-        "sueldo": "Sueldo",
-        "nota_cliente": "Nota del cliente",
-        "ciudad_sector": "Ciudad/sector",
-        "candidata_id": "Candidata",
-        "solicitud_id": "Solicitud",
-        "cliente_id": "Cliente",
-        "funciones": "Funciones",
-        "referencias_laboral": "Referencias laborales",
-        "referencias_familiares": "Referencias familiares",
-    }
-    if raw in labels:
-        return labels[raw]
-    if not raw:
-        return "Campo"
-    txt = raw.replace("_", " ").strip()
-    return txt[:1].upper() + txt[1:]
+    return humanize_audit_field(name)
 
 
 def _humanize_value(value) -> str:
-    if value is None:
-        return "vacío"
-    if isinstance(value, bool):
-        return "Sí" if value else "No"
-    if isinstance(value, (int, float, Decimal)):
-        return str(value)
-    if isinstance(value, (list, tuple)):
-        return ", ".join([_humanize_value(v) for v in value]) or "vacío"
-    txt = str(value).strip()
-    return txt if txt else "vacío"
+    return humanize_audit_value(value)
 
 
 def _changes_to_human(changes) -> list[dict]:
@@ -1968,7 +1943,6 @@ def _changes_to_human(changes) -> list[dict]:
         return []
     rows: list[dict] = []
     for key, value in changes.items():
-        label = _humanize_field_name(key)
         before = after = None
         if isinstance(value, dict) and ("from" in value or "to" in value):
             before = value.get("from")
@@ -1977,13 +1951,15 @@ def _changes_to_human(changes) -> list[dict]:
             before, after = value[0], value[1]
         else:
             before, after = None, value
+        human = humanize_change(str(key), before, after)
         rows.append(
             {
                 "field": str(key),
-                "label": label,
-                "from": _humanize_value(before),
-                "to": _humanize_value(after),
-                "sentence": f"{label}: {_humanize_value(before)} -> {_humanize_value(after)}",
+                "label": human.get("label") or _humanize_field_name(key),
+                "from": human.get("from") or _humanize_value(before),
+                "to": human.get("to") or _humanize_value(after),
+                "sentence": human.get("sentence") or f"{_humanize_field_name(key)}: {_humanize_value(before)} -> {_humanize_value(after)}",
+                "sensitive": bool(human.get("sensitive")),
             }
         )
     return rows[:30]
@@ -2301,6 +2277,44 @@ def _presence_rows() -> list[dict]:
             continue
         presence_raw.append(row)
     if not presence_raw:
+        presence_raw = []
+
+    known_user_ids = {int(r.get("user_id")) for r in presence_raw if r.get("user_id") is not None}
+    # Fallback robusto: si faltan entradas de presencia por cache, recuperar sesiones recientes.
+    sessions_rows = list_active_sessions()
+    for sess in sessions_rows:
+        try:
+            uid = int(sess.get("user_id") or 0)
+        except Exception:
+            uid = 0
+        if uid <= 0 or uid in known_user_ids:
+            continue
+        seen_seconds = int(sess.get("last_seen_seconds") or 999999)
+        if seen_seconds > (_PRESENCE_TTL_SECONDS * 3):
+            continue
+        now_minus_seen = now - timedelta(seconds=max(0, seen_seconds))
+        presence_raw.append(
+            {
+                "user_id": uid,
+                "username": sess.get("username"),
+                "role": sess.get("role"),
+                "current_path": (sess.get("current_path") or "")[:255],
+                "page_title": "Sesion activa",
+                "last_action_hint": "browsing",
+                "event_type": "session_fallback",
+                "action_type": "LIVE_HEARTBEAT",
+                "action_hint": _infer_action_hint_from_path(sess.get("current_path")),
+                "current_action_human": "Sesion activa",
+                "entity_type": "",
+                "entity_id": "",
+                "entity_display": "",
+                "last_seen_at": now_minus_seen.isoformat(timespec="seconds") + "Z",
+                "last_interaction_at": now_minus_seen.isoformat(timespec="seconds") + "Z",
+                "client_status": "active" if seen_seconds <= _PRESENCE_ACTIVE_SECONDS else "idle",
+            }
+        )
+        known_user_ids.add(uid)
+    if not presence_raw:
         return []
 
     ids = [int(r.get("user_id")) for r in presence_raw if r.get("user_id") is not None]
@@ -2529,6 +2543,10 @@ def _serialize_log_item(
     metadata_human = _metadata_human(metadata)
     created_human = _humanize_datetime(log.created_at)
     summary_human = _humanize_summary(action_human, log.summary, log.route)
+    if str(log.action_type or "").upper() == "CANDIDATA_EDIT" and changes_human:
+        fields_summary = summarize_changed_fields(changes_human, max_items=4)
+        action_human = f"Edito candidata ({fields_summary})"
+        summary_human = f"Edito: {fields_summary}"
     return {
         "id": int(log.id),
         "created_at": log.created_at.isoformat() + "Z" if log.created_at else None,
@@ -2932,6 +2950,12 @@ def monitoreo_secretaria(user_id: int):
     q = q.order_by(StaffAuditLog.created_at.desc())
 
     pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+    username_map = {int(user.id): user.username}
+    entity_display_map = _build_entity_display_map(list(pagination.items))
+    logs_items = [
+        _serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map)
+        for log in pagination.items
+    ]
 
     now = datetime.utcnow()
     since = now - timedelta(days=30)
@@ -2949,7 +2973,7 @@ def monitoreo_secretaria(user_id: int):
     return render_template(
         "admin/monitoreo_secretaria.html",
         target_user=user,
-        logs=pagination.items,
+        logs=logs_items,
         pagination=pagination,
         per_day_rows=per_day_rows,
     )
@@ -3043,8 +3067,15 @@ def monitoreo_stream():
     def generate():
         try:
             if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
-                snapshot = _presence_active_rows()
-                yield _sse("active_snapshot", {"items": snapshot, "interval_sec": 1})
+                snapshot = _presence_rows()
+                yield _sse(
+                    "active_snapshot",
+                    {
+                        "items": snapshot,
+                        "active_count": len(_presence_active_rows(snapshot)),
+                        "interval_sec": 1,
+                    },
+                )
                 yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
                 return
 
@@ -3081,9 +3112,18 @@ def monitoreo_stream():
                         last_id = max(last_id, int(log.id))
 
                 if (now_ts - last_presence_at) >= 1.0:
-                    active = _presence_active_rows()
+                    presence = _presence_rows()
+                    active = _presence_active_rows(presence)
                     conflicts = _build_presence_conflicts(active)
-                    yield _sse("active_snapshot", {"items": active, "conflicts": conflicts, "interval_sec": 1})
+                    yield _sse(
+                        "active_snapshot",
+                        {
+                            "items": presence,
+                            "active_count": len(active),
+                            "conflicts": conflicts,
+                            "interval_sec": 1,
+                        },
+                    )
                     last_presence_at = now_ts
 
                 if (now_ts - last_summary_at) >= 5.0:

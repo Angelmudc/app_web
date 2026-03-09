@@ -42,20 +42,42 @@
         <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
           <div>
             <div><strong>{{ log.actor_username or '-' }}</strong> <small class="text-muted">({{ log.actor_role or '-' }})</small></div>
-            <div><code>{{ log.action_type or '-' }}</code> · {{ log.summary or '-' }}</div>
+            <div>{{ log.action_human or log.action_type or '-' }}</div>
+            <div class="small text-muted"><code>{{ log.action_type or '-' }}</code> · {{ log.summary_human or log.summary or '-' }}</div>
           </div>
           <div class="text-end">
-            <div><small>{{ log.created_at or '-' }}</small></div>
+            <div><small>{{ log.created_at_human or log.created_at or '-' }}</small></div>
             <div>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</div>
           </div>
         </div>
-        <div class="text-muted"><small>{{ log.method or '-' }} {{ log.route or '-' }}</small></div>
+        <div class="text-muted"><small>{{ log.route_human or log.route or '-' }}</small></div>
         <div><a class="btn btn-link btn-sm p-0" href="{{ url_for('admin.monitoreo_logs', entity_type='candidata', search=candidata_entity_id) }}">Ver en logs</a></div>
-        {% if log.changes_json %}
-        <details class="mt-2"><summary>Cambios</summary><pre class="mb-0">{{ log.changes_json | tojson(indent=2) }}</pre></details>
+        {% if log.changes_human %}
+        <div class="mt-2">
+          <div class="small fw-semibold">Cambios</div>
+          <ul class="mb-0 small">
+            {% for c in log.changes_human %}
+            <li>{{ c.sentence }}{% if not c.sensitive %} <span class="text-muted">({{ c.from }} → {{ c.to }})</span>{% endif %}</li>
+            {% endfor %}
+          </ul>
+        </div>
         {% endif %}
-        {% if log.metadata_json %}
-        <details class="mt-2"><summary>Metadata</summary><pre class="mb-0">{{ log.metadata_json | tojson(indent=2) }}</pre></details>
+        {% if log.metadata_human %}
+        <div class="mt-2">
+          <div class="small fw-semibold">Contexto</div>
+          <ul class="mb-0 small text-muted">
+            {% for m in log.metadata_human %}
+            <li>{{ m.label }}: {{ m.value }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        {% if log.changes_json or log.metadata_json %}
+        <details class="mt-2">
+          <summary>Detalle técnico</summary>
+          {% if log.changes_json %}<pre class="mb-0 mt-1">changes_json: {{ log.changes_json | tojson(indent=2) }}</pre>{% endif %}
+          {% if log.metadata_json %}<pre class="mb-0 mt-1">metadata_json: {{ log.metadata_json | tojson(indent=2) }}</pre>{% endif %}
+        </details>
         {% endif %}
       </div>
     </article>

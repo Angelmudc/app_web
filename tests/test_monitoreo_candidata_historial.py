@@ -38,7 +38,10 @@ def test_monitoreo_candidata_historial_and_filters():
                 entity_id=str(cand_id),
                 summary='edito formulario',
                 metadata_json={'telefono': '8099999999'},
-                changes_json={'nombre_completo': {'from': 'A', 'to': 'B'}},
+                changes_json={
+                    'nombre_completo': {'from': 'A', 'to': 'B'},
+                    'referencias_familiares_detalle': {'from': 'Ana', 'to': 'Maria'},
+                },
                 success=True,
             ),
             StaffAuditLog(
@@ -76,6 +79,7 @@ def test_monitoreo_candidata_historial_and_filters():
     body = resp.data.decode('utf-8', errors='ignore')
     assert 'Karla' in body
     assert 'CANDIDATA_EDIT' in body
+    assert 'Referencias familiares: modificadas' in body
     assert '8099999999' not in body
 
     with patch('admin.routes._resolve_candidata_from_entity_id', return_value=cand_stub):

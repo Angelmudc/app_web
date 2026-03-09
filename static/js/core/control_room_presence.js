@@ -43,29 +43,41 @@
   const endpoint = body.getAttribute('data-live-presence-url') || '';
   const enabled = body.getAttribute('data-live-presence-enabled') === '1';
   if (!enabled || !endpoint) return;
-  const isAdminMonitoringEndpoint = endpoint.indexOf('/admin/monitoreo/presence/ping') >= 0;
-
-  function isMonitoringPage(pathname) {
-    const raw = (pathname || window.location.pathname || '').split('?')[0];
-    const path = String(raw || '').trim();
-    return path === '/admin/monitoreo' || path.indexOf('/admin/monitoreo/') === 0;
-  }
-
-  if (isAdminMonitoringEndpoint && !isMonitoringPage()) return;
 
   const csrfToken = getMeta('csrf-token');
   const HEARTBEAT_MS = 5000;
   const QUICK_RETRY_MS = 1200;
   const MAX_BACKOFF_MS = 60000;
   const MAX_QUICK_RETRIES = 2;
+  const INTERACTION_ACTIVE_WINDOW_SECONDS = 60;
 
   let timer = null;
   let backoffMs = HEARTBEAT_MS;
   let quickRetriesLeft = MAX_QUICK_RETRIES;
   let lastWakeAt = Date.now();
+  let lastInteractionAt = new Date().toISOString();
   let lastHint = inferActionHint(window.location.pathname || '');
   let knownEntity = inferEntity(window.location.pathname || '', window.location.search || '');
   let sentOpenEntity = false;
+
+  function registerInteraction() {
+    lastInteractionAt = new Date().toISOString();
+  }
+
+  function currentClientStatus() {
+    if (document.visibilityState === 'hidden') return 'hidden';
+    const last = new Date(lastInteractionAt);
+    if (Number.isNaN(last.getTime())) return 'idle';
+    const deltaSeconds = Math.max(0, Math.floor((Date.now() - last.getTime()) / 1000));
+    return deltaSeconds <= INTERACTION_ACTIVE_WINDOW_SECONDS ? 'active' : 'idle';
+  }
+
+  function startActivityTracking() {
+    ['mousemove', 'keydown', 'click', 'scroll'].forEach((evt) => {
+      window.addEventListener(evt, registerInteraction, { passive: true });
+    });
+    document.addEventListener('visibilitychange', registerInteraction, { passive: true });
+  }
 
   async function sendEvent(eventType, extras) {
     const headers = { 'Content-Type': 'application/json' };
@@ -78,6 +90,8 @@
       current_path: (window.location.pathname || '') + (window.location.search || ''),
       page_title: document.title || '',
       action_hint: hint,
+      last_interaction_at: lastInteractionAt,
+      client_status: currentClientStatus(),
       candidata_id: entity.candidata_id || undefined,
       solicitud_id: entity.solicitud_id || undefined,
       cliente_id: entity.cliente_id || undefined,
@@ -178,6 +192,7 @@
     });
   }
 
+  startActivityTracking();
   fire('page_load');
   if ((knownEntity.candidata_id || knownEntity.solicitud_id || knownEntity.cliente_id) && !sentOpenEntity) {
     sentOpenEntity = true;

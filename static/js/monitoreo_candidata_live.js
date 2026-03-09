@@ -68,6 +68,15 @@
     return d.toLocaleString();
   }
 
+  function escapeHtml(raw) {
+    return String(raw || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   function toPrettyJson(value) {
     if (!value) return '';
     try { return JSON.stringify(value, null, 2); } catch (_) { return ''; }
@@ -84,19 +93,39 @@
     const card = document.createElement('article');
     card.className = 'card log-new';
     card.dataset.logId = String(item.id);
-    const detailsChanges = item.changes_json ? '<details class="mt-2"><summary>Cambios</summary><pre class="mb-0">' + toPrettyJson(item.changes_json) + '</pre></details>' : '';
-    const detailsMeta = item.metadata_json ? '<details class="mt-2"><summary>Metadata</summary><pre class="mb-0">' + toPrettyJson(item.metadata_json) + '</pre></details>' : '';
+    const changesRows = Array.isArray(item.changes_human) ? item.changes_human : [];
+    const metadataRows = Array.isArray(item.metadata_human) ? item.metadata_human : [];
+    const changesHtml = changesRows.length
+      ? '<div class="mt-2"><div class="small fw-semibold">Cambios</div><ul class="mb-0 small">' + changesRows.map((c) => {
+        const sentence = escapeHtml(c.sentence || '');
+        const detailed = (c && c.sensitive) ? '' : (' <span class="text-muted">(' + escapeHtml(c.from || '-') + ' → ' + escapeHtml(c.to || '-') + ')</span>');
+        return '<li>' + sentence + detailed + '</li>';
+      }).join('') + '</ul></div>'
+      : '';
+    const metadataHtml = metadataRows.length
+      ? '<div class="mt-2"><div class="small fw-semibold">Contexto</div><ul class="mb-0 small text-muted">' + metadataRows.map((m) => (
+        '<li>' + escapeHtml(m.label || 'Dato') + ': ' + escapeHtml(m.value || '-') + '</li>'
+      )).join('') + '</ul></div>'
+      : '';
+    const technical = (item.changes_json || item.metadata_json)
+      ? '<details class="mt-2"><summary>Detalle técnico</summary>' +
+        (item.changes_json ? '<pre class="mb-0 mt-1">changes_json: ' + escapeHtml(toPrettyJson(item.changes_json)) + '</pre>' : '') +
+        (item.metadata_json ? '<pre class="mb-0 mt-1">metadata_json: ' + escapeHtml(toPrettyJson(item.metadata_json)) + '</pre>' : '') +
+        '</details>'
+      : '';
 
     card.innerHTML = [
       '<div class="card-body">',
       '<div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">',
-      '<div><div><strong>' + (item.actor_username || '-') + '</strong> <small class="text-muted">(' + (item.actor_role || '-') + ')</small></div>',
-      '<div><code>' + (item.action_type || '-') + '</code> · ' + (item.summary || '-') + '</div></div>',
+      '<div><div><strong>' + escapeHtml(item.actor_username || '-') + '</strong> <small class="text-muted">(' + escapeHtml(item.actor_role || '-') + ')</small></div>',
+      '<div>' + escapeHtml(item.action_human || item.action_type || '-') + '</div>',
+      '<div class="small text-muted"><code>' + escapeHtml(item.action_type || '-') + '</code> · ' + escapeHtml(item.summary_human || item.summary || '-') + '</div></div>',
       '<div class="text-end"><div><small>' + formatDate(item.created_at) + '</small></div><div>' + resultBadge(Boolean(item.success)) + '</div></div>',
       '</div>',
-      '<div class="text-muted"><small>' + (item.method || '-') + ' ' + (item.route || '-') + '</small></div>',
-      detailsChanges,
-      detailsMeta,
+      '<div class="text-muted"><small>' + escapeHtml(item.route_human || item.route || '-') + '</small></div>',
+      changesHtml,
+      metadataHtml,
+      technical,
       '</div>'
     ].join('');
 

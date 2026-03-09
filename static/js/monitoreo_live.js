@@ -113,7 +113,9 @@
     const rows = (item && Array.isArray(item.changes_human)) ? item.changes_human : [];
     if (!rows.length) return '';
     const html = rows.map((c) => {
-      return '<li>' + escapeHtml(c.label || 'Campo') + ': ' + escapeHtml(c.from || '-') + ' → ' + escapeHtml(c.to || '-') + '</li>';
+      const base = escapeHtml(c.sentence || ((c.label || 'Campo') + ': actualizado'));
+      if (c && c.sensitive) return '<li>' + base + '</li>';
+      return '<li>' + base + ' <span class=\"text-muted\">(' + escapeHtml(c.from || '-') + ' → ' + escapeHtml(c.to || '-') + ')</span></li>';
     }).join('');
     return '<ul class="mb-1 small text-muted">' + html + '</ul>';
   }
