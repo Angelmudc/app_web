@@ -269,10 +269,10 @@
       <p class="public-form-card-desc">Define modalidad, horario y ubicacion del servicio solicitado.</p>
     </header>
     <div class="public-fields-grid">
-      {{ render_field(form.modalidad_trabajo, hint='Ejemplo: dormida, salida diaria o por dias.') }}
-      {{ render_field(form.horario, hint='Indica dias y rango horario esperado.') }}
       {{ render_field(form.ciudad_sector) }}
       {{ render_field(form.rutas_cercanas) }}
+      {{ render_field(form.modalidad_trabajo, hint='Ejemplo: dormida, salida diaria o por dias.') }}
+      {{ render_field(form.horario, hint='Indica dias y rango horario esperado.') }}
     </div>
   </section>
 
