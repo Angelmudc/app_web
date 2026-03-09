@@ -106,13 +106,17 @@ def init_security(app, cache):
     HEALTH_PATHS = {
         "/health", "/healthz", "/ping", "/_health", "/_healthz"
     }
-    # Endpoints internos de realtime de monitoreo (solo bypass de rate-limit).
+    # Endpoints internos de realtime/polling del panel.
     REALTIME_MONITOREO_PATHS = {
         "/admin/monitoreo/presence/ping",
         "/admin/monitoreo/stream",
         "/admin/monitoreo/logs.json",
         "/admin/monitoreo/summary.json",
+        "/admin/monitoreo/productividad.json",
+        "/admin/monitoreo/presence.json",
+        "/admin/solicitudes/live",
         "/clientes/live/ping",
+        "/clientes/solicitudes/live",
         "/live/ping",
     }
 
@@ -131,6 +135,17 @@ def init_security(app, cache):
     SCRAPE_BLOCK_SECONDS = int(os.getenv("SCRAPE_BLOCK_SECONDS", "600"))
     SCRAPE_SLOWDOWN = _is_true(os.getenv("SCRAPE_SLOWDOWN", "1"))
     SCRAPE_SLOWDOWN_MS = int(os.getenv("SCRAPE_SLOWDOWN_MS", "150"))
+    PUBLIC_SENSITIVE_WINDOW_SECONDS = int(os.getenv("PUBLIC_SENSITIVE_WINDOW_SECONDS", "60"))
+    PUBLIC_SENSITIVE_MAX_REQ = int(os.getenv("PUBLIC_SENSITIVE_MAX_REQ", "10"))
+    STAFF_WORK_WINDOW_SECONDS = int(os.getenv("STAFF_WORK_WINDOW_SECONDS", "60"))
+    STAFF_WORK_MAX_REQ = int(os.getenv("STAFF_WORK_MAX_REQ", "300"))
+    STAFF_REALTIME_WINDOW_SECONDS = int(os.getenv("STAFF_REALTIME_WINDOW_SECONDS", "60"))
+    STAFF_REALTIME_MAX_REQ = int(os.getenv("STAFF_REALTIME_MAX_REQ", "900"))
+    STAFF_LIST_MAX_REQ_USER = int(os.getenv("STAFF_LIST_MAX_REQ_USER", "300"))
+    AUTH_WORK_WINDOW_SECONDS = int(os.getenv("AUTH_WORK_WINDOW_SECONDS", "60"))
+    AUTH_WORK_MAX_REQ = int(os.getenv("AUTH_WORK_MAX_REQ", "180"))
+    ADMIN_CRITICAL_WINDOW_SECONDS = int(os.getenv("ADMIN_CRITICAL_WINDOW_SECONDS", "60"))
+    ADMIN_CRITICAL_MAX_REQ = int(os.getenv("ADMIN_CRITICAL_MAX_REQ", "60"))
 
     BOT_UA_PATTERNS = (
         "curl",
@@ -153,19 +168,44 @@ def init_security(app, cache):
             return True
         return False
 
-    def _is_realtime_monitoreo_path(path: str) -> bool:
+    def _normalize_path(path: str) -> str:
         p = (path or "").strip()
         if not p:
-            return False
+            return ""
         if p != "/":
             p = p.rstrip("/")
+        return p
+
+    NORMALIZED_LOGIN_PATHS = {_normalize_path(p) for p in LOGIN_PATHS}
+
+    def _is_realtime_monitoreo_path(path: str) -> bool:
+        p = _normalize_path(path)
+        if not p:
+            return False
+        if p in REALTIME_MONITOREO_PATHS:
+            return True
+        if p.startswith("/admin/monitoreo/candidatas/") and (
+            p.endswith("/stream") or p.endswith("/logs.json")
+        ):
+            return True
         return p in REALTIME_MONITOREO_PATHS
+
+    def _normalize_role(value: str) -> str:
+        role = (value or "").strip().lower()
+        if role in ("secretaria", "secretary", "secre", "secretaría"):
+            return "secretaria"
+        if role in ("owner", "admin"):
+            return role
+        if role in ("cliente",):
+            return "cliente"
+        return role
 
     def _current_user_key() -> str:
         try:
             if current_user and getattr(current_user, "is_authenticated", False):
                 uid = (
-                    getattr(current_user, "id", None)
+                    current_user.get_id()
+                    or getattr(current_user, "id", None)
                     or getattr(current_user, "pk", None)
                     or getattr(current_user, "email", None)
                     or getattr(current_user, "username", None)
@@ -178,6 +218,53 @@ def init_security(app, cache):
         # Compatibilidad legacy por sesión
         raw = (session.get("usuario") or "").strip()
         return raw[:80] if raw else ""
+
+    def _current_role() -> str:
+        try:
+            if current_user and getattr(current_user, "is_authenticated", False):
+                role = (
+                    getattr(current_user, "role", None)
+                    or getattr(current_user, "rol", None)
+                    or ""
+                )
+                out = _normalize_role(str(role))
+                if out:
+                    return out
+        except Exception:
+            pass
+        return _normalize_role(str(session.get("role") or ""))
+
+    def _is_authenticated_any() -> bool:
+        try:
+            if current_user and getattr(current_user, "is_authenticated", False):
+                return True
+        except Exception:
+            pass
+        return bool((session.get("usuario") or "").strip())
+
+    def _is_staff_authenticated() -> bool:
+        role = _current_role()
+        if role not in {"owner", "admin", "secretaria"}:
+            return False
+        try:
+            if current_user and getattr(current_user, "is_authenticated", False):
+                if hasattr(current_user, "is_active") and not bool(current_user.is_active):
+                    return False
+        except Exception:
+            pass
+        return True
+
+    def _is_admin_critical_path(path: str, method: str) -> bool:
+        m = (method or "").upper()
+        p = _normalize_path(path)
+        if m == "DELETE":
+            return True
+        if m not in {"POST", "PUT", "PATCH"}:
+            return False
+        if not p.startswith("/admin/"):
+            return False
+        critical_tokens = ("/eliminar", "/delete", "/borrar", "/cancelar")
+        return any(tok in p for tok in critical_tokens)
 
     def _is_likely_bot_ua() -> bool:
         ua = (request.headers.get("User-Agent") or "").strip().lower()
@@ -293,7 +380,10 @@ def init_security(app, cache):
 
     @app.errorhandler(429)
     def _too_many_requests(e):
-        msg = getattr(e, "description", None) or "Demasiados intentos seguidos. Espera un momento y vuelve a intentar."
+        msg = getattr(e, "description", None) or (
+            "Estas realizando demasiadas acciones muy rapido. "
+            "Espera unos segundos e intenta nuevamente."
+        )
         return make_response(
             msg,
             429
@@ -305,11 +395,8 @@ def init_security(app, cache):
             return
 
         path = (request.path or "")
+        path = _normalize_path(path)
         if _is_exempt_path(path):
-            return
-        if _is_realtime_monitoreo_path(path):
-            # Importante: no desactiva headers/CSP/CSRF/autorización,
-            # solo evita 429 falsos del rate-limit global para realtime interno.
             return
 
         if request.method in ("OPTIONS", "HEAD"):
@@ -318,54 +405,167 @@ def init_security(app, cache):
         ip = _get_client_ip() or "0.0.0.0"
         endpoint = (request.endpoint or "")
         user_key = _current_user_key()
-        is_bot = _is_likely_bot_ua()
+        is_auth = _is_authenticated_any()
+        is_staff = _is_staff_authenticated()
+        is_realtime = _is_realtime_monitoreo_path(path)
+        is_bot = (not is_staff) and _is_likely_bot_ua()
 
         # Bloqueo temporal por comportamiento malicioso (ej. exceso de 404)
-        if _cache_get(cache, f"scrape:block:{ip}"):
+        if (not is_staff) and _cache_get(cache, f"scrape:block:{ip}"):
             abort(429, description="IP temporalmente bloqueada por actividad sospechosa. Intenta más tarde.")
 
         bot_factor = 0.5 if is_bot else 1.0
 
-        # 1) Global soft limit por IP
-        global_max = max(10, int(SCRAPE_GLOBAL_MAX_REQ * bot_factor))
-        gcount = _bucket_inc(f"scrape:global:{ip}", SCRAPE_GLOBAL_WINDOW_SECONDS)
+        if path in NORMALIZED_LOGIN_PATHS:
+            login_limit = max(3, int(PUBLIC_SENSITIVE_MAX_REQ * bot_factor))
+            login_count = _bucket_inc(
+                f"scrape:login:ip:{ip}:{path}",
+                PUBLIC_SENSITIVE_WINDOW_SECONDS,
+            )
+            if login_count > login_limit:
+                abort(
+                    429,
+                    description=(
+                        "Demasiados intentos de acceso en poco tiempo. "
+                        "Espera un momento y vuelve a intentar."
+                    ),
+                )
+            return
+
+        principal = f"user:{user_key}" if (is_auth and user_key) else f"ip:{ip}"
+
+        # 1) Global por actor (IP para público, usuario para autenticados)
+        if is_staff and is_realtime:
+            global_window = max(10, STAFF_REALTIME_WINDOW_SECONDS)
+            global_max = max(120, int(STAFF_REALTIME_MAX_REQ * (0.8 if is_bot else 1.0)))
+            global_scope = "staff_realtime"
+            global_msg = (
+                "Hay demasiadas actualizaciones en tiempo real en este momento. "
+                "Espera unos segundos e intenta nuevamente."
+            )
+        elif is_staff:
+            global_window = max(10, STAFF_WORK_WINDOW_SECONDS)
+            global_max = max(120, int(STAFF_WORK_MAX_REQ * (0.8 if is_bot else 1.0)))
+            global_scope = "staff_work"
+            global_msg = (
+                "Estas realizando demasiadas acciones muy rapido. "
+                "Espera unos segundos e intenta nuevamente."
+            )
+        elif is_auth:
+            global_window = max(10, AUTH_WORK_WINDOW_SECONDS)
+            global_max = max(60, int(AUTH_WORK_MAX_REQ * bot_factor))
+            global_scope = "auth_work"
+            global_msg = "Exceso de solicitudes para la sesion actual. Espera unos segundos e intenta nuevamente."
+        else:
+            global_window = max(10, SCRAPE_GLOBAL_WINDOW_SECONDS)
+            global_max = max(10, int(SCRAPE_GLOBAL_MAX_REQ * bot_factor))
+            global_scope = "public"
+            global_msg = "Límite global de solicitudes excedido. Reduce la frecuencia e intenta luego."
+
+        gcount = _bucket_inc(f"scrape:global:{global_scope}:{principal}", global_window)
         if gcount > global_max:
-            abort(429, description="Límite global de solicitudes excedido. Reduce la frecuencia e intenta luego.")
+            abort(429, description=global_msg)
 
         # 2) Límites estrictos por grupo de rutas
         group = _match_scrape_group(path, endpoint)
         if group:
-            limits = {
-                "list_json": SCRAPE_LIST_MAX_REQ,
-                "admin": SCRAPE_ADMIN_MAX_REQ,
-                "clientes": SCRAPE_CLIENTES_MAX_REQ,
-                "upload": SCRAPE_UPLOAD_MAX_REQ,
-                "reports": SCRAPE_REPORTS_MAX_REQ,
-            }
-            ip_limit = max(5, int(limits.get(group, SCRAPE_REPORTS_MAX_REQ) * bot_factor))
-            ip_count = _bucket_inc(f"scrape:{group}:ip:{ip}", SCRAPE_STRICT_WINDOW_SECONDS)
+            if is_staff:
+                if is_realtime:
+                    group_limit = max(120, STAFF_REALTIME_MAX_REQ)
+                    group_window = max(10, STAFF_REALTIME_WINDOW_SECONDS)
+                else:
+                    staff_limits = {
+                        "list_json": STAFF_LIST_MAX_REQ_USER,
+                        "admin": STAFF_WORK_MAX_REQ,
+                        "clientes": STAFF_WORK_MAX_REQ,
+                        "upload": STAFF_WORK_MAX_REQ,
+                        "reports": STAFF_WORK_MAX_REQ,
+                    }
+                    group_limit = max(80, int(staff_limits.get(group, STAFF_WORK_MAX_REQ)))
+                    group_window = max(10, STAFF_WORK_WINDOW_SECONDS)
 
-            if ip_count > ip_limit:
-                abort(429, description="Demasiadas solicitudes para esta ruta. Intenta de nuevo en unos segundos.")
-
-            # Caso especial pedido: endpoint JSON grande limitado también por usuario autenticado
-            if group == "list_json" and user_key:
-                user_limit = max(10, int(SCRAPE_LIST_MAX_REQ_USER * bot_factor))
-                ucount = _bucket_inc(
-                    f"scrape:{group}:user:{user_key}",
-                    SCRAPE_STRICT_WINDOW_SECONDS
+                group_count = _bucket_inc(
+                    f"scrape:{group}:staff:{principal}",
+                    group_window,
                 )
-                if ucount > user_limit:
-                    abort(429, description="Demasiadas solicitudes para este usuario en listados JSON.")
+                if group_count > group_limit:
+                    abort(
+                        429,
+                        description=(
+                            "Estas realizando demasiadas acciones muy rapido. "
+                            "Espera unos segundos e intenta nuevamente."
+                        ),
+                    )
 
-            # 3) Slowdown progresivo cerca del límite
-            if SCRAPE_SLOWDOWN:
-                ratio = (ip_count / float(max(1, ip_limit)))
-                if ratio >= 0.8:
-                    ms = min(1000, max(50, SCRAPE_SLOWDOWN_MS))
-                    if ratio >= 0.95:
-                        ms = min(1200, int(ms * 2))
-                    time.sleep(ms / 1000.0)
+                if _is_admin_critical_path(path, request.method):
+                    critical_count = _bucket_inc(
+                        f"scrape:admin_critical:{principal}",
+                        max(10, ADMIN_CRITICAL_WINDOW_SECONDS),
+                    )
+                    if critical_count > max(10, ADMIN_CRITICAL_MAX_REQ):
+                        abort(
+                            429,
+                            description=(
+                                "Demasiadas acciones administrativas sensibles en poco tiempo. "
+                                "Espera unos segundos e intenta nuevamente."
+                            ),
+                        )
+            elif is_auth:
+                auth_limits = {
+                    "list_json": AUTH_WORK_MAX_REQ,
+                    "admin": AUTH_WORK_MAX_REQ,
+                    "clientes": AUTH_WORK_MAX_REQ,
+                    "upload": max(30, AUTH_WORK_MAX_REQ // 2),
+                    "reports": max(30, AUTH_WORK_MAX_REQ // 2),
+                }
+                auth_limit = max(30, int(auth_limits.get(group, AUTH_WORK_MAX_REQ) * bot_factor))
+                auth_count = _bucket_inc(
+                    f"scrape:{group}:auth:{principal}",
+                    max(10, AUTH_WORK_WINDOW_SECONDS),
+                )
+                if auth_count > auth_limit:
+                    abort(
+                        429,
+                        description="Exceso de solicitudes para la sesion actual. Espera unos segundos e intenta nuevamente.",
+                    )
+            else:
+                limits = {
+                    "list_json": SCRAPE_LIST_MAX_REQ,
+                    "admin": SCRAPE_ADMIN_MAX_REQ,
+                    "clientes": SCRAPE_CLIENTES_MAX_REQ,
+                    "upload": SCRAPE_UPLOAD_MAX_REQ,
+                    "reports": SCRAPE_REPORTS_MAX_REQ,
+                }
+                ip_limit = max(5, int(limits.get(group, SCRAPE_REPORTS_MAX_REQ) * bot_factor))
+                ip_count = _bucket_inc(f"scrape:{group}:ip:{ip}", SCRAPE_STRICT_WINDOW_SECONDS)
+
+                if ip_count > ip_limit:
+                    abort(
+                        429,
+                        description=(
+                            "Estas realizando demasiadas acciones muy rapido. "
+                            "Espera unos segundos e intenta nuevamente."
+                        ),
+                    )
+
+                # Caso especial pedido: endpoint JSON grande limitado también por usuario autenticado
+                if group == "list_json" and user_key:
+                    user_limit = max(10, int(SCRAPE_LIST_MAX_REQ_USER * bot_factor))
+                    ucount = _bucket_inc(
+                        f"scrape:{group}:user:{user_key}",
+                        SCRAPE_STRICT_WINDOW_SECONDS
+                    )
+                    if ucount > user_limit:
+                        abort(429, description="Demasiadas solicitudes para este usuario en listados JSON.")
+
+                # 3) Slowdown progresivo cerca del límite (solo tráfico público/no autenticado)
+                if SCRAPE_SLOWDOWN:
+                    ratio = (ip_count / float(max(1, ip_limit)))
+                    if ratio >= 0.8:
+                        ms = min(1000, max(50, SCRAPE_SLOWDOWN_MS))
+                        if ratio >= 0.95:
+                            ms = min(1200, int(ms * 2))
+                        time.sleep(ms / 1000.0)
 
     @app.after_request
     def _track_404_and_block(resp):
