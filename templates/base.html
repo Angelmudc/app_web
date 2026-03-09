@@ -60,10 +60,48 @@
   {% block head %}{% endblock %}
 </head>
 
+{% set _pv = request.view_args or {} %}
+{% set _p_type = '' %}
+{% set _p_id = '' %}
+{% if request.args.get('solicitud_id') %}
+  {% set _p_type = 'solicitud' %}
+  {% set _p_id = request.args.get('solicitud_id') %}
+{% elif request.args.get('candidata_id') or request.args.get('fila') %}
+  {% set _p_type = 'candidata' %}
+  {% set _p_id = request.args.get('candidata_id') or request.args.get('fila') %}
+{% elif request.args.get('cliente_id') %}
+  {% set _p_type = 'cliente' %}
+  {% set _p_id = request.args.get('cliente_id') %}
+{% elif _pv.get('solicitud_id') or (_pv.get('id') and '/solicitudes/' in request.path) %}
+  {% set _p_type = 'solicitud' %}
+  {% set _p_id = _pv.get('solicitud_id') or _pv.get('id') %}
+{% elif _pv.get('candidata_id') or _pv.get('fila') %}
+  {% set _p_type = 'candidata' %}
+  {% set _p_id = _pv.get('candidata_id') or _pv.get('fila') %}
+{% elif _pv.get('cliente_id') or (_pv.get('id') and '/clientes/' in request.path) %}
+  {% set _p_type = 'cliente' %}
+  {% set _p_id = _pv.get('cliente_id') or _pv.get('id') %}
+{% endif %}
+{% set _p_name = '' %}
+{% set _p_code = '' %}
+{% if candidata is defined and candidata %}
+  {% set _p_name = candidata.nombre_completo or '' %}
+  {% set _p_code = candidata.codigo or '' %}
+{% elif solicitud is defined and solicitud %}
+  {% set _p_name = solicitud.codigo_solicitud or '' %}
+{% elif cliente is defined and cliente %}
+  {% set _p_name = cliente.nombre_completo or '' %}
+  {% set _p_code = cliente.codigo or '' %}
+{% endif %}
+
 <body data-theme="light"
       class="{{ body_class|default('') }}"
       data-live-presence-enabled="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}1{% else %}0{% endif %}"
       data-live-presence-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}"
+      data-presence-entity-type="{{ _p_type }}"
+      data-presence-entity-id="{{ _p_id }}"
+      data-presence-entity-name="{{ _p_name }}"
+      data-presence-entity-code="{{ _p_code }}"
       data-entity-lock-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
       data-entity-lock-takeover-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
       data-staff-role="{{ current_user.role|default('') if current_user.is_authenticated else '' }}">

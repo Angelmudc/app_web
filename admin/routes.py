@@ -1799,6 +1799,7 @@ def _humanize_action(
         "editing_references": "Editando referencias",
         "editing_candidate": "Editando candidata",
         "editing_request": "Editando solicitud",
+        "viewing_client": "Viendo cliente",
         "matching": "En Matching",
         "searching": "Buscando",
         "interview": "En Entrevista",
@@ -1823,6 +1824,7 @@ def _extract_entity_context(payload: dict | None, current_path: str | None = Non
         "entity_id": (src.get("entity_id") or "").strip(),
         "entity_name": (src.get("entity_name") or "").strip(),
         "entity_code": (src.get("entity_code") or "").strip(),
+        "entity_label": (src.get("entity_label") or "").strip(),
     }
     if not ctx["entity_id"]:
         for key, etype in (
@@ -1865,8 +1867,69 @@ def _extract_entity_context(payload: dict | None, current_path: str | None = Non
         if m and not ctx["entity_id"]:
             ctx["entity_type"] = "solicitud"
             ctx["entity_id"] = m.group(1)
+        m = re.search(r"/clientes?/([a-z0-9_-]+)", path_only)
+        if m and not ctx["entity_id"]:
+            ctx["entity_type"] = "cliente"
+            ctx["entity_id"] = m.group(1)
+
+    if (not ctx["entity_id"]) and path_only:
+        m = re.search(r"/clientes/\d+/solicitudes/([a-z0-9_-]+)", path_only)
+        if m:
+            ctx["entity_type"] = "solicitud"
+            ctx["entity_id"] = m.group(1)
+        m = re.search(r"/matching/solicitudes/([a-z0-9_-]+)", path_only)
+        if m and not ctx["entity_id"]:
+            ctx["entity_type"] = "solicitud"
+            ctx["entity_id"] = m.group(1)
 
     return ctx
+
+
+def _humanize_presence_action(
+    base_action: str | None,
+    action_hint: str | None,
+    entity_type: str | None,
+    entity_display: str | None,
+) -> str:
+    base = (base_action or "").strip() or "Actividad en la app"
+    hint = (action_hint or "").strip().lower()
+    etype = _normalize_entity_type(entity_type)
+    display = (entity_display or "").strip()
+
+    if not display and etype:
+        display = {
+            "candidata": "candidata",
+            "solicitud": "solicitud",
+            "cliente": "cliente",
+        }.get(etype, etype)
+
+    if not display:
+        return base[:120]
+
+    if hint in {"editing_candidate", "editing", "editing_interview", "editing_references", "interview", "references"} and etype == "candidata":
+        if hint in {"editing_interview", "interview"}:
+            return f"Editando entrevista de {display}"[:120]
+        if hint in {"editing_references", "references"}:
+            return f"Editando referencias de {display}"[:120]
+        return f"Editando candidata {display}"[:120]
+
+    if hint in {"editing_request", "solicitudes"} and etype == "solicitud":
+        return f"Revisando solicitud {display}"[:120]
+
+    if hint in {"matching"} and etype == "solicitud":
+        return f"Trabajando en matching de solicitud {display}"[:120]
+
+    if hint in {"viewing_client"} and etype == "cliente":
+        return f"Viendo cliente {display}"[:120]
+
+    if "editar" in base.lower() and etype == "candidata":
+        return f"Editando candidata {display}"[:120]
+    if "solicitud" in base.lower() and etype == "solicitud":
+        return f"Revisando solicitud {display}"[:120]
+    if "cliente" in base.lower() and etype == "cliente":
+        return f"Viendo cliente {display}"[:120]
+
+    return f"{base} - {display}"[:120]
 
 
 def _format_candidata_display(cand: Candidata | None) -> str | None:
@@ -1993,7 +2056,7 @@ def _metadata_human(meta: dict | None) -> list[dict]:
     skip = {
         "ip", "user_agent", "event_type", "scope",
         "entity_display", "entity_name", "entity_code",
-        "action_hint", "status_code",
+        "action_hint", "action_label", "route_label", "status_code",
     }
     out = []
     for k, v in src.items():
@@ -2191,6 +2254,9 @@ def _touch_staff_presence(
     entity_code: str | None = None,
     last_interaction_at: str | None = None,
     client_status: str | None = None,
+    route_label: str | None = None,
+    action_label: str | None = None,
+    preserve_entity_when_missing: bool = True,
     log_event: bool = False,
 ) -> None:
     try:
@@ -2207,14 +2273,39 @@ def _touch_staff_presence(
         effective_path = (current_path or prev.get("current_path") or request.path or "")[:255]
         effective_hint = (action_hint or last_action_hint or prev.get("action_hint") or _infer_action_hint_from_path(effective_path))[:80]
         effective_action_type = (action_type or prev.get("action_type") or "LIVE_HEARTBEAT")[:80]
-        effective_entity_type = _normalize_entity_type(entity_type or prev.get("entity_type"))
-        effective_entity_id = (entity_id or prev.get("entity_id") or "")[:64]
-        effective_entity_display = _human_entity_display(entity_name, entity_code) or prev.get("entity_display")
+        incoming_entity_type = _normalize_entity_type(entity_type)
+        incoming_entity_id = (entity_id or "")[:64]
+        if preserve_entity_when_missing:
+            effective_entity_type = _normalize_entity_type(incoming_entity_type or prev.get("entity_type"))
+            effective_entity_id = (incoming_entity_id or prev.get("entity_id") or "")[:64]
+        else:
+            effective_entity_type = _normalize_entity_type(incoming_entity_type)
+            effective_entity_id = incoming_entity_id
+
+        effective_entity_display = _human_entity_display(entity_name, entity_code)
+        if not effective_entity_display and preserve_entity_when_missing:
+            effective_entity_display = prev.get("entity_display")
+        if not effective_entity_id:
+            effective_entity_display = ""
         if not effective_entity_display and effective_entity_type and effective_entity_id:
             fake_log = StaffAuditLog(entity_type=effective_entity_type, entity_id=effective_entity_id)
             mapped = _build_entity_display_map([fake_log])
             effective_entity_display = mapped.get((effective_entity_type, effective_entity_id))
-        effective_action_human = (action_human or prev.get("current_action_human") or _humanize_action(effective_action_type, route=effective_path, action_hint=effective_hint))[:120]
+        base_action_human = (
+            action_label
+            or action_human
+            or (
+                prev.get("current_action_human")
+                if preserve_entity_when_missing else ""
+            )
+            or _humanize_action(effective_action_type, route=effective_path, action_hint=effective_hint)
+        )[:120]
+        effective_action_human = _humanize_presence_action(
+            base_action_human,
+            effective_hint,
+            effective_entity_type,
+            effective_entity_display,
+        )[:120]
         has_client_status = bool((client_status or "").strip())
         interaction_dt = _parse_iso_utc(last_interaction_at) or (now if not has_client_status else (_parse_iso_utc(prev.get("last_interaction_at")) or now))
         interaction_iso = iso_utc_z(interaction_dt)
@@ -2226,11 +2317,13 @@ def _touch_staff_presence(
             "role": (current_user.role or "").strip().lower(),
             "current_path": effective_path,
             "page_title": (page_title or request.endpoint or request.path or "")[:160],
+            "route_label": (route_label or prev.get("route_label") or _humanize_route(effective_path))[:120],
             "last_action_hint": (last_action_hint or "")[:120],
             "event_type": (event_type or prev.get("event_type") or "heartbeat")[:32],
             "action_type": effective_action_type,
             "action_hint": effective_hint,
             "current_action_human": effective_action_human,
+            "action_label": (action_label or prev.get("action_label") or "")[:120],
             "entity_type": effective_entity_type,
             "entity_id": effective_entity_id,
             "entity_display": (effective_entity_display or "")[:200],
@@ -2265,6 +2358,8 @@ def _touch_staff_presence(
                 "entity_display": effective_entity_display,
                 "entity_name": (entity_name or "")[:120],
                 "entity_code": (entity_code or "")[:60],
+                "route_label": (route_label or "")[:120],
+                "action_label": (action_label or "")[:120],
             }
             _audit_log(
                 action_type=effective_action_type,
@@ -2387,6 +2482,12 @@ def _presence_rows() -> list[dict]:
             action_hint=p.get("action_hint"),
         ))[:120]
         entity_display = (p.get("entity_display") or last_serialized.get("entity_display") or "").strip()
+        current_action_human = _humanize_presence_action(
+            current_action_human,
+            p.get("action_hint"),
+            p.get("entity_type"),
+            entity_display,
+        )[:120]
         out.append(
             {
                 "user_id": uid,
@@ -2395,6 +2496,7 @@ def _presence_rows() -> list[dict]:
                 "status": status,
                 "current_path": p.get("current_path"),
                 "route_human": _humanize_route(p.get("current_path")),
+                "route_label": p.get("route_label") or _humanize_route(p.get("current_path")),
                 "page_title": p.get("page_title"),
                 "last_seen_seconds": delta,
                 "last_interaction_at": iso_utc_z(interaction_at),
@@ -2408,6 +2510,7 @@ def _presence_rows() -> list[dict]:
                 "last_action_hint": p.get("last_action_hint"),
                 "action_type": p.get("action_type"),
                 "action_hint": p.get("action_hint"),
+                "action_label": p.get("action_label"),
                 "current_action_human": current_action_human,
                 "entity_type": p.get("entity_type"),
                 "entity_id": p.get("entity_id"),
@@ -3258,27 +3361,34 @@ def monitoreo_presence_ping():
     raw_action_type = (payload.get("action_type") or "").strip().upper()
     action_type = raw_action_type if _is_valid_live_action_type(raw_action_type) else _map_event_to_action_type(event_type)
     action_hint = (payload.get("action_hint") or payload.get("last_action_hint") or "").strip().lower()[:80]
+    action_label = (payload.get("action_label") or "").strip()[:120]
+    route_label = (payload.get("route_label") or "").strip()[:120]
     client_status = _normalize_client_status(payload.get("client_status"))
     last_interaction_at = (payload.get("last_interaction_at") or "").strip()[:40]
     if not action_hint:
         action_hint = _infer_action_hint_from_path(current_path)[:80]
     ctx = _extract_entity_context(payload, current_path=current_path)
     action_human = _humanize_action(action_type, route=current_path, action_hint=action_hint)
+    if not action_label:
+        action_label = action_human
 
     _touch_staff_presence(
         current_path=current_path,
         page_title=page_title,
+        route_label=route_label,
         last_action_hint=action_hint,
         event_type=event_type,
         action_type=action_type,
         action_hint=action_hint,
         action_human=action_human,
+        action_label=action_label,
         entity_type=ctx.get("entity_type"),
         entity_id=ctx.get("entity_id"),
         entity_name=ctx.get("entity_name"),
         entity_code=ctx.get("entity_code"),
         last_interaction_at=last_interaction_at,
         client_status=client_status,
+        preserve_entity_when_missing=False,
         log_event=True,
     )
     return jsonify({"ok": True})
