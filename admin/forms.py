@@ -211,7 +211,7 @@ class AdminClienteForm(FlaskForm):
 
     password = PasswordField(
         'Contraseña (opcional)',
-        validators=[Optional(), Length(min=6, max=100)],
+        validators=[Optional(), Length(min=8, max=100)],
         render_kw={
             "placeholder": "Solo si quieres crear/cambiar la contraseña",
             "autocomplete": "new-password"
@@ -242,9 +242,8 @@ class AdminClienteForm(FlaskForm):
         pw = (field.data or '').strip()
         if not pw:
             return
-        # Reglas mínimas: 6+ ya la valida Length; aquí evitamos solo espacios.
-        if len(pw) < 6:
-            raise ValidationError('La contraseña debe tener al menos 6 caracteres.')
+        if len(pw) < 8:
+            raise ValidationError('La contraseña debe tener al menos 8 caracteres.')
 
     def validate_password_confirm(self, field):
         """Si se escribe contraseña, exigir confirmación. Si se escribe confirmación, exigir contraseña."""

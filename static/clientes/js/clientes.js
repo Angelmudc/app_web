@@ -492,19 +492,42 @@
   function initAutosave() {
     const forms = $$('form[data-autosave-key]');
     if (!forms.length) return;
+    let STORAGE = null;
+    try {
+      STORAGE = w.sessionStorage;
+    } catch (_) {
+      STORAGE = null;
+    }
+    if (!STORAGE) return;
+    const TTL_MS = 30 * 60 * 1000;
+    const SENSITIVE_TOKENS = [
+      'password', 'clave', 'token', 'csrf', 'cedula', 'telefono', 'phone',
+      'whatsapp', 'direccion', 'address', 'email', 'correo'
+    ];
+    const isSensitiveName = (name) => {
+      const txt = String(name || '').toLowerCase();
+      return SENSITIVE_TOKENS.some((token) => txt.includes(token));
+    };
 
     const safeSet = (key, value) => {
       try {
-        const str = JSON.stringify(value);
+        const str = JSON.stringify({ saved_at: Date.now(), data: value });
         if (str.length > CONFIG.maxAutosaveBytes) return;
-        localStorage.setItem(key, str);
+        STORAGE.setItem(key, str);
       } catch (_) {}
     };
 
     const safeGet = (key) => {
       try {
-        const v = localStorage.getItem(key);
-        return v ? JSON.parse(v) : null;
+        const v = STORAGE.getItem(key);
+        if (!v) return null;
+        const envelope = JSON.parse(v);
+        const savedAt = Number(envelope.saved_at || 0);
+        if (!savedAt || (Date.now() - savedAt) > TTL_MS) {
+          STORAGE.removeItem(key);
+          return null;
+        }
+        return envelope.data || null;
       } catch (_) {
         return null;
       }
@@ -516,7 +539,7 @@
       els.forEach((el) => {
         if (!el.name || el.disabled) return;
         const type = (el.type || '').toLowerCase();
-        if (el.name === 'csrf_token') return;
+        if (el.name === 'csrf_token' || isSensitiveName(el.name)) return;
 
         if (type === 'checkbox') {
           if (!data[el.name]) data[el.name] = [];
@@ -589,7 +612,7 @@
 
       form.addEventListener('submit', () => {
         try {
-          localStorage.removeItem(key);
+          STORAGE.removeItem(key);
         } catch (_) {}
       });
     });

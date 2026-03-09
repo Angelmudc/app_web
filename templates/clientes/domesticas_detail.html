@@ -115,7 +115,7 @@
         {% if ficha and ficha.experiencia_detallada %}
         <div class="detalle-experiencia-detallada">
           <h2>Detalle de experiencia</h2>
-          <p>{{ ficha.experiencia_detallada |replace('\n', '<br>')|safe }}</p>
+          <p style="white-space: pre-line;">{{ ficha.experiencia_detallada }}</p>
         </div>
         {% endif %}
 

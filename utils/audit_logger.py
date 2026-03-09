@@ -15,6 +15,94 @@ from utils.timezone import utc_now_naive
 
 
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_SENSITIVE_KEY_TOKENS = {
+    "password",
+    "password_hash",
+    "password_confirm",
+    "clave",
+    "token",
+    "csrf",
+    "secret",
+    "telefono",
+    "phone",
+    "whatsapp",
+    "celular",
+    "movil",
+    "cedula",
+    "dni",
+    "documento",
+    "direccion",
+    "address",
+    "email",
+    "correo",
+}
+
+
+def _looks_sensitive_key(key: str | None) -> bool:
+    txt = str(key or "").strip().lower()
+    if not txt:
+        return False
+    return any(token in txt for token in _SENSITIVE_KEY_TOKENS)
+
+
+def _mask_email(value: str) -> str:
+    raw = str(value or "").strip()
+    if "@" not in raw:
+        return "<redacted>"
+    user, _, domain = raw.partition("@")
+    if not user:
+        return "<redacted>"
+    return f"{user[:1]}***@{domain}"
+
+
+def _mask_digits(value: str, keep: int = 2) -> str:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if not digits:
+        return "<redacted>"
+    tail = digits[-keep:] if keep > 0 else ""
+    return f"***{tail}"
+
+
+def _mask_sensitive_value(key: str, value: Any) -> Any:
+    k = str(key or "").lower()
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple, set)):
+        return [_mask_sensitive_value(k, v) for v in value]
+    if isinstance(value, dict):
+        return {str(sub_k): _mask_sensitive_value(str(sub_k), sub_v) for sub_k, sub_v in value.items()}
+
+    raw = str(value)
+    if any(x in k for x in ("password", "clave", "token", "csrf", "secret")):
+        return "<hidden>"
+    if any(x in k for x in ("email", "correo")):
+        return _mask_email(raw)
+    if any(x in k for x in ("cedula", "dni", "documento")):
+        return _mask_digits(raw, keep=3)
+    if any(x in k for x in ("telefono", "phone", "whatsapp", "celular", "movil")):
+        return _mask_digits(raw, keep=2)
+    if any(x in k for x in ("direccion", "address")):
+        return "<redacted_address>"
+    return "<redacted>"
+
+
+def _sanitize_audit_payload(value: Any, *, parent_key: str | None = None) -> Any:
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for k, v in value.items():
+            key = str(k)
+            if _looks_sensitive_key(key):
+                out[key] = _mask_sensitive_value(key, v)
+            else:
+                out[key] = _sanitize_audit_payload(v, parent_key=key)
+        return out
+
+    if isinstance(value, (list, tuple, set)):
+        return [_sanitize_audit_payload(v, parent_key=parent_key) for v in value]
+
+    if _looks_sensitive_key(parent_key):
+        return _mask_sensitive_value(parent_key or "", value)
+    return value
 
 
 def _json_safe(value: Any) -> Any:
@@ -95,8 +183,8 @@ def log_action(
         "ip": ip,
         "user_agent": user_agent,
         "summary": (summary or "")[:255] or None,
-        "metadata_json": _json_safe(metadata or {}),
-        "changes_json": _json_safe(changes) if changes is not None else None,
+        "metadata_json": _json_safe(_sanitize_audit_payload(metadata or {})),
+        "changes_json": _json_safe(_sanitize_audit_payload(changes)) if changes is not None else None,
         "success": bool(success),
         "error_message": (error or "")[:4000] or None,
     }

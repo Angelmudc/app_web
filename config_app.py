@@ -138,7 +138,7 @@ def create_app():
 
     default_secret = "cambia_esta_clave_a_una_muy_segura"
     app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", default_secret)
-    if app.config["SECRET_KEY"] == default_secret and prod:
+    if app.config["SECRET_KEY"] == default_secret and env not in ("development", "dev", "testing", "test"):
         raise RuntimeError("SECRET_KEY no configurada. Define FLASK_SECRET_KEY en .env")
 
     # Cookies secure:
@@ -146,20 +146,15 @@ def create_app():
     # - En local: False (para no romper CSRF/cookies)
     # Nota: ProxyFix + request.is_secure te ayuda a detectar HTTPS real detrás de proxy.
     def _cookie_secure() -> bool:
-        # En desarrollo local (aunque APP_ENV diga "production"), NO usar cookies Secure
-        # porque en HTTP el navegador las ignora y la sesión no se guarda.
         if FORCE_COOKIE_SECURE:
             return True
 
         if not prod:
             return False
 
-        # Si NO estamos en Render (o un entorno HTTPS real), asumimos que es local/dev
-        # y desactivamos Secure para no romper login/sesión.
-        if not IS_RENDER:
+        # En produccion aplicamos postura fail-closed y usamos override local por host.
+        if _is_true(os.getenv("ALLOW_INSECURE_PROD_COOKIES", "")):
             return False
-
-        # En Render, normalmente hay HTTPS real.
         return True
 
     app.config.update(
@@ -184,6 +179,7 @@ def create_app():
 
             "SESSION_COOKIE_NAME": _env_str("SESSION_COOKIE_NAME", "app_web_session"),
             "REMEMBER_COOKIE_SAMESITE": _env_str("REMEMBER_COOKIE_SAMESITE", "Lax"),
+            "REMEMBER_COOKIE_SECURE": _cookie_secure(),
         }
     )
 

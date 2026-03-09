@@ -974,7 +974,7 @@ def login():
 
 
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 @roles_required('admin', 'secretaria')
 def logout():
     try:

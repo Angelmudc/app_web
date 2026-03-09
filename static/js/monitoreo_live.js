@@ -167,7 +167,7 @@
   function updateTopList(top) {
     const list = document.getElementById('topList');
     if (!list) return;
-    list.innerHTML = '';
+    list.textContent = '';
     if (!Array.isArray(top) || !top.length) {
       list.innerHTML = '<li class="list-group-item text-muted">Sin actividad.</li>';
       return;
@@ -175,7 +175,14 @@
     top.forEach((row) => {
       const li = document.createElement('li');
       li.className = 'list-group-item d-flex justify-content-between align-items-center';
-      li.innerHTML = '<a href="/admin/monitoreo/secretarias/' + row.user_id + '">' + (row.username || '-') + '</a><span class="badge bg-dark">' + (row.total_actions || 0) + '</span>';
+      const a = document.createElement('a');
+      a.href = '/admin/monitoreo/secretarias/' + encodeURIComponent(String(row.user_id || ''));
+      a.textContent = String(row.username || '-');
+      const badge = document.createElement('span');
+      badge.className = 'badge bg-dark';
+      badge.textContent = String(row.total_actions || 0);
+      li.appendChild(a);
+      li.appendChild(badge);
       list.appendChild(li);
     });
   }
@@ -183,7 +190,7 @@
   function updatePresenceTable(presence) {
     const tbody = document.querySelector('#presenceTable tbody');
     if (!tbody) return;
-    tbody.innerHTML = '';
+    tbody.textContent = '';
     if (!Array.isArray(presence) || !presence.length) {
       tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin presencia reciente.</td></tr>';
       return;
@@ -196,16 +203,41 @@
         : (status === 'idle'
           ? 'bg-warning text-dark'
           : (status === 'hidden' ? 'bg-secondary' : 'bg-light text-dark border'));
-      tr.innerHTML = [
-        '<td>' + (p.username || '-') + ' <small class="text-muted">(' + (p.role || '-') + ')</small></td>',
-        '<td><span class="badge ' + badge + '">' + String(p.status || '').toUpperCase() + '</span></td>',
-        '<td><small>' + (p.route_human || '-') + '</small></td>',
-        '<td><small title="' + (p.current_path || '-') + '">' + (p.current_path || '-') + '</small></td>',
-        '<td><small>' + (p.current_action_human || p.last_action_type || p.last_action_hint || 'sin acciones registradas') + '</small></td>',
-        '<td><small>' + (p.last_interaction_human || ('Hace ' + Number(p.last_interaction_seconds || 0) + 's')) + '</small></td>',
-        '<td><small>' + (p.entity_display || '-') + '</small></td>',
-        '<td>Hace ' + (p.last_seen_seconds || 0) + 's</td>'
-      ].join('');
+
+      const addCell = (value, options) => {
+        const td = document.createElement('td');
+        if (options && options.useSmall) {
+          const small = document.createElement('small');
+          small.textContent = String(value);
+          if (options.title) small.title = String(options.title);
+          td.appendChild(small);
+        } else {
+          td.textContent = String(value);
+        }
+        tr.appendChild(td);
+      };
+
+      const userTd = document.createElement('td');
+      userTd.appendChild(document.createTextNode(String(p.username || '-') + ' '));
+      const userRole = document.createElement('small');
+      userRole.className = 'text-muted';
+      userRole.textContent = '(' + String(p.role || '-') + ')';
+      userTd.appendChild(userRole);
+      tr.appendChild(userTd);
+
+      const statusTd = document.createElement('td');
+      const statusSpan = document.createElement('span');
+      statusSpan.className = 'badge ' + badge;
+      statusSpan.textContent = String(p.status || '').toUpperCase();
+      statusTd.appendChild(statusSpan);
+      tr.appendChild(statusTd);
+
+      addCell(p.route_human || '-', { useSmall: true });
+      addCell(p.current_path || '-', { useSmall: true, title: (p.current_path || '-') });
+      addCell(p.current_action_human || p.last_action_type || p.last_action_hint || 'sin acciones registradas', { useSmall: true });
+      addCell(p.last_interaction_human || ('Hace ' + Number(p.last_interaction_seconds || 0) + 's'), { useSmall: true });
+      addCell(p.entity_display || '-', { useSmall: true });
+      addCell('Hace ' + (p.last_seen_seconds || 0) + 's');
       tbody.appendChild(tr);
     });
   }
@@ -226,10 +258,22 @@
       box.innerHTML = '';
       return;
     }
-    box.innerHTML = rows.map((c) => {
+    box.textContent = '';
+    rows.forEach((c) => {
       const users = Array.isArray(c.users) ? c.users.join(', ') : '';
-      return '<div class="alert alert-warning py-2 mb-2"><strong>Conflicto:</strong> ' + (c.message || 'Conflicto de edicion') + ' - ' + (c.entity_display || '-') + (users ? ' (' + users + ')' : '') + '</div>';
-    }).join('');
+      const alert = document.createElement('div');
+      alert.className = 'alert alert-warning py-2 mb-2';
+
+      const strong = document.createElement('strong');
+      strong.textContent = 'Conflicto:';
+      alert.appendChild(strong);
+
+      const detail = document.createTextNode(
+        ' ' + String(c.message || 'Conflicto de edicion') + ' - ' + String(c.entity_display || '-') + (users ? ' (' + users + ')' : '')
+      );
+      alert.appendChild(detail);
+      box.appendChild(alert);
+    });
   }
 
   function updateActivityStream(items) {
@@ -319,13 +363,30 @@
       tr.dataset.total = String(Number(row.total || 0));
       if (idx === 0) tr.classList.add('table-warning');
       if (changed) tr.classList.add('table-info');
-      tr.innerHTML = [
-        '<td>' + (row.username || '-') + ' <small class="text-muted">(' + (row.role || '-') + ')</small>' + (idx === 0 ? '<span class="badge bg-dark ms-1">Top</span>' : '') + '</td>',
-        '<td>' + Number(row.edits || 0) + '</td>',
-        '<td>' + Number(row.interviews || 0) + '</td>',
-        '<td>' + Number(row.sent || 0) + '</td>',
-        '<td><strong>' + Number(row.total || 0) + '</strong></td>'
-      ].join('');
+      const firstTd = document.createElement('td');
+      firstTd.appendChild(document.createTextNode(String(row.username || '-') + ' '));
+      const role = document.createElement('small');
+      role.className = 'text-muted';
+      role.textContent = '(' + String(row.role || '-') + ')';
+      firstTd.appendChild(role);
+      if (idx === 0) {
+        const top = document.createElement('span');
+        top.className = 'badge bg-dark ms-1';
+        top.textContent = 'Top';
+        firstTd.appendChild(top);
+      }
+      tr.appendChild(firstTd);
+
+      [Number(row.edits || 0), Number(row.interviews || 0), Number(row.sent || 0)].forEach((value) => {
+        const td = document.createElement('td');
+        td.textContent = String(value);
+        tr.appendChild(td);
+      });
+      const totalTd = document.createElement('td');
+      const strong = document.createElement('strong');
+      strong.textContent = String(Number(row.total || 0));
+      totalTd.appendChild(strong);
+      tr.appendChild(totalTd);
       tbody.appendChild(tr);
       if (changed) {
         setTimeout(() => tr.classList.remove('table-info'), 1200);

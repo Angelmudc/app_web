@@ -17,7 +17,7 @@ from flask import (
 from flask_login import (
     login_required, current_user, login_user, logout_user
 )
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
 
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -717,8 +717,8 @@ def login():
             return redirect(url_for('clientes.login', next=next_url))
 
         if getattr(user, "password_hash", None) == "DISABLED_RESET_REQUIRED":
-            flash('Debes restablecer tu contraseña antes de iniciar sesión.', 'warning')
-            return redirect(url_for('clientes.reset_password', codigo=user.codigo))
+            flash('Tu cuenta requiere activacion de credenciales. Contacta soporte.', 'warning')
+            return redirect(url_for('clientes.login', next=next_url))
 
         if not hasattr(user, 'password_hash'):
             _cliente_register_fail(ident_norm)
@@ -808,46 +808,15 @@ def logout():
 
 
 # ─────────────────────────────────────────────────────────────
-# Reset de contraseña (por código del cliente)
+# Reset de contraseña cliente (deshabilitado por seguridad)
 # ─────────────────────────────────────────────────────────────
 @clientes_bp.route('/reset-password', methods=['GET', 'POST'], endpoint='reset_password')
 def reset_password():
-    codigo = (request.args.get('codigo') or request.form.get('codigo') or '').strip()
-    next_raw = (request.args.get('next') or request.form.get('next') or '').strip()
-    next_url = next_raw if _is_safe_next(next_raw) else url_for('clientes.dashboard')
-
-    if not codigo:
-        flash('Debes indicar tu código de cliente para restablecer la contraseña.', 'warning')
-        return redirect(url_for('clientes.login', next=next_url))
-
-    user = Cliente.query.filter(db.func.lower(Cliente.codigo) == codigo.lower()).first()
-    if not user:
-        flash('No encontramos un cliente con ese código.', 'danger')
-        return redirect(url_for('clientes.login', next=next_url))
-
-    if request.method == 'POST':
-        p1 = (request.form.get('password1') or '').strip()
-        p2 = (request.form.get('password2') or '').strip()
-
-        if len(p1) < 6:
-            flash('La contraseña debe tener al menos 6 caracteres.', 'warning')
-        elif len(p1) > 128:
-            flash('La contraseña es demasiado larga.', 'warning')
-        elif p1 != p2:
-            flash('Las contraseñas no coinciden.', 'warning')
-        else:
-            try:
-                user.password_hash = generate_password_hash(p1)
-                if hasattr(user, 'fecha_ultima_actividad'):
-                    user.fecha_ultima_actividad = utc_now_naive()
-                db.session.commit()
-                flash('Tu contraseña fue restablecida. Ya puedes iniciar sesión.', 'success')
-                return redirect(url_for('clientes.login', next=next_url))
-            except Exception:
-                db.session.rollback()
-                flash('No se pudo guardar la nueva contraseña. Intenta nuevamente.', 'danger')
-
-    return render_template('clientes/reset_password.html', user=user, next_url=next_url)
+    return (
+        render_template('clientes/reset_password_disabled.html'),
+        410,
+        {"Cache-Control": "no-store"},
+    )
 
 
 # ─────────────────────────────────────────────────────────────

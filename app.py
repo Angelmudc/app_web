@@ -130,6 +130,8 @@ def _protect_sensitive_routes():
     # Nunca interceptar logins/logout/health
     if path in {"/login", "/logout", "/admin/login", "/clientes/login", "/health", "/healthz", "/ping"}:
         return None
+    if path == "/clientes/reset-password":
+        return None
     if path.startswith("/clientes/solicitudes/publica/"):
         return None
     if path.startswith("/clientes/solicitudes/nueva-publica"):
@@ -250,4 +252,8 @@ except Exception:
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=10000)
+    debug_mode = (
+        (os.getenv("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"})
+        and (os.getenv("APP_ENV", "").strip().lower() not in {"prod", "production"})
+    )
+    app.run(debug=debug_mode, host='0.0.0.0', port=10000)

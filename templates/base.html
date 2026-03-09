@@ -274,6 +274,15 @@
           </li>
           {% endif %}
 
+          {% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.logout') %}
+          <li class="nav-item ms-lg-2">
+            <form method="post" action="{{ url_for('admin.logout') }}" class="m-0">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-outline-danger btn-sm" type="submit">Cerrar sesion</button>
+            </form>
+          </li>
+          {% endif %}
+
         </ul>
       </div>
     </div>

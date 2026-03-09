@@ -27,17 +27,36 @@
     }
   }
 
+  function escapeHtml(raw) {
+    return String(raw || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function safeUrl(raw) {
+    try {
+      const u = new URL(String(raw || ""), window.location.origin);
+      if (u.origin !== window.location.origin) return "#";
+      return u.pathname + u.search + u.hash;
+    } catch (_e) {
+      return "#";
+    }
+  }
+
   function notifItemHtml(item) {
     const unreadCls = item.is_read ? "" : " unread";
     const stateLabel = item.is_read ? "Leida" : "No leida";
     return [
-      `<article class="client-notif-item${unreadCls}" data-id="${item.id}">`,
-      `<div class="fw-semibold">${item.title || "Notificacion"}</div>`,
-      `<div class="small text-muted">${item.body || ""}</div>`,
-      `<div class="client-notif-meta mt-1">${fmtDate(item.created_at)} · ${stateLabel}</div>`,
+      `<article class="client-notif-item${unreadCls}" data-id="${escapeHtml(item.id)}">`,
+      `<div class="fw-semibold">${escapeHtml(item.title || "Notificacion")}</div>`,
+      `<div class="small text-muted">${escapeHtml(item.body || "")}</div>`,
+      `<div class="client-notif-meta mt-1">${escapeHtml(fmtDate(item.created_at))} · ${escapeHtml(stateLabel)}</div>`,
       `<div class="client-notif-actions">`,
-      `<button type="button" class="btn btn-sm btn-primary" data-action="view" data-id="${item.id}" data-url="${item.url || "#"}">Ver</button>`,
-      `<button type="button" class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${item.id}">Eliminar</button>`,
+      `<button type="button" class="btn btn-sm btn-primary" data-action="view" data-id="${escapeHtml(item.id)}" data-url="${escapeHtml(safeUrl(item.url || "#"))}">Ver</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${escapeHtml(item.id)}">Eliminar</button>`,
       `</div>`,
       `</article>`,
     ].join("");

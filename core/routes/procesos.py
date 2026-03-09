@@ -7,7 +7,7 @@ RULES = [
     ('/robots.txt', 'robots_txt', h.robots_txt, ['GET']),
     ('/home', 'home', h.home, ['GET']),
     ('/login', 'login', h.login, ['GET', 'POST']),
-    ('/logout', 'logout', h.logout, ['GET']),
+    ('/logout', 'logout', h.logout, ['POST']),
     ('/inscripcion', 'inscripcion', h.inscripcion, ['GET', 'POST']),
     ('/porciento', 'porciento', h.porciento, ['GET', 'POST']),
     ('/pagos', 'pagos', h.pagos, ['GET', 'POST']),

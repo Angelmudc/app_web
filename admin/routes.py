@@ -215,16 +215,38 @@ def _audit_log(
 
 def _form_snapshot_payload() -> dict[str, object]:
     payload: dict[str, object] = {}
+    sensitive_tokens = {
+        "password",
+        "password_confirm",
+        "clave",
+        "token",
+        "csrf",
+        "secret",
+        "telefono",
+        "phone",
+        "whatsapp",
+        "cedula",
+        "documento",
+        "direccion",
+        "email",
+        "correo",
+    }
     try:
-        for key in sorted((request.form or {}).keys()):
-            if str(key).lower() in {"password", "password_confirm", "clave"}:
-                payload[str(key)] = "<hidden>"
+        form_keys = sorted((request.form or {}).keys())
+        for idx, key in enumerate(form_keys):
+            key_txt = str(key)
+            key_low = key_txt.lower()
+            if any(token in key_low for token in sensitive_tokens):
+                payload[key_txt] = "<redacted>"
                 continue
             vals = request.form.getlist(key)
             if len(vals) > 1:
-                payload[str(key)] = [str(v)[:200] for v in vals[:20]]
+                payload[key_txt] = [str(v)[:120] for v in vals[:10]]
             else:
-                payload[str(key)] = str((vals[0] if vals else ""))[:200]
+                payload[key_txt] = str((vals[0] if vals else ""))[:120]
+            if idx >= 60:
+                payload["_truncated"] = True
+                break
     except Exception:
         return {}
     return payload
@@ -1331,7 +1353,7 @@ def login():
     return render_template('admin/login.html', error=error)
 
 
-@admin_bp.route('/logout')
+@admin_bp.route('/logout', methods=['POST'])
 @login_required
 def logout():
     try:
@@ -2859,7 +2881,20 @@ def _resolve_candidata_from_entity_id(entity_id: str):
 
 def _sanitize_monitoreo_metadata(meta: dict | None) -> dict:
     out = dict(meta or {})
-    for key in ("telefono", "numero_telefono", "phone", "phone_number", "whatsapp"):
+    for key in (
+        "telefono",
+        "numero_telefono",
+        "phone",
+        "phone_number",
+        "whatsapp",
+        "cedula",
+        "dni",
+        "documento",
+        "direccion",
+        "address",
+        "email",
+        "correo",
+    ):
         out.pop(key, None)
     return out
 
@@ -4377,6 +4412,11 @@ def nuevo_cliente():
                 raw_pw = (raw_pw or '').strip()
                 # Si mandan contraseña, la seteamos. Si no, dejamos el server_default (DISABLED_RESET_REQUIRED)
                 if raw_pw:
+                    if len(raw_pw) < 8:
+                        if hasattr(form, 'password'):
+                            form.password.errors.append("La contraseña debe tener al menos 8 caracteres.")
+                        flash("La contraseña debe tener al menos 8 caracteres.", "danger")
+                        return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
                     # Fuerza PBKDF2 (compatibilidad): algunos Python/macOS pueden no traer hashlib.scrypt
                     c.password_hash = generate_password_hash(raw_pw, method="pbkdf2:sha256")
 
@@ -4507,6 +4547,11 @@ def editar_cliente(cliente_id):
                 raw_pw = request.form.get('password')
             raw_pw = (raw_pw or '').strip()
             if raw_pw:
+                if len(raw_pw) < 8:
+                    if hasattr(form, 'password'):
+                        form.password.errors.append("La contraseña debe tener al menos 8 caracteres.")
+                    flash("La contraseña debe tener al menos 8 caracteres.", "danger")
+                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
                 password_to_set = raw_pw
 
         # --- Guardar cambios (sin populate_obj) ---

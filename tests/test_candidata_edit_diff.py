@@ -62,5 +62,7 @@ def test_candidata_edit_diff_has_from_to_values():
         assert log is not None
         assert isinstance(log.changes_json, dict)
         assert 'numero_telefono' in log.changes_json
-        assert log.changes_json['numero_telefono']['from'] == '8092222222'
-        assert log.changes_json['numero_telefono']['to'] == '8099999999'
+        assert log.changes_json['numero_telefono']['from'] in ('<redacted>', '<hidden>') or log.changes_json['numero_telefono']['from'].startswith('***')
+        assert log.changes_json['numero_telefono']['to'] in ('<redacted>', '<hidden>') or log.changes_json['numero_telefono']['to'].startswith('***')
+        assert log.changes_json['numero_telefono']['from'] != '8092222222'
+        assert log.changes_json['numero_telefono']['to'] != '8099999999'
