@@ -1,7 +1,110 @@
 {% extends 'base.html' %}
 {% block title %}{{ 'Nueva Solicitud' if nuevo else ('Solicitud ' ~ solicitud.codigo_solicitud) }} | Doméstica del Cibao A&D{% endblock %}
 
-{% block extra_head %}{% endblock %}
+{% block extra_head %}
+<style>
+  .admin-solicitud-form {
+    --asf-surface-1: #1f2a38;
+    --asf-surface-2: #243447;
+    --asf-border: #364b63;
+    --asf-label: #d9e5f2;
+    --asf-text: #eef5ff;
+    --asf-muted: #9fb2c7;
+    --asf-input-bg: #1b2633;
+    --asf-input-border: #415a73;
+    --asf-input-text: #edf4ff;
+    --asf-chip-bg: #1f2f42;
+    --asf-chip-border: #4c6784;
+    --asf-chip-selected-bg: #23435e;
+    --asf-chip-selected-border: #6ca6d0;
+    --asf-focus: rgba(108, 166, 208, 0.28);
+  }
+
+  .admin-solicitud-form .public-form-card {
+    background: linear-gradient(180deg, var(--asf-surface-1) 0%, var(--asf-surface-2) 100%);
+    border-color: var(--asf-border);
+    box-shadow: 0 10px 24px rgba(8, 13, 20, 0.35);
+  }
+
+  .admin-solicitud-form .public-form-card-header {
+    border-bottom-color: rgba(145, 173, 202, 0.28);
+  }
+
+  .admin-solicitud-form .public-form-card-title {
+    color: var(--asf-text);
+  }
+
+  .admin-solicitud-form .public-form-card-desc,
+  .admin-solicitud-form .public-field-hint {
+    color: var(--asf-muted);
+  }
+
+  .admin-solicitud-form .public-field-label {
+    color: var(--asf-label);
+  }
+
+  .admin-solicitud-form .form-control,
+  .admin-solicitud-form .form-select {
+    background: var(--asf-input-bg);
+    border-color: var(--asf-input-border);
+    color: var(--asf-input-text);
+  }
+
+  .admin-solicitud-form .form-control::placeholder {
+    color: #8fa4ba;
+  }
+
+  .admin-solicitud-form .form-control:focus,
+  .admin-solicitud-form .form-select:focus,
+  .admin-solicitud-form .form-check-input:focus {
+    border-color: #6ca6d0;
+    box-shadow: 0 0 0 .24rem var(--asf-focus);
+  }
+
+  .admin-solicitud-form .public-choice-grid,
+  .admin-solicitud-form .public-segmented,
+  .admin-solicitud-form .public-switch-wrap {
+    background: rgba(15, 22, 31, 0.55);
+    border-color: var(--asf-border);
+  }
+
+  .admin-solicitud-form .public-choice-item,
+  .admin-solicitud-form .public-segmented-item span {
+    background: var(--asf-chip-bg);
+    border-color: var(--asf-chip-border);
+    color: #d5e4f5;
+  }
+
+  .admin-solicitud-form .public-choice-item:hover,
+  .admin-solicitud-form .public-segmented-item span:hover {
+    border-color: #78a9d0;
+    background: #294158;
+  }
+
+  .admin-solicitud-form .public-choice-item.is-selected,
+  .admin-solicitud-form .public-segmented-item input[type="radio"]:checked + span {
+    border-color: var(--asf-chip-selected-border);
+    background: var(--asf-chip-selected-bg);
+    color: #f4f9ff;
+    box-shadow: inset 0 0 0 1px rgba(108, 166, 208, 0.28);
+  }
+
+  .admin-solicitud-form .form-check-input {
+    background-color: #1f2f42;
+    border-color: #6b88a5;
+  }
+
+  .admin-solicitud-form .form-check-input:checked {
+    background-color: #6ca6d0;
+    border-color: #6ca6d0;
+  }
+
+  .admin-solicitud-form .text-danger,
+  .admin-solicitud-form .invalid-feedback {
+    color: #ffb3b3 !important;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="py-4">
@@ -62,7 +165,9 @@
         </div>
       </section>
 
-      {% include 'clientes/_solicitud_form_fields.html' %}
+      <div class="admin-solicitud-form">
+        {% include 'clientes/_solicitud_form_fields.html' %}
+      </div>
 
       <section class="mt-4">
         <div class="divider"></div>

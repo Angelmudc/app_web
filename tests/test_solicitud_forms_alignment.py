@@ -19,6 +19,7 @@ def test_public_admin_and_client_templates_use_shared_core_partial():
     assert include_stmt in public_tpl
     assert include_stmt in admin_tpl
     assert include_stmt in cliente_tpl
+    assert 'class="admin-solicitud-form"' in admin_tpl
 
 
 def test_shared_partial_keeps_core_order_aligned():
@@ -56,4 +57,3 @@ def test_shared_partial_renders_pasaje_three_options_and_otro_field():
     assert "name=\"pasaje_mode\" value=\"aparte\"" in partial
     assert "name=\"pasaje_mode\" value=\"otro\"" in partial
     assert "name=\"pasaje_otro_text\"" in partial
-
