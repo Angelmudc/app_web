@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 980px; margin: 28px auto;">
+  <div class="card border-0 shadow-sm" style="border-radius: 16px; overflow: hidden;">
+    <div class="card-body p-4 p-lg-5">
+
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+        <div>
+          <h2 class="h4 mb-1">Link público para cliente nuevo</h2>
+          <p class="text-muted mb-0">Enlace seguro de un solo uso para registrar cliente nuevo y su solicitud en un solo formulario.</p>
+        </div>
+        <span class="badge rounded-pill text-bg-light border">Vigencia: {{ max_age_days }} días</span>
+      </div>
+
+      <label class="form-label fw-semibold" for="linkPublicoNuevo">Enlace generado</label>
+      <input
+        id="linkPublicoNuevo"
+        class="form-control"
+        type="text"
+        value="{{ link_publico }}"
+        readonly
+        style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
+      />
+
+      <div class="alert alert-info mt-3 mb-0" role="alert">
+        Este enlace es de un solo uso. Compártelo únicamente con el cliente que llenará la solicitud.
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button class="btn btn-primary" type="button" onclick="copyLinkNuevo()">Copiar enlace</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin.listar_clientes') }}">Volver a clientes</a>
+      </div>
+
+      <small id="copyMsgNuevo" class="text-muted d-block mt-2"></small>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  function copyLinkNuevo() {
+    var input = document.getElementById('linkPublicoNuevo');
+    input.select();
+    input.setSelectionRange(0, 999999);
+    document.execCommand('copy');
+    document.getElementById('copyMsgNuevo').innerText = 'Enlace copiado correctamente.';
+  }
+</script>
+
+{% endblock %}

@@ -36,7 +36,13 @@ def handle_csrf_error(e):
             reason_key='csrf',
             status_code=400,
         ), 400
-    if path.startswith('/clientes/solicitudes/nueva-publica'):
+    if path.startswith('/clientes/solicitudes/nueva-publica/'):
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key='csrf',
+            status_code=400,
+        ), 400
+    if path == '/clientes/solicitudes/nueva-publica':
         return redirect(url_for('clientes.solicitud_publica_nueva'))
     return e
 

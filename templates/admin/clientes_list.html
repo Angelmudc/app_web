@@ -38,25 +38,25 @@
         </a>
       </div>
       <div class="btn-group" role="group" aria-label="Acceso formulario público cliente nuevo">
-        <a href="{{ url_for('clientes.solicitud_publica_nueva') }}"
+        <a href="{{ url_for('admin.generar_link_publico_cliente_nuevo') }}"
            target="_blank"
            rel="noopener noreferrer"
            class="btn btn-outline-dark"
-           title="Abre el formulario público para clientes nuevos">
+           title="Genera un enlace seguro de un solo uso para clientes nuevos">
           <i class="fa-solid fa-up-right-from-square"></i> Formulario clientes nuevos
         </a>
         <button type="button"
                 class="btn btn-outline-secondary"
                 id="copyPublicNewClientLinkBtn"
-                data-link="{{ url_for('clientes.solicitud_publica_nueva') }}"
-                title="Copiar enlace para compartir con clientes nuevos">
-          <i class="fa-solid fa-link"></i> Copiar enlace
+                data-link="{{ url_for('admin.generar_link_publico_cliente_nuevo') }}"
+                title="Abrir generador de enlace seguro">
+          <i class="fa-solid fa-link"></i> Generar enlace
         </button>
       </div>
     </div>
   </div>
   <div class="small text-muted mb-3">
-    Este enlace público es para clientes nuevos: crea cliente y solicitud en un solo flujo.
+    Usa el generador para crear un enlace tokenizado de un solo uso para clientes nuevos.
   </div>
 
   <form class="row g-2 align-items-center mb-3" method="get" action="{{ url_for('admin.listar_clientes') }}">
@@ -176,32 +176,10 @@
   var btn = document.getElementById('copyPublicNewClientLinkBtn');
   if (!btn) return;
 
-  function copyFallback(text) {
-    var input = document.createElement('input');
-    input.value = text;
-    document.body.appendChild(input);
-    input.select();
-    document.execCommand('copy');
-    document.body.removeChild(input);
-  }
-
   btn.addEventListener('click', function () {
-    var rawPath = btn.getAttribute('data-link') || '';
-    var link = rawPath ? (window.location.origin + rawPath) : '';
-    if (!link) return;
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(function () {
-        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
-      }).catch(function () {
-        copyFallback(link);
-        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
-      });
-      return;
-    }
-
-    copyFallback(link);
-    btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
+    var target = btn.getAttribute('data-link') || '';
+    if (!target) return;
+    window.open(target, '_blank', 'noopener,noreferrer');
   });
 })();
 </script>

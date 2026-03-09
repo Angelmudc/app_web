@@ -32,6 +32,7 @@ try:
         SolicitudCandidata,
         ClienteNotificacion,
         PublicSolicitudTokenUso,
+        PublicSolicitudClienteNuevoTokenUso,
     )
 except Exception:
     from models import Cliente, Solicitud
@@ -40,6 +41,7 @@ except Exception:
     SolicitudCandidata = None
     ClienteNotificacion = None
     PublicSolicitudTokenUso = None
+    PublicSolicitudClienteNuevoTokenUso = None
 
 from utils import letra_por_indice
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
@@ -253,7 +255,7 @@ def _clientes_force_login_view():
         'clientes.reset_password',
         'clientes.solicitud_publica',
         'clientes.solicitud_publica_nueva',
-        'clientes.solicitud_publica_nueva_exito',
+        'clientes.solicitud_publica_nueva_token',
         'clientes.politicas',
         'clientes.aceptar_politicas',
         'clientes.rechazar_politicas',
@@ -311,6 +313,10 @@ def _norm_text(v: str) -> str:
     return s.lower()
 
 
+def _norm_phone_digits(v: str) -> str:
+    return re.sub(r"\D", "", (v or "").strip())
+
+
 def _cliente_codigo_to_int(codigo: str) -> Optional[int]:
     raw = str(codigo or "").strip()
     if not raw:
@@ -343,6 +349,29 @@ def _next_cliente_codigo_publico() -> str:
         if parsed > max_seen:
             max_seen = parsed
     return _format_cliente_codigo(max_seen + 1)
+
+
+def _find_cliente_contact_duplicate(email_norm: str, phone_raw: str):
+    email_norm = _norm_email(email_norm)
+    if email_norm:
+        row = Cliente.query.filter(db.func.lower(Cliente.email) == email_norm).first()
+        if row is not None:
+            return row, "email"
+
+    phone_digits = _norm_phone_digits(phone_raw)
+    if not phone_digits:
+        return None, ""
+
+    try:
+        phone_rows = Cliente.query.with_entities(Cliente.id, Cliente.telefono).all()
+    except Exception:
+        phone_rows = []
+    for rid, tel in phone_rows:
+        if _norm_phone_digits(tel or "") == phone_digits:
+            row = Cliente.query.filter_by(id=int(rid)).first()
+            if row is not None:
+                return row, "telefono"
+    return None, ""
 
 
 def _public_link_serializer() -> URLSafeTimedSerializer:
@@ -398,6 +427,87 @@ def _public_link_usage_by_hash(token_hash: str):
         return PublicSolicitudTokenUso.query.filter_by(token_hash=token_hash).first()
     except Exception:
         return None
+
+
+def _public_new_link_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(
+        current_app.config["SECRET_KEY"],
+        salt="clientes-solicitud-publica-nueva"
+    )
+
+
+def _public_new_link_max_age_seconds() -> int:
+    raw_days = (os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "30").strip()
+    try:
+        days = int(raw_days)
+    except Exception:
+        days = 30
+    days = min(365, max(1, days))
+    return int(timedelta(days=days).total_seconds())
+
+
+_PUBLIC_NEW_TOKEN_USAGE_TABLE_READY = False
+
+
+def _ensure_public_new_token_usage_table() -> bool:
+    global _PUBLIC_NEW_TOKEN_USAGE_TABLE_READY
+    if _PUBLIC_NEW_TOKEN_USAGE_TABLE_READY:
+        return True
+    if PublicSolicitudClienteNuevoTokenUso is None:
+        return False
+    if bool(current_app.config.get("TESTING")):
+        _PUBLIC_NEW_TOKEN_USAGE_TABLE_READY = True
+        return True
+    try:
+        PublicSolicitudClienteNuevoTokenUso.__table__.create(bind=db.engine, checkfirst=True)
+        _PUBLIC_NEW_TOKEN_USAGE_TABLE_READY = True
+        return True
+    except Exception:
+        current_app.logger.exception("No se pudo asegurar la tabla de tokens publicos nuevos usados")
+        return False
+
+
+def _public_new_link_usage_by_hash(token_hash: str):
+    if PublicSolicitudClienteNuevoTokenUso is None or not token_hash:
+        return None
+    try:
+        return PublicSolicitudClienteNuevoTokenUso.query.filter_by(token_hash=token_hash).first()
+    except Exception:
+        return None
+
+
+def generar_token_publico_cliente_nuevo(*, created_by: str = "") -> str:
+    ser = _public_new_link_serializer()
+    payload = {
+        "v": 1,
+        "purpose": "solicitud_publica_nueva",
+        "nonce": secrets.token_urlsafe(18),
+        "by": str(created_by or "")[:80],
+    }
+    return ser.dumps(payload)
+
+
+def _resolve_public_new_link_token(token: str):
+    metadata: dict = {}
+    try:
+        payload = _public_new_link_serializer().loads(token, max_age=_public_new_link_max_age_seconds())
+    except SignatureExpired:
+        return False, "expired", metadata
+    except BadSignature:
+        return False, "invalid_signature", metadata
+    except Exception:
+        return False, "invalid_payload", metadata
+
+    if not isinstance(payload, dict):
+        return False, "invalid_payload", metadata
+    purpose = (payload.get("purpose") or "").strip().lower()
+    if purpose != "solicitud_publica_nueva":
+        return False, "invalid_purpose", metadata
+    nonce = (payload.get("nonce") or "").strip()
+    if not nonce:
+        return False, "invalid_nonce", metadata
+    metadata["issued_by"] = str(payload.get("by") or "")[:80]
+    return True, "", metadata
 
 
 def _cliente_public_link_fingerprint(cliente: Cliente) -> str:
@@ -2386,6 +2496,64 @@ def compat_recalcular(solicitud_id):
 
 @clientes_bp.route('/solicitudes/nueva-publica', methods=['GET', 'POST'])
 def solicitud_publica_nueva():
+    flash("Este formulario requiere un enlace seguro. Solicítalo a la agencia.", "warning")
+    return render_template(
+        'clientes/public_link_invalid.html',
+        reason_key="invalid",
+        status_code=404,
+    ), 404
+
+
+@clientes_bp.route('/solicitudes/nueva-publica/<token>', methods=['GET', 'POST'])
+def solicitud_publica_nueva_token(token):
+    if not _ensure_public_new_token_usage_table():
+        flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key="invalid",
+            status_code=503,
+        ), 503
+
+    token_hash_storage = _public_link_token_hash_storage(token)
+    used_row = _public_new_link_usage_by_hash(token_hash_storage)
+    if used_row is not None:
+        success_state = session.get("public_new_solicitud_success") or {}
+        show_success = (
+            request.method == "GET"
+            and (request.args.get("estado") or "").strip().lower() == "enviado"
+            and bool(success_state)
+            and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
+        )
+        if show_success:
+            session.pop("public_new_solicitud_success", None)
+            return render_template(
+                'clientes/public_new_success.html',
+                cliente_codigo=str(success_state.get("cliente_codigo") or ""),
+                solicitud_codigo=str(success_state.get("solicitud_codigo") or ""),
+                solicitud_id=int(success_state.get("solicitud_id") or 0) or None,
+            ), 200
+        return render_template(
+            'clientes/public_link_used.html',
+            used_at=getattr(used_row, "used_at", None),
+            solicitud=getattr(used_row, "solicitud", None),
+            solicitud_id=getattr(used_row, "solicitud_id", None),
+            status_code=410,
+        ), 410
+
+    token_ok, fail_reason, _token_meta = _resolve_public_new_link_token(token)
+    if not token_ok:
+        reason_key = "invalid"
+        status_code = 404
+        if fail_reason == "expired":
+            reason_key = "expired"
+            status_code = 410
+        flash("Este enlace no es válido o expiró. Solicita uno nuevo a la agencia.", "warning")
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key=reason_key,
+            status_code=status_code,
+        ), status_code
+
     form = SolicitudClienteNuevoPublicaForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
@@ -2427,9 +2595,13 @@ def solicitud_publica_nueva():
 
     if form.validate_on_submit():
         email_norm = (form.email_contacto.data or '').strip().lower()
-        email_exists = Cliente.query.filter(db.func.lower(Cliente.email) == email_norm).first()
-        if email_exists:
-            form.email_contacto.errors.append("Este correo ya está registrado.")
+        tel_raw = (form.telefono_contacto.data or '').strip()
+        dup_row, dup_field = _find_cliente_contact_duplicate(email_norm, tel_raw)
+        if dup_row is not None:
+            if dup_field == "email":
+                form.email_contacto.errors.append("Este correo ya está registrado.")
+            if dup_field == "telefono":
+                form.telefono_contacto.errors.append("Este teléfono ya está registrado.")
         else:
             now_ref = datetime.utcnow()
             state = {
@@ -2447,7 +2619,7 @@ def solicitud_publica_nueva():
                     codigo=codigo_cliente,
                     nombre_completo=(form.nombre_completo.data or '').strip(),
                     email=email_norm,
-                    telefono=(form.telefono_contacto.data or '').strip(),
+                    telefono=tel_raw,
                     ciudad=(form.ciudad_cliente.data or '').strip(),
                     sector=(form.sector_cliente.data or '').strip(),
                     role='cliente',
@@ -2535,6 +2707,18 @@ def solicitud_publica_nueva():
                 db.session.flush()
                 state["solicitud_id"] = int(getattr(s, "id", 0) or 0)
 
+                existing_usage = _public_new_link_usage_by_hash(token_hash_storage)
+                if existing_usage is not None:
+                    raise RuntimeError("token_already_used")
+                db.session.add(
+                    PublicSolicitudClienteNuevoTokenUso(
+                        token_hash=token_hash_storage,
+                        cliente_id=int(getattr(c, "id", 0) or 0) or None,
+                        solicitud_id=int(getattr(s, "id", 0) or 0) or None,
+                        used_at=now_ref,
+                    )
+                )
+
                 c.total_solicitudes = (c.total_solicitudes or 0) + 1
                 c.fecha_ultima_solicitud = now_ref
                 c.fecha_ultima_actividad = now_ref
@@ -2556,7 +2740,10 @@ def solicitud_publica_nueva():
                     return False
                 if str(getattr(s_row, "codigo_solicitud", "") or "") != str(state.get("solicitud_codigo") or ""):
                     return False
-                return True
+                usage = _public_new_link_usage_by_hash(token_hash_storage)
+                if usage is None:
+                    return False
+                return int(getattr(usage, "solicitud_id", 0) or 0) == int(getattr(s_row, "id", 0) or 0)
 
             result = execute_robust_save(
                 session=db.session,
@@ -2568,16 +2755,29 @@ def solicitud_publica_nueva():
 
             if result.ok:
                 session["public_new_solicitud_success"] = {
+                    "token_hash": token_hash_storage,
                     "cliente_codigo": str(state.get("cliente_codigo") or ""),
                     "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
                     "solicitud_id": int(state.get("solicitud_id") or 0),
                 }
-                return redirect(url_for('clientes.solicitud_publica_nueva_exito'))
+                return redirect(url_for('clientes.solicitud_publica_nueva_token', token=token, estado="enviado"))
+
+            usage_after_fail = _public_new_link_usage_by_hash(token_hash_storage)
+            if usage_after_fail is not None:
+                return render_template(
+                    'clientes/public_link_used.html',
+                    used_at=getattr(usage_after_fail, "used_at", None),
+                    solicitud=getattr(usage_after_fail, "solicitud", None),
+                    solicitud_id=getattr(usage_after_fail, "solicitud_id", None),
+                    status_code=410,
+                ), 410
 
             err = (result.error_message or '').lower()
-            if "clientes.email" in err or "email" in err:
+            if "email" in err:
                 form.email_contacto.errors.append("Este correo ya está registrado.")
-            elif "clientes.codigo" in err or "codigo" in err:
+            elif "telefono" in err:
+                form.telefono_contacto.errors.append("Este teléfono ya está registrado.")
+            elif "codigo" in err:
                 flash("No se pudo completar por una colisión de código. Intenta de nuevo.", "warning")
             else:
                 flash("No se pudo enviar la solicitud en este momento. Inténtalo de nuevo.", "danger")
@@ -2593,19 +2793,6 @@ def solicitud_publica_nueva():
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
         hide_ciudad_sector=True,
-    )
-
-
-@clientes_bp.route('/solicitudes/nueva-publica/exito', methods=['GET'])
-def solicitud_publica_nueva_exito():
-    payload = session.pop("public_new_solicitud_success", None) or {}
-    if not payload:
-        return redirect(url_for('clientes.solicitud_publica_nueva'))
-    return render_template(
-        'clientes/public_new_success.html',
-        cliente_codigo=str(payload.get("cliente_codigo") or ""),
-        solicitud_codigo=str(payload.get("solicitud_codigo") or ""),
-        solicitud_id=int(payload.get("solicitud_id") or 0) or None,
     )
 
 

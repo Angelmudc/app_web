@@ -112,7 +112,7 @@ from utils.rbac import (
 from . import admin_bp
 from .decorators import admin_required, staff_required
 
-from clientes.routes import generar_token_publico_cliente
+from clientes.routes import generar_token_publico_cliente, generar_token_publico_cliente_nuevo
 
 def _is_true_env(value: str, default: bool = False) -> bool:
     raw = (value or "").strip().lower()
@@ -9366,6 +9366,27 @@ def generar_link_publico_solicitud(cliente_id):
     return render_template(
         'admin/cliente_link_publico_solicitud.html',
         cliente=c,
+        link_publico=link,
+        max_age_days=max_age_days,
+    )
+
+
+@admin_bp.route('/solicitudes/nueva-publica/link', methods=['GET'])
+@login_required
+@staff_required
+def generar_link_publico_cliente_nuevo():
+    token = generar_token_publico_cliente_nuevo(
+        created_by=str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
+    )
+    link = url_for('clientes.solicitud_publica_nueva_token', token=token, _external=True)
+    try:
+        max_age_days = int((os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "30").strip())
+    except Exception:
+        max_age_days = 30
+    max_age_days = max(1, min(365, max_age_days))
+
+    return render_template(
+        'admin/cliente_nuevo_link_publico_solicitud.html',
         link_publico=link,
         max_age_days=max_age_days,
     )

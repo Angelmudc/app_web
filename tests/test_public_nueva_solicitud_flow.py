@@ -71,33 +71,48 @@ class _FakeNewPublicForm:
         return iter([])
 
 
-def test_new_public_form_get_renders_personal_block_and_shared_request_body():
+def test_open_route_is_blocked_without_token():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
     resp = client.get("/clientes/solicitudes/nueva-publica")
-    assert resp.status_code == 200
+    assert resp.status_code == 404
+    assert "requiere un enlace seguro".lower() in resp.get_data(as_text=True).lower()
 
+
+def test_new_public_form_token_get_renders_personal_block_and_shared_request_body():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+        resp = client.get("/clientes/solicitudes/nueva-publica/tok123")
+
+    assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Información del cliente" in html
     assert "Nombre completo" in html
     assert "Correo electrónico / Gmail" in html
     assert "Número de teléfono" in html
-    assert "Ciudad" in html
-    assert "Sector" in html
     assert "Informacion del servicio" in html
     assert "Requisitos y perfil" in html
 
 
-def test_new_public_form_invalid_post_stays_controlled_without_500():
+def test_new_public_form_token_invalid_returns_controlled_response():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
-    resp = client.post("/clientes/solicitudes/nueva-publica", data={}, follow_redirects=False)
-    assert resp.status_code == 200
-    assert "Revisa los campos marcados en rojo." in resp.get_data(as_text=True)
+    with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(False, "expired", {})):
+        resp = client.get("/clientes/solicitudes/nueva-publica/tokX")
+
+    assert resp.status_code == 410
+    assert "Enlace expirado" in resp.get_data(as_text=True)
 
 
 def test_next_cliente_codigo_publico_starts_from_2152():
@@ -113,63 +128,88 @@ def test_next_cliente_codigo_publico_continues_from_real_max_and_keeps_comma_for
             assert clientes_routes._next_cliente_codigo_publico() == "2,154"
 
 
-def test_next_cliente_codigo_publico_respects_manual_higher_code():
-    rows = [("2,152",), ("2,153",), ("2,500",)]
+def test_next_cliente_codigo_publico_respects_manual_higher_code_and_no_hole_fill():
+    rows = [("2,150",), ("2,152",), ("2,500",)]
     with flask_app.app_context():
         with patch("clientes.routes.db.session.query", return_value=SimpleNamespace(all=lambda: rows)):
             assert clientes_routes._next_cliente_codigo_publico() == "2,501"
 
 
-def test_next_cliente_codigo_publico_does_not_fill_holes_and_does_not_use_row_count():
-    # Hay hueco en 2,151 y pocas filas, pero el siguiente debe usar el mayor real.
-    rows = [("2,150",), ("2,152",), ("3,001",)]
-    with flask_app.app_context():
-        with patch("clientes.routes.db.session.query", return_value=SimpleNamespace(all=lambda: rows)):
-            assert clientes_routes._next_cliente_codigo_publico() == "3,002"
-
-
-def test_new_public_form_post_success_redirects_to_professional_success_view():
+def test_new_public_form_token_post_success_invalidates_token_and_second_access_is_blocked():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
     fake_form = _FakeNewPublicForm()
-    fake_query = SimpleNamespace(filter=lambda *_a, **_k: SimpleNamespace(first=lambda: None))
-    fake_cliente_model = SimpleNamespace(query=fake_query, email="email_col")
+    used_state = {"used": False}
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=88,
+        used_at=None,
+        solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
+    )
+
+    def _usage_side_effect(_token_hash):
+        return used_row if used_state["used"] else None
+
+    def _save_ok(*_args, **_kwargs):
+        used_state["used"] = True
+        return RobustSaveResult(ok=True, attempts=1, error_message="")
 
     with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
-         patch("clientes.routes.Cliente", fake_cliente_model), \
-         patch("clientes.routes.execute_robust_save", return_value=RobustSaveResult(ok=True, attempts=2, error_message="")):
-        resp = client.post("/clientes/solicitudes/nueva-publica", data={"dummy": "1"}, follow_redirects=False)
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
+         patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        second = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
     assert resp.status_code in (302, 303)
-    assert resp.location.endswith("/clientes/solicitudes/nueva-publica/exito")
+    assert "/clientes/solicitudes/nueva-publica/tok123" in (resp.location or "")
+    assert second.status_code == 410
+    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
 
 
-def test_new_public_success_page_uses_session_payload_once():
+def test_new_public_form_token_save_fail_keeps_token_valid():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
-    with client.session_transaction() as sess:
-        sess["public_new_solicitud_success"] = {
-            "cliente_codigo": "2,154",
-            "solicitud_codigo": "2,154-A",
-            "solicitud_id": 88,
-        }
+    fake_form = _FakeNewPublicForm()
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
+         patch("clientes.routes.execute_robust_save", return_value=RobustSaveResult(ok=False, attempts=1, error_message="forced")):
+        post = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        retry_get = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
-    ok = client.get("/clientes/solicitudes/nueva-publica/exito")
-    assert ok.status_code == 200
-    html = ok.get_data(as_text=True)
-    assert "2,154" in html
-    assert "2,154-A" in html
-
-    second = client.get("/clientes/solicitudes/nueva-publica/exito", follow_redirects=False)
-    assert second.status_code in (302, 303)
-    assert second.location.endswith("/clientes/solicitudes/nueva-publica")
+    assert post.status_code == 200
+    assert "No se pudo enviar la solicitud en este momento" in post.get_data(as_text=True)
+    assert retry_get.status_code == 200
 
 
-def test_token_public_flow_still_available_after_new_route_addition():
+def test_new_public_form_duplicate_email_or_phone_is_controlled():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    fake_form = _FakeNewPublicForm()
+    dup = SimpleNamespace(id=91, email="nuevo@example.com", telefono="809-123-4567")
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "email")):
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert "ya está registrado" in resp.get_data(as_text=True)
+
+
+def test_existing_token_public_flow_still_available():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
