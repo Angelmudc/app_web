@@ -100,6 +100,7 @@ def test_client_edit_get_preloads_otro_fields_as_selected():
             target(1)
 
     form = captured["ctx"]["form"]
+    assert (form.modalidad_trabajo.data or "").strip() == "Dormida"
     assert "otro" in (form.funciones.data or [])
     assert (getattr(form, "funciones_otro").data or "").strip()
     assert "otro" in (form.areas_comunes.data or [])
@@ -144,3 +145,5 @@ def test_shared_partial_has_independent_otro_wrappers_and_name_based_sync():
     assert 'id="wrap_pasaje_otro"' in content
     assert "function getFieldsByName(name)" in content
     assert "function syncOtherFields(fromUserEvent)" in content
+    assert "if (allRegularChecked()) setAll(false);" in content
+    assert "allMasterControls[mi].checked = false;" in content

@@ -705,12 +705,15 @@
     var gLabel = MODALIDAD_GROUP_LABELS[group] || '';
     var s = (specific || '').trim();
     var o = (otherText || '').trim();
+    function storageClean(v) {
+      return (v || '').replace(/💤/g, '').replace(/\s{2,}/g, ' ').trim();
+    }
     if (!gLabel) return '';
     if (!s) return gLabel;
     if (normModal(s).indexOf('otro') >= 0) {
-      return o ? (s + ': ' + o) : s;
+      return storageClean(o ? (s + ': ' + o) : s);
     }
-    return s;
+    return storageClean(s);
   }
 
   function syncModalidadGuided(fromUserEvent) {
@@ -882,20 +885,23 @@
       boxes[i].addEventListener('change', function () {
         var v = norm(this.value);
         if (v === 'todas_anteriores') {
-          setAll(this.checked);
+          if (allRegularChecked()) setAll(false);
+          else setAll(true);
+          this.checked = false;
         } else if (v === 'otro') {
-          if (this.checked) master.checked = false;
+          master.checked = false;
         } else if (!this.checked) {
           master.checked = false;
-        } else if (allRegularChecked()) {
-          master.checked = true;
         }
         syncOtherFields(true);
         syncChoiceSelectedState();
       });
     }
 
-    if (master.checked) setAll(true);
+    if (master.checked) {
+      setAll(true);
+      master.checked = false;
+    }
   }
 
   var pasajeHiddenField = byId('pasaje_aporte_hidden');
@@ -957,6 +963,10 @@
     hostForm.addEventListener('submit', function () {
       syncModalidadGuided(false);
       syncNinosRules(false);
+      var allMasterControls = document.querySelectorAll('input[type="checkbox"][value="todas_anteriores"]');
+      for (var mi = 0; mi < allMasterControls.length; mi++) {
+        allMasterControls[mi].checked = false;
+      }
       var note = document.querySelector('textarea[name="nota_cliente"]');
       if (!note) return;
       var modeNode = document.querySelector('input[name="pasaje_mode"]:checked');

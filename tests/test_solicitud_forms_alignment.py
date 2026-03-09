@@ -74,6 +74,7 @@ def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():
     assert "id='modalidad_trabajo_hidden'" in partial
     assert "function parseStoredModalidad(rawValue)" in partial
     assert "function composeModalidadValue(group, specific, otherText)" in partial
+    assert "replace(/💤/g, '')" in partial
     assert "Salida Quincenal, sale viernes después del medio día" in partial
     assert "Lunes a sábado, sale sábado después del medio día" in partial
 

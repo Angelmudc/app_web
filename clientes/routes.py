@@ -1335,6 +1335,34 @@ def _map_tipo_lugar(value, extra):
     return value
 
 
+def _allowed_codes_from_choices(choices):
+    try:
+        return {str(v).strip() for v, _ in (choices or []) if str(v).strip()}
+    except Exception:
+        return set()
+
+
+def _normalize_areas_comunes_selected(selected_vals, choices):
+    """
+    Normaliza áreas comunes y usa 'todas_anteriores' solo como control.
+    Nunca persiste 'todas_anteriores' como valor real.
+    """
+    vals = _clean_list(selected_vals)
+    allowed = _allowed_codes_from_choices(choices)
+    vals = [v for v in vals if v in allowed]
+
+    if 'todas_anteriores' in vals:
+        all_codes = [
+            str(code).strip()
+            for code, _ in (choices or [])
+            if str(code).strip() and str(code).strip() not in {'todas_anteriores', 'otro'}
+        ]
+        vals = [v for v in vals if v != 'todas_anteriores']
+        vals = _clean_list(vals + all_codes)
+
+    return [v for v in vals if v != 'todas_anteriores']
+
+
 
 def _money_sanitize(raw):
     if raw is None:
@@ -1550,7 +1578,10 @@ def nueva_solicitud():
             _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
             s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
-            s.areas_comunes  = _clean_list(form.areas_comunes.data)
+            s.areas_comunes  = _normalize_areas_comunes_selected(
+                form.areas_comunes.data,
+                form.areas_comunes.choices,
+            )
             s.edad_requerida = _map_edad_choices(
                 form.edad_requerida.data,
                 form.edad_requerida.choices,
@@ -1633,7 +1664,10 @@ def editar_solicitud(id):
 
     if request.method == 'GET':
         form.funciones.data      = _clean_list(s.funciones)
-        form.areas_comunes.data  = _clean_list(s.areas_comunes)
+        form.areas_comunes.data  = _normalize_areas_comunes_selected(
+            _clean_list(s.areas_comunes),
+            form.areas_comunes.choices,
+        )
 
         selected_codes, otro_text = _split_edad_for_form(
             stored_list=s.edad_requerida,
@@ -1716,7 +1750,10 @@ def editar_solicitud(id):
             _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
             s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
-            s.areas_comunes  = _clean_list(form.areas_comunes.data)
+            s.areas_comunes  = _normalize_areas_comunes_selected(
+                form.areas_comunes.data,
+                form.areas_comunes.choices,
+            )
             s.edad_requerida = _map_edad_choices(
                 form.edad_requerida.data,
                 form.edad_requerida.choices,
@@ -2654,8 +2691,9 @@ def solicitud_publica_nueva_token(token):
                 if hasattr(s, 'funciones_otro'):
                     s.funciones_otro = funciones_otro_clean or None
 
-                s.areas_comunes = _clean_list(
-                    getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
+                s.areas_comunes = _normalize_areas_comunes_selected(
+                    getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data,
+                    getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
                 ) or []
 
                 s.edad_requerida = _map_edad_choices(
@@ -3002,8 +3040,9 @@ def solicitud_publica(token):
             if hasattr(s, 'funciones_otro'):
                 s.funciones_otro = funciones_otro_clean or None
 
-            s.areas_comunes = _clean_list(
-                getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data
+            s.areas_comunes = _normalize_areas_comunes_selected(
+                getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data,
+                getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
             ) or []
 
             s.edad_requerida = _map_edad_choices(
