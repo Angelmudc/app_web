@@ -105,6 +105,11 @@ _CLIENTE_LOGIN_LOCK_MINUTOS = int((os.getenv("CLIENTE_LOGIN_LOCK_MINUTOS") or "1
 _CLIENTE_LOGIN_KEY_PREFIX   = "cliente_login"
 
 
+def _operational_rate_limits_enabled() -> bool:
+    raw = (os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS") or "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def _cliente_ip() -> str:
     trust_xff = (os.getenv("TRUST_XFF", "0").strip().lower() in ("1", "true", "yes", "on"))
     if trust_xff:
@@ -130,6 +135,8 @@ def _cache_ok() -> bool:
 
 
 def _cliente_is_locked(ident_norm: str) -> bool:
+    if not _operational_rate_limits_enabled():
+        return False
     if _cache_ok():
         keys = _cliente_login_keys(ident_norm)
         try:
@@ -140,6 +147,8 @@ def _cliente_is_locked(ident_norm: str) -> bool:
 
 
 def _cliente_register_fail(ident_norm: str) -> int:
+    if not _operational_rate_limits_enabled():
+        return 0
     if _cache_ok():
         keys = _cliente_login_keys(ident_norm)
         try:

@@ -145,6 +145,11 @@ def _staff_password_min_len() -> int:
         return 8
 
 
+def _operational_rate_limits_enabled() -> bool:
+    raw = (os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS") or "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def _admin_default_role() -> str:
     role = (os.getenv("ADMIN_DEFAULT_ROLE") or "secretaria").strip().lower()
     return role if role in ("owner", "admin", "secretaria") else "secretaria"
@@ -478,6 +483,8 @@ def _session_action_lock_left_seconds(usuario_norm: str, bucket: str = "default"
 
 
 def _admin_action_is_locked(usuario_norm: str, bucket: str = "default") -> bool:
+    if not _operational_rate_limits_enabled():
+        return False
     if _cache_ok():
         keys = _admin_action_keys(usuario_norm, bucket)
         try:
@@ -505,6 +512,8 @@ def _admin_action_lock_left_seconds(usuario_norm: str, bucket: str = "default") 
 
 
 def _admin_action_register(usuario_norm: str, bucket: str = "default") -> int:
+    if not _operational_rate_limits_enabled():
+        return 0
     mx, win, lock = _admin_action_limits(bucket)
 
     if _cache_ok():
@@ -543,6 +552,8 @@ def admin_action_limit(bucket: str = "default", max_actions: int | None = None, 
     def deco(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
+            if not _operational_rate_limits_enabled():
+                return fn(*args, **kwargs)
             try:
                 # usuario normalizado
                 try:
@@ -803,7 +814,7 @@ def _admin_guard_and_rate_limit():
                 abort(403)
 
         # Rate-limit solo para acciones que cambian cosas
-        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if _operational_rate_limits_enabled() and request.method in ("POST", "PUT", "PATCH", "DELETE"):
             usuario_norm = ""
             try:
                 usuario_norm = (current_user.get_id() or "").strip().lower()
@@ -953,6 +964,8 @@ def _session_reset_fail(usuario_norm: str):
 
 def _admin_is_locked(usuario_norm: str) -> bool:
     """Chequea lock (cache si sirve, si no sesión)."""
+    if not _operational_rate_limits_enabled():
+        return False
     if _cache_ok():
         keys = _admin_login_keys(usuario_norm)
         try:
@@ -988,6 +1001,8 @@ def _admin_fail_count(usuario_norm: str) -> int:
 
 def _admin_register_fail(usuario_norm: str) -> int:
     """Registra intento fallido y bloquea al llegar al máximo."""
+    if not _operational_rate_limits_enabled():
+        return 0
     if _cache_ok():
         keys = _admin_login_keys(usuario_norm)
         n = _admin_fail_count(usuario_norm) + 1

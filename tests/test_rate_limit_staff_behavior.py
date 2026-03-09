@@ -85,7 +85,7 @@ def test_staff_multi_tab_polling_no_false_429():
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
 
 
-def test_login_keeps_public_sensitive_protection():
+def test_login_does_not_trigger_operational_rate_blocking():
     prev_testing = bool(flask_app.config.get("TESTING"))
     prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
     flask_app.config["TESTING"] = False
@@ -97,13 +97,13 @@ def test_login_keeps_public_sensitive_protection():
         login_page = client.get("/admin/login", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
         csrf_token = _extract_csrf(login_page.data.decode("utf-8", errors="ignore"))
         assert csrf_token
-        got_429 = False
+        blocked = False
         for _ in range(20):
             resp = _login(client, "Cruz", "clave-incorrecta", ip, csrf_token)
             if resp.status_code == 429:
-                got_429 = True
+                blocked = True
                 break
-        assert got_429 is True
+        assert blocked is False
     finally:
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf

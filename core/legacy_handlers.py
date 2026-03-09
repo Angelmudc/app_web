@@ -763,6 +763,11 @@ LOGIN_LOCK_MINUTOS = int(os.getenv("LOGIN_LOCK_MINUTOS", "10"))  # minutos
 LOGIN_KEY_PREFIX   = "panel_login"
 
 
+def _operational_rate_limits_enabled() -> bool:
+    raw = (os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS") or "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def _client_ip() -> str:
     """Obtiene la IP del cliente.
     - En local: NO confía en cabeceras proxy.
@@ -814,6 +819,8 @@ def _login_keys(usuario_norm: str):
     }
 
 def _is_locked(usuario_norm: str) -> bool:
+    if not _operational_rate_limits_enabled():
+        return False
     keys = _login_keys(usuario_norm)
     return bool(cache.get(keys["lock"]))
 
@@ -826,6 +833,8 @@ def _fail_count(usuario_norm: str) -> int:
     return int(cache.get(keys["fail"]) or 0)
 
 def _register_fail(usuario_norm: str) -> int:
+    if not _operational_rate_limits_enabled():
+        return 0
     keys = _login_keys(usuario_norm)
     n = _fail_count(usuario_norm) + 1
     cache.set(keys["fail"], n, timeout=LOGIN_LOCK_MINUTOS * 60)

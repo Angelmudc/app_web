@@ -146,6 +146,9 @@ def init_security(app, cache):
     AUTH_WORK_MAX_REQ = int(os.getenv("AUTH_WORK_MAX_REQ", "180"))
     ADMIN_CRITICAL_WINDOW_SECONDS = int(os.getenv("ADMIN_CRITICAL_WINDOW_SECONDS", "60"))
     ADMIN_CRITICAL_MAX_REQ = int(os.getenv("ADMIN_CRITICAL_MAX_REQ", "60"))
+    # Kill-switch operativo: por defecto desactiva bloqueos de rate-limit
+    # para no interrumpir la operacion interna.
+    ENABLE_OPERATIONAL_RATE_LIMITS = _is_true(os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS", "0"))
 
     BOT_UA_PATTERNS = (
         "curl",
@@ -391,6 +394,8 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_scrape_guard():
+        if not ENABLE_OPERATIONAL_RATE_LIMITS:
+            return
         if bool(app.config.get("TESTING")):
             return
 
@@ -607,6 +612,8 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_bruteforce_login():
+        if not ENABLE_OPERATIONAL_RATE_LIMITS:
+            return
         if bool(app.config.get("TESTING")):
             return
 
