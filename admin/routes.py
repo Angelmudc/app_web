@@ -1617,11 +1617,41 @@ def eliminar_usuario(user_id: int):
     except Exception:
         pass
 
+    def _has_linked_history(staff_user: StaffUser) -> bool:
+        try:
+            has_audit = db.session.query(StaffAuditLog.id).filter(
+                StaffAuditLog.actor_user_id == int(staff_user.id)
+            ).first() is not None
+            if has_audit:
+                return True
+        except Exception:
+            return True
+
+        try:
+            username_norm = (getattr(staff_user, "username", "") or "").strip().lower()
+            if username_norm:
+                has_matching_activity = db.session.query(SolicitudCandidata.id).filter(
+                    func.lower(SolicitudCandidata.created_by) == username_norm
+                ).first() is not None
+                if has_matching_activity:
+                    return True
+        except Exception:
+            # Si la verificación secundaria falla, no bloqueamos; la fuente canónica
+            # para impedir borrado es la auditoría ligada por actor_user_id.
+            return False
+
+        return False
+
     try:
-        # Soft delete: desactiva usuario, no se elimina físicamente.
-        user.is_active = False
+        if _has_linked_history(user):
+            user.is_active = False
+            db.session.commit()
+            flash('Este usuario tiene actividad registrada y no puede eliminarse. Solo puede desactivarse.', 'warning')
+            return redirect(url_for('admin.listar_usuarios'))
+
+        db.session.delete(user)
         db.session.commit()
-        flash('Usuario desactivado (eliminación lógica).', 'success')
+        flash('Usuario eliminado definitivamente.', 'success')
     except SQLAlchemyError:
         db.session.rollback()
         flash('No se pudo eliminar el usuario.', 'danger')
