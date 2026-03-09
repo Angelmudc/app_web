@@ -9287,9 +9287,15 @@ def generar_link_publico_solicitud(cliente_id):
 
     token = generar_token_publico_cliente(c)
     link = url_for('clientes.solicitud_publica', token=token, _external=True)
+    try:
+        max_age_days = int((os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "30").strip())
+    except Exception:
+        max_age_days = 30
+    max_age_days = max(1, min(365, max_age_days))
 
     return render_template(
         'admin/cliente_link_publico_solicitud.html',
         cliente=c,
-        link_publico=link
+        link_publico=link,
+        max_age_days=max_age_days,
     )

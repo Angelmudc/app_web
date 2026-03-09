@@ -1,48 +1,55 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="container" style="max-width: 1100px; margin: 30px auto;">
-  <div class="card" style="padding: 22px;">
+<div class="container" style="max-width: 980px; margin: 28px auto;">
+  <div class="card border-0 shadow-sm" style="border-radius: 16px; overflow: hidden;">
+    <div class="card-body p-4 p-lg-5">
 
-    <h2 style="margin:0 0 8px 0;">Link público para crear solicitud</h2>
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+        <div>
+          <h2 class="h4 mb-1">Link público de solicitud</h2>
+          <p class="text-muted mb-0">Enlace seguro para que el cliente registre su solicitud desde fuera del portal.</p>
+        </div>
+        <span class="badge rounded-pill text-bg-light border">Vigencia: {{ max_age_days }} días</span>
+      </div>
 
-    <p style="margin:0 0 16px 0; opacity:.85;">
-      Cliente: <b>{{ cliente.nombre_completo }}</b> — Código: <b>{{ cliente.codigo }}</b>
-    </p>
+      <div class="rounded-3 border bg-light p-3 mb-3">
+        <div><strong>Cliente:</strong> {{ cliente.nombre_completo }}</div>
+        <div><strong>Código:</strong> {{ cliente.codigo }}</div>
+      </div>
 
-    <label style="display:block; margin-bottom:6px;">Copia y pega este link:</label>
+      <label class="form-label fw-semibold" for="linkPublico">Enlace generado</label>
+      <input
+        id="linkPublico"
+        class="form-control"
+        type="text"
+        value="{{ link_publico }}"
+        readonly
+        style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
+      />
 
-    <input
-      id="linkPublico"
-      class="form-control"
-      type="text"
-      value="{{ link_publico }}"
-      readonly
-      style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
-    />
+      <div class="alert alert-info mt-3 mb-0" role="alert">
+        Comparte este enlace únicamente con el cliente titular. Si se vence o se sospecha exposición, genera uno nuevo.
+      </div>
 
-    <div style="display:flex; gap:10px; margin-top: 12px;">
-      <button class="btn btn-primary" type="button" onclick="copyLink()">
-        Copiar link
-      </button>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button class="btn btn-primary" type="button" onclick="copyLink()">Copiar enlace</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}">Volver al cliente</a>
+      </div>
 
-      <a class="btn btn-secondary" href="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}">
-        Volver
-      </a>
+      <small id="copyMsg" class="text-muted d-block mt-2"></small>
+
     </div>
-
-    <small id="copyMsg" style="display:block; margin-top:10px; opacity:.8;"></small>
-
   </div>
 </div>
 
 <script>
   function copyLink() {
-    const input = document.getElementById('linkPublico');
+    var input = document.getElementById('linkPublico');
     input.select();
     input.setSelectionRange(0, 999999);
     document.execCommand('copy');
-    document.getElementById('copyMsg').innerText = 'Listo: link copiado ✅';
+    document.getElementById('copyMsg').innerText = 'Enlace copiado correctamente.';
   }
 </script>
 

@@ -109,6 +109,8 @@ def _protect_sensitive_routes():
     # Nunca interceptar logins/logout/health
     if path in {"/login", "/logout", "/admin/login", "/clientes/login", "/health", "/healthz", "/ping"}:
         return None
+    if path.startswith("/clientes/solicitudes/publica/"):
+        return None
 
     if path.startswith("/admin/"):
         if not _is_staff_any():

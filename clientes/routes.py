@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from functools import wraps
 import os
 import re
 import json
 import hashlib
+import hmac
+import secrets
 import urllib.parse
 from typing import Optional  # ✅ PARA PYTHON 3.9
 
@@ -16,7 +18,7 @@ from flask_login import (
     login_required, current_user, login_user, logout_user
 )
 from werkzeug.security import check_password_hash, generate_password_hash
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
 
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
@@ -34,6 +36,7 @@ from utils import letra_por_indice
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
 from utils.audit_logger import log_action
+from utils.robust_save import execute_robust_save
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
@@ -302,11 +305,133 @@ def _public_link_serializer() -> URLSafeTimedSerializer:
     )
 
 
+def _public_link_max_age_seconds() -> int:
+    raw_days = (os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "30").strip()
+    try:
+        days = int(raw_days)
+    except Exception:
+        days = 30
+    days = min(365, max(1, days))
+    return int(timedelta(days=days).total_seconds())
+
+
+def _public_link_token_hash(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _cliente_public_link_fingerprint(cliente: Cliente) -> str:
+    updated_at = getattr(cliente, "updated_at", None)
+    updated_iso = updated_at.isoformat() if isinstance(updated_at, datetime) else ""
+    raw = "|".join(
+        [
+            str(int(getattr(cliente, "id", 0) or 0)),
+            str((getattr(cliente, "codigo", "") or "").strip().lower()),
+            str((getattr(cliente, "email", "") or "").strip().lower()),
+            "1" if bool(getattr(cliente, "is_active", False)) else "0",
+            updated_iso,
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _log_public_link_event(
+    action_type: str,
+    token: str,
+    *,
+    success: bool,
+    reason: str = "",
+    cliente_id: Optional[int] = None,
+    metadata_extra: Optional[dict] = None,
+) -> None:
+    metadata = {
+        "scope": "clientes_public_link",
+        "token_hash": _public_link_token_hash(token),
+        "reason": str(reason or "")[:120],
+    }
+    if cliente_id is not None:
+        metadata["cliente_id"] = int(cliente_id)
+    if metadata_extra:
+        metadata.update(metadata_extra)
+    try:
+        log_action(
+            action_type=action_type,
+            entity_type="cliente_public_link",
+            entity_id=str(cliente_id) if cliente_id is not None else None,
+            summary=(action_type or "PUBLIC_LINK")[:255],
+            metadata=metadata,
+            success=bool(success),
+            error=None if success else (str(reason or "public_link_fail")[:255]),
+        )
+    except Exception:
+        return
+
+
+def _resolve_public_link_token(token: str):
+    metadata: dict = {"legacy_token": False}
+    try:
+        payload = _public_link_serializer().loads(token, max_age=_public_link_max_age_seconds())
+    except SignatureExpired:
+        return None, "expired", metadata
+    except BadSignature:
+        return None, "invalid_signature", metadata
+    except Exception:
+        return None, "invalid_payload", metadata
+
+    if not isinstance(payload, dict):
+        return None, "invalid_payload", metadata
+
+    try:
+        cliente_id = int(payload.get("cliente_id") or 0)
+    except Exception:
+        cliente_id = 0
+    if cliente_id <= 0:
+        return None, "invalid_cliente_id", metadata
+
+    codigo_token = (payload.get("codigo") or "").strip()
+    if not codigo_token:
+        return None, "missing_codigo", metadata
+
+    purpose = (payload.get("purpose") or "").strip().lower()
+    if purpose and purpose != "solicitud_publica":
+        return None, "invalid_purpose", metadata
+
+    cliente = Cliente.query.filter_by(id=cliente_id).first()
+    if not cliente:
+        return None, "cliente_not_found", metadata
+    if not bool(getattr(cliente, "is_active", True)):
+        return None, "cliente_inactive", metadata
+    if not hmac.compare_digest((cliente.codigo or "").strip(), codigo_token):
+        return None, "codigo_mismatch", metadata
+
+    token_fp = str(payload.get("fp") or "").strip()
+    if token_fp:
+        expected_fp = _cliente_public_link_fingerprint(cliente)
+        if not hmac.compare_digest(token_fp, expected_fp):
+            return None, "fingerprint_mismatch", metadata
+    else:
+        metadata["legacy_token"] = True
+
+    return cliente, "", metadata
+
+
+def _latest_solicitud_publica_cliente(cliente_id: int):
+    return (
+        Solicitud.query
+        .filter_by(cliente_id=int(cliente_id))
+        .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+        .first()
+    )
+
+
 def generar_token_publico_cliente(cliente: Cliente) -> str:
     ser = _public_link_serializer()
     payload = {
+        "v": 2,
+        "purpose": "solicitud_publica",
         "cliente_id": int(cliente.id),
         "codigo": str(cliente.codigo).strip(),
+        "fp": _cliente_public_link_fingerprint(cliente),
+        "nonce": secrets.token_urlsafe(18),
     }
     return ser.dumps(payload)
 
@@ -2168,12 +2293,6 @@ def compat_recalcular(solicitud_id):
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 def solicitud_publica(token):
-    abort(404)
-
-    from flask import current_app
-    import re
-    from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-
     form = SolicitudPublicaForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
 
@@ -2195,53 +2314,100 @@ def solicitud_publica(token):
         if (form.hp.data or '').strip():
             abort(400)
 
-    try:
-        ser = URLSafeTimedSerializer(
-            current_app.config["SECRET_KEY"],
-            salt="clientes-solicitud-publica"
+    cliente, fail_reason, token_meta = _resolve_public_link_token(token)
+    if not cliente:
+        reason_key = "invalid"
+        status_code = 404
+        user_message = "Este enlace no es válido."
+        if fail_reason == "expired":
+            reason_key = "expired"
+            status_code = 410
+            user_message = "Este enlace ha expirado."
+        _log_public_link_event(
+            "PUBLIC_LINK_VIEW_FAIL",
+            token,
+            success=False,
+            reason=fail_reason or "invalid_token",
+            metadata_extra={"method": request.method, "status_code": status_code},
         )
-        payload = ser.loads(token, max_age=60 * 60 * 24 * 30)
-        cliente_id = payload.get("cliente_id")
-        codigo_token = (payload.get("codigo") or "").strip()
-    except SignatureExpired:
-        flash("Este enlace expiró. Pide a la agencia que te envíe uno nuevo.", "warning")
-        return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
-    except BadSignature:
-        flash("Enlace inválido. Verifica que sea el link correcto.", "danger")
-        return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+        flash(f"{user_message} Solicita uno nuevo a la agencia.", "warning")
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key=reason_key,
+            status_code=status_code,
+        ), status_code
 
-    c = Cliente.query.filter_by(id=cliente_id).first()
-    if not c or (c.codigo or '').strip() != codigo_token:
-        flash("Enlace no válido para ningún cliente. Contacta a la agencia.", "danger")
-        return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+    c = cliente
+    latest_solicitud = _latest_solicitud_publica_cliente(int(c.id))
+    _log_public_link_event(
+        "PUBLIC_LINK_VIEW_OK",
+        token,
+        success=True,
+        cliente_id=int(c.id),
+        metadata_extra={
+            "method": request.method,
+            "legacy_token": bool(token_meta.get("legacy_token")),
+        },
+    )
 
     if form.validate_on_submit():
         if hasattr(form, 'token'):
             if (form.token.data or '') != token:
+                _log_public_link_event(
+                    "PUBLIC_LINK_VIEW_FAIL",
+                    token,
+                    success=False,
+                    reason="form_token_mismatch",
+                    cliente_id=int(c.id),
+                    metadata_extra={"method": request.method, "status_code": 400},
+                )
                 flash("Token inválido.", "danger")
-                return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
-
-        def _norm_email(v):
-            return (v or "").strip().lower()
-
-        def _norm_text(v):
-            s = (v or "").strip()
-            s = re.sub(r"\s+", " ", s)
-            return s.lower()
+                return render_template(
+                    'clientes/public_link_invalid.html',
+                    reason_key="invalid",
+                    status_code=400,
+                ), 400
 
         if _norm_text(getattr(form, 'codigo_cliente', type('x',(object,),{'data':''})) .data) != _norm_text(c.codigo):
+            _log_public_link_event(
+                "PUBLIC_LINK_VIEW_FAIL",
+                token,
+                success=False,
+                reason="codigo_no_match",
+                cliente_id=int(c.id),
+                metadata_extra={"method": request.method, "status_code": 403},
+            )
             flash("El código no coincide con este enlace.", "danger")
-            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True, cliente=c, latest_solicitud=latest_solicitud), 403
 
         if _norm_email(getattr(form, 'email_cliente', type('x',(object,),{'data':''})).data) != _norm_email(c.email):
+            _log_public_link_event(
+                "PUBLIC_LINK_VIEW_FAIL",
+                token,
+                success=False,
+                reason="email_no_match",
+                cliente_id=int(c.id),
+                metadata_extra={"method": request.method, "status_code": 403},
+            )
             flash("El Gmail no coincide con ese código.", "danger")
-            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True, cliente=c, latest_solicitud=latest_solicitud), 403
 
         if _norm_text(getattr(form, 'nombre_cliente', type('x',(object,),{'data':''})).data) != _norm_text(c.nombre_completo):
+            _log_public_link_event(
+                "PUBLIC_LINK_VIEW_FAIL",
+                token,
+                success=False,
+                reason="nombre_no_match",
+                cliente_id=int(c.id),
+                metadata_extra={"method": request.method, "status_code": 403},
+            )
             flash("El nombre no coincide con ese código.", "danger")
-            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+            return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True, cliente=c, latest_solicitud=latest_solicitud), 403
 
-        try:
+        codigo_holder: dict[str, str] = {"value": ""}
+        now_ref = datetime.utcnow()
+
+        def _persist_public_solicitud(_attempt: int) -> None:
             idx = Solicitud.query.filter_by(cliente_id=c.id).count()
             while True:
                 codigo = f"{c.codigo}-{letra_por_indice(idx)}"
@@ -2249,10 +2415,11 @@ def solicitud_publica(token):
                 if not existe:
                     break
                 idx += 1
+            codigo_holder["value"] = codigo
 
             s = Solicitud(
                 cliente_id=c.id,
-                fecha_solicitud=datetime.utcnow(),
+                fecha_solicitud=now_ref,
                 codigo_solicitud=codigo
             )
 
@@ -2295,27 +2462,74 @@ def solicitud_publica(token):
                 s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x',(object,),{'data':None})).data)
 
             if hasattr(s, 'fecha_ultima_modificacion'):
-                s.fecha_ultima_modificacion = datetime.utcnow()
+                s.fecha_ultima_modificacion = now_ref
 
             db.session.add(s)
 
             c.total_solicitudes = (c.total_solicitudes or 0) + 1
-            c.fecha_ultima_solicitud = datetime.utcnow()
-            c.fecha_ultima_actividad = datetime.utcnow()
+            c.fecha_ultima_solicitud = now_ref
+            c.fecha_ultima_actividad = now_ref
 
-            db.session.commit()
-            flash(f"Solicitud {codigo} enviada correctamente.", "success")
+        def _verify_public_solicitud() -> bool:
+            codigo = codigo_holder.get("value") or ""
+            if not codigo:
+                return False
+            row = Solicitud.query.filter_by(codigo_solicitud=codigo, cliente_id=c.id).first()
+            if not row:
+                return False
+            return bool(getattr(c, "fecha_ultima_solicitud", None))
+
+        result = execute_robust_save(
+            session=db.session,
+            persist_fn=_persist_public_solicitud,
+            verify_fn=_verify_public_solicitud,
+            max_retries=2,
+            retryable_exceptions=(OperationalError, SQLAlchemyError),
+        )
+
+        if result.ok:
+            _log_public_link_event(
+                "PUBLIC_LINK_VIEW_OK",
+                token,
+                success=True,
+                cliente_id=int(c.id),
+                metadata_extra={
+                    "method": request.method,
+                    "action": "create_solicitud",
+                    "solicitud_codigo": str(codigo_holder.get("value") or ""),
+                    "attempts": int(result.attempts),
+                },
+            )
+            flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente.", "success")
             return redirect(url_for('clientes.solicitud_publica', token=token))
-
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.exception("ERROR guardando solicitud pública")
-            flash(f"No se pudo enviar la solicitud. Error: {str(e)}", "danger")
+        _log_public_link_event(
+            "PUBLIC_LINK_VIEW_FAIL",
+            token,
+            success=False,
+            reason=result.error_message or "save_failed",
+            cliente_id=int(c.id),
+            metadata_extra={"method": request.method, "action": "create_solicitud", "attempts": int(result.attempts)},
+        )
+        current_app.logger.warning(
+            "PUBLIC_LINK_SAVE_FAIL cliente_id=%s token_hash=%s attempts=%s error=%s",
+            int(c.id),
+            _public_link_token_hash(token),
+            int(result.attempts),
+            (result.error_message or "")[:300],
+        )
+        flash("No se pudo enviar la solicitud en este momento. Inténtalo de nuevo.", "danger")
 
     elif request.method == 'POST':
         flash('Revisa los campos marcados en rojo.', 'danger')
 
-    return render_template('clientes/solicitud_form_publica.html', form=form, nuevo=True)
+    return render_template(
+        'clientes/solicitud_form_publica.html',
+        form=form,
+        nuevo=True,
+        cliente=c,
+        latest_solicitud=latest_solicitud,
+        public_token_max_age_days=max(1, int(_public_link_max_age_seconds() // 86400)),
+    )
 
 
 # ─────────────────────────────────────────────────────────────

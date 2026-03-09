@@ -1,0 +1,89 @@
+{% extends 'clientes/base.html' %}
+
+{% block title %}Enlace no disponible | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<style>
+  .public-invalid-page {
+    min-height: calc(100vh - 90px);
+    background:
+      radial-gradient(circle at 12% 10%, rgba(148, 163, 184, 0.18), transparent 40%),
+      radial-gradient(circle at 85% 0%, rgba(248, 113, 113, 0.16), transparent 34%),
+      linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  }
+
+  .public-invalid-shell {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 36px 14px 48px;
+  }
+
+  .public-invalid-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.10);
+  }
+
+  .public-invalid-card .card-body {
+    padding: 26px;
+  }
+
+  .invalid-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-weight: 700;
+    font-size: .84rem;
+    letter-spacing: .02em;
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+  }
+
+  .invalid-note {
+    margin-top: 14px;
+    border: 1px solid #dbeafe;
+    background: #eff6ff;
+    color: #1e3a8a;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: .93rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="public-invalid-page">
+  <div class="public-invalid-shell">
+    <article class="public-invalid-card">
+      <div class="card-body">
+        {% set expired = (reason_key == 'expired') %}
+        <div class="invalid-badge">
+          {% if expired %}
+            Enlace expirado
+          {% else %}
+            Enlace no válido
+          {% endif %}
+        </div>
+
+        <h1 class="h4 fw-bold mt-3 mb-2">No fue posible abrir esta solicitud</h1>
+        <p class="text-secondary mb-0">
+          {% if expired %}
+            Este enlace superó su tiempo de validez por seguridad.
+          {% else %}
+            El enlace no coincide con un acceso público activo o pudo haber sido alterado.
+          {% endif %}
+        </p>
+
+        <div class="invalid-note">
+          Solicita a la agencia que genere un enlace nuevo para continuar.
+          {% if status_code %}<span class="d-block mt-1 small">Código de referencia: HTTP {{ status_code }}</span>{% endif %}
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+{% endblock %}

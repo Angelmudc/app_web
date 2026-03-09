@@ -1,0 +1,344 @@
+{% extends 'clientes/base.html' %}
+
+{% block title %}Solicitud segura | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<style>
+  .public-solicitud-page {
+    --public-bg-1: #f8fafc;
+    --public-bg-2: #eef2ff;
+    --public-text: #0f172a;
+    --public-muted: #475569;
+    --public-card: #ffffff;
+    --public-border: #dbe4f0;
+    --public-accent: #0f766e;
+    --public-accent-soft: #ccfbf1;
+    --public-danger: #b42318;
+  }
+
+  .public-solicitud-page {
+    background:
+      radial-gradient(circle at 10% 10%, rgba(59, 130, 246, 0.08), transparent 42%),
+      radial-gradient(circle at 85% 0%, rgba(20, 184, 166, 0.10), transparent 35%),
+      linear-gradient(180deg, var(--public-bg-2) 0%, var(--public-bg-1) 62%, #ffffff 100%);
+    min-height: calc(100vh - 90px);
+    color: var(--public-text);
+  }
+
+  .public-shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 24px 12px 42px;
+  }
+
+  .public-hero {
+    background: linear-gradient(140deg, #0f172a 0%, #1e293b 62%, #0b4f59 100%);
+    border-radius: 20px;
+    padding: 20px;
+    color: #f8fafc;
+    box-shadow: 0 24px 40px rgba(15, 23, 42, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .public-hero small { color: rgba(248, 250, 252, 0.86); }
+
+  .public-chip {
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: .85rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+
+  .public-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1.9fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .public-card {
+    background: var(--public-card);
+    border: 1px solid var(--public-border);
+    border-radius: 18px;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .public-card .card-body {
+    padding: 20px;
+  }
+
+  .public-kv {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .public-kv strong {
+    color: var(--public-text);
+    display: block;
+    margin-bottom: 2px;
+    font-size: .92rem;
+  }
+
+  .public-kv span {
+    color: var(--public-muted);
+    font-size: .92rem;
+    word-break: break-word;
+  }
+
+  .public-status {
+    font-weight: 700;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: .78rem;
+    letter-spacing: .02em;
+  }
+
+  .st-proceso { background: #e2e8f0; color: #334155; }
+  .st-activa { background: #dcfce7; color: #166534; }
+  .st-espera_pago { background: #fef3c7; color: #92400e; }
+  .st-reemplazo { background: #ede9fe; color: #5b21b6; }
+  .st-pagada { background: #d1fae5; color: #065f46; }
+  .st-cancelada { background: #fee2e2; color: #991b1b; }
+
+  .public-progress {
+    border-top: 1px dashed #d8e0ec;
+    margin-top: 16px;
+    padding-top: 14px;
+  }
+
+  .progress-track {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .progress-step {
+    border-radius: 12px;
+    border: 1px solid #d7e0ec;
+    background: #f8fafc;
+    padding: 10px;
+    min-height: 72px;
+  }
+
+  .progress-step.done {
+    background: #ecfeff;
+    border-color: #99f6e4;
+  }
+
+  .progress-step.active {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+  }
+
+  .progress-step .k {
+    font-size: .73rem;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: .04em;
+    font-weight: 700;
+  }
+
+  .progress-step .v {
+    margin-top: 4px;
+    font-size: .92rem;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .secure-box {
+    border: 1px solid #b7d9ff;
+    background: linear-gradient(180deg, #eef6ff 0%, #f8fbff 100%);
+    border-radius: 12px;
+    padding: 12px;
+    color: #1d4f91;
+    font-size: .92rem;
+  }
+
+  .public-form-title {
+    font-size: 1.14rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+
+  .public-submit {
+    min-height: 48px;
+    font-weight: 700;
+    letter-spacing: .01em;
+  }
+
+  .public-helper {
+    color: #64748b;
+    font-size: .86rem;
+    margin-top: 6px;
+  }
+
+  @media (max-width: 991.98px) {
+    .public-grid { grid-template-columns: 1fr; }
+    .progress-track { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @media (max-width: 575.98px) {
+    .public-shell { padding-inline: 10px; }
+    .public-hero { border-radius: 16px; }
+    .public-card { border-radius: 14px; }
+    .progress-track { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="public-solicitud-page">
+  <div class="public-shell">
+
+    {% set estado = (latest_solicitud.estado if latest_solicitud else 'proceso') %}
+    {% set estado_label = {
+      'proceso': 'Pendiente',
+      'activa': 'Activa',
+      'espera_pago': 'En espera de pago',
+      'reemplazo': 'Reemplazo',
+      'pagada': 'Pagada',
+      'cancelada': 'Cerrada'
+    }.get(estado, estado|replace('_', ' ')|title) %}
+
+    <header class="public-hero">
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+        <div>
+          <h1 class="h4 mb-1 fw-bold">Solicitud del cliente</h1>
+          <small>Enlace seguro para consultar contexto y registrar una solicitud nueva.</small>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {% if latest_solicitud %}
+          <span class="public-chip">Código actual: {{ latest_solicitud.codigo_solicitud }}</span>
+          {% endif %}
+          <span class="public-chip">Enlace temporal: {{ public_token_max_age_days }} días</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="public-grid">
+      <article class="public-card">
+        <div class="card-body">
+          <h2 class="h6 fw-bold mb-3">Resumen del cliente</h2>
+
+          <div class="public-kv">
+            <div>
+              <strong>Nombre</strong>
+              <span>{{ cliente.nombre_completo or 'No disponible' }}</span>
+            </div>
+            <div>
+              <strong>Código</strong>
+              <span>{{ cliente.codigo or 'No disponible' }}</span>
+            </div>
+            <div>
+              <strong>Última solicitud</strong>
+              <span>
+                {% if latest_solicitud and latest_solicitud.fecha_solicitud %}
+                  {{ latest_solicitud.fecha_solicitud.strftime('%d/%m/%Y %I:%M %p') }}
+                {% else %}
+                  Sin solicitudes registradas
+                {% endif %}
+              </span>
+            </div>
+            <div>
+              <strong>Estado de seguimiento</strong>
+              <span class="public-status st-{{ estado|replace('-', '_') }}">{{ estado_label }}</span>
+            </div>
+          </div>
+
+          <div class="public-progress">
+            <div class="progress-track">
+              {% set progress_steps = [
+                ('1', 'Solicitud recibida', estado in ['proceso', 'activa', 'espera_pago', 'reemplazo', 'pagada', 'cancelada']),
+                ('2', 'En seguimiento', estado in ['activa', 'espera_pago', 'reemplazo', 'pagada']),
+                ('3', 'Validación de pago', estado in ['espera_pago', 'pagada']),
+                ('4', 'Cierre / reemplazo', estado in ['reemplazo', 'pagada', 'cancelada'])
+              ] %}
+              {% for idx, label, done in progress_steps %}
+              <div class="progress-step {% if done %}done{% endif %} {% if loop.last and estado in ['reemplazo', 'pagada', 'cancelada'] %}active{% endif %}">
+                <div class="k">Paso {{ idx }}</div>
+                <div class="v">{{ label }}</div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="public-card">
+        <div class="card-body">
+          <div class="secure-box mb-3">
+            <strong>Verificación adicional requerida.</strong>
+            Confirma código, nombre y correo del cliente antes de enviar. Esto evita accesos indebidos si el enlace fue compartido por error.
+          </div>
+
+          <h2 class="public-form-title">Crear nueva solicitud</h2>
+
+          <form method="post" id="publicSolicitudForm" novalidate>
+            {{ form.hidden_tag() }}
+            {% if form.token is defined %}
+              {{ form.token(value=form.token.data or request.view_args.get('token', '')) }}
+            {% endif %}
+
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label fw-semibold" for="{{ form.codigo_cliente.id }}">{{ form.codigo_cliente.label.text }}</label>
+                {{ form.codigo_cliente(class='form-control', placeholder='Ej. CL-001') }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold" for="{{ form.nombre_cliente.id }}">{{ form.nombre_cliente.label.text }}</label>
+                {{ form.nombre_cliente(class='form-control', placeholder='Nombre completo del titular') }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold" for="{{ form.email_cliente.id }}">{{ form.email_cliente.label.text }}</label>
+                {{ form.email_cliente(class='form-control', placeholder='correo@dominio.com') }}
+              </div>
+            </div>
+
+            {% if form.hp is defined %}
+              <div class="d-none" aria-hidden="true">
+                {{ form.hp() }}
+              </div>
+            {% endif %}
+
+            <hr class="my-4">
+
+            {% include 'clientes/_solicitud_form_fields.html' %}
+
+            <div class="mt-4 d-grid d-md-flex gap-2">
+              <button class="btn btn-primary public-submit" type="submit" id="publicSubmitBtn">
+                <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitSpinner" aria-hidden="true"></span>
+                <span id="publicSubmitLabel">Enviar solicitud segura</span>
+              </button>
+            </div>
+            <div class="public-helper">Si este enlace no funciona, solicita uno nuevo a la agencia para proteger tus datos.</div>
+          </form>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('publicSolicitudForm');
+  var btn = document.getElementById('publicSubmitBtn');
+  var spinner = document.getElementById('publicSubmitSpinner');
+  var label = document.getElementById('publicSubmitLabel');
+
+  if (!form || !btn) return;
+
+  form.addEventListener('submit', function () {
+    btn.disabled = true;
+    if (spinner) spinner.classList.remove('d-none');
+    if (label) label.textContent = 'Enviando...';
+  });
+})();
+</script>
+{% endblock %}
