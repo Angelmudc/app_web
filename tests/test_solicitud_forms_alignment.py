@@ -12,11 +12,13 @@ def _read(rel: str) -> str:
 
 def test_public_admin_and_client_templates_use_shared_core_partial():
     public_tpl = _read("templates/clientes/solicitud_form_publica.html")
+    public_new_tpl = _read("templates/clientes/solicitud_form_publica_nueva.html")
     admin_tpl = _read("templates/admin/solicitud_form.html")
     cliente_tpl = _read("templates/clientes/solicitud_form.html")
 
     include_stmt = "{% include 'clientes/_solicitud_form_fields.html' %}"
     assert include_stmt in public_tpl
+    assert include_stmt in public_new_tpl
     assert include_stmt in admin_tpl
     assert include_stmt in cliente_tpl
     assert 'class="admin-solicitud-form"' in admin_tpl

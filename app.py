@@ -36,6 +36,8 @@ def handle_csrf_error(e):
             reason_key='csrf',
             status_code=400,
         ), 400
+    if path.startswith('/clientes/solicitudes/nueva-publica'):
+        return redirect(url_for('clientes.solicitud_publica_nueva'))
     return e
 
 
@@ -123,6 +125,8 @@ def _protect_sensitive_routes():
     if path in {"/login", "/logout", "/admin/login", "/clientes/login", "/health", "/healthz", "/ping"}:
         return None
     if path.startswith("/clientes/solicitudes/publica/"):
+        return None
+    if path.startswith("/clientes/solicitudes/nueva-publica"):
         return None
 
     if path.startswith("/admin/"):

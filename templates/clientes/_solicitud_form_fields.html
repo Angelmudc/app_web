@@ -305,7 +305,9 @@
       <p class="public-form-card-desc">Primero ubica el sector y transporte, luego define modalidad y horario.</p>
     </header>
     <div class="public-fields-grid">
-      {{ render_field(form.ciudad_sector) }}
+      {% if not hide_ciudad_sector %}
+        {{ render_field(form.ciudad_sector) }}
+      {% endif %}
       {{ render_field(form.rutas_cercanas) }}
       {{ render_field(form.modalidad_trabajo, hint='Ejemplo: dormida, salida diaria o por dias.') }}
       {{ render_field(form.horario, title='Horario / Define el horario de trabajo', hint='Indica dias y rango horario esperado.') }}

@@ -54,7 +54,8 @@ from .forms import (
     ClienteCancelForm,
     SolicitudForm,
     ClienteSolicitudForm,
-    SolicitudPublicaForm
+    SolicitudPublicaForm,
+    SolicitudClienteNuevoPublicaForm,
 )
 
 from . import clientes_bp
@@ -78,6 +79,7 @@ from utils.compat_engine import (
 
 PLANES_BANCO_DOMESTICAS = {'premium', 'vip'}
 ESTADOS_SOLICITUD_ACTIVA = {'activa'}
+CLIENTE_CODIGO_PUBLICO_MIN = 2152
 
 
 # ─────────────────────────────────────────────────────────────
@@ -250,6 +252,8 @@ def _clientes_force_login_view():
         'clientes.login',
         'clientes.reset_password',
         'clientes.solicitud_publica',
+        'clientes.solicitud_publica_nueva',
+        'clientes.solicitud_publica_nueva_exito',
         'clientes.politicas',
         'clientes.aceptar_politicas',
         'clientes.rechazar_politicas',
@@ -305,6 +309,40 @@ def _norm_text(v: str) -> str:
     s = (v or "").strip()
     s = re.sub(r"\s+", " ", s)
     return s.lower()
+
+
+def _cliente_codigo_to_int(codigo: str) -> Optional[int]:
+    raw = str(codigo or "").strip()
+    if not raw:
+        return None
+    if not re.fullmatch(r"\d{1,3}(?:,\d{3})*|\d+", raw):
+        return None
+    try:
+        value = int(raw.replace(",", ""))
+    except Exception:
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
+def _format_cliente_codigo(value: int) -> str:
+    return f"{int(value):,}"
+
+
+def _next_cliente_codigo_publico() -> str:
+    max_seen = int(CLIENTE_CODIGO_PUBLICO_MIN) - 1
+    try:
+        rows = db.session.query(Cliente.codigo).all()
+    except Exception:
+        rows = []
+    for (codigo,) in rows:
+        parsed = _cliente_codigo_to_int(codigo)
+        if parsed is None:
+            continue
+        if parsed > max_seen:
+            max_seen = parsed
+    return _format_cliente_codigo(max_seen + 1)
 
 
 def _public_link_serializer() -> URLSafeTimedSerializer:
@@ -2344,6 +2382,231 @@ def compat_recalcular(solicitud_id):
         flash('No se pudo guardar el resultado del cálculo.', 'danger')
 
     return redirect(url_for('clientes.detalle_solicitud', id=solicitud_id))
+
+
+@clientes_bp.route('/solicitudes/nueva-publica', methods=['GET', 'POST'])
+def solicitud_publica_nueva():
+    form = SolicitudClienteNuevoPublicaForm()
+    form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+
+    if request.method == 'GET':
+        if hasattr(form, 'funciones'):
+            form.funciones.data = form.funciones.data or []
+        if hasattr(form, 'areas_comunes'):
+            form.areas_comunes.data = form.areas_comunes.data or []
+        if hasattr(form, 'edad_requerida'):
+            form.edad_requerida.data = form.edad_requerida.data or []
+        if hasattr(form, 'dos_pisos') and form.dos_pisos.data is None:
+            form.dos_pisos.data = False
+        if hasattr(form, 'pasaje_aporte') and form.pasaje_aporte.data is None:
+            form.pasaje_aporte.data = False
+
+    if request.method == 'POST' and hasattr(form, 'hp'):
+        if (form.hp.data or '').strip():
+            abort(400)
+
+    public_pisos_value = "2" if bool(getattr(form, "dos_pisos", type("x", (object,), {"data": False})).data) else "1"
+    public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
+    public_pasaje_otro = ""
+    if request.method == "POST":
+        pisos_post = (request.form.get("pisos_selector") or "").strip()
+        if pisos_post in ("1", "2", "3+"):
+            public_pisos_value = pisos_post
+        pasaje_mode_post = (request.form.get("pasaje_mode") or "").strip().lower()
+        if pasaje_mode_post in ("incluido", "aparte", "otro"):
+            public_pasaje_mode = pasaje_mode_post
+        public_pasaje_otro = (request.form.get("pasaje_otro_text") or "").strip()[:120]
+
+        ciudad_personal = (form.ciudad_cliente.data or '').strip()
+        sector_personal = (form.sector_cliente.data or '').strip()
+        form.ciudad_sector.data = " ".join([x for x in [ciudad_personal, sector_personal] if x]).strip()
+        if hasattr(form, "dos_pisos"):
+            form.dos_pisos.data = (public_pisos_value in ("2", "3+"))
+        if hasattr(form, "pasaje_aporte"):
+            form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
+
+    if form.validate_on_submit():
+        email_norm = (form.email_contacto.data or '').strip().lower()
+        email_exists = Cliente.query.filter(db.func.lower(Cliente.email) == email_norm).first()
+        if email_exists:
+            form.email_contacto.errors.append("Este correo ya está registrado.")
+        else:
+            now_ref = datetime.utcnow()
+            state = {
+                "cliente_id": 0,
+                "cliente_codigo": "",
+                "solicitud_id": 0,
+                "solicitud_codigo": "",
+            }
+
+            def _persist_public_new(_attempt: int) -> None:
+                codigo_cliente = _next_cliente_codigo_publico()
+                state["cliente_codigo"] = codigo_cliente
+
+                c = Cliente(
+                    codigo=codigo_cliente,
+                    nombre_completo=(form.nombre_completo.data or '').strip(),
+                    email=email_norm,
+                    telefono=(form.telefono_contacto.data or '').strip(),
+                    ciudad=(form.ciudad_cliente.data or '').strip(),
+                    sector=(form.sector_cliente.data or '').strip(),
+                    role='cliente',
+                    is_active=True,
+                    fecha_registro=now_ref,
+                    created_at=now_ref,
+                    updated_at=now_ref,
+                    fecha_ultima_actividad=now_ref,
+                    total_solicitudes=0,
+                )
+                db.session.add(c)
+                db.session.flush()
+                state["cliente_id"] = int(getattr(c, "id", 0) or 0)
+
+                idx = Solicitud.query.filter_by(cliente_id=c.id).count()
+                while True:
+                    codigo_solicitud = f"{c.codigo}-{letra_por_indice(idx)}"
+                    existe = Solicitud.query.filter_by(codigo_solicitud=codigo_solicitud).first()
+                    if not existe:
+                        break
+                    idx += 1
+                state["solicitud_codigo"] = codigo_solicitud
+
+                s = Solicitud(
+                    cliente_id=c.id,
+                    fecha_solicitud=now_ref,
+                    codigo_solicitud=codigo_solicitud
+                )
+                form.populate_obj(s)
+
+                selected_funciones = _clean_list(getattr(form, 'funciones', type('x', (object,), {'data': []})).data)
+                funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
+                funciones_otro_clean = (funciones_otro_raw or '').strip() if 'otro' in selected_funciones else ''
+
+                s.funciones = _map_funciones(selected_funciones, funciones_otro_clean)
+                if hasattr(s, 'funciones_otro'):
+                    s.funciones_otro = funciones_otro_clean or None
+
+                s.areas_comunes = _clean_list(
+                    getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
+                ) or []
+
+                s.edad_requerida = _map_edad_choices(
+                    getattr(form, 'edad_requerida', type('x', (object,), {'data': []})).data,
+                    getattr(getattr(form, 'edad_requerida', None), 'choices', []) if hasattr(form, 'edad_requerida') else [],
+                    getattr(getattr(form, 'edad_otro', None), 'data', '') if hasattr(form, 'edad_otro') else ''
+                ) or []
+
+                s.tipo_lugar = _map_tipo_lugar(
+                    getattr(s, 'tipo_lugar', ''),
+                    getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+                )
+
+                if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
+                    s.mascota = (form.mascota.data or '').strip() or None
+
+                if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
+                    area_otro_txt = (form.area_otro.data or '').strip()
+                    s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+
+                if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
+                    s.nota_cliente = (form.nota_cliente.data or '').strip()
+                    if public_pisos_value == "3+":
+                        marker_pisos = "Pisos reportados: 3+."
+                        if marker_pisos not in (s.nota_cliente or ""):
+                            s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
+                    if public_pasaje_mode == "otro" and public_pasaje_otro:
+                        marker_pasaje = f"Pasaje (otro): {public_pasaje_otro}"
+                        if marker_pasaje not in (s.nota_cliente or ""):
+                            s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pasaje).strip()
+
+                if hasattr(s, 'sueldo'):
+                    s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x', (object,), {'data': None})).data)
+
+                s.ciudad_sector = " ".join([
+                    x for x in [
+                        (form.ciudad_cliente.data or '').strip(),
+                        (form.sector_cliente.data or '').strip(),
+                    ] if x
+                ]).strip()
+                if hasattr(s, 'fecha_ultima_modificacion'):
+                    s.fecha_ultima_modificacion = now_ref
+
+                db.session.add(s)
+                db.session.flush()
+                state["solicitud_id"] = int(getattr(s, "id", 0) or 0)
+
+                c.total_solicitudes = (c.total_solicitudes or 0) + 1
+                c.fecha_ultima_solicitud = now_ref
+                c.fecha_ultima_actividad = now_ref
+
+            def _verify_public_new() -> bool:
+                cliente_id = int(state.get("cliente_id") or 0)
+                solicitud_id = int(state.get("solicitud_id") or 0)
+                if cliente_id <= 0 or solicitud_id <= 0:
+                    return False
+                c_row = Cliente.query.filter_by(id=cliente_id).first()
+                if not c_row:
+                    return False
+                if str(getattr(c_row, "codigo", "") or "") != str(state.get("cliente_codigo") or ""):
+                    return False
+                s_row = Solicitud.query.filter_by(id=solicitud_id).first()
+                if not s_row:
+                    return False
+                if int(getattr(s_row, "cliente_id", 0) or 0) != cliente_id:
+                    return False
+                if str(getattr(s_row, "codigo_solicitud", "") or "") != str(state.get("solicitud_codigo") or ""):
+                    return False
+                return True
+
+            result = execute_robust_save(
+                session=db.session,
+                persist_fn=_persist_public_new,
+                verify_fn=_verify_public_new,
+                max_retries=3,
+                retryable_exceptions=(OperationalError, IntegrityError, SQLAlchemyError),
+            )
+
+            if result.ok:
+                session["public_new_solicitud_success"] = {
+                    "cliente_codigo": str(state.get("cliente_codigo") or ""),
+                    "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
+                    "solicitud_id": int(state.get("solicitud_id") or 0),
+                }
+                return redirect(url_for('clientes.solicitud_publica_nueva_exito'))
+
+            err = (result.error_message or '').lower()
+            if "clientes.email" in err or "email" in err:
+                form.email_contacto.errors.append("Este correo ya está registrado.")
+            elif "clientes.codigo" in err or "codigo" in err:
+                flash("No se pudo completar por una colisión de código. Intenta de nuevo.", "warning")
+            else:
+                flash("No se pudo enviar la solicitud en este momento. Inténtalo de nuevo.", "danger")
+
+    elif request.method == 'POST':
+        flash('Revisa los campos marcados en rojo.', 'danger')
+
+    return render_template(
+        'clientes/solicitud_form_publica_nueva.html',
+        form=form,
+        nuevo=True,
+        public_pisos_value=public_pisos_value,
+        public_pasaje_mode=public_pasaje_mode,
+        public_pasaje_otro=public_pasaje_otro,
+        hide_ciudad_sector=True,
+    )
+
+
+@clientes_bp.route('/solicitudes/nueva-publica/exito', methods=['GET'])
+def solicitud_publica_nueva_exito():
+    payload = session.pop("public_new_solicitud_success", None) or {}
+    if not payload:
+        return redirect(url_for('clientes.solicitud_publica_nueva'))
+    return render_template(
+        'clientes/public_new_success.html',
+        cliente_codigo=str(payload.get("cliente_codigo") or ""),
+        solicitud_codigo=str(payload.get("solicitud_codigo") or ""),
+        solicitud_id=int(payload.get("solicitud_id") or 0) or None,
+    )
 
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])

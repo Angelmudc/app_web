@@ -1,0 +1,305 @@
+{% extends 'clientes/public_base.html' %}
+
+{% block title %}Nueva solicitud | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<style>
+  .public-flow-page {
+    --pf-bg: #f3f6fb;
+    --pf-ink: #112031;
+    --pf-muted: #5d6b7b;
+    --pf-panel: #ffffff;
+    --pf-border: #d9e2ee;
+    --pf-brand: #0f6a7f;
+    --pf-shadow: 0 22px 44px rgba(16, 24, 40, 0.10);
+  }
+
+  .public-flow-page {
+    min-height: calc(100vh - 90px);
+    background:
+      radial-gradient(circle at 0% 0%, rgba(15, 106, 127, 0.12), transparent 40%),
+      radial-gradient(circle at 100% 0%, rgba(23, 74, 136, 0.08), transparent 32%),
+      linear-gradient(180deg, #f8fbff 0%, var(--pf-bg) 46%, #ffffff 100%);
+    color: var(--pf-ink);
+  }
+
+  .public-flow-shell {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 28px 14px 46px;
+  }
+
+  .public-flow-hero {
+    background: linear-gradient(130deg, #112031 0%, #1f3650 58%, #14566a 100%);
+    color: #f8fbff;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 28px 44px rgba(15, 23, 42, 0.20);
+    padding: 24px;
+  }
+
+  .public-flow-title {
+    margin: 0;
+    font-size: 1.52rem;
+    font-weight: 700;
+    letter-spacing: .01em;
+  }
+
+  .public-flow-subtitle {
+    margin: 8px 0 0;
+    font-size: .98rem;
+    color: rgba(248, 251, 255, 0.9);
+    max-width: 70ch;
+  }
+
+  .public-flow-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 7px 13px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: .82rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .public-panel {
+    border: 1px solid var(--pf-border);
+    border-radius: 20px;
+    background: var(--pf-panel);
+    box-shadow: var(--pf-shadow);
+    margin-top: 16px;
+  }
+
+  .public-panel-body {
+    padding: 22px;
+  }
+
+  .public-form-main-header {
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed #d5deea;
+  }
+
+  .public-form-main-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+  }
+
+  .public-form-main-header p {
+    margin: 6px 0 0;
+    color: var(--pf-muted);
+    font-size: .95rem;
+  }
+
+  .public-client-card {
+    border: 1px solid #d9e6f2;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+
+  .public-client-card h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #223246;
+  }
+
+  .public-client-card p {
+    margin: 4px 0 0;
+    font-size: .88rem;
+    color: #5b6a7c;
+  }
+
+  .public-client-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .public-input-block label {
+    display: inline-block;
+    margin-bottom: 6px;
+    font-size: .84rem;
+    color: #304257;
+    font-weight: 700;
+  }
+
+  .public-input-block .form-control {
+    border-radius: 12px;
+    border: 1px solid #ced9e6;
+    min-height: 44px;
+    font-size: .95rem;
+    padding: .55rem .72rem;
+  }
+
+  .public-input-block .form-control:focus {
+    border-color: #4f87b3;
+    box-shadow: 0 0 0 .24rem rgba(56, 117, 167, 0.16);
+  }
+
+  .public-input-block .invalid-feedback,
+  .public-form-main .invalid-feedback {
+    display: block;
+    margin-top: 5px;
+    font-size: .8rem;
+    color: #b42318;
+    font-weight: 600;
+  }
+
+  .public-validation-banner {
+    border: 1px solid #fecaca;
+    color: #9b1c1c;
+    background: #fff1f2;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-size: .9rem;
+  }
+
+  .public-submit-wrap {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed #d5deea;
+  }
+
+  .public-submit-btn {
+    min-height: 48px;
+    border-radius: 12px;
+    padding-inline: 18px;
+    font-weight: 700;
+    letter-spacing: .01em;
+  }
+
+  .public-submit-help {
+    margin-top: 9px;
+    color: var(--pf-muted);
+    font-size: .84rem;
+  }
+
+  @media (max-width: 767.98px) {
+    .public-client-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 575.98px) {
+    .public-flow-shell { padding: 20px 10px 36px; }
+    .public-flow-hero,
+    .public-panel { border-radius: 16px; }
+    .public-panel-body { padding: 16px; }
+    .public-flow-title { font-size: 1.28rem; }
+    .public-submit-btn { width: 100%; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="public-flow-page">
+  <div class="public-flow-shell">
+    <header class="public-flow-hero">
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+        <div>
+          <h1 class="public-flow-title">Nueva solicitud para cliente nuevo</h1>
+          <p class="public-flow-subtitle">Completa tus datos personales y la solicitud de servicio en un solo formulario. El sistema creará tu cliente y tu solicitud automáticamente.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <span class="public-flow-chip"><i class="bi bi-shield-check"></i> Flujo seguro</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="public-panel">
+      <div class="public-panel-body public-form-main">
+        <div class="public-form-main-header">
+          <h2>Registro y solicitud</h2>
+          <p>Primero completa tus datos personales, luego llena la solicitud de servicio.</p>
+        </div>
+
+        {% if form.errors %}
+          <div class="public-validation-banner" role="alert">
+            Revisa los campos marcados para continuar con el envío.
+          </div>
+        {% endif %}
+
+        <form method="post" id="publicSolicitudNuevaForm" novalidate>
+          {{ form.hidden_tag() }}
+
+          {% if form.hp is defined %}
+            <div class="d-none" aria-hidden="true">{{ form.hp() }}</div>
+          {% endif %}
+
+          <section class="public-client-card">
+            <h3>Información del cliente</h3>
+            <p>Estos datos se usarán para crear tu perfil y asignarte tu código automáticamente.</p>
+            <div class="public-client-grid">
+              <div class="public-input-block">
+                <label for="{{ form.nombre_completo.id }}">{{ form.nombre_completo.label.text }}</label>
+                {{ form.nombre_completo(class='form-control' ~ (' is-invalid' if form.nombre_completo.errors else '')) }}
+                {% for e in form.nombre_completo.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+              </div>
+              <div class="public-input-block">
+                <label for="{{ form.email_contacto.id }}">{{ form.email_contacto.label.text }}</label>
+                {{ form.email_contacto(class='form-control' ~ (' is-invalid' if form.email_contacto.errors else '')) }}
+                {% for e in form.email_contacto.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+              </div>
+              <div class="public-input-block">
+                <label for="{{ form.telefono_contacto.id }}">{{ form.telefono_contacto.label.text }}</label>
+                {{ form.telefono_contacto(class='form-control' ~ (' is-invalid' if form.telefono_contacto.errors else '')) }}
+                {% for e in form.telefono_contacto.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+              </div>
+              <div class="public-input-block">
+                <label for="{{ form.ciudad_cliente.id }}">{{ form.ciudad_cliente.label.text }}</label>
+                {{ form.ciudad_cliente(class='form-control' ~ (' is-invalid' if form.ciudad_cliente.errors else '')) }}
+                {% for e in form.ciudad_cliente.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+              </div>
+              <div class="public-input-block">
+                <label for="{{ form.sector_cliente.id }}">{{ form.sector_cliente.label.text }}</label>
+                {{ form.sector_cliente(class='form-control' ~ (' is-invalid' if form.sector_cliente.errors else '')) }}
+                {% for e in form.sector_cliente.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+              </div>
+            </div>
+          </section>
+
+          {% include 'clientes/_solicitud_form_fields.html' %}
+
+          <div class="public-submit-wrap">
+            <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitNuevaBtn">
+              <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitNuevaSpinner" aria-hidden="true"></span>
+              <span id="publicSubmitNuevaLabel">Enviar solicitud</span>
+            </button>
+            <div class="public-submit-help">Tu código de cliente se genera automáticamente al confirmar el envío.</div>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('publicSolicitudNuevaForm');
+  var btn = document.getElementById('publicSubmitNuevaBtn');
+  var spinner = document.getElementById('publicSubmitNuevaSpinner');
+  var label = document.getElementById('publicSubmitNuevaLabel');
+  var isSubmitting = false;
+
+  if (!form || !btn) return;
+
+  form.addEventListener('submit', function () {
+    if (isSubmitting) return false;
+    isSubmitting = true;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    if (spinner) spinner.classList.remove('d-none');
+    if (label) label.textContent = 'Enviando...';
+  });
+})();
+</script>
+{% endblock %}

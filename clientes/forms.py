@@ -412,3 +412,53 @@ class SolicitudPublicaForm(SolicitudForm):
 
     # Anti-bot: debe venir vacío
     hp = StringField("No llenar", validators=[Optional(), Length(max=10)])
+
+
+class SolicitudClienteNuevoPublicaForm(SolicitudForm):
+    nombre_completo = StringField(
+        "Nombre completo",
+        validators=[DataRequired("Ingresa tu nombre completo."), Length(min=3, max=200)],
+        filters=STRIP,
+        render_kw={"placeholder": "Ej. Maria Perez"}
+    )
+    email_contacto = StringField(
+        "Correo electrónico / Gmail",
+        validators=[DataRequired("Ingresa un correo electrónico."), Email("Correo inválido."), Length(max=100)],
+        filters=STRIP_LOWER,
+        render_kw={"placeholder": "nombre@gmail.com", "autocomplete": "email"}
+    )
+    telefono_contacto = StringField(
+        "Número de teléfono",
+        validators=[DataRequired("Ingresa un número de teléfono."), Length(min=7, max=20)],
+        filters=STRIP,
+        render_kw={"placeholder": "809-000-0000", "autocomplete": "tel"}
+    )
+    ciudad_cliente = StringField(
+        "Ciudad",
+        validators=[DataRequired("Indica la ciudad."), Length(min=2, max=100)],
+        filters=STRIP,
+        render_kw={"placeholder": "Ej. Santiago"}
+    )
+    sector_cliente = StringField(
+        "Sector",
+        validators=[DataRequired("Indica el sector."), Length(min=2, max=100)],
+        filters=STRIP,
+        render_kw={"placeholder": "Ej. Los Jardines"}
+    )
+
+    # Anti-bot: debe venir vacío
+    hp = StringField("No llenar", validators=[Optional(), Length(max=10)])
+
+    def validate_nombre_completo(self, field):
+        _solo_texto(field.data)
+
+    def validate_ciudad_cliente(self, field):
+        _solo_texto(field.data)
+
+    def validate_sector_cliente(self, field):
+        _solo_texto(field.data)
+
+    def validate_telefono_contacto(self, field):
+        raw = (field.data or "").strip()
+        if not re.fullmatch(r"^[0-9+\-\s()]{7,20}$", raw):
+            raise ValidationError("Teléfono inválido. Usa solo números y símbolos comunes.")
