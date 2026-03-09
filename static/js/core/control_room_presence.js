@@ -43,6 +43,15 @@
   const endpoint = body.getAttribute('data-live-presence-url') || '';
   const enabled = body.getAttribute('data-live-presence-enabled') === '1';
   if (!enabled || !endpoint) return;
+  const isAdminMonitoringEndpoint = endpoint.indexOf('/admin/monitoreo/presence/ping') >= 0;
+
+  function isMonitoringPage(pathname) {
+    const raw = (pathname || window.location.pathname || '').split('?')[0];
+    const path = String(raw || '').trim();
+    return path === '/admin/monitoreo' || path.indexOf('/admin/monitoreo/') === 0;
+  }
+
+  if (isAdminMonitoringEndpoint && !isMonitoringPage()) return;
 
   const csrfToken = getMeta('csrf-token');
   const HEARTBEAT_MS = 5000;

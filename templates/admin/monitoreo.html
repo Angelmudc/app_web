@@ -12,6 +12,13 @@
       <span id="liveStatus" class="live-badge paused">● PAUSADO</span>
       <button id="liveToggleBtn" class="btn btn-outline-dark btn-sm" type="button">Reanudar</button>
       <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Ver logs completos</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.seguridad_locks') }}">Locks</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.errores_lista') }}">Errores</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.matching_inteligente') }}">Motor</a>
+      {% if (current_user.role or '')|lower == 'owner' %}
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.alertas_canales') }}">Canales</a>
+      {% endif %}
     </div>
   </div>
 
@@ -94,25 +101,71 @@
     {% endif %}
   </div>
 
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="h6 mb-0">Alertas críticas (últimas 10)</h2>
+        <a href="{{ url_for('admin.seguridad_alertas') }}" class="btn btn-sm btn-outline-dark">Ver todas</a>
+      </div>
+      <div id="alertsBox">
+        {% set alerts = summary_payload.critical_alerts or summary_payload.alerts or [] %}
+        {% if alerts %}
+          {% for a in alerts[:10] %}
+          <div class="alert {{ 'alert-danger' if a.severity in ['critical', 'error'] else 'alert-warning' }} py-2 mb-2">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <div>
+                <strong>
+                  {% if a.severity == 'critical' %}Crítica{% elif a.severity == 'warning' %}Advertencia{% elif a.action_type == 'ERROR_EVENT' %}Error{% else %}Seguridad{% endif %}
+                </strong>:
+                {{ a.summary or 'Evento detectado' }}
+                <small class="text-muted d-block">{{ a.route or '-' }}</small>
+                {% if a.action_type == 'ERROR_EVENT' and a.id %}
+                  <a class="small" href="{{ url_for('admin.errores_detalle', error_id=a.id) }}">Ver detalle</a>
+                {% elif a.entity_type == 'candidata' and a.entity_id %}
+                  <a class="small" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=a.entity_id) }}">Ver candidata</a>
+                {% elif a.entity_type in ['candidata', 'solicitud'] %}
+                  <a class="small" href="{{ url_for('admin.seguridad_locks') }}">Ver lock</a>
+                {% endif %}
+              </div>
+              <form method="post" action="{{ url_for('admin.resolver_alerta', alert_id=a.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button class="btn btn-sm btn-outline-dark" type="submit">Marcar resuelta</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="text-muted">No hay alertas pendientes.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <div class="row g-4 mb-4">
     <div class="col-lg-5">
       <h2 class="h6">Usuarios activos ahora</h2>
       <div class="table-responsive">
         <table class="table table-sm table-striped" id="presenceTable">
-          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Ruta real</th><th>Acción</th><th>Entidad</th><th>Hace</th></tr></thead>
+          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Ruta real</th><th>Acción</th><th>Última interacción</th><th>Entidad</th><th>Último ping</th></tr></thead>
           <tbody>
             {% for p in summary_payload.presence %}
             <tr>
               <td>{{ p.username }} <small class="text-muted">({{ p.role }})</small></td>
-              <td><span class="badge {% if p.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">{{ p.status|upper }}</span></td>
+              <td>
+                <span class="badge {% if p.status == 'active' %}bg-success{% elif p.status == 'idle' %}bg-warning text-dark{% elif p.status == 'hidden' %}bg-secondary{% else %}bg-light text-dark border{% endif %}">
+                  {{ p.status|upper }}
+                </span>
+              </td>
               <td><small>{{ p.route_human or '-' }}</small></td>
               <td><small title="{{ p.current_path or '-' }}">{{ p.current_path or '-' }}</small></td>
               <td><small>{{ p.current_action_human or p.last_action_type or p.last_action_hint or 'sin acciones registradas' }}</small></td>
+              <td><small>{{ p.last_interaction_human or ('Hace ' ~ (p.last_interaction_seconds or 0) ~ 's') }}</small></td>
               <td><small>{{ p.entity_display or '-' }}</small></td>
-              <td>{{ p.last_seen_seconds }}s</td>
+              <td>Hace {{ p.last_seen_seconds }}s</td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="text-muted">Sin presencia reciente.</td></tr>
+            <tr><td colspan="8" class="text-muted">Sin presencia reciente.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -141,8 +194,8 @@
         {% set stream = summary_payload.activity_stream or [] %}
         {% for item in stream %}
           <div class="border rounded p-2 mb-2" data-activity-id="{{ item.id }}">
-            <div><strong>{{ item.actor_username or '-' }}</strong> - {{ item.action_human or item.action_type }}</div>
-            <div class="small text-muted">{{ item.entity_display or '-' }} | {{ item.route_human or item.route or '-' }}</div>
+            <div><strong>{{ item.actor_username or '-' }}</strong> - <i class="bi {{ item.action_icon or 'bi-activity' }} {{ item.action_icon_class or '' }} me-1"></i>{{ item.action_human or item.action_type }}</div>
+            <div class="small text-muted">{{ item.entity_display or '-' }} | {{ item.route_human or item.route or '-' }} | {{ item.created_at_human or item.created_at }}</div>
           </div>
         {% else %}
           <div class="text-muted">Sin actividad reciente.</div>
@@ -151,18 +204,33 @@
     </div>
   </div>
 
-  <h2 class="h6">Últimos logs (en vivo)</h2>
+  <h2 class="h6">Últimos eventos (en vivo)</h2>
   <div class="table-responsive">
     <table class="table table-sm table-hover" id="liveLogsTable">
-      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th><th>Resultado</th></tr></thead>
+      <thead><tr><th>Cuándo</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Detalle</th><th>Resultado</th></tr></thead>
       <tbody>
       {% for log in latest_logs %}
         <tr data-log-id="{{ log.id }}">
-          <td>{{ log.created_at }}</td>
+          <td title="{{ log.created_at }}">{{ log.created_at_human or log.created_at }}</td>
           <td>{{ log.actor_username or '-' }}</td>
-          <td>{{ log.action_human or log.action_type }}</td>
+          <td><i class="bi {{ log.action_icon or 'bi-activity' }} {{ log.action_icon_class or '' }} me-1"></i>{{ log.action_human or log.action_type }}</td>
           <td>{{ log.entity_display or ((log.entity_type or '-') ~ ' ' ~ (log.entity_id or '')) }}</td>
-          <td>{{ log.summary or '-' }}</td>
+          <td>
+            <div>{{ log.summary_human or log.summary or '-' }}</div>
+            {% if log.changes_human %}
+            <ul class="mb-1 small text-muted">
+              {% for c in log.changes_human %}
+              <li>{{ c.label }}: {{ c.from }} → {{ c.to }}</li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% if log.metadata_json %}
+            <details>
+              <summary class="small text-muted">Detalle técnico</summary>
+              <pre class="small mb-0">{{ log.metadata_json | tojson(indent=2) }}</pre>
+            </details>
+            {% endif %}
+          </td>
           <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
         </tr>
       {% else %}

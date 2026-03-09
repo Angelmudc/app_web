@@ -26,6 +26,34 @@
   let presencePingTimer = null;
   let presencePingDelayMs = 10000;
   let presencePingStatus = 'live';
+  let lastInteractionAt = new Date().toISOString();
+  const INTERACTION_ACTIVE_WINDOW_SECONDS = 60;
+  const MONITOREO_PREFIX = '/admin/monitoreo';
+
+  function isMonitoringPage(pathname) {
+    const raw = (pathname || window.location.pathname || '').split('?')[0];
+    const path = String(raw || '').trim();
+    return path === MONITOREO_PREFIX || path.indexOf(MONITOREO_PREFIX + '/') === 0;
+  }
+
+  function registerInteraction() {
+    lastInteractionAt = new Date().toISOString();
+  }
+
+  function currentClientStatus() {
+    if (document.visibilityState === 'hidden') return 'hidden';
+    const last = new Date(lastInteractionAt);
+    if (Number.isNaN(last.getTime())) return 'idle';
+    const deltaSeconds = Math.max(0, Math.floor((Date.now() - last.getTime()) / 1000));
+    return deltaSeconds <= INTERACTION_ACTIVE_WINDOW_SECONDS ? 'active' : 'idle';
+  }
+
+  function startActivityTracking() {
+    ['mousemove', 'keydown', 'click', 'scroll'].forEach((evt) => {
+      window.addEventListener(evt, registerInteraction, { passive: true });
+    });
+    document.addEventListener('visibilitychange', registerInteraction, { passive: true });
+  }
 
   function setLiveStatus(isLive) {
     if (!liveStatus || !liveToggleBtn) return;
@@ -58,7 +86,43 @@
     if (!iso) return '-';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
+    const now = new Date();
+    const deltaSec = Math.max(0, Math.floor((now.getTime() - d.getTime()) / 1000));
+    if (deltaSec < 60) return 'Hace ' + deltaSec + ' segundos';
+    if (deltaSec < 3600) return 'Hace ' + Math.max(1, Math.floor(deltaSec / 60)) + ' minutos';
+    if (
+      now.getFullYear() === d.getFullYear() &&
+      now.getMonth() === d.getMonth() &&
+      now.getDate() === d.getDate()
+    ) {
+      return 'Hoy ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
     return d.toLocaleString();
+  }
+
+  function escapeHtml(raw) {
+    return String(raw || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function renderChanges(item) {
+    const rows = (item && Array.isArray(item.changes_human)) ? item.changes_human : [];
+    if (!rows.length) return '';
+    const html = rows.map((c) => {
+      return '<li>' + escapeHtml(c.label || 'Campo') + ': ' + escapeHtml(c.from || '-') + ' → ' + escapeHtml(c.to || '-') + '</li>';
+    }).join('');
+    return '<ul class="mb-1 small text-muted">' + html + '</ul>';
+  }
+
+  function renderTechDetails(item) {
+    if (!item || !item.metadata_json) return '';
+    let pretty = '';
+    try { pretty = JSON.stringify(item.metadata_json, null, 2); } catch (_) { pretty = String(item.metadata_json); }
+    return '<details><summary class="small text-muted">Detalle técnico</summary><pre class="small mb-0">' + escapeHtml(pretty) + '</pre></details>';
   }
 
   function resultBadge(ok) {
@@ -72,12 +136,19 @@
     const tr = document.createElement('tr');
     tr.dataset.logId = String(item.id);
     tr.classList.add('log-new');
+    const actionIcon = item.action_icon || 'bi-activity';
+    const actionIconClass = item.action_icon_class || 'text-secondary';
+    const detailHtml = [
+      '<div>' + escapeHtml(item.summary_human || item.summary || '-') + '</div>',
+      renderChanges(item),
+      renderTechDetails(item),
+    ].join('');
     tr.innerHTML = [
-      '<td>' + formatDate(item.created_at) + '</td>',
-      '<td>' + (item.actor_username || '-') + '</td>',
-      '<td>' + (item.action_human || item.action_type || '-') + '</td>',
-      '<td>' + (item.entity_display || ((item.entity_type || '-') + ' ' + (item.entity_id || ''))) + '</td>',
-      '<td>' + (item.summary || '-') + '</td>',
+      '<td title="' + escapeHtml(item.created_at || '') + '">' + formatDate(item.created_at) + '</td>',
+      '<td>' + escapeHtml(item.actor_username || '-') + '</td>',
+      '<td><i class="bi ' + escapeHtml(actionIcon) + ' ' + escapeHtml(actionIconClass) + ' me-1"></i>' + escapeHtml(item.action_human || item.action_type || '-') + '</td>',
+      '<td>' + escapeHtml(item.entity_display || ((item.entity_type || '-') + ' ' + (item.entity_id || ''))) + '</td>',
+      '<td>' + detailHtml + '</td>',
       '<td>' + resultBadge(Boolean(item.success)) + '</td>'
     ].join('');
 
@@ -114,20 +185,26 @@
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!Array.isArray(presence) || !presence.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Sin presencia reciente.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin presencia reciente.</td></tr>';
       return;
     }
     presence.forEach((p) => {
       const tr = document.createElement('tr');
-      const badge = p.status === 'active' ? 'bg-success' : 'bg-secondary';
+      const status = String(p.status || '').toLowerCase();
+      const badge = status === 'active'
+        ? 'bg-success'
+        : (status === 'idle'
+          ? 'bg-warning text-dark'
+          : (status === 'hidden' ? 'bg-secondary' : 'bg-light text-dark border'));
       tr.innerHTML = [
         '<td>' + (p.username || '-') + ' <small class="text-muted">(' + (p.role || '-') + ')</small></td>',
         '<td><span class="badge ' + badge + '">' + String(p.status || '').toUpperCase() + '</span></td>',
         '<td><small>' + (p.route_human || '-') + '</small></td>',
         '<td><small title="' + (p.current_path || '-') + '">' + (p.current_path || '-') + '</small></td>',
         '<td><small>' + (p.current_action_human || p.last_action_type || p.last_action_hint || 'sin acciones registradas') + '</small></td>',
+        '<td><small>' + (p.last_interaction_human || ('Hace ' + Number(p.last_interaction_seconds || 0) + 's')) + '</small></td>',
         '<td><small>' + (p.entity_display || '-') + '</small></td>',
-        '<td>' + (p.last_seen_seconds || 0) + 's</td>'
+        '<td>Hace ' + (p.last_seen_seconds || 0) + 's</td>'
       ].join('');
       tbody.appendChild(tr);
     });
@@ -166,9 +243,49 @@
     root.innerHTML = rows.map((item) => {
       return [
         '<div class="border rounded p-2 mb-2" data-activity-id="' + (item.id || '') + '">',
-        '<div><strong>' + (item.actor_username || '-') + '</strong> - ' + (item.action_human || item.action_type || '-') + '</div>',
-        '<div class="small text-muted">' + (item.entity_display || '-') + ' | ' + (item.route_human || item.route || '-') + '</div>',
+        '<div><strong>' + escapeHtml(item.actor_username || '-') + '</strong> - <i class="bi ' + escapeHtml(item.action_icon || 'bi-activity') + ' ' + escapeHtml(item.action_icon_class || '') + ' me-1"></i>' + escapeHtml(item.action_human || item.action_type || '-') + '</div>',
+        '<div class="small text-muted">' + escapeHtml(item.entity_display || '-') + ' | ' + escapeHtml(item.route_human || item.route || '-') + ' | ' + formatDate(item.created_at) + '</div>',
         '</div>',
+      ].join('');
+    }).join('');
+  }
+
+  function updateAlerts(alerts) {
+    const box = document.getElementById('alertsBox');
+    if (!box) return;
+    const rows = Array.isArray(alerts) ? alerts : [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="text-muted">No hay alertas pendientes.</div>';
+      return;
+    }
+    box.innerHTML = rows.slice(0, 10).map((a) => {
+      const severity = String(a.severity || '').toLowerCase();
+      const isError = String(a.action_type || '') === 'ERROR_EVENT' || severity === 'critical' || severity === 'error';
+      const klass = isError ? 'alert-danger' : 'alert-warning';
+      let detailUrl = '';
+      if (String(a.action_type || '') === 'ERROR_EVENT' && a.id) {
+        detailUrl = '/admin/errores/' + a.id;
+      } else if (String(a.entity_type || '').toLowerCase() === 'candidata' && a.entity_id) {
+        detailUrl = '/admin/monitoreo/candidatas/' + encodeURIComponent(a.entity_id);
+      } else if (['candidata', 'solicitud'].includes(String(a.entity_type || '').toLowerCase())) {
+        detailUrl = '/admin/seguridad/locks';
+      }
+      const severityTxt = (severity === 'critical') ? 'Crítica' : ((severity === 'warning') ? 'Advertencia' : (isError ? 'Error' : 'Seguridad'));
+      return [
+        '<div class="alert ' + klass + ' py-2 mb-2">',
+        '<div class="d-flex justify-content-between align-items-center gap-2">',
+        '<div>',
+        '<strong>' + severityTxt + ':</strong> ' + escapeHtml(a.summary || 'Evento detectado'),
+        '<small class="text-muted d-block">' + escapeHtml(a.route || '-') + '</small>',
+        (detailUrl ? '<a class="small" href="' + detailUrl + '">Ver detalle</a>' : ''),
+        '</div>',
+        '<form method="post" action="/admin/alertas/' + a.id + '/resolver">',
+        '<input type="hidden" name="csrf_token" value="' + escapeHtml(csrfToken) + '">',
+        '<input type="hidden" name="next" value="/admin/monitoreo">',
+        '<button class="btn btn-sm btn-outline-dark" type="submit">Marcar resuelta</button>',
+        '</form>',
+        '</div>',
+        '</div>'
       ].join('');
     }).join('');
   }
@@ -246,6 +363,9 @@
     if (summary.activity_stream) {
       updateActivityStream(summary.activity_stream);
     }
+    if (summary.critical_alerts || summary.alerts) {
+      updateAlerts(summary.critical_alerts || summary.alerts);
+    }
   }
 
   async function fetchJson(url) {
@@ -255,7 +375,7 @@
   }
 
   async function pollLogs() {
-    if (paused || !logsUrl) return;
+    if (paused || !logsUrl || !isMonitoringPage()) return;
     const params = new URLSearchParams(window.location.search);
     params.set('since_id', String(lastId || 0));
     params.set('limit', '50');
@@ -268,19 +388,19 @@
   }
 
   async function pollSummary() {
-    if (paused || !summaryUrl) return;
+    if (paused || !summaryUrl || !isMonitoringPage()) return;
     const data = await fetchJson(summaryUrl);
     updateMetrics(data);
   }
 
   async function pollPresence() {
-    if (paused || !presenceUrl) return;
+    if (paused || !presenceUrl || !isMonitoringPage()) return;
     const data = await fetchJson(presenceUrl);
     updatePresenceTable((data && data.items) || []);
   }
 
   async function pollProductivity() {
-    if (paused || !productivityUrl) return;
+    if (paused || !productivityUrl || !isMonitoringPage()) return;
     const data = await fetchJson(productivityUrl);
     updateProductivity(data || {});
   }
@@ -304,6 +424,7 @@
   }
 
   function startPolling() {
+    if (!isMonitoringPage()) return;
     stopPolling();
     setLiveStatus(true);
     pollLogs().catch(() => {});
@@ -317,7 +438,7 @@
   }
 
   function startSSE() {
-    if (!streamUrl || paused) return;
+    if (!streamUrl || paused || !isMonitoringPage()) return;
     stopSSE();
     const url = streamUrl + '?last_id=' + encodeURIComponent(String(lastId || 0));
     sse = new EventSource(url, { withCredentials: true });
@@ -327,6 +448,9 @@
         const item = JSON.parse(ev.data || '{}');
         insertLogRow(item);
         lastId = Math.max(lastId, Number(item.id || 0));
+        if (item && (item.action_type === 'ERROR_EVENT' || item.action_type === 'SECURITY_ALERT')) {
+          pollSummary().catch(() => {});
+        }
       } catch (_) {}
     });
 
@@ -379,10 +503,12 @@
   }
 
   async function presencePing() {
-    if (!presencePingUrl) return;
+    if (!presencePingUrl || !isMonitoringPage()) return;
     const body = {
       current_path: window.location.pathname + window.location.search,
       page_title: document.title || '',
+      last_interaction_at: lastInteractionAt,
+      client_status: currentClientStatus(),
     };
     const headers = { 'Content-Type': 'application/json' };
     if (csrfToken) headers['X-CSRFToken'] = csrfToken;
@@ -400,8 +526,17 @@
     presencePingTimer = setTimeout(runPresencePing, delayMs);
   }
 
+  function stopPresencePing() {
+    if (presencePingTimer) clearTimeout(presencePingTimer);
+    presencePingTimer = null;
+  }
+
   async function runPresencePing() {
-    if (!presencePingUrl) return;
+    if (!presencePingUrl || !isMonitoringPage()) {
+      stopPresencePing();
+      updatePresencePingState('paused', 'outside_monitoring');
+      return;
+    }
     try {
       await presencePing();
       presencePingDelayMs = 10000;
@@ -411,15 +546,21 @@
       const reason = (err && err.message) ? err.message : 'network_error';
       updatePresencePingState('paused', reason);
     } finally {
-      schedulePresencePing(presencePingDelayMs);
+      if (isMonitoringPage()) schedulePresencePing(presencePingDelayMs);
     }
   }
 
   function startPresencePing() {
-    if (document.body && document.body.getAttribute('data-live-presence-enabled') === '1') return;
-    if (!presencePingUrl) return;
+    if (!presencePingUrl || !isMonitoringPage()) return;
     presencePingDelayMs = 10000;
     schedulePresencePing(0);
+  }
+
+  function stopMonitoringRealtime() {
+    stopSSE();
+    stopPolling();
+    stopPresencePing();
+    setLiveStatus(false);
   }
 
   if (liveToggleBtn) {
@@ -439,10 +580,21 @@
     });
   }
 
-  startPresencePing();
-  if (page === 'dashboard' && !hasFilters) {
-    startSSE();
-  } else {
-    startPolling();
+  startActivityTracking();
+  if (!isMonitoringPage()) {
+    stopMonitoringRealtime();
+    return;
   }
+  startPresencePing();
+  if (page === 'dashboard' && !hasFilters) startSSE();
+  else startPolling();
+
+  window.addEventListener('popstate', function () {
+    if (!isMonitoringPage()) stopMonitoringRealtime();
+  });
+  window.addEventListener('hashchange', function () {
+    if (!isMonitoringPage()) stopMonitoringRealtime();
+  });
+  window.addEventListener('pagehide', stopMonitoringRealtime);
+  window.addEventListener('beforeunload', stopMonitoringRealtime);
 })();

@@ -16,7 +16,7 @@ from werkzeug.security import generate_password_hash
 from sqlalchemy import or_, func, cast, desc, case
 from sqlalchemy.types import Numeric
 from sqlalchemy.orm import joinedload, load_only  # ➜ para evitar N+1 en copiar_solicitudes
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
 from functools import wraps  # si otros decoradores locales lo usan
 
@@ -67,9 +67,40 @@ from utils.staff_auth import (
     clear_breakglass_session,
 )
 from utils.audit_logger import log_action
+from utils.enterprise_layer import (
+    touch_staff_session,
+    list_active_sessions,
+    close_user_sessions,
+    lock_ping,
+    lock_takeover,
+    list_active_locks,
+    get_alert_items,
+    resolve_alert,
+    health_payload,
+    metrics_dashboard,
+    metrics_secretarias,
+    metrics_solicitudes,
+    intelligent_suggestions_for_solicitud,
+    register_decision_feedback,
+    log_error_event,
+    emit_critical_alert,
+    emit_warning_alert,
+    telegram_channel_config,
+    save_telegram_channel_config,
+    send_telegram_test_message,
+)
 from utils.audit_entity import (
     candidata_entity_meta,
     log_candidata_action,
+)
+from utils.robust_save import execute_robust_save
+from utils.rbac import (
+    can as rbac_can,
+    has_admin_access,
+    log_permission_denied,
+    normalize_role as normalize_staff_role,
+    permission_required_for_path,
+    role_for_user,
 )
 
 from . import admin_bp
@@ -93,7 +124,7 @@ def _staff_password_min_len() -> int:
 
 def _admin_default_role() -> str:
     role = (os.getenv("ADMIN_DEFAULT_ROLE") or "secretaria").strip().lower()
-    return role if role in ("admin", "secretaria") else "secretaria"
+    return role if role in ("owner", "admin", "secretaria") else "secretaria"
 
 
 def _emergency_hide_prefix() -> str:
@@ -159,10 +190,106 @@ def _audit_log(
         return
 
 
+def _form_snapshot_payload() -> dict[str, object]:
+    payload: dict[str, object] = {}
+    try:
+        for key in sorted((request.form or {}).keys()):
+            if str(key).lower() in {"password", "password_confirm", "clave"}:
+                payload[str(key)] = "<hidden>"
+                continue
+            vals = request.form.getlist(key)
+            if len(vals) > 1:
+                payload[str(key)] = [str(v)[:200] for v in vals[:20]]
+            else:
+                payload[str(key)] = str((vals[0] if vals else ""))[:200]
+    except Exception:
+        return {}
+    return payload
+
+
+def _verify_solicitud_saved(
+    solicitud_id: int,
+    *,
+    expected_cliente_id: int | None = None,
+    expected_codigo: str | None = None,
+    expected_estado: str | None = None,
+) -> bool:
+    if int(solicitud_id or 0) <= 0:
+        return False
+    row = Solicitud.query.filter_by(id=int(solicitud_id)).first()
+    if not row:
+        return False
+    if expected_cliente_id is not None and int(getattr(row, "cliente_id", 0) or 0) != int(expected_cliente_id):
+        return False
+    if expected_codigo is not None and str(getattr(row, "codigo_solicitud", "") or "") != str(expected_codigo):
+        return False
+    if expected_estado is not None and str(getattr(row, "estado", "") or "") != str(expected_estado):
+        return False
+    return True
+
+
+def _execute_form_save(
+    *,
+    persist_fn,
+    verify_fn,
+    entity_type: str,
+    entity_id,
+    summary: str,
+    metadata: dict | None = None,
+):
+    result = execute_robust_save(
+        session=db.session,
+        persist_fn=persist_fn,
+        verify_fn=verify_fn,
+        max_retries=2,
+        retryable_exceptions=(OperationalError,),
+    )
+    base_metadata = {
+        "fields_sent": _form_snapshot_payload(),
+        "attempt_count": int(result.attempts),
+    }
+    if metadata:
+        base_metadata.update(metadata)
+    if result.ok:
+        _audit_log(
+            action_type="FORM_SAVE_OK",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            summary=summary,
+            metadata=base_metadata,
+            success=True,
+        )
+        return result
+    _audit_log(
+        action_type="FORM_SAVE_FAIL",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        summary=summary,
+        metadata={**base_metadata, "error_message": (result.error_message or "")[:400]},
+        success=False,
+        error=result.error_message or "No se pudo guardar correctamente.",
+    )
+    return result
+
+
+def _current_staff_role() -> str:
+    if not isinstance(current_user, StaffUser):
+        return normalize_staff_role(session.get("role"))
+    return role_for_user(current_user)
+
+
+def _owner_only() -> None:
+    role = _current_staff_role()
+    if not rbac_can(role, "admin:roles"):
+        log_permission_denied(user=current_user if isinstance(current_user, StaffUser) else None, required_permission="admin:roles")
+        abort(403)
+
+
 def _ensure_testing_staff_defaults() -> None:
     if not bool(current_app.config.get("TESTING")):
         return
     seed = [
+        ("Owner", "owner", "8899"),
         ("Cruz", "admin", "8998"),
         ("Karla", "secretaria", "9989"),
         ("Anyi", "secretaria", "0931"),
@@ -580,12 +707,12 @@ def _admin_guard_and_rate_limit():
         # vía user_loader y puede no devolver la misma clase.
         def _is_admin_identity() -> bool:
             try:
-                role = (getattr(current_user, "role", "") or "").strip().lower()
+                role = role_for_user(current_user)
                 if is_breakglass_user_obj(current_user):
                     return (role == "admin") and is_breakglass_session_valid(session)
 
                 if isinstance(current_user, StaffUser):
-                    return bool(current_user.is_active) and role in ("admin", "secretaria")
+                    return bool(current_user.is_active) and role in ("owner", "admin", "secretaria")
                 return False
             except Exception:
                 return False
@@ -604,7 +731,31 @@ def _admin_guard_and_rate_limit():
                 pass
             return redirect(url_for("admin.login"))
 
+        sess_state = touch_staff_session(
+            user=current_user,
+            flask_session=session,
+            path=(request.full_path or request.path or ""),
+        )
+        if not bool(sess_state.get("ok")) and sess_state.get("reason") == "revoked":
+            try:
+                logout_user()
+            except Exception:
+                pass
+            try:
+                session.clear()
+            except Exception:
+                pass
+            flash("Tu sesión fue cerrada por administración.", "warning")
+            return redirect(url_for("admin.login"))
+
         _touch_staff_presence(current_path=request.path, page_title=(request.endpoint or request.path))
+
+        required_permission = permission_required_for_path(request.path or "")
+        if required_permission:
+            role = role_for_user(current_user)
+            if not rbac_can(role, required_permission):
+                log_permission_denied(user=current_user, required_permission=required_permission)
+                abort(403)
 
         # Rate-limit solo para acciones que cambian cosas
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -1241,6 +1392,7 @@ def logout():
 @admin_bp.route('/usuarios', methods=['GET'])
 @admin_required
 def listar_usuarios():
+    _owner_only()
     q = (request.args.get('q') or '').strip()
     page = max(1, request.args.get('page', default=1, type=int) or 1)
     per_page = request.args.get('per_page', default=20, type=int) or 20
@@ -1286,6 +1438,7 @@ def listar_usuarios():
 @admin_bp.route('/usuarios/nuevo', methods=['GET', 'POST'])
 @admin_required
 def crear_usuario():
+    _owner_only()
     form = StaffUserCreateForm()
     form.role.data = form.role.data or _admin_default_role()
     min_password_len = _staff_password_min_len()
@@ -1296,7 +1449,7 @@ def crear_usuario():
         role = (form.role.data or '').strip().lower()
         password = (form.password.data or '')
 
-        if role not in ('admin', 'secretaria'):
+        if role not in ('owner', 'admin', 'secretaria'):
             flash('Rol inválido.', 'danger')
             return render_template('admin/usuario_form.html', form=form, nuevo=True, min_password_len=min_password_len)
 
@@ -1335,6 +1488,7 @@ def crear_usuario():
 @admin_bp.route('/usuarios/<int:user_id>/editar', methods=['GET', 'POST'])
 @admin_required
 def editar_usuario(user_id: int):
+    _owner_only()
     user = StaffUser.query.get_or_404(user_id)
     form = StaffUserEditForm(obj=user)
     min_password_len = _staff_password_min_len()
@@ -1344,7 +1498,7 @@ def editar_usuario(user_id: int):
         role = (form.role.data or '').strip().lower()
         new_password = (form.new_password.data or '')
 
-        if role not in ('admin', 'secretaria'):
+        if role not in ('owner', 'admin', 'secretaria'):
             flash('Rol inválido.', 'danger')
             return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
 
@@ -1382,6 +1536,7 @@ def editar_usuario(user_id: int):
 @admin_bp.route('/usuarios/<int:user_id>/toggle-estado', methods=['POST'])
 @admin_required
 def toggle_usuario_estado(user_id: int):
+    _owner_only()
     user = StaffUser.query.get_or_404(user_id)
     try:
         if isinstance(current_user, StaffUser) and int(current_user.id) == int(user.id):
@@ -1401,9 +1556,60 @@ def toggle_usuario_estado(user_id: int):
     return redirect(url_for('admin.listar_usuarios'))
 
 
+@admin_bp.route('/roles', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def admin_roles():
+    _owner_only()
+
+    if request.method == 'POST':
+        raw_user_id = (request.form.get("user_id") or "").strip()
+        new_role = normalize_staff_role(request.form.get("role"))
+        if not raw_user_id.isdigit():
+            flash("Usuario inválido.", "danger")
+            return redirect(url_for("admin.admin_roles"))
+        if new_role not in {"owner", "admin", "secretaria"}:
+            flash("Rol inválido.", "danger")
+            return redirect(url_for("admin.admin_roles"))
+
+        user = StaffUser.query.filter_by(id=int(raw_user_id)).first_or_404()
+        old_role = normalize_staff_role(user.role)
+        if old_role == new_role:
+            flash("Ese usuario ya tiene ese rol.", "info")
+            return redirect(url_for("admin.admin_roles"))
+
+        if old_role == "owner" and new_role != "owner":
+            owners = StaffUser.query.filter(func.lower(StaffUser.role) == "owner", StaffUser.is_active.is_(True)).count()
+            if int(owners or 0) <= 1:
+                flash("Debe existir al menos un Owner activo.", "warning")
+                return redirect(url_for("admin.admin_roles"))
+
+        user.role = new_role
+        try:
+            db.session.commit()
+            _audit_log(
+                action_type="ROLE_CHANGED",
+                entity_type="StaffUser",
+                entity_id=user.id,
+                summary=f"Rol actualizado para {user.username}",
+                metadata={"old_role": old_role, "new_role": new_role},
+                success=True,
+            )
+            flash(f"Rol de {user.username} actualizado a {new_role}.", "success")
+        except Exception:
+            db.session.rollback()
+            flash("No se pudo actualizar el rol.", "danger")
+
+        return redirect(url_for("admin.admin_roles"))
+
+    users = StaffUser.query.order_by(StaffUser.username.asc()).all()
+    return render_template("admin/roles.html", users=users, current_role=_current_staff_role())
+
+
 @admin_bp.route('/usuarios/<int:user_id>/eliminar', methods=['POST'])
 @admin_required
 def eliminar_usuario(user_id: int):
+    _owner_only()
     user = StaffUser.query.get_or_404(user_id)
     try:
         if isinstance(current_user, StaffUser) and int(current_user.id) == int(user.id):
@@ -1437,7 +1643,8 @@ def _parse_monitoreo_date(raw: str, end_of_day: bool = False):
 
 
 _PRESENCE_TTL_SECONDS = 65
-_PRESENCE_ACTIVE_SECONDS = 45
+_PRESENCE_ACTIVE_SECONDS = 30
+_PRESENCE_INTERACTION_ACTIVE_SECONDS = 60
 _PRESENCE_INDEX_KEY = "staff_presence:index"
 _PRODUCTIVITY_ACTIONS = (
     "CANDIDATA_EDIT",
@@ -1524,6 +1731,9 @@ def _humanize_action(
     action_hint: str | None = None,
 ) -> str:
     at = (action_type or "").strip().upper()
+    if at == "STAFF_POST":
+        route_h = _humanize_route(route)
+        return f"Actualizo datos en {route_h}"
     if at in _HUMAN_ACTION_MAP:
         return _HUMAN_ACTION_MAP[at]
 
@@ -1651,6 +1861,130 @@ def _humanize_route(path: str | None) -> str:
     if tail:
         return tail[:1].upper() + tail[1:]
     return raw[:80]
+
+
+def _humanize_datetime(dt: datetime | None) -> str:
+    if dt is None:
+        return "-"
+    now = datetime.utcnow()
+    delta = max(0, int((now - dt).total_seconds()))
+    if delta < 60:
+        return f"Hace {delta} segundos"
+    if delta < 3600:
+        mins = max(1, delta // 60)
+        return f"Hace {mins} minutos"
+    if dt.date() == now.date():
+        return f"Hoy {dt.strftime('%H:%M')}"
+    return dt.strftime("%d/%m %H:%M")
+
+
+def _action_icon(action_type: str | None, success: bool = True) -> tuple[str, str]:
+    at = (action_type or "").strip().upper()
+    if not success:
+        return ("bi-exclamation-triangle", "text-danger")
+    if "CREATE" in at or "NEW" in at:
+        return ("bi-plus-circle", "text-success")
+    if "EDIT" in at or "UPDATE" in at or "INTERVIEW" in at:
+        return ("bi-pencil-square", "text-primary")
+    if "DELETE" in at or "ELIM" in at:
+        return ("bi-trash", "text-danger")
+    if "OPEN" in at or "VIEW" in at or "PAGE_LOAD" in at:
+        return ("bi-eye", "text-info")
+    if "MATCH" in at or "SEND" in at:
+        return ("bi-send", "text-warning")
+    return ("bi-activity", "text-secondary")
+
+
+def _humanize_field_name(name: str | None) -> str:
+    raw = (name or "").strip().lower()
+    labels = {
+        "nombre_completo": "Nombre completo",
+        "codigo": "Codigo",
+        "estado": "Estado",
+        "modalidad_trabajo": "Modalidad",
+        "horario": "Horario",
+        "sueldo": "Sueldo",
+        "nota_cliente": "Nota del cliente",
+        "ciudad_sector": "Ciudad/sector",
+        "candidata_id": "Candidata",
+        "solicitud_id": "Solicitud",
+        "cliente_id": "Cliente",
+        "funciones": "Funciones",
+        "referencias_laboral": "Referencias laborales",
+        "referencias_familiares": "Referencias familiares",
+    }
+    if raw in labels:
+        return labels[raw]
+    if not raw:
+        return "Campo"
+    txt = raw.replace("_", " ").strip()
+    return txt[:1].upper() + txt[1:]
+
+
+def _humanize_value(value) -> str:
+    if value is None:
+        return "vacío"
+    if isinstance(value, bool):
+        return "Sí" if value else "No"
+    if isinstance(value, (int, float, Decimal)):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return ", ".join([_humanize_value(v) for v in value]) or "vacío"
+    txt = str(value).strip()
+    return txt if txt else "vacío"
+
+
+def _changes_to_human(changes) -> list[dict]:
+    if not isinstance(changes, dict):
+        return []
+    rows: list[dict] = []
+    for key, value in changes.items():
+        label = _humanize_field_name(key)
+        before = after = None
+        if isinstance(value, dict) and ("from" in value or "to" in value):
+            before = value.get("from")
+            after = value.get("to")
+        elif isinstance(value, (list, tuple)) and len(value) >= 2:
+            before, after = value[0], value[1]
+        else:
+            before, after = None, value
+        rows.append(
+            {
+                "field": str(key),
+                "label": label,
+                "from": _humanize_value(before),
+                "to": _humanize_value(after),
+                "sentence": f"{label}: {_humanize_value(before)} -> {_humanize_value(after)}",
+            }
+        )
+    return rows[:30]
+
+
+def _metadata_human(meta: dict | None) -> list[dict]:
+    src = dict(meta or {})
+    skip = {
+        "ip", "user_agent", "event_type", "scope",
+        "entity_display", "entity_name", "entity_code",
+        "action_hint", "status_code",
+    }
+    out = []
+    for k, v in src.items():
+        key = str(k or "").strip()
+        if not key or key in skip:
+            continue
+        if key.endswith("_id") and str(v or "").strip().isdigit():
+            continue
+        out.append({"label": _humanize_field_name(key), "value": _humanize_value(v)})
+    return out[:12]
+
+
+def _humanize_summary(action_human: str, summary: str | None, route: str | None) -> str:
+    txt = (summary or "").strip()
+    if not txt:
+        return action_human
+    if txt.isupper() or "HTTP " in txt or txt.startswith("POST ") or txt.startswith("GET "):
+        return f"{action_human} en {_humanize_route(route)}"
+    return txt[:180]
 
 
 def _build_entity_display_map(logs: list[StaffAuditLog] | None) -> dict[tuple[str, str], str]:
@@ -1807,6 +2141,19 @@ def _parse_iso_utc(raw: str | None):
         return None
 
 
+def _normalize_client_status(raw: str | None) -> str:
+    txt = (raw or "").strip().lower()
+    if txt in {"active", "idle", "hidden"}:
+        return txt
+    return "active"
+
+
+def _resolve_presence_status(last_seen_seconds: int, client_status: str) -> str:
+    if int(last_seen_seconds or 0) >= _PRESENCE_ACTIVE_SECONDS:
+        return "inactive"
+    return _normalize_client_status(client_status)
+
+
 def _touch_staff_presence(
     current_path: str | None = None,
     page_title: str | None = None,
@@ -1819,6 +2166,8 @@ def _touch_staff_presence(
     entity_id: str | None = None,
     entity_name: str | None = None,
     entity_code: str | None = None,
+    last_interaction_at: str | None = None,
+    client_status: str | None = None,
     log_event: bool = False,
 ) -> None:
     try:
@@ -1843,6 +2192,10 @@ def _touch_staff_presence(
             mapped = _build_entity_display_map([fake_log])
             effective_entity_display = mapped.get((effective_entity_type, effective_entity_id))
         effective_action_human = (action_human or prev.get("current_action_human") or _humanize_action(effective_action_type, route=effective_path, action_hint=effective_hint))[:120]
+        has_client_status = bool((client_status or "").strip())
+        interaction_dt = _parse_iso_utc(last_interaction_at) or (now if not has_client_status else (_parse_iso_utc(prev.get("last_interaction_at")) or now))
+        interaction_iso = interaction_dt.isoformat(timespec="seconds") + "Z"
+        normalized_client_status = _normalize_client_status(client_status) if has_client_status else "active"
 
         payload = {
             "user_id": uid,
@@ -1859,6 +2212,8 @@ def _touch_staff_presence(
             "entity_id": effective_entity_id,
             "entity_display": (effective_entity_display or "")[:200],
             "last_seen_at": now.isoformat(timespec="seconds") + "Z",
+            "last_interaction_at": interaction_iso,
+            "client_status": normalized_client_status,
             "ip": (_client_ip() or "")[:64],
             "user_agent": (request.headers.get("User-Agent") or "")[:255],
         }
@@ -1954,8 +2309,13 @@ def _presence_rows() -> list[dict]:
         seen_at = _parse_iso_utc(p.get("last_seen_at"))
         if seen_at is None:
             continue
+        interaction_at = _parse_iso_utc(p.get("last_interaction_at")) or seen_at
         delta = max(0, int((now - seen_at).total_seconds()))
-        status = "active" if delta < _PRESENCE_ACTIVE_SECONDS else "inactive"
+        interaction_delta = max(0, int((now - interaction_at).total_seconds()))
+        client_status = _normalize_client_status(p.get("client_status"))
+        if client_status == "active" and interaction_delta > _PRESENCE_INTERACTION_ACTIVE_SECONDS:
+            client_status = "idle"
+        status = _resolve_presence_status(delta, client_status)
         last = last_action_map.get(uid)
         last_serialized = last_serialized_map.get(uid) or {}
         current_action_human = (p.get("current_action_human") or last_serialized.get("action_human") or _humanize_action(
@@ -1976,6 +2336,14 @@ def _presence_rows() -> list[dict]:
                 "route_human": _humanize_route(p.get("current_path")),
                 "page_title": p.get("page_title"),
                 "last_seen_seconds": delta,
+                "last_interaction_at": interaction_at.isoformat() + "Z",
+                "last_interaction_seconds": interaction_delta,
+                "last_interaction_human": (
+                    f"Hace {interaction_delta}s"
+                    if interaction_delta < 60
+                    else f"Hace {max(1, int(interaction_delta / 60))}m"
+                ),
+                "client_status": client_status,
                 "last_action_hint": p.get("last_action_hint"),
                 "action_type": p.get("action_type"),
                 "action_hint": p.get("action_hint"),
@@ -1989,7 +2357,8 @@ def _presence_rows() -> list[dict]:
             }
         )
 
-    out.sort(key=lambda x: (x.get("status") != "active", x.get("last_seen_seconds", 999999)))
+    status_rank = {"active": 0, "idle": 1, "hidden": 2, "inactive": 3}
+    out.sort(key=lambda x: (status_rank.get(str(x.get("status") or "").lower(), 99), x.get("last_seen_seconds", 999999)))
     return out
 
 
@@ -2017,11 +2386,25 @@ def _build_presence_conflicts(active_rows: list[dict] | None = None) -> list[dic
         usernames = sorted({str(r.get("username") or "") for r in rows if r.get("username")})
         if len(usernames) < 2:
             continue
+        human_name = rows[0].get("entity_display") or f"Candidata ID {entity_id}"
+        emit_critical_alert(
+            rule="editing_conflict",
+            summary=f"Conflicto: {' y '.join(usernames[:2])} estan editando {human_name}",
+            entity_type="candidata",
+            entity_id=str(entity_id),
+            metadata={
+                "users": usernames,
+                "entity_display": human_name,
+                "source": "control_room",
+            },
+            dedupe_seconds=180,
+            telegram=True,
+        )
         out.append(
             {
                 "entity_type": "candidata",
                 "entity_id": entity_id,
-                "entity_display": rows[0].get("entity_display") or f"Candidata ID {entity_id}",
+                "entity_display": human_name,
                 "users": usernames,
                 "message": "Dos usuarias editando la misma candidata",
             }
@@ -2112,24 +2495,35 @@ def _serialize_log_item(
         route=log.route,
         action_hint=action_hint,
     )
+    icon_name, icon_class = _action_icon(log.action_type, success=bool(log.success))
+    changes_human = _changes_to_human(changes)
+    metadata_human = _metadata_human(metadata)
+    created_human = _humanize_datetime(log.created_at)
+    summary_human = _humanize_summary(action_human, log.summary, log.route)
     return {
         "id": int(log.id),
         "created_at": log.created_at.isoformat() + "Z" if log.created_at else None,
+        "created_at_human": created_human,
         "actor_user_id": log.actor_user_id,
         "actor_username": username_map.get(int(log.actor_user_id)) if log.actor_user_id else None,
         "actor_role": log.actor_role,
         "action_type": log.action_type,
+        "action_icon": icon_name,
+        "action_icon_class": icon_class,
         "entity_type": entity_type or log.entity_type,
         "entity_id": entity_id or log.entity_id,
         "entity_display": entity_display,
         "action_human": action_human,
         "summary": log.summary,
+        "summary_human": summary_human,
         "route": log.route,
         "route_human": _humanize_route(log.route),
         "method": log.method,
         "success": bool(log.success),
         "metadata_json": metadata,
+        "metadata_human": metadata_human,
         "changes_json": changes,
+        "changes_human": changes_human,
     }
 
 
@@ -2257,6 +2651,7 @@ def _build_monitoreo_summary_payload() -> dict:
     presence = _presence_rows()
     active_presence = _presence_active_rows(presence)
     conflicts = _build_presence_conflicts(active_presence)
+    alerts = get_alert_items(limit=10, scope="critical", include_resolved=False)
     return {
         "generated_at": now.isoformat() + "Z",
         "today": _window_metrics_payload(day_start),
@@ -2277,6 +2672,8 @@ def _build_monitoreo_summary_payload() -> dict:
         "productivity": _build_productivity_today_payload(),
         "operations": _build_operations_metrics_payload(active_presence),
         "activity_stream": _build_activity_stream_payload(limit=20),
+        "alerts": alerts,
+        "critical_alerts": alerts,
     }
 
 
@@ -2760,8 +3157,8 @@ def monitoreo_presence_ping():
         abort(403)
     if not bool(getattr(current_user, "is_active", False)):
         abort(403)
-    role = (getattr(current_user, "role", "") or "").strip().lower()
-    if role not in ("admin", "secretaria"):
+    role = role_for_user(current_user)
+    if role not in ("owner", "admin", "secretaria"):
         abort(403)
 
     payload = request.get_json(silent=True) or {}
@@ -2774,6 +3171,8 @@ def monitoreo_presence_ping():
     raw_action_type = (payload.get("action_type") or "").strip().upper()
     action_type = raw_action_type if _is_valid_live_action_type(raw_action_type) else _map_event_to_action_type(event_type)
     action_hint = (payload.get("action_hint") or payload.get("last_action_hint") or "").strip().lower()[:80]
+    client_status = _normalize_client_status(payload.get("client_status"))
+    last_interaction_at = (payload.get("last_interaction_at") or "").strip()[:40]
     if not action_hint:
         action_hint = _infer_action_hint_from_path(current_path)[:80]
     ctx = _extract_entity_context(payload, current_path=current_path)
@@ -2791,9 +3190,244 @@ def monitoreo_presence_ping():
         entity_id=ctx.get("entity_id"),
         entity_name=ctx.get("entity_name"),
         entity_code=ctx.get("entity_code"),
+        last_interaction_at=last_interaction_at,
+        client_status=client_status,
         log_event=True,
     )
     return jsonify({"ok": True})
+
+
+@admin_bp.route('/seguridad/locks', methods=['GET'])
+@login_required
+@admin_required
+def seguridad_locks():
+    rows = list_active_locks()
+    return render_template("admin/seguridad_locks.html", locks=rows, now=datetime.utcnow())
+
+
+@admin_bp.route('/seguridad/locks/ping', methods=['POST'])
+@login_required
+@staff_required
+def seguridad_locks_ping():
+    payload = request.get_json(silent=True) or {}
+    entity_type = (payload.get("entity_type") or "").strip().lower()
+    entity_id = str(payload.get("entity_id") or "").strip()
+    current_path = (payload.get("current_path") or request.path or "").strip()[:255]
+    if not isinstance(current_user, StaffUser):
+        return jsonify({"ok": False, "error": "Sesión inválida."}), 403
+    data = lock_ping(user=current_user, entity_type=entity_type, entity_id=entity_id, current_path=current_path)
+    if not data.get("ok"):
+        return jsonify(data), 400
+    return jsonify(data)
+
+
+@admin_bp.route('/seguridad/locks/takeover', methods=['POST'])
+@login_required
+@staff_required
+def seguridad_locks_takeover():
+    payload = request.get_json(silent=True) or {}
+    entity_type = (payload.get("entity_type") or "").strip().lower()
+    entity_id = str(payload.get("entity_id") or "").strip()
+    reason = (payload.get("reason") or "").strip()
+    if not isinstance(current_user, StaffUser):
+        return jsonify({"ok": False, "error": "Sesión inválida."}), 403
+    data = lock_takeover(user=current_user, entity_type=entity_type, entity_id=entity_id, reason=reason)
+    if not data.get("ok"):
+        return jsonify(data), 403
+    return jsonify(data)
+
+
+@admin_bp.route('/seguridad/sesiones', methods=['GET'])
+@login_required
+@admin_required
+def seguridad_sesiones():
+    sessions_rows = list_active_sessions()
+    return render_template("admin/seguridad_sesiones.html", sessions_rows=sessions_rows, now=datetime.utcnow())
+
+
+@admin_bp.route('/seguridad/sesiones/cerrar', methods=['POST'])
+@login_required
+@admin_required
+def seguridad_sesiones_cerrar():
+    raw_user_id = request.form.get("user_id") or (request.get_json(silent=True) or {}).get("user_id")
+    reason = request.form.get("reason") or (request.get_json(silent=True) or {}).get("reason") or ""
+    try:
+        user_id = int(raw_user_id)
+    except Exception:
+        flash("Usuario inválido para cerrar sesión.", "danger")
+        return redirect(url_for("admin.seguridad_sesiones"))
+    close_user_sessions(actor=current_user, user_id=user_id, reason=reason)
+    flash("Sesiones cerradas correctamente.", "success")
+    return redirect(url_for("admin.seguridad_sesiones"))
+
+
+@admin_bp.route('/seguridad/alertas', methods=['GET'])
+@login_required
+@admin_required
+def seguridad_alertas():
+    alerts = get_alert_items(limit=200, scope="security", include_resolved=True)
+    return render_template("admin/seguridad_alertas.html", alerts=alerts)
+
+
+@admin_bp.route('/alertas/<int:alert_id>/resolver', methods=['POST'])
+@login_required
+@admin_required
+def resolver_alerta(alert_id: int):
+    resolve_alert(alert_id, actor=current_user if isinstance(current_user, StaffUser) else None)
+    flash("Alerta marcada como resuelta.", "success")
+    nxt = request.form.get("next") or request.args.get("next")
+    if nxt and str(nxt).startswith("/"):
+        return redirect(nxt)
+    return redirect(url_for("admin.monitoreo_staff"))
+
+
+@admin_bp.route('/alertas/canales', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def alertas_canales():
+    _owner_only()
+    if request.method == "POST":
+        token = (request.form.get("telegram_bot_token") or "").strip()
+        chat_id = (request.form.get("telegram_chat_id") or "").strip()
+        enabled = str(request.form.get("telegram_enabled") or "").strip().lower() in {"1", "true", "on", "yes"}
+
+        save_telegram_channel_config(
+            token=token,
+            chat_id=chat_id,
+            enabled=enabled,
+            actor_username=getattr(current_user, "username", None),
+        )
+        flash("Canal de Telegram actualizado.", "success")
+        return redirect(url_for("admin.alertas_canales"))
+
+    cfg = telegram_channel_config()
+    return render_template("admin/alertas_canales.html", cfg=cfg)
+
+
+@admin_bp.route('/alertas/canales/probar', methods=['POST'])
+@login_required
+@admin_required
+def alertas_canales_probar():
+    _owner_only()
+    ok, detail = send_telegram_test_message(actor_username=getattr(current_user, "username", None))
+    if ok:
+        flash("Mensaje de prueba enviado por Telegram.", "success")
+    else:
+        flash(f"No se pudo enviar el mensaje de prueba: {detail}", "danger")
+    return redirect(url_for("admin.alertas_canales"))
+
+
+@admin_bp.route('/errores', methods=['GET'])
+@login_required
+@admin_required
+def errores_lista():
+    errors = get_alert_items(limit=200, scope="error", include_resolved=True)
+    return render_template("admin/errores_lista.html", errors=errors)
+
+
+@admin_bp.route('/errores/<int:error_id>', methods=['GET'])
+@login_required
+@admin_required
+def errores_detalle(error_id: int):
+    row = StaffAuditLog.query.filter(StaffAuditLog.id == int(error_id), StaffAuditLog.action_type == "ERROR_EVENT").first_or_404()
+    actor = None
+    if row.actor_user_id:
+        actor = StaffUser.query.filter_by(id=int(row.actor_user_id)).first()
+    return render_template("admin/errores_detalle.html", error_row=row, actor=actor)
+
+
+@admin_bp.route('/health', methods=['GET'])
+@login_required
+@admin_required
+def admin_health():
+    payload = health_payload()
+    if (request.args.get("format") or "").strip().lower() == "json":
+        return jsonify(payload)
+    return render_template("admin/health.html", health=payload)
+
+
+@admin_bp.route('/metricas', methods=['GET'])
+@login_required
+@admin_required
+def metricas_dashboard():
+    period = (request.args.get("period") or "7d").strip().lower()
+    payload = metrics_dashboard(period)
+    return render_template("admin/metricas_dashboard.html", period=period, payload=payload)
+
+
+@admin_bp.route('/metricas/secretarias', methods=['GET'])
+@login_required
+@admin_required
+def metricas_secretarias_view():
+    period = (request.args.get("period") or "7d").strip().lower()
+    payload = metrics_secretarias(period)
+    return render_template("admin/metricas_secretarias.html", period=period, payload=payload)
+
+
+@admin_bp.route('/metricas/solicitudes', methods=['GET'])
+@login_required
+@admin_required
+def metricas_solicitudes_view():
+    period = (request.args.get("period") or "7d").strip().lower()
+    payload = metrics_solicitudes(period)
+    return render_template("admin/metricas_solicitudes.html", period=period, payload=payload)
+
+
+@admin_bp.route('/solicitudes/<int:solicitud_id>/sugerencias', methods=['GET'])
+@login_required
+@staff_required
+def sugerencias_solicitud(solicitud_id: int):
+    solicitud = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente))
+        .filter_by(id=solicitud_id)
+        .first_or_404()
+    )
+    items = intelligent_suggestions_for_solicitud(solicitud, top_k=10)
+    return render_template("admin/sugerencias_solicitud.html", solicitud=solicitud, items=items)
+
+
+@admin_bp.route('/solicitudes/<int:solicitud_id>/sugerencias/feedback', methods=['POST'])
+@login_required
+@staff_required
+def sugerencias_feedback(solicitud_id: int):
+    solicitud = Solicitud.query.filter_by(id=solicitud_id).first_or_404()
+    try:
+        candidata_id = int(request.form.get("candidata_id") or "0")
+    except Exception:
+        candidata_id = 0
+    feedback = (request.form.get("feedback") or "").strip().lower()
+    reason_key = (request.form.get("reason_key") or "").strip().lower()[:40]
+    reason_text = (request.form.get("reason_text") or "").strip()[:200]
+    good = feedback in {"good", "buena", "si", "sí", "1"}
+    if candidata_id <= 0:
+        flash("Selecciona una candidata válida para guardar feedback.", "warning")
+        return redirect(url_for("admin.sugerencias_solicitud", solicitud_id=solicitud.id))
+    register_decision_feedback(
+        actor=current_user,
+        solicitud_id=solicitud.id,
+        candidata_id=candidata_id,
+        good=good,
+        reason_key=reason_key or "experiencia",
+        reason_text=reason_text,
+    )
+    flash("Feedback guardado. El motor ajustó sus pesos de reglas.", "success")
+    return redirect(url_for("admin.sugerencias_solicitud", solicitud_id=solicitud.id))
+
+
+@admin_bp.route('/matching/inteligente', methods=['GET'])
+@login_required
+@staff_required
+def matching_inteligente():
+    solicitudes = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente))
+        .filter(Solicitud.estado.in_(("activa", "reemplazo", "proceso")))
+        .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+        .limit(80)
+        .all()
+    )
+    return render_template("admin/matching_inteligente.html", solicitudes=solicitudes)
 
 # =============================================================================
 #                 GUARD GLOBAL ADMIN (aislamiento real)
@@ -3961,7 +4595,7 @@ def detalle_cliente(cliente_id):
         str(getattr(current_user, "role", "") or "").strip().lower()
         or str(session.get("role", "") or "").strip().lower()
     )
-    is_admin_role = role == "admin"
+    is_admin_role = role in ("owner", "admin")
 
     return render_template(
         'admin/cliente_detail.html',
@@ -4329,108 +4963,117 @@ def nueva_solicitud_admin(cliente_id):
 
     # POST válido
     if form.validate_on_submit():
+        state = {"solicitud_id": 0, "tipo_servicio": None}
         try:
-            # Código único
             nuevo_codigo = _next_codigo_solicitud(c)
+            base_total = int(c.total_solicitudes or 0)
 
-            # Instanciar con mínimos
-            s = Solicitud(
-                cliente_id=c.id,
-                fecha_solicitud=datetime.utcnow(),
-                codigo_solicitud=nuevo_codigo
-            )
-
-            # Carga general desde WTForms
-            form.populate_obj(s)
-
-            # Sueldo (solo números): normaliza para evitar guardar "RD$", comas, etc.
-            if hasattr(form, 'sueldo'):
-                try:
-                    s.sueldo = _norm_numeric_str(form.sueldo.data)
-                except Exception:
-                    # No rompemos la creación por un formato raro; se validará en el form
-                    pass
-
-            # Tipo de servicio
-            if hasattr(form, 'tipo_servicio'):
-                s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
-
-            # Tipo de lugar
-            s.tipo_lugar = _map_tipo_lugar(
-                getattr(s, 'tipo_lugar', ''),
-                getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
-            )
-
-            # Edad requerida (guardar LABELS)
-            s.edad_requerida = _map_edad_choices(
-                codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
-                edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
-                otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
-            )
-
-            # Mascota
-            if hasattr(form, 'mascota'):
-                s.mascota = (form.mascota.data or '').strip() or None
-
-            # Funciones
-            selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
-            extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
-            if 'otro' not in selected_codes:
-                extra_text = ''
-            if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
-                valid_codes = _allowed_codes_from_choices(form.funciones.choices)
-                s.funciones = [c for c in selected_codes if c in valid_codes and c != 'otro']
-            else:
-                s.funciones = [c for c in selected_codes if c != 'otro']
-            if hasattr(s, 'funciones_otro'):
-                s.funciones_otro = extra_text or None
-
-            # Áreas comunes válidas
-            selected_areas = []
-            if hasattr(form, 'areas_comunes'):
-                selected_areas = _normalize_areas_comunes_selected(
-                    selected_vals=getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data,
-                    choices=form.areas_comunes.choices
+            def _persist_solicitud_create(_attempt: int):
+                s = Solicitud(
+                    cliente_id=c.id,
+                    fecha_solicitud=datetime.utcnow(),
+                    codigo_solicitud=nuevo_codigo,
                 )
-            s.areas_comunes = selected_areas
+                form.populate_obj(s)
 
-            # Área "otro"
-            if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                area_otro_txt = (form.area_otro.data or '').strip()
-                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                if hasattr(form, 'sueldo'):
+                    try:
+                        s.sueldo = _norm_numeric_str(form.sueldo.data)
+                    except Exception:
+                        pass
+                if hasattr(form, 'tipo_servicio'):
+                    s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
+                s.tipo_lugar = _map_tipo_lugar(
+                    getattr(s, 'tipo_lugar', ''),
+                    getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
+                )
+                s.edad_requerida = _map_edad_choices(
+                    codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
+                    edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
+                    otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
+                )
+                if hasattr(form, 'mascota'):
+                    s.mascota = (form.mascota.data or '').strip() or None
 
-            # Pasaje
-            s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', type('x', (object,), {'data': False})).data)
+                selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
+                extra_text = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+                if 'otro' not in selected_codes:
+                    extra_text = ''
+                if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
+                    valid_codes = _allowed_codes_from_choices(form.funciones.choices)
+                    s.funciones = [code for code in selected_codes if code in valid_codes and code != 'otro']
+                else:
+                    s.funciones = [code for code in selected_codes if code != 'otro']
+                if hasattr(s, 'funciones_otro'):
+                    s.funciones_otro = extra_text or None
 
-            # Detalles específicos según tipo_servicio (JSONB)
-            s.detalles_servicio = _build_detalles_servicio_from_form(form)
+                selected_areas = []
+                if hasattr(form, 'areas_comunes'):
+                    selected_areas = _normalize_areas_comunes_selected(
+                        selected_vals=getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data,
+                        choices=form.areas_comunes.choices
+                    )
+                s.areas_comunes = selected_areas
+                if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
+                    area_otro_txt = (form.area_otro.data or '').strip()
+                    s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', type('x', (object,), {'data': False})).data)
+                s.detalles_servicio = _build_detalles_servicio_from_form(form)
 
-            # Métricas cliente
-            db.session.add(s)
-            c.total_solicitudes = (c.total_solicitudes or 0) + 1
-            c.fecha_ultima_solicitud = datetime.utcnow()
-            c.fecha_ultima_actividad = datetime.utcnow()
+                db.session.add(s)
+                db.session.flush()
+                state["solicitud_id"] = int(getattr(s, "id", 0) or 0)
+                state["tipo_servicio"] = s.tipo_servicio
 
-            db.session.commit()
-            _audit_log(
-                action_type="SOLICITUD_CREATE",
+                c.total_solicitudes = base_total + 1
+                c.fecha_ultima_solicitud = datetime.utcnow()
+                c.fecha_ultima_actividad = datetime.utcnow()
+
+            result = _execute_form_save(
+                persist_fn=_persist_solicitud_create,
+                verify_fn=lambda: _verify_solicitud_saved(
+                    int(state.get("solicitud_id") or 0),
+                    expected_cliente_id=c.id,
+                    expected_codigo=nuevo_codigo,
+                ),
                 entity_type="Solicitud",
-                entity_id=s.id,
-                summary=f"Solicitud creada: {s.codigo_solicitud or s.id}",
-                metadata={"cliente_id": c.id, "tipo_servicio": s.tipo_servicio},
+                entity_id=state.get("solicitud_id"),
+                summary=f"Guardar nueva solicitud cliente={c.id}",
+                metadata={"cliente_id": c.id, "codigo_solicitud": nuevo_codigo},
             )
-            flash(f'Solicitud {nuevo_codigo} creada.', 'success')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
-        except IntegrityError:
-            db.session.rollback()
-            flash('Conflicto de datos. Verifica los campos (códigos únicos, etc.).', 'danger')
-        except SQLAlchemyError:
-            db.session.rollback()
-            flash('Error de base de datos al crear la solicitud.', 'danger')
+            if result.ok:
+                _audit_log(
+                    action_type="SOLICITUD_CREATE",
+                    entity_type="Solicitud",
+                    entity_id=state.get("solicitud_id"),
+                    summary=f"Solicitud creada: {nuevo_codigo}",
+                    metadata={"cliente_id": c.id, "tipo_servicio": state.get("tipo_servicio")},
+                )
+                flash(f'Solicitud {nuevo_codigo} creada.', 'success')
+                return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
+            log_error_event(
+                error_type="SAVE_ERROR",
+                exc=f"Error robusto al crear solicitud: {result.error_message}",
+                route=request.path,
+                entity_type="solicitud",
+                entity_id=state.get("solicitud_id"),
+                request_id=request.headers.get("X-Request-ID"),
+                status_code=500,
+            )
+            flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
         except Exception:
             db.session.rollback()
-            flash('Ocurrió un error al crear la solicitud.', 'danger')
+            log_error_event(
+                error_type="SAVE_ERROR",
+                exc="Error inesperado al crear solicitud",
+                route=request.path,
+                entity_type="solicitud",
+                request_id=request.headers.get("X-Request-ID"),
+                status_code=500,
+            )
+            flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
 
     elif request.method == 'POST':
         flash('Revisa los campos marcados en rojo.', 'danger')
@@ -4551,92 +5194,100 @@ def editar_solicitud_admin(cliente_id, id):
     # ─────────────────────────────────────────
     if form.validate_on_submit():
         try:
-            # Carga general
-            form.populate_obj(s)
+            def _persist_solicitud_update(_attempt: int):
+                form.populate_obj(s)
 
-            # Sueldo (solo números): normaliza para evitar guardar "RD$", comas, etc.
-            if hasattr(form, 'sueldo'):
-                try:
-                    s.sueldo = _norm_numeric_str(form.sueldo.data)
-                except Exception:
-                    pass
-
-            # Tipo de servicio
-            if hasattr(form, 'tipo_servicio'):
-                s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
-
-            # Tipo de lugar
-            s.tipo_lugar = _map_tipo_lugar(
-                getattr(s, 'tipo_lugar', ''),
-                getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
-            )
-
-            # Edad requerida (LABELS)
-            s.edad_requerida = _map_edad_choices(
-                codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
-                edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
-                otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
-            )
-
-            # Mascota
-            if hasattr(form, 'mascota'):
-                s.mascota = (form.mascota.data or '').strip() or None
-
-            # Funciones
-            selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
-            extra_text    = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
-            if 'otro' not in selected_codes:
-                extra_text = ''
-            if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
-                valid_codes = _allowed_codes_from_choices(form.funciones.choices)
-                s.funciones = [c for c in selected_codes if c in valid_codes and c != 'otro']
-            else:
-                s.funciones = [c for c in selected_codes if c != 'otro']
-            if hasattr(s, 'funciones_otro'):
-                s.funciones_otro = extra_text or None
-
-            # Áreas válidas
-            if hasattr(form, 'areas_comunes'):
-                s.areas_comunes = _normalize_areas_comunes_selected(
-                    selected_vals=form.areas_comunes.data,
-                    choices=form.areas_comunes.choices
+                if hasattr(form, 'sueldo'):
+                    try:
+                        s.sueldo = _norm_numeric_str(form.sueldo.data)
+                    except Exception:
+                        pass
+                if hasattr(form, 'tipo_servicio'):
+                    s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
+                s.tipo_lugar = _map_tipo_lugar(
+                    getattr(s, 'tipo_lugar', ''),
+                    getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
                 )
+                s.edad_requerida = _map_edad_choices(
+                    codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
+                    edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
+                    otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
+                )
+                if hasattr(form, 'mascota'):
+                    s.mascota = (form.mascota.data or '').strip() or None
 
-            # Área "otro"
-            if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                area_otro_txt = (form.area_otro.data or '').strip()
-                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
+                extra_text = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+                if 'otro' not in selected_codes:
+                    extra_text = ''
+                if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
+                    valid_codes = _allowed_codes_from_choices(form.funciones.choices)
+                    s.funciones = [code for code in selected_codes if code in valid_codes and code != 'otro']
+                else:
+                    s.funciones = [code for code in selected_codes if code != 'otro']
+                if hasattr(s, 'funciones_otro'):
+                    s.funciones_otro = extra_text or None
 
-            # Pasaje
-            if hasattr(form, 'pasaje_aporte'):
-                s.pasaje_aporte = bool(form.pasaje_aporte.data)
+                if hasattr(form, 'areas_comunes'):
+                    s.areas_comunes = _normalize_areas_comunes_selected(
+                        selected_vals=form.areas_comunes.data,
+                        choices=form.areas_comunes.choices
+                    )
+                if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
+                    area_otro_txt = (form.area_otro.data or '').strip()
+                    s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                if hasattr(form, 'pasaje_aporte'):
+                    s.pasaje_aporte = bool(form.pasaje_aporte.data)
 
-            # Timestamp
-            s.fecha_ultima_modificacion = datetime.utcnow()
+                s.fecha_ultima_modificacion = datetime.utcnow()
+                s.detalles_servicio = _build_detalles_servicio_from_form(form)
 
-            # Detalles específicos (JSONB)
-            s.detalles_servicio = _build_detalles_servicio_from_form(form)
-
-            db.session.commit()
-            _audit_log(
-                action_type="SOLICITUD_EDIT",
+            result = _execute_form_save(
+                persist_fn=_persist_solicitud_update,
+                verify_fn=lambda: _verify_solicitud_saved(
+                    int(s.id),
+                    expected_cliente_id=cliente_id,
+                    expected_codigo=str(getattr(s, "codigo_solicitud", "") or ""),
+                ),
                 entity_type="Solicitud",
                 entity_id=s.id,
-                summary=f"Solicitud editada: {s.codigo_solicitud or s.id}",
-                metadata={"cliente_id": s.cliente_id, "tipo_servicio": s.tipo_servicio},
+                summary=f"Editar solicitud {s.id}",
+                metadata={"cliente_id": s.cliente_id},
             )
-            flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
-        except IntegrityError:
-            db.session.rollback()
-            flash('No se pudo actualizar por conflicto de datos (únicos/relaciones).', 'danger')
-        except SQLAlchemyError:
-            db.session.rollback()
-            flash('Error de base de datos al actualizar la solicitud.', 'danger')
+            if result.ok:
+                _audit_log(
+                    action_type="SOLICITUD_EDIT",
+                    entity_type="Solicitud",
+                    entity_id=s.id,
+                    summary=f"Solicitud editada: {s.codigo_solicitud or s.id}",
+                    metadata={"cliente_id": s.cliente_id, "tipo_servicio": s.tipo_servicio},
+                )
+                flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
+                return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+
+            log_error_event(
+                error_type="SAVE_ERROR",
+                exc=f"Error robusto al actualizar solicitud: {result.error_message}",
+                route=request.path,
+                entity_type="solicitud",
+                entity_id=s.id,
+                request_id=request.headers.get("X-Request-ID"),
+                status_code=500,
+            )
+            flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
         except Exception:
             db.session.rollback()
-            flash('Ocurrió un error al actualizar la solicitud.', 'danger')
+            log_error_event(
+                error_type="SAVE_ERROR",
+                exc="Error inesperado al actualizar solicitud",
+                route=request.path,
+                entity_type="solicitud",
+                entity_id=s.id,
+                request_id=request.headers.get("X-Request-ID"),
+                status_code=500,
+            )
+            flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
 
     elif request.method == 'POST':
         flash('Revisa los campos marcados en rojo.', 'danger')
@@ -5770,7 +6421,7 @@ def detalle_solicitud(cliente_id, id):
         str(getattr(current_user, "role", "") or "").strip().lower()
         or str(session.get("role", "") or "").strip().lower()
     )
-    is_admin_role = role == "admin"
+    is_admin_role = role in ("owner", "admin")
 
     return render_template(
         'admin/solicitud_detail.html',
@@ -6472,60 +7123,92 @@ def matching_enviar_candidatas(solicitud_id: int):
 
     ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
     created_by = _matching_created_by()
-    processed = 0
     processed_candidates = []
+    state = {"processed": 0, "processed_ids": []}
 
     try:
-        for candidata_id in candidata_ids:
-            cand = Candidata.query.filter_by(fila=candidata_id).first()
-            if not cand:
-                continue
+        def _persist_matching_send(_attempt: int):
+            state["processed"] = 0
+            state["processed_ids"] = []
+            processed_candidates.clear()
+            for candidata_id in candidata_ids:
+                cand = Candidata.query.filter_by(fila=candidata_id).first()
+                if not cand:
+                    continue
 
-            exists = (
-                SolicitudCandidata.query
-                .filter_by(solicitud_id=solicitud.id, candidata_id=candidata_id)
-                .first()
-            )
-
-            ranked_item = ranking_map.get(candidata_id) or {"score": 0, "breakdown_snapshot": {}}
-            breakdown_snapshot = ranked_item.get("breakdown_snapshot") or {
-                "city_detectada": "Ciudad no detectada",
-                "tokens_match": "Tokens sin coincidencia fuerte",
-                "rutas_match": "Rutas sin coincidencia fuerte",
-                "modalidad_match": "Sin datos",
-                "horario_match": "Sin datos",
-                "skills_match": "Sin datos",
-                "mascota_penalty": "Sin datos",
-                "test_bonus": "Bonus test: +0",
-                "components": list(ranked_item.get("breakdown") or []),
-            }
-            if exists:
-                exists.score_snapshot = int(ranked_item.get("score") or 0)
-                exists.breakdown_snapshot = breakdown_snapshot
-                exists.status = "enviada"
-                exists.created_by = created_by
-            else:
-                row = SolicitudCandidata(
-                    solicitud_id=solicitud.id,
-                    candidata_id=candidata_id,
-                    score_snapshot=int(ranked_item.get("score") or 0),
-                    breakdown_snapshot=breakdown_snapshot,
-                    status="enviada",
-                    created_by=created_by,
+                exists = (
+                    SolicitudCandidata.query
+                    .filter_by(solicitud_id=solicitud.id, candidata_id=candidata_id)
+                    .first()
                 )
-                db.session.add(row)
-            processed += 1
-            processed_candidates.append(cand)
 
-        if processed:
-            _upsert_cliente_notificacion_candidatas(solicitud, processed)
-            db.session.commit()
+                ranked_item = ranking_map.get(candidata_id) or {"score": 0, "breakdown_snapshot": {}}
+                breakdown_snapshot = ranked_item.get("breakdown_snapshot") or {
+                    "city_detectada": "Ciudad no detectada",
+                    "tokens_match": "Tokens sin coincidencia fuerte",
+                    "rutas_match": "Rutas sin coincidencia fuerte",
+                    "modalidad_match": "Sin datos",
+                    "horario_match": "Sin datos",
+                    "skills_match": "Sin datos",
+                    "mascota_penalty": "Sin datos",
+                    "test_bonus": "Bonus test: +0",
+                    "components": list(ranked_item.get("breakdown") or []),
+                }
+                if exists:
+                    exists.score_snapshot = int(ranked_item.get("score") or 0)
+                    exists.breakdown_snapshot = breakdown_snapshot
+                    exists.status = "enviada"
+                    exists.created_by = created_by
+                else:
+                    row = SolicitudCandidata(
+                        solicitud_id=solicitud.id,
+                        candidata_id=candidata_id,
+                        score_snapshot=int(ranked_item.get("score") or 0),
+                        breakdown_snapshot=breakdown_snapshot,
+                        status="enviada",
+                        created_by=created_by,
+                    )
+                    db.session.add(row)
+                state["processed"] = int(state.get("processed", 0)) + 1
+                state["processed_ids"].append(candidata_id)
+                processed_candidates.append(cand)
+
+            if int(state.get("processed", 0)) > 0:
+                _upsert_cliente_notificacion_candidatas(solicitud, int(state.get("processed", 0)))
+
+        def _verify_matching_rows() -> bool:
+            if int(state.get("processed", 0)) <= 0:
+                return False
+            try:
+                saved_count = (
+                    SolicitudCandidata.query
+                    .filter(
+                        SolicitudCandidata.solicitud_id == solicitud.id,
+                        SolicitudCandidata.candidata_id.in_(state.get("processed_ids") or []),
+                        SolicitudCandidata.status == "enviada",
+                    )
+                    .count()
+                )
+                return int(saved_count) == len(state.get("processed_ids") or [])
+            except Exception:
+                return len(state.get("processed_ids") or []) == int(state.get("processed", 0))
+
+        result = _execute_form_save(
+            persist_fn=_persist_matching_send,
+            verify_fn=_verify_matching_rows,
+            entity_type="Solicitud",
+            entity_id=solicitud.id,
+            summary=f"Guardar envío matching solicitud {solicitud.id}",
+            metadata={"candidata_ids": candidata_ids},
+        )
+
+        if int(state.get("processed", 0)) > 0 and result.ok:
             _audit_log(
                 action_type="MATCHING_SEND",
                 entity_type="Solicitud",
                 entity_id=solicitud.id,
                 summary=f"Envío de candidatas en matching para solicitud {solicitud.codigo_solicitud or solicitud.id}",
-                metadata={"candidata_ids": candidata_ids, "processed": processed},
+                metadata={"candidata_ids": candidata_ids, "processed": int(state.get("processed", 0))},
             )
             for cand in processed_candidates:
                 log_candidata_action(
@@ -6535,12 +7218,50 @@ def matching_enviar_candidatas(solicitud_id: int):
                     metadata={"solicitud_id": solicitud.id, "cliente_id": getattr(solicitud, "cliente_id", None)},
                     success=True,
                 )
-            flash(f"Candidata enviada al cliente. Total procesadas: {processed}.", "success")
+            flash(f"Candidata enviada al cliente. Total procesadas: {int(state.get('processed', 0))}.", "success")
+        elif not result.ok:
+            log_error_event(
+                error_type="MATCHING_ERROR",
+                exc=f"Error robusto enviando candidatas en matching: {result.error_message}",
+                route=request.path,
+                entity_type="solicitud",
+                entity_id=solicitud.id,
+                request_id=request.headers.get("X-Request-ID"),
+                status_code=500,
+            )
+            _audit_log(
+                action_type="MATCHING_SEND",
+                entity_type="Solicitud",
+                entity_id=solicitud.id,
+                summary=f"Fallo enviando candidatas en matching para solicitud {solicitud.id}",
+                metadata={"candidata_ids": candidata_ids, "processed_ids": state.get("processed_ids") or []},
+                success=False,
+                error="No se pudieron enviar candidatas.",
+            )
+            for cand in processed_candidates:
+                log_candidata_action(
+                    action_type="MATCHING_SEND",
+                    candidata=cand,
+                    summary=f"Fallo enviando candidata en matching para solicitud {solicitud.id}",
+                    metadata={"solicitud_id": solicitud.id, "cliente_id": getattr(solicitud, "cliente_id", None)},
+                    success=False,
+                    error="No se pudieron enviar candidatas.",
+                )
+            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
         else:
             db.session.rollback()
             flash("No se encontraron candidatas válidas para enviar.", "warning")
     except Exception:
         db.session.rollback()
+        log_error_event(
+            error_type="MATCHING_ERROR",
+            exc="Error enviando candidatas en matching",
+            route=request.path,
+            entity_type="solicitud",
+            entity_id=solicitud.id,
+            request_id=request.headers.get("X-Request-ID"),
+            status_code=500,
+        )
         _audit_log(
             action_type="MATCHING_SEND",
             entity_type="Solicitud",
@@ -6771,7 +7492,7 @@ def candidatas_descalificacion():
         str(getattr(current_user, "role", "") or "").strip().lower()
         or str(session.get("role", "") or "").strip().lower()
     )
-    is_admin_role = role == "admin"
+    is_admin_role = role in ("owner", "admin")
     return render_template(
         "admin/candidatas_descalificacion.html",
         q=q,
@@ -6811,24 +7532,40 @@ def descalificar_candidata(candidata_id: int):
         cand.usuario_cambio_estado = str(actor)[:100]
 
     try:
-        db.session.commit()
-        _audit_log(
-            action_type="CANDIDATA_DESCALIFICAR",
+        def _verify_descalificada() -> bool:
+            try:
+                return bool(Candidata.query.filter_by(fila=cand.fila, estado="descalificada").first())
+            except Exception:
+                return str(getattr(cand, "estado", "") or "") == "descalificada"
+
+        result = _execute_form_save(
+            persist_fn=lambda _attempt: None,
+            verify_fn=_verify_descalificada,
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+            summary=f"Descalificar candidata {cand.fila}",
             metadata={"motivo": motivo},
-            changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
         )
-        log_candidata_action(
-            action_type="CANDIDATA_DESQUALIFY",
-            candidata=cand,
-            summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
-            metadata={"motivo": motivo},
-            changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
-            success=True,
-        )
-        flash("Candidata descalificada correctamente.", "success")
+        if result.ok:
+            _audit_log(
+                action_type="CANDIDATA_DESCALIFICAR",
+                entity_type="Candidata",
+                entity_id=cand.fila,
+                summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+                metadata={"motivo": motivo},
+                changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
+            )
+            log_candidata_action(
+                action_type="CANDIDATA_DESQUALIFY",
+                candidata=cand,
+                summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+                metadata={"motivo": motivo},
+                changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
+                success=True,
+            )
+            flash("Candidata descalificada correctamente.", "success")
+        else:
+            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
     except Exception:
         db.session.rollback()
         _audit_log(
@@ -6877,22 +7614,38 @@ def reactivar_candidata(candidata_id: int):
         cand.usuario_cambio_estado = str(actor)[:100]
 
     try:
-        db.session.commit()
-        _audit_log(
-            action_type="CANDIDATA_REACTIVAR",
+        def _verify_reactivada() -> bool:
+            try:
+                return bool(Candidata.query.filter_by(fila=cand.fila, estado="lista_para_trabajar").first())
+            except Exception:
+                return str(getattr(cand, "estado", "") or "") == "lista_para_trabajar"
+
+        result = _execute_form_save(
+            persist_fn=lambda _attempt: None,
+            verify_fn=_verify_reactivada,
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+            summary=f"Reactivar candidata {cand.fila}",
+            metadata={},
         )
-        log_candidata_action(
-            action_type="CANDIDATA_REACTIVATE",
-            candidata=cand,
-            summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
-            success=True,
-        )
-        flash("Candidata reactivada correctamente.", "success")
+        if result.ok:
+            _audit_log(
+                action_type="CANDIDATA_REACTIVAR",
+                entity_type="Candidata",
+                entity_id=cand.fila,
+                summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+                changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+            )
+            log_candidata_action(
+                action_type="CANDIDATA_REACTIVATE",
+                candidata=cand,
+                summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+                changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+                success=True,
+            )
+            flash("Candidata reactivada correctamente.", "success")
+        else:
+            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
     except Exception:
         db.session.rollback()
         _audit_log(
@@ -6940,22 +7693,38 @@ def marcar_candidata_trabajando(candidata_id: int):
         cand.usuario_cambio_estado = str(actor)[:100]
 
     try:
-        db.session.commit()
-        _audit_log(
-            action_type="CANDIDATA_ESTADO_TRABAJANDO",
+        def _verify_trabajando() -> bool:
+            try:
+                return bool(Candidata.query.filter_by(fila=cand.fila, estado="trabajando").first())
+            except Exception:
+                return str(getattr(cand, "estado", "") or "") == "trabajando"
+
+        result = _execute_form_save(
+            persist_fn=lambda _attempt: None,
+            verify_fn=_verify_trabajando,
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
+            summary=f"Marcar candidata trabajando {cand.fila}",
+            metadata={},
         )
-        log_candidata_action(
-            action_type="CANDIDATA_MARK_TRABAJANDO",
-            candidata=cand,
-            summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
-            success=True,
-        )
-        flash("Candidata marcada como trabajando.", "success")
+        if result.ok:
+            _audit_log(
+                action_type="CANDIDATA_ESTADO_TRABAJANDO",
+                entity_type="Candidata",
+                entity_id=cand.fila,
+                summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+                changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
+            )
+            log_candidata_action(
+                action_type="CANDIDATA_MARK_TRABAJANDO",
+                candidata=cand,
+                summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+                changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
+                success=True,
+            )
+            flash("Candidata marcada como trabajando.", "success")
+        else:
+            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
     except Exception:
         db.session.rollback()
         log_candidata_action(
@@ -7006,29 +7775,45 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
         cand.usuario_cambio_estado = str(actor)[:100]
 
     try:
-        db.session.commit()
-        _audit_log(
-            action_type="CANDIDATA_ESTADO_LISTA",
+        def _verify_lista() -> bool:
+            try:
+                return bool(Candidata.query.filter_by(fila=cand.fila, estado="lista_para_trabajar").first())
+            except Exception:
+                return str(getattr(cand, "estado", "") or "") == "lista_para_trabajar"
+
+        result = _execute_form_save(
+            persist_fn=lambda _attempt: None,
+            verify_fn=_verify_lista,
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+            summary=f"Marcar candidata lista_para_trabajar {cand.fila}",
+            metadata={},
         )
-        _log_lista_state_change(
-            cand,
-            source="manual",
-            faltantes=[],
-            from_state=estado_previo,
-        )
-        log_candidata_action(
-            action_type="CANDIDATA_ESTADO_LISTA",
-            candidata=cand,
-            summary=f"Estado candidata actualizado a lista para trabajar: {cand.nombre_completo or cand.fila}",
-            metadata={"source": "manual"},
-            changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
-            success=True,
-        )
-        flash("Candidata marcada como lista para trabajar.", "success")
+        if result.ok:
+            _audit_log(
+                action_type="CANDIDATA_ESTADO_LISTA",
+                entity_type="Candidata",
+                entity_id=cand.fila,
+                summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
+                changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+            )
+            _log_lista_state_change(
+                cand,
+                source="manual",
+                faltantes=[],
+                from_state=estado_previo,
+            )
+            log_candidata_action(
+                action_type="CANDIDATA_ESTADO_LISTA",
+                candidata=cand,
+                summary=f"Estado candidata actualizado a lista para trabajar: {cand.nombre_completo or cand.fila}",
+                metadata={"source": "manual"},
+                changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+                success=True,
+            )
+            flash("Candidata marcada como lista para trabajar.", "success")
+        else:
+            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
     except Exception:
         db.session.rollback()
         log_candidata_action(

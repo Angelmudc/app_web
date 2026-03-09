@@ -62,8 +62,11 @@
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
-      data-live-presence-enabled="{% if current_user.is_authenticated and (current_user.role|default('') in ['admin', 'secretaria']) %}1{% else %}0{% endif %}"
-      data-live-presence-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['admin', 'secretaria']) %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}">
+      data-live-presence-enabled="0"
+      data-live-presence-url=""
+      data-entity-lock-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
+      data-entity-lock-takeover-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
+      data-staff-role="{{ current_user.role|default('') if current_user.is_authenticated else '' }}">
 
   <noscript>
     <div class="container mt-3">
@@ -148,7 +151,42 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (current_user.role|default('') == 'admin') %}
+          {% if has_endpoint('admin.monitoreo_staff') and current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin']) %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.monitoreo_staff', 'admin.monitoreo_logs'] %}active{% endif %}"
+               href="{{ url_for('admin.monitoreo_staff') }}">Control Room</a>
+          </li>
+          {% endif %}
+
+          {% if has_endpoint('admin.metricas_dashboard') and current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin']) %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view'] %}active{% endif %}"
+               href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
+          </li>
+          {% endif %}
+
+          {% if has_endpoint('admin.matching_inteligente') and current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
+               href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
+          </li>
+          {% endif %}
+
+          {% if has_endpoint('admin.admin_roles') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.admin_roles'] %}active{% endif %}"
+               href="{{ url_for('admin.admin_roles') }}">Roles</a>
+          </li>
+          {% endif %}
+
+          {% if has_endpoint('admin.alertas_canales') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.alertas_canales'] %}active{% endif %}"
+               href="{{ url_for('admin.alertas_canales') }}">Canales</a>
+          </li>
+          {% endif %}
+
+          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario'] %}active{% endif %}"
                href="{{ url_for('admin.listar_usuarios') }}">Usuarios</a>
@@ -276,6 +314,7 @@
   <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>
 
 </body>
 <script defer>

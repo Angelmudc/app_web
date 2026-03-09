@@ -17,6 +17,34 @@
   let sse = null;
   let pollTimer = null;
   let pingTimer = null;
+  let lastInteractionAt = new Date().toISOString();
+  const INTERACTION_ACTIVE_WINDOW_SECONDS = 60;
+  const MONITOREO_PREFIX = '/admin/monitoreo';
+
+  function isMonitoringPage(pathname) {
+    const raw = (pathname || window.location.pathname || '').split('?')[0];
+    const path = String(raw || '').trim();
+    return path === MONITOREO_PREFIX || path.indexOf(MONITOREO_PREFIX + '/') === 0;
+  }
+
+  function registerInteraction() {
+    lastInteractionAt = new Date().toISOString();
+  }
+
+  function currentClientStatus() {
+    if (document.visibilityState === 'hidden') return 'hidden';
+    const last = new Date(lastInteractionAt);
+    if (Number.isNaN(last.getTime())) return 'idle';
+    const deltaSeconds = Math.max(0, Math.floor((Date.now() - last.getTime()) / 1000));
+    return deltaSeconds <= INTERACTION_ACTIVE_WINDOW_SECONDS ? 'active' : 'idle';
+  }
+
+  function startActivityTracking() {
+    ['mousemove', 'keydown', 'click', 'scroll'].forEach((evt) => {
+      window.addEventListener(evt, registerInteraction, { passive: true });
+    });
+    document.addEventListener('visibilitychange', registerInteraction, { passive: true });
+  }
 
   function setLiveStatus(isLive) {
     if (!liveStatus || !liveToggleBtn) return;
@@ -89,7 +117,7 @@
   }
 
   async function pollLogs() {
-    if (paused || !logsUrl) return;
+    if (paused || !logsUrl || !isMonitoringPage()) return;
     const params = new URLSearchParams();
     params.set('since_id', String(lastId || 0));
     params.set('limit', '50');
@@ -115,6 +143,7 @@
   }
 
   function startPolling() {
+    if (!isMonitoringPage()) return;
     stopPolling();
     setLiveStatus(true);
     pollLogs().catch(() => {});
@@ -122,7 +151,7 @@
   }
 
   function startSSE() {
-    if (!streamUrl || paused || activeFilter) return;
+    if (!streamUrl || paused || activeFilter || !isMonitoringPage()) return;
     stopSSE();
     const params = new URLSearchParams();
     params.set('last_id', String(lastId || 0));
@@ -148,7 +177,7 @@
   }
 
   async function presencePing() {
-    if (!presencePingUrl) return;
+    if (!presencePingUrl || !isMonitoringPage()) return;
     const headers = { 'Content-Type': 'application/json' };
     if (csrfToken) headers['X-CSRFToken'] = csrfToken;
     await fetch(presencePingUrl, {
@@ -159,16 +188,29 @@
         current_path: window.location.pathname + window.location.search,
         page_title: document.title || '',
         last_action_hint: 'monitoreo_candidata_historial',
+        last_interaction_at: lastInteractionAt,
+        client_status: currentClientStatus(),
       }),
     });
   }
 
   function startPresencePing() {
-    if (document.body && document.body.getAttribute('data-live-presence-enabled') === '1') return;
-    if (!presencePingUrl) return;
+    if (!presencePingUrl || !isMonitoringPage()) return;
     presencePing().catch(() => {});
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = setInterval(() => presencePing().catch(() => {}), 10000);
+  }
+
+  function stopPresencePing() {
+    if (pingTimer) clearInterval(pingTimer);
+    pingTimer = null;
+  }
+
+  function stopMonitoringRealtime() {
+    stopSSE();
+    stopPolling();
+    stopPresencePing();
+    setLiveStatus(false);
   }
 
   if (liveToggleBtn) {
@@ -188,10 +230,21 @@
     });
   }
 
-  startPresencePing();
-  if (activeFilter) {
-    startPolling();
-  } else {
-    startSSE();
+  startActivityTracking();
+  if (!isMonitoringPage()) {
+    stopMonitoringRealtime();
+    return;
   }
+  startPresencePing();
+  if (activeFilter) startPolling();
+  else startSSE();
+
+  window.addEventListener('popstate', function () {
+    if (!isMonitoringPage()) stopMonitoringRealtime();
+  });
+  window.addEventListener('hashchange', function () {
+    if (!isMonitoringPage()) stopMonitoringRealtime();
+  });
+  window.addEventListener('pagehide', stopMonitoringRealtime);
+  window.addEventListener('beforeunload', stopMonitoringRealtime);
 })();

@@ -3,6 +3,9 @@
 import re
 
 from app import app as flask_app
+from config_app import db
+from models import StaffUser
+from sqlalchemy import func
 
 
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -22,12 +25,30 @@ def _login_with_csrf(client, usuario, clave):
     return resp, token
 
 
+def _ensure_staff_user(username: str, role: str, password: str) -> None:
+    row = StaffUser.query.filter(func.lower(StaffUser.username) == username.lower()).first()
+    if row is None:
+        row = StaffUser(username=username, role=role, is_active=True)
+        row.set_password(password)
+        db.session.add(row)
+        db.session.commit()
+        return
+    row.role = role
+    row.is_active = True
+    row.set_password(password)
+    db.session.commit()
+
+
 def test_presence_ping_and_summary_presence_active():
     flask_app.config['TESTING'] = True
     prev_csrf = flask_app.config.get('WTF_CSRF_ENABLED', True)
     flask_app.config['WTF_CSRF_ENABLED'] = True
 
     try:
+        with flask_app.app_context():
+            _ensure_staff_user('Karla', 'secretaria', '9989')
+            _ensure_staff_user('Cruz', 'admin', '8998')
+
         client_sec = flask_app.test_client()
         client_admin = flask_app.test_client()
 
