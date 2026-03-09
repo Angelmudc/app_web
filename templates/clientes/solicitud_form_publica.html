@@ -106,7 +106,7 @@
 
   .public-identity-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 16px;
   }
@@ -253,11 +253,6 @@
                   <label for="{{ form.nombre_cliente.id }}">{{ form.nombre_cliente.label.text }}</label>
                   {{ form.nombre_cliente(class='form-control' ~ (' is-invalid' if form.nombre_cliente.errors else ''), placeholder='Nombre completo del titular') }}
                   {% for e in form.nombre_cliente.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
-                </div>
-                <div class="public-input-block">
-                  <label for="{{ form.email_cliente.id }}">{{ form.email_cliente.label.text }}</label>
-                  {{ form.email_cliente(class='form-control' ~ (' is-invalid' if form.email_cliente.errors else ''), placeholder='correo@dominio.com') }}
-                  {% for e in form.email_cliente.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
                 </div>
               </div>
             </section>

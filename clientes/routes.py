@@ -2424,6 +2424,18 @@ def solicitud_publica(token):
         ), status_code
 
     c = cliente
+    public_pisos_value = "2" if bool(getattr(form, "dos_pisos", type("x",(object,),{"data":False})).data) else "1"
+    public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x",(object,),{"data":False})).data) else "incluido"
+    public_pasaje_otro = ""
+    if request.method == "POST":
+        pisos_post = (request.form.get("pisos_selector") or "").strip()
+        if pisos_post in ("1", "2", "3+"):
+            public_pisos_value = pisos_post
+        pasaje_mode_post = (request.form.get("pasaje_mode") or "").strip().lower()
+        if pasaje_mode_post in ("incluido", "aparte", "otro"):
+            public_pasaje_mode = pasaje_mode_post
+        public_pasaje_otro = (request.form.get("pasaje_otro_text") or "").strip()[:120]
+
     _log_public_link_event(
         "PUBLIC_LINK_VIEW_OK",
         token,
@@ -2435,7 +2447,20 @@ def solicitud_publica(token):
         },
     )
 
+    if hasattr(form, "email_cliente"):
+        # Mantiene compatibilidad del form sin exponer email en UI pública.
+        form.email_cliente.data = c.email or ''
+
     if form.validate_on_submit():
+        pisos_selector = (request.form.get("pisos_selector") or "").strip()
+        if hasattr(form, "dos_pisos"):
+            form.dos_pisos.data = (pisos_selector in ("2", "3+"))
+
+        pasaje_mode = (request.form.get("pasaje_mode") or "").strip().lower()
+        pasaje_otro_text = (request.form.get("pasaje_otro_text") or "").strip()[:120]
+        if hasattr(form, "pasaje_aporte"):
+            form.pasaje_aporte.data = (pasaje_mode == "aparte")
+
         if hasattr(form, 'token'):
             if (form.token.data or '') != token:
                 _log_public_link_event(
@@ -2468,23 +2493,9 @@ def solicitud_publica(token):
                 form=form,
                 nuevo=True,
                 cliente=c,
-            ), 403
-
-        if _norm_email(getattr(form, 'email_cliente', type('x',(object,),{'data':''})).data) != _norm_email(c.email):
-            _log_public_link_event(
-                "PUBLIC_LINK_VIEW_FAIL",
-                token,
-                success=False,
-                reason="email_no_match",
-                cliente_id=int(c.id),
-                metadata_extra={"method": request.method, "status_code": 403},
-            )
-            flash("El Gmail no coincide con ese código.", "danger")
-            return render_template(
-                'clientes/solicitud_form_publica.html',
-                form=form,
-                nuevo=True,
-                cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
             ), 403
 
         if _norm_text(getattr(form, 'nombre_cliente', type('x',(object,),{'data':''})).data) != _norm_text(c.nombre_completo):
@@ -2502,6 +2513,9 @@ def solicitud_publica(token):
                 form=form,
                 nuevo=True,
                 cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
             ), 403
 
         codigo_holder: dict[str, str] = {"value": ""}
@@ -2558,6 +2572,14 @@ def solicitud_publica(token):
 
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = (form.nota_cliente.data or '').strip()
+                if pisos_selector == "3+":
+                    marker_pisos = "Pisos reportados: 3+."
+                    if marker_pisos not in (s.nota_cliente or ""):
+                        s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
+                if pasaje_mode == "otro" and pasaje_otro_text:
+                    marker_pasaje = f"Pasaje (otro): {pasaje_otro_text}"
+                    if marker_pasaje not in (s.nota_cliente or ""):
+                        s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pasaje).strip()
 
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x',(object,),{'data':None})).data)
@@ -2662,6 +2684,9 @@ def solicitud_publica(token):
         form=form,
         nuevo=True,
         cliente=c,
+        public_pisos_value=public_pisos_value,
+        public_pasaje_mode=public_pasaje_mode,
+        public_pasaje_otro=public_pasaje_otro,
     )
 
 

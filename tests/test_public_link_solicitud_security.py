@@ -38,6 +38,7 @@ class _FakePublicForm:
         self.edad_requerida = _FakeField([])
         self.dos_pisos = _FakeField(False)
         self.pasaje_aporte = _FakeField(False)
+        self.nota_cliente = _FakeField("")
 
     def validate_on_submit(self):
         return True
@@ -86,6 +87,7 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
 
     html = resp.get_data(as_text=True)
     assert "Formulario publico de solicitud" in html
+    assert "Gmail / Email" not in html
     assert "Sin solicitudes registradas" not in html
     assert "Mis Solicitudes" not in html
     assert "/clientes/live/ping" not in html
@@ -95,6 +97,55 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
 
     actions = [k.get("action_type") for _a, k in log_mock.call_args_list if isinstance(k, dict)]
     assert "PUBLIC_LINK_VIEW_OK" in actions
+
+
+def test_public_link_form_has_expected_field_order_and_structure_grouping():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    idx_edad = html.find("Edad del personal")
+    idx_exp = html.find("Tipo de experiencia requerida")
+    idx_func = html.find("Funciones a realizar al personal")
+    assert -1 not in (idx_edad, idx_exp, idx_func)
+    assert idx_edad < idx_exp < idx_func
+
+    idx_tl = html.find("Tipo de lugar")
+    idx_hab = html.find("Habitaciones")
+    idx_banos = html.find("Baños")
+    idx_pisos = html.find("Cantidad de pisos")
+    idx_areas = html.find("Áreas comunes")
+    idx_adultos = html.find("Cantidad de adultos")
+    idx_ninos = html.find("Cantidad de niños")
+    idx_edades = html.find("Edades de los niños")
+    idx_mascota = html.find("Mascota")
+    assert -1 not in (idx_tl, idx_hab, idx_banos, idx_pisos, idx_areas, idx_adultos, idx_ninos, idx_edades, idx_mascota)
+    assert idx_tl < idx_hab < idx_banos < idx_pisos < idx_areas < idx_adultos < idx_ninos < idx_edades < idx_mascota
+
+
+def test_public_link_form_renders_pasaje_three_options_and_otro_input():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Pasaje incluido" in html
+    assert "Pasaje aparte" in html
+    assert "Otro" in html
+    assert 'name="pasaje_otro_text"' in html
 
 
 def test_public_link_invalid_token_returns_controlled_response():
@@ -369,3 +420,42 @@ def test_public_link_post_with_invalid_csrf_returns_controlled_public_message():
     assert "Recarga este enlace e intenta enviar nuevamente la solicitud." in html
     assert "Bad Request" not in html
     assert "The CSRF tokens do not match." not in html
+
+
+def test_public_link_pasaje_otro_mode_maps_without_breaking_legacy_storage():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+    fake_form = _FakePublicForm(token="tok123", codigo="CL-001", nombre="Cliente Uno", email="")
+    captured = {"mode": "", "text": "", "response_status": 0}
+
+    def _robust_save_capture(**kwargs):
+        persist_fn = kwargs.get("persist_fn")
+        freevars = list(getattr(persist_fn.__code__, "co_freevars", ()))
+        values = []
+        if persist_fn.__closure__:
+            values = [cell.cell_contents for cell in persist_fn.__closure__]
+        env = dict(zip(freevars, values))
+        captured["mode"] = env.get("pasaje_mode", "")
+        captured["text"] = env.get("pasaje_otro_text", "")
+        return RobustSaveResult(ok=False, attempts=1, error_message="forced")
+
+    with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes.execute_robust_save", side_effect=_robust_save_capture):
+        resp = client.post(
+            "/clientes/solicitudes/publica/tok123",
+            data={
+                "token": "tok123",
+                "pasaje_mode": "otro",
+                "pasaje_otro_text": "pasaje los sabados",
+                "pisos_selector": "2",
+            },
+        )
+        captured["response_status"] = resp.status_code
+
+    assert captured["response_status"] == 200
+    assert captured["mode"] == "otro"
+    assert captured["text"] == "pasaje los sabados"

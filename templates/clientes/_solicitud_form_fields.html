@@ -1,11 +1,10 @@
-{% set excluded = ['csrf_token', 'token', 'hp', 'codigo_cliente', 'nombre_cliente', 'email_cliente'] %}
+{% set excluded = ['csrf_token', 'token', 'hp', 'codigo_cliente', 'nombre_cliente', 'email_cliente', 'submit'] %}
 {% set ordered_names = [
   'modalidad_trabajo', 'horario', 'ciudad_sector', 'rutas_cercanas',
-  'tipo_lugar', 'tipo_lugar_otro', 'funciones', 'funciones_otro',
-  'experiencia', 'edad_requerida', 'edad_otro', 'habitaciones',
-  'banos', 'dos_pisos', 'adultos', 'ninos', 'edades_ninos',
-  'mascota', 'areas_comunes', 'area_otro', 'sueldo', 'pasaje_aporte',
-  'nota_cliente'
+  'edad_requerida', 'edad_otro', 'experiencia', 'funciones', 'funciones_otro',
+  'tipo_lugar', 'tipo_lugar_otro', 'habitaciones', 'banos', 'dos_pisos',
+  'areas_comunes', 'area_otro', 'adultos', 'ninos', 'edades_ninos',
+  'mascota', 'sueldo', 'pasaje_aporte', 'nota_cliente'
 ] %}
 
 {% macro render_errors(field) -%}
@@ -68,14 +67,26 @@
   .public-form-card {
     border: 1px solid #d9e2ee;
     border-radius: 16px;
-    background: #fcfdff;
-    padding: 15px;
+    background: linear-gradient(180deg, #fdfefe 0%, #fbfdff 100%);
+    padding: 14px;
   }
 
   .public-form-card-header {
     margin-bottom: 12px;
     padding-bottom: 10px;
     border-bottom: 1px dashed #d5deea;
+    position: relative;
+  }
+
+  .public-form-card-header::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -3px;
+    width: 42px;
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #0f6a7f 0%, #3d8ca0 100%);
   }
 
   .public-form-card-title {
@@ -94,7 +105,7 @@
   .public-fields-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
   }
 
   .public-field { min-width: 0; }
@@ -117,10 +128,10 @@
     border: 1px solid #ced9e6;
     border-radius: 12px;
     background: #ffffff;
-    padding: 10px;
+    padding: 8px;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .public-choice-grid.is-invalid {
@@ -130,16 +141,36 @@
 
   .public-choice-item {
     margin: 0;
-    min-height: 36px;
+    min-height: 34px;
     border: 1px solid #dbe4ef;
     border-radius: 10px;
     background: #f8fbff;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
-    font-size: .88rem;
+    padding: 7px 9px;
+    font-size: .84rem;
     color: #25364c;
+    cursor: pointer;
+    transition: .16s ease;
+  }
+
+  .public-choice-item:hover {
+    border-color: #9eb8d2;
+    background: #f2f8ff;
+    transform: translateY(-1px);
+  }
+
+  .public-choice-item:focus-within {
+    border-color: #4f87b3;
+    box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
+    background: #edf6ff;
+  }
+
+  .public-choice-item.is-selected {
+    border-color: #0f6a7f;
+    background: #e8f4f7;
+    color: #0f4f62;
   }
 
   .public-switch-wrap {
@@ -157,10 +188,76 @@
     color: #304257;
   }
 
+  .public-segmented {
+    border: 1px solid #ced9e6;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .public-segmented-item {
+    position: relative;
+    margin: 0;
+  }
+
+  .public-segmented-item input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .public-segmented-item span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    border: 1px solid #dbe4ef;
+    border-radius: 10px;
+    background: #f8fbff;
+    color: #223246;
+    padding: 6px 12px;
+    font-size: .87rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: .16s ease;
+  }
+
+  .public-segmented-item span:hover {
+    border-color: #9eb8d2;
+    background: #f2f8ff;
+    transform: translateY(-1px);
+  }
+
+  .public-segmented-item input[type="radio"]:checked + span {
+    border-color: #0f6a7f;
+    background: #e8f4f7;
+    color: #0f4f62;
+  }
+
+  .public-segmented-item input[type="radio"]:focus + span {
+    box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
+  }
+
+  .public-hidden-checkbox {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .public-full { grid-column: 1 / -1; }
 
   @media (max-width: 767.98px) {
     .public-fields-grid { grid-template-columns: 1fr; }
+    .public-choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @media (max-width: 460px) {
     .public-choice-grid { grid-template-columns: 1fr; }
   }
 </style>
@@ -176,51 +273,101 @@
       {{ render_field(form.horario, hint='Indica dias y rango horario esperado.') }}
       {{ render_field(form.ciudad_sector) }}
       {{ render_field(form.rutas_cercanas) }}
-      {{ render_field(form.tipo_lugar) }}
-      {{ render_field(form.tipo_lugar_otro, wrapper_id='wrap_tipo_lugar_otro') }}
     </div>
   </section>
 
   <section class="public-form-card">
     <header class="public-form-card-header">
       <h3 class="public-form-card-title">Requisitos y perfil</h3>
-      <p class="public-form-card-desc">Especifica funciones, experiencia y rango de edad requerido.</p>
+      <p class="public-form-card-desc">Orden recomendado para definir el perfil correcto.</p>
     </header>
     <div class="public-fields-grid">
-      {{ render_field(form.funciones, hint='Marca una o varias funciones principales.') }}
-      {{ render_field(form.funciones_otro, wrapper_id='wrap_funciones_otro') }}
-      {{ render_field(form.experiencia, wrapper_id='wrap_experiencia', hint='Describe el tipo de experiencia que necesitas.') }}
       {{ render_field(form.edad_requerida, hint='Selecciona una o mas opciones.') }}
       {{ render_field(form.edad_otro, wrapper_id='wrap_edad_otro') }}
+      {{ render_field(form.experiencia, wrapper_id='wrap_experiencia', hint='Describe el tipo de experiencia que necesitas.') }}
+      {{ render_field(form.funciones, hint='Marca una o varias funciones principales.') }}
+      {{ render_field(form.funciones_otro, wrapper_id='wrap_funciones_otro') }}
     </div>
   </section>
 
   <section class="public-form-card">
     <header class="public-form-card-header">
-      <h3 class="public-form-card-title">Detalles del hogar o lugar</h3>
-      <p class="public-form-card-desc">Incluye datos practicos para asignar el perfil correcto.</p>
+      <h3 class="public-form-card-title">Estructura del hogar o lugar</h3>
+      <p class="public-form-card-desc">Orden recomendado de estructura y composicion del hogar.</p>
     </header>
     <div class="public-fields-grid">
+      {{ render_field(form.tipo_lugar) }}
+      {{ render_field(form.tipo_lugar_otro, wrapper_id='wrap_tipo_lugar_otro') }}
       {{ render_field(form.habitaciones) }}
       {{ render_field(form.banos) }}
-      {{ render_field(form.dos_pisos) }}
+
+      <div class="public-field">
+        <label class="public-field-label">Cantidad de pisos</label>
+        {{ form.dos_pisos(class='public-hidden-checkbox', id='dos_pisos_hidden') }}
+        <div class="public-segmented" id="pisos_selector_wrap">
+          <label class="public-segmented-item">
+            <input type="radio" name="pisos_selector" value="1" {% if public_pisos_value == '1' %}checked{% endif %}>
+            <span>1 piso</span>
+          </label>
+          <label class="public-segmented-item">
+            <input type="radio" name="pisos_selector" value="2" {% if public_pisos_value == '2' %}checked{% endif %}>
+            <span>2 pisos</span>
+          </label>
+          <label class="public-segmented-item">
+            <input type="radio" name="pisos_selector" value="3+" {% if public_pisos_value == '3+' %}checked{% endif %}>
+            <span>3+ pisos</span>
+          </label>
+        </div>
+        <div class="public-field-hint">Se guardara de forma compatible con el esquema actual.</div>
+      </div>
+
+      {{ render_field(form.areas_comunes, hint='Puedes marcar "Todas las anteriores" para mayor rapidez.') }}
+      {{ render_field(form.area_otro, wrapper_id='wrap_area_otro') }}
       {{ render_field(form.adultos) }}
       {{ render_field(form.ninos) }}
       {{ render_field(form.edades_ninos) }}
       {{ render_field(form.mascota) }}
-      {{ render_field(form.areas_comunes, hint='Puedes marcar "Todas las anteriores" para mayor rapidez.') }}
-      {{ render_field(form.area_otro, wrapper_id='wrap_area_otro') }}
     </div>
   </section>
 
   <section class="public-form-card">
     <header class="public-form-card-header">
       <h3 class="public-form-card-title">Confirmacion final</h3>
-      <p class="public-form-card-desc">Completa compensacion y cualquier nota adicional relevante.</p>
+      <p class="public-form-card-desc">Completa compensacion, pasaje y cualquier nota adicional.</p>
     </header>
     <div class="public-fields-grid">
       {{ render_field(form.sueldo, hint='Monto estimado en pesos dominicanos.') }}
-      {{ render_field(form.pasaje_aporte) }}
+
+      <div class="public-field" id="wrap_pasaje_mode">
+        <label class="public-field-label">Pasaje</label>
+        {{ form.pasaje_aporte(class='public-hidden-checkbox', id='pasaje_aporte_hidden') }}
+        <div class="public-segmented">
+          <label class="public-segmented-item">
+            <input type="radio" name="pasaje_mode" value="incluido" {% if public_pasaje_mode == 'incluido' %}checked{% endif %}>
+            <span>Pasaje incluido</span>
+          </label>
+          <label class="public-segmented-item">
+            <input type="radio" name="pasaje_mode" value="aparte" {% if public_pasaje_mode == 'aparte' %}checked{% endif %}>
+            <span>Pasaje aparte</span>
+          </label>
+          <label class="public-segmented-item">
+            <input type="radio" name="pasaje_mode" value="otro" {% if public_pasaje_mode == 'otro' %}checked{% endif %}>
+            <span>Otro</span>
+          </label>
+        </div>
+        <div id="wrap_pasaje_otro" class="mt-2" style="display:none;">
+          <input
+            type="text"
+            class="form-control"
+            id="pasaje_otro_text"
+            name="pasaje_otro_text"
+            maxlength="120"
+            value="{{ public_pasaje_otro or '' }}"
+            placeholder="Describe como se manejara el pasaje"
+          >
+        </div>
+      </div>
+
       <div class="public-full">{{ render_field(form.nota_cliente) }}</div>
     </div>
   </section>
@@ -296,6 +443,37 @@
     toggleWrapper('wrap_area_otro', hasCheckedValue('areas_comunes', 'otro'));
   }
 
+  function syncChoiceSelectedState() {
+    var labels = document.querySelectorAll('.public-choice-item');
+    for (var i = 0; i < labels.length; i++) {
+      var input = labels[i].querySelector('input[type="checkbox"], input[type="radio"]');
+      if (!input) continue;
+      if (input.checked) labels[i].classList.add('is-selected');
+      else labels[i].classList.remove('is-selected');
+    }
+  }
+
+  function syncPisosAndPasaje() {
+    var pisosChecked = document.querySelector('input[name="pisos_selector"]:checked');
+    var pisosHidden = byId('dos_pisos_hidden');
+    if (pisosHidden) {
+      pisosHidden.checked = !!(pisosChecked && pisosChecked.value !== '1');
+      pisosHidden.value = pisosHidden.checked ? 'y' : '';
+    }
+
+    var pasajeChecked = document.querySelector('input[name="pasaje_mode"]:checked');
+    var pasajeHidden = byId('pasaje_aporte_hidden');
+    var wrapPasajeOtro = byId('wrap_pasaje_otro');
+    if (pasajeHidden) {
+      var mode = pasajeChecked ? norm(pasajeChecked.value) : 'incluido';
+      pasajeHidden.checked = (mode === 'aparte');
+      pasajeHidden.value = pasajeHidden.checked ? 'y' : '';
+      if (wrapPasajeOtro) {
+        wrapPasajeOtro.style.display = (mode === 'otro') ? '' : 'none';
+      }
+    }
+  }
+
   function setupAreasTodas() {
     var wrap = byId('wrap_areas_comunes');
     if (!wrap) return;
@@ -346,6 +524,7 @@
           master.checked = true;
         }
         syncOtroFields();
+        syncChoiceSelectedState();
       });
     }
 
@@ -354,9 +533,12 @@
 
   syncOtroFields();
   setupAreasTodas();
+  syncPisosAndPasaje();
+  syncChoiceSelectedState();
 
   document.addEventListener('change', function (ev) {
     var id = (ev.target && ev.target.id) || '';
+    var name = (ev.target && ev.target.name) || '';
     if (
       id.indexOf('edad_requerida') === 0 ||
       id.indexOf('funciones') === 0 ||
@@ -364,6 +546,11 @@
       id.indexOf('areas_comunes') === 0
     ) {
       syncOtroFields();
+      syncChoiceSelectedState();
+    }
+
+    if (name === 'pisos_selector' || name === 'pasaje_mode') {
+      syncPisosAndPasaje();
     }
   });
 })();
