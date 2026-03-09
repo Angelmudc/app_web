@@ -98,6 +98,15 @@ from utils.robust_save import (
     safe_bytes_length,
     legacy_text_is_useful,
 )
+from utils.candidate_registration import (
+    error_looks_like_duplicate_cedula,
+    log_candidate_create_fail,
+    log_candidate_create_ok,
+    normalize_person_name,
+    normalize_phone,
+    phone_has_valid_digits,
+    robust_create_candidata,
+)
 
 # Data / reportes
 import pandas as pd
@@ -989,9 +998,9 @@ def registro_interno():
         return render_template('registro_interno.html')
 
     # --- POST: recoger datos del formulario (limitando tamaños) ---
-    nombre       = (request.form.get('nombre_completo') or '').strip()[:150]
+    nombre       = normalize_person_name(request.form.get('nombre_completo'))
     edad_raw     = (request.form.get('edad') or '').strip()[:10]
-    telefono     = (request.form.get('numero_telefono') or '').strip()[:30]
+    telefono     = normalize_phone(request.form.get('numero_telefono'))
     direccion    = (request.form.get('direccion_completa') or '').strip()[:250]
     modalidad    = (request.form.get('modalidad_trabajo_preferida') or '').strip()[:100]
     rutas        = (request.form.get('rutas_cercanas') or '').strip()[:150]
@@ -1006,6 +1015,18 @@ def registro_interno():
     ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
     acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
     cedula_raw   = (request.form.get('cedula') or '').strip()[:50]
+
+    def _fail(message: str, category: str, status_code: int, *, error_message: str, attempts: int = 0):
+        flash(message, category)
+        log_candidate_create_fail(
+            registration_type="interno",
+            candidate=None,
+            attempt_count=attempts,
+            error_message=error_message,
+            nombre=nombre,
+            cedula=cedula_raw,
+        )
+        return render_template('registro_interno.html'), status_code
 
     # --- Validaciones mínimas y mensajes claros ---
     faltantes = []
@@ -1035,8 +1056,12 @@ def registro_interno():
     try:
         edad_num = int(''.join(ch for ch in edad_raw if ch.isdigit()))
         if edad_num < 16 or edad_num > 75:
-            flash('📛 La edad debe estar entre 16 y 75 años.', 'warning')
-            return render_template('registro_interno.html'), 400
+            return _fail(
+                '📛 La edad debe estar entre 16 y 75 años.',
+                'warning',
+                400,
+                error_message='invalid_age_range',
+            )
     except ValueError:
         faltantes.append('Edad (número)')
         edad_num = None
@@ -1044,12 +1069,23 @@ def registro_interno():
     # Validación de cédula
     cedula_digits_input = normalize_cedula_for_compare(cedula_raw)
     if not cedula_raw:
-        flash('📛 Cédula requerida.', 'warning')
-        return render_template('registro_interno.html'), 400
+        return _fail('📛 Cédula requerida.', 'warning', 400, error_message='cedula_required')
 
     if faltantes:
-        flash('Por favor completa: ' + ', '.join(faltantes), 'warning')
-        return render_template('registro_interno.html'), 400
+        return _fail(
+            'Por favor completa: ' + ', '.join(faltantes),
+            'warning',
+            400,
+            error_message='missing_required_fields',
+        )
+
+    if not phone_has_valid_digits(telefono):
+        return _fail(
+            '📛 Número de teléfono inválido. Debe tener entre 10 y 15 dígitos.',
+            'warning',
+            400,
+            error_message='invalid_phone_number',
+        )
 
     # Convertir/normalizar algunos valores
     areas_str     = ', '.join([s.strip() for s in areas_list if s.strip()]) if areas_list else ''
@@ -1072,104 +1108,99 @@ def registro_interno():
         dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
 
     if dup:
-        flash(duplicate_cedula_message(dup), 'warning')
-        return render_template('registro_interno.html'), 400
+        return _fail(
+            duplicate_cedula_message(dup),
+            'warning',
+            400,
+            error_message='duplicate_cedula_precheck',
+        )
 
     if len(cedula_digits_input) != 11:
-        flash('📛 Cédula inválida. Debe contener 11 dígitos.', 'warning')
-        return render_template('registro_interno.html'), 400
+        return _fail(
+            '📛 Cédula inválida. Debe contener 11 dígitos.',
+            'warning',
+            400,
+            error_message='invalid_cedula_digits',
+        )
 
     # Guardado normalizado SOLO para altas nuevas
     cedula_store = normalize_cedula_for_store(cedula_raw)
     if not cedula_store:
-        flash('📛 Cédula requerida.', 'warning')
-        return render_template('registro_interno.html'), 400
+        return _fail('📛 Cédula requerida.', 'warning', 400, error_message='cedula_required')
 
     usuario = (session.get('usuario') or 'secretaria').strip()[:64]
-
-    # --- Crear objeto y guardar ---
-    nueva = Candidata(
-        marca_temporal                  = datetime.utcnow(),
-        nombre_completo                 = nombre,
-        edad                            = str(edad_num),
-        numero_telefono                 = telefono,
-        direccion_completa              = direccion,
-        modalidad_trabajo_preferida     = modalidad,
-        rutas_cercanas                  = rutas,
-        empleo_anterior                 = empleo_prev,
-        anos_experiencia                = anos_exp,
-        areas_experiencia               = areas_str,
-        sabe_planchar                   = sabe_planchar,
-        contactos_referencias_laborales = ref_lab,
-        referencias_familiares_detalle  = ref_fam,
-        acepta_porcentaje_sueldo        = acepta_pct,
-        cedula                          = cedula_store,
-        medio_inscripcion               = 'Oficina',
-        estado                          = 'en_proceso',
-        fecha_cambio_estado             = datetime.utcnow(),
-        usuario_cambio_estado           = usuario,
-    )
-
     try:
-        db.session.add(nueva)
-        db.session.flush()
-        db.session.commit()
-        nueva_fila = int(getattr(nueva, "fila", 0) or 0)
-        if nueva_fila > 0:
-            if not _verify_candidata_fields_saved(
-                nueva_fila,
-                {"cedula": cedula_store, "nombre_completo": nombre},
-                fallback_obj=nueva,
-            ):
-                db.session.rollback()
-                flash('❌ No se pudo verificar el registro guardado. Intenta de nuevo.', 'danger')
-                return render_template('registro_interno.html'), 500
-
-    except OperationalError:
-        # Reintenta una vez por fallo SSL/transitorio
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        try:
-            _get_engine().dispose()
-        except Exception:
-            pass
-
-        try:
-            db.session.add(nueva)
-            db.session.flush()
-            db.session.commit()
-            nueva_fila = int(getattr(nueva, "fila", 0) or 0)
-            if nueva_fila > 0:
-                if not _verify_candidata_fields_saved(
-                    nueva_fila,
-                    {"cedula": cedula_store, "nombre_completo": nombre},
-                    fallback_obj=nueva,
-                ):
-                    db.session.rollback()
-                    flash('❌ No se pudo verificar el registro guardado. Intenta de nuevo.', 'danger')
-                    return render_template('registro_interno.html'), 500
-
-        except IntegrityError:
-            db.session.rollback()
-            flash('⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).', 'warning')
-            return render_template('registro_interno.html'), 400
-
-        except Exception:
-            db.session.rollback()
-            flash('❌ Problema momentáneo con la conexión. Intenta de nuevo en unos segundos.', 'danger')
-            return render_template('registro_interno.html'), 503
-
-    except IntegrityError:
-        db.session.rollback()
-        flash('⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).', 'warning')
-        return render_template('registro_interno.html'), 400
-
+        result, create_state = robust_create_candidata(
+            build_candidate=lambda _attempt: Candidata(
+                marca_temporal=datetime.utcnow(),
+                nombre_completo=nombre,
+                edad=str(edad_num),
+                numero_telefono=telefono,
+                direccion_completa=direccion,
+                modalidad_trabajo_preferida=modalidad,
+                rutas_cercanas=rutas,
+                empleo_anterior=empleo_prev,
+                anos_experiencia=anos_exp,
+                areas_experiencia=areas_str,
+                sabe_planchar=sabe_planchar,
+                contactos_referencias_laborales=ref_lab,
+                referencias_familiares_detalle=ref_fam,
+                acepta_porcentaje_sueldo=acepta_pct,
+                cedula=cedula_store,
+                medio_inscripcion='Oficina',
+                estado='en_proceso',
+                fecha_cambio_estado=datetime.utcnow(),
+                usuario_cambio_estado=usuario,
+            ),
+            expected_fields={
+                "cedula": cedula_store,
+                "nombre_completo": nombre,
+                "numero_telefono": telefono,
+                "edad": str(edad_num),
+            },
+            max_retries=2,
+            dispose_pool_fn=lambda: _get_engine().dispose(),
+        )
     except SQLAlchemyError as e:
-        db.session.rollback()
-        flash(f'❌ No se pudo guardar el registro: {e.__class__.__name__}', 'danger')
-        return render_template('registro_interno.html'), 500
+        return _fail(
+            f'❌ No se pudo guardar el registro: {e.__class__.__name__}',
+            'danger',
+            500,
+            error_message=f'{e.__class__.__name__}: {str(e)[:200]}',
+        )
+
+    if not result.ok:
+        error_msg = (result.error_message or "").strip()
+        if error_looks_like_duplicate_cedula(error_msg):
+            return _fail(
+                '⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).',
+                'warning',
+                400,
+                error_message=error_msg or 'duplicate_cedula_commit',
+                attempts=result.attempts,
+            )
+        return _fail(
+            '❌ No se pudo verificar el registro guardado. Intenta de nuevo en unos segundos.',
+            'danger',
+            503,
+            error_message=error_msg or 'create_verification_failed',
+            attempts=result.attempts,
+        )
+
+    if not create_state.candidate:
+        return _fail(
+            '❌ No se pudo verificar el registro guardado. Intenta de nuevo en unos segundos.',
+            'danger',
+            503,
+            error_message='candidate_instance_missing_after_commit',
+            attempts=result.attempts,
+        )
+
+    log_candidate_create_ok(
+        registration_type="interno",
+        candidate=create_state.candidate,
+        attempt_count=result.attempts,
+    )
 
     # ✅ Sin "gracias": flash + vuelve al mismo formulario
     flash('✅ Candidata registrada correctamente.', 'success')

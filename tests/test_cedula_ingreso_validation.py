@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from app import app as flask_app
 import core.legacy_handlers as legacy_handlers
+from utils.candidate_registration import CandidateCreateState
+from utils.robust_save import RobustSaveResult
 from utils.cedula_normalizer import (
     cedula_digits,
     format_cedula,
@@ -107,11 +109,16 @@ class CedulaIngresoValidationTest(unittest.TestCase):
         self.assertTrue(any("descalificada" in str(call.args[0]).lower() for call in flash_mock.call_args_list))
 
     def test_alta_normaliza_guardado_en_creacion(self):
+        captured = {"candidate": None}
+
+        def _fake_robust_create(**kwargs):
+            candidate = kwargs["build_candidate"](1)
+            captured["candidate"] = candidate
+            return RobustSaveResult(ok=True, attempts=1, error_message=""), CandidateCreateState(candidate=candidate, candidate_id=101)
+
         with flask_app.app_context():
             with patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(None, "12345678901")), \
-                 patch("core.legacy_handlers.db.session.flush"), \
-                 patch("core.legacy_handlers.db.session.commit"), \
-                 patch("core.legacy_handlers.db.session.add") as add_mock:
+                 patch("core.legacy_handlers.robust_create_candidata", side_effect=_fake_robust_create):
                 resp = self.client.post(
                     "/registro_interno/",
                     data=_base_ingreso_data("123 4567890/1"),
@@ -119,7 +126,8 @@ class CedulaIngresoValidationTest(unittest.TestCase):
                 )
 
         self.assertIn(resp.status_code, (302, 303))
-        nueva = add_mock.call_args[0][0]
+        nueva = captured["candidate"]
+        self.assertIsNotNone(nueva)
         self.assertEqual(nueva.cedula, "123-4567890-1")
 
     def test_no_toca_datos_existentes_en_bloqueo(self):
