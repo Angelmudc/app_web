@@ -6,7 +6,6 @@
 {% block content %}
 <div class="py-4">
   <div class="glass-card p-3 p-md-4">
-
     <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
       <div>
         <h1 class="h4 mb-1">{{ '📝 Nueva Solicitud' if nuevo else ('🗂️ Solicitud ' ~ solicitud.codigo_solicitud) }}</h1>
@@ -40,348 +39,154 @@
         </div>
       {% endif %}
 
-      <!-- SECCIÓN 0: TIPO DE SOLICITUD -->
-      <h2 class="h5 fw-semibold mb-3">
-        <i class="fa-solid fa-list-check text-warning"></i> Tipo de solicitud
-      </h2>
-      <div class="row g-4 mb-3">
-        <div class="col-md-6">
-          <label class="form-label required">{{ form.tipo_servicio.label.text }}</label>
-          {{ form.tipo_servicio(class="form-select") }}
-          <div class="hint mt-1">
-            Selecciona si la solicitud es para doméstica de limpieza, niñera, enfermera/cuidadora o chofer.
-          </div>
-        </div>
-        <div class="col-md-6 d-flex align-items-end justify-content-md-end">
-          {% if not nuevo and solicitud is defined %}
-            <span class="badge-tipo">
-              <i class="fa-solid fa-circle-info me-1"></i>
-              Tipo actual: {{ solicitud.tipo_servicio_label if solicitud.tipo_servicio_label else 'Doméstica general' }}
-            </span>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- SECCIÓN 1: UBICACIÓN -->
-      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-location-dot text-info"></i> Ubicación y rutas</h2>
-      <div class="row g-4">
-        <div class="col-md-7">
-          <label class="form-label required">{{ form.ciudad_sector.label.text }}</label>
-          {{ form.ciudad_sector(class="form-control", aria_required="true") }}
-        </div>
-        <div class="col-md-5">
-          <label class="form-label">{{ form.rutas_cercanas.label.text }}</label>
-          {{ form.rutas_cercanas(class="form-control") }}
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- SECCIÓN 2: DETALLES DE LA OFERTA -->
-      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-clipboard-list text-primary"></i> Detalles de la oferta</h2>
-      <div class="row g-4">
-        <div class="col-md-6">
-          <label class="form-label required">{{ form.modalidad_trabajo.label.text }}</label>
-          {{ form.modalidad_trabajo(class="form-control") }}
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">{{ form.horario.label.text }}</label>
-          {{ form.horario(class="form-control") }}
-        </div>
-      </div>
-
-      <div class="mt-3">
-        <label class="form-label">{{ form.experiencia.label.text }}</label>
-        {{ form.experiencia(rows=3, class="form-control", maxlength="500") }}
-        <div class="d-flex justify-content-between mt-1">
-          <span class="hint">Hasta 500 caracteres.</span>
-          <span class="hint"><span id="exp-count">0</span>/500</span>
-        </div>
-      </div>
-
-      <!-- FUNCIONES GENERALES (se oculta solo para CHOFER) -->
-      <div class="mt-3" id="bloque-funciones-general">
-        <label class="form-label">{{ form.funciones.label.text }}</label>
-        <div class="row g-2">
-          {% for sub in form.funciones %}
-          <div class="col-12 col-sm-6 col-lg-4">
-            <div class="form-check">
-              {{ sub(class="form-check-input", id=sub.id) }}
-              <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        <div id="wrap-funciones-otro" class="mt-2 {{ 'd-block' if (form.funciones.data and ('otro' in form.funciones.data)) else 'd-none' }}">
-          <label class="form-label">{{ form.funciones_otro.label.text }}</label>
-          {{ form.funciones_otro(class="form-control", placeholder="Puedes separar varias por coma") }}
-        </div>
-      </div>
-
-      <div class="mt-3">
-        <label class="form-label">{{ form.edad_requerida.label.text }}</label>
-        <div class="d-flex flex-wrap gap-3">
-          {% for sub in form.edad_requerida %}
-          <div class="form-check">
-            {{ sub(class="form-check-input", id=sub.id) }}
-            <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-          </div>
-          {% endfor %}
-        </div>
-        <div id="wrap-edad-otro" class="mt-2 {{ 'd-block' if (form.edad_requerida.data and ('otro' in form.edad_requerida.data)) else 'd-none' }}">
-          <label class="form-label">{{ form.edad_otro.label.text }}</label>
-          {{ form.edad_otro(class="form-control", placeholder="Ej. 30 a 40, 20-30…") }}
-          <div class="hint">Si elegiste “Otro”, especifica aquí el rango.</div>
-        </div>
-      </div>
-
-      <!-- SECCIÓN 2.1: DETALLES ESPECÍFICOS SEGÚN TIPO -->
-      <div class="divider"></div>
-      <h2 class="h5 fw-semibold mb-3">
-        <i class="fa-solid fa-user-gear text-warning"></i> Detalles específicos según el tipo
-      </h2>
-
-      <!-- BLOQUE NIÑERA -->
-      <div id="bloque-ninera" class="{{ 'd-block' if (form.tipo_servicio.data == 'NINERA') else 'd-none' }}">
-        <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>niñera</strong>.</div>
-        <div class="row g-4">
-          <div class="col-md-3">
-            <label class="form-label">{{ form.ninera_cant_ninos.label.text }}</label>
-            {{ form.ninera_cant_ninos(class="form-control", type="number", min="1", step="1") }}
-          </div>
-          <div class="col-md-5">
-            <label class="form-label">{{ form.ninera_edades.label.text }}</label>
-            {{ form.ninera_edades(class="form-control", placeholder="Ej. 2 y 6 años") }}
-          </div>
-        </div>
-        <div class="mt-3">
-          <label class="form-label">{{ form.ninera_tareas.label.text }}</label>
-          <div class="row g-2">
-            {% for sub in form.ninera_tareas %}
-            <div class="col-12 col-sm-6 col-lg-4">
-              <div class="form-check">
-                {{ sub(class="form-check-input", id=sub.id) }}
-                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-          <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-block' if (form.ninera_tareas.data and ('otro' in form.ninera_tareas.data)) else 'd-none' }}">
-            <label class="form-label">{{ form.ninera_tareas_otro.label.text }}</label>
-            {{ form.ninera_tareas_otro(class="form-control", placeholder="Especifica otras tareas") }}
-          </div>
-        </div>
-        <div class="mt-3">
-          <label class="form-label">{{ form.ninera_condicion_especial.label.text }}</label>
-          {{ form.ninera_condicion_especial(class="form-control", rows="3") }}
-          <div class="hint mt-1">Si el niño tiene alguna condición especial, descríbela brevemente.</div>
-        </div>
-      </div>
-
-      <!-- BLOQUE ENFERMERA / CUIDADORA -->
-      <div id="bloque-enfermera" class="{{ 'd-block' if (form.tipo_servicio.data == 'ENFERMERA') else 'd-none' }}">
-        <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>enfermera o cuidadora</strong>.</div>
+      <section class="mb-3">
+        <h2 class="h5 fw-semibold mb-3">
+          <i class="fa-solid fa-list-check text-warning"></i> Tipo de solicitud
+        </h2>
         <div class="row g-4">
           <div class="col-md-6">
-            <label class="form-label">{{ form.enf_a_quien_cuida.label.text }}</label>
-            {{ form.enf_a_quien_cuida(class="form-control", placeholder="Ej. Señora de 80 años, adulto postrado…") }}
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">{{ form.enf_movilidad.label.text }}</label>
-            {{ form.enf_movilidad(class="form-select") }}
-          </div>
-        </div>
-        <div class="mt-3">
-          <label class="form-label">{{ form.enf_condicion_principal.label.text }}</label>
-          {{ form.enf_condicion_principal(class="form-control", rows="3") }}
-        </div>
-        <div class="mt-3">
-          <label class="form-label">{{ form.enf_tareas.label.text }}</label>
-          <div class="row g-2">
-            {% for sub in form.enf_tareas %}
-            <div class="col-12 col-sm-6 col-lg-4">
-              <div class="form-check">
-                {{ sub(class="form-check-input", id=sub.id) }}
-                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-              </div>
+            <label class="form-label required">{{ form.tipo_servicio.label.text }}</label>
+            {{ form.tipo_servicio(class="form-select", id=form.tipo_servicio.id) }}
+            <div class="hint mt-1">
+              Selecciona si la solicitud es para doméstica de limpieza, niñera, enfermera/cuidadora o chofer.
             </div>
-            {% endfor %}
           </div>
-          <div id="wrap-enf-tareas-otro" class="mt-2 {{ 'd-block' if (form.enf_tareas.data and ('otro' in form.enf_tareas.data)) else 'd-none' }}">
-            <label class="form-label">{{ form.enf_tareas_otro.label.text }}</label>
-            {{ form.enf_tareas_otro(class="form-control", placeholder="Especifica otras tareas de cuidado") }}
+          <div class="col-md-6 d-flex align-items-end justify-content-md-end">
+            {% if not nuevo and solicitud is defined %}
+              <span class="badge-tipo">
+                <i class="fa-solid fa-circle-info me-1"></i>
+                Tipo actual: {{ solicitud.tipo_servicio_label if solicitud.tipo_servicio_label else 'Doméstica general' }}
+              </span>
+            {% endif %}
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- BLOQUE CHOFER -->
-      <div id="bloque-chofer" class="{{ 'd-block' if (form.tipo_servicio.data == 'CHOFER') else 'd-none' }}">
-        <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>chofer</strong>.</div>
-        <div class="row g-4">
-          <div class="col-md-6">
-            <label class="form-label">{{ form.chofer_vehiculo.label.text }}</label>
-            <div>
-              {% for sub in form.chofer_vehiculo %}
-              <div class="form-check form-check-inline">
-                {{ sub(class="form-check-input", id=sub.id) }}
-                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+      {% include 'clientes/_solicitud_form_fields.html' %}
+
+      <section class="mt-4">
+        <div class="divider"></div>
+        <h2 class="h5 fw-semibold mb-3">
+          <i class="fa-solid fa-user-gear text-warning"></i> Detalles específicos según el tipo
+        </h2>
+
+        <div id="bloque-ninera" class="{{ 'd-block' if (form.tipo_servicio.data == 'NINERA') else 'd-none' }}">
+          <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>niñera</strong>.</div>
+          <div class="row g-4">
+            <div class="col-md-3">
+              <label class="form-label">{{ form.ninera_cant_ninos.label.text }}</label>
+              {{ form.ninera_cant_ninos(class="form-control", type="number", min="1", step="1") }}
+            </div>
+            <div class="col-md-5">
+              <label class="form-label">{{ form.ninera_edades.label.text }}</label>
+              {{ form.ninera_edades(class="form-control", placeholder="Ej. 2 y 6 años") }}
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.ninera_tareas.label.text }}</label>
+            <div class="row g-2">
+              {% for sub in form.ninera_tareas %}
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="form-check">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
               </div>
               {% endfor %}
             </div>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">{{ form.chofer_tipo_vehiculo.label.text }}</label>
-            {{ form.chofer_tipo_vehiculo(class="form-select", id=form.chofer_tipo_vehiculo.id) }}
-            <div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if (form.chofer_tipo_vehiculo.data == 'otro') else 'd-none' }}">
-              <label class="form-label">{{ form.chofer_tipo_vehiculo_otro.label.text }}</label>
-              {{ form.chofer_tipo_vehiculo_otro(class="form-control", placeholder="Ej. Minibús, camión ligero…") }}
+            <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-block' if (form.ninera_tareas.data and ('otro' in form.ninera_tareas.data)) else 'd-none' }}">
+              <label class="form-label">{{ form.ninera_tareas_otro.label.text }}</label>
+              {{ form.ninera_tareas_otro(class="form-control", placeholder="Especifica otras tareas") }}
             </div>
           </div>
-        </div>
-        <div class="row g-4 mt-2">
-          <div class="col-md-8">
-            <label class="form-label">{{ form.chofer_rutas.label.text }}</label>
-            {{ form.chofer_rutas(class="form-control", placeholder="Ej. Puerto Plata – Santiago, dentro de la ciudad…") }}
+          <div class="mt-3">
+            <label class="form-label">{{ form.ninera_condicion_especial.label.text }}</label>
+            {{ form.ninera_condicion_especial(class="form-control", rows="3") }}
+            <div class="hint mt-1">Si el niño tiene alguna condición especial, descríbela brevemente.</div>
           </div>
-          <div class="col-md-4">
-            <label class="form-label d-block">{{ form.chofer_viajes_largos.label.text }}</label>
-            <div>
-              {% for sub in form.chofer_viajes_largos %}
-              <div class="form-check form-check-inline">
-                {{ sub(class="form-check-input", id=sub.id) }}
-                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+        </div>
+
+        <div id="bloque-enfermera" class="{{ 'd-block' if (form.tipo_servicio.data == 'ENFERMERA') else 'd-none' }}">
+          <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>enfermera o cuidadora</strong>.</div>
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label">{{ form.enf_a_quien_cuida.label.text }}</label>
+              {{ form.enf_a_quien_cuida(class="form-control", placeholder="Ej. Señora de 80 años, adulto postrado…") }}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ form.enf_movilidad.label.text }}</label>
+              {{ form.enf_movilidad(class="form-select") }}
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.enf_condicion_principal.label.text }}</label>
+            {{ form.enf_condicion_principal(class="form-control", rows="3") }}
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.enf_tareas.label.text }}</label>
+            <div class="row g-2">
+              {% for sub in form.enf_tareas %}
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="form-check">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
               </div>
               {% endfor %}
             </div>
-          </div>
-        </div>
-        <div class="mt-3">
-          <label class="form-label">{{ form.chofer_licencia_detalle.label.text }}</label>
-          {{ form.chofer_licencia_detalle(class="form-control", placeholder="Ej. Licencia categoría 3, maneja mecánico…") }}
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- SECCIÓN 3: HOGAR (se oculta para CHOFER y NIÑERA) -->
-      <div id="bloque-hogar">
-        <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-building text-info"></i> Tipo de lugar</h2>
-        <div class="row g-4">
-          <div class="col-md-6">
-            <label class="form-label required">{{ form.tipo_lugar.label.text }}</label>
-            {{ form.tipo_lugar(class="form-select", id=form.tipo_lugar.id) }}
-            <div id="wrap-tipo-lugar-otro" class="mt-2 {{ 'd-block' if (form.tipo_lugar.data == 'otro') else 'd-none' }}">
-              <label class="form-label">{{ form.tipo_lugar_otro.label.text }}</label>
-              {{ form.tipo_lugar_otro(class="form-control", placeholder="Ej. Local comercial, villa…") }}
+            <div id="wrap-enf-tareas-otro" class="mt-2 {{ 'd-block' if (form.enf_tareas.data and ('otro' in form.enf_tareas.data)) else 'd-none' }}">
+              <label class="form-label">{{ form.enf_tareas_otro.label.text }}</label>
+              {{ form.enf_tareas_otro(class="form-control", placeholder="Especifica otras tareas de cuidado") }}
             </div>
           </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.habitaciones.label.text }}</label>
-            {{ form.habitaciones(class="form-control", type="number", min="0", step="1") }}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.banos.label.text }}</label>
-            {{ form.banos(class="form-control", type="number", min="0", step="0.5") }}
-          </div>
         </div>
 
-        <div class="mt-2">
-          <div class="form-check">
-            {{ form.dos_pisos(class="form-check-input", id=form.dos_pisos.id) }}
-            <label class="form-check-label" for="{{ form.dos_pisos.id }}">La vivienda tiene dos pisos</label>
-          </div>
-        </div>
-
-        {% if form.areas_comunes is defined %}
-        <div class="mt-4">
-          <label class="form-label">{{ form.areas_comunes.label.text if form.areas_comunes.label else 'Áreas comunes' }}</label>
-          <div class="row g-2">
-            {% for sub in form.areas_comunes %}
-            <div class="col-12 col-sm-6 col-lg-4">
-              <div class="form-check">
-                {{ sub(class="form-check-input", id=sub.id) }}
-                <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+        <div id="bloque-chofer" class="{{ 'd-block' if (form.tipo_servicio.data == 'CHOFER') else 'd-none' }}">
+          <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>chofer</strong>.</div>
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label">{{ form.chofer_vehiculo.label.text }}</label>
+              <div>
+                {% for sub in form.chofer_vehiculo %}
+                <div class="form-check form-check-inline">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+                {% endfor %}
               </div>
             </div>
-            {% endfor %}
-          </div>
-          {% if form.area_otro is defined %}
-          <div id="wrap-areas-otro" class="mt-2 {{ 'd-block' if (form.areas_comunes.data and ('otro' in form.areas_comunes.data)) else 'd-none' }}">
-            <label class="form-label">{{ form.area_otro.label.text if form.area_otro.label else 'Otra área' }}</label>
-            {{ form.area_otro(class="form-control", placeholder="Ej. Balcón, cuarto de juegos…") }}
-            <div class="hint">Si elegiste “Otro”, especifica aquí el área adicional.</div>
-          </div>
-          {% endif %}
-        </div>
-        {% endif %}
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- SECCIÓN 4: OCUPANTES (se oculta solo para CHOFER) -->
-      <div id="bloque-ocupantes">
-        <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-people-group text-primary"></i> Ocupantes</h2>
-        <div class="row g-4">
-          <div class="col-md-3">
-            <label class="form-label">{{ form.adultos.label.text }}</label>
-            {{ form.adultos(class="form-control", type="number", min="0", step="1") }}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.ninos.label.text }}</label>
-            {{ form.ninos(class="form-control", type="number", min="0", step="1") }}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">{{ form.edades_ninos.label.text }}</label>
-            {{ form.edades_ninos(class="form-control") }}
-          </div>
-          {% if form.mascota is defined %}
-          <div class="col-md-3">
-            <label class="form-label">{{ form.mascota.label.text }}</label>
-            {{ form.mascota(class="form-control") }}
-          </div>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- SECCIÓN 5: COMPENSACIÓN -->
-      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-dollar-sign text-success"></i> Compensación</h2>
-      <div class="row g-4">
-        <div class="col-md-6">
-          <label class="form-label required">{{ form.sueldo.label.text }}</label>
-          <div class="input-group">
-            <span class="input-group-text">RD$</span>
-            {{ form.sueldo(class="form-control") }}
-          </div>
-          <div class="hint mt-1">Monto mensual estimado.</div>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">{{ form.pasaje_aporte.label.text }}</label>
-          <div>
-            {% for sub in form.pasaje_aporte %}
-            <div class="form-check form-check-inline">
-              {{ sub(class="form-check-input", id=sub.id) }}
-              <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+            <div class="col-md-6">
+              <label class="form-label">{{ form.chofer_tipo_vehiculo.label.text }}</label>
+              {{ form.chofer_tipo_vehiculo(class="form-select", id=form.chofer_tipo_vehiculo.id) }}
+              <div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if (form.chofer_tipo_vehiculo.data == 'otro') else 'd-none' }}">
+                <label class="form-label">{{ form.chofer_tipo_vehiculo_otro.label.text }}</label>
+                {{ form.chofer_tipo_vehiculo_otro(class="form-control", placeholder="Ej. Minibús, camión ligero…") }}
+              </div>
             </div>
-            {% endfor %}
+          </div>
+          <div class="row g-4 mt-2">
+            <div class="col-md-8">
+              <label class="form-label">{{ form.chofer_rutas.label.text }}</label>
+              {{ form.chofer_rutas(class="form-control", placeholder="Ej. Puerto Plata – Santiago, dentro de la ciudad…") }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label d-block">{{ form.chofer_viajes_largos.label.text }}</label>
+              <div>
+                {% for sub in form.chofer_viajes_largos %}
+                <div class="form-check form-check-inline">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.chofer_licencia_detalle.label.text }}</label>
+            {{ form.chofer_licencia_detalle(class="form-control", placeholder="Ej. Licencia categoría 3, maneja mecánico…") }}
           </div>
         </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- SECCIÓN 6: NOTA -->
-      <h2 class="h5 fw-semibold mb-3"><i class="fa-solid fa-comment-dots text-info"></i> Nota adicional</h2>
-      <div class="mb-3">
-        <label class="form-label">{{ form.nota_cliente.label.text }}</label>
-        {{ form.nota_cliente(rows=3, class="form-control", maxlength="1000") }}
-        <div class="d-flex justify-content-end mt-1">
-          <span class="hint"><span id="nota-count">0</span>/1000</span>
-        </div>
-      </div>
+      </section>
 
       <div class="sticky-actions mt-4">
         <div class="d-flex gap-2 justify-content-end">
@@ -393,7 +198,6 @@
           </button>
         </div>
       </div>
-
     </form>
   </div>
 </div>
@@ -407,181 +211,43 @@
     el.classList.toggle('d-none', !show);
     el.classList.toggle('d-block', !!show);
   }
-  const exp = document.getElementById("{{ form.experiencia.id }}");
-  const nota = document.getElementById("{{ form.nota_cliente.id }}");
 
-  function bindCount(el, outId){
-    if(!el) return;
-    const out = document.getElementById(outId);
-    const upd = () => { if(out) out.textContent = el.value.length; };
-    el.addEventListener('input', upd); upd();
-  }
-  bindCount(exp, 'exp-count');
-  bindCount(nota, 'nota-count');
+  const tipoServicioSel = document.getElementById('{{ form.tipo_servicio.id }}');
+  const bloqueNinera = document.getElementById('bloque-ninera');
+  const bloqueEnfermera = document.getElementById('bloque-enfermera');
+  const bloqueChofer = document.getElementById('bloque-chofer');
+  const choferTipoSelect = document.getElementById('{{ form.chofer_tipo_vehiculo.id }}');
+  const choferTipoWrap = document.getElementById('wrap-chofer-tipo-otro');
+  const choferTipoOtroInput = document.getElementById('{{ form.chofer_tipo_vehiculo_otro.id }}');
 
-  // Funciones -> Otro
-  const funcWrap = document.getElementById('wrap-funciones-otro');
-  const funcOtroInput = document.getElementById('{{ form.funciones_otro.id }}');
-  const funcChecks = document.querySelectorAll('input[name="{{ form.funciones.name }}"]');
-  const updateFuncOtro = () => {
-    const checkedOtro = [...funcChecks].some(c => c.value === 'otro' && c.checked);
-    if (!checkedOtro && funcOtroInput) funcOtroInput.value = '';
-    setVisible(funcWrap, checkedOtro);
-  };
-  funcChecks.forEach(ch => ch.addEventListener('change', () => {
-    updateFuncOtro();
-  }));
-  if (funcOtroInput) funcOtroInput.addEventListener('input', updateFuncOtro);
-  updateFuncOtro();
-
-  // Edad requerida -> Otro
-  const edadWrap = document.getElementById('wrap-edad-otro');
-  const edadOtroInput = document.getElementById('{{ form.edad_otro.id }}');
-  const edadChecks = document.querySelectorAll('input[name="{{ form.edad_requerida.name }}"]');
-  const updateEdadOtro = () => {
-    const checkedOtro = [...edadChecks].some(c => c.value === 'otro' && c.checked);
-    if (!checkedOtro && edadOtroInput) edadOtroInput.value = '';
-    setVisible(edadWrap, checkedOtro);
-  };
-  edadChecks.forEach(ch => ch.addEventListener('change', () => {
-    updateEdadOtro();
-  }));
-  if (edadOtroInput) edadOtroInput.addEventListener('input', updateEdadOtro);
-  updateEdadOtro();
-
-  // Tipo de lugar -> Otro
-  const tipoSel = document.getElementById('{{ form.tipo_lugar.id }}');
-  const tipoWrap = document.getElementById('wrap-tipo-lugar-otro');
-  if (tipoSel) tipoSel.addEventListener('change', () => {
-    if (tipoSel.value !== 'otro') {
-      const tipoOtroInput = document.getElementById('{{ form.tipo_lugar_otro.id }}');
-      if (tipoOtroInput) tipoOtroInput.value = '';
-    }
-    setVisible(tipoWrap, tipoSel.value === 'otro');
-  });
-  if (tipoSel && tipoSel.value !== 'otro') {
-    const tipoOtroInput = document.getElementById('{{ form.tipo_lugar_otro.id }}');
-    if (tipoOtroInput) tipoOtroInput.value = '';
-  }
-  setVisible(tipoWrap, tipoSel && tipoSel.value === 'otro');
-
-  // Áreas comunes -> Otro (descripciones del hogar)
-  const areasWrap = document.getElementById('wrap-areas-otro');
-  const areaOtroInput = document.getElementById('{{ form.area_otro.id if form.area_otro is defined else "" }}');
-  const areasChecks = document.querySelectorAll('input[name="{{ form.areas_comunes.name if form.areas_comunes is defined else "" }}"]');
-  if (areasWrap && areasChecks && areasChecks.length) {
-    const areasMaster = [...areasChecks].find(c => c.value === 'todas_anteriores');
-
-    const updateAreas = () => {
-      const checkedOtro = [...areasChecks].some(c => c.value === 'otro' && c.checked);
-      if (!checkedOtro && areaOtroInput) areaOtroInput.value = '';
-      setVisible(areasWrap, checkedOtro);
+  function bindOtroToggle(groupName, wrapId, inputId) {
+    const wrap = document.getElementById(wrapId);
+    const txt = document.getElementById(inputId);
+    const checks = document.querySelectorAll('input[name="' + groupName + '"]');
+    if (!checks.length || !wrap) return;
+    const update = () => {
+      const selected = Array.from(checks).some((c) => c.value === 'otro' && c.checked);
+      if (!selected && txt) txt.value = '';
+      setVisible(wrap, selected);
     };
-
-    const toggleAllAreas = () => {
-      const allNonMaster = [...areasChecks].filter(c => c.value !== 'todas_anteriores');
-      const baseAreas = allNonMaster.filter(c => c.value !== 'otro');
-      const otherArea = allNonMaster.find(c => c.value === 'otro');
-      const allBaseChecked = baseAreas.length > 0 && baseAreas.every(c => c.checked);
-      const shouldCheckAll = !allBaseChecked;
-
-      if (shouldCheckAll) {
-        baseAreas.forEach(c => { c.checked = true; });
-        if (otherArea) otherArea.checked = false;
-      } else {
-        allNonMaster.forEach(c => { c.checked = false; });
-      }
-      if (areasMaster) areasMaster.checked = false;
-
-      if (!shouldCheckAll && areaOtroInput) areaOtroInput.value = '';
-      if (shouldCheckAll && areaOtroInput) areaOtroInput.value = '';
-      updateAreas();
-    };
-
-    areasChecks.forEach(ch => {
-      ch.addEventListener('change', () => {
-        if (ch.value === 'todas_anteriores' && ch.checked) {
-          toggleAllAreas();
-          return;
-        }
-        updateAreas();
-      });
-    });
-    if (areaOtroInput) areaOtroInput.addEventListener('input', updateAreas);
-    updateAreas();
+    checks.forEach((c) => c.addEventListener('change', update));
+    if (txt) txt.addEventListener('input', update);
+    update();
   }
-
-  // Tipo de servicio -> mostrar/ocultar bloques específicos
-  const tipoServicioSel   = document.getElementById('{{ form.tipo_servicio.id }}');
-  const bloqueNinera      = document.getElementById('bloque-ninera');
-  const bloqueEnfermera   = document.getElementById('bloque-enfermera');
-  const bloqueChofer      = document.getElementById('bloque-chofer');
-  const bloqueFunciones   = document.getElementById('bloque-funciones-general');
-  const bloqueHogar       = document.getElementById('bloque-hogar');
-  const bloqueOcupantes   = document.getElementById('bloque-ocupantes');
 
   function actualizarBloquesTipo() {
     if (!tipoServicioSel) return;
     const val = tipoServicioSel.value;
-
-    // Bloques específicos
-    setVisible(bloqueNinera,    val === 'NINERA');
+    setVisible(bloqueNinera, val === 'NINERA');
     setVisible(bloqueEnfermera, val === 'ENFERMERA');
-    setVisible(bloqueChofer,    val === 'CHOFER');
-
-    // Lógica casa / funciones / ocupantes
-    const esChofer       = (val === 'CHOFER');
-    const ocultarHogar   = (val === 'CHOFER' || val === 'NINERA');
-
-    // Funciones generales solo se esconden para chofer
-    setVisible(bloqueFunciones, !esChofer);
-
-    // Hogar (tipo de lugar, habitaciones, baños, áreas comunes)
-    setVisible(bloqueHogar, !ocultarHogar);
-
-    // Ocupantes solo se esconden para chofer (para niñera se quedan porque son los niños)
-    setVisible(bloqueOcupantes, !esChofer);
+    setVisible(bloqueChofer, val === 'CHOFER');
   }
 
   if (tipoServicioSel) {
     tipoServicioSel.addEventListener('change', actualizarBloquesTipo);
-    actualizarBloquesTipo(); // inicial
+    actualizarBloquesTipo();
   }
 
-  // Niñera tareas -> Otro
-  const ninTareasWrap  = document.getElementById('wrap-ninera-tareas-otro');
-  const ninTareasOtroInput = document.getElementById('{{ form.ninera_tareas_otro.id }}');
-  const ninTareasChecks = document.querySelectorAll('input[name="{{ form.ninera_tareas.name }}"]');
-  const updateNinTareasOtro = () => {
-    const checkedOtro = [...ninTareasChecks].some(c => c.value === 'otro' && c.checked);
-    if (!checkedOtro && ninTareasOtroInput) ninTareasOtroInput.value = '';
-    setVisible(ninTareasWrap, checkedOtro);
-  };
-  ninTareasChecks.forEach(ch => ch.addEventListener('change', () => {
-    updateNinTareasOtro();
-  }));
-  if (ninTareasOtroInput) ninTareasOtroInput.addEventListener('input', updateNinTareasOtro);
-  updateNinTareasOtro();
-
-  // Enfermera tareas -> Otro
-  const enfTareasWrap  = document.getElementById('wrap-enf-tareas-otro');
-  const enfTareasOtroInput = document.getElementById('{{ form.enf_tareas_otro.id }}');
-  const enfTareasChecks = document.querySelectorAll('input[name="{{ form.enf_tareas.name }}"]');
-  const updateEnfTareasOtro = () => {
-    const checkedOtro = [...enfTareasChecks].some(c => c.value === 'otro' && c.checked);
-    if (!checkedOtro && enfTareasOtroInput) enfTareasOtroInput.value = '';
-    setVisible(enfTareasWrap, checkedOtro);
-  };
-  enfTareasChecks.forEach(ch => ch.addEventListener('change', () => {
-    updateEnfTareasOtro();
-  }));
-  if (enfTareasOtroInput) enfTareasOtroInput.addEventListener('input', updateEnfTareasOtro);
-  updateEnfTareasOtro();
-
-  // Chofer tipo_vehiculo -> "otro"
-  const choferTipoSelect  = document.getElementById('{{ form.chofer_tipo_vehiculo.id }}');
-  const choferTipoWrap    = document.getElementById('wrap-chofer-tipo-otro');
-  const choferTipoOtroInput = document.getElementById('{{ form.chofer_tipo_vehiculo_otro.id }}');
   if (choferTipoSelect && choferTipoWrap) {
     const updateChoferTipo = () => {
       const isOtro = choferTipoSelect.value === 'otro';
@@ -589,10 +255,11 @@
       setVisible(choferTipoWrap, isOtro);
     };
     choferTipoSelect.addEventListener('change', updateChoferTipo);
-    if (choferTipoOtroInput) choferTipoOtroInput.addEventListener('input', updateChoferTipo);
     updateChoferTipo();
   }
 
+  bindOtroToggle('{{ form.ninera_tareas.name }}', 'wrap-ninera-tareas-otro', '{{ form.ninera_tareas_otro.id }}');
+  bindOtroToggle('{{ form.enf_tareas.name }}', 'wrap-enf-tareas-otro', '{{ form.enf_tareas_otro.id }}');
 })();
 </script>
 {% endblock %}

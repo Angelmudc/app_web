@@ -6,6 +6,11 @@
   'areas_comunes', 'area_otro', 'adultos', 'ninos', 'edades_ninos',
   'mascota', 'sueldo', 'pasaje_aporte', 'nota_cliente'
 ] %}
+{% set _pasaje_is_radio = (form.pasaje_aporte is defined and form.pasaje_aporte.type == 'RadioField') %}
+{% set _pasaje_mode_default = 'aparte' if (form.pasaje_aporte is defined and form.pasaje_aporte.data) else 'incluido' %}
+{% set _pasaje_mode_value = public_pasaje_mode if public_pasaje_mode is defined and public_pasaje_mode else _pasaje_mode_default %}
+{% set _pasaje_otro_value = public_pasaje_otro if public_pasaje_otro is defined else '' %}
+{% set _pisos_value = public_pisos_value if public_pisos_value is defined and public_pisos_value else ('2' if (form.dos_pisos is defined and form.dos_pisos.data) else '1') %}
 
 {% macro render_errors(field) -%}
   {% if field.errors %}
@@ -337,15 +342,15 @@
         {{ form.dos_pisos(class='public-hidden-checkbox', id='dos_pisos_hidden') }}
         <div class="public-segmented public-segmented-grid" id="pisos_selector_wrap">
           <label class="public-segmented-item">
-            <input type="radio" name="pisos_selector" value="1" {% if public_pisos_value == '1' %}checked{% endif %}>
+            <input type="radio" name="pisos_selector" value="1" {% if _pisos_value == '1' %}checked{% endif %}>
             <span>1 piso</span>
           </label>
           <label class="public-segmented-item">
-            <input type="radio" name="pisos_selector" value="2" {% if public_pisos_value == '2' %}checked{% endif %}>
+            <input type="radio" name="pisos_selector" value="2" {% if _pisos_value == '2' %}checked{% endif %}>
             <span>2 pisos</span>
           </label>
           <label class="public-segmented-item">
-            <input type="radio" name="pisos_selector" value="3+" {% if public_pisos_value == '3+' %}checked{% endif %}>
+            <input type="radio" name="pisos_selector" value="3+" {% if _pisos_value == '3+' %}checked{% endif %}>
             <span>3+ pisos</span>
           </label>
         </div>
@@ -371,18 +376,23 @@
 
       <div class="public-field" id="wrap_pasaje_mode">
         <label class="public-field-label">Pasaje</label>
-        {{ form.pasaje_aporte(class='public-hidden-checkbox', id='pasaje_aporte_hidden') }}
+        <input
+          type="hidden"
+          id="pasaje_aporte_hidden"
+          name="{{ form.pasaje_aporte.name }}"
+          value="{% if _pasaje_is_radio %}{{ '1' if _pasaje_mode_value == 'aparte' else '0' }}{% else %}{{ 'y' if _pasaje_mode_value == 'aparte' else '' }}{% endif %}"
+        >
         <div class="public-segmented public-segmented-grid">
           <label class="public-segmented-item">
-            <input type="radio" name="pasaje_mode" value="incluido" {% if public_pasaje_mode == 'incluido' %}checked{% endif %}>
+            <input type="radio" name="pasaje_mode" value="incluido" {% if _pasaje_mode_value == 'incluido' %}checked{% endif %}>
             <span>Pasaje incluido</span>
           </label>
           <label class="public-segmented-item">
-            <input type="radio" name="pasaje_mode" value="aparte" {% if public_pasaje_mode == 'aparte' %}checked{% endif %}>
+            <input type="radio" name="pasaje_mode" value="aparte" {% if _pasaje_mode_value == 'aparte' %}checked{% endif %}>
             <span>Pasaje aparte</span>
           </label>
           <label class="public-segmented-item">
-            <input type="radio" name="pasaje_mode" value="otro" {% if public_pasaje_mode == 'otro' %}checked{% endif %}>
+            <input type="radio" name="pasaje_mode" value="otro" {% if _pasaje_mode_value == 'otro' %}checked{% endif %}>
             <span>Otro</span>
           </label>
         </div>
@@ -393,7 +403,7 @@
             id="pasaje_otro_text"
             name="pasaje_otro_text"
             maxlength="120"
-            value="{{ public_pasaje_otro or '' }}"
+            value="{{ _pasaje_otro_value }}"
             placeholder="Describe como se manejara el pasaje"
           >
         </div>
@@ -403,24 +413,12 @@
     </div>
   </section>
 
-  {% for field in form %}
-    {% if field.name not in excluded and field.name not in ordered_names %}
-      <section class="public-form-card">
-        <header class="public-form-card-header">
-          <h3 class="public-form-card-title">Informacion adicional</h3>
-        </header>
-        <div class="public-fields-grid">
-          <div class="public-full">{{ render_field(field) }}</div>
-        </div>
-      </section>
-    {% endif %}
-  {% endfor %}
 </div>
 
 <script>
 (function () {
-  if (window.__publicSolicitudFieldsInit__) return;
-  window.__publicSolicitudFieldsInit__ = true;
+  if (window.__solicitudSharedFieldsInit__) return;
+  window.__solicitudSharedFieldsInit__ = true;
 
   function norm(v) {
     return (v || '').toString().trim().toLowerCase();
@@ -497,12 +495,69 @@
     var wrapPasajeOtro = byId('wrap_pasaje_otro');
     if (pasajeHidden) {
       var mode = pasajeChecked ? norm(pasajeChecked.value) : 'incluido';
-      pasajeHidden.checked = (mode === 'aparte');
-      pasajeHidden.value = pasajeHidden.checked ? 'y' : '';
+      if (pasajeHidden.type === 'hidden' && pasajeHidden.value !== undefined) {
+        if (pasajeHidden.dataset.fieldType === 'radio') {
+          pasajeHidden.value = (mode === 'aparte') ? '1' : '0';
+        } else {
+          pasajeHidden.value = (mode === 'aparte') ? 'y' : '';
+        }
+      }
       if (wrapPasajeOtro) {
         wrapPasajeOtro.style.display = (mode === 'otro') ? '' : 'none';
       }
     }
+  }
+
+  function selectedByName(name, value) {
+    return document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+  }
+
+  function extractMarker(noteText, prefix) {
+    if (!noteText || !prefix) return '';
+    var lines = noteText.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var line = (lines[i] || '').trim();
+      if (line.indexOf(prefix) === 0) {
+        return line.slice(prefix.length).trim();
+      }
+    }
+    return '';
+  }
+
+  function removeMarkers(noteText) {
+    var lines = (noteText || '').split('\n');
+    var keep = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = (lines[i] || '').trim();
+      if (!line) {
+        if (keep.length && keep[keep.length - 1] !== '') keep.push('');
+        continue;
+      }
+      if (line.indexOf('Pisos reportados:') === 0) continue;
+      if (line.indexOf('Pasaje (otro):') === 0) continue;
+      keep.push(line);
+    }
+    while (keep.length && keep[keep.length - 1] === '') keep.pop();
+    return keep.join('\n');
+  }
+
+  function syncFromExistingMarkers() {
+    var note = document.querySelector('textarea[name="nota_cliente"]');
+    if (!note) return;
+    var raw = note.value || '';
+    var pasajeOtro = extractMarker(raw, 'Pasaje (otro):');
+    var piso3p = raw.indexOf('Pisos reportados: 3+.') >= 0;
+    if (pasajeOtro) {
+      var pasajeOtroRadio = selectedByName('pasaje_mode', 'otro');
+      if (pasajeOtroRadio) pasajeOtroRadio.checked = true;
+      var pasajeOtroInput = byId('pasaje_otro_text');
+      if (pasajeOtroInput && !pasajeOtroInput.value) pasajeOtroInput.value = pasajeOtro;
+    }
+    if (piso3p) {
+      var piso3pRadio = selectedByName('pisos_selector', '3+');
+      if (piso3pRadio) piso3pRadio.checked = true;
+    }
+    syncPisosAndPasaje();
   }
 
   function setupAreasTodas() {
@@ -562,8 +617,14 @@
     if (master.checked) setAll(true);
   }
 
+  var pasajeHiddenField = byId('pasaje_aporte_hidden');
+  if (pasajeHiddenField) {
+    pasajeHiddenField.dataset.fieldType = "{{ 'radio' if _pasaje_is_radio else 'boolean' }}";
+  }
+
   syncOtroFields();
   setupAreasTodas();
+  syncFromExistingMarkers();
   syncPisosAndPasaje();
   syncChoiceSelectedState();
 
@@ -584,5 +645,23 @@
       syncPisosAndPasaje();
     }
   });
+
+  var hostForm = document.querySelector('form');
+  if (hostForm) {
+    hostForm.addEventListener('submit', function () {
+      var note = document.querySelector('textarea[name="nota_cliente"]');
+      if (!note) return;
+      var modeNode = document.querySelector('input[name="pasaje_mode"]:checked');
+      var mode = modeNode ? norm(modeNode.value) : 'incluido';
+      var pisoNode = document.querySelector('input[name="pisos_selector"]:checked');
+      var piso = pisoNode ? norm(pisoNode.value) : '1';
+      var otherTxt = (byId('pasaje_otro_text') && byId('pasaje_otro_text').value) ? byId('pasaje_otro_text').value.trim() : '';
+      var base = removeMarkers(note.value || '');
+      var lines = base ? [base] : [];
+      if (piso === '3+') lines.push('Pisos reportados: 3+.');
+      if (mode === 'otro' && otherTxt) lines.push('Pasaje (otro): ' + otherTxt);
+      note.value = lines.join('\n').trim();
+    });
+  }
 })();
 </script>
