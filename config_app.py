@@ -583,6 +583,14 @@ def create_app():
         """Atajo para crear staff con rol secretaria."""
         _create_staff_user(username=username, role="secretaria", password=password, email=email)
 
+    @app.cli.command("create-owner")
+    @click.option("--username", required=True, help="Usuario interno (único).")
+    @click.option("--password", required=True, help="Contraseña inicial.")
+    @click.option("--email", required=False, default="", help="Email opcional (único).")
+    def create_owner_command(username: str, password: str, email: str):
+        """Atajo para crear staff con rol owner."""
+        _create_staff_user(username=username, role="owner", password=password, email=email)
+
     @app.cli.command("create-emergency-admin")
     @click.option("--username", required=True, help="Username del admin de emergencia.")
     @click.option("--email", required=False, default="", help="Email opcional.")

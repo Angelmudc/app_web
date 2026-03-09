@@ -877,7 +877,7 @@ def login():
         staff_ok = False
         if staff_user and bool(getattr(staff_user, "is_active", True)):
             role = (getattr(staff_user, "role", "") or "").strip().lower()
-            if role in ("admin", "secretaria"):
+            if role in ("owner", "admin", "secretaria"):
                 try:
                     staff_ok = bool(staff_user.check_password(clave))
                 except Exception:

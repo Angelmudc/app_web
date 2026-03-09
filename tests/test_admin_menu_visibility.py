@@ -18,7 +18,7 @@ def test_owner_sees_create_user_link_and_can_open_route():
     assert home.status_code == 200
     assert b'href="/admin/usuarios/nuevo"' in home.data
     assert "Crear usuario".encode("utf-8") in home.data
-    assert "Registrar candidata".encode("utf-8") not in home.data
+    assert "Registrar candidata".encode("utf-8") in home.data
 
     create_user = client.get("/admin/usuarios/nuevo", follow_redirects=False)
     assert create_user.status_code == 200

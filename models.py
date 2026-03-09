@@ -431,6 +431,14 @@ class StaffUser(UserMixin, db.Model):
     def is_admin(self) -> bool:
         return (self.role or "").strip().lower() in {"owner", "admin"}
 
+    @property
+    def is_owner(self) -> bool:
+        return (self.role or "").strip().lower() == "owner"
+
+    @property
+    def is_staff_admin_level(self) -> bool:
+        return self.is_admin
+
     def set_password(self, raw_password: str) -> None:
         self.password_hash = generate_password_hash(raw_password, method="pbkdf2:sha256")
 

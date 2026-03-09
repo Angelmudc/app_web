@@ -92,7 +92,7 @@ def _is_admin() -> bool:
             return False
         return bool(
             getattr(current_user, "is_admin", False)
-            or _get_role() == "admin"
+            or _get_role() in {"owner", "admin"}
         )
     except Exception:
         return False
@@ -197,7 +197,11 @@ def politicas_requeridas(view_func):
 
 def roles_required(*permitted_roles):
     """Decorador legacy compatible con StaffUser + Flask-Login."""
-    permitted = [str(r).strip().lower() for r in permitted_roles]
+    permitted = {str(r).strip().lower() for r in permitted_roles if str(r).strip()}
+    # Jerarquía oficial staff: owner > admin > secretaria.
+    # Owner hereda permisos de cualquier ruta definida para admin/secretaria.
+    if {"admin", "secretaria"} & permitted:
+        permitted.add("owner")
 
     def decorator(view_func):
         @wraps(view_func)

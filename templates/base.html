@@ -216,7 +216,7 @@
               {% set ns_reg.ep = ep %}
             {% endif %}
           {% endfor %}
-          {% if ns_reg.url and current_user.is_authenticated and (current_user.role|default('') == 'admin') %}
+          {% if ns_reg.url and current_user.is_authenticated and ((current_user.role|default('')|lower) in ['owner', 'admin']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint==ns_reg.ep %}active{% endif %}"
                href="{{ ns_reg.url }}">Registrar candidata</a>

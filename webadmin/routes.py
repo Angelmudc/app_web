@@ -12,7 +12,8 @@ def _get_user_role():
     """Devuelve el rol del usuario autenticado.
     Soporta ambos nombres de campo comunes: role / rol.
     """
-    return getattr(current_user, "role", None) or getattr(current_user, "rol", None)
+    role = getattr(current_user, "role", None) or getattr(current_user, "rol", None) or ""
+    return str(role).strip().lower()
 
 
 def roles_required(*roles):
@@ -42,7 +43,7 @@ from utils.candidata_readiness import candidata_is_ready_to_send
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 
 # Roles permitidos para entrar a WEBADMIN
-WEBADMIN_ALLOWED_ROLES = ("admin", "secretaria")
+WEBADMIN_ALLOWED_ROLES = ("owner", "admin", "secretaria")
 
 # ─────────────────────────────────────────────────────────────
 # Helpers de búsqueda (igual filosofía que app.py)
