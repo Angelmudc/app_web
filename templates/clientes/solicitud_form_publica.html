@@ -1,4 +1,4 @@
-{% extends 'clientes/base.html' %}
+{% extends 'clientes/public_base.html' %}
 
 {% block title %}Solicitud segura | Doméstica del Cibao A&D{% endblock %}
 
@@ -70,7 +70,7 @@
 
   .public-flow-layout {
     display: grid;
-    grid-template-columns: 340px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     margin-top: 16px;
   }
@@ -84,62 +84,6 @@
 
   .public-panel-body {
     padding: 22px;
-  }
-
-  .public-side-title {
-    font-size: .95rem;
-    margin-bottom: 14px;
-    color: #344459;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    font-weight: 700;
-  }
-
-  .public-kv { display: grid; gap: 13px; }
-
-  .public-kv-label {
-    font-size: .78rem;
-    color: var(--pf-muted);
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    font-weight: 700;
-    margin-bottom: 3px;
-  }
-
-  .public-kv-value {
-    font-size: .95rem;
-    color: #1d2b3a;
-    font-weight: 600;
-    word-break: break-word;
-  }
-
-  .public-state-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    border-radius: 999px;
-    padding: 6px 12px;
-    font-size: .8rem;
-    font-weight: 700;
-    background: #edf2f8;
-    color: #35506f;
-    border: 1px solid #d3deeb;
-  }
-
-  .public-state-pill.ok {
-    background: var(--pf-ok-bg);
-    color: var(--pf-ok-ink);
-    border-color: #b9e3c8;
-  }
-
-  .public-security-note {
-    margin-top: 16px;
-    border: 1px solid #c9d7e8;
-    background: #f7fbff;
-    border-radius: 14px;
-    padding: 12px;
-    font-size: .9rem;
-    color: #2c4f78;
   }
 
   .public-form-main-header {
@@ -266,68 +210,19 @@
 {% block content %}
 <section class="public-flow-page">
   <div class="public-flow-shell">
-
-    {% set estado = (latest_solicitud.estado if latest_solicitud else 'proceso') %}
-    {% set estado_label = {
-      'proceso': 'Pendiente',
-      'activa': 'Activa',
-      'espera_pago': 'En espera de pago',
-      'reemplazo': 'Reemplazo',
-      'pagada': 'Pagada',
-      'cancelada': 'Cerrada'
-    }.get(estado, estado|replace('_', ' ')|title) %}
-
     <header class="public-flow-hero">
       <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
         <div>
-          <h1 class="public-flow-title">Formulario de solicitud del cliente</h1>
-          <p class="public-flow-subtitle">Completa esta información para registrar tu solicitud. Al enviarla, el enlace quedará cerrado automáticamente por seguridad.</p>
+          <h1 class="public-flow-title">Formulario publico de solicitud</h1>
+          <p class="public-flow-subtitle">Completa esta informacion para registrar tu solicitud. Al enviarla, el enlace quedara cerrado automaticamente por seguridad.</p>
         </div>
         <div class="d-flex flex-wrap gap-2 justify-content-end">
-          {% if latest_solicitud %}
-          <span class="public-flow-chip"><i class="bi bi-hash"></i> Código actual: {{ latest_solicitud.codigo_solicitud }}</span>
-          {% endif %}
-          <span class="public-flow-chip"><i class="bi bi-shield-lock"></i> Vigencia: {{ public_token_max_age_days }} días</span>
+          <span class="public-flow-chip"><i class="bi bi-shield-lock"></i> Enlace de un solo uso</span>
         </div>
       </div>
     </header>
 
-    <div class="public-flow-layout">
-      <aside class="public-panel">
-        <div class="public-panel-body">
-          <h2 class="public-side-title">Resumen</h2>
-
-          <div class="public-kv">
-            <div>
-              <div class="public-kv-label">Cliente</div>
-              <div class="public-kv-value">{{ cliente.nombre_completo or 'No disponible' }}</div>
-            </div>
-            <div>
-              <div class="public-kv-label">Código</div>
-              <div class="public-kv-value">{{ cliente.codigo or 'No disponible' }}</div>
-            </div>
-            <div>
-              <div class="public-kv-label">Última solicitud</div>
-              <div class="public-kv-value">
-                {% if latest_solicitud and latest_solicitud.fecha_solicitud %}
-                  {{ latest_solicitud.fecha_solicitud.strftime('%d/%m/%Y %I:%M %p') }}
-                {% else %}
-                  Sin solicitudes registradas
-                {% endif %}
-              </div>
-            </div>
-            <div>
-              <div class="public-kv-label">Estado</div>
-              <span class="public-state-pill {% if estado in ['activa', 'pagada'] %}ok{% endif %}">{{ estado_label }}</span>
-            </div>
-          </div>
-
-          <div class="public-security-note">
-            <strong>Verificación obligatoria:</strong> confirma código, nombre y correo del cliente antes de enviar para prevenir usos no autorizados.
-          </div>
-        </div>
-      </aside>
-
+    <div class="public-flow-layout public-flow-layout-single">
       <main class="public-panel">
         <div class="public-panel-body public-form-main">
           <div class="public-form-main-header">
@@ -378,7 +273,7 @@
                 <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitSpinner" aria-hidden="true"></span>
                 <span id="publicSubmitLabel">Enviar solicitud</span>
               </button>
-              <div class="public-submit-help">Este enlace es de un solo uso. Al finalizar, no podrá reutilizarse.</div>
+              <div class="public-submit-help">Completa la solicitud y revisa los campos marcados antes de enviar.</div>
             </div>
           </form>
         </div>

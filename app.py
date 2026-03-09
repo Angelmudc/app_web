@@ -5,9 +5,10 @@ load_dotenv()
 import os
 from datetime import timedelta
 
-from flask import session, request, redirect, url_for
+from flask import session, request, redirect, url_for, render_template
 from flask_login import current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
+from flask_wtf.csrf import CSRFError
 
 from config_app import create_app, db, csrf, cache
 from core.routes import candidatas_bp, procesos_bp, entrevistas_bp, archivos_bp
@@ -24,6 +25,18 @@ def url_for_safe(endpoint: str, **values):
 
 
 app.jinja_env.globals['url_for_safe'] = url_for_safe
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    path = (request.path or '').strip()
+    if path.startswith('/clientes/solicitudes/publica/'):
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key='csrf',
+            status_code=400,
+        ), 400
+    return e
 
 
 @app.before_request

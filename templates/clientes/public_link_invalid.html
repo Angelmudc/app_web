@@ -1,4 +1,4 @@
-{% extends 'clientes/base.html' %}
+{% extends 'clientes/public_base.html' %}
 
 {% block title %}Enlace no disponible | Doméstica del Cibao A&D{% endblock %}
 
@@ -61,18 +61,29 @@
     <article class="public-invalid-card">
       <div class="card-body">
         {% set expired = (reason_key == 'expired') %}
+        {% set csrf_issue = (reason_key == 'csrf') %}
         <div class="invalid-badge">
           <i class="bi bi-shield-exclamation"></i>
-          {% if expired %}
+          {% if csrf_issue %}
+            Sesion expirada
+          {% elif expired %}
             Enlace expirado
           {% else %}
             Enlace no valido
           {% endif %}
         </div>
 
-        <h1 class="h4 fw-bold mt-3 mb-2">Este enlace no es valido o ha expirado</h1>
+        <h1 class="h4 fw-bold mt-3 mb-2">
+          {% if csrf_issue %}
+            La sesion del formulario expiro
+          {% else %}
+            Este enlace no es valido o ha expirado
+          {% endif %}
+        </h1>
         <p class="text-secondary mb-0">
-          {% if expired %}
+          {% if csrf_issue %}
+            Recarga este enlace e intenta enviar nuevamente la solicitud.
+          {% elif expired %}
             Por seguridad, este acceso ya supero su tiempo de validez.
           {% else %}
             El enlace no coincide con una solicitud publica activa o fue alterado.

@@ -2336,8 +2336,6 @@ def compat_recalcular(solicitud_id):
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 def solicitud_publica(token):
-    token_max_age_days = max(1, int(_public_link_max_age_seconds() // 86400))
-
     if not _ensure_public_token_usage_table():
         flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
@@ -2426,7 +2424,6 @@ def solicitud_publica(token):
         ), status_code
 
     c = cliente
-    latest_solicitud = _latest_solicitud_publica_cliente(int(c.id))
     _log_public_link_event(
         "PUBLIC_LINK_VIEW_OK",
         token,
@@ -2471,8 +2468,6 @@ def solicitud_publica(token):
                 form=form,
                 nuevo=True,
                 cliente=c,
-                latest_solicitud=latest_solicitud,
-                public_token_max_age_days=token_max_age_days,
             ), 403
 
         if _norm_email(getattr(form, 'email_cliente', type('x',(object,),{'data':''})).data) != _norm_email(c.email):
@@ -2490,8 +2485,6 @@ def solicitud_publica(token):
                 form=form,
                 nuevo=True,
                 cliente=c,
-                latest_solicitud=latest_solicitud,
-                public_token_max_age_days=token_max_age_days,
             ), 403
 
         if _norm_text(getattr(form, 'nombre_cliente', type('x',(object,),{'data':''})).data) != _norm_text(c.nombre_completo):
@@ -2509,8 +2502,6 @@ def solicitud_publica(token):
                 form=form,
                 nuevo=True,
                 cliente=c,
-                latest_solicitud=latest_solicitud,
-                public_token_max_age_days=token_max_age_days,
             ), 403
 
         codigo_holder: dict[str, str] = {"value": ""}
@@ -2671,8 +2662,6 @@ def solicitud_publica(token):
         form=form,
         nuevo=True,
         cliente=c,
-        latest_solicitud=latest_solicitud,
-        public_token_max_age_days=token_max_age_days,
     )
 
 
