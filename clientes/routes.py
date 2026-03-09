@@ -43,7 +43,6 @@ except Exception:
     PublicSolicitudTokenUso = None
     PublicSolicitudClienteNuevoTokenUso = None
 
-from utils import letra_por_indice
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
 from utils.audit_logger import log_action
@@ -54,6 +53,7 @@ from utils.pasaje_mode import (
     read_pasaje_mode_text,
     strip_pasaje_marker_from_note,
 )
+from utils.codigo_solicitud import compose_codigo_solicitud
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
@@ -1566,7 +1566,7 @@ def nueva_solicitud():
         try:
             idx = Solicitud.query.filter_by(cliente_id=current_user.id).count()
             while True:
-                codigo = f"{current_user.codigo}-{letra_por_indice(idx)}"
+                codigo = compose_codigo_solicitud(str(current_user.codigo or ""), idx)
                 existe = Solicitud.query.filter_by(codigo_solicitud=codigo).first()
                 if not existe:
                     break
@@ -2727,7 +2727,7 @@ def solicitud_publica_nueva_token(token):
 
                 idx = Solicitud.query.filter_by(cliente_id=c.id).count()
                 while True:
-                    codigo_solicitud = f"{c.codigo}-{letra_por_indice(idx)}"
+                    codigo_solicitud = compose_codigo_solicitud(str(c.codigo or ""), idx)
                     existe = Solicitud.query.filter_by(codigo_solicitud=codigo_solicitud).first()
                     if not existe:
                         break
@@ -3077,7 +3077,7 @@ def solicitud_publica(token):
         def _persist_public_solicitud(_attempt: int) -> None:
             idx = Solicitud.query.filter_by(cliente_id=c.id).count()
             while True:
-                codigo = f"{c.codigo}-{letra_por_indice(idx)}"
+                codigo = compose_codigo_solicitud(str(c.codigo or ""), idx)
                 existe = Solicitud.query.filter_by(codigo_solicitud=codigo).first()
                 if not existe:
                     break

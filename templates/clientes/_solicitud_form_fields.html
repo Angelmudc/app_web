@@ -716,6 +716,12 @@
     return storageClean(s);
   }
 
+  function isModalidadOtherOption(value) {
+    var v = normModal(value);
+    if (!v) return false;
+    return v === 'otro' || v.indexOf(' otro') >= 0 || v.indexOf('otro ') === 0;
+  }
+
   function syncModalidadGuided(fromUserEvent) {
     var hidden = byId('modalidad_trabajo_hidden');
     var select = byId('modalidad_especifica_select');
@@ -741,7 +747,7 @@
     }
 
     var selectedSpecific = select ? select.value : '';
-    var isOther = normModal(selectedSpecific) === 'otro';
+    var isOther = isModalidadOtherOption(selectedSpecific);
     if (wrapSelect) wrapSelect.style.display = group ? '' : 'none';
     if (wrapOther) wrapOther.style.display = (group && isOther) ? '' : 'none';
     if (otherInput) {

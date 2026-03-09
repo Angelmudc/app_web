@@ -83,3 +83,16 @@ def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optiona
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "wrapper_id='wrap_edades_ninos'" in partial
     assert "function syncNinosRules(fromUserEvent)" in partial
+
+
+def test_shared_partial_shows_modalidad_otro_input_when_otro_option_selected():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "function isModalidadOtherOption(value)" in partial
+    assert "v === 'otro' || v.indexOf(' otro') >= 0 || v.indexOf('otro ') === 0" in partial
+    assert "var isOther = isModalidadOtherOption(selectedSpecific);" in partial
+    assert "wrapOther.style.display = (group && isOther) ? '' : 'none';" in partial
+
+
+def test_shared_partial_clears_modalidad_otro_input_when_switching_to_non_otro():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "if (!isOther && fromUserEvent) otherInput.value = '';" in partial

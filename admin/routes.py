@@ -32,7 +32,7 @@ from admin.forms import (
     AdminGestionPlanForm,
     AdminReemplazoFinForm,  # 🔹 NUEVO FORM PARA FINALIZAR REEMPLAZO
 )
-from utils import letra_por_indice
+from utils.codigo_solicitud import compose_codigo_solicitud
 from utils.compat_engine import compute_match, format_compat_result
 from utils.guards import (
     assert_candidata_no_descalificada,
@@ -4154,15 +4154,16 @@ def _normalize_areas_comunes_selected(selected_vals, choices):
 
 def _next_codigo_solicitud(cliente: Cliente) -> str:
     """
-    Genera un código único del tipo <CODCLI>-<LETRA>.
+    Genera un código único del tipo:
+      - primera:  <CODCLI>
+      - siguientes: <CODCLI> - <LETRA>  (B, C, ...)
     Usa un loop defensivo para evitar colisiones si hubo borrados o concurrencia.
     """
     prefix = (cliente.codigo or str(cliente.id)).strip()
     base_count = Solicitud.query.filter_by(cliente_id=cliente.id).count()
     intento = 0
     while True:
-        suf = letra_por_indice(base_count + intento)
-        code = f"{prefix}-{suf}"
+        code = compose_codigo_solicitud(prefix, base_count + intento)
         exists = Solicitud.query.filter(Solicitud.codigo_solicitud == code).first()
         if not exists:
             return code

@@ -271,3 +271,25 @@ def test_existing_token_public_flow_still_available():
 
     assert resp.status_code == 200
     assert "Formulario publico de solicitud" in resp.get_data(as_text=True)
+
+
+def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    modalidad_value = "Con dormida - Otro: Turno especial feriados"
+
+    with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+        post_resp = client.post(
+            "/clientes/solicitudes/nueva-publica/tok123",
+            data={
+                "modalidad_trabajo": modalidad_value,
+            },
+        )
+
+    assert post_resp.status_code == 200
+    html = post_resp.get_data(as_text=True)
+    assert modalidad_value in html
+    assert 'id="modalidad_otro_text"' in html
