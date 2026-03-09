@@ -108,6 +108,12 @@ from utils.rbac import (
     permission_required_for_path,
     role_for_user,
 )
+from utils.pasaje_mode import (
+    apply_pasaje_to_solicitud,
+    normalize_pasaje_mode_text,
+    read_pasaje_mode_text,
+    strip_pasaje_marker_from_note,
+)
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
@@ -4990,6 +4996,8 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
 def nueva_solicitud_admin(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminSolicitudForm()
+    public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
+    public_pasaje_otro = ""
 
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
@@ -5030,6 +5038,15 @@ def nueva_solicitud_admin(cliente_id):
             form.chofer_rutas.data = ''
             form.chofer_viajes_largos.data = None
             form.chofer_licencia_detalle.data = ''
+
+    if request.method == "POST":
+        public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
+            request.form.get("pasaje_mode"),
+            request.form.get("pasaje_otro_text"),
+            default_mode=public_pasaje_mode,
+        )
+        if hasattr(form, "pasaje_aporte"):
+            form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
 
     # POST válido
     if form.validate_on_submit():
@@ -5087,8 +5104,15 @@ def nueva_solicitud_admin(cliente_id):
                 if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                     area_otro_txt = (form.area_otro.data or '').strip()
                     s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
-                s.pasaje_aporte = bool(getattr(form, 'pasaje_aporte', type('x', (object,), {'data': False})).data)
                 s.detalles_servicio = _build_detalles_servicio_from_form(form)
+                if hasattr(s, 'nota_cliente'):
+                    s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
+                apply_pasaje_to_solicitud(
+                    s,
+                    mode_raw=public_pasaje_mode,
+                    text_raw=public_pasaje_otro,
+                    default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
+                )
 
                 db.session.add(s)
                 db.session.flush()
@@ -5152,7 +5176,9 @@ def nueva_solicitud_admin(cliente_id):
         'admin/solicitud_form.html',
         form=form,
         cliente_id=cliente_id,
-        nuevo=True
+        nuevo=True,
+        public_pasaje_mode=public_pasaje_mode,
+        public_pasaje_otro=public_pasaje_otro,
     )
 
 
@@ -5166,6 +5192,8 @@ def nueva_solicitud_admin(cliente_id):
 def editar_solicitud_admin(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminSolicitudForm(obj=s)
+    public_pasaje_mode = "aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido"
+    public_pasaje_otro = ""
 
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
@@ -5255,9 +5283,23 @@ def editar_solicitud_admin(cliente_id, id):
             pass
         if hasattr(form, 'pasaje_aporte'):
             form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
+        public_pasaje_mode, public_pasaje_otro = read_pasaje_mode_text(
+            pasaje_aporte=getattr(s, "pasaje_aporte", False),
+            detalles_servicio=getattr(s, "detalles_servicio", None),
+            nota_cliente=getattr(s, "nota_cliente", ""),
+        )
 
         # Detalles específicos (JSONB)
         _populate_form_detalles_from_solicitud(form, s)
+
+    if request.method == "POST":
+        public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
+            request.form.get("pasaje_mode"),
+            request.form.get("pasaje_otro_text"),
+            default_mode=public_pasaje_mode,
+        )
+        if hasattr(form, "pasaje_aporte"):
+            form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
 
     # ─────────────────────────────────────────
     # POST válido
@@ -5306,11 +5348,17 @@ def editar_solicitud_admin(cliente_id, id):
                 if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                     area_otro_txt = (form.area_otro.data or '').strip()
                     s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
-                if hasattr(form, 'pasaje_aporte'):
-                    s.pasaje_aporte = bool(form.pasaje_aporte.data)
 
                 s.fecha_ultima_modificacion = datetime.utcnow()
                 s.detalles_servicio = _build_detalles_servicio_from_form(form)
+                if hasattr(s, 'nota_cliente'):
+                    s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
+                apply_pasaje_to_solicitud(
+                    s,
+                    mode_raw=public_pasaje_mode,
+                    text_raw=public_pasaje_otro,
+                    default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
+                )
 
             result = _execute_form_save(
                 persist_fn=_persist_solicitud_update,
@@ -5367,7 +5415,9 @@ def editar_solicitud_admin(cliente_id, id):
         form=form,
         cliente_id=cliente_id,
         solicitud=s,
-        nuevo=False
+        nuevo=False,
+        public_pasaje_mode=public_pasaje_mode,
+        public_pasaje_otro=public_pasaje_otro,
     )
 
 

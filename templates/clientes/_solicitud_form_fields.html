@@ -969,15 +969,11 @@
       }
       var note = document.querySelector('textarea[name="nota_cliente"]');
       if (!note) return;
-      var modeNode = document.querySelector('input[name="pasaje_mode"]:checked');
-      var mode = modeNode ? norm(modeNode.value) : 'incluido';
       var pisoNode = document.querySelector('input[name="pisos_selector"]:checked');
       var piso = pisoNode ? norm(pisoNode.value) : '1';
-      var otherTxt = (byId('pasaje_otro_text') && byId('pasaje_otro_text').value) ? byId('pasaje_otro_text').value.trim() : '';
       var base = removeMarkers(note.value || '');
       var lines = base ? [base] : [];
       if (piso === '3+') lines.push('Pisos reportados: 3+.');
-      if (mode === 'otro' && otherTxt) lines.push('Pasaje (otro): ' + otherTxt);
       note.value = lines.join('\n').trim();
     });
   }

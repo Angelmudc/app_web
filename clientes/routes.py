@@ -48,6 +48,12 @@ from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
 from utils.audit_logger import log_action
 from utils.robust_save import execute_robust_save
+from utils.pasaje_mode import (
+    apply_pasaje_to_solicitud,
+    normalize_pasaje_mode_text,
+    read_pasaje_mode_text,
+    strip_pasaje_marker_from_note,
+)
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
@@ -1513,6 +1519,17 @@ def nueva_solicitud():
         if form.pasaje_aporte.data is None:
             form.pasaje_aporte.data = False
 
+    public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
+    public_pasaje_otro = ""
+    if request.method == "POST":
+        public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
+            request.form.get("pasaje_mode"),
+            request.form.get("pasaje_otro_text"),
+            default_mode=public_pasaje_mode,
+        )
+        if hasattr(form, "pasaje_aporte"):
+            form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
+
     if form.validate_on_submit():
         # Anti doble submit (global, sin JS)
         if not _prevent_double_post('solicitud_create', seconds=10):
@@ -1598,9 +1615,15 @@ def nueva_solicitud():
                 area_otro_txt = (form.area_otro.data or '').strip()
                 s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
-                s.nota_cliente = (form.nota_cliente.data or '').strip()
+                s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
+            apply_pasaje_to_solicitud(
+                s,
+                mode_raw=public_pasaje_mode,
+                text_raw=public_pasaje_otro,
+                default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
+            )
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = datetime.utcnow()
 
@@ -1647,7 +1670,13 @@ def nueva_solicitud():
             except Exception:
                 pass
 
-    return render_template('clientes/solicitud_form.html', form=form, nuevo=True)
+    return render_template(
+        'clientes/solicitud_form.html',
+        form=form,
+        nuevo=True,
+        public_pasaje_mode=public_pasaje_mode,
+        public_pasaje_otro=public_pasaje_otro,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1661,6 +1690,8 @@ def editar_solicitud(id):
     s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
     form = SolicitudForm(obj=s)
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+    public_pasaje_mode = "aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido"
+    public_pasaje_otro = ""
 
     if request.method == 'GET':
         form.funciones.data      = _clean_list(s.funciones)
@@ -1712,6 +1743,20 @@ def editar_solicitud(id):
             form.dos_pisos.data = bool(getattr(s, 'dos_pisos', False))
         if form.pasaje_aporte.data is None:
             form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
+        public_pasaje_mode, public_pasaje_otro = read_pasaje_mode_text(
+            pasaje_aporte=getattr(s, "pasaje_aporte", False),
+            detalles_servicio=getattr(s, "detalles_servicio", None),
+            nota_cliente=getattr(s, "nota_cliente", ""),
+        )
+
+    if request.method == "POST":
+        public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
+            request.form.get("pasaje_mode"),
+            request.form.get("pasaje_otro_text"),
+            default_mode=public_pasaje_mode,
+        )
+        if hasattr(form, "pasaje_aporte"):
+            form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
 
     if form.validate_on_submit():
         # Anti doble submit (sin JS) + lock corto por usuario/solicitud
@@ -1770,9 +1815,15 @@ def editar_solicitud(id):
                 area_otro_txt = (form.area_otro.data or '').strip()
                 s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
-                s.nota_cliente = (form.nota_cliente.data or '').strip()
+                s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
+            apply_pasaje_to_solicitud(
+                s,
+                mode_raw=public_pasaje_mode,
+                text_raw=public_pasaje_otro,
+                default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
+            )
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = datetime.utcnow()
 
@@ -1791,7 +1842,14 @@ def editar_solicitud(id):
             except Exception:
                 pass
 
-    return render_template('clientes/solicitud_form.html', form=form, editar=True, solicitud=s)
+    return render_template(
+        'clientes/solicitud_form.html',
+        form=form,
+        editar=True,
+        solicitud=s,
+        public_pasaje_mode=public_pasaje_mode,
+        public_pasaje_otro=public_pasaje_otro,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -2715,15 +2773,17 @@ def solicitud_publica_nueva_token(token):
                     s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
 
                 if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
-                    s.nota_cliente = (form.nota_cliente.data or '').strip()
+                    s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
                     if public_pisos_value == "3+":
                         marker_pisos = "Pisos reportados: 3+."
                         if marker_pisos not in (s.nota_cliente or ""):
                             s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
-                    if public_pasaje_mode == "otro" and public_pasaje_otro:
-                        marker_pasaje = f"Pasaje (otro): {public_pasaje_otro}"
-                        if marker_pasaje not in (s.nota_cliente or ""):
-                            s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pasaje).strip()
+                apply_pasaje_to_solicitud(
+                    s,
+                    mode_raw=public_pasaje_mode,
+                    text_raw=public_pasaje_otro,
+                    default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
+                )
 
                 if hasattr(s, 'sueldo'):
                     s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x', (object,), {'data': None})).data)
@@ -3064,15 +3124,17 @@ def solicitud_publica(token):
                 s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
 
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
-                s.nota_cliente = (form.nota_cliente.data or '').strip()
+                s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
                 if pisos_selector == "3+":
                     marker_pisos = "Pisos reportados: 3+."
                     if marker_pisos not in (s.nota_cliente or ""):
                         s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
-                if pasaje_mode == "otro" and pasaje_otro_text:
-                    marker_pasaje = f"Pasaje (otro): {pasaje_otro_text}"
-                    if marker_pasaje not in (s.nota_cliente or ""):
-                        s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pasaje).strip()
+            apply_pasaje_to_solicitud(
+                s,
+                mode_raw=pasaje_mode,
+                text_raw=pasaje_otro_text,
+                default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
+            )
 
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x',(object,),{'data':None})).data)
