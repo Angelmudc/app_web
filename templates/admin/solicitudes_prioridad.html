@@ -126,7 +126,7 @@
                 <span class="badge bg-secondary text-uppercase">{{ s.estado }}</span>
               </td>
               <td>
-                {{ s.fecha_solicitud.strftime('%d/%m/%Y %H:%M') if s.fecha_solicitud }}
+                {{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') if s.fecha_solicitud }}
               </td>
               <td>{{ s.dias_en_seguimiento or '-' }}</td>
               <td>

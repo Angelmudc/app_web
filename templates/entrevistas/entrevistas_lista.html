@@ -63,7 +63,7 @@
               <div class="list-meta">
                 <span>ID: {{ e.id }}</span>
                 {% if e.creada_en %}
-                  <span>· {{ e.creada_en.strftime('%Y-%m-%d %H:%M') }}</span>
+                  <span>· {{ e.creada_en|rd_datetime('%Y-%m-%d %H:%M') }}</span>
                 {% endif %}
               </div>
             </div>

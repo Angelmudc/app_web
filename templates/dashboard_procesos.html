@@ -150,7 +150,7 @@
                 </span>
               </td>
               <td>
-                {{ c.fecha_cambio_estado.strftime('%Y-%m-%d %H:%M') if c.fecha_cambio_estado else '—' }}
+                {{ c.fecha_cambio_estado|rd_datetime('%Y-%m-%d %H:%M') if c.fecha_cambio_estado else '—' }}
               </td>
             </tr>
             {% endfor %}

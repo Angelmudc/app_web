@@ -1,7 +1,5 @@
 # --- Registro público de candidatas -----------------------------------------
 
-from datetime import datetime
-
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
@@ -18,6 +16,7 @@ from utils.candidate_registration import (
 )
 from utils.cedula_guard import duplicate_cedula_message, find_duplicate_candidata_by_cedula
 from utils.cedula_normalizer import normalize_cedula_for_compare, normalize_cedula_for_store
+from utils.timezone import utc_now_naive
 
 # Blueprint dedicado (NO es el "public" del website)
 # OJO: el nombre del blueprint es "registro_publico" para que los url_for queden estables.
@@ -170,7 +169,7 @@ def registro_publico():
     try:
         result, create_state = robust_create_candidata(
             build_candidate=lambda _attempt: Candidata(
-                marca_temporal=datetime.utcnow(),
+                marca_temporal=utc_now_naive(),
                 nombre_completo=nombre,
                 edad=str(edad_num),
                 numero_telefono=telefono,
@@ -187,7 +186,7 @@ def registro_publico():
                 cedula=cedula_store,
                 medio_inscripcion="Web",
                 estado="en_proceso",
-                fecha_cambio_estado=datetime.utcnow(),
+                fecha_cambio_estado=utc_now_naive(),
                 usuario_cambio_estado="registro_publico",
             ),
             expected_fields={

@@ -40,7 +40,7 @@
     </div>
     <dl class="row p-4 mb-0">
       <dt class="col-sm-3">📅 Fecha Solicitud</dt>
-      <dd class="col-sm-9">{{ solicitud.fecha_solicitud.strftime('%Y-%m-%d') }}</dd>
+      <dd class="col-sm-9">{{ solicitud.fecha_solicitud|rd_datetime('%Y-%m-%d') }}</dd>
 
       <dt class="col-sm-3">🏙️ Ciudad / Sector</dt>
       <dd class="col-sm-9">{{ solicitud.ciudad_sector }}</dd>
@@ -50,7 +50,7 @@
 
       {% if solicitud.fecha_cancelacion %}
       <dt class="col-sm-3">⛔ Fecha Cancelación</dt>
-      <dd class="col-sm-9">{{ solicitud.fecha_cancelacion.strftime('%Y-%m-%d %H:%M') }}</dd>
+      <dd class="col-sm-9">{{ solicitud.fecha_cancelacion|rd_datetime('%Y-%m-%d %H:%M') }}</dd>
 
       <dt class="col-sm-3">💬 Motivo Cancelación</dt>
       <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
@@ -306,7 +306,7 @@
             <tr>
               <td>{{ e.tipo }}</td>
               <td>{{ e.candidata.nombre_completo }}</td>
-              <td>{{ e.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ e.fecha|rd_datetime('%d/%m/%Y %H:%M') }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -338,7 +338,7 @@
         <tbody>
           <tr>
             <td>1</td>
-            <td>{{ solicitud.fecha_cancelacion.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ solicitud.fecha_cancelacion|rd_datetime('%Y-%m-%d %H:%M') }}</td>
             <td>{{ solicitud.motivo_cancelacion }}</td>
           </tr>
         </tbody>
@@ -374,10 +374,10 @@
               <td>{{ loop.index }}</td>
               <td>{{ r.candidata_old.nombre_completo }}</td>
               <td>{{ r.motivo_fallo }}</td>
-              <td>{{ r.fecha_fallo.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ r.fecha_fallo|rd_datetime('%Y-%m-%d %H:%M') }}</td>
               <td>{{ '✅ Sí' if r.oportunidad_nueva else '❌ No' }}</td>
-              <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
-              <td>{{ r.fecha_fin_reemplazo and r.fecha_fin_reemplazo.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
+              <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
+              <td>{{ r.fecha_fin_reemplazo and r.fecha_fin_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
               <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}</td>
               <td>{{ r.nota_adicional or '—' }}</td>
             </tr>

@@ -12,7 +12,7 @@
         <h1 class="h4 mb-0">Solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
       </div>
       <div class="small text-muted mt-1">
-        Enviada: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
+        Enviada: {{ s.fecha_solicitud|rd_datetime('%d/%m/%Y') }}
         {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
           <span class="badge bg-danger ms-2">Publicado hoy</span>
         {% endif %}
@@ -274,7 +274,7 @@
               <span class="dot"></span>
               <div class="fw-semibold">{{ e.tipo }}</div>
               <div class="text-muted small">
-                {{ e.candidata }} — {{ e.fecha.strftime('%d/%m/%Y %H:%M') }}
+                {{ e.candidata }} — {{ e.fecha|rd_datetime('%d/%m/%Y %H:%M') }}
               </div>
             </div>
           {% endfor %}
@@ -283,7 +283,7 @@
               <span class="dot" style="background:#f59e0b"></span>
               <div class="fw-semibold text-warning">Cancelada</div>
               <div class="text-muted small">
-                {{ cancelaciones[0].fecha.strftime('%d/%m/%Y %H:%M') }} — {{ cancelaciones[0].motivo }}
+                {{ cancelaciones[0].fecha|rd_datetime('%d/%m/%Y %H:%M') }} — {{ cancelaciones[0].motivo }}
               </div>
             </div>
           {% endif %}

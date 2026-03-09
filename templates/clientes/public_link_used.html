@@ -72,7 +72,7 @@
             Ya existe una solicitud asociada a este enlace.
           {% endif %}
           {% if used_at %}
-            <span class="d-block mt-1 small">Fecha de uso: {{ used_at.strftime('%d/%m/%Y %I:%M %p') }}</span>
+            <span class="d-block mt-1 small">Fecha de uso: {{ used_at|rd_datetime('%d/%m/%Y %I:%M %p') }}</span>
           {% endif %}
         </div>
       </div>

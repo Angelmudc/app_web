@@ -9,7 +9,7 @@
     <div>
       <h1 class="h5 mb-1">Cancelar solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
       <div class="meta small">
-        Fecha de creación: {{ s.fecha_solicitud.strftime('%d/%m/%Y') }}
+        Fecha de creación: {{ s.fecha_solicitud|rd_datetime('%d/%m/%Y') }}
         {% if s.estado != 'proceso' %}
           · <span class="text-danger">Estado actual: {{ s.estado }}</span>
         {% endif %}

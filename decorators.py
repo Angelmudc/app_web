@@ -5,6 +5,7 @@ from functools import wraps
 from datetime import datetime, timedelta
 
 from flask import abort, flash, redirect, request, session, url_for, current_app
+from utils.timezone import utc_now_naive
 from utils.staff_auth import (
     admin_required as _staff_admin_required,
     staff_required as _staff_required_decorator,
@@ -101,7 +102,7 @@ def _is_admin() -> bool:
 def _parse_logged_at(value):
     """
     logged_at viene de:
-      session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+      session['logged_at'] = utc_now_naive().isoformat(timespec='seconds')
     """
     if not value:
         return None
@@ -215,7 +216,7 @@ def roles_required(*permitted_roles):
             if logged_at:
                 ttl_seconds = _get_session_ttl_seconds()
                 try:
-                    if datetime.utcnow() - logged_at > timedelta(seconds=ttl_seconds):
+                    if utc_now_naive() - logged_at > timedelta(seconds=ttl_seconds):
                         try:
                             session.clear()
                         except Exception:

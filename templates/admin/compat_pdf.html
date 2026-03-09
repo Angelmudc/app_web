@@ -37,7 +37,7 @@
       <td class="right">
         <div class="score">{{ compat.score }}/100</div>
         <div><span class="pill">{{ compat.level|upper }}</span></div>
-        <div class="muted">Generado: {{ generado_en.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+        <div class="muted">Generado: {{ generado_en|rd_datetime('%Y-%m-%d %H:%M') }}</div>
       </td>
     </tr>
   </table>

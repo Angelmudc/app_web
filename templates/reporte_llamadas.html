@@ -20,7 +20,7 @@
             <td>{{ c.nombre_completo }}</td>
             <td>{{ c.codigo or '—' }}</td>
             <td>{{ c.numero_telefono or '—' }}</td>
-            <td>{{ c.marca_temporal.strftime('%Y-%m-%d') }}</td>
+            <td>{{ c.marca_temporal|rd_datetime('%Y-%m-%d') }}</td>
             <td>{{ c.num_calls or 0 }}</td>
           </tr>
         {% endfor %}
@@ -163,7 +163,7 @@
         {% for ll in calls_period %}
           <tr>
             <td>{{ ll.candidata.nombre_completo }}</td>
-            <td>{{ ll.fecha_llamada.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ ll.fecha_llamada|rd_datetime('%Y-%m-%d %H:%M') }}</td>
             <td>{{ ll.resultado.replace('_',' ').title() }}</td>
             <td>{{ ll.notas or '—' }}</td>
           </tr>

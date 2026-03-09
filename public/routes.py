@@ -3,9 +3,9 @@
 from flask import render_template, abort, request, redirect, jsonify, make_response
 from . import public_bp
 
-from datetime import datetime
 from config_app import cache
 from utils.audit_logger import log_action
+from utils.timezone import iso_utc_z, utc_now_naive
 
 # Límite de paginación pública
 PUBLIC_MAX_PAGE = 50
@@ -45,7 +45,7 @@ def public_ping():
     return _json_no_cache({
         'ok': True,
         'public_enabled': bool(PUBLIC_SITE_ENABLED),
-        'server_time': datetime.utcnow().isoformat() + 'Z',
+        'server_time': iso_utc_z(),
     })
 
 
@@ -62,7 +62,7 @@ def public_live_ping():
     if (event_type == "heartbeat") and is_bot:
         return _json_no_cache({'ok': True, 'sampled': False})
 
-    minute_key = datetime.utcnow().strftime("%Y%m%d%H%M")
+    minute_key = utc_now_naive().strftime("%Y%m%d%H%M")
     route_key = f"public_live:{minute_key}:{current_path}"
     count = 0
     try:

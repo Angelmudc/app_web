@@ -83,7 +83,7 @@
                 {% endif %}
               </td>
               <td>{{ s.candidata and s.candidata.nombre_completo or '—' }}</td>
-              <td>{{ s.fecha_solicitud and s.fecha_solicitud.strftime('%Y-%m-%d %H:%M') or '—' }}</td>
+              <td>{{ s.fecha_solicitud and s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
               <td class="text-end">
                 <div class="d-flex flex-wrap gap-2 justify-content-end">
                   {% if s.estado != 'espera_pago' %}

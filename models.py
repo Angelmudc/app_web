@@ -9,6 +9,7 @@ from sqlalchemy.orm import synonym
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from config_app import db
+from utils.timezone import utc_now_naive
 
 
 
@@ -17,7 +18,7 @@ class Candidata(db.Model):
 
     # Campos existentes
     fila                            = db.Column(db.Integer, primary_key=True)
-    marca_temporal                  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    marca_temporal                  = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
     nombre_completo                 = db.Column(db.String(200), nullable=False)
     edad                            = db.Column(db.String(50))
     numero_telefono                 = db.Column(db.String(50))
@@ -81,7 +82,7 @@ class Candidata(db.Model):
     fecha_cambio_estado = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         comment="Fecha de la última actualización de estado"
     )
     usuario_cambio_estado = db.Column(
@@ -279,13 +280,13 @@ class Entrevista(db.Model):
     creada_en = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow
+        default=utc_now_naive
     )
 
     actualizada_en = db.Column(
         db.DateTime,
         nullable=True,
-        onupdate=datetime.utcnow
+        onupdate=utc_now_naive
     )
 
     candidata = db.relationship(
@@ -354,7 +355,7 @@ class EntrevistaPregunta(db.Model):
     creada_en = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow
+        default=utc_now_naive
     )
 
     def __repr__(self):
@@ -388,13 +389,13 @@ class EntrevistaRespuesta(db.Model):
     creada_en = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow
+        default=utc_now_naive
     )
 
     actualizada_en = db.Column(
         db.DateTime,
         nullable=True,
-        onupdate=datetime.utcnow
+        onupdate=utc_now_naive
     )
 
     entrevista = db.relationship(
@@ -418,8 +419,8 @@ class StaffUser(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='secretaria')
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
     last_login_at = db.Column(db.DateTime, nullable=True)
     last_login_ip = db.Column(db.String(64), nullable=True)
 
@@ -453,7 +454,7 @@ class StaffAuditLog(db.Model):
     __tablename__ = 'staff_audit_logs'
 
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
 
     actor_user_id = db.Column(db.Integer, db.ForeignKey('staff_users.id'), nullable=True, index=True)
     actor_role = db.Column(db.String(20), nullable=True)
@@ -485,8 +486,8 @@ class PublicSolicitudTokenUso(db.Model):
     cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=False, index=True)
     solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
 
-    used_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    used_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
 
     cliente = db.relationship("Cliente", lazy="joined")
     solicitud = db.relationship("Solicitud", lazy="joined")
@@ -503,8 +504,8 @@ class PublicSolicitudClienteNuevoTokenUso(db.Model):
     cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=True, index=True)
     solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
 
-    used_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    used_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
 
     cliente = db.relationship("Cliente", lazy="joined")
     solicitud = db.relationship("Solicitud", lazy="joined")
@@ -523,8 +524,8 @@ class Cliente(UserMixin, db.Model):
 
     # ----- Estado / tracking de cuenta (sigue existiendo aunque no tenga login propio) -----
     is_active                  = db.Column(db.Boolean, nullable=False, default=True)
-    created_at                 = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at                 = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at                 = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at                 = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
 
     # ----- Identificación del cliente -----
     codigo                     = db.Column(db.String(20), unique=True, nullable=False, index=True)
@@ -578,7 +579,7 @@ class Cliente(UserMixin, db.Model):
     # ----- Métricas de solicitudes -----
     total_solicitudes          = db.Column(db.Integer,  nullable=False, default=0)
     fecha_ultima_solicitud     = db.Column(db.DateTime, nullable=True)
-    fecha_registro             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    fecha_registro             = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
     fecha_ultima_actividad     = db.Column(db.DateTime, nullable=True)
 
     # ----- Políticas y avisos -----
@@ -658,7 +659,7 @@ class TareaCliente(db.Model):
     titulo           = db.Column(db.String(200), nullable=False)
     descripcion      = db.Column(db.Text, nullable=True)
 
-    fecha_creacion   = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    fecha_creacion   = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
     # Día límite para hacer la tarea (lo que usamos en "Tareas de hoy")
     fecha_vencimiento = db.Column(db.Date, nullable=True, index=True)
 
@@ -690,7 +691,7 @@ class Solicitud(db.Model):
     cliente_id             = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
 
     # Fecha original de creación (no se toca, es histórica)
-    fecha_solicitud        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    fecha_solicitud        = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
     codigo_solicitud       = db.Column(db.String(50), nullable=False, unique=True)
 
     # ─────────────────────────────────────────────
@@ -868,7 +869,7 @@ class Solicitud(db.Model):
         """
         if not self.fecha_solicitud:
             return None
-        delta = datetime.utcnow() - self.fecha_solicitud
+        delta = utc_now_naive() - self.fecha_solicitud
         return delta.days
 
     @property
@@ -881,7 +882,7 @@ class Solicitud(db.Model):
         base = self.fecha_inicio_seguimiento or self.fecha_solicitud
         if not base:
             return None
-        delta = datetime.utcnow() - base
+        delta = utc_now_naive() - base
         return delta.days
 
     @property
@@ -929,7 +930,7 @@ class Solicitud(db.Model):
         - Aumenta veces_activada
         - Actualiza fecha_ultimo_estado
         """
-        ahora = datetime.utcnow()
+        ahora = utc_now_naive()
         self.fecha_inicio_seguimiento = ahora
         self.fecha_ultimo_estado = ahora
         self.veces_activada = (self.veces_activada or 0) + 1
@@ -1075,7 +1076,7 @@ class Reemplazo(db.Model):
     motivo_fallo           = db.Column(db.Text,    nullable=False)
 
     # Cuándo falló (para historial)
-    fecha_fallo            = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    fecha_fallo            = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
 
     # Si esta solicitud queda “abierta” para buscar alguien nuevo
     oportunidad_nueva      = db.Column(db.Boolean, nullable=False, default=False)
@@ -1098,7 +1099,7 @@ class Reemplazo(db.Model):
     )
 
     # Registro técnico
-    created_at             = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at             = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
 
     # Relaciones
     solicitud              = db.relationship('Solicitud', back_populates='reemplazos')
@@ -1127,7 +1128,7 @@ class Reemplazo(db.Model):
         if not self.fecha_inicio_reemplazo:
             return None
 
-        fin = self.fecha_fin_reemplazo or datetime.utcnow()
+        fin = self.fecha_fin_reemplazo or utc_now_naive()
         delta = fin - self.fecha_inicio_reemplazo
         return delta.days
 
@@ -1141,7 +1142,7 @@ class Reemplazo(db.Model):
         - Marca oportunidad_nueva = True (hay que buscar nueva candidata).
         - Limpia fecha_fin_reemplazo por si acaso.
         """
-        ahora = datetime.utcnow()
+        ahora = utc_now_naive()
         self.fecha_inicio_reemplazo = ahora
         self.fecha_fin_reemplazo = None
         self.oportunidad_nueva = True
@@ -1153,7 +1154,7 @@ class Reemplazo(db.Model):
         - Asigna la nueva candidata (si se pasa).
         - Marca oportunidad_nueva = False (reemplazo cerrado).
         """
-        ahora = datetime.utcnow()
+        ahora = utc_now_naive()
         self.fecha_fin_reemplazo = ahora
         self.oportunidad_nueva = False
         if candidata_nueva_id is not None:
@@ -1166,7 +1167,7 @@ class LlamadaCandidata(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     candidata_id = db.Column(db.Integer, db.ForeignKey('candidatas.fila'), nullable=False, index=True)
     agente = db.Column(db.String(100), nullable=False, index=True)  # quién hace la llamada
-    fecha_llamada = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    fecha_llamada = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
     duracion_segundos = db.Column(db.Integer, nullable=True)  # duración real
 
     resultado = db.Column(
@@ -1186,7 +1187,7 @@ class LlamadaCandidata(db.Model):
 
     notas = db.Column(db.Text, nullable=True)
     proxima_llamada = db.Column(db.Date, nullable=True, index=True)  # siguiente llamada sugerida
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
 
     candidata = db.relationship('Candidata', back_populates='llamadas')
 
@@ -1246,15 +1247,15 @@ class CandidataWeb(db.Model):
     fecha_publicacion = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=utc_now_naive,
         comment="Cuándo se publicó por primera vez en la web."
     )
 
     fecha_ultima_actualizacion = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         comment="Última vez que se actualizó esta ficha web."
     )
 
@@ -1465,8 +1466,8 @@ class ReclutaPerfil(db.Model):
         comment="Usuario/Nombre (admin o secretaria) que actualizó por última vez"
     )
 
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
 
     # ─────────────────────────────────────────────
     # Datos personales (corto)
@@ -1635,7 +1636,7 @@ class ReclutaCambio(db.Model):
 
     nota = db.Column(db.Text, nullable=True)
 
-    creado_en = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    creado_en = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
 
     recluta = db.relationship(
         'ReclutaPerfil',
@@ -1692,7 +1693,7 @@ class SolicitudCandidata(db.Model):
         default="sugerida",
         server_default=text("'sugerida'"),
     )
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
     created_by = db.Column(db.String(120), nullable=True)
 
     solicitud = db.relationship("Solicitud", lazy="joined")
@@ -1730,8 +1731,8 @@ class ClienteNotificacion(db.Model):
     payload = db.Column(JSONB, nullable=True)
     is_read = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
     is_deleted = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
 
     cliente = db.relationship("Cliente", lazy="joined")
     solicitud = db.relationship("Solicitud", lazy="joined")

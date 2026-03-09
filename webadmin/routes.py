@@ -1,11 +1,10 @@
-from datetime import datetime
-
 from flask import abort, current_app, flash, redirect, render_template, request, url_for, session, send_file
 from sqlalchemy import or_, and_, func
 import re
 import unicodedata
 from flask_login import current_user
 from functools import wraps
+from utils.timezone import utc_now_naive
 
 
 def _get_user_role():
@@ -372,7 +371,7 @@ def editar_candidata_web(fila):
         # foto_publica_url ya no se usa en el admin (se gestiona por “Subir fotos”).
 
         if ficha.visible and ficha.fecha_publicacion is None:
-            ficha.fecha_publicacion = datetime.utcnow()
+            ficha.fecha_publicacion = utc_now_naive()
 
         try:
             db.session.commit()
@@ -409,7 +408,7 @@ def marcar_lista_para_trabajar_web(fila: int):
 
     cand.estado = "lista_para_trabajar"
     if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = datetime.utcnow()
+        cand.fecha_cambio_estado = utc_now_naive()
     if hasattr(cand, "usuario_cambio_estado"):
         actor = (
             getattr(current_user, "username", None)

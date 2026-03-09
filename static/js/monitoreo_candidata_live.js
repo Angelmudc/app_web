@@ -20,6 +20,7 @@
   let lastInteractionAt = new Date().toISOString();
   const INTERACTION_ACTIVE_WINDOW_SECONDS = 60;
   const MONITOREO_PREFIX = '/admin/monitoreo';
+  const RD_TIMEZONE = 'America/Santo_Domingo';
 
   function isMonitoringPage(pathname) {
     const raw = (pathname || window.location.pathname || '').split('?')[0];
@@ -65,7 +66,7 @@
     if (!iso) return '-';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString();
+    return d.toLocaleString('es-DO', { timeZone: RD_TIMEZONE });
   }
 
   function escapeHtml(raw) {

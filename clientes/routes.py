@@ -54,6 +54,13 @@ from utils.pasaje_mode import (
     strip_pasaje_marker_from_note,
 )
 from utils.codigo_solicitud import compose_codigo_solicitud
+from utils.timezone import (
+    iso_utc_z,
+    rd_today,
+    to_rd,
+    utc_now_naive,
+    utc_timestamp,
+)
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
@@ -832,7 +839,7 @@ def reset_password():
             try:
                 user.password_hash = generate_password_hash(p1)
                 if hasattr(user, 'fecha_ultima_actividad'):
-                    user.fecha_ultima_actividad = datetime.utcnow()
+                    user.fecha_ultima_actividad = utc_now_naive()
                 db.session.commit()
                 flash('Tu contraseña fue restablecida. Ya puedes iniciar sesión.', 'success')
                 return redirect(url_for('clientes.login', next=next_url))
@@ -876,7 +883,7 @@ def dashboard():
         total_solicitudes=total,
         por_estado=por_estado_dict,
         recientes=recientes,
-        hoy=date.today(),
+        hoy=rd_today(),
         total_activas=total_activas,
         total_pagadas=total_pagadas,
     )
@@ -947,7 +954,7 @@ def clientes_ping():
     """Endpoint liviano para saber si la sesión sigue activa."""
     return _json_no_cache({
         'ok': True,
-        'server_time': datetime.utcnow().isoformat() + 'Z',
+        'server_time': iso_utc_z(),
         'cliente_id': int(getattr(current_user, 'id', 0) or 0),
     })
 
@@ -973,7 +980,7 @@ def clientes_live_ping():
         'event_type': event_type,
         'action_hint': action_hint,
         'solicitud_id': solicitud_id,
-        'last_seen_at': datetime.utcnow().isoformat(timespec='seconds') + 'Z',
+        'last_seen_at': iso_utc_z(),
     }
     try:
         cache.set(_cliente_presence_key(cliente_id), presence_payload, timeout=_CLIENTE_PRESENCE_TTL_SECONDS)
@@ -1066,7 +1073,7 @@ def clientes_solicitudes_live():
 
     def _dt_iso(dt):
         try:
-            return dt.isoformat() + 'Z' if dt else None
+            return iso_utc_z(dt) if dt else None
         except Exception:
             return None
 
@@ -1095,7 +1102,7 @@ def clientes_solicitudes_live():
 
     return _json_no_cache({
         'ok': True,
-        'server_time': datetime.utcnow().isoformat() + 'Z',
+        'server_time': iso_utc_z(),
         'q': q,
         'estado': estado,
         'ciudad': ciudad,
@@ -1200,7 +1207,7 @@ def listar_solicitudes():
     return render_template(
         'clientes/solicitudes_list.html',
         solicitudes=paginado.items,
-        hoy=date.today(),
+        hoy=rd_today(),
         page=page, per_page=per_page, total=paginado.total, pages=paginado.pages,
         has_prev=paginado.has_prev, has_next=paginado.has_next,
         prev_num=getattr(paginado, 'prev_num', None),
@@ -1461,7 +1468,7 @@ def _request_fingerprint_from_form(path: str) -> str:
 def _session_dedupe_hit(key: str, ttl_seconds: int = 10) -> bool:
     """Fallback anti-doble submit usando session si cache no está disponible."""
     try:
-        now = int(datetime.utcnow().timestamp())
+        now = int(utc_timestamp())
         bucket = session.get('_post_dedupe', {}) or {}
         last = int(bucket.get(key) or 0)
         if last and (now - last) < int(ttl_seconds):
@@ -1574,7 +1581,7 @@ def nueva_solicitud():
 
             s = Solicitud(
                 cliente_id=current_user.id,
-                fecha_solicitud=datetime.utcnow(),
+                fecha_solicitud=utc_now_naive(),
                 codigo_solicitud=codigo
             )
             form.populate_obj(s)
@@ -1625,13 +1632,13 @@ def nueva_solicitud():
                 default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
             )
             if hasattr(s, 'fecha_ultima_modificacion'):
-                s.fecha_ultima_modificacion = datetime.utcnow()
+                s.fecha_ultima_modificacion = utc_now_naive()
 
             db.session.add(s)
             try:
                 current_user.total_solicitudes = (current_user.total_solicitudes or 0) + 1
-                current_user.fecha_ultima_solicitud = datetime.utcnow()
-                current_user.fecha_ultima_actividad = datetime.utcnow()
+                current_user.fecha_ultima_solicitud = utc_now_naive()
+                current_user.fecha_ultima_actividad = utc_now_naive()
             except Exception:
                 pass
 
@@ -1825,7 +1832,7 @@ def editar_solicitud(id):
                 default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
             )
             if hasattr(s, 'fecha_ultima_modificacion'):
-                s.fecha_ultima_modificacion = datetime.utcnow()
+                s.fecha_ultima_modificacion = utc_now_naive()
 
             db.session.flush()
             db.session.commit()
@@ -1910,7 +1917,7 @@ def detalle_solicitud(id):
         compat=compat_result,
         envios=envios,
         cancelaciones=cancelaciones,
-        hoy=date.today(),
+        hoy=rd_today(),
         candidatas_enviadas=candidatas_enviadas,
         candidatas_enviadas_cards=candidatas_enviadas_cards,
         candidatas_enviadas_count=len(candidatas_enviadas),
@@ -1989,7 +1996,7 @@ def notificaciones_json():
                 "id": int(n.id),
                 "title": n.titulo or "Notificacion",
                 "body": n.cuerpo or "",
-                "created_at": n.created_at.isoformat() + "Z" if n.created_at else None,
+                "created_at": iso_utc_z(n.created_at) if n.created_at else None,
                 "is_read": bool(n.is_read),
                 "url": _notificacion_target_url(n),
             }
@@ -2004,7 +2011,7 @@ def notificacion_ver(notificacion_id):
     notif = _get_cliente_notificacion_or_404(notificacion_id)
     if not notif.is_read:
         notif.is_read = True
-        notif.updated_at = datetime.utcnow()
+        notif.updated_at = utc_now_naive()
         db.session.commit()
     target = _notificacion_target_url(notif)
     if _notif_wants_json():
@@ -2024,7 +2031,7 @@ def notificacion_marcar_leida(notificacion_id):
     notif = _get_cliente_notificacion_or_404(notificacion_id)
     if not notif.is_read:
         notif.is_read = True
-        notif.updated_at = datetime.utcnow()
+        notif.updated_at = utc_now_naive()
         db.session.commit()
     return redirect(url_for("clientes.notificaciones_list"))
 
@@ -2035,7 +2042,7 @@ def notificacion_marcar_leida(notificacion_id):
 def notificacion_eliminar(notificacion_id):
     notif = _get_cliente_notificacion_or_404(notificacion_id)
     notif.is_deleted = True
-    notif.updated_at = datetime.utcnow()
+    notif.updated_at = utc_now_naive()
     db.session.commit()
     if _notif_wants_json():
         unread_count = (
@@ -2220,7 +2227,7 @@ def descartar_candidata_enviada(solicitud_id, sc_id):
     sc.status = 'descartada'
     snapshot = sc.breakdown_snapshot if isinstance(sc.breakdown_snapshot, dict) else {}
     snapshot["client_action"] = "rechazada"
-    snapshot["client_action_at"] = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    snapshot["client_action_at"] = iso_utc_z()
     reason = (request.form.get("client_reason") or "").strip()
     if reason:
         snapshot["client_reason"] = reason[:500]
@@ -2291,7 +2298,7 @@ def cancelar_solicitud(id):
     form = ClienteCancelForm()
     if form.validate_on_submit():
         s.estado = 'cancelada'
-        s.fecha_cancelacion = datetime.utcnow()
+        s.fecha_cancelacion = utc_now_naive()
         s.motivo_cancelacion = form.motivo.data
         db.session.commit()
         flash('Solicitud marcada como cancelada (pendiente aprobación).', 'warning')
@@ -2350,7 +2357,7 @@ def aceptar_politicas():
     if hasattr(current_user, 'acepto_politicas'):
         current_user.acepto_politicas = True
     if hasattr(current_user, 'fecha_acepto_politicas'):
-        current_user.fecha_acepto_politicas = datetime.utcnow()
+        current_user.fecha_acepto_politicas = utc_now_naive()
     db.session.commit()
     flash('Gracias por aceptar nuestras políticas.', 'success')
     return redirect(next_url if _is_safe_next(next_url) else url_for('clientes.dashboard'))
@@ -2428,11 +2435,11 @@ def _save_compat_cliente(s: Solicitud, payload_dict: dict) -> str:
         try:
             s.compat_test_cliente_json = payload_dict
             if hasattr(s, 'compat_test_cliente_at'):
-                s.compat_test_cliente_at = datetime.utcnow()
+                s.compat_test_cliente_at = utc_now_naive()
             if hasattr(s, 'compat_test_cliente_version'):
                 s.compat_test_cliente_version = COMPAT_TEST_VERSION
             if hasattr(s, 'fecha_ultima_modificacion'):
-                s.fecha_ultima_modificacion = datetime.utcnow()
+                s.fecha_ultima_modificacion = utc_now_naive()
             db.session.commit()
             return 'db_json'
         except Exception:
@@ -2442,11 +2449,11 @@ def _save_compat_cliente(s: Solicitud, payload_dict: dict) -> str:
         try:
             s.compat_test_cliente = dumps(payload_dict, ensure_ascii=False)
             if hasattr(s, 'compat_test_cliente_at'):
-                s.compat_test_cliente_at = datetime.utcnow()
+                s.compat_test_cliente_at = utc_now_naive()
             if hasattr(s, 'compat_test_cliente_version'):
                 s.compat_test_cliente_version = COMPAT_TEST_VERSION
             if hasattr(s, 'fecha_ultima_modificacion'):
-                s.fecha_ultima_modificacion = datetime.utcnow()
+                s.fecha_ultima_modificacion = utc_now_naive()
             db.session.commit()
             return 'db_text'
         except Exception:
@@ -2508,7 +2515,7 @@ def _normalize_payload_from_form(s: Solicitud) -> dict:
     }
     payload = {
         "version": COMPAT_TEST_VERSION,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": iso_utc_z(),
         "profile": profile,
     }
     return payload
@@ -2694,7 +2701,7 @@ def solicitud_publica_nueva_token(token):
             if dup_field == "telefono":
                 form.telefono_contacto.errors.append("Este teléfono ya está registrado.")
         else:
-            now_ref = datetime.utcnow()
+            now_ref = utc_now_naive()
             state = {
                 "cliente_id": 0,
                 "cliente_codigo": "",
@@ -3072,7 +3079,7 @@ def solicitud_publica(token):
 
         codigo_holder: dict[str, str] = {"value": ""}
         solicitud_id_holder: dict[str, int] = {"value": 0}
-        now_ref = datetime.utcnow()
+        now_ref = utc_now_naive()
 
         def _persist_public_solicitud(_attempt: int) -> None:
             idx = Solicitud.query.filter_by(cliente_id=c.id).count()

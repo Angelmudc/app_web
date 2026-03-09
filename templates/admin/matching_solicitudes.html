@@ -31,7 +31,7 @@
               <td>{{ s.ciudad_sector or '-' }}</td>
               <td>{{ s.modalidad_trabajo or '-' }}</td>
               <td>{{ s.horario or '-' }}</td>
-              <td>{{ s.fecha_solicitud.strftime('%Y-%m-%d') if s.fecha_solicitud else '-' }}</td>
+              <td>{{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') if s.fecha_solicitud else '-' }}</td>
               <td class="text-end">
                 <a class="btn btn-sm btn-primary" href="{{ url_for('admin.matching_detalle_solicitud', solicitud_id=s.id) }}">
                   Sugerir candidatas

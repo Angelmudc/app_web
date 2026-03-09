@@ -16,6 +16,7 @@ from config_app import cache, db
 from models import StaffAuditLog, StaffUser, Solicitud, SolicitudCandidata
 from utils.audit_logger import log_action
 from utils.matching_service import rank_candidates
+from utils.timezone import iso_utc_z, parse_iso_utc, utc_now_naive
 
 LOCK_TTL_SECONDS = 120
 LOCK_INDEX_KEY = "enterprise:locks:index"
@@ -32,25 +33,20 @@ TELEGRAM_CFG_CACHE_KEY = "enterprise:telegram:cfg"
 
 
 def _utcnow() -> datetime:
-    return datetime.utcnow()
+    return utc_now_naive()
 
 
 def _dt_iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
-    return dt.isoformat() + "Z"
+    return iso_utc_z(dt)
 
 
 def _parse_dt(value: str | None) -> datetime | None:
-    txt = (value or "").strip()
-    if not txt:
+    dt = parse_iso_utc(value)
+    if dt is None:
         return None
-    try:
-        if txt.endswith("Z"):
-            txt = txt[:-1]
-        return datetime.fromisoformat(txt)
-    except Exception:
-        return None
+    return dt.replace(tzinfo=None)
 
 
 def _client_ip() -> str | None:

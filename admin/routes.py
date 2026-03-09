@@ -114,6 +114,17 @@ from utils.pasaje_mode import (
     read_pasaje_mode_text,
     strip_pasaje_marker_from_note,
 )
+from utils.timezone import (
+    format_rd_datetime,
+    iso_utc_z,
+    now_rd,
+    parse_iso_utc,
+    rd_day_range_utc_naive,
+    rd_today,
+    to_rd,
+    utc_now_naive,
+    utc_timestamp,
+)
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
@@ -402,7 +413,7 @@ def _session_action_is_locked(usuario_norm: str, bucket: str = "default") -> boo
     if not locked_until:
         return False
     try:
-        return datetime.utcnow().timestamp() < float(locked_until)
+        return utc_timestamp() < float(locked_until)
     except Exception:
         return False
 
@@ -411,7 +422,7 @@ def _session_action_register(usuario_norm: str, bucket: str, mx: int, win: int, 
     key = _sess_action_key(usuario_norm, bucket)
     data = session.get(key) or {}
 
-    now_ts = datetime.utcnow().timestamp()
+    now_ts = utc_timestamp()
     window_start = float(data.get("window_start") or 0.0)
 
     if not window_start or (now_ts - window_start) > win:
@@ -438,7 +449,7 @@ def _session_action_lock_left_seconds(usuario_norm: str, bucket: str = "default"
     if not locked_until:
         return 0
     try:
-        left = int(float(locked_until) - datetime.utcnow().timestamp())
+        left = int(float(locked_until) - utc_timestamp())
         return max(0, left)
     except Exception:
         return 0
@@ -612,7 +623,7 @@ def admin_action_limit(bucket: str = "default", max_actions: int | None = None, 
                     key = _sess_action_key(usuario_norm, bucket=b)
                     data = session.get(key) or {}
 
-                    now_ts = datetime.utcnow().timestamp()
+                    now_ts = utc_timestamp()
                     window_start = float(data.get("window_start") or 0.0)
 
                     if not window_start or (now_ts - window_start) > win:
@@ -879,7 +890,7 @@ def _session_is_locked(usuario_norm: str) -> bool:
     if not locked_until:
         return False
     try:
-        return datetime.utcnow().timestamp() < float(locked_until)
+        return utc_timestamp() < float(locked_until)
     except Exception:
         return False
 
@@ -895,7 +906,7 @@ def _session_fail_count(usuario_norm: str) -> int:
 def _session_lock(usuario_norm: str):
     key = _sess_key(usuario_norm)
     data = session.get(key) or {}
-    data["locked_until"] = datetime.utcnow().timestamp() + (_admin_login_lock_minutos() * 60)
+    data["locked_until"] = utc_timestamp() + (_admin_login_lock_minutos() * 60)
     session[key] = data
 
 
@@ -906,7 +917,7 @@ def _session_register_fail(usuario_norm: str) -> int:
     data["tries"] = tries
     # lock cuando llega al máximo
     if tries >= _admin_login_max_intentos():
-        data["locked_until"] = datetime.utcnow().timestamp() + (_admin_login_lock_minutos() * 60)
+        data["locked_until"] = utc_timestamp() + (_admin_login_lock_minutos() * 60)
     session[key] = data
     return tries
 
@@ -1289,7 +1300,7 @@ def login():
             # Auditoría de último login para staff en BD
             if isinstance(authenticated_user, StaffUser):
                 try:
-                    authenticated_user.last_login_at = datetime.utcnow()
+                    authenticated_user.last_login_at = utc_now_naive()
                     authenticated_user.last_login_ip = _client_ip()
                     db.session.commit()
                     _audit_log(
@@ -1675,10 +1686,13 @@ def _parse_monitoreo_date(raw: str, end_of_day: bool = False):
     if not txt:
         return None
     try:
-        d = datetime.strptime(txt, "%Y-%m-%d")
+        d = datetime.strptime(txt, "%Y-%m-%d").date()
         if end_of_day:
-            return d + timedelta(days=1)
-        return d
+            next_day = d + timedelta(days=1)
+            next_start, _ = rd_day_range_utc_naive(next_day)
+            return next_start
+        day_start, _ = rd_day_range_utc_naive(d)
+        return day_start
     except Exception:
         return None
 
@@ -1907,16 +1921,19 @@ def _humanize_route(path: str | None) -> str:
 def _humanize_datetime(dt: datetime | None) -> str:
     if dt is None:
         return "-"
-    now = datetime.utcnow()
-    delta = max(0, int((now - dt).total_seconds()))
+    now = now_rd()
+    dt_rd = to_rd(dt)
+    if dt_rd is None:
+        return "-"
+    delta = max(0, int((now - dt_rd).total_seconds()))
     if delta < 60:
         return f"Hace {delta} segundos"
     if delta < 3600:
         mins = max(1, delta // 60)
         return f"Hace {mins} minutos"
-    if dt.date() == now.date():
-        return f"Hoy {dt.strftime('%H:%M')}"
-    return dt.strftime("%d/%m %H:%M")
+    if dt_rd.date() == now.date():
+        return f"Hoy {dt_rd.strftime('%H:%M')}"
+    return dt_rd.strftime("%d/%m %H:%M")
 
 
 def _action_icon(action_type: str | None, success: bool = True) -> tuple[str, str]:
@@ -2141,15 +2158,10 @@ def _presence_key(user_id: int) -> str:
 
 
 def _parse_iso_utc(raw: str | None):
-    txt = (raw or "").strip()
-    if not txt:
+    dt = parse_iso_utc(raw)
+    if dt is None:
         return None
-    try:
-        if txt.endswith("Z"):
-            txt = txt[:-1]
-        return datetime.fromisoformat(txt)
-    except Exception:
-        return None
+    return dt.replace(tzinfo=None)
 
 
 def _normalize_client_status(raw: str | None) -> str:
@@ -2189,7 +2201,7 @@ def _touch_staff_presence(
         if not isinstance(current_user, StaffUser):
             return
 
-        now = datetime.utcnow()
+        now = utc_now_naive()
         uid = int(current_user.id)
         prev = cache.get(_presence_key(uid)) or {}
         effective_path = (current_path or prev.get("current_path") or request.path or "")[:255]
@@ -2205,7 +2217,7 @@ def _touch_staff_presence(
         effective_action_human = (action_human or prev.get("current_action_human") or _humanize_action(effective_action_type, route=effective_path, action_hint=effective_hint))[:120]
         has_client_status = bool((client_status or "").strip())
         interaction_dt = _parse_iso_utc(last_interaction_at) or (now if not has_client_status else (_parse_iso_utc(prev.get("last_interaction_at")) or now))
-        interaction_iso = interaction_dt.isoformat(timespec="seconds") + "Z"
+        interaction_iso = iso_utc_z(interaction_dt)
         normalized_client_status = _normalize_client_status(client_status) if has_client_status else "active"
 
         payload = {
@@ -2222,7 +2234,7 @@ def _touch_staff_presence(
             "entity_type": effective_entity_type,
             "entity_id": effective_entity_id,
             "entity_display": (effective_entity_display or "")[:200],
-            "last_seen_at": now.isoformat(timespec="seconds") + "Z",
+            "last_seen_at": iso_utc_z(now),
             "last_interaction_at": interaction_iso,
             "client_status": normalized_client_status,
             "ip": (_client_ip() or "")[:64],
@@ -2275,7 +2287,7 @@ def _presence_rows() -> list[dict]:
     if not user_ids:
         return []
 
-    now = datetime.utcnow()
+    now = utc_now_naive()
     presence_raw = []
     for uid in user_ids:
         row = cache.get(_presence_key(uid))
@@ -2314,8 +2326,8 @@ def _presence_rows() -> list[dict]:
                 "entity_type": "",
                 "entity_id": "",
                 "entity_display": "",
-                "last_seen_at": now_minus_seen.isoformat(timespec="seconds") + "Z",
-                "last_interaction_at": now_minus_seen.isoformat(timespec="seconds") + "Z",
+                "last_seen_at": iso_utc_z(now_minus_seen),
+                "last_interaction_at": iso_utc_z(now_minus_seen),
                 "client_status": "active" if seen_seconds <= _PRESENCE_ACTIVE_SECONDS else "idle",
             }
         )
@@ -2385,7 +2397,7 @@ def _presence_rows() -> list[dict]:
                 "route_human": _humanize_route(p.get("current_path")),
                 "page_title": p.get("page_title"),
                 "last_seen_seconds": delta,
-                "last_interaction_at": interaction_at.isoformat() + "Z",
+                "last_interaction_at": iso_utc_z(interaction_at),
                 "last_interaction_seconds": interaction_delta,
                 "last_interaction_human": (
                     f"Hace {interaction_delta}s"
@@ -2402,7 +2414,7 @@ def _presence_rows() -> list[dict]:
                 "entity_display": entity_display,
                 "last_action_type": getattr(last, "action_type", None),
                 "last_action_summary": getattr(last, "summary", None),
-                "last_action_at": (getattr(last, "created_at", None).isoformat() + "Z") if getattr(last, "created_at", None) else None,
+                "last_action_at": iso_utc_z(getattr(last, "created_at", None)) if getattr(last, "created_at", None) else None,
             }
         )
 
@@ -2463,8 +2475,8 @@ def _build_presence_conflicts(active_rows: list[dict] | None = None) -> list[dic
 
 def _build_operations_metrics_payload(active_rows: list[dict] | None = None) -> dict:
     active_rows = active_rows if active_rows is not None else _presence_active_rows()
-    now = datetime.utcnow()
-    day_start = datetime(now.year, now.month, now.day)
+    now = utc_now_naive()
+    day_start, _ = rd_day_range_utc_naive()
     active_secretarias = len([r for r in active_rows if (r.get("role") or "").lower() == "secretaria"])
     candidatas_editing = len(
         [
@@ -2555,7 +2567,7 @@ def _serialize_log_item(
         summary_human = f"Edito: {fields_summary}"
     return {
         "id": int(log.id),
-        "created_at": log.created_at.isoformat() + "Z" if log.created_at else None,
+        "created_at": iso_utc_z(log.created_at) if log.created_at else None,
         "created_at_human": created_human,
         "actor_user_id": log.actor_user_id,
         "actor_username": username_map.get(int(log.actor_user_id)) if log.actor_user_id else None,
@@ -2656,8 +2668,8 @@ def _window_metrics_payload(start_dt: datetime, end_dt: datetime | None = None) 
 
 
 def _build_productivity_today_payload() -> dict:
-    now = datetime.utcnow()
-    day_start = datetime(now.year, now.month, now.day)
+    now = utc_now_naive()
+    day_start, _ = rd_day_range_utc_naive()
     interview_actions = ("CANDIDATA_INTERVIEW_NEW_CREATE", "CANDIDATA_INTERVIEW_LEGACY_SAVE")
 
     rows = (
@@ -2696,8 +2708,8 @@ def _build_productivity_today_payload() -> dict:
 
 
 def _build_monitoreo_summary_payload() -> dict:
-    now = datetime.utcnow()
-    day_start = datetime(now.year, now.month, now.day)
+    now = utc_now_naive()
+    day_start, _ = rd_day_range_utc_naive()
     week_start = now - timedelta(days=7)
     month_start = now - timedelta(days=30)
     top = _activity_ranking(month_start, only_secretarias=True)
@@ -2706,7 +2718,7 @@ def _build_monitoreo_summary_payload() -> dict:
     conflicts = _build_presence_conflicts(active_presence)
     alerts = get_alert_items(limit=10, scope="critical", include_resolved=False)
     return {
-        "generated_at": now.isoformat() + "Z",
+        "generated_at": iso_utc_z(now),
         "today": _window_metrics_payload(day_start),
         "week": _window_metrics_payload(week_start),
         "month": _window_metrics_payload(month_start),
@@ -2774,8 +2786,8 @@ def _candidata_logs_query(candidata_entity_id: str, filter_tag: str = ""):
 @login_required
 @admin_required
 def monitoreo_staff():
-    now = datetime.utcnow()
-    day_start = datetime(now.year, now.month, now.day)
+    now = utc_now_naive()
+    day_start, _ = rd_day_range_utc_naive()
     week_start = now - timedelta(days=7)
 
     summary = _build_monitoreo_summary_payload()
@@ -2963,7 +2975,7 @@ def monitoreo_secretaria(user_id: int):
         for log in pagination.items
     ]
 
-    now = datetime.utcnow()
+    now = utc_now_naive()
     since = now - timedelta(days=30)
     per_day_rows = (
         db.session.query(
@@ -3082,7 +3094,7 @@ def monitoreo_stream():
                         "interval_sec": 1,
                     },
                 )
-                yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+                yield _sse("heartbeat", {"ts": iso_utc_z()})
                 return
 
             last_id = request.args.get("last_id", type=int) or 0
@@ -3149,7 +3161,7 @@ def monitoreo_stream():
                     last_activity_at = now_ts
 
                 if (now_ts - last_heartbeat_at) >= 15.0:
-                    yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+                    yield _sse("heartbeat", {"ts": iso_utc_z()})
                     last_heartbeat_at = now_ts
 
                 time.sleep(1.0)
@@ -3175,7 +3187,7 @@ def monitoreo_candidata_stream(candidata_entity_id: str):
     @stream_with_context
     def generate():
         if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
-            yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+            yield _sse("heartbeat", {"ts": iso_utc_z()})
             return
 
         last_id = request.args.get("last_id", type=int) or 0
@@ -3211,7 +3223,7 @@ def monitoreo_candidata_stream(candidata_entity_id: str):
                     last_id = max(last_id, int(log.id))
 
             if (now_ts - last_heartbeat_at) >= 15.0:
-                yield _sse("heartbeat", {"ts": datetime.utcnow().isoformat() + "Z"})
+                yield _sse("heartbeat", {"ts": iso_utc_z()})
                 last_heartbeat_at = now_ts
             time.sleep(2.0)
 
@@ -3277,7 +3289,7 @@ def monitoreo_presence_ping():
 @admin_required
 def seguridad_locks():
     rows = list_active_locks()
-    return render_template("admin/seguridad_locks.html", locks=rows, now=datetime.utcnow())
+    return render_template("admin/seguridad_locks.html", locks=rows, now=utc_now_naive())
 
 
 @admin_bp.route('/seguridad/locks/ping', methods=['POST'])
@@ -3317,7 +3329,7 @@ def seguridad_locks_takeover():
 @admin_required
 def seguridad_sesiones():
     sessions_rows = list_active_sessions()
-    return render_template("admin/seguridad_sesiones.html", sessions_rows=sessions_rows, now=datetime.utcnow())
+    return render_template("admin/seguridad_sesiones.html", sessions_rows=sessions_rows, now=utc_now_naive())
 
 
 @admin_bp.route('/seguridad/sesiones/cerrar', methods=['POST'])
@@ -3604,13 +3616,13 @@ def _session_action_is_locked_LEGACY(usuario_norm: str, bucket: str) -> bool:
     if not until:
         return False
     try:
-        return datetime.utcnow().timestamp() < float(until)
+        return utc_timestamp() < float(until)
     except Exception:
         return False
 
 def _session_action_register_LEGACY(usuario_norm: str, bucket: str, max_actions: int, window_sec: int) -> int:
     key = _sess_action_key_LEGACY(usuario_norm, bucket)
-    now = datetime.utcnow().timestamp()
+    now = utc_timestamp()
     data = session.get(key) or {}
 
     start = float(data.get("start_ts") or now)
@@ -3762,7 +3774,7 @@ def _today_utc_bounds():
     Se usa para filtros por rango diario sin depender de timezone-aware datetimes,
     manteniendo consistencia con columnas típicamente naive en Postgres.
     """
-    now_utc = datetime.utcnow()
+    now_utc = utc_now_naive()
     start = datetime(now_utc.year, now_utc.month, now_utc.day)
     end = start + timedelta(days=1)
     return start, end
@@ -3837,7 +3849,7 @@ def _solicitudes_live_payload(limit: int = 50) -> dict:
     return {
         "ok": True,
         "count": len(rows),
-        "last_updated": _dt_iso(last_ts) or _dt_iso(datetime.utcnow()),
+        "last_updated": _dt_iso(last_ts) or _dt_iso(utc_now_naive()),
         "rows": rows,
     }
 
@@ -3868,7 +3880,7 @@ def solicitudes_live():
 @login_required
 def admin_ping():
     """Ping simple para saber si la sesión sigue viva (útil para UI)."""
-    resp = jsonify({"ok": True, "utc": datetime.utcnow().isoformat()})
+    resp = jsonify({"ok": True, "utc": iso_utc_z()})
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
     return resp
@@ -4232,7 +4244,7 @@ def nuevo_cliente():
 
         # --- Creación del cliente (con username/password si existen) ---
         try:
-            ahora = datetime.utcnow()
+            ahora = utc_now_naive()
             c = Cliente()
             form.populate_obj(c)
 
@@ -4421,9 +4433,9 @@ def editar_cliente(cliente_id):
                 c.password_hash = generate_password_hash(password_to_set, method="pbkdf2:sha256")
 
             if hasattr(c, 'fecha_ultima_actividad'):
-                c.fecha_ultima_actividad = datetime.utcnow()
+                c.fecha_ultima_actividad = utc_now_naive()
             if hasattr(c, 'updated_at'):
-                c.updated_at = datetime.utcnow()
+                c.updated_at = utc_now_naive()
 
             db.session.commit()
 
@@ -4693,7 +4705,7 @@ def tareas_pendientes():
     """
     Lista todas las tareas que NO están completadas, ordenadas por fecha de vencimiento.
     """
-    hoy = date.today()
+    hoy = rd_today()
 
     tareas = (
         TareaCliente.query
@@ -4720,7 +4732,7 @@ def tareas_hoy():
     """
     Lista tareas con fecha_vencimiento == hoy y que no están completadas.
     """
-    hoy = date.today()
+    hoy = rd_today()
 
     tareas = (
         TareaCliente.query
@@ -4757,13 +4769,13 @@ def crear_tarea_rapida(cliente_id):
     if not titulo:
         titulo = f"Dar seguimiento a {cliente.nombre_completo}"
 
-    hoy = date.today()
+    hoy = rd_today()
 
     try:
         tarea = TareaCliente(
             cliente_id=cliente.id,
             titulo=titulo,
-            fecha_creacion=datetime.utcnow(),
+            fecha_creacion=utc_now_naive(),
             fecha_vencimiento=hoy,
             estado='pendiente',
             prioridad='media'
@@ -5059,7 +5071,7 @@ def nueva_solicitud_admin(cliente_id):
             def _persist_solicitud_create(_attempt: int):
                 s = Solicitud(
                     cliente_id=c.id,
-                    fecha_solicitud=datetime.utcnow(),
+                    fecha_solicitud=utc_now_naive(),
                     codigo_solicitud=nuevo_codigo,
                 )
                 form.populate_obj(s)
@@ -5121,8 +5133,8 @@ def nueva_solicitud_admin(cliente_id):
                 state["tipo_servicio"] = s.tipo_servicio
 
                 c.total_solicitudes = base_total + 1
-                c.fecha_ultima_solicitud = datetime.utcnow()
-                c.fecha_ultima_actividad = datetime.utcnow()
+                c.fecha_ultima_solicitud = utc_now_naive()
+                c.fecha_ultima_actividad = utc_now_naive()
 
             result = _execute_form_save(
                 persist_fn=_persist_solicitud_create,
@@ -5350,7 +5362,7 @@ def editar_solicitud_admin(cliente_id, id):
                     area_otro_txt = (form.area_otro.data or '').strip()
                     s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
 
-                s.fecha_ultima_modificacion = datetime.utcnow()
+                s.fecha_ultima_modificacion = utc_now_naive()
                 s.detalles_servicio = _build_detalles_servicio_from_form(form)
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
@@ -5648,7 +5660,7 @@ def eliminar_solicitud_admin(cliente_id, id):
 
         # Métricas del cliente
         c.total_solicitudes = max((c.total_solicitudes or 1) - 1, 0)
-        c.fecha_ultima_actividad = datetime.utcnow()
+        c.fecha_ultima_actividad = utc_now_naive()
 
         db.session.commit()
         flash('Solicitud eliminada.', 'success')
@@ -5716,7 +5728,7 @@ def gestionar_plan(cliente_id, id):
             s.motivo_cancelacion = None
 
             # --- Timestamps ---
-            now = datetime.utcnow()
+            now = utc_now_naive()
 
             # ✅ Seguimiento:
             # Al guardar el ABONO/PLAN, refrescamos el inicio de seguimiento.
@@ -5850,7 +5862,7 @@ def registrar_pago(cliente_id, id):
 
                 # Fecha de pago (si existe)
                 if hasattr(cand, 'fecha_de_pago') and not getattr(cand, 'fecha_de_pago', None):
-                    cand.fecha_de_pago = datetime.utcnow().date()
+                    cand.fecha_de_pago = rd_today()
 
                 db.session.add(cand)
             except Exception:
@@ -5858,7 +5870,7 @@ def registrar_pago(cliente_id, id):
                 pass
 
         s.estado = 'pagada'
-        s.fecha_ultima_modificacion = datetime.utcnow()
+        s.fecha_ultima_modificacion = utc_now_naive()
 
         try:
             db.session.commit()
@@ -5954,7 +5966,7 @@ def nuevo_reemplazo(s_id):
                 estado_previo_solicitud=(sol.estado or '').strip().lower() or None,
             )
 
-            ahora = datetime.utcnow()
+            ahora = utc_now_naive()
             r.fecha_fallo = ahora
             r.iniciar_reemplazo()
             if getattr(r, 'fecha_inicio_reemplazo', None) is None:
@@ -6211,7 +6223,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             if blocked is not None:
                 return blocked
 
-            ahora = datetime.utcnow()
+            ahora = utc_now_naive()
 
             # Guardar reemplazo
             r.candidata_new_id = cand_new.fila
@@ -6261,7 +6273,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
 
                     # Fecha de pago (si existe)
                     if hasattr(cand_new, 'fecha_de_pago') and not getattr(cand_new, 'fecha_de_pago', None):
-                        cand_new.fecha_de_pago = datetime.utcnow().date()
+                        cand_new.fecha_de_pago = rd_today()
 
                     if hasattr(cand_new, 'fecha_ultima_modificacion'):
                         cand_new.fecha_ultima_modificacion = ahora
@@ -6365,9 +6377,9 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             estado_restore = "activa"
         s.estado = estado_restore
         if hasattr(s, "fecha_ultima_actividad"):
-            s.fecha_ultima_actividad = datetime.utcnow()
+            s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, "fecha_ultima_modificacion"):
-            s.fecha_ultima_modificacion = datetime.utcnow()
+            s.fecha_ultima_modificacion = utc_now_naive()
 
         db.session.commit()
         _audit_log(
@@ -6442,9 +6454,9 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
         _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
         _mark_candidata_estado(cand_new, "trabajando")
         if hasattr(s, "fecha_ultima_actividad"):
-            s.fecha_ultima_actividad = datetime.utcnow()
+            s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, "fecha_ultima_modificacion"):
-            s.fecha_ultima_modificacion = datetime.utcnow()
+            s.fecha_ultima_modificacion = utc_now_naive()
 
         db.session.commit()
         _audit_log(
@@ -6639,7 +6651,7 @@ def solicitudes_prioridad():
 
     incluye_asignadas = (request.args.get('incluye_asignadas') or '').strip() in ('1', 'true', 'True', 'yes', 'si')
 
-    ahora = datetime.utcnow()
+    ahora = utc_now_naive()
     limite_fecha = ahora - timedelta(days=dias)
 
     # -------------------------
@@ -6926,7 +6938,7 @@ def _upsert_cliente_notificacion_candidatas(solicitud: Solicitud, count: int) ->
     if not solicitud or not getattr(solicitud, "cliente_id", None) or int(count or 0) <= 0:
         return
 
-    now = datetime.utcnow()
+    now = utc_now_naive()
     recent_from = now - timedelta(hours=24)
     titulo = "Candidatas enviadas"
     cuerpo = (
@@ -7024,7 +7036,7 @@ def _sync_solicitud_candidatas_after_assignment(solicitud: Solicitud, assigned_c
     if not solicitud or not getattr(solicitud, "id", None) or not assigned_candidata_id:
         return
 
-    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    now_iso = iso_utc_z(utc_now_naive())
     actor_value = actor or _matching_created_by()
 
     assigned_row = (
@@ -7077,7 +7089,7 @@ def _mark_candidata_estado(cand: Candidata, nuevo_estado: str, *, nota_descalifi
         return
     cand.estado = str(nuevo_estado or "").strip().lower()
     if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = datetime.utcnow()
+        cand.fecha_cambio_estado = utc_now_naive()
     if hasattr(cand, "usuario_cambio_estado"):
         cand.usuario_cambio_estado = _staff_actor_name()
     if nota_descalificacion is not None and hasattr(cand, "nota_descalificacion"):
@@ -7642,7 +7654,7 @@ def descalificar_candidata(candidata_id: int):
     if hasattr(cand, "nota_descalificacion"):
         cand.nota_descalificacion = motivo
     if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = datetime.utcnow()
+        cand.fecha_cambio_estado = utc_now_naive()
     if hasattr(cand, "usuario_cambio_estado"):
         actor = (
             getattr(current_user, "username", None)
@@ -7724,7 +7736,7 @@ def reactivar_candidata(candidata_id: int):
     if hasattr(cand, "nota_descalificacion"):
         cand.nota_descalificacion = None
     if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = datetime.utcnow()
+        cand.fecha_cambio_estado = utc_now_naive()
     if hasattr(cand, "usuario_cambio_estado"):
         actor = (
             getattr(current_user, "username", None)
@@ -7803,7 +7815,7 @@ def marcar_candidata_trabajando(candidata_id: int):
 
     cand.estado = "trabajando"
     if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = datetime.utcnow()
+        cand.fecha_cambio_estado = utc_now_naive()
     if hasattr(cand, "usuario_cambio_estado"):
         actor = (
             getattr(current_user, "username", None)
@@ -7885,7 +7897,7 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
     estado_previo = (getattr(cand, "estado", None) or "").strip().lower()
     cand.estado = "lista_para_trabajar"
     if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = datetime.utcnow()
+        cand.fecha_cambio_estado = utc_now_naive()
     if hasattr(cand, "usuario_cambio_estado"):
         actor = (
             getattr(current_user, "username", None)
@@ -7961,7 +7973,7 @@ def resumen_solicitudes():
     Requiere Postgres (usa date_trunc/extract). Si usas otro motor, adaptar funciones.
     """
     # Bordes UTC para hoy/semana/mes
-    hoy = datetime.utcnow().date()
+    hoy = rd_today()
     week_start = hoy - timedelta(days=hoy.weekday())
     month_start = date(hoy.year, hoy.month, 1)
 
@@ -8252,7 +8264,7 @@ def _to_naive_utc(dt):
         return dt
 
 def _utc_day_bounds(dt: datetime | None = None):
-    base = (dt or datetime.utcnow()).date()
+    base = (dt or utc_now_naive()).date()
     start = datetime(base.year, base.month, base.day)
     end = start + timedelta(days=1)
     return start, end
@@ -8850,11 +8862,11 @@ def copiar_solicitud(id):
 
 # Utilidades compartidas (si ya las definiste antes, no las dupliques):
 def _now_utc() -> datetime:
-    return datetime.utcnow()
+    return utc_now_naive()
 
 def _utc_day_bounds(dt: datetime | None = None):
     """(inicio_día_utc, fin_día_utc) para dt (o hoy UTC)."""
-    base = (dt or datetime.utcnow()).date()
+    base = (dt or utc_now_naive()).date()
     start = datetime(base.year, base.month, base.day)
     end = start + timedelta(days=1)
     return start, end
@@ -9034,13 +9046,13 @@ def poner_espera_pago_solicitud(id):
             s.estado_previo_espera_pago = estado_actual or 'activa'
         s.estado = 'espera_pago'
         if hasattr(s, 'fecha_cambio_espera_pago'):
-            s.fecha_cambio_espera_pago = datetime.utcnow()
+            s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
         if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = datetime.utcnow()
+            s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = datetime.utcnow()
+            s.fecha_ultima_modificacion = utc_now_naive()
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_PONER",
@@ -9079,13 +9091,13 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
             s.estado_previo_espera_pago = estado_actual or 'activa'
         s.estado = 'espera_pago'
         if hasattr(s, 'fecha_cambio_espera_pago'):
-            s.fecha_cambio_espera_pago = datetime.utcnow()
+            s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
         if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = datetime.utcnow()
+            s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = datetime.utcnow()
+            s.fecha_ultima_modificacion = utc_now_naive()
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_PONER",
@@ -9120,13 +9132,13 @@ def quitar_espera_pago_solicitud(id):
             restore = 'activa'
         s.estado = restore
         if hasattr(s, 'fecha_cambio_espera_pago'):
-            s.fecha_cambio_espera_pago = datetime.utcnow()
+            s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
         if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = datetime.utcnow()
+            s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = datetime.utcnow()
+            s.fecha_ultima_modificacion = utc_now_naive()
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_QUITAR",
@@ -9161,13 +9173,13 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
             restore = 'activa'
         s.estado = restore
         if hasattr(s, 'fecha_cambio_espera_pago'):
-            s.fecha_cambio_espera_pago = datetime.utcnow()
+            s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
         if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = datetime.utcnow()
+            s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = datetime.utcnow()
+            s.fecha_ultima_modificacion = utc_now_naive()
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_QUITAR",

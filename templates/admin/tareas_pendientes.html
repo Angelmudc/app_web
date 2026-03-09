@@ -27,7 +27,7 @@
           <td>{{ t.titulo }}</td>
           <td>
             {% if t.fecha_vencimiento %}
-              {{ t.fecha_vencimiento.strftime('%d/%m/%Y') }}
+              {{ t.fecha_vencimiento|rd_datetime('%d/%m/%Y') }}
             {% else %}
               <span class="text-muted">Sin fecha</span>
             {% endif %}

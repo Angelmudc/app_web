@@ -33,7 +33,7 @@
               <tr>
                 <td class="fw-semibold">{{ s.codigo_solicitud }}</td>
                 <td>{{ s.cliente.nombre_completo }}</td>
-                <td>{{ s.fecha_solicitud.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') }}</td>
                 <td class="text-end">
 
                   <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=s.cliente_id, id=s.id) }}"

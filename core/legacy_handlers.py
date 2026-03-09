@@ -107,6 +107,7 @@ from utils.candidate_registration import (
     phone_has_valid_digits,
     robust_create_candidata,
 )
+from utils.timezone import format_rd_datetime, iso_utc_z, rd_today, utc_now_naive
 
 # Data / reportes
 import pandas as pd
@@ -685,7 +686,7 @@ def get_date_bounds(period: str, date_str: Optional[str] = None):
     """
     Devuelve (start_dt, end_dt)
     """
-    hoy = date.today()
+    hoy = rd_today()
     if period == 'day':
         return hoy - timedelta(days=1), hoy
     if period == 'week':
@@ -751,7 +752,7 @@ def home():
     return render_template(
         'home.html',
         usuario=session['usuario'],
-        current_year=date.today().year
+        current_year=rd_today().year
     )
 
 
@@ -921,13 +922,13 @@ def login():
             session['role'] = (staff_user.role or "secretaria")
             session['is_staff'] = True
             session['is_admin_session'] = True
-            session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+            session['logged_at'] = utc_now_naive().isoformat(timespec='seconds')
             clear_breakglass_session(session)
             session.modified = True
 
             # Auditoría de último login para StaffUser (incluye emergency admin activado).
             try:
-                staff_user.last_login_at = datetime.utcnow()
+                staff_user.last_login_at = utc_now_naive()
                 staff_user.last_login_ip = _client_ip()
                 db.session.commit()
             except Exception:
@@ -953,7 +954,7 @@ def login():
             session.permanent = False
             login_user(build_breakglass_user(), remember=False)
             set_breakglass_session(session)
-            session['logged_at'] = datetime.utcnow().isoformat(timespec='seconds')
+            session['logged_at'] = utc_now_naive().isoformat(timespec='seconds')
             session.modified = True
             return safe_redirect_next('home')
 
@@ -1132,7 +1133,7 @@ def registro_interno():
     try:
         result, create_state = robust_create_candidata(
             build_candidate=lambda _attempt: Candidata(
-                marca_temporal=datetime.utcnow(),
+                marca_temporal=utc_now_naive(),
                 nombre_completo=nombre,
                 edad=str(edad_num),
                 numero_telefono=telefono,
@@ -1149,7 +1150,7 @@ def registro_interno():
                 cedula=cedula_store,
                 medio_inscripcion='Oficina',
                 estado='en_proceso',
-                fecha_cambio_estado=datetime.utcnow(),
+                fecha_cambio_estado=utc_now_naive(),
                 usuario_cambio_estado=usuario,
             ),
             expected_fields={
@@ -1277,7 +1278,7 @@ def list_candidatas_db():
         for c in candidatas:
             resultado.append({
                 "fila": c.fila,
-                "marca_temporal": c.marca_temporal.isoformat() if getattr(c, "marca_temporal", None) else None,
+                "marca_temporal": iso_utc_z(c.marca_temporal) if getattr(c, "marca_temporal", None) else None,
                 "nombre_completo": c.nombre_completo,
                 "edad": c.edad,
                 "numero_telefono": c.numero_telefono,
@@ -1598,7 +1599,7 @@ def entrevista_nueva_db(fila, tipo):
         def _persist_interview(_attempt: int):
             entrevista = Entrevista(candidata_id=fila)
             _safe_setattr(entrevista, 'estado', 'completa')
-            _safe_setattr(entrevista, 'creada_en', datetime.utcnow())
+            _safe_setattr(entrevista, 'creada_en', utc_now_naive())
             _safe_setattr(entrevista, 'actualizada_en', None)
             _safe_setattr(entrevista, 'tipo', (tipo or '').strip().lower())
             db.session.add(entrevista)
@@ -1612,7 +1613,7 @@ def entrevista_nueva_db(fila, tipo):
                     pregunta_id=p.id,
                     respuesta=valor if valor else None,
                 )
-                _safe_setattr(r, 'creada_en', datetime.utcnow())
+                _safe_setattr(r, 'creada_en', utc_now_naive())
                 db.session.add(r)
 
             state["legacy_text"] = _build_legacy_interview_text(preguntas, respuestas_payload)
@@ -1777,13 +1778,13 @@ def entrevista_editar_db(entrevista_id):
                         entrevista_id=entrevista.id,
                         pregunta_id=p.id,
                     )
-                    _safe_setattr(r, 'creada_en', datetime.utcnow())
+                    _safe_setattr(r, 'creada_en', utc_now_naive())
                     db.session.add(r)
 
                 r.respuesta = valor if valor else None
-                _safe_setattr(r, 'actualizada_en', datetime.utcnow())
+                _safe_setattr(r, 'actualizada_en', utc_now_naive())
 
-            _safe_setattr(entrevista, 'actualizada_en', datetime.utcnow())
+            _safe_setattr(entrevista, 'actualizada_en', utc_now_naive())
             _safe_setattr(entrevista, 'estado', 'completa')
             _safe_setattr(entrevista, 'tipo', tipo)
 
@@ -2566,7 +2567,7 @@ def inscripcion():
             else:
                 obj.estado = 'proceso_inscripcion'
 
-            obj.fecha_cambio_estado    = datetime.utcnow()
+            obj.fecha_cambio_estado    = utc_now_naive()
             obj.usuario_cambio_estado  = session.get('usuario', 'desconocido')[:64]
             try:
                 actor = (
@@ -2659,7 +2660,7 @@ def porciento():
         obj.monto_total           = monto_total
         obj.porciento             = porcentaje
         obj.estado                = 'trabajando'
-        obj.fecha_cambio_estado   = datetime.utcnow()
+        obj.fecha_cambio_estado   = utc_now_naive()
         obj.usuario_cambio_estado = session.get('usuario', 'desconocido')[:64]
 
         try:
@@ -2794,7 +2795,7 @@ def pagos():
 
         # auditoría simple (opcional pero útil)
         try:
-            obj.fecha_de_pago = date.today()
+            obj.fecha_de_pago = rd_today()
         except Exception:
             pass
 
@@ -2873,7 +2874,7 @@ def reporte_inscripciones():
     """
     # 1) Parámetros (acotamos rangos para evitar explosiones)
     try:
-        today = date.today()
+        today = rd_today()
         mes       = int(request.args.get('mes', today.month))
         anio      = int(request.args.get('anio', today.year))
         descargar = request.args.get('descargar', '0') == '1'
@@ -2941,7 +2942,7 @@ def reporte_inscripciones():
             "Medio":        r[5] or "",
             "Inscripción":  "Sí" if r[6] else "No",
             "Monto":        float(r[7] or 0),
-            "Fecha":        r[8].strftime("%Y-%m-%d") if r[8] else ""
+            "Fecha":        format_rd_datetime(r[8], "%Y-%m-%d", "") if r[8] else ""
         } for r in rows])
 
         output = io.BytesIO()
@@ -3002,7 +3003,7 @@ def reporte_inscripciones():
         "Medio":        r[5] or "",
         "Inscripción":  "Sí" if r[6] else "No",
         "Monto":        float(r[7] or 0),
-        "Fecha":        r[8].strftime("%Y-%m-%d") if r[8] else ""
+        "Fecha":        format_rd_datetime(r[8], "%Y-%m-%d", "") if r[8] else ""
     } for r in items])
 
     reporte_html = df.to_html(classes="table table-striped", index=False, border=0)
@@ -4110,7 +4111,7 @@ def dashboard_procesos():
     try:
         # KPIs
         total = Candidata.query.count()
-        hoy = date.today()
+        hoy = rd_today()
         entradas_hoy = Candidata.query.filter(
             cast(Candidata.fecha_cambio_estado, Date) == hoy
         ).count()
@@ -4198,7 +4199,7 @@ def auto_actualizar_estados():
             if (c.codigo and c.entrevista and c.referencias_laboral and c.referencias_familiares
                 and c.perfil and c.cedula1 and c.cedula2 and c.depuracion):
                 c.estado = 'lista_para_trabajar'
-                c.fecha_cambio_estado = datetime.utcnow()
+                c.fecha_cambio_estado = utc_now_naive()
                 c.usuario_cambio_estado = 'sistema'
                 actualizadas.append(c.fila)
 
@@ -4306,7 +4307,7 @@ def registrar_llamada_candidata(fila):
             resultado         = (form.resultado.data or '').strip()[:200],
             duracion_segundos = segundos,
             notas             = (form.notas.data or '').strip()[:2000],
-            created_at        = datetime.utcnow()
+            created_at        = utc_now_naive()
         )
         db.session.add(llamada)
         try:
@@ -4335,7 +4336,7 @@ def reporte_llamadas_candidatas():
     period         = (request.args.get('period') or 'week').strip()[:16]
     start_date_str = request.args.get('start_date', None)
     start_dt       = get_start_date(period, start_date_str)
-    hoy            = date.today()
+    hoy            = rd_today()
     page           = max(1, request.args.get('page', 1, type=int))
 
     stats_subq = (
@@ -4490,7 +4491,7 @@ def secretarias_copiar_solicitudes():
     - Si hay modalidad, imprime SOLO el valor en una línea.
     - Si hay descripción de hogar, imprime SOLO la descripción (sin prefijo).
     """
-    hoy = date.today()
+    hoy = rd_today()
 
     base_q = (
         Solicitud.query
@@ -4895,7 +4896,7 @@ def secretarias_buscar_solicitudes():
             "ciudad_sector": _s(s.ciudad_sector),
             "modalidad": modalidad_val,
             "estado": _s(s.estado),
-            "fecha_solicitud": s.fecha_solicitud.strftime("%Y-%m-%d %H:%M") if s.fecha_solicitud else "",
+            "fecha_solicitud": format_rd_datetime(s.fecha_solicitud, "%Y-%m-%d %H:%M", "") if s.fecha_solicitud else "",
             "copiada_ciclo": (s.last_copiado_at is not None),
             "order_text": order_text,
         })
@@ -5482,13 +5483,13 @@ def compat_candidata():
             }
             payload = {
                 "version": COMPAT_TEST_CANDIDATA_VERSION,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": iso_utc_z(),
                 "engine": ENGINE_VERSION,
                 "profile": profile,
             }
             if hasattr(c, 'compat_test_candidata_json'):     c.compat_test_candidata_json = payload
             if hasattr(c, 'compat_test_candidata_version'):  c.compat_test_candidata_version = COMPAT_TEST_CANDIDATA_VERSION
-            if hasattr(c, 'compat_test_candidata_at'):       c.compat_test_candidata_at = datetime.utcnow()
+            if hasattr(c, 'compat_test_candidata_at'):       c.compat_test_candidata_at = utc_now_naive()
 
             def _verify_compat_saved() -> bool:
                 cand_db = _get_candidata_by_fila_or_pk(int(fila)) or c

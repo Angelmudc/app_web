@@ -2,7 +2,7 @@
 {% block title %}Tareas de hoy{% endblock %}
 
 {% block content %}
-<h1 class="mb-3">Tareas de hoy ({{ hoy.strftime('%d/%m/%Y') }})</h1>
+<h1 class="mb-3">Tareas de hoy ({{ hoy|rd_datetime('%d/%m/%Y') }})</h1>
 
 {% if tareas %}
   <table class="table table-sm align-middle">

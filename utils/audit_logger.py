@@ -11,6 +11,7 @@ from flask_login import current_user
 
 from config_app import db
 from models import StaffAuditLog, StaffUser
+from utils.timezone import utc_now_naive
 
 
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -83,7 +84,7 @@ def log_action(
     actor_user_id, actor_role = _actor_from_context()
 
     payload = {
-        "created_at": datetime.utcnow(),
+        "created_at": utc_now_naive(),
         "actor_user_id": actor_user_id,
         "actor_role": actor_role,
         "action_type": (action_type or "")[:80],

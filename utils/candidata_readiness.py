@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 
 from utils.candidata_completitud_audit import entrevista_ok, referencias_ok
 from utils.guards import candidata_esta_descalificada
+from utils.timezone import utc_now_naive
 
 _READY_BASE_STATES = {"lista_para_trabajar", "inscrita"}
 _NOT_READY_STATES = {"en_proceso", "proceso_inscripcion", "inscrita_incompleta"}
@@ -146,7 +147,7 @@ def maybe_update_estado_por_completitud(candidata, actor: str | None = None) -> 
         return False
 
     ready, reasons = candidata_is_ready_to_send(candidata)
-    now = datetime.utcnow()
+    now = utc_now_naive()
     actor_text = (actor or "").strip()[:100] or None
 
     if ready:

@@ -19,7 +19,7 @@
       <td>{{ c.llamadas|length }}</td>
       <td>
         {% if c.llamadas %}
-          {{ c.llamadas[-1].fecha_llamada.strftime('%Y-%m-%d %H:%M') }}
+          {{ c.llamadas[-1].fecha_llamada|rd_datetime('%Y-%m-%d %H:%M') }}
         {% else %}
           —
         {% endif %}

@@ -215,7 +215,7 @@
               <td>
                 <span class="badge bg-secondary">{{ sc.status }}</span>
               </td>
-              <td>{{ sc.created_at.strftime('%d/%m/%Y %H:%M') if sc.created_at else '—' }}</td>
+              <td>{{ sc.created_at|rd_datetime('%d/%m/%Y %H:%M') if sc.created_at else '—' }}</td>
             </tr>
             {% endfor %}
           </tbody>

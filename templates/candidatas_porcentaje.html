@@ -50,14 +50,14 @@
                   <td>{{ c.modalidad or '-' }}</td>
                   <td>
                     {% if c.fecha_inicio %}
-                      {{ c.fecha_inicio.strftime('%d/%m/%Y') }}
+                      {{ c.fecha_inicio|rd_datetime('%d/%m/%Y') }}
                     {% else %}
                       <span class="text-muted">-</span>
                     {% endif %}
                   </td>
                   <td>
                     {% if c.fecha_pago %}
-                      {{ c.fecha_pago.strftime('%d/%m/%Y') }}
+                      {{ c.fecha_pago|rd_datetime('%d/%m/%Y') }}
                     {% else %}
                       <span class="text-muted">-</span>
                     {% endif %}

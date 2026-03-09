@@ -102,7 +102,7 @@
             </td>
             <td data-label="Registro">
               {% if c.fecha_registro %}
-                {{ c.fecha_registro.strftime('%Y-%m-%d') }}
+                {{ c.fecha_registro|rd_datetime('%Y-%m-%d') }}
               {% else %}
                 —
               {% endif %}

@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from utils.funciones_formatter import format_funciones
+from utils.timezone import utc_now_naive
 
 ENGINE_VERSION = "compat-engine-v2"
 
@@ -38,7 +39,7 @@ MASCOTAS_IMPORTANCIA_CHOICES = [
 
 
 def _now_iso() -> str:
-    return datetime.utcnow().isoformat()
+    return utc_now_naive().isoformat()
 
 
 def _strip_accents(txt: str) -> str:
@@ -851,9 +852,9 @@ def persist_result_to_solicitud(s, result: Dict[str, Any]) -> bool:
         s.compat_calc_level = level
         s.compat_calc_summary = summary or None
         s.compat_calc_risks = risks_txt or None
-        s.compat_calc_at = datetime.utcnow()
+        s.compat_calc_at = utc_now_naive()
         if hasattr(s, "fecha_ultima_modificacion"):
-            s.fecha_ultima_modificacion = datetime.utcnow()
+            s.fecha_ultima_modificacion = utc_now_naive()
 
         db.session.commit()
         return True

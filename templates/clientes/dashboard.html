@@ -136,7 +136,7 @@
                 </div>
 
                 <div class="small text-muted mt-1">
-                  <i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now()).strftime('%d/%m/%Y') }}
+                  <i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now())|rd_datetime('%d/%m/%Y') }}
                   {% if s.ciudad_sector %}
                     <span class="mx-2">•</span>
                     <i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}

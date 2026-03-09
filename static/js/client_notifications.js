@@ -7,6 +7,7 @@
   if (!bell || !overlay || !listNode || !badge) return;
 
   const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
+  const RD_TIMEZONE = "America/Santo_Domingo";
 
   function setUnreadCount(n) {
     const val = Math.max(0, Number(n || 0));
@@ -20,7 +21,7 @@
     if (!iso) return "—";
     try {
       const d = new Date(iso);
-      return d.toLocaleString();
+      return d.toLocaleString("es-DO", { timeZone: RD_TIMEZONE });
     } catch (_e) {
       return iso;
     }

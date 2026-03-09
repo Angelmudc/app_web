@@ -29,6 +29,7 @@
   let lastInteractionAt = new Date().toISOString();
   const INTERACTION_ACTIVE_WINDOW_SECONDS = 60;
   const MONITOREO_PREFIX = '/admin/monitoreo';
+  const RD_TIMEZONE = 'America/Santo_Domingo';
 
   function isMonitoringPage(pathname) {
     const raw = (pathname || window.location.pathname || '').split('?')[0];
@@ -90,14 +91,11 @@
     const deltaSec = Math.max(0, Math.floor((now.getTime() - d.getTime()) / 1000));
     if (deltaSec < 60) return 'Hace ' + deltaSec + ' segundos';
     if (deltaSec < 3600) return 'Hace ' + Math.max(1, Math.floor(deltaSec / 60)) + ' minutos';
-    if (
-      now.getFullYear() === d.getFullYear() &&
-      now.getMonth() === d.getMonth() &&
-      now.getDate() === d.getDate()
-    ) {
-      return 'Hoy ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const sameRdDay = d.toLocaleDateString('en-CA', { timeZone: RD_TIMEZONE }) === now.toLocaleDateString('en-CA', { timeZone: RD_TIMEZONE });
+    if (sameRdDay) {
+      return 'Hoy ' + d.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', timeZone: RD_TIMEZONE });
     }
-    return d.toLocaleString();
+    return d.toLocaleString('es-DO', { timeZone: RD_TIMEZONE });
   }
 
   function escapeHtml(raw) {

@@ -24,6 +24,13 @@ from sqlalchemy import text, func
 from sqlalchemy.pool import NullPool
 from utils.compat_engine import format_compat_result
 from utils.funciones_formatter import format_funciones, format_funciones_display
+from utils.timezone import (
+    format_rd_datetime,
+    now_rd,
+    rd_today,
+    to_rd,
+    utc_now_naive,
+)
 
 # ─────────────────────────────────────────────────────────────
 # Carga .env (siempre desde la raíz del proyecto)
@@ -373,10 +380,8 @@ def create_app():
     def _raw_error_event(error_type: str, err: str, code: int = 500):
         try:
             from models import StaffAuditLog
-            from datetime import datetime as _dt
-
             payload = {
-                "created_at": _dt.utcnow(),
+                "created_at": utc_now_naive(),
                 "actor_user_id": None,
                 "actor_role": (session.get("role") or "").strip().lower() or None,
                 "action_type": "ERROR_EVENT",
@@ -443,9 +448,12 @@ def create_app():
     # ─────────────────────────────────────────────────────────
     # Helpers globales para templates
     # ─────────────────────────────────────────────────────────
-    from datetime import datetime as _dt
-    app.jinja_env.globals["now"] = _dt.utcnow
-    app.jinja_env.globals["current_year"] = _dt.utcnow().year
+    app.jinja_env.globals["now"] = now_rd
+    app.jinja_env.globals["today_rd"] = rd_today
+    app.jinja_env.globals["current_year"] = now_rd().year
+    app.jinja_env.globals["rd_dt"] = format_rd_datetime
+    app.jinja_env.globals["to_rd"] = to_rd
+    app.jinja_env.filters["rd_datetime"] = format_rd_datetime
     app.jinja_env.globals["format_funciones"] = format_funciones
     app.jinja_env.filters["funciones_fmt"] = format_funciones
     app.jinja_env.globals["format_funciones_display"] = format_funciones_display

@@ -7,6 +7,7 @@ from functools import wraps
 from flask import abort, current_app, flash, redirect, request, session, url_for
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash
+from utils.timezone import utc_now_naive
 
 try:
     from flask_login import current_user
@@ -113,7 +114,7 @@ def breakglass_is_expired(sess=None) -> bool:
     if not expires_at:
         return True
     try:
-        return datetime.utcnow() >= datetime.fromisoformat(str(expires_at).strip())
+        return utc_now_naive() >= datetime.fromisoformat(str(expires_at).strip())
     except Exception:
         return True
 
@@ -128,7 +129,7 @@ def is_breakglass_session_valid(sess=None) -> bool:
 def set_breakglass_session(sess=None):
     s = sess if sess is not None else session
     ttl = breakglass_ttl_seconds()
-    expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+    expires_at = utc_now_naive() + timedelta(seconds=ttl)
     s["is_breakglass"] = True
     s["breakglass_expires_at"] = expires_at.isoformat(timespec="seconds")
     s["is_admin_session"] = True

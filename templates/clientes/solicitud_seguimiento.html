@@ -24,7 +24,7 @@
                 <div class="fw-semibold">{{ item.titulo }}</div>
                 <div class="small text-muted">{{ item.detalle or 'Sin detalle' }}</div>
                 <div class="small text-muted">
-                  {% if item.fecha %}{{ item.fecha.strftime('%d/%m/%Y %H:%M') }}{% else %}Fecha no disponible{% endif %}
+                  {% if item.fecha %}{{ item.fecha|rd_datetime('%d/%m/%Y %H:%M') }}{% else %}Fecha no disponible{% endif %}
                 </div>
               </div>
             </div>

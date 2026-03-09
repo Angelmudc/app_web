@@ -32,7 +32,7 @@
               <div class="small text-muted">{{ n.cuerpo }}</div>
               {% endif %}
             </td>
-            <td>{{ n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '—' }}</td>
+            <td>{{ n.created_at|rd_datetime('%d/%m/%Y %H:%M') if n.created_at else '—' }}</td>
             <td>
               {% if n.is_read %}
               <span class="badge bg-secondary">Leída</span>

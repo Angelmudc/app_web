@@ -21,9 +21,9 @@
             <td>{{ nombre }}</td>
             <td>{{ codigo or '—' }}</td>
             <td>{{ telefono or '—' }}</td>
-            <td>{{ marca.strftime('%Y-%m-%d') }}</td>
+            <td>{{ marca|rd_datetime('%Y-%m-%d') }}</td>
             <td>{{ num_calls or 0 }}</td>
-            <td>{{ last_call.strftime('%Y-%m-%d %H:%M') if last_call else 'Nunca' }}</td>
+            <td>{{ last_call|rd_datetime('%Y-%m-%d %H:%M') if last_call else 'Nunca' }}</td>
             <td>
               <a href="{{ url_for('registrar_llamada_candidata', fila=fila) }}"
                  class="btn btn-sm btn-primary">Llamar</a>
