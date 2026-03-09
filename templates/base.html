@@ -186,10 +186,10 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
+          {% if has_endpoint('admin.crear_usuario') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario'] %}active{% endif %}"
-               href="{{ url_for('admin.listar_usuarios') }}">Usuarios</a>
+               href="{{ url_for('admin.crear_usuario') }}">Crear usuario</a>
           </li>
           {% endif %}
 
@@ -216,10 +216,10 @@
               {% set ns_reg.ep = ep %}
             {% endif %}
           {% endfor %}
-          {% if ns_reg.url %}
+          {% if ns_reg.url and current_user.is_authenticated and (current_user.role|default('') == 'admin') %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint==ns_reg.ep %}active{% endif %}"
-               href="{{ ns_reg.url }}">Registro Interno</a>
+               href="{{ ns_reg.url }}">Registrar candidata</a>
           </li>
           {% endif %}
 
