@@ -57,3 +57,17 @@ def test_secretaria_does_not_see_admin_menu_links():
     # Seguridad existente: crear usuario es owner-only.
     denied = client.get("/admin/usuarios/nuevo", follow_redirects=False)
     assert denied.status_code == 403
+
+
+def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    for usuario, clave in (("Owner", "8899"), ("Cruz", "8998"), ("Karla", "9989")):
+        client = flask_app.test_client()
+        assert _login(client, usuario, clave).status_code in (302, 303)
+        resp = client.get("/home", follow_redirects=False)
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert "/clientes/solicitudes/nueva-publica" in html
+        assert "Nueva solicitud pública (cliente nuevo)" in html
