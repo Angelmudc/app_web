@@ -1,6 +1,6 @@
-{% set excluded = ['csrf_token', 'token', 'hp', 'codigo_cliente', 'nombre_cliente', 'email_cliente', 'submit'] %}
+{% set excluded = ['csrf_token', 'token', 'hp', 'codigo_cliente', 'nombre_cliente', 'email_cliente', 'submit', 'enviar'] %}
 {% set ordered_names = [
-  'modalidad_trabajo', 'horario', 'ciudad_sector', 'rutas_cercanas',
+  'ciudad_sector', 'rutas_cercanas', 'modalidad_trabajo', 'horario',
   'edad_requerida', 'edad_otro', 'experiencia', 'funciones', 'funciones_otro',
   'tipo_lugar', 'tipo_lugar_otro', 'habitaciones', 'banos', 'dos_pisos',
   'areas_comunes', 'area_otro', 'adultos', 'ninos', 'edades_ninos',
@@ -15,10 +15,10 @@
   {% endif %}
 {%- endmacro %}
 
-{% macro render_field(field, title='', hint='', wrapper_id='') -%}
+{% macro render_field(field, title='', hint='', wrapper_id='', wrapper_class='') -%}
   {% if field is defined and field is not none %}
     {% set css_invalid = ' is-invalid' if field.errors else '' %}
-    <div class="public-field" {% if wrapper_id %}id="{{ wrapper_id }}"{% endif %}>
+    <div class="public-field {% if wrapper_class %}{{ wrapper_class }}{% endif %}" {% if wrapper_id %}id="{{ wrapper_id }}"{% endif %}>
       {% if field.type != 'BooleanField' %}
         <label class="public-field-label" for="{{ field.id }}">{{ title or field.label.text }}</label>
       {% endif %}
@@ -36,7 +36,7 @@
         {{ field(class='form-select' + css_invalid) }}
 
       {% elif field.type == 'SelectMultipleField' %}
-        <div class="public-choice-grid{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}">
+        <div class="public-choice-grid public-choice-grid--{{ field.name }}{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}">
           {% for sub in field %}
             <label class="public-choice-item">
               {{ sub(class='form-check-input') }}
@@ -61,14 +61,14 @@
 <style>
   .public-form-sections {
     display: grid;
-    gap: 14px;
+    gap: 12px;
   }
 
   .public-form-card {
     border: 1px solid #d9e2ee;
     border-radius: 16px;
     background: linear-gradient(180deg, #fdfefe 0%, #fbfdff 100%);
-    padding: 14px;
+    padding: 12px;
   }
 
   .public-form-card-header {
@@ -94,6 +94,7 @@
     font-size: .99rem;
     font-weight: 700;
     color: #223246;
+    letter-spacing: .01em;
   }
 
   .public-form-card-desc {
@@ -105,7 +106,7 @@
   .public-fields-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
 
   .public-field { min-width: 0; }
@@ -125,13 +126,13 @@
   }
 
   .public-choice-grid {
-    border: 1px solid #ced9e6;
+    border: 1px solid #d3deec;
     border-radius: 12px;
-    background: #ffffff;
-    padding: 8px;
+    background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+    padding: 9px;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
   }
 
   .public-choice-grid.is-invalid {
@@ -141,24 +142,24 @@
 
   .public-choice-item {
     margin: 0;
-    min-height: 34px;
-    border: 1px solid #dbe4ef;
+    min-height: 32px;
+    border: 1px solid #d4e0ed;
     border-radius: 10px;
     background: #f8fbff;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 9px;
-    font-size: .84rem;
-    color: #25364c;
+    gap: 7px;
+    padding: 6px 9px;
+    font-size: .83rem;
+    color: #27405e;
     cursor: pointer;
-    transition: .16s ease;
+    transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease;
   }
 
   .public-choice-item:hover {
-    border-color: #9eb8d2;
+    border-color: #95b2cf;
     background: #f2f8ff;
-    transform: translateY(-1px);
+    transform: translateY(-.5px);
   }
 
   .public-choice-item:focus-within {
@@ -168,9 +169,10 @@
   }
 
   .public-choice-item.is-selected {
-    border-color: #0f6a7f;
-    background: #e8f4f7;
-    color: #0f4f62;
+    border-color: #2e7796;
+    background: #e7f2fb;
+    color: #184b63;
+    box-shadow: inset 0 0 0 1px rgba(33, 105, 140, 0.18);
   }
 
   .public-switch-wrap {
@@ -198,6 +200,12 @@
     gap: 8px;
   }
 
+  .public-segmented.public-segmented-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
   .public-segmented-item {
     position: relative;
     margin: 0;
@@ -213,7 +221,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 36px;
+    min-height: 38px;
     border: 1px solid #dbe4ef;
     border-radius: 10px;
     background: #f8fbff;
@@ -251,14 +259,37 @@
   }
 
   .public-full { grid-column: 1 / -1; }
+  .public-house-grid .public-areas-field .public-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .public-choice-grid--edad_requerida { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .public-choice-grid--funciones { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .public-choice-grid--areas_comunes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .public-choice-grid--areas_comunes .public-choice-item { min-height: 36px; }
+  .public-comp-grid .public-field { align-self: start; }
+  .public-comp-note { margin-top: 2px; }
+
+  @media (min-width: 1120px) {
+    .public-house-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px 14px;
+    }
+    .public-house-grid .public-areas-field { grid-column: 1 / -1; }
+    .public-house-grid .public-areas-field .public-choice-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
 
   @media (max-width: 767.98px) {
     .public-fields-grid { grid-template-columns: 1fr; }
-    .public-choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .public-choice-grid,
+    .public-choice-grid--edad_requerida,
+    .public-choice-grid--funciones,
+    .public-choice-grid--areas_comunes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .public-segmented.public-segmented-grid { grid-template-columns: 1fr; }
   }
 
   @media (max-width: 460px) {
-    .public-choice-grid { grid-template-columns: 1fr; }
+    .public-choice-grid,
+    .public-choice-grid--edad_requerida,
+    .public-choice-grid--funciones,
+    .public-choice-grid--areas_comunes { grid-template-columns: 1fr; }
   }
 </style>
 
@@ -266,13 +297,13 @@
   <section class="public-form-card">
     <header class="public-form-card-header">
       <h3 class="public-form-card-title">Informacion del servicio</h3>
-      <p class="public-form-card-desc">Define modalidad, horario y ubicacion del servicio solicitado.</p>
+      <p class="public-form-card-desc">Primero ubica el sector y transporte, luego define modalidad y horario.</p>
     </header>
     <div class="public-fields-grid">
       {{ render_field(form.ciudad_sector) }}
       {{ render_field(form.rutas_cercanas) }}
       {{ render_field(form.modalidad_trabajo, hint='Ejemplo: dormida, salida diaria o por dias.') }}
-      {{ render_field(form.horario, hint='Indica dias y rango horario esperado.') }}
+      {{ render_field(form.horario, title='Horario / Define el horario de trabajo', hint='Indica dias y rango horario esperado.') }}
     </div>
   </section>
 
@@ -282,10 +313,10 @@
       <p class="public-form-card-desc">Orden recomendado para definir el perfil correcto.</p>
     </header>
     <div class="public-fields-grid">
-      {{ render_field(form.edad_requerida, hint='Selecciona una o mas opciones.') }}
+      {{ render_field(form.edad_requerida, hint='Selecciona una o mas opciones.', wrapper_class='public-full') }}
       {{ render_field(form.edad_otro, wrapper_id='wrap_edad_otro') }}
-      {{ render_field(form.experiencia, wrapper_id='wrap_experiencia', hint='Describe el tipo de experiencia que necesitas.') }}
-      {{ render_field(form.funciones, hint='Marca una o varias funciones principales.') }}
+      {{ render_field(form.experiencia, wrapper_id='wrap_experiencia', hint='Describe el tipo de experiencia que necesitas.', wrapper_class='public-full') }}
+      {{ render_field(form.funciones, hint='Marca una o varias funciones principales.', wrapper_class='public-full') }}
       {{ render_field(form.funciones_otro, wrapper_id='wrap_funciones_otro') }}
     </div>
   </section>
@@ -293,9 +324,9 @@
   <section class="public-form-card">
     <header class="public-form-card-header">
       <h3 class="public-form-card-title">Estructura del hogar o lugar</h3>
-      <p class="public-form-card-desc">Orden recomendado de estructura y composicion del hogar.</p>
+      <p class="public-form-card-desc">Primero estructura fisica del lugar y despues composicion familiar.</p>
     </header>
-    <div class="public-fields-grid">
+    <div class="public-fields-grid public-house-grid">
       {{ render_field(form.tipo_lugar) }}
       {{ render_field(form.tipo_lugar_otro, wrapper_id='wrap_tipo_lugar_otro') }}
       {{ render_field(form.habitaciones) }}
@@ -304,7 +335,7 @@
       <div class="public-field">
         <label class="public-field-label">Cantidad de pisos</label>
         {{ form.dos_pisos(class='public-hidden-checkbox', id='dos_pisos_hidden') }}
-        <div class="public-segmented" id="pisos_selector_wrap">
+        <div class="public-segmented public-segmented-grid" id="pisos_selector_wrap">
           <label class="public-segmented-item">
             <input type="radio" name="pisos_selector" value="1" {% if public_pisos_value == '1' %}checked{% endif %}>
             <span>1 piso</span>
@@ -321,8 +352,8 @@
         <div class="public-field-hint">Se guardara de forma compatible con el esquema actual.</div>
       </div>
 
-      {{ render_field(form.areas_comunes, hint='Puedes marcar "Todas las anteriores" para mayor rapidez.') }}
-      {{ render_field(form.area_otro, wrapper_id='wrap_area_otro') }}
+      {{ render_field(form.areas_comunes, hint='Puedes marcar "Todas las anteriores" para mayor rapidez.', wrapper_class='public-full public-areas-field') }}
+      {{ render_field(form.area_otro, wrapper_id='wrap_area_otro', wrapper_class='public-full') }}
       {{ render_field(form.adultos) }}
       {{ render_field(form.ninos) }}
       {{ render_field(form.edades_ninos) }}
@@ -333,15 +364,15 @@
   <section class="public-form-card">
     <header class="public-form-card-header">
       <h3 class="public-form-card-title">Confirmacion final</h3>
-      <p class="public-form-card-desc">Completa compensacion, pasaje y cualquier nota adicional.</p>
+      <p class="public-form-card-desc">Define compensacion, pasaje y nota adicional antes de enviar la solicitud.</p>
     </header>
-    <div class="public-fields-grid">
+    <div class="public-fields-grid public-comp-grid">
       {{ render_field(form.sueldo, hint='Monto estimado en pesos dominicanos.') }}
 
       <div class="public-field" id="wrap_pasaje_mode">
         <label class="public-field-label">Pasaje</label>
         {{ form.pasaje_aporte(class='public-hidden-checkbox', id='pasaje_aporte_hidden') }}
-        <div class="public-segmented">
+        <div class="public-segmented public-segmented-grid">
           <label class="public-segmented-item">
             <input type="radio" name="pasaje_mode" value="incluido" {% if public_pasaje_mode == 'incluido' %}checked{% endif %}>
             <span>Pasaje incluido</span>
@@ -368,7 +399,7 @@
         </div>
       </div>
 
-      <div class="public-full">{{ render_field(form.nota_cliente) }}</div>
+      <div class="public-full public-comp-note">{{ render_field(form.nota_cliente) }}</div>
     </div>
   </section>
 
