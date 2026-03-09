@@ -91,6 +91,7 @@ from utils.staff_auth import (
 )
 from utils.audit_logger import log_action, snapshot_model_fields, diff_snapshots
 from utils.audit_entity import log_candidata_action
+from utils.pdf_labels import humanize_pdf_label
 from utils.robust_save import (
     execute_robust_save,
     binary_has_content,
@@ -1113,6 +1114,16 @@ def registro_interno():
         db.session.add(nueva)
         db.session.flush()
         db.session.commit()
+        nueva_fila = int(getattr(nueva, "fila", 0) or 0)
+        if nueva_fila > 0:
+            if not _verify_candidata_fields_saved(
+                nueva_fila,
+                {"cedula": cedula_store, "nombre_completo": nombre},
+                fallback_obj=nueva,
+            ):
+                db.session.rollback()
+                flash('❌ No se pudo verificar el registro guardado. Intenta de nuevo.', 'danger')
+                return render_template('registro_interno.html'), 500
 
     except OperationalError:
         # Reintenta una vez por fallo SSL/transitorio
@@ -1129,6 +1140,16 @@ def registro_interno():
             db.session.add(nueva)
             db.session.flush()
             db.session.commit()
+            nueva_fila = int(getattr(nueva, "fila", 0) or 0)
+            if nueva_fila > 0:
+                if not _verify_candidata_fields_saved(
+                    nueva_fila,
+                    {"cedula": cedula_store, "nombre_completo": nombre},
+                    fallback_obj=nueva,
+                ):
+                    db.session.rollback()
+                    flash('❌ No se pudo verificar el registro guardado. Intenta de nuevo.', 'danger')
+                    return render_template('registro_interno.html'), 500
 
         except IntegrityError:
             db.session.rollback()
@@ -1311,22 +1332,56 @@ def _verify_candidata_docs_saved(candidata_id: int, expected_fields: dict[str, i
     return True
 
 
-def _verify_interview_new_saved(entrevista_id: int) -> bool:
+def _verify_candidata_fields_saved(
+    candidata_id: int,
+    expected_fields: dict[str, object],
+    fallback_obj=None,
+) -> bool:
+    cand = _get_candidata_by_fila_or_pk(candidata_id)
+    if not cand and fallback_obj is not None:
+        cand = fallback_obj
+    if not cand:
+        return False
+    for field_name, expected in (expected_fields or {}).items():
+        current = getattr(cand, field_name, None)
+        if isinstance(expected, str):
+            if (str(current or "").strip() != expected.strip()):
+                return False
+            continue
+        if isinstance(expected, bool):
+            if bool(current) != expected:
+                return False
+            continue
+        if current != expected:
+            return False
+    return True
+
+
+def _verify_interview_new_saved(entrevista_id: int, candidata_id: Optional[int] = None) -> bool:
     if not int(entrevista_id or 0):
         return False
-    exists = (
+    entrevista = (
         Entrevista.query
         .filter(Entrevista.id == int(entrevista_id))
-        .count()
+        .first()
     )
-    if int(exists or 0) <= 0:
+    if not entrevista:
+        return False
+    if candidata_id and int(getattr(entrevista, "candidata_id", 0) or 0) != int(candidata_id):
         return False
     answers_count = (
         EntrevistaRespuesta.query
         .filter(EntrevistaRespuesta.entrevista_id == int(entrevista_id))
         .count()
     )
-    return int(answers_count or 0) > 0
+    if int(answers_count or 0) <= 0:
+        return False
+    useful_answers = (
+        EntrevistaRespuesta.query
+        .filter(EntrevistaRespuesta.entrevista_id == int(entrevista_id))
+        .all()
+    )
+    return any(legacy_text_is_useful(getattr(a, "respuesta", None)) for a in useful_answers)
 
 
 def _build_legacy_interview_text(preguntas, respuestas_por_pregunta: dict[int, str]) -> str:
@@ -1541,7 +1596,7 @@ def entrevista_nueva_db(fila, tipo):
         result = execute_robust_save(
             session=db.session,
             persist_fn=_persist_interview,
-            verify_fn=lambda: _verify_interview_new_saved(int(state.get("entrevista_id") or 0)),
+            verify_fn=lambda: _verify_interview_new_saved(int(state.get("entrevista_id") or 0), int(fila)),
         )
 
         if result.ok:
@@ -1713,7 +1768,7 @@ def entrevista_editar_db(entrevista_id):
         result = execute_robust_save(
             session=db.session,
             persist_fn=_persist_interview_update,
-            verify_fn=lambda: _verify_interview_new_saved(int(getattr(entrevista, "id", 0) or 0)),
+            verify_fn=lambda: _verify_interview_new_saved(int(getattr(entrevista, "id", 0) or 0), int(fila)),
         )
 
         if result.ok:
@@ -1850,74 +1905,15 @@ def generar_pdf_entrevista_db(entrevista_id: int):
     def _collapse_ws(s: str) -> str:
         return re.sub(r"[ \t]+", " ", (s or "").strip())
 
-    def _humanize_clave(clave: str) -> str:
-        """Convierte `domestica.tienes_hijos` -> `Tienes hijos` (fallback)."""
-        clave = (clave or '').strip()
-        if not clave:
-            return ''
-        if '.' in clave:
-            _, tail = clave.split('.', 1)
-        else:
-            tail = clave
-        tail = tail.replace('_', ' ').strip()
-        tail = re.sub(r'\s+', ' ', tail)
-        tail = tail[:1].upper() + tail[1:] if tail else tail
-        return tail
-
-    _LABELS = {
-        'tienes_hijos': '¿Tiene hijos?',
-        'numero_hijos': '¿Cuántos hijos tiene?',
-        'edades_hijos': 'Edades de los hijos',
-        'quien_cuida': '¿Con quién deja a los niños?',
-        'descripcion_personal': 'Descripción personal',
-        'fuerte': 'Fortalezas',
-        'razon_trabajo': 'Motivo para trabajar',
-        'labores_anteriores': 'Experiencia / trabajos anteriores',
-        'tiempo_ultimo_trabajo': 'Tiempo en el último trabajo',
-        'razon_salida': 'Motivo de salida del último trabajo',
-        'situacion_dificil': '¿Ha tenido situaciones difíciles?',
-        'manejo_situacion': '¿Cómo manejó la situación?',
-        'manejo_reclamo': '¿Cómo maneja un reclamo?',
-        'uniforme': 'Uso de uniforme',
-        'dias_feriados': 'Disponibilidad en días feriados',
-        'revision_salida': 'Revisión al salir',
-        'colaboracion': 'Trabajo en equipo / colaboración',
-        'tipo_familia': 'Tipo de familia',
-        'cuidado_ninos': 'Cuidado de niños',
-        'sabes_cocinar': '¿Sabe cocinar?',
-        'gusta_cocinar': '¿Le gusta cocinar?',
-        'que_cocinas': '¿Qué cocina?',
-        'postres': 'Postres',
-        'tareas_casa': 'Tareas del hogar',
-        'electrodomesticos': 'Manejo de electrodomésticos',
-        'planchar': '¿Sabe planchar?',
-        'actividad_principal': 'Actividad principal',
-        'nivel_academico': 'Nivel académico',
-        'condiciones_salud': 'Condiciones de salud',
-        'alergico': 'Alergias',
-        'medicamentos': 'Medicamentos',
-        'seguro_medico': 'Seguro médico',
-        'pruebas_medicas': 'Pruebas médicas',
-        'vacunas_covid': 'Vacunas COVID',
-        'tomas_alcohol': 'Consumo de alcohol',
-        'fumas': '¿Fuma?',
-        'tatuajes_piercings': 'Tatuajes / piercings',
-    }
-
     def _pretty_question(pregunta) -> str:
         """Prioriza enunciado/etiqueta, y si no hay, humaniza la clave."""
         for attr in ('enunciado','pregunta','texto_pregunta','texto','label','etiqueta','titulo','nombre','descripcion'):
             v = (getattr(pregunta, attr, None) or '').strip()
             if v:
-                return v
+                return humanize_pdf_label(v)
 
         clave = (getattr(pregunta, 'clave', None) or '').strip()
-        tail = clave.split('.', 1)[1] if (clave and '.' in clave) else clave
-        tail_key = (tail or '').strip().lower()
-        if tail_key in _LABELS:
-            return _LABELS[tail_key]
-
-        return _humanize_clave(clave) or 'Pregunta'
+        return humanize_pdf_label(clave) or 'Pregunta'
 
     def _wrap_unbreakables(s: str, chunk=60) -> str:
         out = []
@@ -2270,37 +2266,68 @@ def buscar_candidata():
                     v_pct = (request.form.get('acepta_porcentaje') or '').strip().lower()
                     obj.acepta_porcentaje_sueldo = v_pct in ('si', 'sí', 'true', '1', 'on')
 
-                try:
-                    db.session.commit()
+                expected_verify = {
+                    "nombre_completo": (obj.nombre_completo or "").strip(),
+                    "edad": (obj.edad or "").strip(),
+                    "numero_telefono": (obj.numero_telefono or "").strip(),
+                    "direccion_completa": (obj.direccion_completa or "").strip(),
+                    "modalidad_trabajo_preferida": (obj.modalidad_trabajo_preferida or "").strip(),
+                    "rutas_cercanas": (obj.rutas_cercanas or "").strip(),
+                    "empleo_anterior": (obj.empleo_anterior or "").strip(),
+                    "anos_experiencia": (obj.anos_experiencia or "").strip(),
+                    "areas_experiencia": (obj.areas_experiencia or "").strip(),
+                    "contactos_referencias_laborales": (obj.contactos_referencias_laborales or "").strip(),
+                    "referencias_familiares_detalle": (obj.referencias_familiares_detalle or "").strip(),
+                    "cedula": (obj.cedula or "").strip(),
+                }
+                if 'sabe_planchar' in request.form:
+                    expected_verify["sabe_planchar"] = bool(obj.sabe_planchar)
+                if 'acepta_porcentaje' in request.form:
+                    expected_verify["acepta_porcentaje_sueldo"] = bool(obj.acepta_porcentaje_sueldo)
+
+                result = execute_robust_save(
+                    session=db.session,
+                    persist_fn=lambda _attempt: None,
+                    verify_fn=lambda: _verify_candidata_fields_saved(int(obj.fila), expected_verify, fallback_obj=obj),
+                )
+
+                if result.ok:
                     after_snapshot = snapshot_model_fields(obj, audit_fields)
                     changes = diff_snapshots(before_snapshot, after_snapshot)
                     log_candidata_action(
                         action_type="CANDIDATA_EDIT",
                         candidata=obj,
                         summary=f"Edición de candidata {obj.nombre_completo or obj.fila}",
-                        metadata={"candidata_id": obj.fila},
+                        metadata={"candidata_id": obj.fila, "attempt_count": int(result.attempts)},
                         changes=changes,
                         success=True,
                     )
                     flash("✅ Datos actualizados correctamente.", "success")
                     return redirect(url_for('buscar_candidata', candidata_id=cid))
-                except IntegrityError:
-                    db.session.rollback()
+
+                error_message = (result.error_message or "").lower()
+                if "unique" in error_message or "duplicate" in error_message or "cedula" in error_message:
                     log_candidata_action(
                         action_type="CANDIDATA_EDIT",
                         candidata=obj,
                         summary=f"Fallo edición de candidata {obj.fila}",
+                        metadata={"attempt_count": int(result.attempts)},
                         success=False,
                         error="Conflicto de cédula duplicada.",
                     )
                     mensaje = "⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente)."
-                except Exception:
-                    db.session.rollback()
-                    app.logger.exception("❌ Error al guardar edición de candidata")
+                else:
+                    app.logger.error(
+                        "❌ Error al guardar edición de candidata fila=%s attempts=%s error=%s",
+                        obj.fila,
+                        result.attempts,
+                        result.error_message,
+                    )
                     log_candidata_action(
                         action_type="CANDIDATA_EDIT",
                         candidata=obj,
                         summary=f"Fallo edición de candidata {obj.fila}",
+                        metadata={"attempt_count": int(result.attempts)},
                         success=False,
                         error="Error al guardar edición de candidata.",
                     )
@@ -3267,6 +3294,10 @@ def subir_fotos():
                     flash(f"❌ Archivo inválido en {campo}: {err}", "danger")
                     tiene = _build_docs_flags(candidata)
                     return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene, **_upload_limits_view_context())
+                if safe_bytes_length(data) <= 0:
+                    flash(f"❌ Archivo inválido en {campo}: el archivo está vacío.", "danger")
+                    tiene = _build_docs_flags(candidata)
+                    return render_template('subir_fotos.html', accion='subir', fila=fila_id, tiene=tiene, **_upload_limits_view_context())
                 payload_bytes[campo] = data
 
             if not payload_bytes:
@@ -3703,7 +3734,7 @@ def generar_pdf_entrevista():
             line = _collapse_ws(_ascii_if_needed(raw, unicode_ok))
             if ":" in line:
                 q, a = line.split(":", 1)
-                q = _collapse_ws(q)
+                q = _collapse_ws(humanize_pdf_label(q))
                 a = _collapse_ws(a)
 
                 safe_multicell(pdf, (q + ":").strip(), base_font, "B" if has_bold else "", 12,
@@ -3957,15 +3988,38 @@ def referencias():
             cand_ref_lab = (request.form.get('referencias_laboral') or '').strip()[:5000]
             cand_ref_fam = (request.form.get('referencias_familiares') or '').strip()[:5000]
 
-            candidata.referencias_laboral    = cand_ref_lab
+            if not legacy_text_is_useful(cand_ref_lab) or not legacy_text_is_useful(cand_ref_fam):
+                mensaje = "⚠️ Referencias inválidas. Usa texto real (no placeholders)."
+                return render_template('referencias.html',
+                                       accion='ver',
+                                       candidata=candidata,
+                                       mensaje=mensaje)
+
+            candidata.referencias_laboral = cand_ref_lab
             candidata.referencias_familiares = cand_ref_fam
-            try:
-                db.session.commit()
+            result = execute_robust_save(
+                session=db.session,
+                persist_fn=lambda _attempt: None,
+                verify_fn=lambda: _verify_candidata_fields_saved(
+                    int(cid),
+                    {
+                        "referencias_laboral": cand_ref_lab,
+                        "referencias_familiares": cand_ref_fam,
+                    },
+                    fallback_obj=candidata,
+                ),
+            )
+            if result.ok:
                 mensaje = "✅ Referencias actualizadas."
-            except Exception:
+            else:
                 db.session.rollback()
-                current_app.logger.exception("❌ Error al guardar referencias")
-                mensaje = "❌ Error al guardar."
+                current_app.logger.error(
+                    "❌ Error al guardar referencias candidata_id=%s attempts=%s error=%s",
+                    cid,
+                    result.attempts,
+                    result.error_message,
+                )
+                mensaje = "❌ Error al guardar. No se pudo verificar la persistencia."
 
         return render_template('referencias.html',
                                accion='ver',
@@ -4972,11 +5026,14 @@ def finalizar_proceso():
         flash(f"Error leyendo archivos: {e}", "danger")
         return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
 
-    # Guardar bytes
-    ok_foto = _set_bytes_attr_safe(candidata, 'foto_perfil', foto_perfil_bytes) or \
-              _set_bytes_attr_safe(candidata, 'perfil', foto_perfil_bytes)
-    ok_ced1 = _set_bytes_attr_safe(candidata, 'cedula1', cedula1_bytes)
-    ok_ced2 = _set_bytes_attr_safe(candidata, 'cedula2', cedula2_bytes)
+    if safe_bytes_length(foto_perfil_bytes) <= 0 or safe_bytes_length(cedula1_bytes) <= 0 or safe_bytes_length(cedula2_bytes) <= 0:
+        flash("Los archivos no pueden estar vacíos.", "danger")
+        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    foto_field = 'foto_perfil' if hasattr(candidata, 'foto_perfil') else ('perfil' if hasattr(candidata, 'perfil') else None)
+    ok_foto = foto_field is not None
+    ok_ced1 = hasattr(candidata, 'cedula1')
+    ok_ced2 = hasattr(candidata, 'cedula2')
 
     if not (ok_foto and ok_ced1 and ok_ced2):
         detalles = []
@@ -4998,33 +5055,60 @@ def finalizar_proceso():
             or session.get("usuario")
             or "sistema"
         )
-        maybe_update_estado_por_completitud(candidata, actor=str(actor))
+        actor = str(actor)
     except Exception:
-        pass
+        actor = "sistema"
 
-    try:
-        db.session.commit()
+    expected_lengths = {}
+    if foto_field:
+        expected_lengths[foto_field] = safe_bytes_length(foto_perfil_bytes)
+    if ok_ced1:
+        expected_lengths["cedula1"] = safe_bytes_length(cedula1_bytes)
+    if ok_ced2:
+        expected_lengths["cedula2"] = safe_bytes_length(cedula2_bytes)
+
+    def _persist_finalizar(_attempt: int):
+        if foto_field:
+            setattr(candidata, foto_field, foto_perfil_bytes)
+        if ok_ced1:
+            candidata.cedula1 = cedula1_bytes
+        if ok_ced2:
+            candidata.cedula2 = cedula2_bytes
+        if grupos_sel:
+            _save_grupos_empleo_safe(candidata, grupos_sel)
+        try:
+            maybe_update_estado_por_completitud(candidata, actor=actor)
+        except Exception:
+            pass
+
+    result = execute_robust_save(
+        session=db.session,
+        persist_fn=_persist_finalizar,
+        verify_fn=lambda: _verify_candidata_docs_saved(int(candidata.fila), expected_lengths),
+    )
+
+    if result.ok:
         log_candidata_action(
             action_type="CANDIDATA_UPLOAD_DOCS",
             candidata=candidata,
             summary="Finalización de proceso con carga de documentos",
-            metadata={"fields": ["foto_perfil", "cedula1", "cedula2"], "source": "finalizar_proceso"},
+            metadata={"fields": sorted(list(expected_lengths.keys())), "source": "finalizar_proceso", "attempt_count": int(result.attempts)},
             success=True,
         )
         flash("✅ Proceso finalizado y datos guardados correctamente.", "success")
         return redirect(url_for('candidata_ver_perfil', fila=candidata.fila))
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        log_candidata_action(
-            action_type="CANDIDATA_UPLOAD_DOCS",
-            candidata=candidata,
-            summary="Fallo finalizando proceso con documentos",
-            metadata={"source": "finalizar_proceso"},
-            success=False,
-            error=str(e),
-        )
-        flash(f"❌ Error guardando en la base de datos: {e}", "danger")
-        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+
+    db.session.rollback()
+    log_candidata_action(
+        action_type="CANDIDATA_UPLOAD_DOCS",
+        candidata=candidata,
+        summary="Fallo finalizando proceso con documentos",
+        metadata={"source": "finalizar_proceso", "attempt_count": int(result.attempts)},
+        success=False,
+        error=result.error_message,
+    )
+    flash("❌ Error guardando en la base de datos: no se pudo verificar la persistencia.", "danger")
+    return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
 
 
 # ---------- PERFIL (HTML) ----------
@@ -5375,7 +5459,30 @@ def compat_candidata():
             if hasattr(c, 'compat_test_candidata_version'):  c.compat_test_candidata_version = COMPAT_TEST_CANDIDATA_VERSION
             if hasattr(c, 'compat_test_candidata_at'):       c.compat_test_candidata_at = datetime.utcnow()
 
-            db.session.commit()
+            def _verify_compat_saved() -> bool:
+                cand_db = _get_candidata_by_fila_or_pk(int(fila)) or c
+                if not cand_db:
+                    return False
+                payload_db = getattr(cand_db, 'compat_test_candidata_json', None) or {}
+                profile_db = payload_db.get('profile', {}) if isinstance(payload_db, dict) else {}
+                if (profile_db.get("ritmo") or "") != (ritmo or ""):
+                    return False
+                if (profile_db.get("estilo") or "") != (estilo or ""):
+                    return False
+                if (profile_db.get("comunicacion") or "") != (comun or ""):
+                    return False
+                if int(profile_db.get("puntualidad_1a5") or 0) != int(puntual or 0):
+                    return False
+                return True
+
+            result = execute_robust_save(
+                session=db.session,
+                persist_fn=lambda _attempt: None,
+                verify_fn=_verify_compat_saved,
+            )
+            if not result.ok:
+                raise RuntimeError(result.error_message or "No se pudo verificar guardado.")
+
             flash("✅ Test de compatibilidad guardado correctamente.", "success")
 
             next_url = request.values.get('next')

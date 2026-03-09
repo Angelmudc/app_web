@@ -25,6 +25,7 @@ def test_monitoreo_json_endpoints_admin_only_and_filters():
         admin = StaffUser.query.filter_by(username='Cruz').first()
         sec = StaffUser.query.filter_by(username='Karla').first()
         assert admin is not None and sec is not None
+        sec_id = int(sec.id)
 
         db.session.add(StaffAuditLog(created_at=datetime.utcnow(), actor_user_id=sec.id, actor_role='secretaria', action_type='CANDIDATA_EDIT', entity_type='Candidata', entity_id='100', summary='edit-100', metadata_json={}, success=True))
         db.session.add(StaffAuditLog(created_at=datetime.utcnow(), actor_user_id=sec.id, actor_role='secretaria', action_type='MATCHING_SEND', entity_type='Solicitud', entity_id='200', summary='send-200', metadata_json={}, success=True))
@@ -48,7 +49,10 @@ def test_monitoreo_json_endpoints_admin_only_and_filters():
     since_data = since_resp.get_json()
     assert since_data['items'] == []
 
-    filt_resp = client_admin.get('/admin/monitoreo/logs.json?action_type=MATCHING_SEND&actor_user_id=2&limit=50', follow_redirects=False)
+    filt_resp = client_admin.get(
+        f'/admin/monitoreo/logs.json?action_type=MATCHING_SEND&actor_user_id={sec_id}&limit=50',
+        follow_redirects=False,
+    )
     assert filt_resp.status_code == 200
     filt_data = filt_resp.get_json()
     assert any(i['action_type'] == 'MATCHING_SEND' for i in filt_data['items'])
