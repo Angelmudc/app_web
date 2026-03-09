@@ -57,7 +57,7 @@ def _actor_from_context() -> tuple[int | None, str | None]:
 
 def is_staff_actor() -> bool:
     _, role = _actor_from_context()
-    return role in {"admin", "secretaria"}
+    return role in {"owner", "admin", "secretaria"}
 
 
 def log_action(
@@ -105,6 +105,19 @@ def log_action(
             conn.execute(StaffAuditLog.__table__.insert().values(**payload))
         if has_request_context():
             g._staff_audit_logged = True
+        try:
+            from utils.enterprise_layer import evaluate_security_anomalies
+
+            evaluate_security_anomalies(
+                action_type=payload.get("action_type") or "",
+                success=bool(payload.get("success")),
+                actor_user_id=payload.get("actor_user_id"),
+                route=payload.get("route"),
+                changes=payload.get("changes_json"),
+                metadata=payload.get("metadata_json"),
+            )
+        except Exception:
+            pass
     except Exception:
         return
 

@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Seguridad · Locks de edición{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Locks de edición</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver a Control Room</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle">
+      <thead><tr><th>Entidad</th><th>ID</th><th>Usuaria</th><th>Ruta</th><th>Estado</th><th>Hace</th></tr></thead>
+      <tbody>
+        {% for row in locks %}
+        <tr>
+          <td>{{ row.entity_type }}</td>
+          <td>{{ row.entity_id }}</td>
+          <td>{{ row.owner_username }}</td>
+          <td><small>{{ row.current_path or '-' }}</small></td>
+          <td>{% if row.active %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-secondary">Expirado</span>{% endif %}</td>
+          <td>{{ row.held_for_sec }}s</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">No hay locks activos.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

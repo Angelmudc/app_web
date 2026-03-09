@@ -16,7 +16,10 @@
       </div>
       {% endif %}
     </div>
-    <a href="{{ url_for('admin.matching_solicitudes') }}" class="btn btn-outline-secondary">Volver</a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.sugerencias_solicitud', solicitud_id=solicitud.id) }}" class="btn btn-outline-primary">Sugerencias inteligentes</a>
+      <a href="{{ url_for('admin.matching_solicitudes') }}" class="btn btn-outline-secondary">Volver</a>
+    </div>
   </div>
 
   <form method="post" action="{{ url_for('admin.matching_enviar_candidatas', solicitud_id=solicitud.id) }}">

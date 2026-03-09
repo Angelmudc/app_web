@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Salud del sistema{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Salud del sistema</h1>
+  <div class="row g-3">
+    <div class="col-md-4"><div class="card"><div class="card-body"><small>Base de datos</small><div class="h5 mb-0">{{ 'OK' if health.db.ok else 'Fallo' }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body"><small>Stream/cache</small><div class="h5 mb-0">{{ 'OK' if health.stream.ok else 'Fallo' }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body"><small>Errores últimos 15m</small><div class="h5 mb-0">{{ health.errors_last_15m }}</div></div></div></div>
+  </div>
+  <div class="mt-3 text-muted small">Actualizado: {{ health.generated_at }}</div>
+</div>
+{% endblock %}

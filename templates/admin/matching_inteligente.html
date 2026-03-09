@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Motor de decisiones{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Motor de decisiones</h1>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle">
+      <thead><tr><th>Solicitud</th><th>Cliente</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        {% for s in solicitudes %}
+        <tr>
+          <td>{{ s.codigo_solicitud or s.id }}</td>
+          <td>{{ s.cliente.nombre_completo if s.cliente else '-' }}</td>
+          <td>{{ s.estado }}</td>
+          <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.sugerencias_solicitud', solicitud_id=s.id) }}">Ver sugerencias</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">No hay solicitudes para evaluar.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

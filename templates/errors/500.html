@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Algo salió mal{% endblock %}
+{% block content %}
+<div class="container py-5 text-center">
+  <h1 class="display-5">Ocurrió un problema</h1>
+  <p class="text-muted">Nuestro equipo ya recibió la alerta. Intenta nuevamente en unos minutos.</p>
+  <a class="btn btn-primary" href="{{ url_for('home') }}">Volver al inicio</a>
+</div>
+{% endblock %}

@@ -181,6 +181,8 @@ def _normalize_staff_role_name(role_value: str) -> str:
     role = (role_value or "").strip().lower()
     if not role:
         return ""
+    if role in ("owner",):
+        return "owner"
     if role in ("admin",):
         return "admin"
     if role in ("secretaria", "secretary", "secre", "secretaría"):
@@ -204,7 +206,7 @@ def get_staff_role() -> str:
     if role == "admin" and is_breakglass_user_obj() and is_breakglass_session_valid():
         return "admin"
 
-    if role not in ("admin", "secretaria"):
+    if role not in ("owner", "admin", "secretaria"):
         return ""
 
     if _is_staff_user_model():
@@ -235,7 +237,7 @@ def admin_required(view_func):
         if not role:
             flash("Debes iniciar sesión.", "warning")
             return redirect_admin_login()
-        if role != "admin":
+        if role not in ("owner", "admin"):
             abort(403)
         return view_func(*args, **kwargs)
     return wrapper

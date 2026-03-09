@@ -125,7 +125,7 @@
   {% endfor %}
 
   {% set _role = (current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) %}
-  {% if _role in ['admin', 'secretaria'] %}
+  {% if _role in ['owner', 'admin', 'secretaria'] %}
     <div class="mb-5">
       <h2 class="section-title">
         <i class="fa-solid fa-clipboard-check me-2 text-primary"></i> Auditoría Staff
@@ -143,7 +143,7 @@
       </div>
     </div>
 
-    {% if _role == 'admin' %}
+    {% if _role in ['owner', 'admin'] %}
     <div class="mb-5">
       <h2 class="section-title">
         <i class="fa-solid fa-user-shield me-2 text-primary"></i> Monitoreo

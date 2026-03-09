@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Roles de equipo{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+    <h1 class="h4 mb-0">Roles del equipo</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver al Control Room</a>
+  </div>
+
+  <p class="text-muted mb-3">Asigna permisos simples: Owner (control total), Admin (operación) y Secretaria (operación básica).</p>
+
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Email</th>
+          <th>Estado</th>
+          <th>Rol actual</th>
+          <th style="width: 320px;">Cambiar rol</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.username }}</strong></td>
+          <td>{{ u.email or '-' }}</td>
+          <td>
+            {% if u.is_active %}
+              <span class="badge bg-success">Activo</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactivo</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set r = (u.role or 'secretaria')|lower %}
+            {% if r == 'owner' %}<span class="badge bg-dark">Owner</span>{% endif %}
+            {% if r == 'admin' %}<span class="badge bg-primary">Admin</span>{% endif %}
+            {% if r == 'secretaria' %}<span class="badge bg-info text-dark">Secretaria</span>{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('admin.admin_roles') }}" class="d-flex gap-2 align-items-center">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <select class="form-select form-select-sm" name="role">
+                <option value="owner" {% if r == 'owner' %}selected{% endif %}>Owner</option>
+                <option value="admin" {% if r == 'admin' %}selected{% endif %}>Admin</option>
+                <option value="secretaria" {% if r == 'secretaria' %}selected{% endif %}>Secretaria</option>
+              </select>
+              <button class="btn btn-sm btn-primary" type="submit">Guardar</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">No hay usuarios cargados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

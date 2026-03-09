@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Sugerencias inteligentes{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h4 mb-1">Sugerencias inteligentes</h1>
+      <div class="small text-muted">Solicitud {{ solicitud.codigo_solicitud or solicitud.id }} · {{ solicitud.cliente.nombre_completo if solicitud.cliente else 'Sin cliente' }}</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.matching_detalle_solicitud', solicitud_id=solicitud.id) }}">Volver a matching</a>
+  </div>
+  <div class="row g-3">
+    {% for item in items %}
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 mb-0">{{ item.nombre or 'Sin nombre' }}</h2>
+            <span class="badge bg-primary">{{ item.score }}/100</span>
+          </div>
+          <div class="small text-muted mb-2">Código: {{ item.codigo or '-' }} · Tel: {{ item.telefono or '-' }}</div>
+          <div class="small"><strong>Por qué:</strong>
+            <ul>
+              {% for r in item.razones %}<li>{{ r }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% if item.alertas %}
+          <div class="small"><strong>Alertas:</strong>
+            <ul>
+              {% for a in item.alertas %}<li>{{ a }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          <form method="post" action="{{ url_for('admin.sugerencias_feedback', solicitud_id=solicitud.id) }}" class="row g-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="candidata_id" value="{{ item.candidata_id }}">
+            <div class="col-md-4">
+              <select class="form-select form-select-sm" name="feedback">
+                <option value="good">Buena sugerencia</option>
+                <option value="bad">No encajó</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <select class="form-select form-select-sm" name="reason_key">
+                <option value="ubicacion">Ubicación</option>
+                <option value="horario">Horario</option>
+                <option value="experiencia">Experiencia</option>
+                <option value="documentacion">Documentación</option>
+                <option value="referencias">Referencias</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <button class="btn btn-sm btn-outline-dark w-100" type="submit">Guardar feedback</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12"><div class="alert alert-warning">No hay sugerencias disponibles con los datos actuales.</div></div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

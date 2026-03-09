@@ -98,7 +98,7 @@ class StaffUserCreateForm(FlaskForm):
     )
     role = SelectField(
         'Rol',
-        choices=[('secretaria', 'Secretaria'), ('admin', 'Admin')],
+        choices=[('secretaria', 'Secretaria'), ('admin', 'Admin'), ('owner', 'Owner')],
         validators=[DataRequired("Selecciona un rol.")]
     )
     password = PasswordField(
@@ -118,7 +118,7 @@ class StaffUserEditForm(FlaskForm):
     )
     role = SelectField(
         'Rol',
-        choices=[('secretaria', 'Secretaria'), ('admin', 'Admin')],
+        choices=[('secretaria', 'Secretaria'), ('admin', 'Admin'), ('owner', 'Owner')],
         validators=[DataRequired("Selecciona un rol.")]
     )
     new_password = PasswordField(

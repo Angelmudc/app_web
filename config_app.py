@@ -9,9 +9,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional
 
-from flask import Flask, request, redirect, url_for, abort, session
+from flask import Flask, request, redirect, url_for, abort, session, render_template, g
 from datetime import timedelta
-from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.exceptions import RequestEntityTooLarge, HTTPException
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
@@ -361,6 +361,85 @@ def create_app():
         except Exception:
             return msg, 413
 
+    @app.before_request
+    def _assign_request_id():
+        try:
+            rid = (request.headers.get("X-Request-ID") or "").strip()[:120]
+            if rid:
+                request.request_id = rid
+        except Exception:
+            pass
+
+    def _raw_error_event(error_type: str, err: str, code: int = 500):
+        try:
+            from models import StaffAuditLog
+            from datetime import datetime as _dt
+
+            payload = {
+                "created_at": _dt.utcnow(),
+                "actor_user_id": None,
+                "actor_role": (session.get("role") or "").strip().lower() or None,
+                "action_type": "ERROR_EVENT",
+                "entity_type": "system",
+                "entity_id": None,
+                "route": (request.path or "")[:255] or None,
+                "method": (request.method or "")[:10] or None,
+                "ip": (request.headers.get("CF-Connecting-IP") or request.remote_addr or "")[:64] or None,
+                "user_agent": (request.headers.get("User-Agent") or "")[:512] or None,
+                "summary": f"Error en operación ({(error_type or 'SERVER_ERROR')[:60]})",
+                "metadata_json": {
+                    "error_type": (error_type or "SERVER_ERROR")[:60],
+                    "request_id": (getattr(request, "request_id", None) or "")[:120] or None,
+                    "status_code": int(code or 500),
+                },
+                "changes_json": None,
+                "success": False,
+                "error_message": (err or "")[:4000] or None,
+            }
+            with db.engine.begin() as conn:
+                conn.execute(StaffAuditLog.__table__.insert().values(**payload))
+        except Exception:
+            pass
+
+    def _http_status_code_from_err(err, default: int = 500) -> int:
+        try:
+            raw = getattr(err, "code", default)
+            return int(raw)
+        except Exception:
+            return int(default)
+
+    @app.errorhandler(Exception)
+    def _handle_unexpected_error(err):
+        if isinstance(err, HTTPException):
+            code = int(getattr(err, "code", 500) or 500)
+            if code < 500:
+                return err
+        _raw_error_event(
+            error_type="SERVER_ERROR",
+            err=(str(err) or "Unhandled error"),
+            code=_http_status_code_from_err(err, 500),
+        )
+        try:
+            g._error_event_logged = True
+        except Exception:
+            pass
+        return render_template("errors/500.html"), 500
+
+    @app.after_request
+    def _capture_http_5xx(resp):
+        try:
+            code = int(getattr(resp, "status_code", 0) or 0)
+            if code >= 500 and not bool(getattr(g, "_error_event_logged", False)):
+                _raw_error_event(
+                    error_type="SERVER_ERROR",
+                    err=f"HTTP {code}",
+                    code=code,
+                )
+                g._error_event_logged = True
+        except Exception:
+            pass
+        return resp
+
     # ─────────────────────────────────────────────────────────
     # Helpers globales para templates
     # ─────────────────────────────────────────────────────────
@@ -450,10 +529,10 @@ def create_app():
 
     def _normalize_staff_role(role_raw: str) -> str:
         role = (role_raw or "").strip().lower()
-        if role in {"admin", "secretaria"}:
+        if role in {"owner", "admin", "secretaria"}:
             return role
         default_role = (os.getenv("ADMIN_DEFAULT_ROLE") or "secretaria").strip().lower()
-        return default_role if default_role in {"admin", "secretaria"} else "secretaria"
+        return default_role if default_role in {"owner", "admin", "secretaria"} else "secretaria"
 
     def _create_staff_user(username: str, role: str, password: str, email: str = "", is_active: bool = True):
         from models import StaffUser
@@ -489,7 +568,7 @@ def create_app():
 
     @app.cli.command("create-staff")
     @click.option("--username", required=True, help="Usuario interno (único).")
-    @click.option("--role", required=False, default=lambda: os.getenv("ADMIN_DEFAULT_ROLE", "secretaria"), help="Rol: admin|secretaria.")
+    @click.option("--role", required=False, default=lambda: os.getenv("ADMIN_DEFAULT_ROLE", "secretaria"), help="Rol: owner|admin|secretaria.")
     @click.option("--password", required=True, help="Contraseña inicial.")
     @click.option("--email", required=False, default="", help="Email opcional (único).")
     def create_staff_command(username: str, role: str, password: str, email: str):
@@ -546,6 +625,7 @@ def create_app():
         from models import StaffUser
 
         seed = [
+            ("Owner", "owner", "8899"),
             ("Cruz", "admin", "8998"),
             ("Karla", "secretaria", "9989"),
             ("Anyi", "secretaria", "0931"),
@@ -565,6 +645,10 @@ def create_app():
             StaffUser.__table__.create(bind=db.engine, checkfirst=True)
             StaffAuditLog.__table__.create(bind=db.engine, checkfirst=True)
             _seed_testing_staff_users()
+
+        @app.route("/_test/error", methods=["GET"])
+        def _test_error_route():
+            raise RuntimeError("forced_test_error")
 
     from utils.audit_logger import log_staff_post_fallback
 

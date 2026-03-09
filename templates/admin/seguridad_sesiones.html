@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Seguridad · Sesiones activas{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Sesiones activas</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver a Control Room</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle">
+      <thead><tr><th>Usuaria</th><th>Rol</th><th>IP</th><th>Ruta actual</th><th>Última actividad</th><th>Acción</th></tr></thead>
+      <tbody>
+        {% for s in sessions_rows %}
+        <tr>
+          <td>{{ s.username }}</td>
+          <td>{{ s.role }}</td>
+          <td><small>{{ s.ip or '-' }}</small></td>
+          <td><small>{{ s.current_path or '-' }}</small></td>
+          <td>{{ s.last_seen_seconds }}s</td>
+          <td>
+            <form method="post" action="{{ url_for('admin.seguridad_sesiones_cerrar') }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="user_id" value="{{ s.user_id }}">
+              <button class="btn btn-sm btn-outline-danger" type="submit">Cerrar sesión</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">No hay sesiones activas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -164,7 +164,7 @@
     {% set role_cur = (current_user.role if current_user and current_user.is_authenticated and current_user.role is defined else '') %}
     {% set role_sess = session.get('role', '') %}
     {% set es_admin = ((role_cur|string|lower) == 'admin') or ((role_sess|string|lower) == 'admin') %}
-    {% set es_staff = ((role_cur|string|lower) in ['admin', 'secretaria']) or ((role_sess|string|lower) in ['admin', 'secretaria']) %}
+    {% set es_staff = ((role_cur|string|lower) in ['owner', 'admin', 'secretaria']) or ((role_sess|string|lower) in ['owner', 'admin', 'secretaria']) %}
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
       <a href="{{ url_for('buscar_candidata', busqueda=busqueda) }}" class="btn btn-outline-secondary">
         <i class="fa-solid fa-arrow-left-long me-1"></i> Volver

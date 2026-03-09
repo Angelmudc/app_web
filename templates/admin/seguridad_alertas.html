@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Seguridad · Alertas{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Alertas de seguridad</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver a Control Room</a>
+  </div>
+  {% for a in alerts %}
+  <div class="alert alert-warning">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <strong>{{ a.summary or 'Alerta' }}</strong>
+        <div class="small text-muted">{{ a.created_at }} · {{ a.route or '-' }}</div>
+      </div>
+      {% if not a.is_resolved %}
+      <form method="post" action="{{ url_for('admin.resolver_alerta', alert_id=a.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button class="btn btn-sm btn-outline-dark" type="submit">Marcar resuelta</button>
+      </form>
+      {% else %}
+      <span class="badge bg-success">Resuelta</span>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="text-muted">No hay alertas registradas.</div>
+  {% endfor %}
+</div>
+{% endblock %}

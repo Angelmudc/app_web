@@ -81,22 +81,22 @@ def _is_admin_any() -> bool:
     try:
         if bool(getattr(current_user, "is_authenticated", False)):
             role = (getattr(current_user, "role", None) or getattr(current_user, "rol", None) or "").strip().lower()
-            if role == "admin" or bool(getattr(current_user, "is_admin", False)):
+            if role in ("owner", "admin") or bool(getattr(current_user, "is_admin", False)):
                 return True
     except Exception:
         pass
-    return (str(session.get("role") or "").strip().lower() == "admin")
+    return (str(session.get("role") or "").strip().lower() in ("owner", "admin"))
 
 
 def _is_staff_any() -> bool:
     try:
         if bool(getattr(current_user, "is_authenticated", False)):
             role = (getattr(current_user, "role", None) or getattr(current_user, "rol", None) or "").strip().lower()
-            if role in ("admin", "secretaria"):
+            if role in ("owner", "admin", "secretaria"):
                 return True
     except Exception:
         pass
-    return (str(session.get("role") or "").strip().lower() in ("admin", "secretaria"))
+    return (str(session.get("role") or "").strip().lower() in ("owner", "admin", "secretaria"))
 
 
 @app.before_request
