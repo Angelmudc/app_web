@@ -161,7 +161,9 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertNotIn('id="cancelModal10"', html)
         self.assertIn('class="dropdown-item js-open-cancel"', html)
         self.assertNotIn('data-bs-target="#cancelModalShared"', html)
-        self.assertIn('<textarea class="form-control" name="motivo" rows="3" minlength="5" required></textarea>', html)
+        self.assertIn('modal-dialog-centered modal-dialog-scrollable', html)
+        self.assertIn('<textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>', html)
+        self.assertIn('Confirmar cancelación', html)
 
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
         self._login("Cruz", "8998")
@@ -183,6 +185,10 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('data-no-loader="true"', html)
         self.assertIn('id="paidModalSharedSearch"', html)
         self.assertIn('placeholder="Escribe nombre o ID..."', html)
+        self.assertIn('id="paidModalSharedSearchBtn"', html)
+        self.assertIn('id="paidModalSharedClearBtn"', html)
+        self.assertIn('id="paidModalSharedSearchStats"', html)
+        self.assertIn('id="paidModalSharedSelected"', html)
         self.assertIn('class="alert d-none js-modal-feedback"', html)
 
     def test_copiar_solicitud_post_vuelve_misma_pantalla(self):

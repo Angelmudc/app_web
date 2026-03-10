@@ -2,6 +2,27 @@
 {% block title %}Copiar Solicitudes{% endblock %}
 
 {% block content %}
+<style>
+  #cancelModalShared .modal-dialog,
+  #paidModalShared .modal-dialog {
+    max-width: 560px;
+  }
+  #cancelModalShared .modal-content,
+  #paidModalShared .modal-content {
+    max-height: 84vh;
+  }
+  #cancelModalShared .modal-body,
+  #paidModalShared .modal-body {
+    overflow-y: auto;
+  }
+  #cancelModalShared .modal-footer,
+  #paidModalShared .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: var(--bs-body-bg);
+    z-index: 2;
+  }
+</style>
 <div class="container py-5">
   <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
     <h1 class="h4 mb-0">📋 Copiar Solicitudes Disponibles</h1>
@@ -207,7 +228,7 @@
 </div>
 
 <div class="modal fade" id="cancelModalShared" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="cancelModalSharedTitle">Cancelar solicitud</h5>
@@ -221,7 +242,7 @@
           <input type="hidden" name="next" id="cancelModalSharedNext" value="{{ request.full_path }}">
           <div class="alert d-none js-modal-feedback" role="alert"></div>
           <label class="form-label fw-semibold">Motivo de cancelación</label>
-          <textarea class="form-control" name="motivo" rows="3" minlength="5" required></textarea>
+          <textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>
           <small class="text-body-secondary">Mínimo 5 caracteres.</small>
         </div>
         <div class="modal-footer">
@@ -235,7 +256,7 @@
 
 {% if is_admin_role %}
 <div class="modal fade" id="paidModalShared" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="paidModalSharedTitle">Marcar pagado</h5>
@@ -250,13 +271,18 @@
           <div class="alert d-none js-modal-feedback" role="alert"></div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Buscar candidata</label>
-            <input
-              type="search"
-              class="form-control"
-              id="paidModalSharedSearch"
-              placeholder="Escribe nombre o ID..."
-              autocomplete="off"
-            >
+            <div class="input-group">
+              <input
+                type="search"
+                class="form-control"
+                id="paidModalSharedSearch"
+                placeholder="Escribe nombre o ID..."
+                autocomplete="off"
+              >
+              <button type="button" class="btn btn-outline-primary" id="paidModalSharedSearchBtn">Buscar</button>
+              <button type="button" class="btn btn-outline-secondary" id="paidModalSharedClearBtn">Limpiar</button>
+            </div>
+            <small class="text-body-secondary d-block mt-1" id="paidModalSharedSearchStats">Escribe para buscar o usa el botón Buscar.</small>
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Candidata</label>
@@ -266,6 +292,7 @@
                 <option value="{{ cand.fila }}">{{ cand.nombre_completo }} (ID {{ cand.fila }})</option>
               {% endfor %}
             </select>
+            <small class="text-body-secondary d-block mt-1" id="paidModalSharedSelected">Seleccionada: ninguna</small>
           </div>
           <div>
             <label class="form-label fw-semibold">Monto pagado</label>
@@ -300,6 +327,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const paidNext = document.getElementById('paidModalSharedNext');
   const paidCandidata = document.getElementById('paidModalSharedCandidata');
   const paidSearch = document.getElementById('paidModalSharedSearch');
+  const paidSearchBtn = document.getElementById('paidModalSharedSearchBtn');
+  const paidClearBtn = document.getElementById('paidModalSharedClearBtn');
+  const paidSearchStats = document.getElementById('paidModalSharedSearchStats');
+  const paidSelected = document.getElementById('paidModalSharedSelected');
   const paidMonto = paidForm ? paidForm.querySelector('input[name="monto_pagado"]') : null;
   const cancelModal = (window.bootstrap && cancelModalEl) ? bootstrap.Modal.getOrCreateInstance(cancelModalEl) : null;
   const paidModal = (window.bootstrap && paidModalEl) ? bootstrap.Modal.getOrCreateInstance(paidModalEl) : null;
@@ -408,15 +439,30 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => row.remove(), 220);
   }
 
-  function filterPaidCandidates() {
+  function updateSelectedCandidataText() {
+    if (!paidSelected || !paidCandidata) return;
+    const idx = paidCandidata.selectedIndex;
+    const selectedText = (idx >= 0 && paidCandidata.options[idx]) ? paidCandidata.options[idx].textContent.trim() : '';
+    if (!paidCandidata.value) {
+      paidSelected.textContent = 'Seleccionada: ninguna';
+      return;
+    }
+    paidSelected.textContent = `Seleccionada: ${selectedText}`;
+  }
+
+  function filterPaidCandidates(showResultText = false) {
     if (!paidCandidata) return;
     const needle = ((paidSearch && paidSearch.value) || '').trim().toLowerCase();
+    let matches = 0;
     Array.from(paidCandidata.options).forEach((opt, idx) => {
       if (idx === 0 || !needle) {
         opt.hidden = false;
+        if (idx > 0) matches += 1;
         return;
       }
-      opt.hidden = !opt.textContent.toLowerCase().includes(needle);
+      const hit = opt.textContent.toLowerCase().includes(needle);
+      opt.hidden = !hit;
+      if (hit) matches += 1;
     });
     if (paidCandidata.value) {
       const selected = paidCandidata.options[paidCandidata.selectedIndex];
@@ -424,6 +470,18 @@ document.addEventListener('DOMContentLoaded', () => {
         paidCandidata.value = '';
       }
     }
+    if (paidSearchStats) {
+      if (!needle) {
+        paidSearchStats.textContent = `Mostrando ${matches} candidatas disponibles.`;
+      } else if (matches === 0) {
+        paidSearchStats.textContent = 'No hay coincidencias con esa búsqueda.';
+      } else if (showResultText) {
+        paidSearchStats.textContent = `Búsqueda aplicada: ${matches} coincidencia(s).`;
+      } else {
+        paidSearchStats.textContent = `${matches} coincidencia(s) encontradas.`;
+      }
+    }
+    updateSelectedCandidataText();
   }
 
   async function submitModalAjax(form, modalEl, modalInstance, successMessage) {
@@ -566,7 +624,8 @@ document.addEventListener('DOMContentLoaded', () => {
         paidCandidata.value = current;
       }
       if (paidSearch) paidSearch.value = '';
-      filterPaidCandidates();
+      filterPaidCandidates(false);
+      updateSelectedCandidataText();
       clearModalFeedback(paidForm);
       openModalFromDropdown(btn, paidModal);
     });
@@ -603,7 +662,29 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (paidSearch) {
-    paidSearch.addEventListener('input', filterPaidCandidates);
+    paidSearch.addEventListener('input', () => filterPaidCandidates(false));
+    paidSearch.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      filterPaidCandidates(true);
+    });
+  }
+
+  if (paidSearchBtn) {
+    paidSearchBtn.addEventListener('click', () => filterPaidCandidates(true));
+  }
+
+  if (paidClearBtn) {
+    paidClearBtn.addEventListener('click', () => {
+      if (paidSearch) paidSearch.value = '';
+      filterPaidCandidates(false);
+      if (paidSearch) paidSearch.focus();
+    });
+  }
+
+  if (paidCandidata) {
+    paidCandidata.addEventListener('change', updateSelectedCandidataText);
+    updateSelectedCandidataText();
   }
 
   if (cancelModalEl && cancelTextarea) {
