@@ -9394,6 +9394,8 @@ def copiar_solicitudes():
             'id': s.id,
             'codigo_solicitud': codigo,
             'ciudad_sector': ciudad_sector,
+            'estado': s.estado,
+            'candidata_id': getattr(s, 'candidata_id', None),
             'direccion': getattr(s, 'direccion', None),
             'reemplazos': reems,
             'funcs': funcs,
@@ -9402,6 +9404,16 @@ def copiar_solicitudes():
         })
 
     has_more = (page * per_page) < total
+    is_admin_role = _current_staff_role() in ('admin', 'owner')
+    candidatas_pago = []
+    if is_admin_role:
+        candidatas_pago = (
+            Candidata.query
+            .filter(candidatas_activas_filter(Candidata))
+            .order_by(Candidata.nombre_completo.asc())
+            .limit(300)
+            .all()
+        )
     return render_template(
         'admin/solicitudes_copiar.html',
         solicitudes=solicitudes,
@@ -9409,7 +9421,9 @@ def copiar_solicitudes():
         page=page,
         per_page=per_page,
         total=total,
-        has_more=has_more
+        has_more=has_more,
+        is_admin_role=is_admin_role,
+        candidatas_pago=candidatas_pago
     )
 
 
@@ -9420,16 +9434,18 @@ def copiar_solicitudes():
 @staff_required
 def copiar_solicitud(id):
     s = Solicitud.query.get_or_404(id)
+    next_url = (request.form.get('next') or request.referrer or '').strip()
+    fallback = url_for('admin.copiar_solicitudes')
 
     if s.estado not in ('activa', 'reemplazo'):
         flash('Esta solicitud no es copiable en su estado actual.', 'warning')
-        return redirect(url_for('admin.copiar_solicitudes'))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     start_utc, _ = _utc_day_bounds()
     last = _to_naive_utc(getattr(s, 'last_copiado_at', None))
     if last is not None and last >= start_utc:
         flash('Esta solicitud ya fue marcada como copiada hoy.', 'info')
-        return redirect(url_for('admin.copiar_solicitudes'))
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     try:
         s.last_copiado_at = func.now()
@@ -9448,7 +9464,207 @@ def copiar_solicitud(id):
         db.session.rollback()
         flash('Ocurrió un error al marcar como copiada.', 'danger')
 
-    return redirect(url_for('admin.copiar_solicitudes'))
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/solicitudes/<int:id>/pausar_espera_perfil', methods=['POST'])
+@login_required
+@staff_required
+def pausar_espera_perfil_desde_copiar(id):
+    s = Solicitud.query.get_or_404(id)
+    next_url = (request.form.get('next') or request.referrer or '').strip()
+    fallback = url_for('admin.copiar_solicitudes')
+
+    if s.estado == 'espera_pago':
+        flash('La solicitud ya está en pausa por espera de perfil.', 'info')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    estado_actual = (s.estado or '').strip().lower()
+    if estado_actual in ('cancelada', 'pagada'):
+        flash('No se puede pausar por espera de perfil en el estado actual.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        if hasattr(s, 'estado_previo_espera_pago'):
+            s.estado_previo_espera_pago = estado_actual or 'activa'
+        s.estado = 'espera_pago'
+        if hasattr(s, 'fecha_cambio_espera_pago'):
+            s.fecha_cambio_espera_pago = utc_now_naive()
+        if hasattr(s, 'usuario_cambio_espera_pago'):
+            s.usuario_cambio_espera_pago = _staff_actor_name()
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = utc_now_naive()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = utc_now_naive()
+        db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_ESPERA_PERFIL_PONER",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud en pausa por espera de perfil: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": estado_actual, "to": "espera_pago"}},
+        )
+        flash('Solicitud pausada por espera de perfil.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo pausar la solicitud por espera de perfil.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/solicitudes/<int:id>/reanudar_espera_perfil', methods=['POST'])
+@login_required
+@staff_required
+def reanudar_espera_perfil_desde_copiar(id):
+    s = Solicitud.query.get_or_404(id)
+    next_url = (request.form.get('next') or request.referrer or '').strip()
+    fallback = url_for('admin.copiar_solicitudes')
+
+    if s.estado != 'espera_pago':
+        flash('La solicitud no está en pausa por espera de perfil.', 'info')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
+        if restore in ('', 'espera_pago', 'cancelada', 'pagada'):
+            restore = 'activa'
+        s.estado = restore
+        if hasattr(s, 'fecha_cambio_espera_pago'):
+            s.fecha_cambio_espera_pago = utc_now_naive()
+        if hasattr(s, 'usuario_cambio_espera_pago'):
+            s.usuario_cambio_espera_pago = _staff_actor_name()
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = utc_now_naive()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = utc_now_naive()
+        db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_ESPERA_PERFIL_QUITAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud reanudada desde espera de perfil: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": "espera_pago", "to": restore}},
+        )
+        flash(f'Solicitud reanudada y puesta en {restore}.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo reanudar la solicitud.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/solicitudes/<int:id>/cancelar_desde_copiar', methods=['POST'])
+@login_required
+@staff_required
+def cancelar_solicitud_desde_copiar(id):
+    s = Solicitud.query.get_or_404(id)
+    next_url = (request.form.get('next') or request.referrer or '').strip()
+    fallback = url_for('admin.copiar_solicitudes')
+    estado_actual = (s.estado or '').strip().lower()
+
+    motivo = (request.form.get('motivo') or '').strip()
+    if len(motivo) < 5:
+        flash('Indica un motivo de cancelación (mínimo 5 caracteres).', 'danger')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    if estado_actual in ('cancelada', 'pagada'):
+        flash(f'La solicitud {s.codigo_solicitud} no admite cancelación en su estado actual.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    if estado_actual not in ('proceso', 'activa', 'reemplazo', 'espera_pago'):
+        flash(f'No se puede cancelar la solicitud en estado «{s.estado}».', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        s.estado = 'cancelada'
+        s.motivo_cancelacion = motivo
+        s.fecha_cancelacion = _now_utc()
+        s.fecha_ultima_modificacion = _now_utc()
+        s.fecha_ultima_actividad = _now_utc()
+        db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_CANCELAR_DESDE_COPIAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud cancelada desde copiar/publicar: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": estado_actual, "to": "cancelada"}},
+            metadata={"motivo": motivo[:255]},
+        )
+        flash(f'Solicitud {s.codigo_solicitud} cancelada.', 'success')
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('No se pudo cancelar la solicitud.', 'danger')
+    except Exception:
+        db.session.rollback()
+        flash('Ocurrió un error al cancelar la solicitud.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+
+@admin_bp.route('/solicitudes/<int:id>/marcar_pagada_desde_copiar', methods=['POST'])
+@login_required
+@admin_required
+def marcar_pagada_desde_copiar(id):
+    s = Solicitud.query.get_or_404(id)
+    next_url = (request.form.get('next') or request.referrer or '').strip()
+    fallback = url_for('admin.copiar_solicitudes')
+
+    estado_actual = (s.estado or '').strip().lower()
+    if estado_actual in ('cancelada', 'pagada'):
+        flash('Esta solicitud no admite marcarse como pagada en su estado actual.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    candidata_raw = (request.form.get('candidata_id') or '').strip()
+    monto_raw = (request.form.get('monto_pagado') or '').strip()
+    if not candidata_raw or not monto_raw:
+        flash('Para marcar pagado debes indicar candidata y monto pagado.', 'danger')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        candidata_id = int(candidata_raw)
+    except Exception:
+        flash('La candidata seleccionada no es válida.', 'danger')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    cand = Candidata.query.get(candidata_id)
+    if not cand:
+        flash('La candidata seleccionada no existe.', 'danger')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    if candidata_esta_descalificada(cand):
+        flash('No se puede asignar una candidata descalificada.', 'danger')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    try:
+        s.candidata_id = cand.fila
+        _sync_solicitud_candidatas_after_assignment(s, cand.fila)
+        _mark_candidata_estado(cand, "trabajando")
+        s.monto_pagado = _parse_money_to_decimal_str(monto_raw)
+        s.estado = 'pagada'
+        s.fecha_ultima_modificacion = utc_now_naive()
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = utc_now_naive()
+        db.session.commit()
+        _audit_log(
+            action_type="SOLICITUD_MARCAR_PAGADA_DESDE_COPIAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud marcada pagada desde copiar/publicar: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": estado_actual, "to": "pagada"}},
+            metadata={"candidata_id": cand.fila, "monto_pagado": s.monto_pagado},
+        )
+        flash('Solicitud marcada como pagada.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(f'Monto pagado inválido: {e}', 'danger')
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('No se pudo marcar la solicitud como pagada.', 'danger')
+    except Exception:
+        db.session.rollback()
+        flash('Ocurrió un error al marcar la solicitud como pagada.', 'danger')
+
+    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
 
 # =============================================================================
