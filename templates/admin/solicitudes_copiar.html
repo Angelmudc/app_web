@@ -232,7 +232,7 @@
       <button type="button" class="btn btn-sm btn-outline-secondary" id="contextActionPanelClose">Cerrar</button>
     </div>
 
-    <form method="post" id="cancelModalSharedForm" class="d-none">
+    <form method="post" id="cancelModalSharedForm" class="d-none" data-no-loader="true">
       {% if csrf_token is defined %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% endif %}
@@ -243,12 +243,12 @@
       <small class="text-body-secondary d-block mb-3">Mínimo 5 caracteres.</small>
       <div class="d-flex justify-content-end gap-2">
         <button type="button" class="btn btn-secondary js-panel-close">Cerrar</button>
-        <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+        <button type="submit" class="btn btn-danger" data-no-loader="true">Confirmar cancelación</button>
       </div>
     </form>
 
     {% if is_admin_role %}
-    <form method="post" id="paidModalSharedForm" class="d-none" data-lookup-url="{{ url_for('admin.candidatas_lookup_copiar') }}">
+    <form method="post" id="paidModalSharedForm" class="d-none" data-lookup-url="{{ url_for('admin.candidatas_lookup_copiar') }}" data-no-loader="true">
       {% if csrf_token is defined %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% endif %}
@@ -282,7 +282,7 @@
       </div>
       <div class="d-flex justify-content-end gap-2 mt-3">
         <button type="button" class="btn btn-secondary js-panel-close">Cerrar</button>
-        <button type="submit" class="btn btn-success">Guardar pago</button>
+        <button type="submit" class="btn btn-success" data-no-loader="true">Guardar pago</button>
       </div>
     </form>
     {% endif %}
@@ -314,6 +314,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const paidLookupUrl = paidForm ? (paidForm.dataset.lookupUrl || '') : '';
   let paidCurrentCandidateId = '';
   let paidLookupSeq = 0;
+
+  function clearUiLoaders() {
+    try {
+      if (window.AppLoader && typeof window.AppLoader.hideAll === 'function') {
+        window.AppLoader.hideAll();
+      } else if (window.AppLoader && typeof window.AppLoader.hide === 'function') {
+        window.AppLoader.hide();
+      }
+    } catch (_) {}
+    ['globalLoader', 'appGlobalLoader', 'loader', 'pageLoader', 'loadingOverlay', 'overlayLoader'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    document.documentElement.classList.remove('is-loading');
+    if (document.body) document.body.classList.remove('is-loading');
+  }
 
   function showToast() {
     toast.style.display = 'block';
@@ -485,11 +501,14 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (_err) {
       if (seq !== paidLookupSeq) return;
       setPaidStats('No se pudo consultar candidatas. Intenta de nuevo.');
+    } finally {
+      clearUiLoaders();
     }
   }
 
   async function submitModalAjax(form, successMessage) {
     if (!form || !window.fetch) return false;
+    clearUiLoaders();
     clearModalFeedback(form);
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
@@ -505,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const contentType = (resp.headers.get('content-type') || '').toLowerCase();
       if (!contentType.includes('application/json')) {
+        clearUiLoaders();
         return false;
       }
       const data = await resp.json();
@@ -520,9 +540,11 @@ document.addEventListener('DOMContentLoaded', () => {
       showActionToast(data.message || successMessage, false);
       return true;
     } catch (_err) {
+      clearUiLoaders();
       return false;
     } finally {
       if (submitBtn) submitBtn.disabled = false;
+      clearUiLoaders();
     }
   }
 
@@ -645,6 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ev.preventDefault();
       const handled = await submitModalAjax(cancelForm, 'Solicitud cancelada.');
       if (!handled) {
+        clearUiLoaders();
         cancelForm.dataset.asyncBypass = '1';
         cancelForm.submit();
       }
@@ -660,6 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ev.preventDefault();
       const handled = await submitModalAjax(paidForm, 'Solicitud marcada como pagada.');
       if (!handled) {
+        clearUiLoaders();
         paidForm.dataset.asyncBypass = '1';
         paidForm.submit();
       }

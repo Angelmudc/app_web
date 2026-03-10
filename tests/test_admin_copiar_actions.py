@@ -207,8 +207,9 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('id="contextActionPanel"', html)
         self.assertIn('class="dropdown-item js-open-cancel"', html)
         self.assertNotIn('data-bs-target="#cancelModalShared"', html)
+        self.assertIn('id="cancelModalSharedForm" class="d-none" data-no-loader="true"', html)
         self.assertIn('<textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>', html)
-        self.assertIn('Confirmar cancelación', html)
+        self.assertIn('<button type="submit" class="btn btn-danger" data-no-loader="true">Confirmar cancelación</button>', html)
         self.assertIn('id="contextActionPanelClose"', html)
 
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
@@ -235,8 +236,11 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('id="paidModalSharedSearchStats"', html)
         self.assertIn('id="paidModalSharedSelected"', html)
         self.assertIn('class="alert d-none js-modal-feedback"', html)
+        self.assertIn('id="paidModalSharedForm" class="d-none" data-lookup-url="/admin/solicitudes/copiar/candidatas_lookup" data-no-loader="true"', html)
+        self.assertIn('<button type="submit" class="btn btn-success" data-no-loader="true">Guardar pago</button>', html)
         self.assertIn('data-lookup-url="/admin/solicitudes/copiar/candidatas_lookup"', html)
         self.assertIn("paidSearchBtn.addEventListener('click', () => lookupPaidCandidates(true, true, false));", html)
+        self.assertIn('function clearUiLoaders()', html)
 
     def test_candidatas_lookup_copiar_busca_fuera_de_subconjunto_inicial(self):
         self._login("Cruz", "8998")
