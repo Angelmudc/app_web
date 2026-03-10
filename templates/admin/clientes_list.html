@@ -24,8 +24,13 @@
         <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-success">
           <i class="fa-solid fa-user-plus"></i> Nuevo
         </a>
-        <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary">
+        <a href="{{ url_for('admin.copiar_solicitudes') }}" class="btn btn-primary"
+           title="Ir directo al flujo operativo de copiar/publicar solicitudes">
           <i class="fa-solid fa-rectangle-list"></i> Solicitudes
+        </a>
+        <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary"
+           title="Ver panel general de solicitudes">
+          <i class="fa-solid fa-table-list"></i> Panel solicitudes
         </a>
         <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="btn btn-warning text-dark">
           <i class="fa-solid fa-bolt"></i> Pendientes ⚡

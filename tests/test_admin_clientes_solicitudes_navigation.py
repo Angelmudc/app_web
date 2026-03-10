@@ -99,13 +99,14 @@ class AdminClientesSolicitudesNavigationTest(unittest.TestCase):
         )
         self.assertIn(login_resp.status_code, (302, 303))
 
-    def test_boton_solicitudes_desde_clientes_apunta_a_panel(self):
+    def test_boton_solicitudes_desde_clientes_apunta_a_copiar_y_panel(self):
         with flask_app.app_context():
             with patch.object(admin_routes.Cliente, "query", _ClienteQueryStub([])):
                 resp = self.client.get("/admin/clientes", follow_redirects=False)
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
+        self.assertIn('href="/admin/solicitudes/copiar"', html)
         self.assertIn('href="/admin/solicitudes"', html)
         self.assertIn('href="/admin/solicitudes/proceso/acciones"', html)
         self.assertIn('href="/admin/solicitudes/prioridad"', html)
@@ -136,6 +137,7 @@ class AdminClientesSolicitudesNavigationTest(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn("Panel de Solicitudes", html)
         self.assertIn("SOL-010", html)
+        self.assertIn('href="/admin/solicitudes/copiar"', html)
         self.assertNotIn("Ocurrió un problema", html)
 
 
