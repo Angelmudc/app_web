@@ -53,6 +53,7 @@ from utils.pasaje_mode import (
     read_pasaje_mode_text,
     strip_pasaje_marker_from_note,
 )
+from utils.modalidad import canonicalize_modalidad_trabajo
 from utils.codigo_solicitud import compose_codigo_solicitud
 from utils.timezone import (
     iso_utc_z,
@@ -1326,6 +1327,15 @@ def _map_tipo_lugar(value, extra):
     return value
 
 
+def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
+    try:
+        if hasattr(solicitud_obj, "modalidad_trabajo"):
+            txt = canonicalize_modalidad_trabajo(getattr(solicitud_obj, "modalidad_trabajo", ""))
+            solicitud_obj.modalidad_trabajo = txt or None
+    except Exception:
+        return
+
+
 def _allowed_codes_from_choices(choices):
     try:
         return {str(v).strip() for v, _ in (choices or []) if str(v).strip()}
@@ -1563,6 +1573,7 @@ def nueva_solicitud():
                 codigo_solicitud=codigo
             )
             form.populate_obj(s)
+            _normalize_modalidad_on_solicitud(s)
 
             ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
             sector = _first_form_data(form, 'sector', 'sector_oferta', 'sector_cliente', default='')
@@ -1761,6 +1772,7 @@ def editar_solicitud(id):
             lock_acquired = False
         try:
             form.populate_obj(s)
+            _normalize_modalidad_on_solicitud(s)
 
             ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
             sector = _first_form_data(form, 'sector', 'sector_oferta', 'sector_cliente', default='')
@@ -2725,6 +2737,7 @@ def solicitud_publica_nueva_token(token):
                     codigo_solicitud=codigo_solicitud
                 )
                 form.populate_obj(s)
+                _normalize_modalidad_on_solicitud(s)
 
                 selected_funciones = _clean_list(getattr(form, 'funciones', type('x', (object,), {'data': []})).data)
                 funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
@@ -3076,6 +3089,7 @@ def solicitud_publica(token):
             )
 
             form.populate_obj(s)
+            _normalize_modalidad_on_solicitud(s)
 
             selected_funciones = _clean_list(getattr(form, 'funciones', type('x',(object,),{'data':[]})).data)
             funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''

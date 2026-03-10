@@ -467,6 +467,7 @@ def test_public_link_post_rerender_preserves_modalidad_value_on_validation_error
     client = flask_app.test_client()
     c = _dummy_cliente()
     modalidad_value = "Con dormida - Otro: Turno especial feriados"
+    modalidad_norm = "Con dormida Turno especial feriados"
 
     with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
          patch("clientes.routes._public_link_usage_by_hash", return_value=None):
@@ -483,7 +484,8 @@ def test_public_link_post_rerender_preserves_modalidad_value_on_validation_error
 
     assert post_resp.status_code == 200
     html = post_resp.get_data(as_text=True)
-    assert modalidad_value in html
+    assert modalidad_norm in html
+    assert modalidad_value not in html
 
 
 def test_public_link_post_with_invalid_csrf_returns_controlled_public_message():

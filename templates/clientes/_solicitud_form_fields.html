@@ -650,6 +650,29 @@
     return '';
   }
 
+  function stripModalidadGroupPrefix(raw, group) {
+    var txt = (raw || '').toString().trim();
+    if (!txt) return '';
+    if (group === 'con_dormida') {
+      return txt.replace(/^(?:con\s+dormida(?:\s*💤)?|dormida|interna)\s*-?\s*/i, '').trim();
+    }
+    if (group === 'con_salida_diaria') {
+      return txt.replace(/^(?:con\s+)?salida\s+diaria\s*-?\s*/i, '').trim();
+    }
+    return txt;
+  }
+
+  function normalizeModalidadOtherText(raw, group) {
+    var txt = (raw || '').toString().trim();
+    if (!txt) return '';
+    txt = txt.replace(/^otro\s*[:\-]?\s*/i, '').trim();
+    txt = stripModalidadGroupPrefix(txt, group);
+    if (group === 'con_salida_diaria') {
+      txt = txt.replace(/^con\s+/i, '').trim();
+    }
+    return txt.replace(/\s{2,}/g, ' ').trim();
+  }
+
   function parseStoredModalidad(rawValue) {
     var raw = (rawValue || '').toString().trim();
     if (!raw) return { group: '', specific: '', other: '' };
@@ -690,8 +713,7 @@
       if (!otherRaw || normModal(otherRaw) === normModal(MODALIDAD_GROUP_LABELS[resolvedGroup])) {
         otherRaw = raw;
       }
-      otherRaw = otherRaw.replace(/^(?:con\s+dormida(?:\s*💤)?|(?:con\s+)?salida\s+diaria)\s*-?\s*/i, '').trim();
-      otherRaw = otherRaw.replace(/^otro\s*[:\-]?\s*/i, '').trim();
+      otherRaw = normalizeModalidadOtherText(otherRaw, resolvedGroup);
       if (otherRaw) {
         specific = resolvedGroup === 'con_dormida' ? 'Con dormida 💤 otro' : 'Salida diaria otro';
         other = otherRaw;
@@ -704,14 +726,14 @@
   function composeModalidadValue(group, specific, otherText) {
     var gLabel = MODALIDAD_GROUP_LABELS[group] || '';
     var s = (specific || '').trim();
-    var o = (otherText || '').trim();
+    var o = normalizeModalidadOtherText(otherText, group);
     function storageClean(v) {
       return (v || '').replace(/💤/g, '').replace(/\s{2,}/g, ' ').trim();
     }
     if (!gLabel) return '';
     if (!s) return gLabel;
     if (normModal(s).indexOf('otro') >= 0) {
-      return storageClean(o ? (s + ': ' + o) : s);
+      return storageClean(o ? (gLabel + ' ' + o) : gLabel);
     }
     return storageClean(s);
   }

@@ -36,6 +36,7 @@ from wtforms.validators import (
     ValidationError
 )
 from wtforms.widgets import ListWidget, CheckboxInput
+from utils.modalidad import canonicalize_modalidad_trabajo
 
 
 
@@ -628,6 +629,9 @@ class AdminSolicitudForm(FlaskForm):
     )
 
     submit = SubmitField('Guardar solicitud')
+
+    def validate_modalidad_trabajo(self, field):
+        field.data = canonicalize_modalidad_trabajo(field.data)
 
     # ─────────────────────────────────────────────
     # VALIDACIÓN CONDICIONAL POR TIPO

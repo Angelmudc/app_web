@@ -74,6 +74,7 @@ def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():
     assert "id='modalidad_trabajo_hidden'" in partial
     assert "function parseStoredModalidad(rawValue)" in partial
     assert "function composeModalidadValue(group, specific, otherText)" in partial
+    assert "function normalizeModalidadOtherText(raw, group)" in partial
     assert "replace(/💤/g, '')" in partial
     assert "Salida Quincenal, sale viernes después del medio día" in partial
     assert "Lunes a sábado, sale sábado después del medio día" in partial
@@ -91,6 +92,7 @@ def test_shared_partial_shows_modalidad_otro_input_when_otro_option_selected():
     assert "v === 'otro' || v.indexOf(' otro') >= 0 || v.indexOf('otro ') === 0" in partial
     assert "var isOther = isModalidadOtherOption(selectedSpecific);" in partial
     assert "wrapOther.style.display = (group && isOther) ? '' : 'none';" in partial
+    assert "return storageClean(o ? (gLabel + ' ' + o) : gLabel);" in partial
 
 
 def test_shared_partial_clears_modalidad_otro_input_when_switching_to_non_otro():

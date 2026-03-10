@@ -127,6 +127,7 @@ from utils.pasaje_mode import (
     read_pasaje_mode_text,
     strip_pasaje_marker_from_note,
 )
+from utils.modalidad import canonicalize_modalidad_trabajo
 from utils.timezone import (
     format_rd_datetime,
     iso_utc_z,
@@ -4310,6 +4311,15 @@ def _map_tipo_lugar(value, extra):
     return value
 
 
+def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
+    try:
+        if hasattr(solicitud_obj, "modalidad_trabajo"):
+            txt = canonicalize_modalidad_trabajo(getattr(solicitud_obj, "modalidad_trabajo", ""))
+            solicitud_obj.modalidad_trabajo = txt or None
+    except Exception:
+        return
+
+
 # ─────────────────────────────────────────────────────────────
 # Helpers internos específicos de Solicitud
 # ─────────────────────────────────────────────────────────────
@@ -5658,6 +5668,7 @@ def nueva_solicitud_admin(cliente_id):
                     codigo_solicitud=nuevo_codigo,
                 )
                 form.populate_obj(s)
+                _normalize_modalidad_on_solicitud(s)
 
                 if hasattr(form, 'sueldo'):
                     try:
@@ -5904,6 +5915,7 @@ def editar_solicitud_admin(cliente_id, id):
         try:
             def _persist_solicitud_update(_attempt: int):
                 form.populate_obj(s)
+                _normalize_modalidad_on_solicitud(s)
 
                 if hasattr(form, 'sueldo'):
                     try:

@@ -13,6 +13,7 @@ from wtforms.widgets import ListWidget, CheckboxInput
 # Validaciones estrictas de seguridad (anti símbolos raros)
 # ─────────────────────────────────────────────────────────────
 import re
+from utils.modalidad import canonicalize_modalidad_trabajo
 
 def _solo_texto(valor):
     """
@@ -349,6 +350,7 @@ class SolicitudForm(FlaskForm):
             raise ValidationError("Especifica el tipo de lugar cuando marcas 'Otro'.")
 
     def validate_modalidad_trabajo(self, field):
+        field.data = canonicalize_modalidad_trabajo(field.data)
         _solo_texto(field.data)
 
     def validate_horario(self, field):
