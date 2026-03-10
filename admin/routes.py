@@ -13,7 +13,7 @@ from flask import render_template, redirect, url_for, flash, request, jsonify, a
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 
-from sqlalchemy import or_, func, cast, desc, case, inspect as sa_inspect
+from sqlalchemy import or_, func, cast, desc, case, inspect as sa_inspect, Table, MetaData, select as sa_select
 from sqlalchemy.types import Numeric
 from sqlalchemy.orm import joinedload, load_only  # ➜ para evitar N+1 en copiar_solicitudes
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
@@ -4688,42 +4688,317 @@ def _table_exists(table_name: str) -> bool:
     return exists
 
 
-def _cliente_deletion_critical_dependency_counts(cliente_id: int) -> dict[str, int]:
-    counts: dict[str, int] = {}
+def _safe_count(query) -> int:
+    try:
+        return int(query.scalar() or 0)
+    except Exception:
+        return -1
+
+
+def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
+    cid = int(cliente_id or 0)
+    solicitud_ids: list[int] = []
+    summary: dict[str, int] = {
+        "solicitudes": 0,
+        "solicitudes_candidatas": 0,
+        "reemplazos": 0,
+        "notificaciones_cliente": 0,
+        "notificaciones_solicitud": 0,
+        "tokens_publicos_cliente": 0,
+        "tokens_publicos_solicitud": 0,
+        "tokens_cliente_nuevo_cliente": 0,
+        "tokens_cliente_nuevo_solicitud": 0,
+        "tareas": 0,
+    }
+    warnings: list[str] = []
+
     if _table_exists("solicitudes"):
         try:
-            total = int(
-                db.session.query(func.count(Solicitud.id))
-                .filter(Solicitud.cliente_id == int(cliente_id))
-                .scalar()
+            rows = (
+                db.session.query(Solicitud.id)
+                .filter(Solicitud.cliente_id == cid)
+                .all()
+            )
+            solicitud_ids = [int(r[0]) for r in rows]
+            summary["solicitudes"] = len(solicitud_ids)
+        except SQLAlchemyError:
+            warnings.append("No se pudo leer solicitudes del cliente.")
+            summary["solicitudes"] = -1
+
+    if _table_exists("solicitudes_candidatas") and solicitud_ids:
+        summary["solicitudes_candidatas"] = _safe_count(
+            db.session.query(func.count(SolicitudCandidata.id))
+            .filter(SolicitudCandidata.solicitud_id.in_(solicitud_ids))
+        )
+
+    if _table_exists("reemplazos") and solicitud_ids:
+        summary["reemplazos"] = _safe_count(
+            db.session.query(func.count(Reemplazo.id))
+            .filter(Reemplazo.solicitud_id.in_(solicitud_ids))
+        )
+
+    if _table_exists("clientes_notificaciones"):
+        summary["notificaciones_cliente"] = _safe_count(
+            db.session.query(func.count(ClienteNotificacion.id))
+            .filter(ClienteNotificacion.cliente_id == cid)
+        )
+        if solicitud_ids:
+            summary["notificaciones_solicitud"] = _safe_count(
+                db.session.query(func.count(ClienteNotificacion.id))
+                .filter(ClienteNotificacion.solicitud_id.in_(solicitud_ids))
+            )
+
+    if _table_exists("public_solicitud_tokens_usados"):
+        summary["tokens_publicos_cliente"] = _safe_count(
+            db.session.query(func.count(PublicSolicitudTokenUso.id))
+            .filter(PublicSolicitudTokenUso.cliente_id == cid)
+        )
+        if solicitud_ids:
+            summary["tokens_publicos_solicitud"] = _safe_count(
+                db.session.query(func.count(PublicSolicitudTokenUso.id))
+                .filter(PublicSolicitudTokenUso.solicitud_id.in_(solicitud_ids))
+            )
+
+    if _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
+        summary["tokens_cliente_nuevo_cliente"] = _safe_count(
+            db.session.query(func.count(PublicSolicitudClienteNuevoTokenUso.id))
+            .filter(PublicSolicitudClienteNuevoTokenUso.cliente_id == cid)
+        )
+        if solicitud_ids:
+            summary["tokens_cliente_nuevo_solicitud"] = _safe_count(
+                db.session.query(func.count(PublicSolicitudClienteNuevoTokenUso.id))
+                .filter(PublicSolicitudClienteNuevoTokenUso.solicitud_id.in_(solicitud_ids))
+            )
+
+    if _table_exists("tareas_clientes"):
+        summary["tareas"] = _safe_count(
+            db.session.query(func.count(TareaCliente.id))
+            .filter(TareaCliente.cliente_id == cid)
+        )
+
+    blocked_issues: list[str] = []
+    if solicitud_ids and _table_exists("clientes_notificaciones"):
+        mismatch = _safe_count(
+            db.session.query(func.count(ClienteNotificacion.id))
+            .filter(
+                ClienteNotificacion.solicitud_id.in_(solicitud_ids),
+                ClienteNotificacion.cliente_id != cid,
+            )
+        )
+        if mismatch > 0:
+            blocked_issues.append(
+                "Existen notificaciones cruzadas con otro cliente en las solicitudes."
+            )
+
+    if solicitud_ids and _table_exists("public_solicitud_tokens_usados"):
+        mismatch = _safe_count(
+            db.session.query(func.count(PublicSolicitudTokenUso.id))
+            .filter(
+                PublicSolicitudTokenUso.solicitud_id.in_(solicitud_ids),
+                PublicSolicitudTokenUso.cliente_id != cid,
+            )
+        )
+        if mismatch > 0:
+            blocked_issues.append(
+                "Existen tokens públicos cruzados con otro cliente en las solicitudes."
+            )
+
+    if solicitud_ids and _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
+        mismatch = _safe_count(
+            db.session.query(func.count(PublicSolicitudClienteNuevoTokenUso.id))
+            .filter(
+                PublicSolicitudClienteNuevoTokenUso.solicitud_id.in_(solicitud_ids),
+                PublicSolicitudClienteNuevoTokenUso.cliente_id.isnot(None),
+                PublicSolicitudClienteNuevoTokenUso.cliente_id != cid,
+            )
+        )
+        if mismatch > 0:
+            blocked_issues.append(
+                "Existen tokens de cliente nuevo cruzados con otro cliente en las solicitudes."
+            )
+
+    # Protección defensiva: si hay tablas con FK a clientes/solicitudes no gestionadas,
+    # bloquear para evitar borrados parciales inesperados.
+    managed_tables = {
+        "clientes",
+        "solicitudes",
+        "solicitudes_candidatas",
+        "reemplazos",
+        "clientes_notificaciones",
+        "public_solicitud_tokens_usados",
+        "public_solicitud_cliente_nuevo_tokens_usados",
+        "tareas_clientes",
+    }
+    try:
+        inspector = sa_inspect(db.engine)
+        for table_name in inspector.get_table_names():
+            if table_name in managed_tables:
+                continue
+            fks = inspector.get_foreign_keys(table_name) or []
+            has_ref = any((fk.get("referred_table") or "") in {"clientes", "solicitudes"} for fk in fks)
+            if not has_ref:
+                continue
+            tbl = Table(table_name, MetaData(), autoload_with=db.engine)
+            row_hits = 0
+            for fk in fks:
+                ref_table = (fk.get("referred_table") or "").strip()
+                cols = fk.get("constrained_columns") or []
+                if not cols:
+                    continue
+                col_name = cols[0]
+                if col_name not in tbl.c:
+                    continue
+                col = tbl.c[col_name]
+                if ref_table == "clientes":
+                    row_hits += int(
+                        db.session.execute(
+                            sa_select(func.count()).select_from(tbl).where(col == cid)
+                        ).scalar() or 0
+                    )
+                elif ref_table == "solicitudes" and solicitud_ids:
+                    row_hits += int(
+                        db.session.execute(
+                            sa_select(func.count()).select_from(tbl).where(col.in_(solicitud_ids))
+                        ).scalar() or 0
+                    )
+            if row_hits > 0:
+                blocked_issues.append(
+                    f"Dependencia no gestionada detectada en tabla '{table_name}'."
+                )
+    except Exception:
+        warnings.append("No se pudo completar la inspección de dependencias no gestionadas.")
+
+    return {
+        "cliente_id": cid,
+        "solicitud_ids": solicitud_ids,
+        "summary": summary,
+        "warnings": warnings,
+        "blocked_issues": blocked_issues,
+    }
+
+
+def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str, int]:
+    cid = int(cliente_id or 0)
+    deleted: dict[str, int] = {
+        "solicitudes_candidatas": 0,
+        "reemplazos": 0,
+        "notificaciones_solicitud": 0,
+        "tokens_publicos_solicitud": 0,
+        "tokens_cliente_nuevo_solicitud": 0,
+        "solicitudes": 0,
+        "tareas": 0,
+        "notificaciones_cliente": 0,
+        "tokens_publicos_cliente": 0,
+        "tokens_cliente_nuevo_cliente": 0,
+        "cliente": 0,
+    }
+
+    if solicitud_ids and _table_exists("solicitudes_candidatas"):
+        deleted["solicitudes_candidatas"] = int(
+            SolicitudCandidata.query
+            .filter(SolicitudCandidata.solicitud_id.in_(solicitud_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if solicitud_ids and _table_exists("reemplazos"):
+        deleted["reemplazos"] = int(
+            Reemplazo.query
+            .filter(Reemplazo.solicitud_id.in_(solicitud_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if solicitud_ids and _table_exists("clientes_notificaciones"):
+        deleted["notificaciones_solicitud"] = int(
+            ClienteNotificacion.query
+            .filter(
+                ClienteNotificacion.solicitud_id.in_(solicitud_ids),
+                ClienteNotificacion.cliente_id == cid,
+            )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if solicitud_ids and _table_exists("public_solicitud_tokens_usados"):
+        deleted["tokens_publicos_solicitud"] = int(
+            PublicSolicitudTokenUso.query
+            .filter(
+                PublicSolicitudTokenUso.solicitud_id.in_(solicitud_ids),
+                PublicSolicitudTokenUso.cliente_id == cid,
+            )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if solicitud_ids and _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
+        deleted["tokens_cliente_nuevo_solicitud"] = int(
+            PublicSolicitudClienteNuevoTokenUso.query
+            .filter(
+                PublicSolicitudClienteNuevoTokenUso.solicitud_id.in_(solicitud_ids),
+                (
+                    (PublicSolicitudClienteNuevoTokenUso.cliente_id == cid)
+                    | (PublicSolicitudClienteNuevoTokenUso.cliente_id.is_(None))
+                ),
+            )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("solicitudes"):
+        if solicitud_ids:
+            deleted["solicitudes"] = int(
+                Solicitud.query
+                .filter(Solicitud.id.in_(solicitud_ids), Solicitud.cliente_id == cid)
+                .delete(synchronize_session=False)
                 or 0
             )
-            if total > 0:
-                counts["solicitudes"] = total
-        except SQLAlchemyError:
-            counts["solicitudes"] = -1
-    return counts
+        else:
+            deleted["solicitudes"] = int(
+                Solicitud.query
+                .filter(Solicitud.cliente_id == cid)
+                .delete(synchronize_session=False)
+                or 0
+            )
 
-
-def _delete_cliente_non_critical_rows(cliente_id: int) -> dict[str, int]:
-    deleted: dict[str, int] = {}
-    targets = [
-        ("tareas_clientes", TareaCliente, "tareas"),
-        ("clientes_notificaciones", ClienteNotificacion, "notificaciones"),
-        ("public_solicitud_tokens_usados", PublicSolicitudTokenUso, "tokens_publicos"),
-        ("public_solicitud_cliente_nuevo_tokens_usados", PublicSolicitudClienteNuevoTokenUso, "tokens_publicos_cliente_nuevo"),
-    ]
-
-    for table_name, model, label in targets:
-        if not _table_exists(table_name):
-            deleted[label] = 0
-            continue
-        qty = (
-            model.query
-            .filter(model.cliente_id == int(cliente_id))
+    if _table_exists("tareas_clientes"):
+        deleted["tareas"] = int(
+            TareaCliente.query
+            .filter(TareaCliente.cliente_id == cid)
             .delete(synchronize_session=False)
+            or 0
         )
-        deleted[label] = int(qty or 0)
+
+    if _table_exists("clientes_notificaciones"):
+        deleted["notificaciones_cliente"] = int(
+            ClienteNotificacion.query
+            .filter(ClienteNotificacion.cliente_id == cid)
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("public_solicitud_tokens_usados"):
+        deleted["tokens_publicos_cliente"] = int(
+            PublicSolicitudTokenUso.query
+            .filter(PublicSolicitudTokenUso.cliente_id == cid)
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
+        deleted["tokens_cliente_nuevo_cliente"] = int(
+            PublicSolicitudClienteNuevoTokenUso.query
+            .filter(PublicSolicitudClienteNuevoTokenUso.cliente_id == cid)
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    deleted["cliente"] = int(
+        Cliente.query
+        .filter(Cliente.id == cid)
+        .delete(synchronize_session=False)
+        or 0
+    )
     return deleted
 
 
@@ -4738,25 +5013,24 @@ def eliminar_cliente(cliente_id):
     cliente_pk = int(getattr(c, "id", 0) or 0)
     cliente_code = str((getattr(c, "codigo", "") or "")).strip() or str(cliente_pk)
 
-    critical = _cliente_deletion_critical_dependency_counts(cliente_pk)
-    if critical:
-        if any(v < 0 for v in critical.values()):
-            msg = (
-                "No se pudo validar de forma segura todas las relaciones del cliente. "
-                "No se realizó ningún borrado."
-            )
-        else:
-            rel_txt = ", ".join(f"{k}: {v}" for k, v in critical.items())
-            msg = (
-                "Este cliente no puede eliminarse porque tiene registros relacionados "
-                f"que deben conservarse ({rel_txt})."
-            )
+    plan = _collect_cliente_delete_plan(cliente_pk)
+    blocked_issues = list(plan.get("blocked_issues") or [])
+    warnings = list(plan.get("warnings") or [])
+    summary = dict(plan.get("summary") or {})
+    solicitud_ids = list(plan.get("solicitud_ids") or [])
+
+    if blocked_issues:
+        msg = "Este cliente no puede eliminarse de forma segura: " + " | ".join(blocked_issues)
         _audit_log(
             action_type="CLIENTE_DELETE_BLOCKED",
             entity_type="Cliente",
             entity_id=str(cliente_pk),
             summary=f"Borrado bloqueado para cliente {cliente_code}",
-            metadata={"critical_dependencies": critical},
+            metadata={
+                "blocked_issues": blocked_issues,
+                "warnings": warnings,
+                "dependency_summary": summary,
+            },
             success=False,
             error=msg,
         )
@@ -4766,11 +5040,9 @@ def eliminar_cliente(cliente_id):
     try:
         deleted_rows: dict[str, int] = {}
         with db.session.begin_nested():
-            deleted_rows = _delete_cliente_non_critical_rows(cliente_pk)
-            if _table_exists("solicitudes"):
-                db.session.delete(c)
-            else:
-                Cliente.query.filter(Cliente.id == cliente_pk).delete(synchronize_session=False)
+            deleted_rows = _delete_cliente_tree(cliente_pk, solicitud_ids=solicitud_ids)
+            if int(deleted_rows.get("cliente") or 0) != 1:
+                raise SQLAlchemyError("No se pudo confirmar la eliminación del cliente.")
             db.session.flush()
         db.session.commit()
         _audit_log(
@@ -4778,7 +5050,11 @@ def eliminar_cliente(cliente_id):
             entity_type="Cliente",
             entity_id=str(cliente_pk),
             summary=f"Cliente eliminado {cliente_code}",
-            metadata={"deleted_rows": deleted_rows},
+            metadata={
+                "deleted_rows": deleted_rows,
+                "dependency_summary": summary,
+                "warnings": warnings,
+            },
             success=True,
         )
         flash('Cliente eliminado correctamente.', 'success')
