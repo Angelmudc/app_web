@@ -157,13 +157,12 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("Dominicana", html)
         self.assertIn("Acciones", html)
         self.assertIn('data-no-loader="true"', html)
-        self.assertIn('id="cancelModalShared"', html)
-        self.assertNotIn('id="cancelModal10"', html)
+        self.assertIn('id="contextActionPanel"', html)
         self.assertIn('class="dropdown-item js-open-cancel"', html)
         self.assertNotIn('data-bs-target="#cancelModalShared"', html)
-        self.assertIn('modal-dialog-centered modal-dialog-scrollable', html)
         self.assertIn('<textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>', html)
         self.assertIn('Confirmar cancelación', html)
+        self.assertIn('id="contextActionPanelClose"', html)
 
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
         self._login("Cruz", "8998")
@@ -178,8 +177,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn('id="paidModalShared"', html)
-        self.assertNotIn('id="paidModal10"', html)
+        self.assertIn('id="paidModalSharedForm"', html)
         self.assertIn('class="dropdown-item text-success js-open-paid"', html)
         self.assertNotIn('data-bs-target="#paidModalShared"', html)
         self.assertIn('data-no-loader="true"', html)
@@ -190,6 +188,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('id="paidModalSharedSearchStats"', html)
         self.assertIn('id="paidModalSharedSelected"', html)
         self.assertIn('class="alert d-none js-modal-feedback"', html)
+        self.assertIn("paidSearchBtn.addEventListener('click', () => filterPaidCandidates(true, true));", html)
 
     def test_copiar_solicitud_post_vuelve_misma_pantalla(self):
         self._login("Karla", "9989")

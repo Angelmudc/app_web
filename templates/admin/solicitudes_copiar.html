@@ -3,24 +3,22 @@
 
 {% block content %}
 <style>
-  #cancelModalShared .modal-dialog,
-  #paidModalShared .modal-dialog {
-    max-width: 560px;
-  }
-  #cancelModalShared .modal-content,
-  #paidModalShared .modal-content {
-    max-height: 84vh;
-  }
-  #cancelModalShared .modal-body,
-  #paidModalShared .modal-body {
-    overflow-y: auto;
-  }
-  #cancelModalShared .modal-footer,
-  #paidModalShared .modal-footer {
-    position: sticky;
-    bottom: 0;
+  #contextActionPanel {
+    border: 1px solid var(--bs-border-color);
+    border-left: 4px solid var(--bs-primary);
     background: var(--bs-body-bg);
-    z-index: 2;
+  }
+  #contextActionPanel .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: .75rem;
+    margin-bottom: .75rem;
+  }
+  #contextActionPanel .panel-head .title {
+    font-size: .98rem;
+    font-weight: 600;
+    margin: 0;
   }
 </style>
 <div class="container py-5">
@@ -227,87 +225,72 @@
   {% endif %}
 </div>
 
-<div class="modal fade" id="cancelModalShared" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="cancelModalSharedTitle">Cancelar solicitud</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      </div>
-      <form method="post" id="cancelModalSharedForm">
-        <div class="modal-body">
-          {% if csrf_token is defined %}
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          {% endif %}
-          <input type="hidden" name="next" id="cancelModalSharedNext" value="{{ request.full_path }}">
-          <div class="alert d-none js-modal-feedback" role="alert"></div>
-          <label class="form-label fw-semibold">Motivo de cancelación</label>
-          <textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>
-          <small class="text-body-secondary">Mínimo 5 caracteres.</small>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
-        </div>
-      </form>
+<div id="contextActionPanel" class="card mt-3 d-none">
+  <div class="card-body">
+    <div class="panel-head">
+      <h5 class="title" id="contextActionPanelTitle">Acción de solicitud</h5>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="contextActionPanelClose">Cerrar</button>
     </div>
-  </div>
-</div>
 
-{% if is_admin_role %}
-<div class="modal fade" id="paidModalShared" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="paidModalSharedTitle">Marcar pagado</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+    <form method="post" id="cancelModalSharedForm" class="d-none">
+      {% if csrf_token is defined %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% endif %}
+      <input type="hidden" name="next" id="cancelModalSharedNext" value="{{ request.full_path }}">
+      <div class="alert d-none js-modal-feedback" role="alert"></div>
+      <label class="form-label fw-semibold">Motivo de cancelación</label>
+      <textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>
+      <small class="text-body-secondary d-block mb-3">Mínimo 5 caracteres.</small>
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-secondary js-panel-close">Cerrar</button>
+        <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
       </div>
-      <form method="post" id="paidModalSharedForm">
-        <div class="modal-body">
-          {% if csrf_token is defined %}
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          {% endif %}
-          <input type="hidden" name="next" id="paidModalSharedNext" value="{{ request.full_path }}">
-          <div class="alert d-none js-modal-feedback" role="alert"></div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Buscar candidata</label>
-            <div class="input-group">
-              <input
-                type="search"
-                class="form-control"
-                id="paidModalSharedSearch"
-                placeholder="Escribe nombre o ID..."
-                autocomplete="off"
-              >
-              <button type="button" class="btn btn-outline-primary" id="paidModalSharedSearchBtn">Buscar</button>
-              <button type="button" class="btn btn-outline-secondary" id="paidModalSharedClearBtn">Limpiar</button>
-            </div>
-            <small class="text-body-secondary d-block mt-1" id="paidModalSharedSearchStats">Escribe para buscar o usa el botón Buscar.</small>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Candidata</label>
-            <select class="form-select" name="candidata_id" id="paidModalSharedCandidata" required>
-              <option value="">Seleccionar…</option>
-              {% for cand in candidatas_pago %}
-                <option value="{{ cand.fila }}">{{ cand.nombre_completo }} (ID {{ cand.fila }})</option>
-              {% endfor %}
-            </select>
-            <small class="text-body-secondary d-block mt-1" id="paidModalSharedSelected">Seleccionada: ninguna</small>
-          </div>
-          <div>
-            <label class="form-label fw-semibold">Monto pagado</label>
-            <input type="text" class="form-control" name="monto_pagado" placeholder="Ej. 10,000" required maxlength="100">
-          </div>
+    </form>
+
+    {% if is_admin_role %}
+    <form method="post" id="paidModalSharedForm" class="d-none">
+      {% if csrf_token is defined %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% endif %}
+      <input type="hidden" name="next" id="paidModalSharedNext" value="{{ request.full_path }}">
+      <div class="alert d-none js-modal-feedback" role="alert"></div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Buscar candidata</label>
+        <div class="input-group">
+          <input
+            type="search"
+            class="form-control"
+            id="paidModalSharedSearch"
+            placeholder="Escribe nombre o ID..."
+            autocomplete="off"
+          >
+          <button type="button" class="btn btn-outline-primary" id="paidModalSharedSearchBtn">Buscar</button>
+          <button type="button" class="btn btn-outline-secondary" id="paidModalSharedClearBtn">Limpiar</button>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          <button type="submit" class="btn btn-success">Guardar pago</button>
-        </div>
-      </form>
-    </div>
+        <small class="text-body-secondary d-block mt-1" id="paidModalSharedSearchStats">Escribe para buscar o usa el botón Buscar.</small>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Candidata</label>
+        <select class="form-select" name="candidata_id" id="paidModalSharedCandidata" required>
+          <option value="">Seleccionar…</option>
+          {% for cand in candidatas_pago %}
+            <option value="{{ cand.fila }}">{{ cand.nombre_completo }} (ID {{ cand.fila }})</option>
+          {% endfor %}
+        </select>
+        <small class="text-body-secondary d-block mt-1" id="paidModalSharedSelected">Seleccionada: ninguna</small>
+      </div>
+      <div>
+        <label class="form-label fw-semibold">Monto pagado</label>
+        <input type="text" class="form-control" name="monto_pagado" placeholder="Ej. 10,000" required maxlength="100">
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" class="btn btn-secondary js-panel-close">Cerrar</button>
+        <button type="submit" class="btn btn-success">Guardar pago</button>
+      </div>
+    </form>
+    {% endif %}
   </div>
 </div>
-{% endif %}
 
 <div id="copy-toast" class="copy-toast" style="display:none;">✅ Copiado al portapapeles</div>
 {% endblock %}
@@ -316,13 +299,12 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const toast = document.getElementById('copy-toast');
-  const cancelModalEl = document.getElementById('cancelModalShared');
-  const paidModalEl = document.getElementById('paidModalShared');
-  const cancelTitle = document.getElementById('cancelModalSharedTitle');
+  const actionPanel = document.getElementById('contextActionPanel');
+  const panelTitle = document.getElementById('contextActionPanelTitle');
+  const panelClose = document.getElementById('contextActionPanelClose');
   const cancelForm = document.getElementById('cancelModalSharedForm');
   const cancelNext = document.getElementById('cancelModalSharedNext');
   const cancelTextarea = cancelForm ? cancelForm.querySelector('textarea[name="motivo"]') : null;
-  const paidTitle = document.getElementById('paidModalSharedTitle');
   const paidForm = document.getElementById('paidModalSharedForm');
   const paidNext = document.getElementById('paidModalSharedNext');
   const paidCandidata = document.getElementById('paidModalSharedCandidata');
@@ -331,72 +313,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const paidClearBtn = document.getElementById('paidModalSharedClearBtn');
   const paidSearchStats = document.getElementById('paidModalSharedSearchStats');
   const paidSelected = document.getElementById('paidModalSharedSelected');
-  const paidMonto = paidForm ? paidForm.querySelector('input[name="monto_pagado"]') : null;
-  const cancelModal = (window.bootstrap && cancelModalEl) ? bootstrap.Modal.getOrCreateInstance(cancelModalEl) : null;
-  const paidModal = (window.bootstrap && paidModalEl) ? bootstrap.Modal.getOrCreateInstance(paidModalEl) : null;
   const pageBasePath = `${window.location.pathname}${window.location.search}`;
-
-  function clearUiLocks() {
-    try {
-      if (window.AppLoader && typeof window.AppLoader.hideAll === 'function') {
-        window.AppLoader.hideAll();
-      }
-    } catch (_) {}
-    ['globalLoader', 'appGlobalLoader', 'loader', 'pageLoader', 'loadingOverlay', 'overlayLoader'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'none';
-    });
-    document.documentElement.classList.remove('is-loading');
-    if (document.body) {
-      document.body.classList.remove('is-loading');
-      document.body.style.pointerEvents = '';
-    }
-  }
-
-  function clearStaleModalBackdrop() {
-    const shown = document.querySelectorAll('.modal.show').length;
-    const backdrops = document.querySelectorAll('.modal-backdrop');
-    if (shown === 0) {
-      backdrops.forEach((el) => el.remove());
-      document.documentElement.classList.remove('modal-open');
-      if (document.body) {
-        document.body.classList.remove('modal-open');
-        document.body.style.overflow = '';
-        document.body.style.paddingRight = '';
-      }
-      return;
-    }
-    if (backdrops.length > 1) {
-      for (let i = 0; i < backdrops.length - 1; i += 1) {
-        backdrops[i].remove();
-      }
-    }
-  }
-
-  function openModalFromDropdown(btn, modalInstance) {
-    if (!modalInstance) return;
-    clearUiLocks();
-    clearStaleModalBackdrop();
-    const ddRoot = btn.closest('.dropdown');
-    const ddToggle = ddRoot ? ddRoot.querySelector('[data-bs-toggle="dropdown"]') : null;
-
-    if (window.bootstrap && ddRoot && ddToggle) {
-      const dd = bootstrap.Dropdown.getOrCreateInstance(ddToggle);
-      let opened = false;
-      const onHidden = () => {
-        if (opened) return;
-        opened = true;
-        modalInstance.show();
-        setTimeout(clearStaleModalBackdrop, 40);
-      };
-      ddRoot.addEventListener('hidden.bs.dropdown', onHidden, { once: true });
-      dd.hide();
-      setTimeout(onHidden, 180);
-      return;
-    }
-    modalInstance.show();
-    setTimeout(clearStaleModalBackdrop, 40);
-  }
+  const paidAllCandidates = paidCandidata
+    ? Array.from(paidCandidata.options)
+      .filter((opt) => opt.value)
+      .map((opt) => ({ value: opt.value, text: opt.textContent.trim(), needle: opt.textContent.trim().toLowerCase() }))
+    : [];
 
   function showToast() {
     toast.style.display = 'block';
@@ -439,6 +361,66 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => row.remove(), 220);
   }
 
+  function closeActionPanel() {
+    if (!actionPanel) return;
+    actionPanel.classList.add('d-none');
+    actionPanel.dataset.solicitudId = '';
+    actionPanel.dataset.mode = '';
+    if (cancelForm) cancelForm.classList.add('d-none');
+    if (paidForm) paidForm.classList.add('d-none');
+  }
+
+  function openActionPanelForButton(btn, onOpen) {
+    const doOpen = () => {
+      const solId = btn.dataset.solicitudId || '';
+      const row = document.getElementById(`sol-${solId}`) || btn.closest('li[id^="sol-"]');
+      if (!row || !actionPanel) return;
+      row.appendChild(actionPanel);
+      actionPanel.classList.remove('d-none');
+      actionPanel.dataset.solicitudId = solId;
+      onOpen();
+    };
+
+    const ddRoot = btn.closest('.dropdown');
+    const ddToggle = ddRoot ? ddRoot.querySelector('[data-bs-toggle="dropdown"]') : null;
+    if (window.bootstrap && ddRoot && ddToggle) {
+      const dd = bootstrap.Dropdown.getOrCreateInstance(ddToggle);
+      let opened = false;
+      const onHidden = () => {
+        if (opened) return;
+        opened = true;
+        doOpen();
+      };
+      ddRoot.addEventListener('hidden.bs.dropdown', onHidden, { once: true });
+      dd.hide();
+      setTimeout(onHidden, 180);
+      return;
+    }
+    doOpen();
+  }
+
+  function renderPaidOptions(items, selectedValue = '') {
+    if (!paidCandidata) return;
+    const frag = document.createDocumentFragment();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Seleccionar…';
+    frag.appendChild(placeholder);
+    items.forEach((item) => {
+      const opt = document.createElement('option');
+      opt.value = item.value;
+      opt.textContent = item.text;
+      frag.appendChild(opt);
+    });
+    paidCandidata.innerHTML = '';
+    paidCandidata.appendChild(frag);
+    if (selectedValue && items.some((item) => item.value === String(selectedValue))) {
+      paidCandidata.value = String(selectedValue);
+    } else {
+      paidCandidata.value = '';
+    }
+  }
+
   function updateSelectedCandidataText() {
     if (!paidSelected || !paidCandidata) return;
     const idx = paidCandidata.selectedIndex;
@@ -450,41 +432,34 @@ document.addEventListener('DOMContentLoaded', () => {
     paidSelected.textContent = `Seleccionada: ${selectedText}`;
   }
 
-  function filterPaidCandidates(showResultText = false) {
+  function filterPaidCandidates(showResultText = false, autoSelectFirst = false) {
     if (!paidCandidata) return;
     const needle = ((paidSearch && paidSearch.value) || '').trim().toLowerCase();
-    let matches = 0;
-    Array.from(paidCandidata.options).forEach((opt, idx) => {
-      if (idx === 0 || !needle) {
-        opt.hidden = false;
-        if (idx > 0) matches += 1;
-        return;
-      }
-      const hit = opt.textContent.toLowerCase().includes(needle);
-      opt.hidden = !hit;
-      if (hit) matches += 1;
-    });
-    if (paidCandidata.value) {
-      const selected = paidCandidata.options[paidCandidata.selectedIndex];
-      if (selected && selected.hidden) {
-        paidCandidata.value = '';
-      }
+    const current = paidCandidata.value || '';
+    const matches = needle
+      ? paidAllCandidates.filter((item) => item.needle.includes(needle))
+      : paidAllCandidates.slice();
+
+    renderPaidOptions(matches, current);
+    if (autoSelectFirst && !paidCandidata.value && matches.length > 0) {
+      paidCandidata.value = matches[0].value;
     }
+
     if (paidSearchStats) {
       if (!needle) {
-        paidSearchStats.textContent = `Mostrando ${matches} candidatas disponibles.`;
-      } else if (matches === 0) {
+        paidSearchStats.textContent = `Mostrando ${matches.length} candidatas disponibles.`;
+      } else if (matches.length === 0) {
         paidSearchStats.textContent = 'No hay coincidencias con esa búsqueda.';
       } else if (showResultText) {
-        paidSearchStats.textContent = `Búsqueda aplicada: ${matches} coincidencia(s).`;
+        paidSearchStats.textContent = `Búsqueda aplicada: ${matches.length} coincidencia(s).`;
       } else {
-        paidSearchStats.textContent = `${matches} coincidencia(s) encontradas.`;
+        paidSearchStats.textContent = `${matches.length} coincidencia(s) encontradas.`;
       }
     }
     updateSelectedCandidataText();
   }
 
-  async function submitModalAjax(form, modalEl, modalInstance, successMessage) {
+  async function submitModalAjax(form, successMessage) {
     if (!form || !window.fetch) return false;
     clearModalFeedback(form);
     const submitBtn = form.querySelector('button[type="submit"]');
@@ -508,8 +483,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setModalFeedback(form, data.message || 'No se pudo completar la acción.', data.category || 'danger');
         return true;
       }
-      if (modalInstance) modalInstance.hide();
-      const solicitudId = data.solicitud_id || modalEl?.dataset.solicitudId || '';
+      closeActionPanel();
+      const solicitudId = data.solicitud_id || actionPanel?.dataset.solicitudId || '';
       if (data.remove_card && solicitudId) {
         removeSolicitudCardFromUi(solicitudId);
       }
@@ -542,7 +517,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      // Lee el JSON embebido en el data-attribute.
       let text = '';
       try {
         text = JSON.parse(btn.dataset.orderText);
@@ -550,20 +524,15 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch {
         text = btn.dataset.orderText || '';
       }
-
-      // Normaliza para que "Dominicana" SIEMPRE quede en una línea aparte
-      // 1) Si ya venía con salto antes, limpia espacios
       text = text.replace(/\n\s*Dominicana\b/g, '\nDominicana');
-      // 2) Si venía pegado en la misma línea (ej: "Edad: ... Dominicana"), lo baja a la línea siguiente
       text = text.replace(/[\t ]+Dominicana\b/g, '\nDominicana');
 
-      // Copia robusta
       let copied = false;
       if (navigator.clipboard && window.isSecureContext) {
         try {
           await navigator.clipboard.writeText(text);
           copied = true;
-        } catch (e) {
+        } catch (_e) {
           copied = fallbackCopy(text);
         }
       } else {
@@ -577,7 +546,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.classList.add('btn-success');
         btn.disabled = true;
 
-        // Marca como copiada en el backend (oculta del listado hasta mañana)
         const form = btn.closest('.text-end')?.querySelector('.copy-form');
         if (form) {
           const nextInput = form.querySelector('input[name="next"]');
@@ -595,39 +563,45 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.js-open-cancel').forEach((btn) => {
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
-      if (!cancelForm) return;
+      if (!cancelForm || !actionPanel) return;
       const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
       cancelForm.action = btn.dataset.action || '';
       if (cancelNext) cancelNext.value = btn.dataset.next || pageBasePath;
-      if (cancelTitle) cancelTitle.textContent = `Cancelar ${code}`;
-      if (cancelModalEl) cancelModalEl.dataset.solicitudId = btn.dataset.solicitudId || '';
+      if (panelTitle) panelTitle.textContent = `Cancelar ${code}`;
+      actionPanel.dataset.mode = 'cancel';
+      actionPanel.dataset.solicitudId = btn.dataset.solicitudId || '';
+      if (paidForm) paidForm.classList.add('d-none');
+      cancelForm.classList.remove('d-none');
       clearModalFeedback(cancelForm);
       if (cancelTextarea) {
         cancelTextarea.readOnly = false;
         cancelTextarea.disabled = false;
       }
-      openModalFromDropdown(btn, cancelModal);
+      openActionPanelForButton(btn, () => {
+        if (cancelTextarea) cancelTextarea.focus();
+      });
     });
   });
 
   document.querySelectorAll('.js-open-paid').forEach((btn) => {
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
-      if (!paidForm) return;
+      if (!paidForm || !actionPanel) return;
       const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
       paidForm.action = btn.dataset.action || '';
       if (paidNext) paidNext.value = btn.dataset.next || pageBasePath;
-      if (paidTitle) paidTitle.textContent = `Marcar pagado ${code}`;
-      if (paidModalEl) paidModalEl.dataset.solicitudId = btn.dataset.solicitudId || '';
-      if (paidCandidata) {
-        const current = btn.dataset.currentCandidataId || '';
-        paidCandidata.value = current;
-      }
+      if (panelTitle) panelTitle.textContent = `Marcar pagado ${code}`;
+      actionPanel.dataset.mode = 'paid';
+      actionPanel.dataset.solicitudId = btn.dataset.solicitudId || '';
+      if (cancelForm) cancelForm.classList.add('d-none');
+      paidForm.classList.remove('d-none');
       if (paidSearch) paidSearch.value = '';
-      filterPaidCandidates(false);
-      updateSelectedCandidataText();
+      renderPaidOptions(paidAllCandidates, btn.dataset.currentCandidataId || '');
+      filterPaidCandidates(false, false);
       clearModalFeedback(paidForm);
-      openModalFromDropdown(btn, paidModal);
+      openActionPanelForButton(btn, () => {
+        if (paidSearch) paidSearch.focus();
+      });
     });
   });
 
@@ -638,7 +612,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       ev.preventDefault();
-      const handled = await submitModalAjax(cancelForm, cancelModalEl, cancelModal, 'Solicitud cancelada.');
+      const handled = await submitModalAjax(cancelForm, 'Solicitud cancelada.');
       if (!handled) {
         cancelForm.dataset.asyncBypass = '1';
         cancelForm.submit();
@@ -653,7 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       ev.preventDefault();
-      const handled = await submitModalAjax(paidForm, paidModalEl, paidModal, 'Solicitud marcada como pagada.');
+      const handled = await submitModalAjax(paidForm, 'Solicitud marcada como pagada.');
       if (!handled) {
         paidForm.dataset.asyncBypass = '1';
         paidForm.submit();
@@ -662,22 +636,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (paidSearch) {
-    paidSearch.addEventListener('input', () => filterPaidCandidates(false));
+    paidSearch.addEventListener('input', () => filterPaidCandidates(false, false));
     paidSearch.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter') return;
       ev.preventDefault();
-      filterPaidCandidates(true);
+      filterPaidCandidates(true, true);
     });
   }
 
   if (paidSearchBtn) {
-    paidSearchBtn.addEventListener('click', () => filterPaidCandidates(true));
+    paidSearchBtn.addEventListener('click', () => filterPaidCandidates(true, true));
   }
 
   if (paidClearBtn) {
     paidClearBtn.addEventListener('click', () => {
       if (paidSearch) paidSearch.value = '';
-      filterPaidCandidates(false);
+      filterPaidCandidates(false, false);
       if (paidSearch) paidSearch.focus();
     });
   }
@@ -687,27 +661,12 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSelectedCandidataText();
   }
 
-  if (cancelModalEl && cancelTextarea) {
-    cancelModalEl.addEventListener('shown.bs.modal', () => {
-      clearUiLocks();
-      clearStaleModalBackdrop();
-    });
-    cancelModalEl.addEventListener('hidden.bs.modal', () => {
-      clearModalFeedback(cancelForm);
-      setTimeout(clearStaleModalBackdrop, 0);
-    });
+  if (panelClose) {
+    panelClose.addEventListener('click', closeActionPanel);
   }
-
-  if (paidModalEl && paidCandidata) {
-    paidModalEl.addEventListener('shown.bs.modal', () => {
-      clearUiLocks();
-      clearStaleModalBackdrop();
-    });
-    paidModalEl.addEventListener('hidden.bs.modal', () => {
-      clearModalFeedback(paidForm);
-      setTimeout(clearStaleModalBackdrop, 0);
-    });
-  }
+  document.querySelectorAll('.js-panel-close').forEach((btn) => {
+    btn.addEventListener('click', closeActionPanel);
+  });
 });
 </script>
 {% endblock %}
