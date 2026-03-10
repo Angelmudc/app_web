@@ -102,7 +102,7 @@
             </form>
 
             <div class="dropdown">
-              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" data-no-loader="true">
                 Acciones
               </button>
               <ul class="dropdown-menu dropdown-menu-end">
@@ -140,6 +140,7 @@
                     data-solicitud-codigo="{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
                     data-action="{{ url_for('admin.cancelar_solicitud_desde_copiar', id=s.id) }}"
                     data-next="{{ request.full_path }}#sol-{{ s.id }}"
+                    data-no-loader="true"
                   >
                     🛑 Cancelación
                   </button>
@@ -155,6 +156,7 @@
                     data-action="{{ url_for('admin.marcar_pagada_desde_copiar', id=s.id) }}"
                     data-next="{{ request.full_path }}#sol-{{ s.id }}"
                     data-current-candidata-id="{{ s.candidata_id or '' }}"
+                    data-no-loader="true"
                   >
                     💵 Marcar pagado
                   </button>
@@ -289,8 +291,47 @@ document.addEventListener('DOMContentLoaded', () => {
   const cancelModal = (window.bootstrap && cancelModalEl) ? bootstrap.Modal.getOrCreateInstance(cancelModalEl) : null;
   const paidModal = (window.bootstrap && paidModalEl) ? bootstrap.Modal.getOrCreateInstance(paidModalEl) : null;
 
+  function clearUiLocks() {
+    try {
+      if (window.AppLoader && typeof window.AppLoader.hideAll === 'function') {
+        window.AppLoader.hideAll();
+      }
+    } catch (_) {}
+    ['globalLoader', 'appGlobalLoader', 'loader', 'pageLoader', 'loadingOverlay', 'overlayLoader'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    document.documentElement.classList.remove('is-loading');
+    if (document.body) {
+      document.body.classList.remove('is-loading');
+      document.body.style.pointerEvents = '';
+    }
+  }
+
+  function clearStaleModalBackdrop() {
+    const shown = document.querySelectorAll('.modal.show').length;
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    if (shown === 0) {
+      backdrops.forEach((el) => el.remove());
+      document.documentElement.classList.remove('modal-open');
+      if (document.body) {
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+      }
+      return;
+    }
+    if (backdrops.length > 1) {
+      for (let i = 0; i < backdrops.length - 1; i += 1) {
+        backdrops[i].remove();
+      }
+    }
+  }
+
   function openModalFromDropdown(btn, modalInstance) {
     if (!modalInstance) return;
+    clearUiLocks();
+    clearStaleModalBackdrop();
     const ddRoot = btn.closest('.dropdown');
     const ddToggle = ddRoot ? ddRoot.querySelector('[data-bs-toggle="dropdown"]') : null;
 
@@ -301,6 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (opened) return;
         opened = true;
         modalInstance.show();
+        setTimeout(clearStaleModalBackdrop, 40);
       };
       ddRoot.addEventListener('hidden.bs.dropdown', onHidden, { once: true });
       dd.hide();
@@ -308,6 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     modalInstance.show();
+    setTimeout(clearStaleModalBackdrop, 40);
   }
 
   function showToast() {
@@ -419,12 +462,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (cancelModalEl && cancelTextarea) {
     cancelModalEl.addEventListener('shown.bs.modal', () => {
+      clearUiLocks();
+      clearStaleModalBackdrop();
       setTimeout(() => cancelTextarea.focus(), 0);
+    });
+    cancelModalEl.addEventListener('hidden.bs.modal', () => {
+      setTimeout(clearStaleModalBackdrop, 0);
     });
   }
 
   if (paidModalEl && paidCandidata) {
     paidModalEl.addEventListener('shown.bs.modal', () => {
+      clearUiLocks();
+      clearStaleModalBackdrop();
       setTimeout(() => {
         if (!paidCandidata.value && paidMonto) {
           paidCandidata.focus();
@@ -432,6 +482,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         (paidMonto || paidCandidata).focus();
       }, 0);
+    });
+    paidModalEl.addEventListener('hidden.bs.modal', () => {
+      setTimeout(clearStaleModalBackdrop, 0);
     });
   }
 });

@@ -156,6 +156,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("data-order-text", html)
         self.assertIn("Dominicana", html)
         self.assertIn("Acciones", html)
+        self.assertIn('data-no-loader="true"', html)
         self.assertIn('id="cancelModalShared"', html)
         self.assertNotIn('id="cancelModal10"', html)
         self.assertIn('class="dropdown-item js-open-cancel"', html)
@@ -179,6 +180,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertNotIn('id="paidModal10"', html)
         self.assertIn('class="dropdown-item text-success js-open-paid"', html)
         self.assertNotIn('data-bs-target="#paidModalShared"', html)
+        self.assertIn('data-no-loader="true"', html)
 
     def test_copiar_solicitud_post_vuelve_misma_pantalla(self):
         self._login("Karla", "9989")
