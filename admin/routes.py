@@ -7486,30 +7486,118 @@ def api_candidatas():
 @login_required
 @staff_required
 def listar_solicitudes():
-    """
-    Muestra contadores clave:
-    - En proceso
-    - Copiables (activa/reemplazo) cuya última copia fue antes del inicio del día UTC actual
-    """
+    q = (request.args.get('q') or '').strip()
+    estado = (request.args.get('estado') or '').strip().lower()
+
+    try:
+        page = int(request.args.get('page', 1) or 1)
+    except Exception:
+        page = 1
+    page = max(1, page)
+
+    try:
+        per_page = int(request.args.get('per_page', 25) or 25)
+    except Exception:
+        per_page = 25
+    per_page = max(10, min(per_page, 200))
+
+    allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pagada', 'cancelada']
+
+    query = (
+        Solicitud.query
+        .options(
+            joinedload(Solicitud.cliente),
+            joinedload(Solicitud.candidata),
+            joinedload(Solicitud.reemplazos),
+        )
+    )
+
+    if estado and estado in allowed_states:
+        query = query.filter(Solicitud.estado == estado)
+    else:
+        estado = ''
+
+    if q:
+        like = f"%{q}%"
+        query = (
+            query
+            .outerjoin(Cliente, Solicitud.cliente_id == Cliente.id)
+            .outerjoin(Candidata, Solicitud.candidata_id == Candidata.fila)
+            .filter(or_(
+                Solicitud.codigo_solicitud.ilike(like),
+                Solicitud.ciudad_sector.ilike(like),
+                Solicitud.rutas_cercanas.ilike(like),
+                Cliente.nombre_completo.ilike(like),
+                Cliente.codigo.ilike(like),
+                Cliente.telefono.ilike(like),
+                Candidata.nombre_completo.ilike(like),
+                Candidata.codigo.ilike(like),
+                Candidata.cedula.ilike(like),
+            ))
+        )
+
+    query = query.order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+    total = query.order_by(None).count()
+
+    solicitudes = (
+        query
+        .offset((page - 1) * per_page)
+        .limit(per_page + 1)
+        .all()
+    )
+    has_more = len(solicitudes) > per_page
+    if has_more:
+        solicitudes = solicitudes[:per_page]
+
+    reemplazos_activos = {}
+    for s in solicitudes:
+        repl = _active_reemplazo_for_solicitud(s)
+        if repl:
+            reemplazos_activos[s.id] = repl
+
     proc_count = Solicitud.query.filter_by(estado='proceso').count()
 
-    # Consistencia UTC para "copiable hasta hoy"
     start_utc, _ = _today_utc_bounds()
-    copiable_count = (Solicitud.query
-        .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
-        .filter(
-            or_(
-                Solicitud.last_copiado_at.is_(None),
-                Solicitud.last_copiado_at < start_utc
+    try:
+        copiable_count = (
+            Solicitud.query
+            .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
+            .filter(
+                or_(
+                    Solicitud.last_copiado_at.is_(None),
+                    Solicitud.last_copiado_at < start_utc
+                )
             )
+            .count()
         )
-        .count()
+    except SQLAlchemyError:
+        db.session.rollback()
+        copiable_count = Solicitud.query.filter(Solicitud.estado.in_(('activa', 'reemplazo'))).count()
+        flash(
+            "No se pudo aplicar el filtro de copia diaria; mostrando el total de solicitudes activas/reemplazo.",
+            "warning",
+        )
+
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
     )
+    is_admin_role = role in ("owner", "admin")
 
     return render_template(
         'admin/solicitudes_list.html',
         proc_count=proc_count,
-        copiable_count=copiable_count
+        copiable_count=copiable_count,
+        q=q,
+        estado=estado,
+        allowed_states=allowed_states,
+        solicitudes=solicitudes,
+        reemplazos_activos=reemplazos_activos,
+        is_admin_role=is_admin_role,
+        total=total,
+        page=page,
+        per_page=per_page,
+        has_more=has_more,
     )
 
 
