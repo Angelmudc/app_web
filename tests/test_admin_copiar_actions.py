@@ -158,6 +158,9 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("Acciones", html)
         self.assertIn('id="cancelModalShared"', html)
         self.assertNotIn('id="cancelModal10"', html)
+        self.assertIn('class="dropdown-item js-open-cancel"', html)
+        self.assertNotIn('data-bs-target="#cancelModalShared"', html)
+        self.assertIn('<textarea class="form-control" name="motivo" rows="3" minlength="5" required></textarea>', html)
 
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
         self._login("Cruz", "8998")
@@ -174,6 +177,8 @@ class AdminCopiarActionsTest(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn('id="paidModalShared"', html)
         self.assertNotIn('id="paidModal10"', html)
+        self.assertIn('class="dropdown-item text-success js-open-paid"', html)
+        self.assertNotIn('data-bs-target="#paidModalShared"', html)
 
     def test_copiar_solicitud_post_vuelve_misma_pantalla(self):
         self._login("Karla", "9989")
