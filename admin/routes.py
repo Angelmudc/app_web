@@ -15,7 +15,7 @@ from werkzeug.security import generate_password_hash
 
 from sqlalchemy import or_, func, cast, desc, case, inspect as sa_inspect, Table, MetaData, select as sa_select
 from sqlalchemy.types import Numeric
-from sqlalchemy.orm import joinedload, load_only  # ➜ para evitar N+1 en copiar_solicitudes
+from sqlalchemy.orm import joinedload, load_only, selectinload  # ➜ para evitar N+1 en copiar_solicitudes
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
 from functools import wraps  # si otros decoradores locales lo usan
@@ -7506,9 +7506,24 @@ def listar_solicitudes():
     query = (
         Solicitud.query
         .options(
+            load_only(
+                Solicitud.id,
+                Solicitud.cliente_id,
+                Solicitud.candidata_id,
+                Solicitud.codigo_solicitud,
+                Solicitud.ciudad_sector,
+                Solicitud.estado,
+                Solicitud.fecha_solicitud,
+                Solicitud.last_copiado_at,
+            ),
             joinedload(Solicitud.cliente),
             joinedload(Solicitud.candidata),
-            joinedload(Solicitud.reemplazos),
+            selectinload(Solicitud.reemplazos).load_only(
+                Reemplazo.id,
+                Reemplazo.fecha_inicio_reemplazo,
+                Reemplazo.fecha_fin_reemplazo,
+                Reemplazo.created_at,
+            ),
         )
     )
 
@@ -9161,7 +9176,47 @@ def copiar_solicitudes():
     base_q = (
         Solicitud.query
         .options(
-            joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new)
+            load_only(
+                Solicitud.id,
+                Solicitud.estado,
+                Solicitud.candidata_id,
+                Solicitud.codigo_solicitud,
+                Solicitud.fecha_solicitud,
+                Solicitud.last_copiado_at,
+                Solicitud.ciudad_sector,
+                Solicitud.modalidad_trabajo,
+                Solicitud.rutas_cercanas,
+                Solicitud.funciones,
+                Solicitud.funciones_otro,
+                Solicitud.tipo_lugar,
+                Solicitud.habitaciones,
+                Solicitud.banos,
+                Solicitud.dos_pisos,
+                Solicitud.areas_comunes,
+                Solicitud.area_otro,
+                Solicitud.adultos,
+                Solicitud.ninos,
+                Solicitud.edades_ninos,
+                Solicitud.mascota,
+                Solicitud.edad_requerida,
+                Solicitud.experiencia,
+                Solicitud.horario,
+                Solicitud.sueldo,
+                Solicitud.pasaje_aporte,
+                Solicitud.nota_cliente,
+                Solicitud.detalles_servicio,
+                Solicitud.tipo_servicio,
+            ),
+            selectinload(Solicitud.reemplazos).load_only(
+                Reemplazo.id,
+                Reemplazo.oportunidad_nueva,
+                Reemplazo.candidata_new_id,
+                Reemplazo.fecha_inicio_reemplazo,
+                Reemplazo.fecha_fin_reemplazo,
+            ).selectinload(Reemplazo.candidata_new).load_only(
+                Candidata.fila,
+                Candidata.nombre_completo,
+            ),
         )
         .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
         .filter(or_(
@@ -9497,6 +9552,7 @@ def copiar_solicitudes():
     if is_admin_role:
         candidatas_pago = (
             Candidata.query
+            .options(load_only(Candidata.fila, Candidata.nombre_completo))
             .filter(candidatas_activas_filter(Candidata))
             .order_by(Candidata.nombre_completo.asc())
             .limit(300)

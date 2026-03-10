@@ -103,6 +103,26 @@ class _DummyForm:
         self.enf_movilidad = _DummyField([])
 
 
+class _CandidataQueryChain:
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def options(self, *args, **kwargs):
+        return self
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def limit(self, *_args, **_kwargs):
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+
 class AdminCopiarActionsTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
@@ -136,6 +156,24 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("data-order-text", html)
         self.assertIn("Dominicana", html)
         self.assertIn("Acciones", html)
+        self.assertIn('id="cancelModalShared"', html)
+        self.assertNotIn('id="cancelModal10"', html)
+
+    def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
+        self._login("Cruz", "8998")
+        solicitud = _SolicitudStub(estado="activa")
+        candidata = _CandidataStub(fila=33)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([solicitud])), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQueryChain([candidata])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn('id="paidModalShared"', html)
+        self.assertNotIn('id="paidModal10"', html)
 
     def test_copiar_solicitud_post_vuelve_misma_pantalla(self):
         self._login("Karla", "9989")

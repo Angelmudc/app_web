@@ -135,9 +135,13 @@
                 <li>
                   <button
                     type="button"
-                    class="dropdown-item"
+                    class="dropdown-item js-open-cancel"
+                    data-solicitud-id="{{ s.id }}"
+                    data-solicitud-codigo="{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
+                    data-action="{{ url_for('admin.cancelar_solicitud_desde_copiar', id=s.id) }}"
+                    data-next="{{ request.full_path }}#sol-{{ s.id }}"
                     data-bs-toggle="modal"
-                    data-bs-target="#cancelModal{{ s.id }}"
+                    data-bs-target="#cancelModalShared"
                   >
                     🛑 Cancelación
                   </button>
@@ -147,9 +151,14 @@
                 <li>
                   <button
                     type="button"
-                    class="dropdown-item text-success"
+                    class="dropdown-item text-success js-open-paid"
+                    data-solicitud-id="{{ s.id }}"
+                    data-solicitud-codigo="{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
+                    data-action="{{ url_for('admin.marcar_pagada_desde_copiar', id=s.id) }}"
+                    data-next="{{ request.full_path }}#sol-{{ s.id }}"
+                    data-current-candidata-id="{{ s.candidata_id or '' }}"
                     data-bs-toggle="modal"
-                    data-bs-target="#paidModal{{ s.id }}"
+                    data-bs-target="#paidModalShared"
                   >
                     💵 Marcar pagado
                   </button>
@@ -160,71 +169,6 @@
           </div>
         </div>
 
-        <div class="modal fade" id="cancelModal{{ s.id }}" tabindex="-1" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title">Cancelar {{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-              </div>
-              <form method="post" action="{{ url_for('admin.cancelar_solicitud_desde_copiar', id=s.id) }}">
-                <div class="modal-body">
-                  {% if csrf_token is defined %}
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  {% endif %}
-                  <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-                  <label class="form-label fw-semibold">Motivo de cancelación</label>
-                  <textarea class="form-control" name="motivo" rows="3" minlength="5" required></textarea>
-                  <small class="text-body-secondary">Mínimo 5 caracteres.</small>
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                  <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        {% if is_admin_role %}
-        <div class="modal fade" id="paidModal{{ s.id }}" tabindex="-1" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title">Marcar pagado {{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-              </div>
-              <form method="post" action="{{ url_for('admin.marcar_pagada_desde_copiar', id=s.id) }}">
-                <div class="modal-body">
-                  {% if csrf_token is defined %}
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  {% endif %}
-                  <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-                  <div class="mb-3">
-                    <label class="form-label fw-semibold">Candidata</label>
-                    <select class="form-select" name="candidata_id" required>
-                      <option value="">Seleccionar…</option>
-                      {% for cand in candidatas_pago %}
-                        <option value="{{ cand.fila }}" {% if s.candidata_id and cand.fila == s.candidata_id %}selected{% endif %}>
-                          {{ cand.nombre_completo }} (ID {{ cand.fila }})
-                        </option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  <div>
-                    <label class="form-label fw-semibold">Monto pagado</label>
-                    <input type="text" class="form-control" name="monto_pagado" placeholder="Ej. 10,000" required maxlength="100">
-                  </div>
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                  <button type="submit" class="btn btn-success">Guardar pago</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-        {% endif %}
       </li>
       {% endfor %}
     </ul>
@@ -264,6 +208,70 @@
   {% endif %}
 </div>
 
+<div class="modal fade" id="cancelModalShared" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="cancelModalSharedTitle">Cancelar solicitud</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form method="post" id="cancelModalSharedForm">
+        <div class="modal-body">
+          {% if csrf_token is defined %}
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% endif %}
+          <input type="hidden" name="next" id="cancelModalSharedNext" value="{{ request.full_path }}">
+          <label class="form-label fw-semibold">Motivo de cancelación</label>
+          <textarea class="form-control" name="motivo" rows="3" minlength="5" required></textarea>
+          <small class="text-body-secondary">Mínimo 5 caracteres.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if is_admin_role %}
+<div class="modal fade" id="paidModalShared" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="paidModalSharedTitle">Marcar pagado</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form method="post" id="paidModalSharedForm">
+        <div class="modal-body">
+          {% if csrf_token is defined %}
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% endif %}
+          <input type="hidden" name="next" id="paidModalSharedNext" value="{{ request.full_path }}">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Candidata</label>
+            <select class="form-select" name="candidata_id" id="paidModalSharedCandidata" required>
+              <option value="">Seleccionar…</option>
+              {% for cand in candidatas_pago %}
+                <option value="{{ cand.fila }}">{{ cand.nombre_completo }} (ID {{ cand.fila }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label fw-semibold">Monto pagado</label>
+            <input type="text" class="form-control" name="monto_pagado" placeholder="Ej. 10,000" required maxlength="100">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-success">Guardar pago</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div id="copy-toast" class="copy-toast" style="display:none;">✅ Copiado al portapapeles</div>
 {% endblock %}
 
@@ -271,6 +279,13 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const toast = document.getElementById('copy-toast');
+  const cancelTitle = document.getElementById('cancelModalSharedTitle');
+  const cancelForm = document.getElementById('cancelModalSharedForm');
+  const cancelNext = document.getElementById('cancelModalSharedNext');
+  const paidTitle = document.getElementById('paidModalSharedTitle');
+  const paidForm = document.getElementById('paidModalSharedForm');
+  const paidNext = document.getElementById('paidModalSharedNext');
+  const paidCandidata = document.getElementById('paidModalSharedCandidata');
 
   function showToast() {
     toast.style.display = 'block';
@@ -343,6 +358,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } else {
         alert('❌ No se pudo copiar. Intenta de nuevo.');
+      }
+    });
+  });
+
+  document.querySelectorAll('.js-open-cancel').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!cancelForm) return;
+      const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
+      cancelForm.action = btn.dataset.action || '';
+      if (cancelNext) cancelNext.value = btn.dataset.next || window.location.pathname;
+      if (cancelTitle) cancelTitle.textContent = `Cancelar ${code}`;
+    });
+  });
+
+  document.querySelectorAll('.js-open-paid').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!paidForm) return;
+      const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
+      paidForm.action = btn.dataset.action || '';
+      if (paidNext) paidNext.value = btn.dataset.next || window.location.pathname;
+      if (paidTitle) paidTitle.textContent = `Marcar pagado ${code}`;
+      if (paidCandidata) {
+        const current = btn.dataset.currentCandidataId || '';
+        paidCandidata.value = current;
       }
     });
   });
