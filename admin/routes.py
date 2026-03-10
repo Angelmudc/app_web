@@ -9548,16 +9548,6 @@ def copiar_solicitudes():
 
     has_more = (page * per_page) < total
     is_admin_role = _current_staff_role() in ('admin', 'owner')
-    candidatas_pago = []
-    if is_admin_role:
-        candidatas_pago = (
-            Candidata.query
-            .options(load_only(Candidata.fila, Candidata.nombre_completo))
-            .filter(candidatas_activas_filter(Candidata))
-            .order_by(Candidata.nombre_completo.asc())
-            .limit(300)
-            .all()
-        )
     return render_template(
         'admin/solicitudes_copiar.html',
         solicitudes=solicitudes,
@@ -9566,8 +9556,7 @@ def copiar_solicitudes():
         per_page=per_page,
         total=total,
         has_more=has_more,
-        is_admin_role=is_admin_role,
-        candidatas_pago=candidatas_pago
+        is_admin_role=is_admin_role
     )
 
 
@@ -9720,6 +9709,70 @@ def _copiar_action_response(*, ok: bool, message: str, category: str, next_url: 
         return jsonify(payload), http_status
     flash(message, category)
     return redirect(safe_next)
+
+
+@admin_bp.route('/solicitudes/copiar/candidatas_lookup', methods=['GET'])
+@login_required
+@admin_required
+def candidatas_lookup_copiar():
+    q = (request.args.get('q') or '').strip()
+    include_raw = (request.args.get('include_id') or '').strip()
+    try:
+        limit = int(request.args.get('limit', 50) or 50)
+    except Exception:
+        limit = 50
+    limit = max(1, min(limit, 100))
+
+    base_q = (
+        Candidata.query
+        .options(load_only(Candidata.fila, Candidata.nombre_completo))
+        .filter(candidatas_activas_filter(Candidata))
+    )
+
+    items = []
+    seen = set()
+    if q:
+        like = f"%{q}%"
+        rows = (
+            base_q
+            .filter(or_(
+                Candidata.nombre_completo.ilike(like),
+                cast(Candidata.fila, db.Text).ilike(like),
+            ))
+            .order_by(Candidata.nombre_completo.asc())
+            .limit(limit)
+            .all()
+        )
+        for cand in rows:
+            seen.add(int(cand.fila))
+            items.append({
+                "value": str(cand.fila),
+                "text": f"{cand.nombre_completo} (ID {cand.fila})",
+            })
+
+    include_id = None
+    try:
+        include_id = int(include_raw) if include_raw else None
+    except Exception:
+        include_id = None
+    if include_id and include_id not in seen:
+        include_c = (
+            base_q
+            .filter(Candidata.fila == include_id)
+            .first()
+        )
+        if include_c:
+            items.insert(0, {
+                "value": str(include_c.fila),
+                "text": f"{include_c.nombre_completo} (ID {include_c.fila})",
+            })
+
+    return jsonify({
+        "ok": True,
+        "q": q,
+        "count": len(items),
+        "items": items,
+    })
 
 
 @admin_bp.route('/solicitudes/<int:id>/cancelar_desde_copiar', methods=['POST'])

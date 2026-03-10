@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from flask import request
+
 from app import app as flask_app
 import admin.routes as admin_routes
 
@@ -55,10 +57,10 @@ class _SolicitudStub:
 
 
 class _CandidataStub:
-    def __init__(self, fila=33):
+    def __init__(self, fila=33, nombre_completo="Ana Demo"):
         self.fila = fila
         self.estado = "trabajando"
-        self.nombre_completo = "Ana Demo"
+        self.nombre_completo = nombre_completo
         self.nota_descalificacion = None
         self.fecha_cambio_estado = None
         self.usuario_cambio_estado = None
@@ -121,6 +123,51 @@ class _CandidataQueryChain:
 
     def all(self):
         return list(self.rows)
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+
+class _LookupCandidataQueryChain:
+    def __init__(self, rows):
+        self.rows = list(rows)
+        self._q_applied = False
+
+    def options(self, *args, **kwargs):
+        return self
+
+    def filter(self, *args, **kwargs):
+        q = (request.args.get("q") or "").strip().lower()
+        include_raw = (request.args.get("include_id") or "").strip()
+
+        if q and not self._q_applied:
+            self.rows = [
+                r for r in self.rows
+                if (q in (r.nombre_completo or "").lower()) or (q in str(r.fila))
+            ]
+            self._q_applied = True
+            return self
+
+        if include_raw and any("fila" in str(a) for a in args):
+            try:
+                include_id = int(include_raw)
+            except Exception:
+                return self
+            self.rows = [r for r in self.rows if int(r.fila) == include_id]
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def limit(self, n):
+        self.rows = self.rows[:int(n)]
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+    def first(self):
+        return self.rows[0] if self.rows else None
 
 
 class AdminCopiarActionsTest(unittest.TestCase):
@@ -188,7 +235,45 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('id="paidModalSharedSearchStats"', html)
         self.assertIn('id="paidModalSharedSelected"', html)
         self.assertIn('class="alert d-none js-modal-feedback"', html)
-        self.assertIn("paidSearchBtn.addEventListener('click', () => filterPaidCandidates(true, true));", html)
+        self.assertIn('data-lookup-url="/admin/solicitudes/copiar/candidatas_lookup"', html)
+        self.assertIn("paidSearchBtn.addEventListener('click', () => lookupPaidCandidates(true, true, false));", html)
+
+    def test_candidatas_lookup_copiar_busca_fuera_de_subconjunto_inicial(self):
+        self._login("Cruz", "8998")
+        rows = [_CandidataStub(fila=i, nombre_completo=f"Ana {i:03d}") for i in range(1, 401)]
+        rows.append(_CandidataStub(fila=999, nombre_completo="Zoe Final"))
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Candidata, "query", _LookupCandidataQueryChain(rows)):
+                resp = self.client.get(
+                    "/admin/solicitudes/copiar/candidatas_lookup?q=zoe&limit=50",
+                    headers={"Accept": "application/json"},
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertTrue(any("Zoe Final" in item["text"] for item in data["items"]))
+
+    def test_candidatas_lookup_copiar_include_id_en_busqueda_vacia(self):
+        self._login("Cruz", "8998")
+        rows = [_CandidataStub(fila=450, nombre_completo="Candidata Incluida")]
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Candidata, "query", _LookupCandidataQueryChain(rows)):
+                resp = self.client.get(
+                    "/admin/solicitudes/copiar/candidatas_lookup?include_id=450",
+                    headers={"Accept": "application/json"},
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["items"][0]["value"], "450")
 
     def test_copiar_solicitud_post_vuelve_misma_pantalla(self):
         self._login("Karla", "9989")

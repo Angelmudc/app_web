@@ -248,7 +248,7 @@
     </form>
 
     {% if is_admin_role %}
-    <form method="post" id="paidModalSharedForm" class="d-none">
+    <form method="post" id="paidModalSharedForm" class="d-none" data-lookup-url="{{ url_for('admin.candidatas_lookup_copiar') }}">
       {% if csrf_token is defined %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% endif %}
@@ -273,9 +273,6 @@
         <label class="form-label fw-semibold">Candidata</label>
         <select class="form-select" name="candidata_id" id="paidModalSharedCandidata" required>
           <option value="">Seleccionar…</option>
-          {% for cand in candidatas_pago %}
-            <option value="{{ cand.fila }}">{{ cand.nombre_completo }} (ID {{ cand.fila }})</option>
-          {% endfor %}
         </select>
         <small class="text-body-secondary d-block mt-1" id="paidModalSharedSelected">Seleccionada: ninguna</small>
       </div>
@@ -314,11 +311,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const paidSearchStats = document.getElementById('paidModalSharedSearchStats');
   const paidSelected = document.getElementById('paidModalSharedSelected');
   const pageBasePath = `${window.location.pathname}${window.location.search}`;
-  const paidAllCandidates = paidCandidata
-    ? Array.from(paidCandidata.options)
-      .filter((opt) => opt.value)
-      .map((opt) => ({ value: opt.value, text: opt.textContent.trim(), needle: opt.textContent.trim().toLowerCase() }))
-    : [];
+  const paidLookupUrl = paidForm ? (paidForm.dataset.lookupUrl || '') : '';
+  let paidCurrentCandidateId = '';
+  let paidLookupSeq = 0;
 
   function showToast() {
     toast.style.display = 'block';
@@ -432,31 +427,65 @@ document.addEventListener('DOMContentLoaded', () => {
     paidSelected.textContent = `Seleccionada: ${selectedText}`;
   }
 
-  function filterPaidCandidates(showResultText = false, autoSelectFirst = false) {
-    if (!paidCandidata) return;
-    const needle = ((paidSearch && paidSearch.value) || '').trim().toLowerCase();
-    const current = paidCandidata.value || '';
-    const matches = needle
-      ? paidAllCandidates.filter((item) => item.needle.includes(needle))
-      : paidAllCandidates.slice();
+  function setPaidStats(message) {
+    if (!paidSearchStats) return;
+    paidSearchStats.textContent = message;
+  }
 
-    renderPaidOptions(matches, current);
-    if (autoSelectFirst && !paidCandidata.value && matches.length > 0) {
-      paidCandidata.value = matches[0].value;
-    }
-
-    if (paidSearchStats) {
-      if (!needle) {
-        paidSearchStats.textContent = `Mostrando ${matches.length} candidatas disponibles.`;
-      } else if (matches.length === 0) {
-        paidSearchStats.textContent = 'No hay coincidencias con esa búsqueda.';
-      } else if (showResultText) {
-        paidSearchStats.textContent = `Búsqueda aplicada: ${matches.length} coincidencia(s).`;
-      } else {
-        paidSearchStats.textContent = `${matches.length} coincidencia(s) encontradas.`;
+  async function lookupPaidCandidates(showResultText = false, autoSelectFirst = false, includeCurrent = false) {
+    if (!paidCandidata || !paidLookupUrl || !window.fetch) return;
+    const q = ((paidSearch && paidSearch.value) || '').trim();
+    const includeId = includeCurrent ? paidCurrentCandidateId : '';
+    const seq = ++paidLookupSeq;
+    setPaidStats('Buscando candidatas...');
+    try {
+      const qs = new URLSearchParams();
+      qs.set('q', q);
+      qs.set('limit', '50');
+      if (includeId) qs.set('include_id', includeId);
+      const resp = await fetch(`${paidLookupUrl}?${qs.toString()}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      if (seq !== paidLookupSeq) return;
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      if (!resp.ok || !contentType.includes('application/json')) {
+        setPaidStats('No se pudo consultar candidatas. Intenta de nuevo.');
+        return;
       }
+      const data = await resp.json();
+      if (!data || !data.ok) {
+        setPaidStats('No se pudo consultar candidatas. Intenta de nuevo.');
+        return;
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      const previous = paidCandidata.value || paidCurrentCandidateId || '';
+      renderPaidOptions(items, previous);
+      if (autoSelectFirst && !paidCandidata.value && items.length > 0) {
+        paidCandidata.value = items[0].value;
+      }
+      if (!q) {
+        if (includeId && items.length === 1) {
+          setPaidStats('Seleccionada candidata actual. Escribe para buscar otra.');
+        } else {
+          setPaidStats('Escribe nombre o ID y pulsa Buscar.');
+        }
+      } else if (items.length === 0) {
+        setPaidStats('No hay coincidencias con esa búsqueda.');
+      } else if (showResultText) {
+        setPaidStats(`Búsqueda aplicada: ${items.length} coincidencia(s).`);
+      } else {
+        setPaidStats(`${items.length} coincidencia(s) encontradas.`);
+      }
+      updateSelectedCandidataText();
+    } catch (_err) {
+      if (seq !== paidLookupSeq) return;
+      setPaidStats('No se pudo consultar candidatas. Intenta de nuevo.');
     }
-    updateSelectedCandidataText();
   }
 
   async function submitModalAjax(form, successMessage) {
@@ -595,9 +624,11 @@ document.addEventListener('DOMContentLoaded', () => {
       actionPanel.dataset.solicitudId = btn.dataset.solicitudId || '';
       if (cancelForm) cancelForm.classList.add('d-none');
       paidForm.classList.remove('d-none');
+      paidCurrentCandidateId = (btn.dataset.currentCandidataId || '').toString();
       if (paidSearch) paidSearch.value = '';
-      renderPaidOptions(paidAllCandidates, btn.dataset.currentCandidataId || '');
-      filterPaidCandidates(false, false);
+      renderPaidOptions([]);
+      setPaidStats('Escribe nombre o ID y pulsa Buscar.');
+      lookupPaidCandidates(false, false, true);
       clearModalFeedback(paidForm);
       openActionPanelForButton(btn, () => {
         if (paidSearch) paidSearch.focus();
@@ -636,22 +667,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (paidSearch) {
-    paidSearch.addEventListener('input', () => filterPaidCandidates(false, false));
+    paidSearch.addEventListener('input', () => {
+      if (!paidSearch.value.trim()) {
+        lookupPaidCandidates(false, false, true);
+        return;
+      }
+      lookupPaidCandidates(false, false, false);
+    });
     paidSearch.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter') return;
       ev.preventDefault();
-      filterPaidCandidates(true, true);
+      lookupPaidCandidates(true, true, false);
     });
   }
 
   if (paidSearchBtn) {
-    paidSearchBtn.addEventListener('click', () => filterPaidCandidates(true, true));
+    paidSearchBtn.addEventListener('click', () => lookupPaidCandidates(true, true, false));
   }
 
   if (paidClearBtn) {
     paidClearBtn.addEventListener('click', () => {
       if (paidSearch) paidSearch.value = '';
-      filterPaidCandidates(false, false);
+      lookupPaidCandidates(false, false, true);
       if (paidSearch) paidSearch.focus();
     });
   }
