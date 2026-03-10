@@ -9697,6 +9697,31 @@ def reanudar_espera_perfil_desde_copiar(id):
     return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
 
+def _copiar_wants_json() -> bool:
+    try:
+        accept = (request.headers.get('Accept') or '').lower()
+        xrw = (request.headers.get('X-Requested-With') or '').lower()
+        return bool(request.is_json or ('application/json' in accept) or (xrw == 'xmlhttprequest'))
+    except Exception:
+        return False
+
+
+def _copiar_action_response(*, ok: bool, message: str, category: str, next_url: str, fallback: str, http_status: int = 200, extra=None):
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    if _copiar_wants_json():
+        payload = {
+            "ok": bool(ok),
+            "message": message,
+            "category": category,
+            "next": safe_next,
+        }
+        if extra:
+            payload.update(extra)
+        return jsonify(payload), http_status
+    flash(message, category)
+    return redirect(safe_next)
+
+
 @admin_bp.route('/solicitudes/<int:id>/cancelar_desde_copiar', methods=['POST'])
 @login_required
 @staff_required
@@ -9708,16 +9733,34 @@ def cancelar_solicitud_desde_copiar(id):
 
     motivo = (request.form.get('motivo') or '').strip()
     if len(motivo) < 5:
-        flash('Indica un motivo de cancelación (mínimo 5 caracteres).', 'danger')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='Indica un motivo de cancelación (mínimo 5 caracteres).',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=400,
+        )
 
     if estado_actual in ('cancelada', 'pagada'):
-        flash(f'La solicitud {s.codigo_solicitud} no admite cancelación en su estado actual.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message=f'La solicitud {s.codigo_solicitud} no admite cancelación en su estado actual.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+        )
 
     if estado_actual not in ('proceso', 'activa', 'reemplazo', 'espera_pago'):
-        flash(f'No se puede cancelar la solicitud en estado «{s.estado}».', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message=f'No se puede cancelar la solicitud en estado «{s.estado}».',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+        )
 
     try:
         s.estado = 'cancelada'
@@ -9734,15 +9777,35 @@ def cancelar_solicitud_desde_copiar(id):
             changes={"estado": {"from": estado_actual, "to": "cancelada"}},
             metadata={"motivo": motivo[:255]},
         )
-        flash(f'Solicitud {s.codigo_solicitud} cancelada.', 'success')
+        return _copiar_action_response(
+            ok=True,
+            message=f'Solicitud {s.codigo_solicitud} cancelada.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": "cancelada", "remove_card": True},
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('No se pudo cancelar la solicitud.', 'danger')
+        return _copiar_action_response(
+            ok=False,
+            message='No se pudo cancelar la solicitud.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+        )
     except Exception:
         db.session.rollback()
-        flash('Ocurrió un error al cancelar la solicitud.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='Ocurrió un error al cancelar la solicitud.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+        )
 
 
 @admin_bp.route('/solicitudes/<int:id>/marcar_pagada_desde_copiar', methods=['POST'])
@@ -9755,29 +9818,59 @@ def marcar_pagada_desde_copiar(id):
 
     estado_actual = (s.estado or '').strip().lower()
     if estado_actual in ('cancelada', 'pagada'):
-        flash('Esta solicitud no admite marcarse como pagada en su estado actual.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='Esta solicitud no admite marcarse como pagada en su estado actual.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+        )
 
     candidata_raw = (request.form.get('candidata_id') or '').strip()
     monto_raw = (request.form.get('monto_pagado') or '').strip()
     if not candidata_raw or not monto_raw:
-        flash('Para marcar pagado debes indicar candidata y monto pagado.', 'danger')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='Para marcar pagado debes indicar candidata y monto pagado.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=400,
+        )
 
     try:
         candidata_id = int(candidata_raw)
     except Exception:
-        flash('La candidata seleccionada no es válida.', 'danger')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='La candidata seleccionada no es válida.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=400,
+        )
 
     cand = Candidata.query.get(candidata_id)
     if not cand:
-        flash('La candidata seleccionada no existe.', 'danger')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='La candidata seleccionada no existe.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=404,
+        )
 
     if candidata_esta_descalificada(cand):
-        flash('No se puede asignar una candidata descalificada.', 'danger')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='No se puede asignar una candidata descalificada.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+        )
 
     try:
         s.candidata_id = cand.fila
@@ -9797,18 +9890,45 @@ def marcar_pagada_desde_copiar(id):
             changes={"estado": {"from": estado_actual, "to": "pagada"}},
             metadata={"candidata_id": cand.fila, "monto_pagado": s.monto_pagado},
         )
-        flash('Solicitud marcada como pagada.', 'success')
+        return _copiar_action_response(
+            ok=True,
+            message='Solicitud marcada como pagada.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": "pagada", "remove_card": True, "candidata_id": cand.fila},
+        )
     except ValueError as e:
         db.session.rollback()
-        flash(f'Monto pagado inválido: {e}', 'danger')
+        return _copiar_action_response(
+            ok=False,
+            message=f'Monto pagado inválido: {e}',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=400,
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('No se pudo marcar la solicitud como pagada.', 'danger')
+        return _copiar_action_response(
+            ok=False,
+            message='No se pudo marcar la solicitud como pagada.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+        )
     except Exception:
         db.session.rollback()
-        flash('Ocurrió un error al marcar la solicitud como pagada.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='Ocurrió un error al marcar la solicitud como pagada.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+        )
 
 
 # =============================================================================

@@ -139,7 +139,7 @@
                     data-solicitud-id="{{ s.id }}"
                     data-solicitud-codigo="{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
                     data-action="{{ url_for('admin.cancelar_solicitud_desde_copiar', id=s.id) }}"
-                    data-next="{{ request.full_path }}#sol-{{ s.id }}"
+                    data-next="{{ request.full_path }}"
                     data-no-loader="true"
                   >
                     🛑 Cancelación
@@ -154,7 +154,7 @@
                     data-solicitud-id="{{ s.id }}"
                     data-solicitud-codigo="{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
                     data-action="{{ url_for('admin.marcar_pagada_desde_copiar', id=s.id) }}"
-                    data-next="{{ request.full_path }}#sol-{{ s.id }}"
+                    data-next="{{ request.full_path }}"
                     data-current-candidata-id="{{ s.candidata_id or '' }}"
                     data-no-loader="true"
                   >
@@ -219,6 +219,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% endif %}
           <input type="hidden" name="next" id="cancelModalSharedNext" value="{{ request.full_path }}">
+          <div class="alert d-none js-modal-feedback" role="alert"></div>
           <label class="form-label fw-semibold">Motivo de cancelación</label>
           <textarea class="form-control" name="motivo" rows="3" minlength="5" required></textarea>
           <small class="text-body-secondary">Mínimo 5 caracteres.</small>
@@ -246,6 +247,17 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% endif %}
           <input type="hidden" name="next" id="paidModalSharedNext" value="{{ request.full_path }}">
+          <div class="alert d-none js-modal-feedback" role="alert"></div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Buscar candidata</label>
+            <input
+              type="search"
+              class="form-control"
+              id="paidModalSharedSearch"
+              placeholder="Escribe nombre o ID..."
+              autocomplete="off"
+            >
+          </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Candidata</label>
             <select class="form-select" name="candidata_id" id="paidModalSharedCandidata" required>
@@ -287,9 +299,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const paidForm = document.getElementById('paidModalSharedForm');
   const paidNext = document.getElementById('paidModalSharedNext');
   const paidCandidata = document.getElementById('paidModalSharedCandidata');
+  const paidSearch = document.getElementById('paidModalSharedSearch');
   const paidMonto = paidForm ? paidForm.querySelector('input[name="monto_pagado"]') : null;
   const cancelModal = (window.bootstrap && cancelModalEl) ? bootstrap.Modal.getOrCreateInstance(cancelModalEl) : null;
   const paidModal = (window.bootstrap && paidModalEl) ? bootstrap.Modal.getOrCreateInstance(paidModalEl) : null;
+  const pageBasePath = `${window.location.pathname}${window.location.search}`;
 
   function clearUiLocks() {
     try {
@@ -356,6 +370,98 @@ document.addEventListener('DOMContentLoaded', () => {
   function showToast() {
     toast.style.display = 'block';
     setTimeout(() => { toast.style.display = 'none'; }, 1800);
+  }
+
+  function showActionToast(message, isError = false) {
+    if (!toast) return;
+    toast.textContent = message;
+    toast.style.background = isError ? '#842029' : '#1e7e34';
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 2200);
+  }
+
+  function clearModalFeedback(form) {
+    if (!form) return;
+    const box = form.querySelector('.js-modal-feedback');
+    if (!box) return;
+    box.classList.add('d-none');
+    box.classList.remove('alert-success', 'alert-danger', 'alert-warning', 'alert-info');
+    box.textContent = '';
+  }
+
+  function setModalFeedback(form, message, category) {
+    if (!form) return;
+    const box = form.querySelector('.js-modal-feedback');
+    if (!box) return;
+    const level = (category || '').toLowerCase();
+    const cls = level === 'success' ? 'alert-success' : (level === 'warning' ? 'alert-warning' : (level === 'info' ? 'alert-info' : 'alert-danger'));
+    box.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-warning', 'alert-info');
+    box.classList.add(cls);
+    box.textContent = message || 'No se pudo completar la acción.';
+  }
+
+  function removeSolicitudCardFromUi(solicitudId) {
+    const row = document.getElementById(`sol-${solicitudId}`);
+    if (!row) return;
+    row.style.transition = 'opacity .2s ease';
+    row.style.opacity = '0';
+    setTimeout(() => row.remove(), 220);
+  }
+
+  function filterPaidCandidates() {
+    if (!paidCandidata) return;
+    const needle = ((paidSearch && paidSearch.value) || '').trim().toLowerCase();
+    Array.from(paidCandidata.options).forEach((opt, idx) => {
+      if (idx === 0 || !needle) {
+        opt.hidden = false;
+        return;
+      }
+      opt.hidden = !opt.textContent.toLowerCase().includes(needle);
+    });
+    if (paidCandidata.value) {
+      const selected = paidCandidata.options[paidCandidata.selectedIndex];
+      if (selected && selected.hidden) {
+        paidCandidata.value = '';
+      }
+    }
+  }
+
+  async function submitModalAjax(form, modalEl, modalInstance, successMessage) {
+    if (!form || !window.fetch) return false;
+    clearModalFeedback(form);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const resp = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('application/json')) {
+        return false;
+      }
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        setModalFeedback(form, data.message || 'No se pudo completar la acción.', data.category || 'danger');
+        return true;
+      }
+      if (modalInstance) modalInstance.hide();
+      const solicitudId = data.solicitud_id || modalEl?.dataset.solicitudId || '';
+      if (data.remove_card && solicitudId) {
+        removeSolicitudCardFromUi(solicitudId);
+      }
+      showActionToast(data.message || successMessage, false);
+      return true;
+    } catch (_err) {
+      return false;
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
   }
 
   function fallbackCopy(text) {
@@ -434,8 +540,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!cancelForm) return;
       const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
       cancelForm.action = btn.dataset.action || '';
-      if (cancelNext) cancelNext.value = btn.dataset.next || window.location.pathname;
+      if (cancelNext) cancelNext.value = btn.dataset.next || pageBasePath;
       if (cancelTitle) cancelTitle.textContent = `Cancelar ${code}`;
+      if (cancelModalEl) cancelModalEl.dataset.solicitudId = btn.dataset.solicitudId || '';
+      clearModalFeedback(cancelForm);
       if (cancelTextarea) {
         cancelTextarea.readOnly = false;
         cancelTextarea.disabled = false;
@@ -450,23 +558,61 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!paidForm) return;
       const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
       paidForm.action = btn.dataset.action || '';
-      if (paidNext) paidNext.value = btn.dataset.next || window.location.pathname;
+      if (paidNext) paidNext.value = btn.dataset.next || pageBasePath;
       if (paidTitle) paidTitle.textContent = `Marcar pagado ${code}`;
+      if (paidModalEl) paidModalEl.dataset.solicitudId = btn.dataset.solicitudId || '';
       if (paidCandidata) {
         const current = btn.dataset.currentCandidataId || '';
         paidCandidata.value = current;
       }
+      if (paidSearch) paidSearch.value = '';
+      filterPaidCandidates();
+      clearModalFeedback(paidForm);
       openModalFromDropdown(btn, paidModal);
     });
   });
+
+  if (cancelForm) {
+    cancelForm.addEventListener('submit', async (ev) => {
+      if (cancelForm.dataset.asyncBypass === '1') {
+        cancelForm.dataset.asyncBypass = '';
+        return;
+      }
+      ev.preventDefault();
+      const handled = await submitModalAjax(cancelForm, cancelModalEl, cancelModal, 'Solicitud cancelada.');
+      if (!handled) {
+        cancelForm.dataset.asyncBypass = '1';
+        cancelForm.submit();
+      }
+    });
+  }
+
+  if (paidForm) {
+    paidForm.addEventListener('submit', async (ev) => {
+      if (paidForm.dataset.asyncBypass === '1') {
+        paidForm.dataset.asyncBypass = '';
+        return;
+      }
+      ev.preventDefault();
+      const handled = await submitModalAjax(paidForm, paidModalEl, paidModal, 'Solicitud marcada como pagada.');
+      if (!handled) {
+        paidForm.dataset.asyncBypass = '1';
+        paidForm.submit();
+      }
+    });
+  }
+
+  if (paidSearch) {
+    paidSearch.addEventListener('input', filterPaidCandidates);
+  }
 
   if (cancelModalEl && cancelTextarea) {
     cancelModalEl.addEventListener('shown.bs.modal', () => {
       clearUiLocks();
       clearStaleModalBackdrop();
-      setTimeout(() => cancelTextarea.focus(), 0);
     });
     cancelModalEl.addEventListener('hidden.bs.modal', () => {
+      clearModalFeedback(cancelForm);
       setTimeout(clearStaleModalBackdrop, 0);
     });
   }
@@ -475,15 +621,9 @@ document.addEventListener('DOMContentLoaded', () => {
     paidModalEl.addEventListener('shown.bs.modal', () => {
       clearUiLocks();
       clearStaleModalBackdrop();
-      setTimeout(() => {
-        if (!paidCandidata.value && paidMonto) {
-          paidCandidata.focus();
-          return;
-        }
-        (paidMonto || paidCandidata).focus();
-      }, 0);
     });
     paidModalEl.addEventListener('hidden.bs.modal', () => {
+      clearModalFeedback(paidForm);
       setTimeout(clearStaleModalBackdrop, 0);
     });
   }

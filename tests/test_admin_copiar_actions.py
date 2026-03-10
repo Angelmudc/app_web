@@ -181,6 +181,9 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('class="dropdown-item text-success js-open-paid"', html)
         self.assertNotIn('data-bs-target="#paidModalShared"', html)
         self.assertIn('data-no-loader="true"', html)
+        self.assertIn('id="paidModalSharedSearch"', html)
+        self.assertIn('placeholder="Escribe nombre o ID..."', html)
+        self.assertIn('class="alert d-none js-modal-feedback"', html)
 
     def test_copiar_solicitud_post_vuelve_misma_pantalla(self):
         self._login("Karla", "9989")
@@ -260,6 +263,74 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(solicitud.estado, "pagada")
         self.assertEqual(solicitud.candidata_id, 33)
         self.assertEqual(solicitud.monto_pagado, "12000.00")
+        sync_mock.assert_called_once()
+        mark_mock.assert_called_once()
+        commit_mock.assert_called_once()
+
+    def test_cancelar_desde_copiar_ajax_devuelve_json(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="activa")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_cancel:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/cancelar_desde_copiar",
+                    data={
+                        "motivo": "Cliente detuvo el proceso",
+                        "next": "/admin/solicitudes/copiar?page=1",
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["category"], "success")
+        self.assertEqual(data["solicitud_id"], 10)
+        self.assertTrue(data["remove_card"])
+        self.assertEqual(solicitud.estado, "cancelada")
+        commit_cancel.assert_called_once()
+
+    def test_pagado_desde_copiar_ajax_devuelve_json(self):
+        self._login("Cruz", "8998")
+        solicitud = _SolicitudStub(estado="activa")
+        candidata = _CandidataStub(fila=33)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch.object(admin_routes.Candidata, "query", SimpleNamespace(get=lambda _id: candidata)), \
+                 patch("admin.routes._sync_solicitud_candidatas_after_assignment") as sync_mock, \
+                 patch("admin.routes._mark_candidata_estado") as mark_mock, \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/marcar_pagada_desde_copiar",
+                    data={
+                        "candidata_id": "33",
+                        "monto_pagado": "12000",
+                        "next": "/admin/solicitudes/copiar?per_page=50",
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["category"], "success")
+        self.assertEqual(data["solicitud_id"], 10)
+        self.assertEqual(data["estado"], "pagada")
+        self.assertEqual(data["candidata_id"], 33)
+        self.assertTrue(data["remove_card"])
+        self.assertEqual(solicitud.estado, "pagada")
+        self.assertEqual(solicitud.candidata_id, 33)
         sync_mock.assert_called_once()
         mark_mock.assert_called_once()
         commit_mock.assert_called_once()
