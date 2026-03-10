@@ -13,7 +13,7 @@ from flask import render_template, redirect, url_for, flash, request, jsonify, a
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 
-from sqlalchemy import or_, func, cast, desc, case
+from sqlalchemy import or_, func, cast, desc, case, inspect as sa_inspect
 from sqlalchemy.types import Numeric
 from sqlalchemy.orm import joinedload, load_only  # ➜ para evitar N+1 en copiar_solicitudes
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
@@ -21,7 +21,20 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from functools import wraps  # si otros decoradores locales lo usan
 
 from config_app import db, cache
-from models import Cliente, Solicitud, Candidata, Reemplazo, TareaCliente, StaffUser, SolicitudCandidata, ClienteNotificacion, Entrevista, StaffAuditLog
+from models import (
+    Cliente,
+    Solicitud,
+    Candidata,
+    Reemplazo,
+    TareaCliente,
+    StaffUser,
+    SolicitudCandidata,
+    ClienteNotificacion,
+    Entrevista,
+    StaffAuditLog,
+    PublicSolicitudTokenUso,
+    PublicSolicitudClienteNuevoTokenUso,
+)
 from admin.forms import (
     StaffUserCreateForm,
     StaffUserEditForm,
@@ -4657,21 +4670,145 @@ def editar_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 # 🔴 Eliminar cliente
 # ─────────────────────────────────────────────────────────────
+_TABLE_EXISTS_CACHE: dict[str, bool] = {}
+
+
+def _table_exists(table_name: str) -> bool:
+    name = (table_name or "").strip()
+    if not name:
+        return False
+    cached = _TABLE_EXISTS_CACHE.get(name)
+    if cached is not None:
+        return bool(cached)
+    try:
+        exists = bool(sa_inspect(db.engine).has_table(name))
+    except Exception:
+        exists = False
+    _TABLE_EXISTS_CACHE[name] = exists
+    return exists
+
+
+def _cliente_deletion_critical_dependency_counts(cliente_id: int) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    if _table_exists("solicitudes"):
+        try:
+            total = int(
+                db.session.query(func.count(Solicitud.id))
+                .filter(Solicitud.cliente_id == int(cliente_id))
+                .scalar()
+                or 0
+            )
+            if total > 0:
+                counts["solicitudes"] = total
+        except SQLAlchemyError:
+            counts["solicitudes"] = -1
+    return counts
+
+
+def _delete_cliente_non_critical_rows(cliente_id: int) -> dict[str, int]:
+    deleted: dict[str, int] = {}
+    targets = [
+        ("tareas_clientes", TareaCliente, "tareas"),
+        ("clientes_notificaciones", ClienteNotificacion, "notificaciones"),
+        ("public_solicitud_tokens_usados", PublicSolicitudTokenUso, "tokens_publicos"),
+        ("public_solicitud_cliente_nuevo_tokens_usados", PublicSolicitudClienteNuevoTokenUso, "tokens_publicos_cliente_nuevo"),
+    ]
+
+    for table_name, model, label in targets:
+        if not _table_exists(table_name):
+            deleted[label] = 0
+            continue
+        qty = (
+            model.query
+            .filter(model.cliente_id == int(cliente_id))
+            .delete(synchronize_session=False)
+        )
+        deleted[label] = int(qty or 0)
+    return deleted
+
+
 @admin_bp.route('/clientes/<int:cliente_id>/eliminar', methods=['POST'])
 @login_required
 @admin_required
 @admin_action_limit(bucket="delete_cliente", max_actions=10, window_sec=60)
 def eliminar_cliente(cliente_id):
     """🗑️ Eliminar un cliente definitivamente."""
+    _owner_only()
     c = Cliente.query.get_or_404(cliente_id)
+    cliente_pk = int(getattr(c, "id", 0) or 0)
+    cliente_code = str((getattr(c, "codigo", "") or "")).strip() or str(cliente_pk)
+
+    critical = _cliente_deletion_critical_dependency_counts(cliente_pk)
+    if critical:
+        if any(v < 0 for v in critical.values()):
+            msg = (
+                "No se pudo validar de forma segura todas las relaciones del cliente. "
+                "No se realizó ningún borrado."
+            )
+        else:
+            rel_txt = ", ".join(f"{k}: {v}" for k, v in critical.items())
+            msg = (
+                "Este cliente no puede eliminarse porque tiene registros relacionados "
+                f"que deben conservarse ({rel_txt})."
+            )
+        _audit_log(
+            action_type="CLIENTE_DELETE_BLOCKED",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Borrado bloqueado para cliente {cliente_code}",
+            metadata={"critical_dependencies": critical},
+            success=False,
+            error=msg,
+        )
+        flash(msg, "warning")
+        return redirect(url_for("admin.listar_clientes"))
 
     try:
-        db.session.delete(c)
+        deleted_rows: dict[str, int] = {}
+        with db.session.begin_nested():
+            deleted_rows = _delete_cliente_non_critical_rows(cliente_pk)
+            if _table_exists("solicitudes"):
+                db.session.delete(c)
+            else:
+                Cliente.query.filter(Cliente.id == cliente_pk).delete(synchronize_session=False)
+            db.session.flush()
         db.session.commit()
-        flash('Cliente eliminado correctamente 🗑️', 'success')
-    except Exception:
+        _audit_log(
+            action_type="CLIENTE_DELETE_OK",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Cliente eliminado {cliente_code}",
+            metadata={"deleted_rows": deleted_rows},
+            success=True,
+        )
+        flash('Cliente eliminado correctamente.', 'success')
+    except IntegrityError:
         db.session.rollback()
-        flash('No se pudo eliminar el cliente.', 'danger')
+        msg = (
+            "No se pudo eliminar el cliente por restricciones de integridad. "
+            "No se aplicaron cambios."
+        )
+        _audit_log(
+            action_type="CLIENTE_DELETE_FAIL",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Error de integridad al eliminar cliente {cliente_code}",
+            success=False,
+            error=msg,
+        )
+        flash(msg, "danger")
+    except SQLAlchemyError:
+        db.session.rollback()
+        msg = 'No se pudo eliminar el cliente de forma segura. No se aplicaron cambios.'
+        _audit_log(
+            action_type="CLIENTE_DELETE_FAIL",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Fallo técnico al eliminar cliente {cliente_code}",
+            success=False,
+            error=msg,
+        )
+        flash(msg, 'danger')
 
     return redirect(url_for('admin.listar_clientes'))
 

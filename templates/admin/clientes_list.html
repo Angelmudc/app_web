@@ -124,14 +124,16 @@
                     </a>
                   </li>
                   <li><hr class="dropdown-divider"></li>
-                  <li>
-                    <a class="dropdown-item text-danger" href="#" onclick="if(confirm('¿Eliminar cliente #{{ c.id }}?')) document.getElementById('del-{{c.id}}').submit(); return false;">
-                      <i class="fa-solid fa-trash me-2"></i>Eliminar
-                    </a>
-                    <form id="del-{{c.id}}" method="post" action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}" style="display:none">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    </form>
-                  </li>
+                  {% if current_user.role|default('')|lower == 'owner' %}
+                    <li>
+                      <a class="dropdown-item text-danger" href="#" onclick="if(confirm('¿Eliminar cliente #{{ c.id }}? Esta acción es irreversible.')) document.getElementById('del-{{c.id}}').submit(); return false;">
+                        <i class="fa-solid fa-trash me-2"></i>Eliminar
+                      </a>
+                      <form id="del-{{c.id}}" method="post" action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}" style="display:none">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      </form>
+                    </li>
+                  {% endif %}
                 </ul>
               </div>
             </td>
