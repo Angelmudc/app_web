@@ -4,9 +4,9 @@
 {% set _is_used = (_state == 'used') %}
 {% set _is_expired = (_state == 'expired') %}
 {% set _kind = 'Cliente existente' if link_type == 'existente' else 'Cliente nuevo' %}
-{% set meta_description = "Formulario oficial para registrar cliente y solicitud de servicio doméstico de forma segura." %}
+{% set meta_description = "Formulario oficial para registrar cliente y solicitud de servicio doméstico." %}
 {% set og_title = "Doméstica del Cibao A&D — Formulario de Solicitud" %}
-{% set og_description = "Formulario oficial para registrar cliente y solicitud de servicio doméstico de forma segura." %}
+{% set og_description = "Formulario oficial para registrar cliente y solicitud de servicio doméstico." %}
 {% set og_type = "website" %}
 
 {% block title %}Formulario oficial | Doméstica del Cibao A&D{% endblock %}
@@ -83,7 +83,7 @@
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
           <div>
             <h1 class="h4 fw-bold mb-2">Formulario oficial de solicitud</h1>
-            <p class="mb-0 text-white-50">Recibiste este enlace directamente de Doméstica del Cibao A&D para completar un proceso legítimo y seguro.</p>
+            <p class="mb-0 text-white-50">Recibiste este enlace directamente de Doméstica del Cibao A&D para completar un proceso oficial de solicitud.</p>
           </div>
           <span class="share-code"><i class="bi bi-patch-check"></i> {{ share_code }}</span>
         </div>
@@ -93,7 +93,7 @@
         {% if _is_ready %}
           <div class="share-status">
             <i class="bi bi-shield-check me-1"></i>
-            Enlace verificado. Puedes continuar al formulario seguro.
+            Enlace válido para este proceso. Puedes continuar al formulario oficial.
           </div>
         {% elif _is_used %}
           <div class="share-status warn">
@@ -103,7 +103,7 @@
         {% elif _is_expired %}
           <div class="share-status warn">
             <i class="bi bi-hourglass-split me-1"></i>
-            Este enlace expiró por seguridad. Solicita un enlace nuevo.
+            Este enlace expiró para este proceso. Solicita un enlace nuevo.
           </div>
         {% else %}
           <div class="share-status err">
@@ -124,7 +124,7 @@
         <div class="share-cta">
           {% if _is_ready %}
             <a class="btn btn-primary btn-lg" href="{{ continue_url }}" id="continueBtn">
-              Continuar al formulario seguro
+              Continuar al formulario oficial
             </a>
             <button class="btn btn-outline-secondary" type="button" id="stopAutoBtn">Detener redirección automática</button>
           {% else %}
@@ -133,7 +133,7 @@
         </div>
 
         {% if _is_ready %}
-          <div class="share-countdown" id="countdownMsg">Redirección automática en <span id="countNum">5</span> segundos.</div>
+          <div class="share-countdown" id="countdownMsg">Redirección automática en <span id="countNum">45</span> segundos.</div>
         {% endif %}
       </div>
     </article>
@@ -149,7 +149,7 @@
     const countEl = document.getElementById('countNum');
     const msgEl = document.getElementById('countdownMsg');
     const stopBtn = document.getElementById('stopAutoBtn');
-    let seconds = 5;
+    let seconds = 45;
     let timer = null;
 
     function stopAuto(text) {
