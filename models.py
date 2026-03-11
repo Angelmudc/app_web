@@ -543,6 +543,24 @@ class PublicSolicitudClienteNuevoTokenUso(db.Model):
         )
 
 
+class PublicSolicitudShareAlias(db.Model):
+    __tablename__ = "public_solicitud_share_aliases"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(24), nullable=False, unique=True, index=True)
+    link_type = db.Column(db.String(24), nullable=False, index=True)
+    token = db.Column(db.Text, nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=text("true"))
+
+    created_by = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<PublicSolicitudShareAlias id={self.id} type={self.link_type} code={self.code}>"
+
+
 class Cliente(UserMixin, db.Model):
     __tablename__ = 'clientes'
 

@@ -367,6 +367,26 @@ def test_new_public_short_route_success_redirect_stays_on_short_path():
     assert "/clientes/n/tok123" in (resp.location or "")
 
 
+def test_share_continue_route_supports_new_client_flow_without_exposing_token_in_url():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    alias = SimpleNamespace(code="WXYZ5678JK", link_type="nuevo", token="tok123")
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+        resp = client.get("/solicitud/WXYZ5678JK/continuar")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Seccion 1 - Datos del cliente" in html
+    assert 'property="og:url" content="http://localhost/solicitud/WXYZ5678JK"' in html
+    assert 'rel="canonical" href="http://localhost/solicitud/WXYZ5678JK"' in html
+    assert "/clientes/n/tok123" not in html
+
+
 def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

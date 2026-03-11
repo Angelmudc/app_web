@@ -1,6 +1,20 @@
 # app_web/public/routes.py
 
-from flask import render_template, abort, request, redirect, jsonify, make_response, session
+import os
+import urllib.parse
+
+from flask import (
+    render_template,
+    abort,
+    request,
+    redirect,
+    jsonify,
+    make_response,
+    session,
+    url_for,
+    current_app,
+    g,
+)
 from flask_login import current_user
 from . import public_bp
 
@@ -38,6 +52,142 @@ def _json_no_cache(payload: dict, status: int = 200):
     resp.headers['Pragma'] = 'no-cache'
     resp.headers['Expires'] = '0'
     return resp
+
+
+def _public_external_url(endpoint: str, **values) -> str:
+    base_raw = (
+        (current_app.config.get("PUBLIC_BASE_URL") or "")
+        or (os.getenv("PUBLIC_BASE_URL") or "")
+        or (os.getenv("RENDER_EXTERNAL_URL") or "")
+    ).strip()
+    if base_raw:
+        parsed = urllib.parse.urlparse(base_raw)
+        if parsed.scheme and parsed.netloc:
+            base = f"{parsed.scheme}://{parsed.netloc}{parsed.path or ''}"
+            rel = url_for(endpoint, _external=False, **values).lstrip("/")
+            return urllib.parse.urljoin(base.rstrip("/") + "/", rel)
+    return url_for(endpoint, _external=True, **values)
+
+
+def _resolve_share_state(code: str):
+    from clientes import routes as clientes_routes
+
+    alias = clientes_routes.resolve_public_share_alias(code)
+    if alias is None:
+        return None, "invalid", "invalid", None
+
+    link_type = (getattr(alias, "link_type", "") or "").strip().lower()
+    token = str(getattr(alias, "token", "") or "")
+    token_hash = clientes_routes._public_link_token_hash_storage(token)
+
+    if link_type == "existente":
+        if clientes_routes._public_link_usage_by_hash(token_hash) is not None:
+            return alias, "used", link_type, token
+        cliente, fail_reason, _meta = clientes_routes._resolve_public_link_token(token)
+        if cliente is not None:
+            return alias, "ready", link_type, token
+        if fail_reason == "expired":
+            return alias, "expired", link_type, token
+        return alias, "invalid", link_type, token
+
+    if link_type == "nuevo":
+        if clientes_routes._public_new_link_usage_by_hash(token_hash) is not None:
+            return alias, "used", link_type, token
+        ok, fail_reason, _meta = clientes_routes._resolve_public_new_link_token(token)
+        if ok:
+            return alias, "ready", link_type, token
+        if fail_reason == "expired":
+            return alias, "expired", link_type, token
+        return alias, "invalid", link_type, token
+
+    return alias, "invalid", "invalid", token
+
+
+@public_bp.route("/solicitud/<code>", methods=["GET"])
+def solicitud_share_landing(code: str):
+    alias, share_state, link_type, _token = _resolve_share_state(code)
+    code_clean = (code or "").strip().upper()
+    og_url = _public_external_url("public.solicitud_share_landing", code=code_clean)
+    continue_url = _public_external_url("public.solicitud_share_continue", code=code_clean)
+
+    if alias is None:
+        return render_template(
+            "clientes/public_link_invalid.html",
+            reason_key="invalid",
+            status_code=404,
+            og_url=og_url,
+            canonical_url=og_url,
+        ), 404
+
+    return render_template(
+        "clientes/public_share_landing.html",
+        share_code=code_clean,
+        share_state=share_state,
+        link_type=link_type,
+        continue_url=continue_url,
+        og_url=og_url,
+        canonical_url=og_url,
+    ), 200
+
+
+@public_bp.route("/solicitud/<code>/continuar", methods=["GET", "POST"])
+def solicitud_share_continue(code: str):
+    alias, share_state, link_type, token = _resolve_share_state(code)
+    code_clean = (code or "").strip().upper()
+    og_url = _public_external_url("public.solicitud_share_landing", code=code_clean)
+
+    if alias is None:
+        return render_template(
+            "clientes/public_link_invalid.html",
+            reason_key="invalid",
+            status_code=404,
+            og_url=og_url,
+            canonical_url=og_url,
+        ), 404
+
+    if share_state == "used":
+        return render_template(
+            "clientes/public_link_used.html",
+            status_code=410,
+            og_url=og_url,
+            canonical_url=og_url,
+        ), 410
+
+    if share_state == "expired":
+        return render_template(
+            "clientes/public_link_invalid.html",
+            reason_key="expired",
+            status_code=410,
+            og_url=og_url,
+            canonical_url=og_url,
+        ), 410
+
+    if share_state != "ready":
+        return render_template(
+            "clientes/public_link_invalid.html",
+            reason_key="invalid",
+            status_code=404,
+            og_url=og_url,
+            canonical_url=og_url,
+        ), 404
+
+    g.public_share_code = code_clean
+    g.public_share_url_override = og_url
+
+    from clientes import routes as clientes_routes
+
+    if link_type == "existente":
+        return clientes_routes.solicitud_publica(token)
+    if link_type == "nuevo":
+        return clientes_routes.solicitud_publica_nueva_token(token)
+
+    return render_template(
+        "clientes/public_link_invalid.html",
+        reason_key="invalid",
+        status_code=404,
+        og_url=og_url,
+        canonical_url=og_url,
+    ), 404
 
 
 @public_bp.route('/ping', methods=['GET'])

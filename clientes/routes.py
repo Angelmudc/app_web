@@ -33,6 +33,7 @@ try:
         ClienteNotificacion,
         PublicSolicitudTokenUso,
         PublicSolicitudClienteNuevoTokenUso,
+        PublicSolicitudShareAlias,
     )
 except Exception:
     from models import Cliente, Solicitud
@@ -42,6 +43,7 @@ except Exception:
     ClienteNotificacion = None
     PublicSolicitudTokenUso = None
     PublicSolicitudClienteNuevoTokenUso = None
+    PublicSolicitudShareAlias = None
 
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
@@ -96,6 +98,8 @@ from utils.compat_engine import (
 PLANES_BANCO_DOMESTICAS = {'premium', 'vip'}
 ESTADOS_SOLICITUD_ACTIVA = {'activa'}
 CLIENTE_CODIGO_PUBLICO_MIN = 2152
+PUBLIC_SHARE_CODE_LENGTH = 10
+PUBLIC_SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -434,6 +438,11 @@ def _public_new_short_external_url(token: str) -> str:
     return _public_external_url("clientes.solicitud_publica_nueva_short", token=token)
 
 
+def _public_share_external_url(code: str) -> str:
+    """URL corporativa compartible para WhatsApp/preview."""
+    return _public_external_url("public.solicitud_share_landing", code=code)
+
+
 def _public_external_url(endpoint: str, **values) -> str:
     """
     Construye URLs absolutas para compartir previews.
@@ -454,6 +463,106 @@ def _public_external_url(endpoint: str, **values) -> str:
 
 
 _PUBLIC_TOKEN_USAGE_TABLE_READY = False
+_PUBLIC_SHARE_ALIAS_TABLE_READY = False
+
+
+def _ensure_public_share_alias_table() -> bool:
+    global _PUBLIC_SHARE_ALIAS_TABLE_READY
+    if _PUBLIC_SHARE_ALIAS_TABLE_READY:
+        return True
+    if PublicSolicitudShareAlias is None:
+        return False
+    try:
+        PublicSolicitudShareAlias.__table__.create(bind=db.engine, checkfirst=True)
+        _PUBLIC_SHARE_ALIAS_TABLE_READY = True
+        return True
+    except Exception:
+        current_app.logger.exception("No se pudo asegurar la tabla de aliases publicos compartibles")
+        return False
+
+
+def _generate_public_share_code(length: int = PUBLIC_SHARE_CODE_LENGTH) -> str:
+    size = max(8, min(20, int(length or PUBLIC_SHARE_CODE_LENGTH)))
+    alphabet = PUBLIC_SHARE_CODE_ALPHABET
+    return "".join(secrets.choice(alphabet) for _ in range(size))
+
+
+def create_public_share_alias(
+    *,
+    token: str,
+    link_type: str,
+    created_by: str = "",
+    max_attempts: int = 12,
+):
+    """
+    Crea alias corto estable para compartir por WhatsApp sin exponer token largo.
+    """
+    token = str(token or "").strip()
+    link_type = str(link_type or "").strip().lower()
+    if not token:
+        raise ValueError("missing_token")
+    if link_type not in {"existente", "nuevo"}:
+        raise ValueError("invalid_link_type")
+    if not _ensure_public_share_alias_table():
+        raise RuntimeError("share_alias_table_unavailable")
+    if PublicSolicitudShareAlias is None:
+        raise RuntimeError("share_alias_model_unavailable")
+
+    token_hash = _public_link_token_hash_storage(token)
+    existing = (
+        PublicSolicitudShareAlias.query
+        .filter_by(token_hash=token_hash, link_type=link_type, is_active=True)
+        .order_by(PublicSolicitudShareAlias.id.desc())
+        .first()
+    )
+    if existing is not None:
+        return existing
+
+    clean_created_by = str(created_by or "").strip()[:80] or None
+    now_ref = utc_now_naive()
+    for _ in range(max(1, int(max_attempts))):
+        code = _generate_public_share_code()
+        alias = PublicSolicitudShareAlias(
+            code=code,
+            link_type=link_type,
+            token=token,
+            token_hash=token_hash,
+            is_active=True,
+            created_by=clean_created_by,
+            created_at=now_ref,
+        )
+        try:
+            db.session.add(alias)
+            db.session.commit()
+            return alias
+        except IntegrityError:
+            db.session.rollback()
+            continue
+        except Exception:
+            db.session.rollback()
+            raise
+    raise RuntimeError("share_alias_collision_exhausted")
+
+
+def resolve_public_share_alias(code: str):
+    code = (code or "").strip().upper()
+    if not re.fullmatch(rf"[{PUBLIC_SHARE_CODE_ALPHABET}]{{8,20}}", code):
+        return None
+    if PublicSolicitudShareAlias is None:
+        return None
+    if not _ensure_public_share_alias_table():
+        return None
+    try:
+        row = PublicSolicitudShareAlias.query.filter_by(code=code, is_active=True).first()
+        if row is None:
+            return None
+        row.last_seen_at = utc_now_naive()
+        db.session.commit()
+        return row
+    except Exception:
+        db.session.rollback()
+        return None
+
 
 
 def _ensure_public_token_usage_table() -> bool:
@@ -539,6 +648,12 @@ def generar_token_publico_cliente_nuevo(*, created_by: str = "") -> str:
         "by": str(created_by or "")[:80],
     }
     return ser.dumps(payload)
+
+
+def generar_link_publico_compartible_cliente_nuevo(*, created_by: str = "") -> str:
+    token = generar_token_publico_cliente_nuevo(created_by=created_by)
+    alias = create_public_share_alias(token=token, link_type="nuevo", created_by=created_by)
+    return _public_share_external_url(alias.code)
 
 
 def _resolve_public_new_link_token(token: str):
@@ -679,6 +794,12 @@ def generar_token_publico_cliente(cliente: Cliente) -> str:
         "nonce": secrets.token_urlsafe(18),
     }
     return ser.dumps(payload)
+
+
+def generar_link_publico_compartible_cliente(cliente: Cliente, *, created_by: str = "") -> str:
+    token = generar_token_publico_cliente(cliente)
+    alias = create_public_share_alias(token=token, link_type="existente", created_by=created_by)
+    return _public_share_external_url(alias.code)
 
 
 def _is_safe_next(next_url: str) -> bool:
@@ -2630,7 +2751,9 @@ def solicitud_publica_nueva():
 @clientes_bp.route('/solicitudes/nueva-publica/<token>', methods=['GET', 'POST'])
 @clientes_bp.route('/n/<token>', methods=['GET', 'POST'], endpoint='solicitud_publica_nueva_short')
 def solicitud_publica_nueva_token(token):
-    short_share_url = _public_new_short_external_url(token)
+    share_url_override = (getattr(g, "public_share_url_override", "") or "").strip()
+    share_code = (getattr(g, "public_share_code", "") or "").strip().upper()
+    short_share_url = share_url_override or _public_new_short_external_url(token)
     if not _ensure_public_new_token_usage_table():
         flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
@@ -2888,6 +3011,8 @@ def solicitud_publica_nueva_token(token):
                     "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
                     "solicitud_id": int(state.get("solicitud_id") or 0),
                 }
+                if share_code:
+                    return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
                 if request.endpoint == "clientes.solicitud_publica_nueva_short":
                     return redirect(url_for('clientes.solicitud_publica_nueva_short', token=token, estado="enviado"))
                 return redirect(url_for('clientes.solicitud_publica_nueva_token', token=token, estado="enviado"))
@@ -2934,7 +3059,9 @@ def solicitud_publica_nueva_token(token):
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 @clientes_bp.route('/f/<token>', methods=['GET', 'POST'], endpoint='solicitud_publica_short')
 def solicitud_publica(token):
-    short_share_url = _public_existing_short_external_url(token)
+    share_url_override = (getattr(g, "public_share_url_override", "") or "").strip()
+    share_code = (getattr(g, "public_share_code", "") or "").strip().upper()
+    short_share_url = share_url_override or _public_existing_short_external_url(token)
     if not _ensure_public_token_usage_table():
         flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
@@ -3266,6 +3393,8 @@ def solicitud_publica(token):
                 "token_hash": token_hash_storage,
                 "solicitud_id": int(solicitud_id_holder.get("value") or 0),
             }
+            if share_code:
+                return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
             if request.endpoint == "clientes.solicitud_publica_short":
                 return redirect(url_for('clientes.solicitud_publica_short', token=token, estado="enviado"))
             return redirect(url_for('clientes.solicitud_publica', token=token, estado="enviado"))

@@ -513,6 +513,72 @@ def test_public_link_used_is_blocked_with_controlled_response():
     assert "/clientes/live/ping" not in html
 
 
+def test_share_landing_route_is_corporate_and_does_not_expose_long_token():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    alias = SimpleNamespace(code="ABCD2345EF", link_type="existente", token="tok123")
+    c = _dummy_cliente()
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {"legacy_token": False})):
+        resp = client.get("/solicitud/ABCD2345EF")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Formulario oficial de solicitud" in html
+    assert "Enlace verificado" in html
+    assert "/solicitud/ABCD2345EF/continuar" in html
+    assert "tok123" not in html
+    assert 'property="og:title"' in html
+    assert 'property="og:url" content="http://localhost/solicitud/ABCD2345EF"' in html
+
+
+def test_share_continue_existing_route_uses_alias_canonical_url_and_existing_security():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    alias = SimpleNamespace(code="ABCD2345EF", link_type="existente", token="tok123")
+    c = _dummy_cliente()
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {"legacy_token": False})):
+        resp = client.get("/solicitud/ABCD2345EF/continuar")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Formulario público de solicitud" in html
+    assert 'property="og:url" content="http://localhost/solicitud/ABCD2345EF"' in html
+    assert 'rel="canonical" href="http://localhost/solicitud/ABCD2345EF"' in html
+
+
+def test_share_continue_route_blocks_used_or_invalid_aliases():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    alias = SimpleNamespace(code="ABCD2345EF", link_type="existente", token="tok123")
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=91,
+        used_at=datetime.utcnow(),
+        solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
+    )
+
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
+        used_resp = client.get("/solicitud/ABCD2345EF/continuar")
+
+    with patch("clientes.routes.resolve_public_share_alias", return_value=None):
+        invalid_resp = client.get("/solicitud/ZZZZ")
+
+    assert used_resp.status_code == 410
+    assert "Este enlace ya fue utilizado" in used_resp.get_data(as_text=True)
+    assert invalid_resp.status_code == 404
+
+
 def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_request():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = True

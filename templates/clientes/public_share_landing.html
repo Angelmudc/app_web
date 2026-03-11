@@ -1,0 +1,180 @@
+{% extends 'clientes/public_base.html' %}
+{% set _state = (share_state or 'invalid') %}
+{% set _is_ready = (_state == 'ready') %}
+{% set _is_used = (_state == 'used') %}
+{% set _is_expired = (_state == 'expired') %}
+{% set _kind = 'Cliente existente' if link_type == 'existente' else 'Cliente nuevo' %}
+{% set meta_description = "Formulario oficial de Doméstica del Cibao A&D. Enlace seguro enviado por la agencia para completar una solicitud." %}
+{% set og_title = "Formulario oficial seguro | Doméstica del Cibao A&D" %}
+{% set og_description = "Acceso corporativo seguro para completar su solicitud con Doméstica del Cibao A&D." %}
+{% set og_type = "website" %}
+
+{% block title %}Formulario oficial | Doméstica del Cibao A&D{% endblock %}
+
+{% block head %}
+<style>
+  .share-landing-page {
+    min-height: calc(100vh - 90px);
+    background:
+      radial-gradient(circle at 12% -5%, rgba(15, 106, 127, .16), transparent 36%),
+      radial-gradient(circle at 88% 0%, rgba(30, 64, 175, .12), transparent 34%),
+      linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  }
+  .share-landing-shell { max-width: 860px; margin: 0 auto; padding: 28px 14px 48px; }
+  .share-landing-card {
+    border-radius: 22px;
+    border: 1px solid #dbe4f0;
+    background: #fff;
+    box-shadow: 0 24px 44px rgba(15, 23, 42, .12);
+    overflow: hidden;
+  }
+  .share-top {
+    background: linear-gradient(128deg, #0f172a 0%, #1e3a8a 55%, #14566a 100%);
+    color: #f8fbff;
+    padding: 24px;
+  }
+  .share-code {
+    display: inline-flex;
+    gap: 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.28);
+    background: rgba(255,255,255,.08);
+    padding: 6px 12px;
+    font-size: .84rem;
+    font-weight: 700;
+  }
+  .share-body { padding: 24px; }
+  .share-status {
+    border-radius: 12px;
+    border: 1px solid #dbeafe;
+    background: #eff6ff;
+    color: #1e3a8a;
+    padding: 12px;
+    font-size: .93rem;
+    margin-bottom: 16px;
+  }
+  .share-status.warn { border-color: #fed7aa; background: #fff7ed; color: #9a3412; }
+  .share-status.err { border-color: #fecaca; background: #fff1f2; color: #991b1b; }
+  .share-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .share-pill {
+    border: 1px solid #dbe4f0;
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    font-size: .9rem;
+    color: #334155;
+  }
+  .share-cta { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .share-countdown { margin-top: 10px; color: #64748b; font-size: .85rem; }
+  @media (max-width: 640px) {
+    .share-landing-shell { padding: 18px 10px 32px; }
+    .share-top, .share-body { padding: 18px; }
+    .share-grid { grid-template-columns: 1fr; }
+    .share-cta .btn { width: 100%; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="share-landing-page">
+  <div class="share-landing-shell">
+    <article class="share-landing-card">
+      <header class="share-top">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+          <div>
+            <h1 class="h4 fw-bold mb-2">Formulario oficial de solicitud</h1>
+            <p class="mb-0 text-white-50">Recibiste este enlace directamente de Doméstica del Cibao A&D para completar un proceso legítimo y seguro.</p>
+          </div>
+          <span class="share-code"><i class="bi bi-patch-check"></i> {{ share_code }}</span>
+        </div>
+      </header>
+
+      <div class="share-body">
+        {% if _is_ready %}
+          <div class="share-status">
+            <i class="bi bi-shield-check me-1"></i>
+            Enlace verificado. Puedes continuar al formulario seguro.
+          </div>
+        {% elif _is_used %}
+          <div class="share-status warn">
+            <i class="bi bi-clock-history me-1"></i>
+            Este enlace ya fue utilizado. Solicita uno nuevo a la agencia.
+          </div>
+        {% elif _is_expired %}
+          <div class="share-status warn">
+            <i class="bi bi-hourglass-split me-1"></i>
+            Este enlace expiró por seguridad. Solicita un enlace nuevo.
+          </div>
+        {% else %}
+          <div class="share-status err">
+            <i class="bi bi-shield-exclamation me-1"></i>
+            Este enlace no es válido o fue alterado.
+          </div>
+        {% endif %}
+
+        <div class="share-grid">
+          <div class="share-pill"><strong>Empresa:</strong> Doméstica del Cibao A&D</div>
+          <div class="share-pill"><strong>Tipo de proceso:</strong> {{ _kind }}</div>
+          <div class="share-pill"><strong>Canal:</strong> Enlace oficial compartido por la agencia</div>
+          <div class="share-pill"><strong>Seguridad:</strong> Validación de token, expiración y uso único</div>
+        </div>
+
+        <p class="mt-3 mb-0 text-secondary">Si recibiste este enlace por WhatsApp, es para completar tu solicitud de manera formal. Al continuar, pasarás al formulario oficial de la agencia.</p>
+
+        <div class="share-cta">
+          {% if _is_ready %}
+            <a class="btn btn-primary btn-lg" href="{{ continue_url }}" id="continueBtn">
+              Continuar al formulario seguro
+            </a>
+            <button class="btn btn-outline-secondary" type="button" id="stopAutoBtn">Detener redirección automática</button>
+          {% else %}
+            <a class="btn btn-outline-primary" href="{{ url_for('public.contacto') }}">Contactar a la agencia</a>
+          {% endif %}
+        </div>
+
+        {% if _is_ready %}
+          <div class="share-countdown" id="countdownMsg">Redirección automática en <span id="countNum">5</span> segundos.</div>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if _is_ready %}
+<script>
+  (function () {
+    const target = {{ continue_url|tojson }};
+    const countEl = document.getElementById('countNum');
+    const msgEl = document.getElementById('countdownMsg');
+    const stopBtn = document.getElementById('stopAutoBtn');
+    let seconds = 5;
+    let timer = null;
+
+    function stopAuto(text) {
+      if (timer) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+      if (msgEl) msgEl.textContent = text;
+    }
+
+    if (stopBtn) {
+      stopBtn.addEventListener('click', function () {
+        stopAuto('Redirección detenida. Puedes continuar con el botón principal cuando quieras.');
+      });
+    }
+
+    timer = window.setInterval(function () {
+      seconds -= 1;
+      if (countEl) countEl.textContent = String(Math.max(0, seconds));
+      if (seconds <= 0) {
+        stopAuto('Redirigiendo al formulario...');
+        window.location.href = target;
+      }
+    }, 1000);
+  })();
+</script>
+{% endif %}
+{% endblock %}

@@ -143,7 +143,10 @@ from utils.timezone import (
 from . import admin_bp
 from .decorators import admin_required, staff_required
 
-from clientes.routes import generar_token_publico_cliente, generar_token_publico_cliente_nuevo
+from clientes.routes import (
+    generar_link_publico_compartible_cliente,
+    generar_link_publico_compartible_cliente_nuevo,
+)
 
 def _is_true_env(value: str, default: bool = False) -> bool:
     raw = (value or "").strip().lower()
@@ -10546,8 +10549,8 @@ def pdf_compatibilidad(cliente_id, candidata_id):
 def generar_link_publico_solicitud(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
 
-    token = generar_token_publico_cliente(c)
-    link = url_for('clientes.solicitud_publica_short', token=token, _external=True)
+    created_by = str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
+    link = generar_link_publico_compartible_cliente(c, created_by=created_by)
     try:
         max_age_days = int((os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "30").strip())
     except Exception:
@@ -10566,10 +10569,8 @@ def generar_link_publico_solicitud(cliente_id):
 @login_required
 @staff_required
 def generar_link_publico_cliente_nuevo():
-    token = generar_token_publico_cliente_nuevo(
-        created_by=str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
-    )
-    link = url_for('clientes.solicitud_publica_nueva_short', token=token, _external=True)
+    created_by = str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
+    link = generar_link_publico_compartible_cliente_nuevo(created_by=created_by)
     try:
         max_age_days = int((os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "30").strip())
     except Exception:
