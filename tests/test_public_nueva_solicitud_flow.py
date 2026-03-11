@@ -423,6 +423,41 @@ def test_share_continue_route_supports_new_client_flow_without_exposing_token_in
     assert "/clientes/n/tok123" not in html
 
 
+def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_flow():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    token = "tok123"
+    alias = SimpleNamespace(code="WXYZ5678JK", link_type="nuevo", token=token)
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=88,
+        used_at=None,
+        solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
+    )
+
+    with client.session_transaction() as sess:
+        sess["public_new_solicitud_success"] = {
+            "token_hash": clientes_routes._public_link_token_hash_storage(token),
+            "cliente_nombre": "Cliente Nuevo",
+            "cliente_codigo": "2,154",
+            "solicitud_codigo": "2,154-A",
+            "solicitud_id": 88,
+        }
+
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row):
+        success = client.get("/solicitud/WXYZ5678JK/continuar?estado=enviado")
+        later = client.get("/solicitud/WXYZ5678JK/continuar")
+
+    assert success.status_code == 200
+    assert "Tu solicitud fue recibida correctamente" in success.get_data(as_text=True)
+    assert later.status_code == 410
+    assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
+
+
 def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

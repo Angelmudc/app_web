@@ -585,6 +585,39 @@ def test_share_continue_route_blocks_used_or_invalid_aliases():
     assert invalid_resp.status_code == 404
 
 
+def test_share_continue_route_shows_success_once_after_submit_then_used_for_existing_flow():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    token = "tok123"
+    alias = SimpleNamespace(code="ABCD2345EF", link_type="existente", token=token)
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=91,
+        used_at=datetime.utcnow(),
+        solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
+    )
+
+    with client.session_transaction() as sess:
+        sess["public_solicitud_success"] = {
+            "token_hash": clientes_routes._public_link_token_hash_storage(token),
+            "cliente_nombre": "Cliente Uno",
+            "solicitud_codigo": "CL-001-B",
+            "solicitud_id": 91,
+        }
+
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
+        success = client.get("/solicitud/ABCD2345EF/continuar?estado=enviado")
+        later = client.get("/solicitud/ABCD2345EF/continuar")
+
+    assert success.status_code == 200
+    assert "Tu solicitud fue enviada correctamente" in success.get_data(as_text=True)
+    assert later.status_code == 410
+    assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
+
+
 def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_request():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = True

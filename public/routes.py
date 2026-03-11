@@ -135,6 +135,7 @@ def solicitud_share_continue(code: str):
     alias, share_state, link_type, token = _resolve_share_state(code)
     code_clean = (code or "").strip().upper()
     og_url = _public_external_url("public.solicitud_share_landing", code=code_clean)
+    sent_state = (request.args.get("estado") or "").strip().lower()
 
     if alias is None:
         return render_template(
@@ -146,6 +147,16 @@ def solicitud_share_continue(code: str):
         ), 404
 
     if share_state == "used":
+        # UX: tras envío exitoso por alias, mostrar primero confirmación de éxito
+        # (si existe estado de sesión válido), y "used" solo en reingresos posteriores.
+        if sent_state == "enviado" and token:
+            g.public_share_code = code_clean
+            g.public_share_url_override = og_url
+            from clientes import routes as clientes_routes
+            if link_type == "existente":
+                return clientes_routes.solicitud_publica(token)
+            if link_type == "nuevo":
+                return clientes_routes.solicitud_publica_nueva_token(token)
         return render_template(
             "clientes/public_link_used.html",
             status_code=410,
