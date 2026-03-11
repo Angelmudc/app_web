@@ -87,7 +87,7 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert resp.headers.get("Expires") == "0"
 
     html = resp.get_data(as_text=True)
-    assert "Formulario público de solicitud" in html
+    assert "Formulario oficial de solicitud" in html
     assert "Formulario oficial" in html
     assert "Enlace seguro de uso controlado" in html
     assert "Gmail / Email" not in html
@@ -400,7 +400,7 @@ def test_public_link_short_route_keeps_same_validation_and_security_behavior():
 
     assert ok.status_code == 200
     ok_html = ok.get_data(as_text=True)
-    assert "Formulario público de solicitud" in ok_html
+    assert "Formulario oficial de solicitud" in ok_html
     assert '/clientes/f/tok123' in ok_html
     assert invalid.status_code == 404
 
@@ -532,7 +532,7 @@ def test_share_landing_route_is_corporate_and_does_not_expose_long_token():
     assert "/solicitud/ABCD2345EF/continuar" in html
     assert "tok123" not in html
     assert 'property="og:title"' in html
-    assert 'property="og:url" content="http://localhost/solicitud/ABCD2345EF"' in html
+    assert 'property="og:url" content="https://www.domesticadelcibao.com/solicitud/ABCD2345EF"' in html
 
 
 def test_share_continue_existing_route_uses_alias_canonical_url_and_existing_security():
@@ -549,9 +549,9 @@ def test_share_continue_existing_route_uses_alias_canonical_url_and_existing_sec
 
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Formulario público de solicitud" in html
-    assert 'property="og:url" content="http://localhost/solicitud/ABCD2345EF"' in html
-    assert 'rel="canonical" href="http://localhost/solicitud/ABCD2345EF"' in html
+    assert "Formulario oficial de solicitud" in html
+    assert 'property="og:url" content="https://www.domesticadelcibao.com/solicitud/ABCD2345EF"' in html
+    assert 'rel="canonical" href="https://www.domesticadelcibao.com/solicitud/ABCD2345EF"' in html
 
 
 def test_share_continue_route_blocks_used_or_invalid_aliases():

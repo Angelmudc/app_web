@@ -275,7 +275,7 @@ def test_existing_token_public_flow_still_available():
         resp = client.get("/clientes/solicitudes/publica/tok123")
 
     assert resp.status_code == 200
-    assert "Formulario público de solicitud" in resp.get_data(as_text=True)
+    assert "Formulario oficial de solicitud" in resp.get_data(as_text=True)
 
 
 def test_new_public_short_route_renders_with_consistent_preview_metadata():
@@ -382,8 +382,8 @@ def test_share_continue_route_supports_new_client_flow_without_exposing_token_in
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Seccion 1 - Datos del cliente" in html
-    assert 'property="og:url" content="http://localhost/solicitud/WXYZ5678JK"' in html
-    assert 'rel="canonical" href="http://localhost/solicitud/WXYZ5678JK"' in html
+    assert 'property="og:url" content="https://www.domesticadelcibao.com/solicitud/WXYZ5678JK"' in html
+    assert 'rel="canonical" href="https://www.domesticadelcibao.com/solicitud/WXYZ5678JK"' in html
     assert "/clientes/n/tok123" not in html
 
 
