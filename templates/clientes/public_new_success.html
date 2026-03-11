@@ -117,6 +117,11 @@
 
       <div class="public-success-body">
         <div class="public-success-block">
+          <div class="public-success-label">Cliente</div>
+          <div class="public-success-value">{{ cliente_nombre or 'Cliente registrado' }}</div>
+        </div>
+
+        <div class="public-success-block">
           <div class="public-success-label">Código de cliente</div>
           <div class="public-success-value">{{ cliente_codigo or 'Generado correctamente' }}</div>
         </div>
@@ -132,6 +137,10 @@
               Registrada correctamente
             {% endif %}
           </div>
+        </div>
+
+        <div class="public-success-block">
+          <div class="public-success-value">Solicitud registrada correctamente.</div>
         </div>
 
         <div class="public-success-block">

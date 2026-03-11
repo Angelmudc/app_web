@@ -123,9 +123,24 @@
 
       <div class="public-success-body">
         <div class="public-success-block">
+          <div class="public-success-label">Cliente</div>
+          <div class="public-success-value">
+            {% if cliente_nombre %}
+              {{ cliente_nombre }}
+            {% elif solicitud and solicitud.cliente and solicitud.cliente.nombre_completo %}
+              {{ solicitud.cliente.nombre_completo }}
+            {% else %}
+              Cliente registrado
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="public-success-block">
           <div class="public-success-label">Codigo de solicitud</div>
           <div class="public-success-value">
-            {% if solicitud and solicitud.codigo_solicitud %}
+            {% if solicitud_codigo %}
+              {{ solicitud_codigo }}
+            {% elif solicitud and solicitud.codigo_solicitud %}
               {{ solicitud.codigo_solicitud }}
             {% elif solicitud_id %}
               Referencia #{{ solicitud_id }}
@@ -135,9 +150,7 @@
           </div>
         </div>
 
-        <div class="public-success-block">
-          <p class="public-success-muted mb-0"><strong>Importante:</strong> este enlace ya fue utilizado y no puede volver a usarse.</p>
-        </div>
+        <p class="public-success-muted"><strong>Confirmación:</strong> la solicitud quedó registrada correctamente en nuestro sistema.</p>
 
         <div class="public-success-block">
           <div class="public-success-label">Proximos pasos</div>

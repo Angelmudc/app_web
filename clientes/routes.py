@@ -1513,7 +1513,7 @@ def _normalize_areas_comunes_selected(selected_vals, choices):
         vals = [v for v in vals if v != 'todas_anteriores']
         vals = _clean_list(vals + all_codes)
 
-    return [v for v in vals if v not in {'todas_anteriores', 'otro'}]
+    return [v for v in vals if v != 'todas_anteriores']
 
 
 
@@ -2782,6 +2782,7 @@ def solicitud_publica_nueva_token(token):
             session.pop("public_new_solicitud_success", None)
             return render_template(
                 'clientes/public_new_success.html',
+                cliente_nombre=str(success_state.get("cliente_nombre") or ""),
                 cliente_codigo=str(success_state.get("cliente_codigo") or ""),
                 solicitud_codigo=str(success_state.get("solicitud_codigo") or ""),
                 solicitud_id=int(success_state.get("solicitud_id") or 0) or None,
@@ -2863,6 +2864,7 @@ def solicitud_publica_nueva_token(token):
             state = {
                 "cliente_id": 0,
                 "cliente_codigo": "",
+                "cliente_nombre": "",
                 "solicitud_id": 0,
                 "solicitud_codigo": "",
             }
@@ -2889,6 +2891,7 @@ def solicitud_publica_nueva_token(token):
                 db.session.add(c)
                 db.session.flush()
                 state["cliente_id"] = int(getattr(c, "id", 0) or 0)
+                state["cliente_nombre"] = str(getattr(c, "nombre_completo", "") or "")
 
                 idx = Solicitud.query.filter_by(cliente_id=c.id).count()
                 while True:
@@ -3015,6 +3018,7 @@ def solicitud_publica_nueva_token(token):
             if result.ok:
                 session["public_new_solicitud_success"] = {
                     "token_hash": token_hash_storage,
+                    "cliente_nombre": str(state.get("cliente_nombre") or ""),
                     "cliente_codigo": str(state.get("cliente_codigo") or ""),
                     "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
                     "solicitud_id": int(state.get("solicitud_id") or 0),
@@ -3094,6 +3098,8 @@ def solicitud_publica(token):
             session.pop("public_solicitud_success", None)
             return render_template(
                 'clientes/public_link_success.html',
+                cliente_nombre=str(success_state.get("cliente_nombre") or ""),
+                solicitud_codigo=str(success_state.get("solicitud_codigo") or ""),
                 used_at=getattr(used_row, "used_at", None),
                 solicitud=getattr(used_row, "solicitud", None),
                 solicitud_id=getattr(used_row, "solicitud_id", None),
@@ -3403,6 +3409,8 @@ def solicitud_publica(token):
             flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente.", "success")
             session["public_solicitud_success"] = {
                 "token_hash": token_hash_storage,
+                "cliente_nombre": str(getattr(c, "nombre_completo", "") or ""),
+                "solicitud_codigo": str(codigo_holder.get("value") or ""),
                 "solicitud_id": int(solicitud_id_holder.get("value") or 0),
             }
             if share_code:

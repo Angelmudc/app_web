@@ -438,6 +438,10 @@ def test_public_link_successful_save_shows_professional_success_page_once():
 
     assert success.status_code == 200
     assert "Tu solicitud fue enviada correctamente" in success.get_data(as_text=True)
+    success_html = success.get_data(as_text=True)
+    assert "Cliente Uno" in success_html
+    assert "CL-001-C" in success_html
+    assert "la solicitud quedó registrada correctamente" in success_html
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 
@@ -510,6 +514,8 @@ def test_public_link_used_is_blocked_with_controlled_response():
     html = resp.get_data(as_text=True)
     assert "Enlace ya utilizado" in html
     assert "CL-001-B" in html
+    assert "https://wa.me/18094296892" in html
+    assert "+1 809 429 6892" in html
     assert "/clientes/live/ping" not in html
 
 

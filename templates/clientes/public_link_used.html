@@ -5,6 +5,10 @@
 {% set og_type = "website" %}
 
 {% block title %}Doméstica del Cibao A&D — Enlace Ya Utilizado{% endblock %}
+{% set wa_number = "18094296892" %}
+{% set wa_display = "+1 809 429 6892" %}
+{% set wa_text = "Hola, necesito ayuda para continuar con mi solicitud." %}
+{% set wa_url = "https://wa.me/" ~ wa_number ~ "?text=" ~ (wa_text|urlencode) %}
 
 {% block head %}
 <style>
@@ -54,6 +58,21 @@
     padding: 12px;
     font-size: .93rem;
   }
+
+  .used-wa {
+    margin-top: 14px;
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    border-radius: 12px;
+    padding: 14px;
+  }
+
+  .used-wa-number {
+    font-weight: 800;
+    color: #065f46;
+    text-decoration: none;
+    font-size: 1.02rem;
+  }
 </style>
 {% endblock %}
 
@@ -65,7 +84,7 @@
         <div class="used-badge"><i class="bi bi-check-circle"></i> Enlace ya utilizado</div>
 
         <h1 class="h4 fw-bold mt-3 mb-2">Este enlace ya fue utilizado</h1>
-        <p class="text-secondary mb-0">Tu solicitud ya fue enviada correctamente. Si necesitas hacer otra solicitud, por favor contacta a la agencia.</p>
+        <p class="text-secondary mb-0">Tu solicitud ya fue enviada correctamente y este enlace no se puede reutilizar.</p>
 
         <div class="used-note">
           {% if solicitud and solicitud.codigo_solicitud %}
@@ -78,6 +97,18 @@
           {% if used_at %}
             <span class="d-block mt-1 small">Fecha de uso: {{ used_at|rd_datetime('%d/%m/%Y %I:%M %p') }}</span>
           {% endif %}
+        </div>
+
+        <div class="used-wa">
+          <div class="fw-semibold mb-1">Para continuar, escríbenos directamente al WhatsApp:</div>
+          <a class="used-wa-number" href="{{ wa_url }}" target="_blank" rel="noopener">
+            <i class="bi bi-whatsapp me-1"></i>{{ wa_display }}
+          </a>
+          <div class="mt-2">
+            <a class="btn btn-success" href="{{ wa_url }}" target="_blank" rel="noopener">
+              Abrir chat de WhatsApp
+            </a>
+          </div>
         </div>
       </div>
     </article>
