@@ -7,23 +7,29 @@
   {% set _meta_description = meta_description|default('Flujo público de solicitud de Doméstica del Cibao A&D.', true) %}
   {% set _og_title = og_title|default('Solicitud pública | Doméstica del Cibao A&D', true) %}
   {% set _og_description = og_description|default(_meta_description, true) %}
-  {% set _og_image = og_image|default(url_for('static', filename='img/domestica-preview.png', _external=True), true) %}
-  {% set _og_url = og_url|default(request.url, true) %}
+  {% set _og_image = og_image|default(url_for('static', filename='img/domestica-preview.png', v='20260311', _external=True), true) %}
+  {% set _og_url = og_url|default(request.base_url, true) %}
+  {% set _canonical_url = canonical_url|default(_og_url, true) %}
   {% set _og_type = og_type|default('website', true) %}
   {% set _meta_robots = meta_robots|default('noindex, nofollow', true) %}
   <meta name="description" content="{{ _meta_description }}">
   <meta name="robots" content="{{ _meta_robots }}">
+  <link rel="canonical" href="{{ _canonical_url }}">
   <meta property="og:site_name" content="Doméstica del Cibao A&D">
   <meta property="og:locale" content="es_DO">
   <meta property="og:title" content="{{ _og_title }}">
   <meta property="og:description" content="{{ _og_description }}">
   <meta property="og:image" content="{{ _og_image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Formulario de solicitud de Doméstica del Cibao A&D">
   <meta property="og:url" content="{{ _og_url }}">
   <meta property="og:type" content="{{ _og_type }}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ _og_title }}">
   <meta name="twitter:description" content="{{ _og_description }}">
   <meta name="twitter:image" content="{{ _og_image }}">
+  <meta name="twitter:url" content="{{ _og_url }}">
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">

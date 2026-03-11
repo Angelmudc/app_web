@@ -277,8 +277,10 @@ def _clientes_force_login_view():
         'clientes.login',
         'clientes.reset_password',
         'clientes.solicitud_publica',
+        'clientes.solicitud_publica_short',
         'clientes.solicitud_publica_nueva',
         'clientes.solicitud_publica_nueva_token',
+        'clientes.solicitud_publica_nueva_short',
         'clientes.politicas',
         'clientes.aceptar_politicas',
         'clientes.rechazar_politicas',
@@ -420,6 +422,16 @@ def _public_link_token_hash(token: str) -> str:
 
 def _public_link_token_hash_storage(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _public_existing_short_external_url(token: str) -> str:
+    """URL corta pública para solicitud de cliente existente."""
+    return url_for("clientes.solicitud_publica_short", token=token, _external=True)
+
+
+def _public_new_short_external_url(token: str) -> str:
+    """URL corta pública para solicitud de cliente nuevo."""
+    return url_for("clientes.solicitud_publica_nueva_short", token=token, _external=True)
 
 
 _PUBLIC_TOKEN_USAGE_TABLE_READY = False
@@ -2597,13 +2609,17 @@ def solicitud_publica_nueva():
 
 
 @clientes_bp.route('/solicitudes/nueva-publica/<token>', methods=['GET', 'POST'])
+@clientes_bp.route('/n/<token>', methods=['GET', 'POST'], endpoint='solicitud_publica_nueva_short')
 def solicitud_publica_nueva_token(token):
+    short_share_url = _public_new_short_external_url(token)
     if not _ensure_public_new_token_usage_table():
         flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
             'clientes/public_link_invalid.html',
             reason_key="invalid",
             status_code=503,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
         ), 503
 
     token_hash_storage = _public_link_token_hash_storage(token)
@@ -2623,6 +2639,8 @@ def solicitud_publica_nueva_token(token):
                 cliente_codigo=str(success_state.get("cliente_codigo") or ""),
                 solicitud_codigo=str(success_state.get("solicitud_codigo") or ""),
                 solicitud_id=int(success_state.get("solicitud_id") or 0) or None,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
             ), 200
         return render_template(
             'clientes/public_link_used.html',
@@ -2630,6 +2648,8 @@ def solicitud_publica_nueva_token(token):
             solicitud=getattr(used_row, "solicitud", None),
             solicitud_id=getattr(used_row, "solicitud_id", None),
             status_code=410,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
         ), 410
 
     token_ok, fail_reason, _token_meta = _resolve_public_new_link_token(token)
@@ -2644,6 +2664,8 @@ def solicitud_publica_nueva_token(token):
             'clientes/public_link_invalid.html',
             reason_key=reason_key,
             status_code=status_code,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
         ), status_code
 
     form = SolicitudClienteNuevoPublicaForm()
@@ -2847,6 +2869,8 @@ def solicitud_publica_nueva_token(token):
                     "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
                     "solicitud_id": int(state.get("solicitud_id") or 0),
                 }
+                if request.endpoint == "clientes.solicitud_publica_nueva_short":
+                    return redirect(url_for('clientes.solicitud_publica_nueva_short', token=token, estado="enviado"))
                 return redirect(url_for('clientes.solicitud_publica_nueva_token', token=token, estado="enviado"))
 
             usage_after_fail = _public_new_link_usage_by_hash(token_hash_storage)
@@ -2857,6 +2881,8 @@ def solicitud_publica_nueva_token(token):
                     solicitud=getattr(usage_after_fail, "solicitud", None),
                     solicitud_id=getattr(usage_after_fail, "solicitud_id", None),
                     status_code=410,
+                    og_url=short_share_url,
+                    canonical_url=short_share_url,
                 ), 410
 
             err = (result.error_message or '').lower()
@@ -2881,17 +2907,23 @@ def solicitud_publica_nueva_token(token):
         public_pasaje_otro=public_pasaje_otro,
         service_section_title="Seccion 2 - Datos de la solicitud",
         service_section_desc="Completa los detalles del servicio y la ubicacion especifica donde se trabajara.",
+        og_url=short_share_url,
+        canonical_url=short_share_url,
     )
 
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
+@clientes_bp.route('/f/<token>', methods=['GET', 'POST'], endpoint='solicitud_publica_short')
 def solicitud_publica(token):
+    short_share_url = _public_existing_short_external_url(token)
     if not _ensure_public_token_usage_table():
         flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
             'clientes/public_link_invalid.html',
             reason_key="invalid",
             status_code=503,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
         ), 503
 
     token_hash_storage = _public_link_token_hash_storage(token)
@@ -2912,6 +2944,8 @@ def solicitud_publica(token):
                 solicitud=getattr(used_row, "solicitud", None),
                 solicitud_id=getattr(used_row, "solicitud_id", None),
                 status_code=200,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
             ), 200
         _log_public_link_event(
             "PUBLIC_LINK_VIEW_FAIL",
@@ -2927,6 +2961,8 @@ def solicitud_publica(token):
             solicitud=getattr(used_row, "solicitud", None),
             solicitud_id=getattr(used_row, "solicitud_id", None),
             status_code=410,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
         ), 410
 
     form = SolicitudPublicaForm()
@@ -2971,6 +3007,8 @@ def solicitud_publica(token):
             'clientes/public_link_invalid.html',
             reason_key=reason_key,
             status_code=status_code,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
         ), status_code
 
     c = cliente
@@ -3026,6 +3064,8 @@ def solicitud_publica(token):
                     'clientes/public_link_invalid.html',
                     reason_key="invalid",
                     status_code=400,
+                    og_url=short_share_url,
+                    canonical_url=short_share_url,
                 ), 400
 
         if _norm_text(getattr(form, 'codigo_cliente', type('x',(object,),{'data':''})) .data) != _norm_text(c.codigo):
@@ -3046,6 +3086,8 @@ def solicitud_publica(token):
                 public_pisos_value=public_pisos_value,
                 public_pasaje_mode=public_pasaje_mode,
                 public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
             ), 403
 
         if _norm_text(getattr(form, 'nombre_cliente', type('x',(object,),{'data':''})).data) != _norm_text(c.nombre_completo):
@@ -3066,6 +3108,8 @@ def solicitud_publica(token):
                 public_pisos_value=public_pisos_value,
                 public_pasaje_mode=public_pasaje_mode,
                 public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
             ), 403
 
         codigo_holder: dict[str, str] = {"value": ""}
@@ -3203,6 +3247,8 @@ def solicitud_publica(token):
                 "token_hash": token_hash_storage,
                 "solicitud_id": int(solicitud_id_holder.get("value") or 0),
             }
+            if request.endpoint == "clientes.solicitud_publica_short":
+                return redirect(url_for('clientes.solicitud_publica_short', token=token, estado="enviado"))
             return redirect(url_for('clientes.solicitud_publica', token=token, estado="enviado"))
         usage_after_fail = _public_link_usage_by_hash(token_hash_storage)
         if usage_after_fail is not None:
@@ -3212,6 +3258,8 @@ def solicitud_publica(token):
                 solicitud=getattr(usage_after_fail, "solicitud", None),
                 solicitud_id=getattr(usage_after_fail, "solicitud_id", None),
                 status_code=410,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
             ), 410
         _log_public_link_event(
             "PUBLIC_LINK_VIEW_FAIL",
@@ -3241,6 +3289,8 @@ def solicitud_publica(token):
         public_pisos_value=public_pisos_value,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
+        og_url=short_share_url,
+        canonical_url=short_share_url,
     )
 
 

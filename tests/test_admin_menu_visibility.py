@@ -74,6 +74,7 @@ def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():
         link_page = client.get("/admin/solicitudes/nueva-publica/link", follow_redirects=False)
         assert link_page.status_code == 200
         link_html = link_page.get_data(as_text=True)
+        assert "/clientes/n/" in link_html
         assert "/clientes/solicitudes/nueva-publica/" in link_html
         assert 'property="og:title"' in link_html
         assert 'property="og:description"' in link_html

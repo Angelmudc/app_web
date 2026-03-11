@@ -275,7 +275,59 @@ def test_existing_token_public_flow_still_available():
         resp = client.get("/clientes/solicitudes/publica/tok123")
 
     assert resp.status_code == 200
-    assert "Formulario publico de solicitud" in resp.get_data(as_text=True)
+    assert "Formulario público de solicitud" in resp.get_data(as_text=True)
+
+
+def test_new_public_short_route_renders_with_consistent_preview_metadata():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+        resp = client.get("/clientes/n/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'property="og:title"' in html
+    assert 'property="og:description"' in html
+    assert 'property="og:url"' in html
+    assert '/clientes/n/tok123' in html
+    assert 'rel="canonical"' in html
+
+
+def test_new_public_short_route_success_redirect_stays_on_short_path():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    fake_form = _FakeNewPublicForm()
+    used_state = {"used": False}
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=88,
+        used_at=None,
+        solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
+    )
+
+    def _usage_side_effect(_token_hash):
+        return used_row if used_state["used"] else None
+
+    def _save_ok(*_args, **_kwargs):
+        used_state["used"] = True
+        return RobustSaveResult(ok=True, attempts=1, error_message="")
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
+         patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
+        resp = client.post("/clientes/n/tok123", data={"dummy": "1"}, follow_redirects=False)
+
+    assert resp.status_code in (302, 303)
+    assert "/clientes/n/tok123" in (resp.location or "")
 
 
 def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():

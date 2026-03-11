@@ -87,7 +87,7 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert resp.headers.get("Expires") == "0"
 
     html = resp.get_data(as_text=True)
-    assert "Formulario publico de solicitud" in html
+    assert "Formulario público de solicitud" in html
     assert "Gmail / Email" not in html
     assert "Sin solicitudes registradas" not in html
     assert "Mis Solicitudes" not in html
@@ -99,6 +99,9 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert 'property="og:description"' in html
     assert 'property="og:image"' in html
     assert 'name="twitter:card"' in html
+    assert 'property="og:url"' in html
+    assert '/clientes/f/tok123' in html
+    assert 'rel="canonical"' in html
     assert 'domestica-preview.png' in html
 
     actions = [k.get("action_type") for _a, k in log_mock.call_args_list if isinstance(k, dict)]
@@ -329,6 +332,29 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
     assert "/clientes/solicitudes/publica/tok123" in (resp.location or "")
     assert second.status_code == 410
     assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
+
+
+def test_public_link_short_route_keeps_same_validation_and_security_behavior():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    c = _dummy_cliente()
+    def _resolve_side_effect(token):
+        if token == "tok123":
+            return (c, "", {"legacy_token": False})
+        return (None, "invalid", {})
+
+    with patch("clientes.routes._resolve_public_link_token", side_effect=_resolve_side_effect), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        ok = client.get("/clientes/f/tok123")
+        invalid = client.get("/clientes/f/token-invalido")
+
+    assert ok.status_code == 200
+    ok_html = ok.get_data(as_text=True)
+    assert "Formulario público de solicitud" in ok_html
+    assert '/clientes/f/tok123' in ok_html
+    assert invalid.status_code == 404
 
 
 def test_public_link_successful_save_shows_professional_success_page_once():

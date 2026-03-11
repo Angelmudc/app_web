@@ -33,7 +33,7 @@
         <div><strong>Código:</strong> {{ cliente.codigo }}</div>
       </div>
 
-      <label class="form-label fw-semibold" for="linkPublico">Enlace generado</label>
+      <label class="form-label fw-semibold" for="linkPublico">Enlace corto para compartir</label>
       <input
         id="linkPublico"
         class="form-control"
@@ -43,8 +43,22 @@
         style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
       />
 
+      {% if link_publico_legacy %}
+      <div class="mt-3">
+        <label class="form-label fw-semibold" for="linkPublicoLegacy">Enlace legado (compatibilidad)</label>
+        <input
+          id="linkPublicoLegacy"
+          class="form-control"
+          type="text"
+          value="{{ link_publico_legacy }}"
+          readonly
+          style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
+        />
+      </div>
+      {% endif %}
+
       <div class="alert alert-info mt-3 mb-0" role="alert">
-        Comparte este enlace únicamente con el cliente titular. Si se vence o se sospecha exposición, genera uno nuevo.
+        Comparte el enlace corto con el cliente titular. Si se vence o se sospecha exposición, genera uno nuevo.
       </div>
 
       <div class="d-flex flex-wrap gap-2 mt-3">

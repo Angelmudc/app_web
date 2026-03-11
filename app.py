@@ -30,13 +30,13 @@ app.jinja_env.globals['url_for_safe'] = url_for_safe
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
     path = (request.path or '').strip()
-    if path.startswith('/clientes/solicitudes/publica/'):
+    if path.startswith('/clientes/solicitudes/publica/') or path.startswith('/clientes/f/'):
         return render_template(
             'clientes/public_link_invalid.html',
             reason_key='csrf',
             status_code=400,
         ), 400
-    if path.startswith('/clientes/solicitudes/nueva-publica/'):
+    if path.startswith('/clientes/solicitudes/nueva-publica/') or path.startswith('/clientes/n/'):
         return render_template(
             'clientes/public_link_invalid.html',
             reason_key='csrf',
@@ -134,7 +134,11 @@ def _protect_sensitive_routes():
         return None
     if path.startswith("/clientes/solicitudes/publica/"):
         return None
+    if path.startswith("/clientes/f/"):
+        return None
     if path.startswith("/clientes/solicitudes/nueva-publica"):
+        return None
+    if path.startswith("/clientes/n/"):
         return None
 
     if path.startswith("/admin/"):
