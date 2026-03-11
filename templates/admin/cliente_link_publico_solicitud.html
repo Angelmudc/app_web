@@ -43,22 +43,8 @@
         style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
       />
 
-      {% if link_publico_legacy %}
-      <div class="mt-3">
-        <label class="form-label fw-semibold" for="linkPublicoLegacy">Enlace legado (compatibilidad)</label>
-        <input
-          id="linkPublicoLegacy"
-          class="form-control"
-          type="text"
-          value="{{ link_publico_legacy }}"
-          readonly
-          style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"
-        />
-      </div>
-      {% endif %}
-
       <div class="alert alert-info mt-3 mb-0" role="alert">
-        Comparte el enlace corto con el cliente titular. Si se vence o se sospecha exposición, genera uno nuevo.
+        Enlace seguro para formulario. Comparte este enlace con el cliente titular; si expira o se expone, genera uno nuevo.
       </div>
 
       <div class="d-flex flex-wrap gap-2 mt-3">
@@ -73,12 +59,31 @@
 </div>
 
 <script>
-  function copyLink() {
-    var input = document.getElementById('linkPublico');
-    input.select();
-    input.setSelectionRange(0, 999999);
-    document.execCommand('copy');
-    document.getElementById('copyMsg').innerText = 'Enlace copiado correctamente.';
+  async function copyLink() {
+    const input = document.getElementById('linkPublico');
+    const copyMsg = document.getElementById('copyMsg');
+    const text = (input && input.value ? String(input.value) : '').trim();
+    if (!text) {
+      copyMsg.innerText = 'No se encontró un enlace para copiar.';
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        input.focus();
+        input.select();
+        input.setSelectionRange(0, text.length);
+        const ok = document.execCommand('copy');
+        if (!ok) {
+          throw new Error('execCommand copy failed');
+        }
+      }
+      copyMsg.innerText = 'Enlace copiado correctamente.';
+    } catch (_err) {
+      copyMsg.innerText = 'No se pudo copiar automáticamente. Copia manualmente la URL visible.';
+    }
   }
 </script>
 

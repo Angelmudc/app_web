@@ -10548,7 +10548,6 @@ def generar_link_publico_solicitud(cliente_id):
 
     token = generar_token_publico_cliente(c)
     link = url_for('clientes.solicitud_publica_short', token=token, _external=True)
-    link_legacy = url_for('clientes.solicitud_publica', token=token, _external=True)
     try:
         max_age_days = int((os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "30").strip())
     except Exception:
@@ -10559,7 +10558,6 @@ def generar_link_publico_solicitud(cliente_id):
         'admin/cliente_link_publico_solicitud.html',
         cliente=c,
         link_publico=link,
-        link_publico_legacy=link_legacy,
         max_age_days=max_age_days,
     )
 
@@ -10572,7 +10570,6 @@ def generar_link_publico_cliente_nuevo():
         created_by=str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
     )
     link = url_for('clientes.solicitud_publica_nueva_short', token=token, _external=True)
-    link_legacy = url_for('clientes.solicitud_publica_nueva_token', token=token, _external=True)
     try:
         max_age_days = int((os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "30").strip())
     except Exception:
@@ -10582,6 +10579,5 @@ def generar_link_publico_cliente_nuevo():
     return render_template(
         'admin/cliente_nuevo_link_publico_solicitud.html',
         link_publico=link,
-        link_publico_legacy=link_legacy,
         max_age_days=max_age_days,
     )

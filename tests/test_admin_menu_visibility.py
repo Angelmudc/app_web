@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 from app import app as flask_app
+import admin.routes as admin_routes
 
 
 def _login(client, usuario: str, clave: str):
@@ -75,9 +79,34 @@ def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():
         assert link_page.status_code == 200
         link_html = link_page.get_data(as_text=True)
         assert "/clientes/n/" in link_html
-        assert "/clientes/solicitudes/nueva-publica/" in link_html
+        assert "/clientes/solicitudes/nueva-publica/" not in link_html
+        assert "Enlace legado (compatibilidad)" not in link_html
+        assert 'id="linkPublicoNuevo"' in link_html
+        assert "navigator.clipboard.writeText(text)" in link_html
         assert 'property="og:title"' in link_html
         assert 'property="og:description"' in link_html
         assert 'property="og:image"' in link_html
         assert 'name="twitter:card"' in link_html
         assert 'domestica-preview.png' in link_html
+
+
+def test_admin_existing_client_public_link_view_shows_only_short_url_and_copy_matches():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    assert _login(client, "Owner", "8899").status_code in (302, 303)
+
+    fake_cliente = SimpleNamespace(id=99, nombre_completo="Cliente Demo", codigo="CL-0099")
+    with flask_app.app_context():
+        with patch.object(admin_routes.Cliente, "query", SimpleNamespace(get_or_404=lambda _cid: fake_cliente)), \
+             patch("admin.routes.generar_token_publico_cliente", return_value="tok123"):
+            resp = client.get("/admin/clientes/99/solicitudes/link-publico", follow_redirects=False)
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "/clientes/f/tok123" in html
+    assert "/clientes/solicitudes/publica/tok123" not in html
+    assert "Enlace legado (compatibilidad)" not in html
+    assert 'id="linkPublico"' in html
+    assert "navigator.clipboard.writeText(text)" in html
