@@ -88,6 +88,8 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
 
     html = resp.get_data(as_text=True)
     assert "Formulario público de solicitud" in html
+    assert "Formulario oficial" in html
+    assert "Enlace seguro de uso controlado" in html
     assert "Gmail / Email" not in html
     assert "Sin solicitudes registradas" not in html
     assert "Mis Solicitudes" not in html

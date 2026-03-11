@@ -43,6 +43,19 @@
   <meta name="twitter:image" content="{{ _og_image }}">
   <meta name="twitter:image:alt" content="{{ _og_image_alt }}">
   <meta name="twitter:url" content="{{ _og_url }}">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "{{ _og_title|e }}",
+      "description": "{{ _og_description|e }}",
+      "url": "{{ _og_url|e }}",
+      "isPartOf": {
+        "@type": "WebSite",
+        "name": "Doméstica del Cibao A&D"
+      }
+    }
+  </script>
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -79,6 +92,48 @@
     .public-flash.error { background: #fff2f2; color: #991b1b; border-color: #fecaca; }
     .public-flash.info,
     .public-flash.primary { background: #eef6ff; color: #1e3a8a; border-color: #bfdbfe; }
+
+    .public-trust-shell {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 8px 14px 0;
+    }
+
+    .public-trust {
+      border-radius: 12px;
+      border: 1px solid #d4e3f4;
+      background: #f4f9ff;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: #123a63;
+      font-size: .88rem;
+    }
+
+    .public-trust-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      color: #0f2f4f;
+    }
+
+    .public-trust-brand img {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .public-trust-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
   </style>
 
   {% block head %}{% endblock %}
@@ -92,6 +147,19 @@
         {% endfor %}
       {% endif %}
     {% endwith %}
+  </div>
+
+  <div class="public-trust-shell">
+    <div class="public-trust" role="note" aria-label="Enlace oficial y seguro">
+      <div class="public-trust-brand">
+        <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&D">
+        Doméstica del Cibao A&D · Formulario oficial
+      </div>
+      <div class="public-trust-meta">
+        <span><i class="bi bi-shield-check"></i> Enlace seguro de uso controlado</span>
+        <span><i class="bi bi-patch-check"></i> Verifica siempre que sea un enlace oficial de la agencia</span>
+      </div>
+    </div>
   </div>
 
   <main>

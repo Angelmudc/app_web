@@ -2,9 +2,53 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>{% block title %}Doméstica del Cibao A&D{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Agencia profesional de domésticas en el Cibao. Selección, filtro y garantía para tu hogar.">
+  <title>{% block title %}Doméstica del Cibao A&D{% endblock %}</title>
+  {% set _public_base = (config.get('PUBLIC_BASE_URL') or '')|trim %}
+  {% set _public_base = _public_base.rstrip('/') if _public_base else '' %}
+  {% set _page_title = meta_title|default(self.title()|striptags, true) %}
+  {% set _meta_description = meta_description|default('Agencia profesional de domésticas en República Dominicana. Selección, evaluación y acompañamiento con enfoque humano y proceso formal.', true) %}
+  {% set _canonical_url = canonical_url|default((_public_base ~ request.path) if _public_base else request.base_url, true) %}
+  {% set _og_url = og_url|default(_canonical_url, true) %}
+  {% set _og_title = og_title|default(_page_title, true) %}
+  {% set _og_description = og_description|default(_meta_description, true) %}
+  {% set _preview_path = url_for('static', filename='img/domestica-preview.png', v='20260311') %}
+  {% set _og_image = og_image|default((_public_base ~ '/' ~ _preview_path.lstrip('/')) if _public_base else url_for('static', filename='img/domestica-preview.png', v='20260311', _external=True), true) %}
+  {% set _meta_robots = meta_robots|default('index, follow', true) %}
+  <meta name="description" content="{{ _meta_description }}">
+  <meta name="robots" content="{{ _meta_robots }}">
+  <link rel="canonical" href="{{ _canonical_url }}">
+  <link rel="image_src" href="{{ _og_image }}">
+  <meta property="og:site_name" content="Doméstica del Cibao A&D">
+  <meta property="og:locale" content="es_DO">
+  <meta property="og:title" content="{{ _og_title }}">
+  <meta property="og:description" content="{{ _og_description }}">
+  <meta property="og:image" content="{{ _og_image }}">
+  <meta property="og:image:url" content="{{ _og_image }}">
+  <meta property="og:image:secure_url" content="{{ _og_image }}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Doméstica del Cibao A&D - Agencia de personal doméstico">
+  <meta property="og:url" content="{{ _og_url }}">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ _og_title }}">
+  <meta name="twitter:description" content="{{ _og_description }}">
+  <meta name="twitter:image" content="{{ _og_image }}">
+  <meta name="twitter:image:alt" content="Doméstica del Cibao A&D - Agencia de personal doméstico">
+  <meta name="twitter:url" content="{{ _og_url }}">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Doméstica del Cibao A&D",
+      "url": "{{ (_public_base if _public_base else request.url_root.rstrip('/'))|e }}",
+      "logo": "{{ _og_image|e }}",
+      "telephone": "+1-809-429-6892",
+      "email": "info@domesticadelcibao.com"
+    }
+  </script>
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='public/css/styles.css') }}">
   <link rel="icon" href="{{ url_for('static', filename='logo_nuevo.png') }}">
@@ -20,6 +64,24 @@
     crossorigin="anonymous"
     referrerpolicy="no-referrer"
   />
+  <style>
+    .trust-strip {
+      background: #0b2f4f;
+      color: #eaf4ff;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+      font-size: .88rem;
+    }
+    .trust-strip .container {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+    .trust-strip strong { color: #ffffff; font-weight: 700; }
+    .trust-strip a { color: #bde0ff; text-decoration: none; }
+  </style>
 </head>
 <body data-live-presence-enabled="1" data-live-presence-url="{{ url_for('public.public_live_ping') }}">
 
@@ -57,6 +119,14 @@
       </a>
     </div>
   </nav>
+
+  <section class="trust-strip" aria-label="Identidad y confianza">
+    <div class="container">
+      <div><strong>Sitio oficial:</strong> Doméstica del Cibao A&D</div>
+      <div><strong>Atención:</strong> <a href="tel:+18094296892">+1 (809) 429-6892</a></div>
+      <div><strong>Canal seguro:</strong> formularios y contacto verificados de la agencia</div>
+    </div>
+  </section>
 
   <main>
     {% block content %}{% endblock %}
