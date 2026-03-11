@@ -24,16 +24,14 @@
     {'key': 'sd_3_dias', 'label': 'Salida diaria - 3 días a la semana', 'aliases': ['3 días a la semana', 'Tres días a la semana']},
     {'key': 'sd_l_v', 'label': 'Salida diaria - lunes a viernes', 'aliases': ['Lunes a Viernes']},
     {'key': 'sd_l_s', 'label': 'Salida diaria - lunes a sábado', 'aliases': ['Lunes a Sábado']},
-    {'key': 'sd_v_l', 'label': 'Salida diaria - viernes a lunes', 'aliases': ['Viernes a Lunes']},
-    {'key': 'sd_fin_semana', 'label': 'Salida diaria - fin de semana', 'aliases': ['Sábado y Domingo']},
+    {'key': 'sd_fin_semana', 'label': 'Salida diaria - fin de semana', 'aliases': ['Sábado y Domingo', 'Viernes a Lunes']},
     {'key': 'otro', 'label': 'Salida diaria otro', 'aliases': ['Otro', 'Salida diaria - Otro']}
   ],
   'con_dormida': [
     {'key': 'cd_l_v', 'label': 'Con dormida 💤 lunes a viernes', 'aliases': ['Lunes a Viernes', 'Con dormida - Lunes a Viernes']},
     {'key': 'cd_l_s', 'label': 'Con dormida 💤 lunes a sábado', 'aliases': ['Lunes a sábado, sale sábado después del medio día']},
     {'key': 'cd_quincenal', 'label': 'Con dormida 💤 quincenal', 'aliases': ['Salida Quincenal, sale viernes después del medio día']},
-    {'key': 'cd_v_l', 'label': 'Con dormida 💤 viernes a lunes', 'aliases': ['Viernes a Lunes']},
-    {'key': 'cd_fin_semana', 'label': 'Con dormida 💤 fin de semana', 'aliases': ['Sábado y Domingo']},
+    {'key': 'cd_fin_semana', 'label': 'Con dormida 💤 fin de semana', 'aliases': ['Sábado y Domingo', 'Viernes a Lunes']},
     {'key': 'otro', 'label': 'Con dormida 💤 otro', 'aliases': ['Otro', 'Con dormida - Otro']}
   ]
 } %}
@@ -667,6 +665,9 @@
     if (!txt) return '';
     txt = txt.replace(/^otro\s*[:\-]?\s*/i, '').trim();
     txt = stripModalidadGroupPrefix(txt, group);
+    if (normModal(txt) === 'viernes a lunes') {
+      txt = 'fin de semana';
+    }
     if (group === 'con_salida_diaria') {
       txt = txt.replace(/^con\s+/i, '').trim();
     }
@@ -728,7 +729,7 @@
     var s = (specific || '').trim();
     var o = normalizeModalidadOtherText(otherText, group);
     function storageClean(v) {
-      return (v || '').replace(/💤/g, '').replace(/\s{2,}/g, ' ').trim();
+      return (v || '').replace(/\s{2,}/g, ' ').trim();
     }
     if (!gLabel) return '';
     if (!s) return gLabel;

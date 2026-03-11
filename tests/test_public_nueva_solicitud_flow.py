@@ -392,7 +392,7 @@ def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_e
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
     modalidad_value = "Con dormida - Otro: Turno especial feriados"
-    modalidad_norm = "Con dormida Turno especial feriados"
+    modalidad_norm = "Con dormida 💤 Turno especial feriados"
 
     with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \

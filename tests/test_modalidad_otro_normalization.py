@@ -13,7 +13,17 @@ def test_modalidad_otro_salida_diaria_no_duplica_prefijo():
 
 def test_modalidad_otro_con_dormida_no_duplica_prefijo():
     raw = "Con dormida 💤 otro: con dormida quincenal"
-    assert canonicalize_modalidad_trabajo(raw) == "Con dormida quincenal"
+    assert canonicalize_modalidad_trabajo(raw) == "Con dormida 💤 quincenal"
+
+
+def test_modalidad_con_dormida_normaliza_con_emoji():
+    raw = "Con dormida lunes a viernes"
+    assert canonicalize_modalidad_trabajo(raw) == "Con dormida 💤 lunes a viernes"
+
+
+def test_modalidad_viernes_a_lunes_se_convierte_a_fin_de_semana():
+    raw = "Salida diaria - viernes a lunes"
+    assert canonicalize_modalidad_trabajo(raw) == "Salida diaria - fin de semana"
 
 
 def test_modalidad_normal_sin_otro_se_mantiene_compatible():
@@ -42,7 +52,7 @@ def test_cliente_interno_form_normaliza_modalidad_otro():
     _assert_field_validator_normalizes(
         SolicitudForm,
         "Con dormida 💤 otro: con dormida quincenal",
-        "Con dormida quincenal",
+        "Con dormida 💤 quincenal",
     )
 
 
@@ -58,5 +68,5 @@ def test_publico_cliente_nuevo_form_normaliza_modalidad_otro():
     _assert_field_validator_normalizes(
         SolicitudClienteNuevoPublicaForm,
         "Con dormida 💤 otro: con dormida quincenal",
-        "Con dormida quincenal",
+        "Con dormida 💤 quincenal",
     )

@@ -1125,7 +1125,8 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     codigo        = _s(getattr(s, 'codigo_solicitud', None))
     ciudad_sector = _s(getattr(s, 'ciudad_sector', None))
     rutas         = _s(getattr(s, 'rutas_cercanas', None))
-    modalidad     = _s(getattr(s, 'modalidad_trabajo', None))
+    modalidad_raw = _s(getattr(s, 'modalidad_trabajo', None))
+    modalidad     = canonicalize_modalidad_trabajo(modalidad_raw) if modalidad_raw else ""
     edad_req_raw  = getattr(s, 'edad_requerida', None)
     experiencia   = _s(getattr(s, 'experiencia', None))
     horario       = _s(getattr(s, 'horario', None))
@@ -1161,7 +1162,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     area_otro   = _s(getattr(s, 'area_otro', None))
     if area_otro:
         areas_raw.append(area_otro)
-    areas_txt = ", ".join(_unique_keep_order([_norm_area(a) for a in areas_raw])) if areas_raw else ""
+    areas_txt = ", ".join(_unique_keep_order([x for x in (_norm_area(a) for a in areas_raw) if x])) if areas_raw else ""
 
     # Familia
     adultos    = _s(getattr(s, 'adultos', None))
@@ -4279,6 +4280,8 @@ def _norm_area(text: str) -> str:
     s = str(text)
     s = s.replace("_", " ")
     s = re.sub(r"\s+", " ", s).strip()
+    if s.lower() in {"otro", "otro...", "otro…"}:
+        return ""
     return s
 
 def _fmt_banos(value) -> str:
@@ -4348,7 +4351,7 @@ def _normalize_areas_comunes_selected(selected_vals, choices):
         vals = [v for v in vals if v != 'todas_anteriores']
         vals = _clean_list(vals + all_codes)
 
-    return [v for v in vals if v != 'todas_anteriores']
+    return [v for v in vals if v not in {'todas_anteriores', 'otro'}]
 
 def _next_codigo_solicitud(cliente: Cliente) -> str:
     """
@@ -5705,15 +5708,20 @@ def nueva_solicitud_admin(cliente_id):
                     s.funciones_otro = extra_text or None
 
                 selected_areas = []
+                areas_has_otro = False
                 if hasattr(form, 'areas_comunes'):
+                    areas_selected_raw = _clean_list(
+                        getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
+                    )
+                    areas_has_otro = 'otro' in areas_selected_raw
                     selected_areas = _normalize_areas_comunes_selected(
-                        selected_vals=getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data,
+                        selected_vals=areas_selected_raw,
                         choices=form.areas_comunes.choices
                     )
                 s.areas_comunes = selected_areas
                 if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                     area_otro_txt = (form.area_otro.data or '').strip()
-                    s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                    s.area_otro = (area_otro_txt if areas_has_otro else '') or None
                 s.detalles_servicio = _build_detalles_servicio_from_form(form)
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
@@ -5951,14 +5959,17 @@ def editar_solicitud_admin(cliente_id, id):
                 if hasattr(s, 'funciones_otro'):
                     s.funciones_otro = extra_text or None
 
+                areas_has_otro = False
                 if hasattr(form, 'areas_comunes'):
+                    areas_selected_raw = _clean_list(form.areas_comunes.data)
+                    areas_has_otro = 'otro' in areas_selected_raw
                     s.areas_comunes = _normalize_areas_comunes_selected(
-                        selected_vals=form.areas_comunes.data,
+                        selected_vals=areas_selected_raw,
                         choices=form.areas_comunes.choices
                     )
                 if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                     area_otro_txt = (form.area_otro.data or '').strip()
-                    s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                    s.area_otro = (area_otro_txt if areas_has_otro else '') or None
 
                 s.fecha_ultima_modificacion = utc_now_naive()
                 s.detalles_servicio = _build_detalles_servicio_from_form(form)
@@ -9039,6 +9050,8 @@ def _fmt_banos(val) -> str:
 
 def _norm_area(a: str) -> str:
     k = _s(a).lower()
+    if k in {"otro", "otro...", "otro…"}:
+        return ""
     if k in AREAS_MAP:
         return AREAS_MAP[k]
     alias = {
@@ -9302,7 +9315,7 @@ def copiar_solicitudes():
 
         # ====================== MODALIDAD ======================
         modalidad = _first_nonempty_attr(s, ['modalidad_trabajo', 'modalidad', 'tipo_modalidad'], '')
-        modalidad_line = modalidad
+        modalidad_line = canonicalize_modalidad_trabajo(modalidad) if modalidad else ""
 
         # ====================== HOGAR ======================
         hogar_partes_detalle = []
@@ -9317,10 +9330,14 @@ def copiar_solicitudes():
 
         areas = []
         for a in _as_list(getattr(s, 'areas_comunes', None)):
-            areas.append(_norm_area(a))
+            area_norm = _norm_area(a)
+            if area_norm:
+                areas.append(area_norm)
         area_otro = _s(getattr(s, 'area_otro', None))
         if area_otro:
-            areas.append(_norm_area(area_otro))
+            area_norm = _norm_area(area_otro)
+            if area_norm:
+                areas.append(area_norm)
         if areas:
             hogar_partes_detalle.append(", ".join(areas))
 

@@ -75,7 +75,9 @@ def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():
     assert "function parseStoredModalidad(rawValue)" in partial
     assert "function composeModalidadValue(group, specific, otherText)" in partial
     assert "function normalizeModalidadOtherText(raw, group)" in partial
-    assert "replace(/💤/g, '')" in partial
+    assert "replace(/\\s{2,}/g, ' ')" in partial
+    assert "'label': 'Salida diaria - viernes a lunes'" not in partial
+    assert "'label': 'Con dormida 💤 viernes a lunes'" not in partial
     assert "Salida Quincenal, sale viernes después del medio día" in partial
     assert "Lunes a sábado, sale sábado después del medio día" in partial
 

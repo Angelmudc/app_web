@@ -351,7 +351,7 @@ class SolicitudForm(FlaskForm):
 
     def validate_modalidad_trabajo(self, field):
         field.data = canonicalize_modalidad_trabajo(field.data)
-        _solo_texto(field.data)
+        _solo_texto((field.data or '').replace('💤', ''))
 
     def validate_horario(self, field):
         # Permite letras, números y espacios (horario necesita números)

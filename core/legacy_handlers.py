@@ -4563,7 +4563,25 @@ def _fmt_banos(v):
     return str(v).rstrip('0').rstrip('.') if isinstance(v, float) else str(v)
 
 def _norm_area(s):
-    return (s or "").strip()
+    txt = (s or "").strip()
+    if txt.lower() in {"otro", "otro...", "otro…"}:
+        return ""
+    return txt
+
+def _normalize_modalidad_publicar(value):
+    txt = (value or "").strip()
+    if not txt:
+        return ""
+    low = txt.lower()
+    if "viernes a lunes" in low:
+        if "dormida" in low or "interna" in low:
+            return "Con dormida 💤 fin de semana"
+        if "salida diaria" in low:
+            return "Salida diaria - fin de semana"
+    if low.startswith("con dormida") and "💤" not in txt:
+        rest = txt[len("con dormida"):].strip()
+        return f"Con dormida 💤 {rest}".strip()
+    return txt
 
 def _s(v):
     return "" if v is None else str(v).strip()
@@ -4642,7 +4660,7 @@ def secretarias_copiar_solicitudes():
             or getattr(s, 'tipo_modalidad', None)
             or ''
         )
-        modalidad_val = modalidad_val.strip()
+        modalidad_val = _normalize_modalidad_publicar(modalidad_val)
 
         # Hogar (solo descripción, sin prefijo)
         hogar_partes = []
@@ -4660,12 +4678,16 @@ def secretarias_copiar_solicitudes():
                 for a in s.areas_comunes:
                     a = str(a).strip()
                     if a:
-                        areas.append(_norm_area(a))
+                        area_norm = _norm_area(a)
+                        if area_norm:
+                            areas.append(area_norm)
             except Exception:
                 pass
         area_otro = (getattr(s, 'area_otro', None) or "").strip()
         if area_otro:
-            areas.append(_norm_area(area_otro))
+            area_norm = _norm_area(area_otro)
+            if area_norm:
+                areas.append(area_norm)
         if areas:
             hogar_partes.append(", ".join(areas))
 
@@ -4880,7 +4902,7 @@ def secretarias_buscar_solicitudes():
 
     items = []
     for s in paginado.items:
-        modalidad_val = ((s.modalidad_trabajo or s.modalidad or s.tipo_modalidad or '')).strip()
+        modalidad_val = _normalize_modalidad_publicar((s.modalidad_trabajo or s.modalidad or s.tipo_modalidad or ''))
 
         funcs = []
         try:
@@ -4921,12 +4943,16 @@ def secretarias_buscar_solicitudes():
                 for a in s.areas_comunes:
                     a = str(a).strip()
                     if a:
-                        areas.append(_norm_area(a))
+                        area_norm = _norm_area(a)
+                        if area_norm:
+                            areas.append(area_norm)
             except Exception:
                 pass
         area_otro = (getattr(s, 'area_otro', None) or "").strip()
         if area_otro:
-            areas.append(_norm_area(area_otro))
+            area_norm = _norm_area(area_otro)
+            if area_norm:
+                areas.append(area_norm)
         if areas:
             hogar_partes.append(", ".join(areas))
         tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()

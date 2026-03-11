@@ -43,7 +43,7 @@ def _detect_group(raw: str) -> str:
 
 def _group_label(group: str) -> str:
     if group == "con_dormida":
-        return "Con dormida"
+        return "Con dormida 💤"
     if group == "con_salida_diaria":
         return "Salida diaria"
     return ""
@@ -64,6 +64,9 @@ def _sanitize_other_detail(detail: str, group: str) -> str:
     txt = _clean_spaces(detail)
     txt = _LEAD_OTHER_RE.sub("", txt).strip()
     txt = _strip_group_prefix(txt, group)
+    txt_norm = _norm(txt)
+    if txt_norm == "viernes a lunes":
+        txt = "fin de semana"
     if group == "con_salida_diaria":
         txt = re.sub(r"^con\s+", "", txt, flags=re.IGNORECASE).strip()
     return _clean_spaces(txt)
@@ -75,7 +78,7 @@ def canonicalize_modalidad_trabajo(raw_value: str | None) -> str:
     - "Salida diaria otro: salida diaria con lunes a viernes"
       -> "Salida diaria lunes a viernes"
     - "Con dormida otro: con dormida quincenal"
-      -> "Con dormida quincenal"
+      -> "Con dormida 💤 quincenal"
 
     Mantiene compatibilidad: valores sin patrón redundante se preservan.
     """
@@ -107,5 +110,14 @@ def canonicalize_modalidad_trabajo(raw_value: str | None) -> str:
     if has_other_marker or duplicated_group_in_rest:
         prefix = _group_label(group)
         return _clean_spaces(f"{prefix} {detail}".strip()) if detail else prefix
+
+    if group == "con_dormida":
+        dormida_detail = _sanitize_other_detail(_strip_group_prefix(raw, group), group)
+        prefix = _group_label(group)
+        return _clean_spaces(f"{prefix} {dormida_detail}".strip()) if dormida_detail else prefix
+    if group == "con_salida_diaria":
+        salida_detail = _sanitize_other_detail(_strip_group_prefix(raw, group), group)
+        if _norm(salida_detail) == "fin de semana":
+            return "Salida diaria - fin de semana"
 
     return raw

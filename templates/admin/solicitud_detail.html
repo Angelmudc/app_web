@@ -89,6 +89,17 @@
       {# Usa resumen_interno si el backend lo envía; si no, cae a resumen_cliente #}
       {% set _rutas = (solicitud.rutas_cercanas or '') %}
       {% set _modalidad = (solicitud.modalidad_trabajo or '') %}
+      {% set _modalidad_low = _modalidad|lower %}
+      {% if 'viernes a lunes' in _modalidad_low %}
+        {% if 'dormida' in _modalidad_low or 'interna' in _modalidad_low %}
+          {% set _modalidad = 'Con dormida 💤 fin de semana' %}
+        {% elif 'salida diaria' in _modalidad_low %}
+          {% set _modalidad = 'Salida diaria - fin de semana' %}
+        {% endif %}
+      {% endif %}
+      {% if _modalidad and _modalidad_low.startswith('con dormida') and '💤' not in _modalidad %}
+        {% set _modalidad = _modalidad|replace('Con dormida', 'Con dormida 💤', 1) %}
+      {% endif %}
 
       {# Edad: combina opciones + "otro", evitando mostrar el literal "otro". #}
       {% set _edad_txt = (solicitud.edad_texto if solicitud.edad_texto is defined else '') %}

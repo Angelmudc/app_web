@@ -1513,7 +1513,7 @@ def _normalize_areas_comunes_selected(selected_vals, choices):
         vals = [v for v in vals if v != 'todas_anteriores']
         vals = _clean_list(vals + all_codes)
 
-    return [v for v in vals if v != 'todas_anteriores']
+    return [v for v in vals if v not in {'todas_anteriores', 'otro'}]
 
 
 
@@ -1743,8 +1743,10 @@ def nueva_solicitud():
             _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
             s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
+            areas_selected_raw = _clean_list(form.areas_comunes.data)
+            areas_has_otro = 'otro' in areas_selected_raw
             s.areas_comunes  = _normalize_areas_comunes_selected(
-                form.areas_comunes.data,
+                areas_selected_raw,
                 form.areas_comunes.choices,
             )
             s.edad_requerida = _map_edad_choices(
@@ -1761,7 +1763,7 @@ def nueva_solicitud():
                 s.mascota = (form.mascota.data or '').strip() or None
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                 area_otro_txt = (form.area_otro.data or '').strip()
-                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                s.area_otro = (area_otro_txt if areas_has_otro else '') or None
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
@@ -1944,8 +1946,10 @@ def editar_solicitud(id):
             _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
             s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
+            areas_selected_raw = _clean_list(form.areas_comunes.data)
+            areas_has_otro = 'otro' in areas_selected_raw
             s.areas_comunes  = _normalize_areas_comunes_selected(
-                form.areas_comunes.data,
+                areas_selected_raw,
                 form.areas_comunes.choices,
             )
             s.edad_requerida = _map_edad_choices(
@@ -1962,7 +1966,7 @@ def editar_solicitud(id):
                 s.mascota = (form.mascota.data or '').strip() or None
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                 area_otro_txt = (form.area_otro.data or '').strip()
-                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                s.area_otro = (area_otro_txt if areas_has_otro else '') or None
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
@@ -2911,8 +2915,12 @@ def solicitud_publica_nueva_token(token):
                 if hasattr(s, 'funciones_otro'):
                     s.funciones_otro = funciones_otro_clean or None
 
+                areas_selected_raw = _clean_list(
+                    getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
+                )
+                areas_has_otro = 'otro' in areas_selected_raw
                 s.areas_comunes = _normalize_areas_comunes_selected(
-                    getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data,
+                    areas_selected_raw,
                     getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
                 ) or []
 
@@ -2932,7 +2940,7 @@ def solicitud_publica_nueva_token(token):
 
                 if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                     area_otro_txt = (form.area_otro.data or '').strip()
-                    s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                    s.area_otro = (area_otro_txt if areas_has_otro else '') or None
 
                 if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
@@ -3289,8 +3297,12 @@ def solicitud_publica(token):
             if hasattr(s, 'funciones_otro'):
                 s.funciones_otro = funciones_otro_clean or None
 
+            areas_selected_raw = _clean_list(
+                getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data
+            )
+            areas_has_otro = 'otro' in areas_selected_raw
             s.areas_comunes = _normalize_areas_comunes_selected(
-                getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data,
+                areas_selected_raw,
                 getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
             ) or []
 
@@ -3310,7 +3322,7 @@ def solicitud_publica(token):
 
             if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
                 area_otro_txt = (form.area_otro.data or '').strip()
-                s.area_otro = (area_otro_txt if 'otro' in (s.areas_comunes or []) else '') or None
+                s.area_otro = (area_otro_txt if areas_has_otro else '') or None
 
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
