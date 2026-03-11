@@ -95,6 +95,11 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert "modal_politicas" not in html
     assert "nota interna" not in html
     assert "809" not in html
+    assert 'property="og:title"' in html
+    assert 'property="og:description"' in html
+    assert 'property="og:image"' in html
+    assert 'name="twitter:card"' in html
+    assert 'domestica-preview.png' in html
 
     actions = [k.get("action_type") for _a, k in log_mock.call_args_list if isinstance(k, dict)]
     assert "PUBLIC_LINK_VIEW_OK" in actions

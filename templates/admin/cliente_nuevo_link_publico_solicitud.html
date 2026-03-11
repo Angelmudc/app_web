@@ -1,4 +1,19 @@
 {% extends "base.html" %}
+{% block extra_head %}
+  <meta name="description" content="Generación de enlace público para cliente nuevo y solicitud en Doméstica del Cibao A&D.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta property="og:site_name" content="Doméstica del Cibao A&D">
+  <meta property="og:locale" content="es_DO">
+  <meta property="og:title" content="Generar Link de Cliente Nuevo | Doméstica del Cibao A&D">
+  <meta property="og:description" content="Vista administrativa para generar enlaces públicos de un solo uso para cliente nuevo y solicitud.">
+  <meta property="og:image" content="{{ url_for('static', filename='img/domestica-preview.png', _external=True) }}">
+  <meta property="og:url" content="{{ link_publico or request.url }}">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Generar Link de Cliente Nuevo | Doméstica del Cibao A&D">
+  <meta name="twitter:description" content="Vista administrativa para generar enlaces públicos de un solo uso para cliente nuevo y solicitud.">
+  <meta name="twitter:image" content="{{ url_for('static', filename='img/domestica-preview.png', _external=True) }}">
+{% endblock %}
 {% block content %}
 
 <div class="container" style="max-width: 980px; margin: 28px auto;">

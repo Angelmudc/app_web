@@ -103,6 +103,11 @@ def test_new_public_form_token_get_renders_personal_block_and_shared_request_bod
     assert "Requisitos y perfil" in html
     assert 'name="modalidad_grupo" value="con_dormida"' in html
     assert 'name="modalidad_grupo" value="con_salida_diaria"' in html
+    assert 'property="og:title"' in html
+    assert 'property="og:description"' in html
+    assert 'property="og:image"' in html
+    assert 'name="twitter:card"' in html
+    assert 'domestica-preview.png' in html
 
 
 def test_new_public_post_keeps_cliente_city_sector_separate_from_solicitud_ciudad_sector():

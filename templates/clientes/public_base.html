@@ -4,7 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Solicitud pública | Doméstica del Cibao A&D{% endblock %}</title>
-  <meta name="description" content="Flujo público de solicitud - Doméstica del Cibao A&D">
+  {% set _meta_description = meta_description|default('Flujo público de solicitud de Doméstica del Cibao A&D.', true) %}
+  {% set _og_title = og_title|default('Solicitud pública | Doméstica del Cibao A&D', true) %}
+  {% set _og_description = og_description|default(_meta_description, true) %}
+  {% set _og_image = og_image|default(url_for('static', filename='img/domestica-preview.png', _external=True), true) %}
+  {% set _og_url = og_url|default(request.url, true) %}
+  {% set _og_type = og_type|default('website', true) %}
+  {% set _meta_robots = meta_robots|default('noindex, nofollow', true) %}
+  <meta name="description" content="{{ _meta_description }}">
+  <meta name="robots" content="{{ _meta_robots }}">
+  <meta property="og:site_name" content="Doméstica del Cibao A&D">
+  <meta property="og:locale" content="es_DO">
+  <meta property="og:title" content="{{ _og_title }}">
+  <meta property="og:description" content="{{ _og_description }}">
+  <meta property="og:image" content="{{ _og_image }}">
+  <meta property="og:url" content="{{ _og_url }}">
+  <meta property="og:type" content="{{ _og_type }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ _og_title }}">
+  <meta name="twitter:description" content="{{ _og_description }}">
+  <meta name="twitter:image" content="{{ _og_image }}">
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
