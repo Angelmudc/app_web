@@ -292,9 +292,24 @@ def test_new_public_short_route_renders_with_consistent_preview_metadata():
     html = resp.get_data(as_text=True)
     assert 'property="og:title"' in html
     assert 'property="og:description"' in html
+    assert 'property="og:image"' in html
+    assert 'property="og:image:url"' in html
+    assert 'property="og:image:secure_url"' in html
+    assert 'property="og:image:type"' in html
+    assert 'property="og:image:width"' in html
+    assert 'property="og:image:height"' in html
+    assert 'property="og:image:alt"' in html
     assert 'property="og:url"' in html
+    assert 'name="twitter:card"' in html
+    assert 'name="twitter:title"' in html
+    assert 'name="twitter:description"' in html
+    assert 'name="twitter:image"' in html
+    assert 'name="twitter:image:alt"' in html
     assert '/clientes/n/tok123' in html
     assert 'rel="canonical"' in html
+    assert 'rel="image_src"' in html
+
+    assert html.index('property="og:title"') < html.index("bootstrap@5.3.3")
 
 
 def test_new_public_short_route_success_redirect_stays_on_short_path():

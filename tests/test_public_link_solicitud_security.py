@@ -98,14 +98,38 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert 'property="og:title"' in html
     assert 'property="og:description"' in html
     assert 'property="og:image"' in html
+    assert 'property="og:image:url"' in html
+    assert 'property="og:image:secure_url"' in html
+    assert 'property="og:image:type"' in html
+    assert 'property="og:image:width"' in html
+    assert 'property="og:image:height"' in html
+    assert 'property="og:image:alt"' in html
     assert 'name="twitter:card"' in html
+    assert 'name="twitter:title"' in html
+    assert 'name="twitter:description"' in html
+    assert 'name="twitter:image"' in html
+    assert 'name="twitter:image:alt"' in html
     assert 'property="og:url"' in html
     assert '/clientes/f/tok123' in html
     assert 'rel="canonical"' in html
+    assert 'rel="image_src"' in html
     assert 'domestica-preview.png' in html
+    assert 'content="image/png"' in html
+
+    # Metadatos críticos primero, antes de CSS externo pesado.
+    assert html.index('property="og:title"') < html.index("bootstrap@5.3.3")
 
     actions = [k.get("action_type") for _a, k in log_mock.call_args_list if isinstance(k, dict)]
     assert "PUBLIC_LINK_VIEW_OK" in actions
+
+
+def test_public_preview_image_static_asset_is_public_and_direct():
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+
+    resp = client.get("/static/img/domestica-preview.png", follow_redirects=False)
+    assert resp.status_code == 200
+    assert not resp.location
 
 
 def test_public_link_form_has_expected_field_order_and_structure_grouping():
