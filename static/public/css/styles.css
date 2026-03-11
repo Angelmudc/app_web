@@ -854,13 +854,17 @@ body {
 }
 
 @media (max-width: 700px) {
+  .logo-img {
+    height: 56px;
+  }
+
   .nav-toggle {
     display: block;
   }
 
   .nav-links {
     position: absolute;
-    top: 64px;
+    top: 74px;
     left: 0;
     right: 0;
     background: var(--color-blanco);

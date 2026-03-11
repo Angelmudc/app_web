@@ -7,7 +7,7 @@
   <meta name="description" content="Agencia profesional de domésticas en el Cibao. Selección, filtro y garantía para tu hogar.">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='public/css/styles.css') }}">
-  <link rel="icon" href="{{ url_for('static', filename='public/img/logo/logo_domestica.png') }}">
+  <link rel="icon" href="{{ url_for('static', filename='logo_nuevo.png') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -43,13 +43,17 @@
       <ul class="nav-links" id="navLinks">
         <li><a href="{{ url_for('public.index') }}">Inicio</a></li>
         <li><a href="{{ url_for('public.servicios') }}">Servicios</a></li>
+        <li><a href="{{ url_for('public.como_funciona') }}">Cómo funciona</a></li>
+        <li><a href="{{ url_for('public.beneficios') }}">Beneficios</a></li>
+        <li><a href="{{ url_for('public.candidatas_publico') }}">Candidatas</a></li>
         <li><a href="{{ url_for('public.sobre_nosotros') }}">Sobre nosotros</a></li>
         <li><a href="{{ url_for('public.contacto') }}">Contacto</a></li>
         <li><a href="{{ url_for('public.faq') }}">FAQ</a></li>
+        <li><a href="{{ url_for('reclutamiento_publico.inicio') }}">Trabaja con nosotros</a></li>
       </ul>
 
-      <a href="#" class="btn btn-primary btn-nav" data-solicitar-domestica>
-        Solicitar doméstica
+      <a href="{{ url_for('public.contacto') }}" class="btn btn-primary btn-nav">
+        Solicitar servicio
       </a>
     </div>
   </nav>
@@ -96,50 +100,6 @@
 
   <script src="{{ url_for('static', filename='public/js/main.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
-
-  <!-- AUTO-REFRESH SUAVE (solo cuando el usuario está inactivo) -->
-  <script>
-    (function () {
-      // Intervalo de intento de refresco (ms)
-      const REFRESH_EVERY_MS = 60000; // 60 segundos
-
-      // Tiempo mínimo sin actividad para permitir refresco
-      const IDLE_REQUIRED_MS = 4000; // 4 segundos
-
-      let lastAction = Date.now();
-
-      // Detectar actividad del usuario
-      ["scroll", "mousemove", "keydown", "touchstart", "click"].forEach(evt => {
-        window.addEventListener(evt, () => {
-          lastAction = Date.now();
-        }, { passive: true });
-      });
-
-      function softReloadIfIdle() {
-        const idleFor = Date.now() - lastAction;
-
-        // Si el usuario está activo, no recargar
-        if (idleFor < IDLE_REQUIRED_MS) return;
-
-        // Evitar refresco si hay modales visibles
-        const openModal = document.querySelector(".modal.show, .modal[style*='display: block']");
-        if (openModal) return;
-
-        // Efecto visual mínimo (casi imperceptible)
-        document.documentElement.style.transition = "opacity 140ms ease";
-        document.documentElement.style.opacity = "0.92";
-
-        // Forzar recarga fresca evitando cache
-        setTimeout(() => {
-          const url = new URL(window.location.href);
-          url.searchParams.set("_ts", Date.now());
-          window.location.replace(url.toString());
-        }, 160);
-      }
-
-      setInterval(softReloadIfIdle, REFRESH_EVERY_MS);
-    })();
-  </script>
 
   <script>
     // Año automático del footer

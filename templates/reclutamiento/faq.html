@@ -1,0 +1,96 @@
+{% extends "reclutamiento/base_reclutamiento.html" %}
+
+{% block title %}FAQ postulantes{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container">
+    <h1>Preguntas frecuentes para postulantes</h1>
+    <p>Respuestas claras para ayudarte a completar tu aplicación con confianza.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Sobre la aplicación</h2>
+    <p class="section-subtitle">Dudas comunes antes de enviar el formulario.</p>
+
+    <article class="faq-item">
+      <h3>¿Puedo aplicar a ambos formularios?</h3>
+      <p>Sí. Si tienes interés y experiencia para ambos tipos de vacantes, puedes aplicar en los dos.</p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Qué formulario debo elegir?</h3>
+      <p>
+        Si buscas trabajo en hogares (limpieza, cocina, niñera, cuidado), usa doméstica.
+        Para otros oficios o empleos, usa empleo general.
+      </p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Los campos opcionales son importantes?</h3>
+      <p>Sí. Aunque no sean obligatorios, mejoran la evaluación y la posibilidad de coincidencia con vacantes.</p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Qué pasa si escribo mal mi cédula o teléfono?</h3>
+      <p>El sistema puede rechazar el envío. Verifica los datos antes de enviar.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Después de enviar</h2>
+    <p class="section-subtitle">Qué esperar una vez tu perfil entra en revisión.</p>
+
+    <article class="faq-item">
+      <h3>¿Me contactan inmediatamente?</h3>
+      <p>No siempre. El contacto depende de vacantes disponibles y coincidencia con tu perfil.</p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Aplicar garantiza trabajo?</h3>
+      <p>No. Aplicar significa entrar en evaluación para vacantes actuales o futuras.</p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Mi perfil se guarda para futuras oportunidades?</h3>
+      <p>Sí, puede considerarse cuando surjan vacantes alineadas a tu experiencia y modalidad.</p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Puedo volver a aplicar con datos actualizados?</h3>
+      <p>Sí. Si cambian tu disponibilidad o experiencia, puedes reenviar con información más completa.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Referencias y experiencia</h2>
+    <p class="section-subtitle">Cómo aumentar la calidad de tu postulación.</p>
+
+    <article class="faq-item">
+      <h3>¿Es obligatorio tener referencias?</h3>
+      <p>No siempre, pero incluir referencias verificables fortalece significativamente tu perfil.</p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Cómo describo mejor mi experiencia?</h3>
+      <p>Incluye funciones concretas, tiempo aproximado y tipo de entorno en el que trabajaste.</p>
+    </article>
+    <article class="faq-item">
+      <h3>¿Qué errores debo evitar?</h3>
+      <p>Enviar datos incompletos, números inválidos o disponibilidad que no puedes cumplir.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <div class="container cta-inner">
+    <div>
+      <h2 class="section-title" style="color:#fff; margin-bottom: 6px;">¿Lista para aplicar?</h2>
+      <p>Selecciona el formulario correcto y envía tu perfil.</p>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Formulario doméstica</a>
+      <a class="btn btn-outline" style="border-color:#cfe8ff; color:#fff;" href="{{ url_for('reclutas.registro_publico') }}">Formulario empleo general</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

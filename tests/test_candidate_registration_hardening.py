@@ -65,6 +65,39 @@ class CandidateRegistrationHardeningTest(unittest.TestCase):
         self.assertEqual(kwargs.get("max_retries"), 2)
         self.assertEqual(kwargs["expected_fields"]["cedula"], cedula)
 
+    def test_internal_registration_maps_new_optional_fields(self):
+        cedula = "001-2234567-8"
+        fake_candidate = type("Cand", (), {"fila": 9102, "cedula": cedula, "nombre_completo": "Maria Registro Hardening"})()
+        data = _base_data(cedula)
+        data.update({
+            "disponibilidad_inicio": "inmediata",
+            "trabaja_con_ninos": "si",
+            "trabaja_con_mascotas": "no",
+            "puede_dormir_fuera": "si",
+            "sueldo_esperado": "RD$22,000",
+            "motivacion_trabajo": "Busca estabilidad",
+        })
+
+        with patch(
+            "core.legacy_handlers.robust_create_candidata",
+            return_value=(RobustSaveResult(ok=True, attempts=1, error_message=""), candidate_registration.CandidateCreateState(candidate=fake_candidate, candidate_id=9102)),
+        ) as robust_mock, patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(None, "00122345678")):
+            resp = self.client.post(
+                "/registro_interno/",
+                data=data,
+                follow_redirects=False,
+            )
+
+        self.assertIn(resp.status_code, (302, 303))
+        build_candidate = robust_mock.call_args.kwargs["build_candidate"]
+        cand_obj = build_candidate(1)
+        self.assertEqual(cand_obj.disponibilidad_inicio, "inmediata")
+        self.assertIs(cand_obj.trabaja_con_ninos, True)
+        self.assertIs(cand_obj.trabaja_con_mascotas, False)
+        self.assertIs(cand_obj.puede_dormir_fuera, True)
+        self.assertEqual(cand_obj.sueldo_esperado, "RD$22,000")
+        self.assertEqual(cand_obj.motivacion_trabajo, "Busca estabilidad")
+
     def test_public_registration_success_verified(self):
         cedula = "001-7654321-9"
         fake_candidate = type("Cand", (), {"fila": 9202, "cedula": cedula, "nombre_completo": "Maria Registro Hardening"})()
@@ -148,7 +181,7 @@ class CandidateRegistrationHardeningTest(unittest.TestCase):
         fail_log_mock.assert_called_once()
 
     def test_form_field_mapping_is_correct(self):
-        expected_names = {
+        expected_shared_names = {
             "nombre_completo",
             "edad",
             "numero_telefono",
@@ -163,17 +196,21 @@ class CandidateRegistrationHardeningTest(unittest.TestCase):
             "referencias_familiares_detalle",
             "acepta_porcentaje_sueldo",
             "cedula",
+            "disponibilidad_inicio",
+            "puede_dormir_fuera",
+            "sueldo_esperado",
+            "motivacion_trabajo",
         }
 
-        paths = [
-            "templates/registro_interno.html",
-            "templates/registro/registro_publico.html",
-        ]
+        path_specific_names = {
+            "templates/registro_interno.html": {"trabaja_con_ninos", "trabaja_con_mascotas"},
+            "templates/registro/registro_publico.html": {"trabajo_con_ninos", "trabajo_con_mascotas"},
+        }
 
-        for path in paths:
+        for path, extra_fields in path_specific_names.items():
             with open(path, "r", encoding="utf-8") as fh:
                 html = fh.read()
-            for field in expected_names:
+            for field in (expected_shared_names | extra_fields):
                 self.assertIn(f'name="{field}"', html, msg=f"Falta name={field} en {path}")
 
 

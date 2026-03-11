@@ -92,6 +92,7 @@
                 <th>Nombre</th>
                 <th>Cédula</th>
                 <th>Teléfono</th>
+                <th>Datos complementarios</th>
                 <th style="width:120px" class="text-center">Acción</th>
               </tr>
             </thead>
@@ -131,6 +132,16 @@
                       <i class="fa-regular fa-copy"></i>
                     </button>
                   {% else %}–{% endif %}
+                </td>
+                <td class="small">
+                  <div><strong>Inicio:</strong> {{ c.disponibilidad_inicio or 'No indicado' }}</div>
+                  <div><strong>Sueldo:</strong> {{ c.sueldo_esperado or 'No indicado' }}</div>
+                  <div>
+                    <strong>Niños:</strong>
+                    {% if c.trabaja_con_ninos is none %}No indicado{% elif c.trabaja_con_ninos %}Sí{% else %}No{% endif %}
+                    · <strong>Mascotas:</strong>
+                    {% if c.trabaja_con_mascotas is none %}No indicado{% elif c.trabaja_con_mascotas %}Sí{% else %}No{% endif %}
+                  </div>
                 </td>
                 <td class="text-center">
                   <a href="?candidata_id={{ c.fila }}"
@@ -373,6 +384,55 @@
             <label class="form-label" for="areas_experiencia">Áreas de experiencia</label>
             <input id="areas_experiencia" name="areas_experiencia" class="form-control track-change"
                    value="{{ candidata.areas_experiencia or '' }}" placeholder="Limpieza, Niñera, Cocina…">
+          </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-md-4">
+            <label class="form-label" for="disponibilidad_inicio">Disponibilidad de inicio</label>
+            <select id="disponibilidad_inicio" name="disponibilidad_inicio" class="form-select track-change">
+              <option value="" {% if not candidata.disponibilidad_inicio %}selected{% endif %}>No indicado</option>
+              <option value="inmediata" {% if candidata.disponibilidad_inicio == 'inmediata' %}selected{% endif %}>Inmediata</option>
+              <option value="esta_semana" {% if candidata.disponibilidad_inicio == 'esta_semana' %}selected{% endif %}>Esta semana</option>
+              <option value="este_mes" {% if candidata.disponibilidad_inicio == 'este_mes' %}selected{% endif %}>Este mes</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="sueldo_esperado">Sueldo esperado</label>
+            <input id="sueldo_esperado" name="sueldo_esperado" class="form-control track-change"
+                   value="{{ candidata.sueldo_esperado or '' }}" maxlength="80" placeholder="Ej: RD$25,000 o a discutir">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="puede_dormir_fuera">Puede dormir fuera</label>
+            <select id="puede_dormir_fuera" name="puede_dormir_fuera" class="form-select track-change">
+              <option value="" {% if candidata.puede_dormir_fuera is none %}selected{% endif %}>No indicado</option>
+              <option value="si" {% if candidata.puede_dormir_fuera is sameas true %}selected{% endif %}>Sí</option>
+              <option value="no" {% if candidata.puede_dormir_fuera is sameas false %}selected{% endif %}>No</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-md-6">
+            <label class="form-label" for="trabaja_con_ninos">Trabaja con niños</label>
+            <select id="trabaja_con_ninos" name="trabaja_con_ninos" class="form-select track-change">
+              <option value="" {% if candidata.trabaja_con_ninos is none %}selected{% endif %}>No indicado</option>
+              <option value="si" {% if candidata.trabaja_con_ninos is sameas true %}selected{% endif %}>Sí</option>
+              <option value="no" {% if candidata.trabaja_con_ninos is sameas false %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="trabaja_con_mascotas">Trabaja con mascotas</label>
+            <select id="trabaja_con_mascotas" name="trabaja_con_mascotas" class="form-select track-change">
+              <option value="" {% if candidata.trabaja_con_mascotas is none %}selected{% endif %}>No indicado</option>
+              <option value="si" {% if candidata.trabaja_con_mascotas is sameas true %}selected{% endif %}>Sí</option>
+              <option value="no" {% if candidata.trabaja_con_mascotas is sameas false %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="motivacion_trabajo">Motivación para el trabajo</label>
+            <textarea id="motivacion_trabajo" name="motivacion_trabajo" class="form-control track-change" rows="2" maxlength="350"
+                      placeholder="Texto breve de motivación">{{ candidata.motivacion_trabajo or '' }}</textarea>
           </div>
         </div>
       </div>

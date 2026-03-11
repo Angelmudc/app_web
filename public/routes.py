@@ -1,6 +1,7 @@
 # app_web/public/routes.py
 
-from flask import render_template, abort, request, redirect, jsonify, make_response
+from flask import render_template, abort, request, redirect, jsonify, make_response, session
+from flask_login import current_user
 from . import public_bp
 
 from config_app import cache
@@ -142,6 +143,44 @@ def faq():
     if not PUBLIC_SITE_ENABLED:
         abort(404)
     return render_template("public/faq.html")
+
+
+@public_bp.route("/como-funciona")
+def como_funciona():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+    return render_template("public/como_funciona.html")
+
+
+@public_bp.route("/beneficios")
+def beneficios():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+    return render_template("public/beneficios.html")
+
+
+@public_bp.route("/candidatas")
+def candidatas_publico():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+    # Compatibilidad de coexistencia:
+    # Si hay sesión interna de staff, usar el flujo legacy de banco/listado.
+    try:
+        role = (str(session.get("role") or "").strip().lower())
+        if role in ("owner", "admin", "secretaria"):
+            from core import legacy_handlers as legacy_h
+            return legacy_h.list_candidatas()
+    except Exception:
+        pass
+    try:
+        if bool(getattr(current_user, "is_authenticated", False)):
+            role = (getattr(current_user, "role", None) or getattr(current_user, "rol", None) or "").strip().lower()
+            if role in ("owner", "admin", "secretaria"):
+                from core import legacy_handlers as legacy_h
+                return legacy_h.list_candidatas()
+    except Exception:
+        pass
+    return render_template("public/candidatas.html")
 
 
 @public_bp.route("/gracias")

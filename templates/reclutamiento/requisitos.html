@@ -1,0 +1,119 @@
+{% extends "reclutamiento/base_reclutamiento.html" %}
+
+{% block title %}Requisitos{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container">
+    <h1>Requisitos para postular</h1>
+    <p>Guía práctica para presentar una aplicación clara, útil y evaluable.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Requisitos básicos</h2>
+    <p class="section-subtitle">Lo mínimo esperado para procesar tu postulación de forma correcta.</p>
+
+    <div class="grid-2">
+      <article class="card">
+        <h3>Identidad y contacto</h3>
+        <ul class="card-list">
+          <li>• Nombre completo real</li>
+          <li>• Cédula válida (11 dígitos)</li>
+          <li>• Teléfono activo y correcto</li>
+          <li>• Dirección y ubicación actual</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>Datos laborales</h3>
+        <ul class="card-list">
+          <li>• Tipo de trabajo al que aplicas</li>
+          <li>• Modalidad y disponibilidad real</li>
+          <li>• Experiencia previa (cuando aplique)</li>
+          <li>• Referencias recomendadas</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Recomendaciones para mejorar tu perfil</h2>
+    <p class="section-subtitle">No siempre son obligatorias, pero aumentan la calidad de evaluación.</p>
+
+    <div class="grid-3">
+      <article class="card">
+        <h3>Describe funciones concretas</h3>
+        <p>Explica qué tareas realizaste y en qué tipo de entorno trabajaste.</p>
+      </article>
+      <article class="card">
+        <h3>Incluye disponibilidad real</h3>
+        <p>Indica con precisión horarios, días y modalidad que realmente puedes cumplir.</p>
+      </article>
+      <article class="card">
+        <h3>Comparte referencias útiles</h3>
+        <p>Nombre, teléfono y relación facilitan validación y mejoran la confianza.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Información importante</h2>
+    <p class="section-subtitle">Aspectos clave para evitar confusiones durante el proceso.</p>
+
+    <div class="grid-2">
+      <article class="card">
+        <h3>Aplicar no garantiza contratación inmediata</h3>
+        <p>El contacto depende de vacantes disponibles y coincidencia con requisitos del puesto.</p>
+      </article>
+      <article class="card">
+        <h3>Tu perfil puede considerarse luego</h3>
+        <p>Aunque no haya vacante inmediata, puede evaluarse para futuras oportunidades.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Errores comunes que debes evitar</h2>
+    <p class="section-subtitle">Estos errores reducen calidad de evaluación o pueden retrasar contacto.</p>
+
+    <div class="grid-2">
+      <article class="faq-item">
+        <h3>Datos incompletos o inconsistentes</h3>
+        <p>Evita enviar formularios con información clave faltante o números incorrectos.</p>
+      </article>
+      <article class="faq-item">
+        <h3>Experiencia demasiado genérica</h3>
+        <p>Frases vagas dificultan saber si tu perfil encaja con vacantes reales.</p>
+      </article>
+      <article class="faq-item">
+        <h3>Disponibilidad no real</h3>
+        <p>Indicar horarios que no puedes cumplir afecta el proceso y la confianza.</p>
+      </article>
+      <article class="faq-item">
+        <h3>Cédula o teléfono con formato inválido</h3>
+        <p>Verifica antes de enviar para evitar rechazos automáticos del formulario.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <div class="container cta-inner">
+    <div>
+      <h2 class="section-title" style="color:#fff; margin-bottom: 6px;">¿Cumples lo básico?</h2>
+      <p>Entonces completa tu formulario y deja tu perfil listo para evaluación.</p>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Formulario doméstica</a>
+      <a class="btn btn-outline" style="border-color:#cfe8ff; color:#fff;" href="{{ url_for('reclutas.registro_publico') }}">Formulario empleo general</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

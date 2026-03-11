@@ -683,6 +683,9 @@ def create_app():
     from public import public_bp
     app.register_blueprint(public_bp)  # "/"
 
+    from reclutamiento_publico import reclutamiento_publico_bp
+    app.register_blueprint(reclutamiento_publico_bp)
+
     from registro.routes import registro_bp
     app.register_blueprint(registro_bp, url_prefix="/registro")
 

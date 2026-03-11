@@ -62,6 +62,32 @@ class Candidata(db.Model):
     cedula2                         = db.Column(LargeBinary)
     referencias_laboral             = db.Column(db.Text)
     referencias_familiares          = db.Column(db.Text)
+    disponibilidad_inicio           = db.Column(db.String(80), nullable=True)
+    trabaja_con_ninos               = db.Column(
+        db.Boolean,
+        nullable=True,
+        comment="Disponibilidad para trabajar en hogares con niños (true/false o null no informado)."
+    )
+    trabaja_con_mascotas            = db.Column(
+        db.Boolean,
+        nullable=True,
+        comment="Disponibilidad para trabajar en hogares con mascotas (true/false o null no informado)."
+    )
+    puede_dormir_fuera              = db.Column(
+        db.Boolean,
+        nullable=True,
+        comment="Si puede trabajar modalidad dormida cuando sea necesario."
+    )
+    sueldo_esperado                 = db.Column(
+        db.String(80),
+        nullable=True,
+        comment="Expectativa salarial declarada por la candidata."
+    )
+    motivacion_trabajo              = db.Column(
+        db.String(350),
+        nullable=True,
+        comment="Motivación breve declarada en el formulario público."
+    )
 
     # Nuevos campos para estado, auditoría y descalificación
     estado = db.Column(

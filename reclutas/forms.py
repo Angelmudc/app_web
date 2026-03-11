@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from flask_wtf import FlaskForm
 from wtforms import (
     StringField,
@@ -5,11 +7,18 @@ from wtforms import (
     SelectMultipleField,
     BooleanField,
     TextAreaField,
-    SubmitField
+    SubmitField,
+    HiddenField,
 )
-from wtforms.validators import DataRequired, Optional
+from wtforms.validators import DataRequired, Optional, ValidationError
 
 from models import TIPOS_EMPLEO_GENERAL
+from utils.cedula_normalizer import normalize_cedula_for_store
+from utils.public_intake import clean_spaces, digits_only, has_min_real_chars
+
+
+def _normalize_optional(raw: str | None, max_len: int) -> str:
+    return clean_spaces(raw, max_len=max_len)
 
 
 # ======================================================
@@ -26,12 +35,14 @@ class ReclutaForm(FlaskForm):
     # ─────────────────────────────────────────────
     nombre_completo = StringField(
         'Nombre completo',
-        validators=[DataRequired()]
+        validators=[DataRequired()],
+        filters=[lambda v: _normalize_optional(v, 200)]
     )
 
     cedula = StringField(
         'Cédula',
-        validators=[DataRequired()]
+        validators=[DataRequired()],
+        filters=[lambda v: _normalize_optional(v, 50)]
     )
 
     edad = StringField(
@@ -61,27 +72,32 @@ class ReclutaForm(FlaskForm):
     # ─────────────────────────────────────────────
     telefono = StringField(
         'Teléfono',
-        validators=[DataRequired()]
+        validators=[DataRequired()],
+        filters=[lambda v: _normalize_optional(v, 50)]
     )
 
     email = StringField(
         'Correo electrónico',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 120)]
     )
 
     direccion_completa = StringField(
         'Dirección (ciudad / sector)',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 300)]
     )
 
     ciudad = StringField(
         'Ciudad',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 120)]
     )
 
     sector = StringField(
         'Sector',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 120)]
     )
 
     # ─────────────────────────────────────────────
@@ -119,12 +135,14 @@ class ReclutaForm(FlaskForm):
 
     horario_disponible = StringField(
         'Horario disponible',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 120)]
     )
 
     sueldo_esperado = StringField(
         'Sueldo esperado',
         validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 80)],
         description="Ej: RD$25,000 / A discutir"
     )
 
@@ -135,22 +153,26 @@ class ReclutaForm(FlaskForm):
 
     anos_experiencia = StringField(
         'Años de experiencia',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 20)]
     )
 
     experiencia_resumen = StringField(
         'Experiencia resumida',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 300)]
     )
 
     nivel_educativo = StringField(
         'Nivel educativo',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 80)]
     )
 
     habilidades = StringField(
         'Habilidades principales',
         validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 300)],
         description="Ej: computadora, caja, atención al cliente"
     )
 
@@ -168,12 +190,14 @@ class ReclutaForm(FlaskForm):
     # ─────────────────────────────────────────────
     referencias_laborales = TextAreaField(
         'Referencias laborales',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 1000)]
     )
 
     referencias_familiares = TextAreaField(
         'Referencias familiares',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 1000)]
     )
 
     # ─────────────────────────────────────────────
@@ -181,10 +205,28 @@ class ReclutaForm(FlaskForm):
     # ─────────────────────────────────────────────
     observaciones_internas = TextAreaField(
         'Observaciones internas',
-        validators=[Optional()]
+        validators=[Optional()],
+        filters=[lambda v: _normalize_optional(v, 1200)]
     )
 
     submit = SubmitField('Guardar perfil')
+
+    def validate_nombre_completo(self, field):
+        if not has_min_real_chars(field.data, min_chars=6):
+            raise ValidationError("El nombre completo debe tener al menos 6 letras.")
+
+    def validate_cedula(self, field):
+        normalized = normalize_cedula_for_store(field.data or "")
+        digits = digits_only(normalized)
+        if len(digits) != 11:
+            raise ValidationError("La cédula debe contener exactamente 11 dígitos.")
+        field.data = normalized
+
+    def validate_telefono(self, field):
+        digits = digits_only(field.data or "")
+        if len(digits) != 10:
+            raise ValidationError("El teléfono debe contener exactamente 10 dígitos.")
+        field.data = digits
 
 
 # ======================================================
@@ -198,6 +240,7 @@ class ReclutaPublicForm(ReclutaForm):
 
     # En público no existe el campo interno
     observaciones_internas = None
+    bot_field = HiddenField('No completar', validators=[Optional()])
 
     # Texto del botón en público
     submit = SubmitField('Enviar')

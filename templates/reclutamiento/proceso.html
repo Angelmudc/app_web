@@ -1,0 +1,111 @@
+{% extends "reclutamiento/base_reclutamiento.html" %}
+
+{% block title %}Proceso de aplicación{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container">
+    <h1>Proceso de aplicación paso a paso</h1>
+    <p>
+      Este proceso te ayuda a entender qué ocurre después de enviar tu formulario y qué información
+      aumenta tus oportunidades de ser considerada.
+    </p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Etapas del proceso</h2>
+    <p class="section-subtitle">Desde la postulación inicial hasta el seguimiento por nuevas oportunidades.</p>
+
+    <div class="steps-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+      <article class="step">
+        <div class="step-number">1</div>
+        <h3>Aplicar</h3>
+        <p>Completa el formulario de doméstica o empleo general según tu perfil.</p>
+      </article>
+      <article class="step">
+        <div class="step-number">2</div>
+        <h3>Revisión inicial</h3>
+        <p>Verificamos datos esenciales: identidad, contacto, modalidad y experiencia.</p>
+      </article>
+      <article class="step">
+        <div class="step-number">3</div>
+        <h3>Validación de perfil</h3>
+        <p>Se analiza compatibilidad con vacantes, disponibilidad y referencias.</p>
+      </article>
+      <article class="step">
+        <div class="step-number">4</div>
+        <h3>Contacto</h3>
+        <p>Si hay vacante alineada, el equipo te contacta para continuar el proceso.</p>
+      </article>
+      <article class="step">
+        <div class="step-number">5</div>
+        <h3>Seguimiento</h3>
+        <p>Tu perfil puede mantenerse activo para futuras vacantes compatibles.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Qué revisamos en cada aplicación</h2>
+    <p class="section-subtitle">Información clave para una evaluación más completa.</p>
+
+    <div class="grid-2">
+      <article class="card">
+        <h3>Consistencia de datos</h3>
+        <ul class="card-list">
+          <li>• Nombre, cédula y teléfono válidos</li>
+          <li>• Ubicación y modalidad coherentes</li>
+          <li>• Campos obligatorios correctamente completados</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>Perfil laboral</h3>
+        <ul class="card-list">
+          <li>• Experiencia relevante para la vacante</li>
+          <li>• Disponibilidad real de horario y condiciones</li>
+          <li>• Referencias cuando estén disponibles</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Qué puedes esperar después de aplicar</h2>
+    <p class="section-subtitle">Aclaraciones importantes para postulantes.</p>
+
+    <div class="grid-3">
+      <article class="card">
+        <h3>No todas las postulaciones se contactan de inmediato</h3>
+        <p>El contacto depende de la coincidencia entre tu perfil y vacantes activas.</p>
+      </article>
+      <article class="card">
+        <h3>Aplicar bien desde el inicio ayuda</h3>
+        <p>Información incompleta puede retrasar o limitar la evaluación del perfil.</p>
+      </article>
+      <article class="card">
+        <h3>Tu perfil puede servir para futuras oportunidades</h3>
+        <p>Incluso si no hay vacante inmediata, puede considerarse más adelante.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <div class="container cta-inner">
+    <div>
+      <h2 class="section-title" style="color:#fff; margin-bottom: 6px;">Inicia tu postulación</h2>
+      <p>Escoge el formulario correcto y completa tus datos con claridad.</p>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Aplicar doméstica</a>
+      <a class="btn btn-outline" style="border-color:#cfe8ff; color:#fff;" href="{{ url_for('reclutas.registro_publico') }}">Aplicar empleo general</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

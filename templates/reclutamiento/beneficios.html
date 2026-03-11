@@ -1,0 +1,104 @@
+{% extends "reclutamiento/base_reclutamiento.html" %}
+
+{% block title %}Beneficios{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container">
+    <h1>Beneficios de aplicar en este portal</h1>
+    <p>
+      Tu postulación entra en un flujo organizado que mejora visibilidad, evaluación y seguimiento
+      frente a vacantes presentes y futuras.
+    </p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Beneficios principales</h2>
+    <p class="section-subtitle">Ventajas concretas para postulantes que completan su perfil correctamente.</p>
+
+    <div class="grid-3">
+      <article class="card">
+        <h3>Visibilidad ante vacantes</h3>
+        <p>Tu perfil se considera para nuevas solicitudes según tipo de empleo, modalidad y experiencia.</p>
+      </article>
+      <article class="card">
+        <h3>Evaluación más clara</h3>
+        <p>La información estructurada facilita una lectura rápida y consistente de tu perfil laboral.</p>
+      </article>
+      <article class="card">
+        <h3>Seguimiento más formal</h3>
+        <p>El proceso queda documentado y permite continuidad cuando surgen nuevas oportunidades.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Qué mejora al aplicar bien</h2>
+    <p class="section-subtitle">Completar los campos clave aumenta la calidad de tu postulación.</p>
+
+    <div class="grid-2">
+      <article class="card">
+        <h3>Mejor coincidencia con vacantes</h3>
+        <ul class="card-list">
+          <li>• Experiencia detallada</li>
+          <li>• Disponibilidad real</li>
+          <li>• Referencias con contacto</li>
+          <li>• Preferencias de modalidad claras</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>Menos fricción en el proceso</h3>
+        <ul class="card-list">
+          <li>• Menos validaciones pendientes</li>
+          <li>• Menos dudas sobre datos básicos</li>
+          <li>• Mayor claridad para toma de decisión</li>
+          <li>• Seguimiento más ordenado</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Oportunidades presentes y futuras</h2>
+    <p class="section-subtitle">Aplicar hoy puede abrir puertas más adelante aunque no haya vacante inmediata.</p>
+
+    <div class="grid-2">
+      <article class="faq-item">
+        <h3>Vacantes inmediatas</h3>
+        <p>Si tu perfil coincide con una vacante activa, el contacto puede ser más rápido.</p>
+      </article>
+      <article class="faq-item">
+        <h3>Vacantes futuras</h3>
+        <p>Tu perfil puede mantenerse en evaluación para solicitudes que lleguen después.</p>
+      </article>
+      <article class="faq-item">
+        <h3>Actualización de perfil</h3>
+        <p>Mientras mejor mantengas tus datos, más útil será tu postulación para nuevas oportunidades.</p>
+      </article>
+      <article class="faq-item">
+        <h3>Proceso más transparente</h3>
+        <p>Sabes qué esperar: aplicación, revisión, validación, contacto y seguimiento.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <div class="container cta-inner">
+    <div>
+      <h2 class="section-title" style="color:#fff; margin-bottom: 6px;">Da el siguiente paso</h2>
+      <p>Completa tu formulario y deja tu perfil listo para evaluación.</p>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Aplicar doméstica</a>
+      <a class="btn btn-outline" style="border-color:#cfe8ff; color:#fff;" href="{{ url_for('reclutas.registro_publico') }}">Aplicar empleo general</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

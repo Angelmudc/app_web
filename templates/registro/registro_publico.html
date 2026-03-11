@@ -6,9 +6,9 @@
 <main class="card-glass" role="main">
   <div class="form-head">
     <div class="form-head__left">
-      <h1 class="title">Registro de Candidata</h1>
+      <h1 class="title">Registro laboral para servicio doméstico</h1>
       <p class="subtitle">
-        Completa tus datos con claridad. Los campos marcados con <strong>*</strong> son obligatorios.
+        Este formulario nos ayuda a conocer tu perfil y ofrecerte vacantes adecuadas. Los campos con <strong>*</strong> son obligatorios.
       </p>
     </div>
 
@@ -19,6 +19,15 @@
   </div>
 
   <div class="accent-line" aria-hidden="true"></div>
+
+  <div class="intro-note" role="note" aria-label="Guía rápida del formulario">
+    <p class="intro-note__title">Antes de empezar</p>
+    <ul class="intro-note__list">
+      <li>Completarlo te tomará de 5 a 8 minutos.</li>
+      <li>Si no recuerdas un dato exacto, escribe la información más aproximada posible.</li>
+      <li>Tus datos se usan solo para fines de evaluación y colocación laboral.</li>
+    </ul>
+  </div>
 
   <!-- RESUMEN DE ERRORES (lo llena el JS si falta algo) -->
   <div class="error-summary d-none" id="errorSummary" role="alert" aria-live="polite">
@@ -31,6 +40,7 @@
   <!-- FORM (ids/names intactos) -->
   <form method="post" action="{{ url_for('registro_publico.registro_publico') }}" id="registroForm" autocomplete="on" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="website" value="" tabindex="-1" autocomplete="off" class="d-none" aria-hidden="true">
 
     {% set f = request.form %}
     {% set f_areas = request.form.getlist('areas_experiencia') %}
@@ -38,10 +48,11 @@
     <!-- Identidad -->
     <section class="section">
       <div class="section__head">
-        <h2 class="section__title">
-          <span class="section__icon">🪪</span> Identidad
+        <h2 class="section__title section__title--stack">
+          <span class="section__eyebrow">Paso 1 de 3</span>
+          <span><span class="section__icon">🪪</span> Datos personales</span>
         </h2>
-        <p class="section__hint">Datos personales y de contacto.</p>
+        <p class="section__hint">Información básica para poder identificarte y contactarte.</p>
       </div>
 
       <div class="grid">
@@ -50,7 +61,8 @@
           <div class="control-wrap">
             <span class="lead" aria-hidden="true">👤</span>
             <input type="text" class="input" id="nombre_completo" name="nombre_completo" required maxlength="150"
-                   value="{{ f.get('nombre_completo','') }}" placeholder="Ej: María Pérez">
+                   minlength="6"
+                   value="{{ f.get('nombre_completo','') }}" placeholder="Ejemplo: María del Carmen Pérez Rodríguez">
           </div>
           <div class="help">Escribe tu nombre como aparece en tu cédula.</div>
         </div>
@@ -69,9 +81,9 @@
           <div class="control-wrap">
             <span class="lead" aria-hidden="true">📞</span>
             <input type="tel" inputmode="tel" class="input" id="numero_telefono" name="numero_telefono" required maxlength="30"
-                   value="{{ f.get('numero_telefono','') }}" placeholder="Ej: 809-000-0000">
+                   value="{{ f.get('numero_telefono','') }}" placeholder="Ejemplo: 809-123-4567">
           </div>
-          <div class="help">Si no es tu número personal, indícalo en la dirección o notas.</div>
+          <div class="help">Debe tener 10 dígitos. Si es número de un familiar, puedes aclararlo en el campo de motivación.</div>
         </div>
 
         <div class="field full">
@@ -108,26 +120,36 @@
     <!-- Preferencias -->
     <section class="section">
       <div class="section__head">
-        <h2 class="section__title">
-          <span class="section__icon">💼</span> Preferencias de trabajo
+        <h2 class="section__title section__title--stack">
+          <span class="section__eyebrow">Paso 2 de 3</span>
+          <span><span class="section__icon">💼</span> Perfil y disponibilidad</span>
         </h2>
-        <p class="section__hint">Modalidad, rutas y experiencia.</p>
+        <p class="section__hint">Cuéntanos en qué condiciones te gustaría trabajar y qué experiencia tienes.</p>
       </div>
 
       <div class="grid">
         <div class="field full">
           <label class="label">Modalidad de trabajo preferida <span class="req">*</span></label>
-          <div class="chips" role="radiogroup" aria-label="Modalidad preferida">
-            <label class="chip">
+          <div class="help">Selecciona una opción.</div>
+          <div class="choice-grid choice-grid--two" role="radiogroup" aria-label="Modalidad preferida">
+            <label class="choice-card">
               <input type="radio" name="modalidad_trabajo_preferida" value="Salida diaria" required
                      {% if f.get('modalidad_trabajo_preferida')=='Salida diaria' %}checked{% endif %}>
-              <span>Salida diaria</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Salida diaria</span>
+                <span class="choice-card__desc">Trabajas en horario diurno y regresas a tu casa cada día.</span>
+              </span>
             </label>
 
-            <label class="chip">
+            <label class="choice-card">
               <input type="radio" name="modalidad_trabajo_preferida" value="Dormida"
                      {% if f.get('modalidad_trabajo_preferida')=='Dormida' %}checked{% endif %}>
-              <span>Dormida</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Dormida</span>
+                <span class="choice-card__desc">Permaneces en el lugar de trabajo según la modalidad acordada.</span>
+              </span>
             </label>
           </div>
         </div>
@@ -137,93 +159,247 @@
           <div class="control-wrap">
             <span class="lead" aria-hidden="true">🚌</span>
             <input type="text" class="input" id="rutas_cercanas" name="rutas_cercanas" required maxlength="150"
-                   value="{{ f.get('rutas_cercanas','') }}" placeholder="Ej: Ruta A, Av. Principal">
+                   value="{{ f.get('rutas_cercanas','') }}" placeholder="Ejemplo: Ruta K, 27 de Febrero, Av. Estrella Sadhalá">
           </div>
           <div class="help">Escribe las rutas de transporte que pasan por tu zona.</div>
         </div>
 
         <div class="field full">
-          <label for="empleo_anterior" class="label">¿Qué hacías en tu empleo anterior? <span class="req">*</span></label>
+          <label for="empleo_anterior" class="label">En tu trabajo anterior, ¿qué funciones realizabas? <span class="req">*</span></label>
           <div class="control-wrap">
             <span class="lead" aria-hidden="true">✅</span>
             <textarea class="textarea" id="empleo_anterior" name="empleo_anterior" rows="2" required maxlength="150"
-                      placeholder="Ej: Limpieza profunda y cocina básica">{{ f.get('empleo_anterior','') }}</textarea>
+                      placeholder="Ejemplo: Limpieza general, cocina básica y apoyo con niños">{{ f.get('empleo_anterior','') }}</textarea>
           </div>
+          <div class="help">Describe brevemente las tareas que hacías con más frecuencia.</div>
+        </div>
+
+        <div class="field">
+          <label for="disponibilidad_inicio" class="label">¿Cuándo puedes iniciar? </label>
+          <div class="control-wrap">
+            <span class="lead" aria-hidden="true">🗓️</span>
+            <select class="input" id="disponibilidad_inicio" name="disponibilidad_inicio">
+              <option value="">Selecciona</option>
+              <option value="inmediata" {% if f.get('disponibilidad_inicio') == 'inmediata' %}selected{% endif %}>Inmediata</option>
+              <option value="esta_semana" {% if f.get('disponibilidad_inicio') == 'esta_semana' %}selected{% endif %}>Esta semana</option>
+              <option value="este_mes" {% if f.get('disponibilidad_inicio') == 'este_mes' %}selected{% endif %}>Este mes</option>
+            </select>
+          </div>
+          <div class="help">Si aún no tienes fecha exacta, elige la opción más cercana.</div>
+        </div>
+
+        <div class="field">
+          <label for="sueldo_esperado" class="label">Sueldo esperado (aprox.)</label>
+          <div class="control-wrap">
+            <span class="lead" aria-hidden="true">💰</span>
+            <input type="text" class="input" id="sueldo_esperado" name="sueldo_esperado" maxlength="80"
+                   value="{{ f.get('sueldo_esperado','') }}" placeholder="Ejemplo: RD$20,000 mensual o por acuerdo">
+          </div>
+          <div class="help">Puedes escribir un monto aproximado.</div>
         </div>
 
         <div class="field full">
           <label class="label">¿Cuántos años de experiencia laboral tienes? <span class="req">*</span></label>
-          <div class="option-grid">
-            <label class="opt">
-              <input class="opt__input" type="radio" name="anos_experiencia" value="1 año" required
+          <div class="help">Selecciona una sola opción.</div>
+          <div class="choice-grid choice-grid--two">
+            <label class="choice-card">
+              <input type="radio" name="anos_experiencia" value="1 año" required
                      {% if f.get('anos_experiencia')=='1 año' %}checked{% endif %}>
-              <span class="opt__box">1 año</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">1 año</span>
+                <span class="choice-card__desc">Experiencia inicial en trabajo doméstico.</span>
+              </span>
             </label>
 
-            <label class="opt">
-              <input class="opt__input" type="radio" name="anos_experiencia" value="2 años"
+            <label class="choice-card">
+              <input type="radio" name="anos_experiencia" value="2 años"
                      {% if f.get('anos_experiencia')=='2 años' %}checked{% endif %}>
-              <span class="opt__box">2 años</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">2 años</span>
+                <span class="choice-card__desc">Experiencia intermedia en labores del hogar.</span>
+              </span>
             </label>
 
-            <label class="opt">
-              <input class="opt__input" type="radio" name="anos_experiencia" value="3 años o más"
+            <label class="choice-card">
+              <input type="radio" name="anos_experiencia" value="3 años o más"
                      {% if f.get('anos_experiencia')=='3 años o más' %}checked{% endif %}>
-              <span class="opt__box">3 años o más</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">3 años o más</span>
+                <span class="choice-card__desc">Amplia experiencia en diferentes responsabilidades.</span>
+              </span>
             </label>
 
-            <label class="opt">
-              <input class="opt__input" type="radio" name="anos_experiencia" value="Sin experiencia"
+            <label class="choice-card">
+              <input type="radio" name="anos_experiencia" value="Sin experiencia"
                      {% if f.get('anos_experiencia')=='Sin experiencia' %}checked{% endif %}>
-              <span class="opt__box">Sin experiencia</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Sin experiencia</span>
+                <span class="choice-card__desc">Busco mi primera oportunidad en este tipo de trabajo.</span>
+              </span>
             </label>
           </div>
         </div>
 
         <div class="field full">
           <label class="label">Áreas de experiencia <span class="req">*</span></label>
-          <div class="help">(marca todas las que correspondan)</div>
+          <div class="help">Puedes seleccionar varias opciones. Marca las áreas donde tienes experiencia.</div>
 
-          <div class="check-grid">
-            <label class="check">
+          <div class="choice-grid choice-grid--three">
+            <label class="choice-card">
               <input type="checkbox" name="areas_experiencia" value="Limpieza" {% if 'Limpieza' in f_areas %}checked{% endif %}>
-              <span>Limpieza</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Limpieza</span>
+                <span class="choice-card__desc">Limpieza general, profunda y organización del hogar.</span>
+              </span>
             </label>
-            <label class="check">
+            <label class="choice-card">
               <input type="checkbox" name="areas_experiencia" value="Cocina" {% if 'Cocina' in f_areas %}checked{% endif %}>
-              <span>Cocina</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Cocina</span>
+                <span class="choice-card__desc">Preparación de comidas diarias y apoyo en cocina.</span>
+              </span>
             </label>
-            <label class="check">
+            <label class="choice-card">
               <input type="checkbox" name="areas_experiencia" value="Niñera" {% if 'Niñera' in f_areas %}checked{% endif %}>
-              <span>Niñera</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Niñera</span>
+                <span class="choice-card__desc">Cuidado y acompañamiento de niños en el hogar.</span>
+              </span>
             </label>
-            <label class="check">
+            <label class="choice-card">
               <input type="checkbox" name="areas_experiencia" value="Cuidado de ancianos" {% if 'Cuidado de ancianos' in f_areas %}checked{% endif %}>
-              <span>Cuidado de ancianos</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Cuidado de ancianos</span>
+                <span class="choice-card__desc">Atención y asistencia a adultos mayores.</span>
+              </span>
             </label>
-            <label class="check">
+            <label class="choice-card">
               <input type="checkbox" name="areas_experiencia" value="Enfermería" {% if 'Enfermería' in f_areas %}checked{% endif %}>
-              <span>Enfermería</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Enfermería</span>
+                <span class="choice-card__desc">Cuidados básicos de salud y seguimiento de indicaciones médicas.</span>
+              </span>
             </label>
-            <label class="check">
+            <label class="choice-card">
               <input type="checkbox" name="areas_experiencia" value="Todas las anteriores" {% if 'Todas las anteriores' in f_areas %}checked{% endif %}>
-              <span>Todas las anteriores</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Todas las anteriores</span>
+                <span class="choice-card__desc">Puedo desempeñarme en todas las áreas indicadas.</span>
+              </span>
             </label>
           </div>
         </div>
 
         <div class="field full">
           <label class="label">¿Sabes planchar? <span class="req">*</span></label>
-          <div class="chips" role="radiogroup" aria-label="Sabe planchar">
-            <label class="chip">
+          <div class="help">Selecciona una opción.</div>
+          <div class="choice-grid choice-grid--two" role="radiogroup" aria-label="Sabe planchar">
+            <label class="choice-card">
               <input type="radio" name="sabe_planchar" value="si" required {% if f.get('sabe_planchar')=='si' %}checked{% endif %}>
-              <span>Sí</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Sí</span>
+                <span class="choice-card__desc">Puedo planchar ropa de forma segura y ordenada.</span>
+              </span>
             </label>
-            <label class="chip">
+            <label class="choice-card">
               <input type="radio" name="sabe_planchar" value="no" {% if f.get('sabe_planchar')=='no' %}checked{% endif %}>
-              <span>No</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">No</span>
+                <span class="choice-card__desc">Actualmente no realizo labores de planchado.</span>
+              </span>
             </label>
           </div>
+        </div>
+
+        <div class="field">
+          <label class="label">¿Puedes trabajar en casas con niños?</label>
+          <div class="help">Selecciona una opción.</div>
+          <div class="choice-grid choice-grid--two" role="radiogroup" aria-label="Trabajo con niños">
+            <label class="choice-card">
+              <input type="radio" name="trabajo_con_ninos" value="si" {% if f.get('trabajo_con_ninos')=='si' %}checked{% endif %}>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Sí</span>
+                <span class="choice-card__desc">Puedo trabajar en hogares donde hay niños.</span>
+              </span>
+            </label>
+            <label class="choice-card">
+              <input type="radio" name="trabajo_con_ninos" value="no" {% if f.get('trabajo_con_ninos')=='no' %}checked{% endif %}>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">No</span>
+                <span class="choice-card__desc">Por el momento prefiero vacantes sin niños.</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="label">¿Puedes trabajar en casas con mascotas?</label>
+          <div class="help">Selecciona una opción.</div>
+          <div class="choice-grid choice-grid--two" role="radiogroup" aria-label="Trabajo con mascotas">
+            <label class="choice-card">
+              <input type="radio" name="trabajo_con_mascotas" value="si" {% if f.get('trabajo_con_mascotas')=='si' %}checked{% endif %}>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Sí</span>
+                <span class="choice-card__desc">Puedo trabajar en hogares con mascotas.</span>
+              </span>
+            </label>
+            <label class="choice-card">
+              <input type="radio" name="trabajo_con_mascotas" value="no" {% if f.get('trabajo_con_mascotas')=='no' %}checked{% endif %}>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">No</span>
+                <span class="choice-card__desc">Prefiero vacantes en hogares sin mascotas.</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field full">
+          <label class="label">¿Puedes trabajar modalidad dormida cuando sea necesario?</label>
+          <div class="help">Selecciona una opción.</div>
+          <div class="choice-grid choice-grid--two" role="radiogroup" aria-label="Puede dormir fuera">
+            <label class="choice-card">
+              <input type="radio" name="puede_dormir_fuera" value="si" {% if f.get('puede_dormir_fuera')=='si' %}checked{% endif %}>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Sí</span>
+                <span class="choice-card__desc">Tengo disponibilidad para modalidad dormida cuando se requiera.</span>
+              </span>
+            </label>
+            <label class="choice-card">
+              <input type="radio" name="puede_dormir_fuera" value="no" {% if f.get('puede_dormir_fuera')=='no' %}checked{% endif %}>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">No</span>
+                <span class="choice-card__desc">Prefiero vacantes donde no deba quedarme a dormir.</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field full">
+          <label for="motivacion_trabajo" class="label">¿Por qué te interesa este tipo de trabajo?</label>
+          <div class="control-wrap">
+            <span class="lead" aria-hidden="true">📝</span>
+            <textarea class="textarea" id="motivacion_trabajo" name="motivacion_trabajo" rows="2" maxlength="350"
+                      placeholder="Ejemplo: Busco estabilidad y me gusta ayudar en el hogar">{{ f.get('motivacion_trabajo','') }}</textarea>
+          </div>
+          <div class="help">Opcional. Tu respuesta nos ayuda a conocerte mejor.</div>
         </div>
       </div>
     </section>
@@ -231,10 +407,11 @@
     <!-- Referencias -->
     <section class="section">
       <div class="section__head">
-        <h2 class="section__title">
-          <span class="section__icon">👥</span> Referencias
+        <h2 class="section__title section__title--stack">
+          <span class="section__eyebrow">Paso 3 de 3</span>
+          <span><span class="section__icon">👥</span> Referencias y autorización</span>
         </h2>
-        <p class="section__hint">Laborales y familiares.</p>
+        <p class="section__hint">Incluye personas que puedan confirmar tu experiencia y relación familiar.</p>
       </div>
 
       <div class="grid">
@@ -245,7 +422,7 @@
             <textarea class="textarea" id="contactos_referencias_laborales" name="contactos_referencias_laborales" rows="3" required maxlength="500"
                       placeholder="Ej: Juan Díaz - 8090000000 - Jefe en XYZ&#10;Ana Rojas - 8091112222 - Coordinadora en ABC">{{ f.get('contactos_referencias_laborales','') }}</textarea>
           </div>
-          <div class="help">Pon nombre, teléfono y relación laboral. Cada referencia en una línea.</div>
+          <div class="help">Incluye nombre, teléfono y relación laboral. Una referencia por línea.</div>
         </div>
 
         <div class="field full">
@@ -255,24 +432,32 @@
             <textarea class="textarea" id="referencias_familiares_detalle" name="referencias_familiares_detalle" rows="3" required maxlength="500"
                       placeholder="Ej: Pedro Pérez - 8093334444 - Hermano&#10;María Gómez - 8095556666 - Madre">{{ f.get('referencias_familiares_detalle','') }}</textarea>
           </div>
-          <div class="help">Solo familiares (no vecinos ni amigos).</div>
+          <div class="help">Solo familiares directos o cercanos. No incluir vecinos ni amistades.</div>
         </div>
 
         <div class="field full">
-          <label class="label">¿Aceptas que cobremos un % de tu sueldo como honorarios? <span class="req">*</span></label>
-          <div class="help">Es un único pago que se explica al final.</div>
+          <label class="label">¿Aceptas que se cobre un porcentaje de tu sueldo por honorarios? <span class="req">*</span></label>
+          <div class="help">Selecciona una opción. Es un pago único y se te explica con claridad antes de finalizar el proceso.</div>
 
-          <div class="option-grid">
-            <label class="opt">
+          <div class="choice-grid choice-grid--two">
+            <label class="choice-card">
               <input class="opt__input" type="radio" name="acepta_porcentaje_sueldo" value="1" required
                      {% if f.get('acepta_porcentaje_sueldo')=='1' %}checked{% endif %}>
-              <span class="opt__box">Sí, acepto</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">Sí, acepto</span>
+                <span class="choice-card__desc">Acepto los honorarios según lo explicado por el equipo.</span>
+              </span>
             </label>
 
-            <label class="opt">
+            <label class="choice-card">
               <input class="opt__input" type="radio" name="acepta_porcentaje_sueldo" value="0"
                      {% if f.get('acepta_porcentaje_sueldo')=='0' %}checked{% endif %}>
-              <span class="opt__box">No</span>
+              <span class="choice-card__body">
+                <span class="choice-card__check" aria-hidden="true">✓</span>
+                <span class="choice-card__title">No</span>
+                <span class="choice-card__desc">En este momento no acepto esa condición.</span>
+              </span>
             </label>
           </div>
         </div>
@@ -282,12 +467,12 @@
     <div class="actions">
       <button type="submit" class="btn-pill" id="submitBtn">
         <span class="spinner d-none" id="spinner"></span>
-        <span id="btnText">Enviar</span>
+        <span id="btnText">Enviar mi registro</span>
         <span class="btn-ico" aria-hidden="true">✈️</span>
       </button>
 
       <div class="actions__note">
-        Al enviar, confirmas que la información es correcta.
+        Al enviar, confirmas que los datos suministrados son reales y están actualizados.
       </div>
     </div>
   </form>

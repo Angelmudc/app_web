@@ -27,6 +27,7 @@
         <th>Fila</th>
         <th>Nombre</th>
         <th>Cédula</th>
+        <th>Disponibilidad</th>
         <th>Estado</th>
         <th>Acciones</th>
       </tr>
@@ -37,6 +38,10 @@
         <td>{{ c.fila }}</td>
         <td>{{ c.nombre_completo }}</td>
         <td>{{ c.cedula }}</td>
+        <td>
+          <div class="small">{{ c.disponibilidad_inicio or 'No indicado' }}</div>
+          <div class="small text-muted">{{ c.sueldo_esperado or 'Sin sueldo esperado' }}</div>
+        </td>
         <td>
           {% set est = (c.estado or '')|lower %}
           {% if est == 'descalificada' %}

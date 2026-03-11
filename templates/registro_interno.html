@@ -186,6 +186,68 @@
           >{{ f.get('empleo_anterior','') }}</textarea>
         </div>
 
+        <div>
+          <label for="disponibilidad_inicio"><b>¿Cuándo puede iniciar?</b></label>
+          <select id="disponibilidad_inicio" name="disponibilidad_inicio" class="form-control">
+            <option value="" {% if not f.get('disponibilidad_inicio') %}selected{% endif %}>No especificado</option>
+            <option value="inmediata" {% if f.get('disponibilidad_inicio') == 'inmediata' %}selected{% endif %}>Inmediata</option>
+            <option value="esta_semana" {% if f.get('disponibilidad_inicio') == 'esta_semana' %}selected{% endif %}>Esta semana</option>
+            <option value="este_mes" {% if f.get('disponibilidad_inicio') == 'este_mes' %}selected{% endif %}>Este mes</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="sueldo_esperado"><b>Sueldo esperado</b></label>
+          <input
+            type="text"
+            id="sueldo_esperado"
+            name="sueldo_esperado"
+            value="{{ f.get('sueldo_esperado','') }}"
+            maxlength="80"
+            class="form-control"
+            placeholder="Ej: RD$25,000 o a discutir"
+          >
+        </div>
+
+        <div>
+          <label for="trabaja_con_ninos"><b>¿Trabaja con niños?</b></label>
+          <select id="trabaja_con_ninos" name="trabaja_con_ninos" class="form-control">
+            <option value="" {% if not f.get('trabaja_con_ninos') %}selected{% endif %}>No especificado</option>
+            <option value="si" {% if f.get('trabaja_con_ninos') == 'si' %}selected{% endif %}>Sí</option>
+            <option value="no" {% if f.get('trabaja_con_ninos') == 'no' %}selected{% endif %}>No</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="trabaja_con_mascotas"><b>¿Trabaja con mascotas?</b></label>
+          <select id="trabaja_con_mascotas" name="trabaja_con_mascotas" class="form-control">
+            <option value="" {% if not f.get('trabaja_con_mascotas') %}selected{% endif %}>No especificado</option>
+            <option value="si" {% if f.get('trabaja_con_mascotas') == 'si' %}selected{% endif %}>Sí</option>
+            <option value="no" {% if f.get('trabaja_con_mascotas') == 'no' %}selected{% endif %}>No</option>
+          </select>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="puede_dormir_fuera"><b>¿Puede dormir fuera cuando se requiera?</b></label>
+          <select id="puede_dormir_fuera" name="puede_dormir_fuera" class="form-control">
+            <option value="" {% if not f.get('puede_dormir_fuera') %}selected{% endif %}>No especificado</option>
+            <option value="si" {% if f.get('puede_dormir_fuera') == 'si' %}selected{% endif %}>Sí</option>
+            <option value="no" {% if f.get('puede_dormir_fuera') == 'no' %}selected{% endif %}>No</option>
+          </select>
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="motivacion_trabajo"><b>Motivación para el trabajo</b></label>
+          <textarea
+            id="motivacion_trabajo"
+            name="motivacion_trabajo"
+            rows="2"
+            maxlength="350"
+            class="form-control"
+            placeholder="Ej: Busca estabilidad laboral y tiene experiencia en hogares con niños."
+          >{{ f.get('motivacion_trabajo','') }}</textarea>
+        </div>
+
         <div style="grid-column: 1 / -1;">
           <b>¿Cuántos años de experiencia laboral tienes? *</b>
           <div style="display:grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap:10px; margin-top:10px;">

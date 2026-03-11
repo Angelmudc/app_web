@@ -146,6 +146,40 @@
           <hr class="my-3">
           {% endif %}
 
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <div class="small text-muted mb-1">Disponibilidad de inicio</div>
+              <div class="fw-semibold">{{ candidata.disponibilidad_inicio or 'No indicado' }}</div>
+            </div>
+            <div class="col-sm-6">
+              <div class="small text-muted mb-1">Sueldo esperado</div>
+              <div class="fw-semibold">{{ candidata.sueldo_esperado or 'No indicado' }}</div>
+            </div>
+            <div class="col-sm-4">
+              <div class="small text-muted mb-1">Trabaja con niños</div>
+              <div class="fw-semibold">
+                {% if candidata.trabaja_con_ninos is none %}No indicado{% elif candidata.trabaja_con_ninos %}Sí{% else %}No{% endif %}
+              </div>
+            </div>
+            <div class="col-sm-4">
+              <div class="small text-muted mb-1">Trabaja con mascotas</div>
+              <div class="fw-semibold">
+                {% if candidata.trabaja_con_mascotas is none %}No indicado{% elif candidata.trabaja_con_mascotas %}Sí{% else %}No{% endif %}
+              </div>
+            </div>
+            <div class="col-sm-4">
+              <div class="small text-muted mb-1">Puede dormir fuera</div>
+              <div class="fw-semibold">
+                {% if candidata.puede_dormir_fuera is none %}No indicado{% elif candidata.puede_dormir_fuera %}Sí{% else %}No{% endif %}
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="small text-muted mb-1">Motivación</div>
+              <div class="fw-semibold">{{ candidata.motivacion_trabajo or 'No indicado' }}</div>
+            </div>
+          </div>
+          <hr class="my-3">
+
           <!-- Grupos de empleo -->
           {% set grupos = candidata.grupos_empleo
                           if candidata.grupos_empleo is not none

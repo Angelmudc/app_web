@@ -1,26 +1,43 @@
 # --- Registro público de candidatas -----------------------------------------
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from typing import Optional
+
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
-from config_app import db
+from config_app import db, cache
 from models import Candidata
 from utils.candidate_registration import (
     error_looks_like_duplicate_cedula,
     log_candidate_create_fail,
     log_candidate_create_ok,
     normalize_person_name,
-    normalize_phone,
-    phone_has_valid_digits,
     robust_create_candidata,
 )
 from utils.cedula_guard import duplicate_cedula_message, find_duplicate_candidata_by_cedula
 from utils.cedula_normalizer import normalize_cedula_for_compare, normalize_cedula_for_store
+from utils.public_intake import (
+    clean_spaces,
+    digits_only,
+    get_request_ip,
+    has_min_real_chars,
+    hit_rate_limit,
+    normalize_phone_for_store,
+)
 from utils.timezone import utc_now_naive
 
 # Blueprint dedicado (NO es el "public" del website)
 # OJO: el nombre del blueprint es "registro_publico" para que los url_for queden estables.
 registro_bp = Blueprint("registro_publico", __name__)
+
+
+def _yn_to_bool(value: str) -> Optional[bool]:
+    v = (value or "").strip().lower()
+    if v in {"si", "sí", "1", "true", "yes"}:
+        return True
+    if v in {"no", "0", "false"}:
+        return False
+    return None
 
 
 def _safe_dispose_pool():
@@ -39,14 +56,24 @@ def registro_publico():
     if request.method == 'GET':
         return render_template('registro/registro_publico.html')
 
+    # Honeypot anti-bot: si viene con datos, responder sin procesar.
+    if (request.form.get('website') or '').strip():
+        return redirect(url_for('registro_publico.registro_publico_gracias'))
+
+    if not bool(current_app.config.get("TESTING")):
+        ip = get_request_ip(request)
+        if hit_rate_limit(cache=cache, scope="registro_domestica", actor=ip, limit=8, window_seconds=600):
+            flash("Demasiados intentos en poco tiempo. Espera unos minutos e intenta de nuevo.", "warning")
+            return render_template('registro/registro_publico.html'), 429
+
     # --- POST: recoger datos del formulario (limitando tamaños) ---
     nombre       = normalize_person_name(request.form.get('nombre_completo'))
     edad_raw     = (request.form.get('edad') or '').strip()[:10]
-    telefono     = normalize_phone(request.form.get('numero_telefono'))
+    telefono     = normalize_phone_for_store(request.form.get('numero_telefono'))
     direccion    = (request.form.get('direccion_completa') or '').strip()[:250]
-    modalidad    = (request.form.get('modalidad_trabajo_preferida') or '').strip()[:100]
+    modalidad    = clean_spaces(request.form.get('modalidad_trabajo_preferida'), max_len=100)
     rutas        = (request.form.get('rutas_cercanas') or '').strip()[:150]
-    empleo_prev  = (request.form.get('empleo_anterior') or '').strip()[:150]
+    empleo_prev  = (request.form.get('empleo_anterior') or '').strip()[:1200]
     anos_exp     = (request.form.get('anos_experiencia') or '').strip()[:50]
     areas_list   = request.form.getlist('areas_experiencia')  # checkboxes
     planchar_raw = (request.form.get('sabe_planchar') or '').strip().lower()[:3]
@@ -55,6 +82,12 @@ def registro_publico():
     ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
     acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
     cedula_raw   = (request.form.get('cedula') or '').strip()[:50]
+    disponibilidad = clean_spaces(request.form.get('disponibilidad_inicio'), max_len=80)
+    convive_ninos = clean_spaces(request.form.get('trabajo_con_ninos'), max_len=32).lower()
+    convive_mascotas = clean_spaces(request.form.get('trabajo_con_mascotas'), max_len=32).lower()
+    puede_dormir = clean_spaces(request.form.get('puede_dormir_fuera'), max_len=32).lower()
+    sueldo_esperado = clean_spaces(request.form.get('sueldo_esperado'), max_len=80)
+    motivacion = clean_spaces(request.form.get('motivacion_trabajo'), max_len=350)
 
     def _fail(message: str, category: str, status_code: int, *, error_message: str, attempts: int = 0):
         flash(message, category)
@@ -120,9 +153,18 @@ def registro_publico():
             error_message="missing_required_fields",
         )
 
-    if not phone_has_valid_digits(telefono):
+    if not has_min_real_chars(nombre, min_chars=6):
         return _fail(
-            "📛 Número de teléfono inválido. Debe tener entre 10 y 15 dígitos.",
+            "📛 El nombre completo debe tener al menos 6 letras.",
+            "warning",
+            400,
+            error_message="invalid_full_name_length",
+        )
+
+    phone_digits = digits_only(telefono)
+    if len(phone_digits) != 10:
+        return _fail(
+            "📛 Número de teléfono inválido. Debe contener exactamente 10 dígitos.",
             "warning",
             400,
             error_message="invalid_phone_number",
@@ -172,7 +214,7 @@ def registro_publico():
                 marca_temporal=utc_now_naive(),
                 nombre_completo=nombre,
                 edad=str(edad_num),
-                numero_telefono=telefono,
+                numero_telefono=phone_digits,
                 direccion_completa=direccion,
                 modalidad_trabajo_preferida=modalidad,
                 rutas_cercanas=rutas,
@@ -188,11 +230,17 @@ def registro_publico():
                 estado="en_proceso",
                 fecha_cambio_estado=utc_now_naive(),
                 usuario_cambio_estado="registro_publico",
+                disponibilidad_inicio=disponibilidad or None,
+                trabaja_con_ninos=_yn_to_bool(convive_ninos),
+                trabaja_con_mascotas=_yn_to_bool(convive_mascotas),
+                puede_dormir_fuera=_yn_to_bool(puede_dormir),
+                sueldo_esperado=sueldo_esperado or None,
+                motivacion_trabajo=motivacion or None,
             ),
             expected_fields={
                 "cedula": cedula_store,
                 "nombre_completo": nombre,
-                "numero_telefono": telefono,
+                "numero_telefono": phone_digits,
                 "edad": str(edad_num),
             },
             max_retries=2,
@@ -200,7 +248,7 @@ def registro_publico():
         )
     except SQLAlchemyError as e:
         return _fail(
-            f"❌ No se pudo guardar el registro: {e.__class__.__name__}",
+            "❌ No se pudo guardar el registro en este momento. Intenta nuevamente en unos minutos.",
             "danger",
             500,
             error_message=f"{e.__class__.__name__}: {str(e)[:200]}",

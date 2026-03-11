@@ -1025,6 +1025,12 @@ def registro_interno():
     ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
     acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
     cedula_raw   = (request.form.get('cedula') or '').strip()[:50]
+    disponibilidad_inicio = (request.form.get('disponibilidad_inicio') or '').strip()[:80]
+    trabaja_con_ninos_raw = (request.form.get('trabaja_con_ninos') or '').strip()[:10]
+    trabaja_con_mascotas_raw = (request.form.get('trabaja_con_mascotas') or '').strip()[:10]
+    puede_dormir_fuera_raw = (request.form.get('puede_dormir_fuera') or '').strip()[:10]
+    sueldo_esperado = (request.form.get('sueldo_esperado') or '').strip()[:80]
+    motivacion_trabajo = (request.form.get('motivacion_trabajo') or '').strip()[:350]
 
     def _fail(message: str, category: str, status_code: int, *, error_message: str, attempts: int = 0):
         flash(message, category)
@@ -1102,6 +1108,21 @@ def registro_interno():
     sabe_planchar = (planchar_raw == 'si')
     acepta_pct    = (acepta_raw == '1')
 
+    def _parse_optional_yes_no(raw: str):
+        val = (raw or '').strip().lower().replace('í', 'i')
+        if val in ('si', '1', 'true', 'on'):
+            return True
+        if val in ('no', '0', 'false', 'off'):
+            return False
+        return None
+
+    trabaja_con_ninos = _parse_optional_yes_no(trabaja_con_ninos_raw)
+    trabaja_con_mascotas = _parse_optional_yes_no(trabaja_con_mascotas_raw)
+    puede_dormir_fuera = _parse_optional_yes_no(puede_dormir_fuera_raw)
+    disponibilidad_inicio = disponibilidad_inicio or None
+    sueldo_esperado = sueldo_esperado or None
+    motivacion_trabajo = motivacion_trabajo or None
+
     # --- Comprobación de duplicado por cédula (DB-safe) ---
     try:
         dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
@@ -1157,6 +1178,12 @@ def registro_interno():
                 referencias_familiares_detalle=ref_fam,
                 acepta_porcentaje_sueldo=acepta_pct,
                 cedula=cedula_store,
+                disponibilidad_inicio=disponibilidad_inicio,
+                trabaja_con_ninos=trabaja_con_ninos,
+                trabaja_con_mascotas=trabaja_con_mascotas,
+                puede_dormir_fuera=puede_dormir_fuera,
+                sueldo_esperado=sueldo_esperado,
+                motivacion_trabajo=motivacion_trabajo,
                 medio_inscripcion='Oficina',
                 estado='en_proceso',
                 fecha_cambio_estado=utc_now_naive(),
@@ -1279,6 +1306,12 @@ def list_candidatas_db():
                           Candidata.modalidad_trabajo_preferida,
                           Candidata.cedula,
                           Candidata.codigo,
+                          Candidata.disponibilidad_inicio,
+                          Candidata.trabaja_con_ninos,
+                          Candidata.trabaja_con_mascotas,
+                          Candidata.puede_dormir_fuera,
+                          Candidata.sueldo_esperado,
+                          Candidata.motivacion_trabajo,
                       ))
                       .limit(max_rows)
                       .all())
@@ -1295,6 +1328,12 @@ def list_candidatas_db():
                 "modalidad_trabajo_preferida": c.modalidad_trabajo_preferida,
                 "cedula": c.cedula,
                 "codigo": c.codigo,
+                "disponibilidad_inicio": c.disponibilidad_inicio,
+                "trabaja_con_ninos": c.trabaja_con_ninos,
+                "trabaja_con_mascotas": c.trabaja_con_mascotas,
+                "puede_dormir_fuera": c.puede_dormir_fuera,
+                "sueldo_esperado": c.sueldo_esperado,
+                "motivacion_trabajo": c.motivacion_trabajo,
             })
         return jsonify({
             "candidatas": resultado,
@@ -2247,6 +2286,12 @@ def buscar_candidata():
                     "cedula",
                     "sabe_planchar",
                     "acepta_porcentaje_sueldo",
+                    "disponibilidad_inicio",
+                    "trabaja_con_ninos",
+                    "trabaja_con_mascotas",
+                    "puede_dormir_fuera",
+                    "sueldo_esperado",
+                    "motivacion_trabajo",
                 ]
                 before_snapshot = snapshot_model_fields(obj, audit_fields)
                 # Limites razonables por campo para evitar payloads enormes
@@ -2261,6 +2306,30 @@ def buscar_candidata():
                 obj.areas_experiencia                = (request.form.get('areas_experiencia') or '').strip()[:200] or obj.areas_experiencia
                 obj.contactos_referencias_laborales  = (request.form.get('contactos_referencias_laborales') or '').strip()[:250] or obj.contactos_referencias_laborales
                 obj.referencias_familiares_detalle   = (request.form.get('referencias_familiares_detalle') or '').strip()[:250] or obj.referencias_familiares_detalle
+
+                # Campos opcionales nuevos (registro público + compatibilidad legacy)
+                if 'disponibilidad_inicio' in request.form:
+                    obj.disponibilidad_inicio = (request.form.get('disponibilidad_inicio') or '').strip()[:80] or None
+                if 'sueldo_esperado' in request.form:
+                    obj.sueldo_esperado = (request.form.get('sueldo_esperado') or '').strip()[:80] or None
+                if 'motivacion_trabajo' in request.form:
+                    obj.motivacion_trabajo = (request.form.get('motivacion_trabajo') or '').strip()[:350] or None
+
+                def _parse_optional_bool(raw: str):
+                    val = (raw or '').strip().lower().replace('í', 'i')
+                    if val in ('si', '1', 'true', 'on'):
+                        return True
+                    if val in ('no', '0', 'false', 'off'):
+                        return False
+                    return None
+
+                if 'trabaja_con_ninos' in request.form:
+                    obj.trabaja_con_ninos = _parse_optional_bool(request.form.get('trabaja_con_ninos'))
+                if 'trabaja_con_mascotas' in request.form:
+                    obj.trabaja_con_mascotas = _parse_optional_bool(request.form.get('trabaja_con_mascotas'))
+                if 'puede_dormir_fuera' in request.form:
+                    obj.puede_dormir_fuera = _parse_optional_bool(request.form.get('puede_dormir_fuera'))
+
                 cedula_edit_raw = (request.form.get('cedula') or '').strip()[:50]
                 if cedula_edit_raw:
                     cedula_edit_digits = normalize_cedula_for_compare(cedula_edit_raw)
@@ -2321,10 +2390,22 @@ def buscar_candidata():
                     "referencias_familiares_detalle": (obj.referencias_familiares_detalle or "").strip(),
                     "cedula": (obj.cedula or "").strip(),
                 }
+                if 'disponibilidad_inicio' in request.form:
+                    expected_verify["disponibilidad_inicio"] = (obj.disponibilidad_inicio or "").strip() or None
+                if 'sueldo_esperado' in request.form:
+                    expected_verify["sueldo_esperado"] = (obj.sueldo_esperado or "").strip() or None
+                if 'motivacion_trabajo' in request.form:
+                    expected_verify["motivacion_trabajo"] = (obj.motivacion_trabajo or "").strip() or None
                 if 'sabe_planchar' in request.form:
                     expected_verify["sabe_planchar"] = bool(obj.sabe_planchar)
                 if 'acepta_porcentaje' in request.form:
                     expected_verify["acepta_porcentaje_sueldo"] = bool(obj.acepta_porcentaje_sueldo)
+                if 'trabaja_con_ninos' in request.form:
+                    expected_verify["trabaja_con_ninos"] = obj.trabaja_con_ninos
+                if 'trabaja_con_mascotas' in request.form:
+                    expected_verify["trabaja_con_mascotas"] = obj.trabaja_con_mascotas
+                if 'puede_dormir_fuera' in request.form:
+                    expected_verify["puede_dormir_fuera"] = obj.puede_dormir_fuera
 
                 result = execute_robust_save(
                     session=db.session,

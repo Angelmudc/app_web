@@ -16,11 +16,11 @@
 <body class="registro-page registro-scope">
   <header class="topbar">
     <div class="topbar__inner">
-      <div class="brand" role="banner" aria-label="Doméstica del Cibao A&amp;D — Registro de candidatas">
+      <div class="brand" role="banner" aria-label="Doméstica del Cibao A&amp;D — {% block brand_aria %}Registro de candidatas{% endblock %}">
         <img class="brand__logo" src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&amp;D" />
         <div class="brand__text">
           <div class="brand__name">Doméstica del Cibao A&amp;D</div>
-          <div class="brand__tag">Registro de candidatas</div>
+          <div class="brand__tag">{% block brand_tag %}Registro de candidatas{% endblock %}</div>
         </div>
       </div>
 

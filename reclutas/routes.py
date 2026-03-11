@@ -1,10 +1,12 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, abort
+from flask import Blueprint, current_app, render_template, redirect, url_for, request, flash, abort
 from flask_login import login_required, current_user
 from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
 
-from config_app import db
+from config_app import db, cache
 from models import ReclutaPerfil, ReclutaCambio, TIPOS_EMPLEO_GENERAL
 from .forms import ReclutaForm, ReclutaPublicForm
+from utils.public_intake import get_request_ip, hit_rate_limit
 
 reclutas_bp = Blueprint(
     'reclutas',
@@ -68,50 +70,76 @@ def lista():
 def registro_publico():
     form = ReclutaPublicForm()
 
+    if request.method == "POST":
+        if not bool(current_app.config.get("TESTING")):
+            ip = get_request_ip(request)
+            if hit_rate_limit(cache=cache, scope="registro_general", actor=ip, limit=8, window_seconds=600):
+                flash("Demasiados intentos en poco tiempo. Espera unos minutos e intenta de nuevo.", "warning")
+                return render_template(
+                    'reclutas/registro_publico.html',
+                    form=form,
+                    modo='publico',
+                    is_public_page=True
+                ), 429
+
+        # Honeypot anti-bot: aceptamos y respondemos sin procesar.
+        if (form.bot_field.data or "").strip():
+            return redirect(url_for('reclutas.registro_publico_ok'))
+
     if form.validate_on_submit():
-        recluta = ReclutaPerfil(
-            estado='nuevo',
-            nombre_completo=form.nombre_completo.data,
-            cedula=form.cedula.data,
-            edad=form.edad.data,
-            sexo=form.sexo.data,
-            nacionalidad=form.nacionalidad.data,
-            telefono=form.telefono.data,
-            email=form.email.data,
-            direccion_completa=form.direccion_completa.data,
-            ciudad=form.ciudad.data,
-            sector=form.sector.data,
-            tipos_empleo_busca=form.tipos_empleo_busca.data,
-            empleo_principal=None,
-            modalidad=form.modalidad.data,
-            horario_disponible=form.horario_disponible.data,
-            sueldo_esperado=form.sueldo_esperado.data,
-            tiene_experiencia=form.tiene_experiencia.data,
-            anos_experiencia=form.anos_experiencia.data,
-            experiencia_resumen=form.experiencia_resumen.data,
-            nivel_educativo=form.nivel_educativo.data,
-            habilidades=form.habilidades.data,
-            referencias_laborales=form.referencias_laborales.data,
-            referencias_familiares=form.referencias_familiares.data,
-            documentos_al_dia=form.documentos_al_dia.data,
-            disponible_fines_o_noches=form.disponible_fines_o_noches.data,
-            # Público: no se guardan observaciones internas
-            observaciones_internas=None,
-            # Público: no hay usuario autenticado
-            creado_por='publico'
-        )
+        try:
+            recluta = ReclutaPerfil(
+                estado='nuevo',
+                nombre_completo=form.nombre_completo.data,
+                cedula=form.cedula.data,
+                edad=form.edad.data,
+                sexo=form.sexo.data,
+                nacionalidad=form.nacionalidad.data,
+                telefono=form.telefono.data,
+                email=form.email.data,
+                direccion_completa=form.direccion_completa.data,
+                ciudad=form.ciudad.data,
+                sector=form.sector.data,
+                tipos_empleo_busca=form.tipos_empleo_busca.data,
+                empleo_principal=None,
+                modalidad=form.modalidad.data,
+                horario_disponible=form.horario_disponible.data,
+                sueldo_esperado=form.sueldo_esperado.data,
+                tiene_experiencia=form.tiene_experiencia.data,
+                anos_experiencia=form.anos_experiencia.data,
+                experiencia_resumen=form.experiencia_resumen.data,
+                nivel_educativo=form.nivel_educativo.data,
+                habilidades=form.habilidades.data,
+                referencias_laborales=form.referencias_laborales.data,
+                referencias_familiares=form.referencias_familiares.data,
+                documentos_al_dia=form.documentos_al_dia.data,
+                disponible_fines_o_noches=form.disponible_fines_o_noches.data,
+                # Público: no se guardan observaciones internas
+                observaciones_internas=None,
+                # Público: no hay usuario autenticado
+                creado_por='publico'
+            )
 
-        db.session.add(recluta)
-        db.session.commit()
+            db.session.add(recluta)
+            db.session.commit()
 
-        cambio = ReclutaCambio(
-            recluta_id=recluta.id,
-            accion='creado_publico',
-            usuario='publico',
-            nota='Perfil creado desde registro público'
-        )
-        db.session.add(cambio)
-        db.session.commit()
+            cambio = ReclutaCambio(
+                recluta_id=recluta.id,
+                accion='creado_publico',
+                usuario='publico',
+                nota='Perfil creado desde registro público'
+            )
+            db.session.add(cambio)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('No se pudo enviar el formulario en este momento. Intenta de nuevo en unos minutos.', 'danger')
+            return render_template(
+                'reclutas/registro_publico.html',
+                form=form,
+                modo='publico',
+                is_public_page=True
+            ), 500
 
         flash('Gracias. Tu información fue enviada correctamente.', 'success')
         return redirect(url_for('reclutas.registro_publico_ok'))

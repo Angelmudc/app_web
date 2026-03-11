@@ -208,6 +208,30 @@
             <div class="small text-muted">Ciudad / Sector</div>
             <div class="fw-semibold">{{ candidata.direccion_completa or '—' }}</div>
           </div>
+          <div class="col-md-6">
+            <div class="small text-muted">Disponibilidad de inicio</div>
+            <div class="fw-semibold">{{ candidata.disponibilidad_inicio or 'No indicado' }}</div>
+          </div>
+          <div class="col-md-6">
+            <div class="small text-muted">Sueldo esperado</div>
+            <div class="fw-semibold">{{ candidata.sueldo_esperado or 'No indicado' }}</div>
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">Trabaja con niños</div>
+            <div class="fw-semibold">{% if candidata.trabaja_con_ninos is none %}No indicado{% elif candidata.trabaja_con_ninos %}Sí{% else %}No{% endif %}</div>
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">Trabaja con mascotas</div>
+            <div class="fw-semibold">{% if candidata.trabaja_con_mascotas is none %}No indicado{% elif candidata.trabaja_con_mascotas %}Sí{% else %}No{% endif %}</div>
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">Puede dormir fuera</div>
+            <div class="fw-semibold">{% if candidata.puede_dormir_fuera is none %}No indicado{% elif candidata.puede_dormir_fuera %}Sí{% else %}No{% endif %}</div>
+          </div>
+          <div class="col-md-12">
+            <div class="small text-muted">Motivación</div>
+            <div class="fw-semibold">{{ candidata.motivacion_trabajo or 'No indicado' }}</div>
+          </div>
         </div>
 
         {% if grupos and grupos|length %}

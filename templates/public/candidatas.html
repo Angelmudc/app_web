@@ -1,0 +1,27 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Candidatas{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container">
+    <h1>Información de candidatas</h1>
+    <p>Compartimos perfiles según disponibilidad, ciudad y modalidad requerida por cada cliente.</p>
+  </div>
+</section>
+
+<section class="container" style="padding: 24px 0 48px;">
+  <div class="card" style="padding: 20px;">
+    <h3 style="margin-top:0;">¿Cómo presentamos candidatas?</h3>
+    <ul>
+      <li>Perfil resumido con experiencia y modalidad.</li>
+      <li>Datos relevantes para decisión inicial.</li>
+      <li>Coordinación de entrevista antes de contratación.</li>
+    </ul>
+    <p style="margin: 12px 0 0 0;">
+      Para iniciar tu solicitud de servicio, visita la sección de contacto.
+    </p>
+    <a href="{{ url_for('public.contacto') }}" class="btn btn-primary">Solicitar orientación</a>
+  </div>
+</section>
+{% endblock %}

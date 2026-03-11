@@ -25,11 +25,9 @@
   }
 
   function normalizePhone(value){
-    // deja dígitos y + al inicio
+    // deja solo dígitos
     if (!value) return '';
-    let v = String(value).trim();
-    v = v.replace(/[^\d+]/g,'').replace(/(?!^)\+/g,'');
-    return v;
+    return String(value).replace(/\D/g,'').slice(0,10);
   }
 
   function formatCedula(value){
@@ -137,12 +135,30 @@
         }
       });
 
+      // nombre con al menos 6 letras reales
+      if (nombre){
+        const letters = (nombre.value || '').replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, '');
+        if (letters.length < 6){
+          ok = false;
+          setInvalid(nombre, true);
+        }
+      }
+
       // Reglas extra: cédula 11 dígitos (si la escribieron completa)
       if (ced){
         const digits = (ced.value || '').replace(/\D/g,'');
-        if (!digits || digits.length < 11){
+        if (!digits || digits.length !== 11){
           ok = false;
           setInvalid(ced, true);
+        }
+      }
+
+      // Teléfono exacto 10 dígitos
+      if (tel){
+        const phoneDigits = (tel.value || '').replace(/\D/g,'');
+        if (!phoneDigits || phoneDigits.length !== 10){
+          ok = false;
+          setInvalid(tel, true);
         }
       }
 

@@ -30,6 +30,12 @@ class _DummyCandidata:
         self.cedula = "001-0000000-1"
         self.sabe_planchar = True
         self.acepta_porcentaje_sueldo = True
+        self.disponibilidad_inicio = None
+        self.trabaja_con_ninos = None
+        self.trabaja_con_mascotas = None
+        self.puede_dormir_fuera = None
+        self.sueldo_esperado = None
+        self.motivacion_trabajo = None
         self.foto_perfil = b"foto-old"
         self.perfil = b"perfil-old"
         self.cedula1 = b"ced1-old"
@@ -91,6 +97,40 @@ def test_buscar_edicion_hace_rollback_si_no_verifica_guardado():
     assert resp.status_code == 200
     assert rollback_mock.call_count >= 1
     assert b"Error al guardar" in resp.data
+
+
+def test_buscar_edicion_actualiza_campos_nuevos_publicos():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    cand = _DummyCandidata()
+    ok_result = SimpleNamespace(ok=True, attempts=1, error_message="")
+    with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+         patch("core.legacy_handlers.execute_robust_save", return_value=ok_result):
+        resp = client.post(
+            "/buscar",
+            data={
+                "guardar_edicion": "1",
+                "candidata_id": "1",
+                "disponibilidad_inicio": "esta_semana",
+                "trabaja_con_ninos": "si",
+                "trabaja_con_mascotas": "no",
+                "puede_dormir_fuera": "si",
+                "sueldo_esperado": "RD$30,000",
+                "motivacion_trabajo": "Necesita empleo",
+            },
+            follow_redirects=False,
+        )
+
+    assert resp.status_code in (302, 303)
+    assert cand.disponibilidad_inicio == "esta_semana"
+    assert cand.trabaja_con_ninos is True
+    assert cand.trabaja_con_mascotas is False
+    assert cand.puede_dormir_fuera is True
+    assert cand.sueldo_esperado == "RD$30,000"
+    assert cand.motivacion_trabajo == "Necesita empleo"
 
 
 def test_referencias_no_acepta_placeholders():
