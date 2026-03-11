@@ -312,6 +312,28 @@ def test_new_public_short_route_renders_with_consistent_preview_metadata():
     assert html.index('property="og:title"') < html.index("bootstrap@5.3.3")
 
 
+def test_new_public_short_route_uses_configured_public_base_url_for_preview_metadata():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    old_base = flask_app.config.get("PUBLIC_BASE_URL")
+    flask_app.config["PUBLIC_BASE_URL"] = "https://domestica.example.com"
+
+    try:
+        with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+             patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+             patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+            resp = client.get("/clientes/n/tok123")
+    finally:
+        flask_app.config["PUBLIC_BASE_URL"] = old_base
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'property="og:url" content="https://domestica.example.com/clientes/n/tok123"' in html
+    assert 'rel="canonical" href="https://domestica.example.com/clientes/n/tok123"' in html
+    assert 'property="og:image" content="https://domestica.example.com/static/img/domestica-preview.png?v=20260311"' in html
+
+
 def test_new_public_short_route_success_redirect_stays_on_short_path():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

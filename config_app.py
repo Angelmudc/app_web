@@ -180,6 +180,8 @@ def create_app():
             "SESSION_COOKIE_NAME": _env_str("SESSION_COOKIE_NAME", "app_web_session"),
             "REMEMBER_COOKIE_SAMESITE": _env_str("REMEMBER_COOKIE_SAMESITE", "Lax"),
             "REMEMBER_COOKIE_SECURE": _cookie_secure(),
+            # Dominio público canónico para metadatos compartibles (OG/Twitter).
+            "PUBLIC_BASE_URL": _env_str("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", "")),
         }
     )
 

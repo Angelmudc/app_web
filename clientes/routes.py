@@ -426,12 +426,31 @@ def _public_link_token_hash_storage(token: str) -> str:
 
 def _public_existing_short_external_url(token: str) -> str:
     """URL corta pública para solicitud de cliente existente."""
-    return url_for("clientes.solicitud_publica_short", token=token, _external=True)
+    return _public_external_url("clientes.solicitud_publica_short", token=token)
 
 
 def _public_new_short_external_url(token: str) -> str:
     """URL corta pública para solicitud de cliente nuevo."""
-    return url_for("clientes.solicitud_publica_nueva_short", token=token, _external=True)
+    return _public_external_url("clientes.solicitud_publica_nueva_short", token=token)
+
+
+def _public_external_url(endpoint: str, **values) -> str:
+    """
+    Construye URLs absolutas para compartir previews.
+    Si hay PUBLIC_BASE_URL configurado, se usa como host canónico.
+    """
+    base_raw = (
+        (current_app.config.get("PUBLIC_BASE_URL") or "")
+        or (os.getenv("PUBLIC_BASE_URL") or "")
+        or (os.getenv("RENDER_EXTERNAL_URL") or "")
+    ).strip()
+    if base_raw:
+        parsed = urllib.parse.urlparse(base_raw)
+        if parsed.scheme and parsed.netloc:
+            base = f"{parsed.scheme}://{parsed.netloc}{parsed.path or ''}"
+            rel = url_for(endpoint, _external=False, **values).lstrip("/")
+            return urllib.parse.urljoin(base.rstrip("/") + "/", rel)
+    return url_for(endpoint, _external=True, **values)
 
 
 _PUBLIC_TOKEN_USAGE_TABLE_READY = False

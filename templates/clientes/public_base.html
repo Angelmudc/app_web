@@ -7,10 +7,15 @@
   {% set _meta_description = meta_description|default('Flujo público de solicitud de Doméstica del Cibao A&D.', true) %}
   {% set _og_title = og_title|default('Solicitud pública | Doméstica del Cibao A&D', true) %}
   {% set _og_description = og_description|default(_meta_description, true) %}
-  {% set _og_image = og_image|default(url_for('static', filename='img/domestica-preview.png', v='20260311', _external=True), true) %}
+  {% set _public_base = (config.get('PUBLIC_BASE_URL') or '')|trim %}
+  {% set _public_base = _public_base.rstrip('/') if _public_base else '' %}
+  {% set _static_preview_path = url_for('static', filename='img/domestica-preview.png', v='20260311') %}
+  {% set _default_og_image = (_public_base ~ '/' ~ _static_preview_path.lstrip('/')) if _public_base else url_for('static', filename='img/domestica-preview.png', v='20260311', _external=True) %}
+  {% set _default_og_url = (_public_base ~ request.path) if _public_base else request.base_url %}
+  {% set _og_image = og_image|default(_default_og_image, true) %}
   {% set _og_image_alt = og_image_alt|default('Formulario de solicitud de Doméstica del Cibao A&D', true) %}
   {% set _og_image_type = og_image_type|default('image/png', true) %}
-  {% set _og_url = og_url|default(request.base_url, true) %}
+  {% set _og_url = og_url|default(_default_og_url, true) %}
   {% set _canonical_url = canonical_url|default(_og_url, true) %}
   {% set _og_type = og_type|default('website', true) %}
   {% set _twitter_card = twitter_card|default('summary_large_image', true) %}
