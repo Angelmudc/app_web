@@ -451,7 +451,7 @@ def _public_external_url(endpoint: str, **values) -> str:
     base_raw = (
         (current_app.config.get("PUBLIC_BASE_URL") or "")
         or (os.getenv("PUBLIC_BASE_URL") or "")
-        or (os.getenv("RENDER_EXTERNAL_URL") or "")
+        or "https://www.domesticadelcibao.com"
     ).strip()
     if base_raw:
         parsed = urllib.parse.urlparse(base_raw)
