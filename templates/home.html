@@ -56,19 +56,28 @@
     <h2 class="section-title">
       <i class="fa-solid fa-bell me-2 text-primary"></i> Notificaciones de formularios públicos
     </h2>
-    <div class="dashboard-card"
+    <div class="dashboard-card home-notif-wrap"
          id="homePublicNotifCard"
          data-count-url="{{ url_for('home_public_notifications_count') }}"
          data-list-url="{{ url_for('home_public_notifications_list') }}"
          data-read-base-url="{{ url_for('home_public_notifications_mark_read', notificacion_id=0) }}">
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-        <div>
-          <span class="fw-semibold">Nuevos registros públicos</span>
-          <span class="badge bg-danger ms-2" id="homePublicNotifUnread">0</span>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex flex-column">
+          <span class="fw-semibold">Centro de notificaciones</span>
+          <small class="text-muted">Pendientes arriba, revisadas debajo</small>
         </div>
-        <small class="text-muted">Actualización automática cada 10 segundos</small>
+        <button type="button"
+                id="homePublicNotifToggle"
+                class="btn btn-outline-primary position-relative home-notif-toggle"
+                aria-expanded="false"
+                aria-controls="homePublicNotifTray">
+          <i class="fa-solid fa-bell me-2"></i> Notificaciones
+          <span class="badge bg-danger position-absolute top-0 start-100 translate-middle home-notif-badge" id="homePublicNotifUnread">0</span>
+        </button>
       </div>
-      <div id="homePublicNotifList" class="small text-muted">Cargando notificaciones...</div>
+      <div id="homePublicNotifTray" class="home-notif-tray d-none mt-3">
+        <div id="homePublicNotifList" class="small text-muted">Cargando notificaciones...</div>
+      </div>
     </div>
   </div>
   {% endif %}
@@ -326,6 +335,38 @@
     box-shadow:0 8px 22px rgba(74,105,189,.2);
   }
 
+  .home-notif-wrap { position:relative; }
+  .home-notif-toggle { min-width:190px; }
+  .home-notif-badge { min-width:22px; height:22px; line-height:14px; }
+  .home-notif-tray {
+    border:1px solid rgba(74,105,189,.18);
+    border-radius:14px;
+    background:#f8fbff;
+    padding:12px;
+    max-height:420px;
+    overflow:auto;
+  }
+  .home-notif-group-title {
+    font-size:.84rem;
+    font-weight:700;
+    letter-spacing:.02em;
+    color:#3f4f6e;
+    text-transform:uppercase;
+    margin:8px 0;
+  }
+  .home-notif-item { background:#fff; }
+  .home-notif-item-unread { border-left:4px solid #dc3545; }
+  .home-notif-item-read {
+    border-left:4px solid #adb5bd;
+    opacity:.92;
+  }
+  .home-notif-empty {
+    border:1px dashed #ced4da;
+    border-radius:10px;
+    padding:10px;
+    background:#fff;
+  }
+
   .animate-fade { animation: fadeIn 1.4s ease forwards; }
   .animate-slide { animation: slideUp 1.2s ease forwards; }
 
@@ -342,7 +383,5 @@
 {% endblock %}
 {% block scripts %}
   {{ super() }}
-  {% if _role in ['owner', 'admin', 'secretaria'] %}
   <script src="{{ url_for('static', filename='js/home_public_notifications.js') }}" defer></script>
-  {% endif %}
 {% endblock %}

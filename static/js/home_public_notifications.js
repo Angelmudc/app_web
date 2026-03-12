@@ -1,123 +1,220 @@
 (function () {
-  const card = document.getElementById("homePublicNotifCard");
+  function getCsrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? (meta.getAttribute("content") || "") : "";
+  }
+
+  var card = document.getElementById("homePublicNotifCard");
   if (!card) return;
 
-  const countUrl = card.getAttribute("data-count-url") || "";
-  const listUrl = card.getAttribute("data-list-url") || "";
-  const readBaseUrl = card.getAttribute("data-read-base-url") || "";
-  const unreadNode = document.getElementById("homePublicNotifUnread");
-  const listNode = document.getElementById("homePublicNotifList");
-  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  var countUrl = card.getAttribute("data-count-url") || "";
+  var listUrl = card.getAttribute("data-list-url") || "";
+  var readBaseUrl = card.getAttribute("data-read-base-url") || "";
+  var unreadNode = document.getElementById("homePublicNotifUnread");
+  var listNode = document.getElementById("homePublicNotifList");
+  var trayNode = document.getElementById("homePublicNotifTray");
+  var toggleBtn = document.getElementById("homePublicNotifToggle");
+  var csrfToken = getCsrfToken();
+  var REQUEST_TIMEOUT_MS = 8000;
+
+  if (!unreadNode || !listNode || !trayNode || !toggleBtn || !countUrl || !listUrl) {
+    if (listNode) {
+      listNode.innerHTML = '<div class="text-muted">No se pudo inicializar notificaciones.</div>';
+    }
+    return;
+  }
+
+  var trayOpen = false;
 
   function readUrlFor(id) {
-    const target = "/0/leer";
-    if (!readBaseUrl.includes(target)) return "";
+    var target = "/0/leer";
+    if (readBaseUrl.indexOf(target) === -1) return "";
     return readBaseUrl.replace(target, "/" + String(id) + "/leer");
   }
 
   function fmtDate(iso) {
     if (!iso) return "Sin fecha";
-    const dt = new Date(iso);
-    if (Number.isNaN(dt.getTime())) return "Sin fecha";
+    var dt = new Date(iso);
+    if (isNaN(dt.getTime())) return "Sin fecha";
     return dt.toLocaleString("es-DO");
   }
 
   function esc(str) {
-    const s = String(str || "");
+    var s = String(str || "");
     return s
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
+      .split("&").join("&amp;")
+      .split("<").join("&lt;")
+      .split(">").join("&gt;")
+      .split('"').join("&quot;")
+      .split("'").join("&#39;");
   }
 
-  async function fetchJson(url) {
-    const resp = await fetch(url, {
+  function fetchJson(url) {
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (ctrl) ctrl.abort();
+    }, REQUEST_TIMEOUT_MS);
+    return fetch(url, {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
       cache: "no-store",
+      signal: ctrl ? ctrl.signal : undefined,
+    }).then(function (resp) {
+      clearTimeout(timer);
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      return resp.json();
+    }).then(function (data) {
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid JSON payload");
+      }
+      return data;
+    }, function (err) {
+      clearTimeout(timer);
+      throw err;
     });
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    return resp.json();
   }
 
-  async function postRead(id) {
-    const url = readUrlFor(id);
-    if (!url) return;
-    const headers = { Accept: "application/json" };
+  function postRead(id) {
+    var url = readUrlFor(id);
+    if (!url) return Promise.resolve({});
+    var headers = { Accept: "application/json" };
     if (csrfToken) headers["X-CSRFToken"] = csrfToken;
-    const resp = await fetch(url, {
+    return fetch(url, {
       method: "POST",
       credentials: "same-origin",
       headers,
+    }).then(function (resp) {
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      return resp.json();
     });
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    return resp.json();
+  }
+
+  function setUnreadBadge(unread) {
+    var count = Number(unread || 0);
+    unreadNode.textContent = String(count);
+    unreadNode.classList.toggle("bg-danger", count > 0);
+    unreadNode.classList.toggle("bg-secondary", count <= 0);
+  }
+
+  function renderItem(item, isRead) {
+    var badge = isRead
+      ? '<span class="badge bg-secondary">Revisada</span>'
+      : '<span class="badge bg-danger">Pendiente</span>';
+    var markBtn = isRead
+      ? ""
+      : '<button class="btn btn-sm btn-outline-secondary js-mark-read" data-id="' + String(item.id) + '">Marcar leída</button>';
+    var reviewUrl = esc(item.review_url || "#");
+    var rowClass = isRead ? "home-notif-item-read" : "home-notif-item-unread";
+    return (
+      '<div class="home-notif-item border rounded p-2 mb-2 ' + rowClass + '">' +
+        '<div class="d-flex justify-content-between align-items-center gap-2 mb-1">' +
+          '<strong>' + esc(item.titulo || "Notificación") + "</strong>" +
+          badge +
+        "</div>" +
+        '<div class="text-muted mb-2">' + esc(item.mensaje || "Sin detalle") + "</div>" +
+        '<div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">' +
+          '<small class="text-muted">' + esc(fmtDate(item.created_at)) + "</small>" +
+          '<div class="d-flex gap-2">' +
+            '<a class="btn btn-sm btn-primary" href="' + reviewUrl + '">Revisar</a>' +
+            markBtn +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   function renderList(items) {
     if (!Array.isArray(items) || items.length === 0) {
-      listNode.innerHTML = '<div class="text-muted">No hay notificaciones recientes.</div>';
+      listNode.innerHTML = '<div class="home-notif-empty text-muted">No hay notificaciones recientes.</div>';
       return;
     }
-    const html = items.map((item) => {
-      const isRead = Boolean(item.is_read);
-      const badge = isRead
-        ? '<span class="badge bg-secondary">Leída</span>'
-        : '<span class="badge bg-danger">Nueva</span>';
-      const markBtn = isRead
-        ? ""
-        : '<button class="btn btn-sm btn-outline-secondary js-mark-read" data-id="' + String(item.id) + '">Marcar leída</button>';
-      const reviewUrl = esc(item.review_url || "#");
-      return (
-        '<div class="border rounded p-2 mb-2">' +
-          '<div class="d-flex justify-content-between align-items-center gap-2 mb-1">' +
-            '<strong>' + esc(item.titulo || "Notificación") + "</strong>" +
-            badge +
-          "</div>" +
-          '<div class="text-muted mb-2">' + esc(item.mensaje || "Sin detalle") + "</div>" +
-          '<div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">' +
-            '<small class="text-muted">' + esc(fmtDate(item.created_at)) + "</small>" +
-            '<div class="d-flex gap-2">' +
-              '<a class="btn btn-sm btn-primary" href="' + reviewUrl + '">Revisar</a>' +
-              markBtn +
-            "</div>" +
-          "</div>" +
-        "</div>"
-      );
-    }).join("");
+    var unreadItems = [];
+    var readItems = [];
+    items.forEach(function (item) {
+      if (item && item.is_read) {
+        readItems.push(item);
+      } else {
+        unreadItems.push(item);
+      }
+    });
+
+    var parts = [];
+    parts.push('<div class="home-notif-group-title">Pendientes</div>');
+    if (unreadItems.length === 0) {
+      parts.push('<div class="home-notif-empty text-muted mb-2">No hay notificaciones pendientes.</div>');
+    } else {
+      unreadItems.forEach(function (item) {
+        parts.push(renderItem(item, false));
+      });
+    }
+    parts.push('<div class="home-notif-group-title mt-3">Revisadas</div>');
+    if (readItems.length === 0) {
+      parts.push('<div class="home-notif-empty text-muted">Aún no tienes notificaciones revisadas.</div>');
+    } else {
+      readItems.forEach(function (item) {
+        parts.push(renderItem(item, true));
+      });
+    }
+
+    var html = parts.join("");
     listNode.innerHTML = html;
   }
 
-  async function refresh() {
-    try {
-      const [countData, listData] = await Promise.all([
-        fetchJson(countUrl),
-        fetchJson(listUrl + (listUrl.includes("?") ? "&" : "?") + "limit=10"),
-      ]);
-      unreadNode.textContent = String((countData && countData.unread) || 0);
-      renderList((listData && listData.items) || []);
-    } catch (_) {
-      listNode.innerHTML = '<div class="text-muted">No se pudo cargar notificaciones.</div>';
-    }
+  function setTrayOpen(nextOpen) {
+    trayOpen = Boolean(nextOpen);
+    trayNode.classList.toggle("d-none", !trayOpen);
+    toggleBtn.setAttribute("aria-expanded", trayOpen ? "true" : "false");
   }
 
-  listNode.addEventListener("click", async (ev) => {
-    const btn = ev.target.closest(".js-mark-read");
-    if (!btn) return;
-    const id = Number(btn.getAttribute("data-id") || 0);
-    if (!id) return;
-    btn.disabled = true;
-    try {
-      await postRead(id);
-      await refresh();
-    } catch (_) {
-      btn.disabled = false;
+  function refresh() {
+    return Promise.all([
+      fetchJson(countUrl),
+      fetchJson(listUrl + (listUrl.indexOf("?") !== -1 ? "&" : "?") + "limit=10"),
+    ]).then(function (pair) {
+      var countData = pair[0] || {};
+      var listData = pair[1] || {};
+      setUnreadBadge((countData && countData.unread) || 0);
+      var items = (listData && listData.items) || (listData && listData.data && listData.data.items) || [];
+      renderList(items);
+    }).catch(function () {
+      setUnreadBadge(unreadNode.textContent || "0");
+      listNode.innerHTML = '<div class="text-muted">No se pudo cargar notificaciones.</div>';
+    });
+  }
+
+  toggleBtn.addEventListener("click", function () {
+    setTrayOpen(!trayOpen);
+    if (trayOpen) {
+      refresh();
     }
   });
 
-  refresh().catch(() => {});
-  setInterval(() => refresh().catch(() => {}), 10000);
+  document.addEventListener("click", function (ev) {
+    if (!trayOpen) return;
+    if (card.contains(ev.target)) return;
+    setTrayOpen(false);
+  });
+
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && trayOpen) {
+      setTrayOpen(false);
+    }
+  });
+
+  listNode.addEventListener("click", function (ev) {
+    var btn = ev.target.closest(".js-mark-read");
+    if (!btn) return;
+    var id = Number(btn.getAttribute("data-id") || 0);
+    if (!id) return;
+    btn.disabled = true;
+    postRead(id).then(function () {
+      return refresh();
+    }).catch(function () {
+      btn.disabled = false;
+    });
+  });
+
+  refresh();
+  setInterval(function () { refresh(); }, 10000);
 })();
