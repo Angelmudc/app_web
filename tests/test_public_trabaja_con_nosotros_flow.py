@@ -95,6 +95,7 @@ def test_formulario_domestica_valido_redirige_gracias():
 
     fake_candidate = SimpleNamespace(fila=505, cedula="001-1234567-8", nombre_completo="Maria Fernanda Perez")
     with patch("registro.routes.find_duplicate_candidata_by_cedula", return_value=(None, "00112345678")), \
+         patch("registro.routes.create_staff_notification", return_value=True) as notif_mock, \
          patch(
              "registro.routes.robust_create_candidata",
              return_value=(RobustSaveResult(ok=True, attempts=1, error_message=""), CandidateCreateState(candidate=fake_candidate, candidate_id=505)),
@@ -103,6 +104,7 @@ def test_formulario_domestica_valido_redirige_gracias():
 
     assert resp.status_code in (302, 303)
     assert resp.headers.get("Location", "").endswith("/registro/registro_publico/gracias/")
+    notif_mock.assert_called_once()
 
 
 def test_formulario_domestica_guarda_campos_nuevos_en_columnas_reales():
@@ -142,6 +144,9 @@ def test_formulario_domestica_guarda_campos_nuevos_en_columnas_reales():
     assert cand.puede_dormir_fuera is True
     assert cand.sueldo_esperado == "RD$20,000"
     assert cand.motivacion_trabajo == "Necesito empleo estable"
+    assert cand.origen_registro == "publico_domestica"
+    assert cand.creado_por_staff is None
+    assert cand.creado_desde_ruta == "/registro/registro_publico/"
     assert "Datos complementarios" not in (cand.empleo_anterior or "")
 
 
@@ -192,11 +197,13 @@ def test_formulario_general_valido_redirige_gracias():
 
     with patch("reclutas.routes.db.session.add"), \
          patch("reclutas.routes.db.session.commit"), \
+         patch("reclutas.routes.create_staff_notification", return_value=True) as notif_mock, \
          patch("reclutas.routes.ReclutaPerfil", side_effect=lambda **kwargs: SimpleNamespace(id=99, **kwargs)):
         resp = client.post("/reclutas/registro", data=_general_base_data(), follow_redirects=False)
 
     assert resp.status_code in (302, 303)
     assert resp.headers.get("Location", "").endswith("/reclutas/registro/gracias")
+    notif_mock.assert_called_once()
 
 
 def test_formulario_general_rechaza_nombre_cedula_y_telefono_invalidos():
@@ -215,6 +222,38 @@ def test_formulario_general_rechaza_nombre_cedula_y_telefono_invalidos():
     bad_phone = client.post("/reclutas/registro", data=_general_base_data(telefono="809-11"), follow_redirects=False)
     assert bad_phone.status_code == 200
     assert "exactamente 10 dígitos" in bad_phone.get_data(as_text=True)
+
+
+def test_registro_interno_guarda_trazabilidad_como_interno():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    login = client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
+    assert login.status_code in (302, 303)
+
+    captured = {"candidate": None}
+
+    def _fake_robust(**kwargs):
+        candidate = kwargs["build_candidate"](1)
+        captured["candidate"] = candidate
+        return (
+            RobustSaveResult(ok=True, attempts=1, error_message=""),
+            CandidateCreateState(candidate=SimpleNamespace(fila=707), candidate_id=707),
+        )
+
+    with patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(None, "00112345678")), \
+         patch("core.legacy_handlers.robust_create_candidata", side_effect=_fake_robust), \
+         patch("core.legacy_handlers.create_staff_notification", return_value=True) as notif_mock:
+        resp = client.post("/registro_interno/", data=_domestica_base_data(), follow_redirects=False)
+
+    assert resp.status_code in (302, 303)
+    cand = captured["candidate"]
+    assert cand is not None
+    assert cand.origen_registro == "interno"
+    assert cand.creado_por_staff is not None
+    assert cand.creado_desde_ruta == "/registro_interno/"
+    notif_mock.assert_not_called()
 
 
 def test_honeypot_domestica_no_persiste_y_redirige_gracias():

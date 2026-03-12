@@ -46,6 +46,22 @@ class Candidata(db.Model):
     )
     codigo                          = db.Column(db.String(50), unique=True, index=True)
     medio_inscripcion               = db.Column(db.String(100))
+    origen_registro                 = db.Column(
+        db.String(32),
+        nullable=True,
+        index=True,
+        comment="Origen de creación del registro: publico_domestica o interno"
+    )
+    creado_por_staff                = db.Column(
+        db.String(100),
+        nullable=True,
+        comment="Usuario staff que creó el registro cuando aplica origen interno"
+    )
+    creado_desde_ruta               = db.Column(
+        db.String(120),
+        nullable=True,
+        comment="Ruta origen desde donde se creó el registro"
+    )
     inscripcion                     = db.Column(db.Boolean, server_default=text('false'), nullable=False)
     monto                           = db.Column(db.Numeric(12, 2))
     fecha                           = db.Column(db.Date)
@@ -1509,6 +1525,17 @@ class ReclutaPerfil(db.Model):
         nullable=True,
         comment="Usuario/Nombre (admin o secretaria) que actualizó por última vez"
     )
+    origen_registro = db.Column(
+        db.String(32),
+        nullable=True,
+        index=True,
+        comment="Origen de creación del registro: publico_empleo_general o interno"
+    )
+    creado_desde_ruta = db.Column(
+        db.String(120),
+        nullable=True,
+        comment="Ruta origen desde donde se creó el perfil"
+    )
 
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
     updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
@@ -1748,6 +1775,48 @@ class SolicitudCandidata(db.Model):
             f"<SolicitudCandidata id={self.id} solicitud_id={self.solicitud_id} "
             f"candidata_id={self.candidata_id} status={self.status}>"
         )
+
+
+class StaffNotificacion(db.Model):
+    __tablename__ = "staff_notificaciones"
+    __table_args__ = (
+        db.UniqueConstraint("tipo", "entity_type", "entity_id", name="uq_staff_notif_tipo_entity"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(50), nullable=False, index=True)
+    entity_type = db.Column(db.String(30), nullable=False, index=True)
+    entity_id = db.Column(db.Integer, nullable=False, index=True)
+    titulo = db.Column(db.String(180), nullable=False)
+    mensaje = db.Column(db.String(300), nullable=True)
+    payload = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    lecturas = db.relationship(
+        "StaffNotificacionLectura",
+        back_populates="notificacion",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+
+class StaffNotificacionLectura(db.Model):
+    __tablename__ = "staff_notificaciones_lecturas"
+    __table_args__ = (
+        db.UniqueConstraint("notificacion_id", "reader_key", name="uq_staff_notif_read_by_reader"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    notificacion_id = db.Column(
+        db.Integer,
+        db.ForeignKey("staff_notificaciones.id"),
+        nullable=False,
+        index=True,
+    )
+    reader_key = db.Column(db.String(120), nullable=False, index=True)
+    read_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    notificacion = db.relationship("StaffNotificacion", back_populates="lecturas", lazy="joined")
 
 
 class ClienteNotificacion(db.Model):

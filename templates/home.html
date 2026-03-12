@@ -50,6 +50,29 @@
     <i class="fa-solid fa-clipboard-list me-2 text-primary"></i> Panel Principal
   </h1>
 
+  {% set _role = (current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) %}
+  {% if _role in ['owner', 'admin', 'secretaria'] %}
+  <div class="mb-5">
+    <h2 class="section-title">
+      <i class="fa-solid fa-bell me-2 text-primary"></i> Notificaciones de formularios públicos
+    </h2>
+    <div class="dashboard-card"
+         id="homePublicNotifCard"
+         data-count-url="{{ url_for('home_public_notifications_count') }}"
+         data-list-url="{{ url_for('home_public_notifications_list') }}"
+         data-read-base-url="{{ url_for('home_public_notifications_mark_read', notificacion_id=0) }}">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <span class="fw-semibold">Nuevos registros públicos</span>
+          <span class="badge bg-danger ms-2" id="homePublicNotifUnread">0</span>
+        </div>
+        <small class="text-muted">Actualización automática cada 10 segundos</small>
+      </div>
+      <div id="homePublicNotifList" class="small text-muted">Cargando notificaciones...</div>
+    </div>
+  </div>
+  {% endif %}
+
   {% set sections = [
 
     ('Gestión de Candidatas', 'fa-users', [
@@ -125,7 +148,6 @@
     </div>
   {% endfor %}
 
-  {% set _role = (current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) %}
   {% if _role in ['owner', 'admin', 'secretaria'] %}
     <div class="mb-5">
       <h2 class="section-title">
@@ -317,4 +339,10 @@
     to {opacity:1; transform:translateY(0)}
   }
 </style>
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  {% if _role in ['owner', 'admin', 'secretaria'] %}
+  <script src="{{ url_for('static', filename='js/home_public_notifications.js') }}" defer></script>
+  {% endif %}
 {% endblock %}

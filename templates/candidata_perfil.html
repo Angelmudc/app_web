@@ -195,6 +195,19 @@
           {% endif %}
         </div>
 
+        <div class="card mb-3" style="padding:12px;">
+          <h6 style="margin:0 0 8px 0;">Trazabilidad del registro</h6>
+          {% set origen = (candidata.origen_registro or '').strip() %}
+          <div class="small"><b>Origen:</b>
+            {% if origen == 'publico_domestica' %}Formulario público doméstica
+            {% elif origen == 'interno' %}Registro interno
+            {% else %}No definido{% endif %}
+          </div>
+          <div class="small"><b>Creado por (staff):</b> {{ candidata.creado_por_staff or 'No aplica / No definido' }}</div>
+          <div class="small"><b>Ruta de creación:</b> {{ candidata.creado_desde_ruta or 'No definida' }}</div>
+          <div class="small"><b>Fecha de registro:</b> {{ candidata.marca_temporal.strftime('%d/%m/%Y %H:%M') if candidata.marca_temporal else 'No definida' }}</div>
+        </div>
+
         <div class="row g-3">
           <div class="col-md-6">
             <div class="small text-muted">Cédula</div>

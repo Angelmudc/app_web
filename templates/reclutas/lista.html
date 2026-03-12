@@ -89,6 +89,7 @@
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Teléfono</th>
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Empleo</th>
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Modalidad</th>
+            <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Origen</th>
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12);">Estado</th>
             <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.12); text-align:right;">Acciones</th>
           </tr>
@@ -97,7 +98,7 @@
         <tbody>
           {% if reclutas|length == 0 %}
             <tr>
-              <td colspan="7" style="padding:14px; opacity:.75;">
+              <td colspan="8" style="padding:14px; opacity:.75;">
                 No hay perfiles con esos filtros.
               </td>
             </tr>
@@ -139,6 +140,16 @@
                   {{ r.modalidad.replace('_',' ').title() }}
                 {% else %}
                   <span style="opacity:.7;">—</span>
+                {% endif %}
+              </td>
+
+              <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.08);">
+                {% if r.origen_registro == 'publico_empleo_general' %}
+                  <span class="badge bg-info text-dark">Público</span>
+                {% elif r.origen_registro == 'interno' %}
+                  <span class="badge bg-secondary">Interno</span>
+                {% else %}
+                  <span style="opacity:.7;">No definido</span>
                 {% endif %}
               </td>
 

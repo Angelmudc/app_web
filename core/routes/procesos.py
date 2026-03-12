@@ -6,6 +6,9 @@ bp = Blueprint('procesos_routes', __name__)
 RULES = [
     ('/robots.txt', 'robots_txt', h.robots_txt, ['GET']),
     ('/home', 'home', h.home, ['GET']),
+    ('/home/notificaciones-publicas/count.json', 'home_public_notifications_count', h.home_public_notifications_count, ['GET']),
+    ('/home/notificaciones-publicas/list.json', 'home_public_notifications_list', h.home_public_notifications_list, ['GET']),
+    ('/home/notificaciones-publicas/<int:notificacion_id>/leer', 'home_public_notifications_mark_read', h.home_public_notifications_mark_read, ['POST']),
     ('/login', 'login', h.login, ['GET', 'POST']),
     ('/logout', 'logout', h.logout, ['POST']),
     ('/inscripcion', 'inscripcion', h.inscripcion, ['GET', 'POST']),

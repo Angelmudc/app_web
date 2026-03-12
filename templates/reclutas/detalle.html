@@ -91,6 +91,14 @@
 
     <div class="card" style="padding:14px; margin-top:12px;">
       <h3 style="margin:0 0 10px 0;">Interno</h3>
+      <div><b>Origen:</b>
+        {% if recluta.origen_registro == 'publico_empleo_general' %}Formulario público empleo general
+        {% elif recluta.origen_registro == 'interno' %}Registro interno
+        {% else %}No definido{% endif %}
+      </div>
+      <div><b>Creado por:</b> {{ recluta.creado_por or 'No definido' }}</div>
+      <div><b>Ruta de creación:</b> {{ recluta.creado_desde_ruta or 'No definida' }}</div>
+      <div><b>Fecha de creación:</b> {{ recluta.created_at.strftime('%d/%m/%Y %H:%M') if recluta.created_at else 'No definida' }}</div>
       <div><b>Estado:</b> {{ recluta.estado }}</div>
       <div><b>Docs al día:</b> {{ 'Sí' if recluta.documentos_al_dia else 'No' }}</div>
       <div><b>Fines/noches:</b> {{ 'Sí' if recluta.disponible_fines_o_noches else 'No' }}</div>

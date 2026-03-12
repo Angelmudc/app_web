@@ -200,6 +200,21 @@
       </div>
     {% endif %}
 
+    <div class="card mb-3">
+      <div class="card-body">
+        <h6 class="mb-2">Trazabilidad del registro</h6>
+        {% set origen = (candidata.origen_registro or '').strip() %}
+        <div class="small"><strong>Origen:</strong>
+          {% if origen == 'publico_domestica' %}Formulario público doméstica
+          {% elif origen == 'interno' %}Registro interno
+          {% else %}No definido{% endif %}
+        </div>
+        <div class="small"><strong>Creado por (staff):</strong> {{ candidata.creado_por_staff or 'No aplica / No definido' }}</div>
+        <div class="small"><strong>Ruta de creación:</strong> {{ candidata.creado_desde_ruta or 'No definida' }}</div>
+        <div class="small"><strong>Fecha de registro:</strong> {{ candidata.marca_temporal.strftime('%d/%m/%Y %H:%M') if candidata.marca_temporal else 'No definida' }}</div>
+      </div>
+    </div>
+
     {% if es_staff %}
     <div class="card mb-3">
       <div class="card-body">

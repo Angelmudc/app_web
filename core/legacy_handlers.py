@@ -8,6 +8,7 @@ import io
 import os
 import re
 import json
+import hashlib
 import logging
 import unicodedata
 from datetime import datetime, date, timedelta
@@ -28,7 +29,7 @@ from flask_wtf.csrf import generate_csrf
 from flask_login import login_user, logout_user, current_user
 
 # SQLAlchemy
-from sqlalchemy import or_, cast, String, func, and_, Date
+from sqlalchemy import or_, cast, String, func, and_, Date, inspect
 from sqlalchemy.orm import subqueryload, joinedload, load_only
 from sqlalchemy.exc import OperationalError, IntegrityError, DBAPIError
 from sqlalchemy.sql import text
@@ -50,6 +51,8 @@ from models import (
     Solicitud,
     Reemplazo,
     StaffUser,
+    StaffNotificacion,
+    StaffNotificacionLectura,
     Entrevista,
     EntrevistaPregunta,
     EntrevistaRespuesta,
@@ -108,6 +111,7 @@ from utils.candidate_registration import (
     robust_create_candidata,
 )
 from utils.timezone import format_rd_datetime, iso_utc_z, rd_today, utc_now_naive
+from utils.staff_notifications import create_staff_notification
 
 # Data / reportes
 import pandas as pd
@@ -756,6 +760,135 @@ def home():
     )
 
 
+def _staff_reader_key() -> Optional[str]:
+    try:
+        if bool(getattr(current_user, "is_authenticated", False)):
+            raw_id = str(getattr(current_user, "get_id", lambda: "")() or "").strip()
+            if raw_id.startswith("staff:"):
+                return raw_id[:120]
+            if hasattr(current_user, "id"):
+                return f"staff:{int(getattr(current_user, 'id'))}"
+    except Exception:
+        pass
+    usuario = (session.get("usuario") or "").strip().lower()
+    if not usuario:
+        return None
+    digest = hashlib.sha256(usuario.encode("utf-8")).hexdigest()[:40]
+    return f"legacy:{digest}"
+
+
+def _notif_review_url(notif: StaffNotificacion) -> str:
+    entity_type = (getattr(notif, "entity_type", "") or "").strip().lower()
+    entity_id = int(getattr(notif, "entity_id", 0) or 0)
+    if entity_id <= 0:
+        return url_for("home")
+    if entity_type == "candidata":
+        return url_for("buscar_candidata", candidata_id=entity_id)
+    if entity_type == "recluta_perfil":
+        return url_for("reclutas.detalle", recluta_id=entity_id)
+    return url_for("home")
+
+
+def _staff_notifications_unread_count(reader_key: str) -> int:
+    if not reader_key:
+        return 0
+    read_exists = db.session.query(StaffNotificacionLectura.id).filter(
+        StaffNotificacionLectura.notificacion_id == StaffNotificacion.id,
+        StaffNotificacionLectura.reader_key == reader_key,
+    ).exists()
+    return int(StaffNotificacion.query.filter(~read_exists).count())
+
+
+def _staff_notifications_ready() -> bool:
+    try:
+        insp = inspect(db.engine)
+        return bool(
+            insp.has_table("staff_notificaciones")
+            and insp.has_table("staff_notificaciones_lecturas")
+        )
+    except Exception:
+        return False
+
+
+@app.route('/home/notificaciones-publicas/count.json', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def home_public_notifications_count():
+    if not _staff_notifications_ready():
+        return jsonify({"unread": 0})
+    reader_key = _staff_reader_key()
+    unread = _staff_notifications_unread_count(reader_key or "")
+    return jsonify({"unread": int(unread)})
+
+
+@app.route('/home/notificaciones-publicas/list.json', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def home_public_notifications_list():
+    if not _staff_notifications_ready():
+        return jsonify({"items": [], "unread": 0})
+    reader_key = _staff_reader_key()
+    limit = min(30, max(1, int(request.args.get("limit", 10) or 10)))
+    rows = (
+        StaffNotificacion.query
+        .order_by(StaffNotificacion.created_at.desc(), StaffNotificacion.id.desc())
+        .limit(limit)
+        .all()
+    )
+    notif_ids = [int(r.id) for r in rows]
+    read_ids = set()
+    if reader_key and notif_ids:
+        read_rows = (
+            db.session.query(StaffNotificacionLectura.notificacion_id)
+            .filter(StaffNotificacionLectura.reader_key == reader_key)
+            .filter(StaffNotificacionLectura.notificacion_id.in_(notif_ids))
+            .all()
+        )
+        read_ids = {int(rr.notificacion_id) for rr in read_rows}
+
+    items = []
+    for n in rows:
+        nid = int(n.id)
+        items.append({
+            "id": nid,
+            "tipo": (n.tipo or "").strip(),
+            "titulo": (n.titulo or "").strip(),
+            "mensaje": (n.mensaje or "").strip() or None,
+            "entity_type": (n.entity_type or "").strip(),
+            "entity_id": int(n.entity_id or 0),
+            "created_at": iso_utc_z(n.created_at) if n.created_at else None,
+            "review_url": _notif_review_url(n),
+            "is_read": bool(nid in read_ids),
+        })
+    return jsonify({"items": items, "unread": _staff_notifications_unread_count(reader_key or "")})
+
+
+@app.route('/home/notificaciones-publicas/<int:notificacion_id>/leer', methods=['POST'])
+@roles_required('admin', 'secretaria')
+def home_public_notifications_mark_read(notificacion_id: int):
+    if not _staff_notifications_ready():
+        return jsonify({"ok": False, "error": "notifications_not_ready"}), 503
+    reader_key = _staff_reader_key()
+    if not reader_key:
+        return jsonify({"ok": False, "error": "reader_not_available"}), 400
+    notif = StaffNotificacion.query.get_or_404(notificacion_id)
+    already = (
+        StaffNotificacionLectura.query
+        .filter_by(notificacion_id=int(notif.id), reader_key=reader_key)
+        .first()
+    )
+    if already is None:
+        try:
+            db.session.add(StaffNotificacionLectura(notificacion_id=int(notif.id), reader_key=reader_key))
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            # Idempotencia ante carrera: otro request insertó la lectura primero.
+            pass
+        except Exception:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": "read_mark_failed"}), 500
+    return jsonify({"ok": True, "unread": _staff_notifications_unread_count(reader_key)})
+
+
  
 # ---- Anti-bruteforce settings (ajustables)
 LOGIN_MAX_INTENTOS = int(os.getenv("LOGIN_MAX_INTENTOS", "6"))   # intentos
@@ -1160,6 +1293,7 @@ def registro_interno():
         return _fail('📛 Cédula requerida.', 'warning', 400, error_message='cedula_required')
 
     usuario = (session.get('usuario') or 'secretaria').strip()[:64]
+    source_route = (request.path or '').strip()[:120] or '/registro_interno/'
     try:
         result, create_state = robust_create_candidata(
             build_candidate=lambda _attempt: Candidata(
@@ -1185,6 +1319,9 @@ def registro_interno():
                 sueldo_esperado=sueldo_esperado,
                 motivacion_trabajo=motivacion_trabajo,
                 medio_inscripcion='Oficina',
+                origen_registro='interno',
+                creado_por_staff=usuario,
+                creado_desde_ruta=source_route,
                 estado='en_proceso',
                 fecha_cambio_estado=utc_now_naive(),
                 usuario_cambio_estado=usuario,

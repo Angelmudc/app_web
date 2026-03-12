@@ -7,6 +7,7 @@ from config_app import db, cache
 from models import ReclutaPerfil, ReclutaCambio, TIPOS_EMPLEO_GENERAL
 from .forms import ReclutaForm, ReclutaPublicForm
 from utils.public_intake import get_request_ip, hit_rate_limit
+from utils.staff_notifications import create_staff_notification
 
 reclutas_bp = Blueprint(
     'reclutas',
@@ -117,12 +118,13 @@ def registro_publico():
                 # Público: no se guardan observaciones internas
                 observaciones_internas=None,
                 # Público: no hay usuario autenticado
-                creado_por='publico'
+                creado_por='publico',
+                origen_registro='publico_empleo_general',
+                creado_desde_ruta=(request.path or '').strip()[:120] or '/reclutas/registro',
             )
 
             db.session.add(recluta)
-            db.session.commit()
-
+            db.session.flush()
             cambio = ReclutaCambio(
                 recluta_id=recluta.id,
                 accion='creado_publico',
@@ -131,6 +133,21 @@ def registro_publico():
             )
             db.session.add(cambio)
             db.session.commit()
+            try:
+                create_staff_notification(
+                    tipo="publico_empleo_general_nuevo",
+                    entity_type="recluta_perfil",
+                    entity_id=int(getattr(recluta, "id", 0) or 0),
+                    titulo="Nuevo recluta por formulario público",
+                    mensaje=(getattr(recluta, "nombre_completo", None) or "").strip()[:300] or None,
+                    payload={
+                        "origen_registro": "publico_empleo_general",
+                        "source_route": (request.path or "").strip(),
+                        "recluta_id": int(getattr(recluta, "id", 0) or 0),
+                    },
+                )
+            except Exception:
+                pass
         except SQLAlchemyError:
             db.session.rollback()
             flash('No se pudo enviar el formulario en este momento. Intenta de nuevo en unos minutos.', 'danger')
@@ -195,7 +212,9 @@ def nuevo():
             documentos_al_dia=form.documentos_al_dia.data,
             disponible_fines_o_noches=form.disponible_fines_o_noches.data,
             observaciones_internas=form.observaciones_internas.data,
-            creado_por=current_user.email if hasattr(current_user, 'email') else str(current_user)
+            creado_por=current_user.email if hasattr(current_user, 'email') else str(current_user),
+            origen_registro='interno',
+            creado_desde_ruta=(request.path or '').strip()[:120] or '/reclutas/nuevo',
         )
 
         db.session.add(recluta)

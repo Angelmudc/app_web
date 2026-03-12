@@ -25,6 +25,7 @@ from utils.public_intake import (
     normalize_phone_for_store,
 )
 from utils.timezone import utc_now_naive
+from utils.staff_notifications import create_staff_notification
 
 # Blueprint dedicado (NO es el "public" del website)
 # OJO: el nombre del blueprint es "registro_publico" para que los url_for queden estables.
@@ -209,6 +210,7 @@ def registro_publico():
         )
 
     try:
+        source_route = (request.path or "").strip()[:120] or "/registro/registro_publico/"
         result, create_state = robust_create_candidata(
             build_candidate=lambda _attempt: Candidata(
                 marca_temporal=utc_now_naive(),
@@ -227,6 +229,9 @@ def registro_publico():
                 acepta_porcentaje_sueldo=acepta_pct,
                 cedula=cedula_store,
                 medio_inscripcion="Web",
+                origen_registro="publico_domestica",
+                creado_por_staff=None,
+                creado_desde_ruta=source_route,
                 estado="en_proceso",
                 fecha_cambio_estado=utc_now_naive(),
                 usuario_cambio_estado="registro_publico",
@@ -286,6 +291,21 @@ def registro_publico():
         candidate=create_state.candidate,
         attempt_count=result.attempts,
     )
+    try:
+        create_staff_notification(
+            tipo="publico_domestica_nueva",
+            entity_type="candidata",
+            entity_id=int(getattr(create_state.candidate, "fila", 0) or 0),
+            titulo="Nueva candidata por formulario público",
+            mensaje=(getattr(create_state.candidate, "nombre_completo", None) or "").strip()[:300] or None,
+            payload={
+                "origen_registro": "publico_domestica",
+                "source_route": (request.path or "").strip(),
+                "candidata_fila": int(getattr(create_state.candidate, "fila", 0) or 0),
+            },
+        )
+    except Exception:
+        pass
 
     return redirect(url_for('registro_publico.registro_publico_gracias'))
 
