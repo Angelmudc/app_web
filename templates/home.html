@@ -76,7 +76,12 @@
         </button>
       </div>
       <div id="homePublicNotifTray" class="home-notif-tray d-none mt-3">
-        <div id="homePublicNotifList" class="small text-muted">Cargando notificaciones...</div>
+        <div class="d-flex justify-content-end mb-2">
+          <button type="button" id="homePublicNotifRefresh" class="btn btn-sm btn-outline-secondary">
+            Actualizar
+          </button>
+        </div>
+        <div id="homePublicNotifList" class="small home-notif-list">Cargando notificaciones...</div>
       </div>
     </div>
   </div>
@@ -335,13 +340,19 @@
     box-shadow:0 8px 22px rgba(74,105,189,.2);
   }
 
-  .home-notif-wrap { position:relative; }
+  .home-notif-wrap {
+    position:relative;
+    color:#1b2840;
+  }
+  .home-notif-wrap .fw-semibold { color:#1b2840; }
+  .home-notif-wrap .text-muted { color:#5f6e85 !important; }
   .home-notif-toggle { min-width:190px; }
   .home-notif-badge { min-width:22px; height:22px; line-height:14px; }
+  .home-notif-list { color:#1b2840; }
   .home-notif-tray {
     border:1px solid rgba(74,105,189,.18);
     border-radius:14px;
-    background:#f8fbff;
+    background:#f4f8ff;
     padding:12px;
     max-height:420px;
     overflow:auto;
@@ -354,7 +365,29 @@
     text-transform:uppercase;
     margin:8px 0;
   }
-  .home-notif-item { background:#fff; }
+  .home-notif-item {
+    background:#fff;
+    border-color:#d8e2f3 !important;
+    color:#1b2840;
+    box-shadow:0 2px 8px rgba(27,40,64,.06);
+  }
+  .home-notif-title { color:#1b2840; font-weight:700; }
+  .home-notif-message { color:#334155; line-height:1.35; }
+  .home-notif-date { color:#6b7280; }
+  .home-notif-mark-read-btn {
+    background:#ffffff !important;
+    color:#334155 !important;
+    border:1px solid #c6d2e6 !important;
+    box-shadow:none !important;
+  }
+  .home-notif-mark-read-btn:hover {
+    background:#eef4ff !important;
+    color:#1f2f4a !important;
+    border-color:#9fb5d9 !important;
+  }
+  .home-notif-mark-read-btn:focus {
+    box-shadow:0 0 0 .2rem rgba(74,105,189,.2) !important;
+  }
   .home-notif-item-unread { border-left:4px solid #dc3545; }
   .home-notif-item-read {
     border-left:4px solid #adb5bd;
@@ -365,6 +398,7 @@
     border-radius:10px;
     padding:10px;
     background:#fff;
+    color:#546277;
   }
 
   .animate-fade { animation: fadeIn 1.4s ease forwards; }

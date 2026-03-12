@@ -55,7 +55,13 @@ def test_home_public_notifications_count_list_and_mark_read():
     assert list_resp.status_code == 200
     payload = list_resp.get_json()
     items = payload.get("items") or []
+    pending_items = payload.get("pending_items") or []
+    reviewed_items = payload.get("reviewed_items") or []
     assert len(items) == 2
+    assert len(pending_items) == 2
+    assert len(reviewed_items) == 0
+    assert payload.get("has_more_pending") is False
+    assert payload.get("has_more_reviewed") is False
     assert any((it.get("entity_type") == "candidata" and "/buscar?candidata_id=101" in (it.get("review_url") or "")) for it in items)
     assert any((it.get("entity_type") == "recluta_perfil" and "/reclutas/202" in (it.get("review_url") or "")) for it in items)
 
@@ -69,3 +75,52 @@ def test_home_public_notifications_count_list_and_mark_read():
         row = StaffNotificacionLectura.query.filter_by(notificacion_id=target_id).first()
         assert row is not None
         assert str(row.reader_key or "").startswith("staff:")
+
+
+def test_home_public_notifications_list_limits_pending_and_reviewed():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    _ensure_notification_tables()
+    client = flask_app.test_client()
+
+    assert _login(client, "Owner", "8899").status_code in (302, 303)
+
+    with flask_app.app_context():
+        created_ids = []
+        for idx in range(24):
+            row = StaffNotificacion(
+                tipo=f"publico_idx_{idx}",
+                entity_type="candidata",
+                entity_id=1000 + idx,
+                titulo=f"Notif {idx}",
+                mensaje=f"Mensaje {idx}",
+            )
+            db.session.add(row)
+            db.session.flush()
+            created_ids.append(int(row.id))
+        db.session.commit()
+
+    # Marcar 12 notificaciones como leídas para generar ambos buckets con "has_more".
+    for notif_id in created_ids[:12]:
+        mark_resp = client.post(f"/home/notificaciones-publicas/{notif_id}/leer")
+        assert mark_resp.status_code == 200
+        assert mark_resp.get_json().get("ok") is True
+
+    list_resp = client.get("/home/notificaciones-publicas/list.json?limit=50")
+    assert list_resp.status_code == 200
+    payload = list_resp.get_json()
+
+    pending_items = payload.get("pending_items") or []
+    reviewed_items = payload.get("reviewed_items") or []
+    items = payload.get("items") or []
+
+    # Límite de escalabilidad: máximo 10 por grupo.
+    assert len(pending_items) == 10
+    assert len(reviewed_items) == 10
+    assert payload.get("has_more_pending") is True
+    assert payload.get("has_more_reviewed") is True
+
+    # Retrocompatibilidad para frontend legado.
+    assert len(items) == 20
+    assert all(it.get("is_read") is False for it in pending_items)
+    assert all(it.get("is_read") is True for it in reviewed_items)
