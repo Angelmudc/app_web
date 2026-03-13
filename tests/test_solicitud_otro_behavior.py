@@ -134,6 +134,63 @@ def test_admin_edit_get_preloads_otro_fields_as_selected():
     assert (getattr(form, "area_otro").data or "").strip()
 
 
+def test_admin_edit_get_exposes_modalidad_precarga_context():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    captured = {}
+
+    target = admin_routes.editar_solicitud_admin
+    for _ in range(3):
+        target = target.__wrapped__
+
+    s = _admin_solicitud_dummy()
+    s.modalidad_trabajo = "Con dormida 💤 quincenal"
+
+    def _capture_render(*_a, **k):
+        captured["ctx"] = k
+        return "ok"
+
+    with flask_app.test_request_context("/admin/clientes/15/solicitudes/2/editar", method="GET"):
+        with patch.object(admin_routes, "render_template", side_effect=_capture_render), \
+             patch.object(admin_routes, "_populate_form_detalles_from_solicitud", return_value=None), \
+             patch.object(admin_routes, "Solicitud", SimpleNamespace(query=SimpleNamespace(filter_by=lambda **_k: SimpleNamespace(first_or_404=lambda: s)))):
+            target(15, 2)
+
+    ctx = captured["ctx"]
+    assert ctx["public_modalidad_group"] == "con_dormida"
+    assert ctx["public_modalidad_specific"] == "Con dormida 💤 quincenal"
+    assert ctx["public_modalidad_other"] == ""
+
+
+def test_client_edit_get_exposes_modalidad_precarga_context():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    captured = {}
+
+    target = clientes_routes.editar_solicitud
+    for _ in range(3):
+        target = target.__wrapped__
+
+    s = _cliente_solicitud_dummy()
+    s.modalidad_trabajo = "Salida diaria - lunes a sábado"
+    fake_user = SimpleNamespace(id=7)
+
+    def _capture_render(*_a, **k):
+        captured["ctx"] = k
+        return "ok"
+
+    with flask_app.test_request_context("/clientes/solicitudes/1/editar", method="GET"):
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "render_template", side_effect=_capture_render), \
+             patch.object(clientes_routes, "Solicitud", SimpleNamespace(query=SimpleNamespace(filter_by=lambda **_k: SimpleNamespace(first_or_404=lambda: s)))):
+            target(1)
+
+    ctx = captured["ctx"]
+    assert ctx["public_modalidad_group"] == "con_salida_diaria"
+    assert ctx["public_modalidad_specific"] == "Salida diaria - lunes a sábado"
+    assert ctx["public_modalidad_other"] == ""
+
+
 def test_shared_partial_has_independent_otro_wrappers_and_name_based_sync():
     path = "clientes/_solicitud_form_fields.html"
     content = flask_app.jinja_env.loader.get_source(flask_app.jinja_env, path)[0]

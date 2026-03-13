@@ -57,6 +57,7 @@ from utils.pasaje_mode import (
 )
 from utils.modalidad import (
     canonicalize_modalidad_trabajo,
+    split_modalidad_for_ui,
     should_preserve_existing_modalidad_on_edit,
 )
 from utils.codigo_solicitud import compose_codigo_solicitud
@@ -1845,6 +1846,9 @@ def editar_solicitud(id):
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
     public_pasaje_mode = "aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido"
     public_pasaje_otro = ""
+    public_modalidad_group = ""
+    public_modalidad_specific = ""
+    public_modalidad_other = ""
 
     if request.method == 'GET':
         form.funciones.data      = _clean_list(s.funciones)
@@ -1901,6 +1905,11 @@ def editar_solicitud(id):
             detalles_servicio=getattr(s, "detalles_servicio", None),
             nota_cliente=getattr(s, "nota_cliente", ""),
         )
+        modalidad_raw = form.modalidad_trabajo.data if hasattr(form, "modalidad_trabajo") else ""
+        modalidad_ui = split_modalidad_for_ui(modalidad_raw)
+        public_modalidad_group = modalidad_ui.get("group", "")
+        public_modalidad_specific = modalidad_ui.get("specific", "")
+        public_modalidad_other = modalidad_ui.get("other", "")
 
     if request.method == "POST":
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
@@ -2019,6 +2028,9 @@ def editar_solicitud(id):
         solicitud=s,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
+        public_modalidad_group=public_modalidad_group,
+        public_modalidad_specific=public_modalidad_specific,
+        public_modalidad_other=public_modalidad_other,
     )
 
 

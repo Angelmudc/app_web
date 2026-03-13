@@ -17,6 +17,9 @@
   ('con_dormida', 'Con dormida 💤'),
   ('con_salida_diaria', 'Salida diaria')
 ] %}
+{% set _modalidad_group_value = public_modalidad_group if public_modalidad_group is defined else '' %}
+{% set _modalidad_specific_value = public_modalidad_specific if public_modalidad_specific is defined else '' %}
+{% set _modalidad_other_value = public_modalidad_other if public_modalidad_other is defined else '' %}
 {% set _modalidad_specs = {
   'con_salida_diaria': [
     {'key': 'sd_1_dia', 'label': 'Salida diaria - 1 día a la semana', 'aliases': ['1 día a la semana', 'Un día a la semana']},
@@ -35,6 +38,8 @@
     {'key': 'otro', 'label': 'Con dormida 💤 otro', 'aliases': ['Otro', 'Con dormida - Otro']}
   ]
 } %}
+{% set _modalidad_initial_specs = _modalidad_specs[_modalidad_group_value] if _modalidad_group_value in _modalidad_specs else [] %}
+{% set _modalidad_is_other = ('otro' in (_modalidad_specific_value|lower)) if _modalidad_specific_value else false %}
 
 {% macro render_errors(field) -%}
   {% if field.errors %}
@@ -342,20 +347,23 @@
         <div class="public-segmented" id="modalidad_grupo_wrap">
           {% for group_value, group_label in _modalidad_grupos %}
             <label class="public-segmented-item">
-              <input type="radio" name="modalidad_grupo" value="{{ group_value }}">
+              <input type="radio" name="modalidad_grupo" value="{{ group_value }}" {% if _modalidad_group_value == group_value %}checked{% endif %}>
               <span>{{ group_label }}</span>
             </label>
           {% endfor %}
         </div>
 
-        <div class="mt-2" id="wrap_modalidad_especifica" style="display:none;">
+        <div class="mt-2" id="wrap_modalidad_especifica" style="{{ '' if _modalidad_group_value else 'display:none;' }}">
           <label class="public-field-label mb-1" for="modalidad_especifica_select">Modalidad específica</label>
           <select class="form-select" id="modalidad_especifica_select" name="modalidad_especifica">
             <option value="">Selecciona una opción</option>
+            {% for spec in _modalidad_initial_specs %}
+              <option value="{{ spec.label }}" {% if _modalidad_specific_value == spec.label %}selected{% endif %}>{{ spec.label }}</option>
+            {% endfor %}
           </select>
         </div>
 
-        <div class="mt-2" id="wrap_modalidad_otro" style="display:none;">
+        <div class="mt-2" id="wrap_modalidad_otro" style="{{ '' if (_modalidad_group_value and _modalidad_is_other) else 'display:none;' }}">
           <label class="public-field-label mb-1" for="modalidad_otro_text">Especifica otra modalidad</label>
           <input
             type="text"
@@ -364,6 +372,7 @@
             name="modalidad_otro_text"
             maxlength="100"
             placeholder="Escribe la modalidad"
+            value="{{ _modalidad_other_value }}"
           >
         </div>
 
@@ -608,15 +617,30 @@
         var label = (spec.label || '').trim();
         if (!label) continue;
         MODALIDAD_OPTIONS[g].push(label);
-        MODALIDAD_OPTION_BY_LABEL[normModal(label)] = { group: g, label: label, key: spec.key || '' };
+        var labelNorm = normModal(label);
+        if (!MODALIDAD_OPTION_BY_LABEL[labelNorm]) MODALIDAD_OPTION_BY_LABEL[labelNorm] = [];
+        MODALIDAD_OPTION_BY_LABEL[labelNorm].push({ group: g, label: label, key: spec.key || '' });
         var aliases = spec.aliases || [];
         for (var ai = 0; ai < aliases.length; ai++) {
           var aliasNorm = normModal(aliases[ai]);
           if (!aliasNorm) continue;
-          MODALIDAD_OPTION_BY_LABEL[aliasNorm] = { group: g, label: label, key: spec.key || '' };
+          if (!MODALIDAD_OPTION_BY_LABEL[aliasNorm]) MODALIDAD_OPTION_BY_LABEL[aliasNorm] = [];
+          MODALIDAD_OPTION_BY_LABEL[aliasNorm].push({ group: g, label: label, key: spec.key || '' });
         }
       }
     }
+  }
+
+  function resolveModalidadMatch(normValue, preferGroup, strictPrefer) {
+    var list = MODALIDAD_OPTION_BY_LABEL[normValue] || [];
+    if (!list.length) return null;
+    if (preferGroup) {
+      for (var i = 0; i < list.length; i++) {
+        if ((list[i] || {}).group === preferGroup) return list[i];
+      }
+      if (strictPrefer) return null;
+    }
+    return list[0] || null;
   }
 
   function normModal(v) {
@@ -696,9 +720,12 @@
 
     var restNorm = normModal(rest);
     var resolvedGroup = group || '';
-    var match = MODALIDAD_OPTION_BY_LABEL[restNorm] || MODALIDAD_OPTION_BY_LABEL[textNorm] || null;
+    var match = resolveModalidadMatch(restNorm, resolvedGroup, true)
+      || resolveModalidadMatch(textNorm, resolvedGroup, true)
+      || resolveModalidadMatch(restNorm, resolvedGroup, false)
+      || resolveModalidadMatch(textNorm, resolvedGroup, false);
     if (!match && resolvedGroup) {
-      match = MODALIDAD_OPTION_BY_LABEL[normModal((MODALIDAD_GROUP_LABELS[resolvedGroup] || '') + ' ' + rest)] || null;
+      match = resolveModalidadMatch(normModal((MODALIDAD_GROUP_LABELS[resolvedGroup] || '') + ' ' + rest), resolvedGroup, false);
     }
     if (match) {
       specific = match.label;
@@ -785,6 +812,13 @@
     var hidden = byId('modalidad_trabajo_hidden');
     var select = byId('modalidad_especifica_select');
     var otherInput = byId('modalidad_otro_text');
+    var preCheckedGroup = document.querySelector('input[name="modalidad_grupo"]:checked');
+    var preSelectedSpecific = select ? (select.value || '').trim() : '';
+    var preOtherText = otherInput ? (otherInput.value || '').trim() : '';
+    if (preCheckedGroup || preSelectedSpecific || preOtherText) {
+      syncModalidadGuided(false);
+      return;
+    }
     var initialRaw = hidden ? (hidden.value || '').trim() : '';
     var parsed = parseStoredModalidad(initialRaw);
     if (parsed.group) {

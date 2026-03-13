@@ -129,6 +129,7 @@ from utils.pasaje_mode import (
 )
 from utils.modalidad import (
     canonicalize_modalidad_trabajo,
+    split_modalidad_for_ui,
     should_preserve_existing_modalidad_on_edit,
 )
 from utils.timezone import (
@@ -5815,6 +5816,9 @@ def editar_solicitud_admin(cliente_id, id):
     form = AdminSolicitudForm(obj=s)
     public_pasaje_mode = "aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido"
     public_pasaje_otro = ""
+    public_modalidad_group = ""
+    public_modalidad_specific = ""
+    public_modalidad_other = ""
 
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
@@ -5912,6 +5916,11 @@ def editar_solicitud_admin(cliente_id, id):
 
         # Detalles específicos (JSONB)
         _populate_form_detalles_from_solicitud(form, s)
+        modalidad_raw = form.modalidad_trabajo.data if hasattr(form, "modalidad_trabajo") else ""
+        modalidad_ui = split_modalidad_for_ui(modalidad_raw)
+        public_modalidad_group = modalidad_ui.get("group", "")
+        public_modalidad_specific = modalidad_ui.get("specific", "")
+        public_modalidad_other = modalidad_ui.get("other", "")
 
     if request.method == "POST":
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
@@ -6057,6 +6066,9 @@ def editar_solicitud_admin(cliente_id, id):
         nuevo=False,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
+        public_modalidad_group=public_modalidad_group,
+        public_modalidad_specific=public_modalidad_specific,
+        public_modalidad_other=public_modalidad_other,
     )
 
 

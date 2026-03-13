@@ -5,6 +5,7 @@ from admin.forms import AdminSolicitudForm
 from clientes.forms import SolicitudForm, SolicitudPublicaForm, SolicitudClienteNuevoPublicaForm
 from utils.modalidad import (
     canonicalize_modalidad_trabajo,
+    split_modalidad_for_ui,
     should_preserve_existing_modalidad_on_edit,
 )
 
@@ -100,3 +101,39 @@ def test_should_not_preserve_existing_modalidad_when_specific_is_submitted():
         submitted_specific="Con dormida 💤 lunes a viernes",
         submitted_other="",
     )
+
+
+def test_split_modalidad_for_ui_precarga_con_dormida_quincenal():
+    parsed = split_modalidad_for_ui("Con dormida 💤 quincenal")
+    assert parsed == {
+        "group": "con_dormida",
+        "specific": "Con dormida 💤 quincenal",
+        "other": "",
+    }
+
+
+def test_split_modalidad_for_ui_precarga_con_dormida_fin_semana():
+    parsed = split_modalidad_for_ui("Con dormida 💤 fin de semana")
+    assert parsed == {
+        "group": "con_dormida",
+        "specific": "Con dormida 💤 fin de semana",
+        "other": "",
+    }
+
+
+def test_split_modalidad_for_ui_precarga_salida_diaria_lunes_sabado():
+    parsed = split_modalidad_for_ui("Salida diaria - lunes a sábado")
+    assert parsed == {
+        "group": "con_salida_diaria",
+        "specific": "Salida diaria - lunes a sábado",
+        "other": "",
+    }
+
+
+def test_split_modalidad_for_ui_soporta_alias_normalizado():
+    parsed = split_modalidad_for_ui("Salida diaria 1 dia a la semana")
+    assert parsed == {
+        "group": "con_salida_diaria",
+        "specific": "Salida diaria - 1 día a la semana",
+        "other": "",
+    }
