@@ -3,7 +3,10 @@
 from app import app as flask_app
 from admin.forms import AdminSolicitudForm
 from clientes.forms import SolicitudForm, SolicitudPublicaForm, SolicitudClienteNuevoPublicaForm
-from utils.modalidad import canonicalize_modalidad_trabajo
+from utils.modalidad import (
+    canonicalize_modalidad_trabajo,
+    should_preserve_existing_modalidad_on_edit,
+)
 
 
 def test_modalidad_otro_salida_diaria_no_duplica_prefijo():
@@ -69,4 +72,31 @@ def test_publico_cliente_nuevo_form_normaliza_modalidad_otro():
         SolicitudClienteNuevoPublicaForm,
         "Con dormida 💤 otro: con dormida quincenal",
         "Con dormida 💤 quincenal",
+    )
+
+
+def test_should_preserve_existing_modalidad_when_submitted_empty():
+    assert should_preserve_existing_modalidad_on_edit(
+        existing_value="Salida diaria - lunes a viernes",
+        submitted_value="",
+    )
+
+
+def test_should_preserve_existing_modalidad_when_submitted_group_only_without_specific():
+    assert should_preserve_existing_modalidad_on_edit(
+        existing_value="Con dormida 💤 quincenal",
+        submitted_value="Con dormida 💤",
+        submitted_group="con_dormida",
+        submitted_specific="",
+        submitted_other="",
+    )
+
+
+def test_should_not_preserve_existing_modalidad_when_specific_is_submitted():
+    assert not should_preserve_existing_modalidad_on_edit(
+        existing_value="Con dormida 💤 quincenal",
+        submitted_value="Con dormida 💤 lunes a viernes",
+        submitted_group="con_dormida",
+        submitted_specific="Con dormida 💤 lunes a viernes",
+        submitted_other="",
     )

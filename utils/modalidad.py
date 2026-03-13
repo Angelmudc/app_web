@@ -7,6 +7,10 @@ import unicodedata
 
 _SPACE_RE = re.compile(r"\s+")
 _LEAD_OTHER_RE = re.compile(r"^\s*otro\s*[:\-]?\s*", re.IGNORECASE)
+_GROUP_LABELS = {
+    "con_dormida": "Con dormida 💤",
+    "con_salida_diaria": "Salida diaria",
+}
 
 
 def _clean_spaces(text: str) -> str:
@@ -42,11 +46,11 @@ def _detect_group(raw: str) -> str:
 
 
 def _group_label(group: str) -> str:
-    if group == "con_dormida":
-        return "Con dormida 💤"
-    if group == "con_salida_diaria":
-        return "Salida diaria"
-    return ""
+    return _GROUP_LABELS.get(group, "")
+
+
+def _group_label_values() -> set[str]:
+    return {v for v in _GROUP_LABELS.values() if v}
 
 
 def _strip_group_prefix(text: str, group: str) -> str:
@@ -121,3 +125,49 @@ def canonicalize_modalidad_trabajo(raw_value: str | None) -> str:
             return "Salida diaria - fin de semana"
 
     return raw
+
+
+def should_preserve_existing_modalidad_on_edit(
+    existing_value: str | None,
+    submitted_value: str | None,
+    submitted_group: str | None = None,
+    submitted_specific: str | None = None,
+    submitted_other: str | None = None,
+) -> bool:
+    """
+    Evita pérdida silenciosa en edición cuando la UI guiada reenvía un valor
+    degradado (vacío o solo etiqueta de grupo) y la solicitud ya tenía
+    modalidad específica guardada.
+    """
+    existing = _clean_spaces(existing_value or "")
+    submitted = _clean_spaces(submitted_value or "")
+    if not existing:
+        return False
+    if not submitted:
+        return True
+
+    group = (submitted_group or "").strip()
+    specific = _clean_spaces(submitted_specific or "")
+    other = _clean_spaces(submitted_other or "")
+
+    # Si el usuario envió una selección específica o texto "otro", no preservar.
+    if specific or other:
+        return False
+
+    submitted_norm = _norm(submitted)
+    existing_norm = _norm(existing)
+    group_labels_norm = {_norm(lbl) for lbl in _group_label_values()}
+
+    # Solo proteger cuando lo enviado es una etiqueta de grupo "pura".
+    if submitted_norm not in group_labels_norm:
+        return False
+
+    # Si lo existente ya era exactamente el grupo, no hay nada que preservar.
+    if existing_norm == submitted_norm:
+        return False
+
+    # Si en el POST no viene grupo/específica, también consideramos degradación.
+    if not group and not specific:
+        return True
+
+    return True

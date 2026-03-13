@@ -127,7 +127,10 @@ from utils.pasaje_mode import (
     read_pasaje_mode_text,
     strip_pasaje_marker_from_note,
 )
-from utils.modalidad import canonicalize_modalidad_trabajo
+from utils.modalidad import (
+    canonicalize_modalidad_trabajo,
+    should_preserve_existing_modalidad_on_edit,
+)
 from utils.timezone import (
     format_rd_datetime,
     iso_utc_z,
@@ -5924,9 +5927,23 @@ def editar_solicitud_admin(cliente_id, id):
     # ─────────────────────────────────────────
     if form.validate_on_submit():
         try:
+            prev_modalidad = (getattr(s, "modalidad_trabajo", "") or "").strip()
             def _persist_solicitud_update(_attempt: int):
                 form.populate_obj(s)
                 _normalize_modalidad_on_solicitud(s)
+                submitted_modalidad = (
+                    (getattr(form, "modalidad_trabajo", None).data or "").strip()
+                    if hasattr(form, "modalidad_trabajo")
+                    else ""
+                )
+                if hasattr(s, "modalidad_trabajo") and should_preserve_existing_modalidad_on_edit(
+                    existing_value=prev_modalidad,
+                    submitted_value=submitted_modalidad,
+                    submitted_group=request.form.get("modalidad_grupo"),
+                    submitted_specific=request.form.get("modalidad_especifica"),
+                    submitted_other=request.form.get("modalidad_otro_text"),
+                ):
+                    s.modalidad_trabajo = prev_modalidad or None
 
                 if hasattr(form, 'sueldo'):
                     try:

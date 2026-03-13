@@ -22,15 +22,15 @@
     {'key': 'sd_1_dia', 'label': 'Salida diaria - 1 día a la semana', 'aliases': ['1 día a la semana', 'Un día a la semana']},
     {'key': 'sd_2_dias', 'label': 'Salida diaria - 2 días a la semana', 'aliases': ['2 días a la semana', 'Dos días a la semana']},
     {'key': 'sd_3_dias', 'label': 'Salida diaria - 3 días a la semana', 'aliases': ['3 días a la semana', 'Tres días a la semana']},
-    {'key': 'sd_l_v', 'label': 'Salida diaria - lunes a viernes', 'aliases': ['Lunes a Viernes']},
+    {'key': 'sd_l_v', 'label': 'Salida diaria - lunes a viernes', 'aliases': ['Lunes a Viernes', 'Salida diaria lunes a viernes']},
     {'key': 'sd_l_s', 'label': 'Salida diaria - lunes a sábado', 'aliases': ['Lunes a Sábado']},
-    {'key': 'sd_fin_semana', 'label': 'Salida diaria - fin de semana', 'aliases': ['Sábado y Domingo', 'Viernes a Lunes']},
+    {'key': 'sd_fin_semana', 'label': 'Salida diaria - fin de semana', 'aliases': ['Sábado y Domingo', 'Viernes a Lunes', 'Fin de semana']},
     {'key': 'otro', 'label': 'Salida diaria otro', 'aliases': ['Otro', 'Salida diaria - Otro']}
   ],
   'con_dormida': [
     {'key': 'cd_l_v', 'label': 'Con dormida 💤 lunes a viernes', 'aliases': ['Lunes a Viernes', 'Con dormida - Lunes a Viernes']},
-    {'key': 'cd_l_s', 'label': 'Con dormida 💤 lunes a sábado', 'aliases': ['Lunes a sábado, sale sábado después del medio día']},
-    {'key': 'cd_quincenal', 'label': 'Con dormida 💤 quincenal', 'aliases': ['Salida Quincenal, sale viernes después del medio día']},
+    {'key': 'cd_l_s', 'label': 'Con dormida 💤 lunes a sábado', 'aliases': ['Lunes a sábado', 'Lunes a sábado, sale sábado después del medio día']},
+    {'key': 'cd_quincenal', 'label': 'Con dormida 💤 quincenal', 'aliases': ['Quincenal', 'Con dormida quincenal', 'Con dormida 💤 quincenal', 'Salida Quincenal, sale viernes después del medio día']},
     {'key': 'cd_fin_semana', 'label': 'Con dormida 💤 fin de semana', 'aliases': ['Sábado y Domingo', 'Viernes a Lunes']},
     {'key': 'otro', 'label': 'Con dormida 💤 otro', 'aliases': ['Otro', 'Con dormida - Otro']}
   ]
@@ -785,7 +785,8 @@
     var hidden = byId('modalidad_trabajo_hidden');
     var select = byId('modalidad_especifica_select');
     var otherInput = byId('modalidad_otro_text');
-    var parsed = parseStoredModalidad(hidden ? hidden.value : '');
+    var initialRaw = hidden ? (hidden.value || '').trim() : '';
+    var parsed = parseStoredModalidad(initialRaw);
     if (parsed.group) {
       var groupRadio = selectedByName('modalidad_grupo', parsed.group);
       if (groupRadio) groupRadio.checked = true;
@@ -798,6 +799,9 @@
       otherInput.value = parsed.other;
     }
     syncModalidadGuided(false);
+    if (hidden && initialRaw && !parsed.specific && !parsed.other) {
+      hidden.value = initialRaw;
+    }
   }
 
   function syncNinosRules(fromUserEvent) {
