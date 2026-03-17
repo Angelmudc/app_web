@@ -105,6 +105,8 @@ def test_new_public_form_token_get_renders_personal_block_and_shared_request_bod
     assert 'name="modalidad_grupo" value="con_salida_diaria"' in html
     assert 'property="og:title"' in html
     assert 'property="og:description"' in html
+    assert 'property="og:title" content="Doméstica del Cibao A&amp;D — Formulario de Solicitud"' in html
+    assert 'property="og:description" content="Formulario oficial para completar su solicitud."' in html
     assert 'property="og:image"' in html
     assert 'name="twitter:card"' in html
     assert 'domestica-preview.png' in html
@@ -339,6 +341,8 @@ def test_new_public_short_route_renders_with_consistent_preview_metadata():
     assert 'name="twitter:card"' in html
     assert 'name="twitter:title"' in html
     assert 'name="twitter:description"' in html
+    assert 'name="twitter:title" content="Doméstica del Cibao A&amp;D — Formulario de Solicitud"' in html
+    assert 'name="twitter:description" content="Formulario oficial para completar su solicitud."' in html
     assert 'name="twitter:image"' in html
     assert 'name="twitter:image:alt"' in html
     assert '/clientes/n/tok123' in html

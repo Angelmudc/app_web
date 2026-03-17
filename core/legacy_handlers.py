@@ -491,6 +491,149 @@ def search_candidatas_limited(
     return rows
 
 
+def _prioritize_candidata_result(
+    rows: list,
+    prioritized_fila: Optional[int],
+) -> list:
+    """Mueve al inicio la fila indicada, si está en la lista de resultados."""
+    if not rows:
+        return rows
+    try:
+        target = int(prioritized_fila or 0)
+    except Exception:
+        return rows
+    if target <= 0:
+        return rows
+    idx = next((i for i, row in enumerate(rows) if int(getattr(row, "fila", 0) or 0) == target), None)
+    if idx is None or idx <= 0:
+        return rows
+    ordered = list(rows)
+    ordered.insert(0, ordered.pop(idx))
+    return ordered
+
+
+def _legacy_buscar_trace(event: str, **payload) -> None:
+    """Traza diagnóstica ligera para flujo legacy buscar/editar."""
+    enabled = str(os.getenv("LEGACY_BUSCAR_TRACE", "0")).strip().lower() in {"1", "true", "yes", "on"}
+    if not enabled:
+        return
+    try:
+        current_app.logger.info("legacy.buscar.%s %s", event, json.dumps(payload, ensure_ascii=False, default=str))
+    except Exception:
+        current_app.logger.info("legacy.buscar.%s %s", event, payload)
+
+
+def _trace_preview(value, max_len: int = 180):
+    if value is None:
+        return None
+    txt = str(value)
+    if len(txt) <= max_len:
+        return txt
+    return f"{txt[:max_len]}…[{len(txt)} chars]"
+
+
+def _trace_request_form_snapshot() -> dict:
+    snap = {}
+    try:
+        for key in request.form.keys():
+            vals = request.form.getlist(key)
+            snap[key] = [_trace_preview(v, 160) for v in vals]
+    except Exception as exc:
+        snap["__error__"] = str(exc)
+    return snap
+
+
+def _legacy_db_trace_enabled() -> bool:
+    return str(os.getenv("LEGACY_DB_TRACE", "1")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _db_runtime_snapshot() -> dict:
+    """Snapshot de runtime para verificar fuente de datos/engine/sesión."""
+    snapshot = {
+        "app_env": (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "").strip().lower() or None,
+        "config_uri": (current_app.config.get("SQLALCHEMY_DATABASE_URI") or ""),
+        "cache_type": (current_app.config.get("CACHE_TYPE") or ""),
+    }
+    try:
+        engine = db.engine
+        engine_url = str(getattr(engine, "url", "") or "")
+        snapshot["engine_url"] = engine_url
+        snapshot["engine_id"] = id(engine)
+        snapshot["pool_id"] = id(getattr(engine, "pool", None))
+        snapshot["dialect"] = str(getattr(engine, "dialect", None).name if getattr(engine, "dialect", None) else "")
+        snapshot["is_sqlite"] = bool(engine_url.startswith("sqlite:"))
+        if snapshot["is_sqlite"]:
+            snapshot["sqlite_path"] = engine_url.replace("sqlite:///", "", 1)
+    except Exception as exc:
+        snapshot["engine_error"] = str(exc)
+    try:
+        sess = db.session()
+        snapshot["session_obj_id"] = id(sess)
+        bind = None
+        try:
+            bind = sess.get_bind()
+        except Exception:
+            bind = None
+        snapshot["session_bind_id"] = id(bind) if bind is not None else None
+        snapshot["session_bind_url"] = str(getattr(bind, "url", "") or "") if bind is not None else None
+    except Exception as exc:
+        snapshot["session_error"] = str(exc)
+    return snapshot
+
+
+def _query_candidata_snapshot_session(fila_id: int) -> dict:
+    try:
+        cand = db.session.get(Candidata, int(fila_id))
+        if not cand:
+            return {"exists": False}
+        return {
+            "exists": True,
+            "fila": int(getattr(cand, "fila", 0) or 0),
+            "nombre_completo": getattr(cand, "nombre_completo", None),
+            "numero_telefono": getattr(cand, "numero_telefono", None),
+            "empleo_anterior": getattr(cand, "empleo_anterior", None),
+            "referencias_laboral": getattr(cand, "referencias_laboral", None),
+            "referencias_familiares": getattr(cand, "referencias_familiares", None),
+        }
+    except Exception as exc:
+        return {"exists": False, "error": str(exc)}
+
+
+def _query_candidata_snapshot_fresh_connection(fila_id: int) -> dict:
+    stmt = text(
+        """
+        SELECT fila, nombre_completo, numero_telefono, empleo_anterior, referencias_laboral, referencias_familiares
+        FROM candidatas
+        WHERE fila = :f
+        """
+    )
+    try:
+        with db.engine.connect() as conn:
+            row = conn.execute(stmt, {"f": int(fila_id)}).mappings().first()
+        if not row:
+            return {"exists": False}
+        return {
+            "exists": True,
+            "fila": int(row.get("fila") or 0),
+            "nombre_completo": row.get("nombre_completo"),
+            "numero_telefono": row.get("numero_telefono"),
+            "empleo_anterior": row.get("empleo_anterior"),
+            "referencias_laboral": row.get("referencias_laboral"),
+            "referencias_familiares": row.get("referencias_familiares"),
+        }
+    except Exception as exc:
+        return {"exists": False, "error": str(exc)}
+
+
+def _legacy_buscar_db_trace(event: str, **payload) -> None:
+    """Traza de DB/engine/sesión para diagnosticar doble fuente de datos."""
+    if not _legacy_db_trace_enabled():
+        return
+    data = dict(payload or {})
+    data["db_runtime"] = _db_runtime_snapshot()
+    _legacy_buscar_trace(event, **data)
+
+
 def get_candidata_by_id(raw_id):
     """Obtiene una candidata por ID de forma segura; retorna None si no es válido."""
     cid = str(raw_id or "").strip()
@@ -1369,6 +1512,8 @@ def registro_interno():
                 sabe_planchar=sabe_planchar,
                 contactos_referencias_laborales=ref_lab,
                 referencias_familiares_detalle=ref_fam,
+                referencias_laboral=ref_lab,
+                referencias_familiares=ref_fam,
                 acepta_porcentaje_sueldo=acepta_pct,
                 cedula=cedula_store,
                 disponibilidad_inicio=disponibilidad_inicio,
@@ -1611,11 +1756,8 @@ def _verify_candidata_docs_saved(candidata_id: int, expected_fields: dict[str, i
 def _verify_candidata_fields_saved(
     candidata_id: int,
     expected_fields: dict[str, object],
-    fallback_obj=None,
 ) -> bool:
     cand = _get_candidata_by_fila_or_pk(candidata_id)
-    if not cand and fallback_obj is not None:
-        cand = fallback_obj
     if not cand:
         return False
     for field_name, expected in (expected_fields or {}).items():
@@ -2460,10 +2602,33 @@ def buscar_candidata():
     ).strip()[:128]
 
     resultados, candidata, mensaje = [], None, None
+    edit_form_overrides = {}
+    _legacy_buscar_db_trace(
+        "request_start",
+        method=request.method,
+        path=request.path,
+        candidata_id_form=(request.form.get("candidata_id") or "").strip() if request.method == "POST" else None,
+        candidata_id_query=(request.args.get("candidata_id") or "").strip() if request.method == "GET" else None,
+        busqueda=(request.values.get("busqueda") or "").strip()[:128] or None,
+    )
+    if request.method == "POST":
+        _legacy_buscar_trace(
+            "post_form_snapshot",
+            keys=sorted(list(request.form.keys())),
+            form=_trace_request_form_snapshot(),
+            guardar_edicion_present=("guardar_edicion" in request.form),
+            guardar_edicion_value=_trace_preview(request.form.get("guardar_edicion")),
+        )
 
     # Guardar edición
     if request.method == 'POST' and request.form.get('guardar_edicion'):
         cid = (request.form.get('candidata_id') or '').strip()
+        _legacy_buscar_trace(
+            "post_received",
+            candidata_id=cid,
+            busqueda=busqueda,
+            path=request.path,
+        )
         if cid.isdigit():
             obj = get_candidata_by_id(cid)
             if obj:
@@ -2490,26 +2655,81 @@ def buscar_candidata():
                     "motivacion_trabajo",
                 ]
                 before_snapshot = snapshot_model_fields(obj, audit_fields)
+                _legacy_buscar_trace(
+                    "post_target_loaded",
+                    candidata_id_form=cid,
+                    fila_obj=getattr(obj, "fila", None),
+                    before_nombre=getattr(obj, "nombre_completo", None),
+                    before_telefono=getattr(obj, "numero_telefono", None),
+                    before_empleo=getattr(obj, "empleo_anterior", None),
+                )
+
+                def _trace_field_apply(field_name: str, form_key: str, before_value, after_value):
+                    _legacy_buscar_trace(
+                        "post_field_apply",
+                        candidata_id_form=cid,
+                        fila_obj=getattr(obj, "fila", None),
+                        field=field_name,
+                        form_key=form_key,
+                        in_form=(form_key in request.form),
+                        before=_trace_preview(before_value),
+                        received=_trace_preview(request.form.get(form_key)),
+                        after=_trace_preview(after_value),
+                    )
+
                 # Limites razonables por campo para evitar payloads enormes
+                before_value = obj.nombre_completo
                 obj.nombre_completo                  = (request.form.get('nombre') or '').strip()[:150] or obj.nombre_completo
+                _trace_field_apply("nombre_completo", "nombre", before_value, obj.nombre_completo)
+                before_value = obj.edad
                 obj.edad                             = (request.form.get('edad') or '').strip()[:10] or obj.edad
+                _trace_field_apply("edad", "edad", before_value, obj.edad)
+                before_value = obj.numero_telefono
                 obj.numero_telefono                  = (request.form.get('telefono') or '').strip()[:30] or obj.numero_telefono
+                _trace_field_apply("numero_telefono", "telefono", before_value, obj.numero_telefono)
+                before_value = obj.direccion_completa
                 obj.direccion_completa               = (request.form.get('direccion') or '').strip()[:250] or obj.direccion_completa
+                _trace_field_apply("direccion_completa", "direccion", before_value, obj.direccion_completa)
+                before_value = obj.modalidad_trabajo_preferida
                 obj.modalidad_trabajo_preferida      = (request.form.get('modalidad') or '').strip()[:100] or obj.modalidad_trabajo_preferida
+                _trace_field_apply("modalidad_trabajo_preferida", "modalidad", before_value, obj.modalidad_trabajo_preferida)
+                before_value = obj.rutas_cercanas
                 obj.rutas_cercanas                   = (request.form.get('rutas') or '').strip()[:150] or obj.rutas_cercanas
+                _trace_field_apply("rutas_cercanas", "rutas", before_value, obj.rutas_cercanas)
+                before_value = obj.empleo_anterior
                 obj.empleo_anterior                  = (request.form.get('empleo_anterior') or '').strip()[:150] or obj.empleo_anterior
+                _trace_field_apply("empleo_anterior", "empleo_anterior", before_value, obj.empleo_anterior)
+                before_value = obj.anos_experiencia
                 obj.anos_experiencia                 = (request.form.get('anos_experiencia') or '').strip()[:50] or obj.anos_experiencia
+                _trace_field_apply("anos_experiencia", "anos_experiencia", before_value, obj.anos_experiencia)
+                before_value = obj.areas_experiencia
                 obj.areas_experiencia                = (request.form.get('areas_experiencia') or '').strip()[:200] or obj.areas_experiencia
+                _trace_field_apply("areas_experiencia", "areas_experiencia", before_value, obj.areas_experiencia)
+                before_value = obj.contactos_referencias_laborales
                 obj.contactos_referencias_laborales  = (request.form.get('contactos_referencias_laborales') or '').strip()[:250] or obj.contactos_referencias_laborales
+                _trace_field_apply("contactos_referencias_laborales", "contactos_referencias_laborales", before_value, obj.contactos_referencias_laborales)
+                before_value = obj.referencias_familiares_detalle
                 obj.referencias_familiares_detalle   = (request.form.get('referencias_familiares_detalle') or '').strip()[:250] or obj.referencias_familiares_detalle
+                _trace_field_apply("referencias_familiares_detalle", "referencias_familiares_detalle", before_value, obj.referencias_familiares_detalle)
+                # Mantiene sincronizadas columnas legacy/canónicas de referencias.
+                obj.referencias_laboral              = obj.contactos_referencias_laborales
+                obj.referencias_familiares           = obj.referencias_familiares_detalle
+                _trace_field_apply("referencias_laboral", "contactos_referencias_laborales", before_snapshot.get("referencias_laboral"), obj.referencias_laboral)
+                _trace_field_apply("referencias_familiares", "referencias_familiares_detalle", before_snapshot.get("referencias_familiares"), obj.referencias_familiares)
 
                 # Campos opcionales nuevos (registro público + compatibilidad legacy)
                 if 'disponibilidad_inicio' in request.form:
+                    before_value = obj.disponibilidad_inicio
                     obj.disponibilidad_inicio = (request.form.get('disponibilidad_inicio') or '').strip()[:80] or None
+                    _trace_field_apply("disponibilidad_inicio", "disponibilidad_inicio", before_value, obj.disponibilidad_inicio)
                 if 'sueldo_esperado' in request.form:
+                    before_value = obj.sueldo_esperado
                     obj.sueldo_esperado = (request.form.get('sueldo_esperado') or '').strip()[:80] or None
+                    _trace_field_apply("sueldo_esperado", "sueldo_esperado", before_value, obj.sueldo_esperado)
                 if 'motivacion_trabajo' in request.form:
+                    before_value = obj.motivacion_trabajo
                     obj.motivacion_trabajo = (request.form.get('motivacion_trabajo') or '').strip()[:350] or None
+                    _trace_field_apply("motivacion_trabajo", "motivacion_trabajo", before_value, obj.motivacion_trabajo)
 
                 def _parse_optional_bool(raw: str):
                     val = (raw or '').strip().lower().replace('í', 'i')
@@ -2520,43 +2740,55 @@ def buscar_candidata():
                     return None
 
                 if 'trabaja_con_ninos' in request.form:
+                    before_value = obj.trabaja_con_ninos
                     obj.trabaja_con_ninos = _parse_optional_bool(request.form.get('trabaja_con_ninos'))
+                    _trace_field_apply("trabaja_con_ninos", "trabaja_con_ninos", before_value, obj.trabaja_con_ninos)
                 if 'trabaja_con_mascotas' in request.form:
+                    before_value = obj.trabaja_con_mascotas
                     obj.trabaja_con_mascotas = _parse_optional_bool(request.form.get('trabaja_con_mascotas'))
+                    _trace_field_apply("trabaja_con_mascotas", "trabaja_con_mascotas", before_value, obj.trabaja_con_mascotas)
                 if 'puede_dormir_fuera' in request.form:
+                    before_value = obj.puede_dormir_fuera
                     obj.puede_dormir_fuera = _parse_optional_bool(request.form.get('puede_dormir_fuera'))
+                    _trace_field_apply("puede_dormir_fuera", "puede_dormir_fuera", before_value, obj.puede_dormir_fuera)
 
                 cedula_edit_raw = (request.form.get('cedula') or '').strip()[:50]
+                cedula_valid_for_update = False
                 if cedula_edit_raw:
                     cedula_edit_digits = normalize_cedula_for_compare(cedula_edit_raw)
                     if not cedula_edit_digits:
-                        mensaje = "❌ Cédula inválida."
-                        candidata = obj
-                        return render_template(
-                            'buscar.html',
-                            busqueda=busqueda,
-                            resultados=resultados,
-                            candidata=candidata,
-                            mensaje=mensaje
+                        _legacy_buscar_trace(
+                            "post_validation_warning",
+                            reason="cedula_invalid",
+                            candidata_id_form=cid,
+                            received_cedula=_trace_preview(cedula_edit_raw),
                         )
+                        mensaje = "⚠️ Cédula inválida: se guardaron los demás campos, pero la cédula no se actualizó."
+                        edit_form_overrides["cedula"] = cedula_edit_raw
 
-                    dup, _ = find_duplicate_candidata_by_cedula(
-                        cedula_edit_raw,
-                        exclude_fila=getattr(obj, 'fila', None)
-                    )
-                    if dup:
-                        mensaje = duplicate_cedula_message(dup)
-                        candidata = obj
-                        return render_template(
-                            'buscar.html',
-                            busqueda=busqueda,
-                            resultados=resultados,
-                            candidata=candidata,
-                            mensaje=mensaje
+                    dup = None
+                    if not mensaje:
+                        dup, _ = find_duplicate_candidata_by_cedula(
+                            cedula_edit_raw,
+                            exclude_fila=getattr(obj, 'fila', None)
                         )
+                    if dup:
+                        _legacy_buscar_trace(
+                            "post_validation_warning",
+                            reason="cedula_duplicate",
+                            candidata_id_form=cid,
+                            received_cedula=_trace_preview(cedula_edit_raw),
+                            duplicate_fila=getattr(dup, "fila", None),
+                        )
+                        mensaje = "⚠️ Cédula duplicada: se guardaron los demás campos, pero la cédula no se actualizó."
+                        edit_form_overrides["cedula"] = cedula_edit_raw
 
                     # En edición no se reescribe formato automáticamente.
-                    obj.cedula = cedula_edit_raw
+                    if not mensaje:
+                        before_value = obj.cedula
+                        obj.cedula = cedula_edit_raw
+                        cedula_valid_for_update = True
+                        _trace_field_apply("cedula", "cedula", before_value, obj.cedula)
                 # ⚠️ IMPORTANTE:
                 # Los campos booleanos NO deben resetearse a False si el formulario no los trae.
                 # (Checkboxes no marcados a veces NO se envían; eso estaba borrando valores.)
@@ -2565,12 +2797,16 @@ def buscar_candidata():
                 if 'sabe_planchar' in request.form:
                     v_planchar = (request.form.get('sabe_planchar') or '').strip().lower()
                     # Acepta varios formatos: 'si', 'sí', 'true', '1', 'on'
+                    before_value = obj.sabe_planchar
                     obj.sabe_planchar = v_planchar in ('si', 'sí', 'true', '1', 'on')
+                    _trace_field_apply("sabe_planchar", "sabe_planchar", before_value, obj.sabe_planchar)
 
                 # Acepta porcentaje: solo actualizar si el form trae el campo
                 if 'acepta_porcentaje' in request.form:
                     v_pct = (request.form.get('acepta_porcentaje') or '').strip().lower()
+                    before_value = obj.acepta_porcentaje_sueldo
                     obj.acepta_porcentaje_sueldo = v_pct in ('si', 'sí', 'true', '1', 'on')
+                    _trace_field_apply("acepta_porcentaje_sueldo", "acepta_porcentaje", before_value, obj.acepta_porcentaje_sueldo)
 
                 expected_verify = {
                     "nombre_completo": (obj.nombre_completo or "").strip(),
@@ -2584,8 +2820,11 @@ def buscar_candidata():
                     "areas_experiencia": (obj.areas_experiencia or "").strip(),
                     "contactos_referencias_laborales": (obj.contactos_referencias_laborales or "").strip(),
                     "referencias_familiares_detalle": (obj.referencias_familiares_detalle or "").strip(),
-                    "cedula": (obj.cedula or "").strip(),
+                    "referencias_laboral": (obj.referencias_laboral or "").strip(),
+                    "referencias_familiares": (obj.referencias_familiares or "").strip(),
                 }
+                if cedula_valid_for_update:
+                    expected_verify["cedula"] = (obj.cedula or "").strip()
                 if 'disponibilidad_inicio' in request.form:
                     expected_verify["disponibilidad_inicio"] = (obj.disponibilidad_inicio or "").strip() or None
                 if 'sueldo_esperado' in request.form:
@@ -2603,15 +2842,46 @@ def buscar_candidata():
                 if 'puede_dormir_fuera' in request.form:
                     expected_verify["puede_dormir_fuera"] = obj.puede_dormir_fuera
 
+                _legacy_buscar_trace(
+                    "post_before_persist",
+                    candidata_id_form=cid,
+                    fila_obj=getattr(obj, "fila", None),
+                    expected_verify_keys=sorted(list(expected_verify.keys())),
+                )
                 result = execute_robust_save(
                     session=db.session,
                     persist_fn=lambda _attempt: None,
-                    verify_fn=lambda: _verify_candidata_fields_saved(int(obj.fila), expected_verify, fallback_obj=obj),
+                    verify_fn=lambda: _verify_candidata_fields_saved(int(obj.fila), expected_verify),
+                )
+                _legacy_buscar_trace(
+                    "post_after_persist",
+                    candidata_id_form=cid,
+                    fila_obj=getattr(obj, "fila", None),
+                    ok=bool(result.ok),
+                    attempts=int(result.attempts),
+                    error=(result.error_message or ""),
                 )
 
                 if result.ok:
                     after_snapshot = snapshot_model_fields(obj, audit_fields)
                     changes = diff_snapshots(before_snapshot, after_snapshot)
+                    session["last_edited_candidata_fila"] = int(obj.fila)
+                    _legacy_buscar_db_trace(
+                        "post_persist_consistency",
+                        candidata_id_form=cid,
+                        fila_obj=getattr(obj, "fila", None),
+                        value_same_session=_query_candidata_snapshot_session(int(obj.fila)),
+                        value_fresh_connection=_query_candidata_snapshot_fresh_connection(int(obj.fila)),
+                    )
+                    _legacy_buscar_trace(
+                        "post_saved_ok",
+                        candidata_id_form=cid,
+                        fila_obj=getattr(obj, "fila", None),
+                        attempts=int(result.attempts),
+                        after_nombre=getattr(obj, "nombre_completo", None),
+                        after_telefono=getattr(obj, "numero_telefono", None),
+                        after_empleo=getattr(obj, "empleo_anterior", None),
+                    )
                     log_candidata_action(
                         action_type="CANDIDATA_EDIT",
                         candidata=obj,
@@ -2620,10 +2890,28 @@ def buscar_candidata():
                         changes=changes,
                         success=True,
                     )
+                    if mensaje:
+                        flash("✅ Datos actualizados (cédula no actualizada).", "warning")
+                        candidata = obj
+                        return render_template(
+                            'buscar.html',
+                            busqueda=busqueda,
+                            resultados=resultados,
+                            candidata=candidata,
+                            mensaje=mensaje,
+                            edit_form_overrides=edit_form_overrides,
+                        )
                     flash("✅ Datos actualizados correctamente.", "success")
                     return redirect(url_for('buscar_candidata', candidata_id=cid))
 
                 error_message = (result.error_message or "").lower()
+                _legacy_buscar_trace(
+                    "post_saved_fail",
+                    candidata_id_form=cid,
+                    fila_obj=getattr(obj, "fila", None),
+                    attempts=int(result.attempts),
+                    error=(result.error_message or ""),
+                )
                 if "unique" in error_message or "duplicate" in error_message or "cedula" in error_message:
                     log_candidata_action(
                         action_type="CANDIDATA_EDIT",
@@ -2651,9 +2939,25 @@ def buscar_candidata():
                     )
                     mensaje = "❌ Error al guardar. Intenta de nuevo."
             else:
+                _legacy_buscar_trace(
+                    "post_early_return",
+                    reason="candidata_not_found",
+                    candidata_id_form=cid,
+                )
                 mensaje = "⚠️ Candidata no encontrada."
         else:
+            _legacy_buscar_trace(
+                "post_early_return",
+                reason="invalid_candidata_id",
+                candidata_id_form=cid,
+            )
             mensaje = "❌ ID de candidata inválido."
+    elif request.method == "POST":
+        _legacy_buscar_trace(
+            "post_skip_update_branch",
+            reason="guardar_edicion_missing_or_empty",
+            keys=sorted(list(request.form.keys())),
+        )
 
     # Carga detalles (GET ?candidata_id=)
     cid = (request.args.get('candidata_id') or '').strip()
@@ -2661,11 +2965,40 @@ def buscar_candidata():
         candidata = get_candidata_by_id(cid)
         if not candidata:
             mensaje = "⚠️ Candidata no encontrada."
+        else:
+            session["last_edited_candidata_fila"] = int(candidata.fila)
+            _legacy_buscar_trace(
+                "get_open_candidate",
+                candidata_id_query=cid,
+                fila_obj=getattr(candidata, "fila", None),
+                nombre=getattr(candidata, "nombre_completo", None),
+            )
 
     # ================== BÚSQUEDA ==================
     if busqueda and not candidata:
         try:
-            resultados = search_candidatas_limited(busqueda, limit=300)
+            resultados = search_candidatas_limited(
+                busqueda,
+                limit=300,
+                order_mode="id_desc",
+                log_label="buscar",
+            )
+            resultados = _prioritize_candidata_result(
+                resultados,
+                session.get("last_edited_candidata_fila"),
+            )
+            _legacy_buscar_trace(
+                "search_results",
+                busqueda=busqueda,
+                filas=[int(getattr(r, "fila", 0) or 0) for r in (resultados or [])[:10]],
+                total=len(resultados or []),
+                last_edited=session.get("last_edited_candidata_fila"),
+            )
+            _legacy_buscar_db_trace(
+                "search_results_db",
+                busqueda=busqueda,
+                first_fila=int(getattr((resultados or [None])[0], "fila", 0) or 0) if resultados else None,
+            )
 
             if not resultados:
                 mensaje = "⚠️ No se encontraron coincidencias."
@@ -2680,7 +3013,8 @@ def buscar_candidata():
         busqueda=busqueda,
         resultados=resultados,
         candidata=candidata,
-        mensaje=mensaje
+        mensaje=mensaje,
+        edit_form_overrides=edit_form_overrides,
     )
 
 
@@ -4257,7 +4591,23 @@ def referencias():
         termino = (request.form.get('busqueda') or '').strip()[:128]
         if termino:
             try:
-                filas = search_candidatas_limited(termino, limit=300)
+                filas = search_candidatas_limited(
+                    termino,
+                    limit=300,
+                    order_mode="id_desc",
+                    log_label="referencias",
+                )
+                filas = _prioritize_candidata_result(
+                    filas,
+                    session.get("last_edited_candidata_fila"),
+                )
+                _legacy_buscar_trace(
+                    "referencias_search_results",
+                    termino=termino,
+                    filas=[int(getattr(r, "fila", 0) or 0) for r in (filas or [])[:10]],
+                    total=len(filas or []),
+                    last_edited=session.get("last_edited_candidata_fila"),
+                )
             except Exception:
                 current_app.logger.exception("❌ Error buscando candidatas en /referencias")
                 filas = []
@@ -4315,6 +4665,8 @@ def referencias():
 
             candidata.referencias_laboral = cand_ref_lab
             candidata.referencias_familiares = cand_ref_fam
+            candidata.contactos_referencias_laborales = cand_ref_lab
+            candidata.referencias_familiares_detalle = cand_ref_fam
             result = execute_robust_save(
                 session=db.session,
                 persist_fn=lambda _attempt: None,
@@ -4323,8 +4675,9 @@ def referencias():
                     {
                         "referencias_laboral": cand_ref_lab,
                         "referencias_familiares": cand_ref_fam,
+                        "contactos_referencias_laborales": cand_ref_lab,
+                        "referencias_familiares_detalle": cand_ref_fam,
                     },
-                    fallback_obj=candidata,
                 ),
             )
             if result.ok:

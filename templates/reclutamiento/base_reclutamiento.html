@@ -7,7 +7,8 @@
   {% set _public_base = (config.get('PUBLIC_BASE_URL') or '')|trim %}
   {% set _public_base = _public_base.rstrip('/') if _public_base else '' %}
   {% set _page_title = (meta_title|default(self.title()|striptags, true)) ~ ' | Doméstica del Cibao A&D' %}
-  {% set _meta_description = meta_description|default('Portal oficial de reclutamiento de Doméstica del Cibao A&D para postulantes a vacantes domésticas y empleo general.', true) %}
+  {% set _meta_description = meta_description|default('Portal oficial para postulantes a vacantes domésticas y empleo general.', true) %}
+  {% set _og_title = og_title|default('Doméstica del Cibao A&D — Reclutamiento', true) %}
   {% set _canonical_url = canonical_url|default((_public_base ~ request.path) if _public_base else request.base_url, true) %}
   {% set _og_url = og_url|default(_canonical_url, true) %}
   {% set _preview_path = url_for('static', filename='img/domestica-preview.png', v='20260311') %}
@@ -17,7 +18,7 @@
   <link rel="canonical" href="{{ _canonical_url }}">
   <meta property="og:site_name" content="Doméstica del Cibao A&D">
   <meta property="og:locale" content="es_DO">
-  <meta property="og:title" content="{{ _page_title }}">
+  <meta property="og:title" content="{{ _og_title }}">
   <meta property="og:description" content="{{ _meta_description }}">
   <meta property="og:image" content="{{ _og_image }}">
   <meta property="og:image:url" content="{{ _og_image }}">
@@ -29,7 +30,7 @@
   <meta property="og:url" content="{{ _og_url }}">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="{{ _page_title }}">
+  <meta name="twitter:title" content="{{ _og_title }}">
   <meta name="twitter:description" content="{{ _meta_description }}">
   <meta name="twitter:image" content="{{ _og_image }}">
   <meta name="twitter:image:alt" content="Portal oficial de reclutamiento - Doméstica del Cibao A&D">
@@ -96,8 +97,8 @@
       <div><strong>Portal oficial:</strong> Reclutamiento Doméstica del Cibao A&D</div>
       <div>
         <strong>Ayuda postulantes:</strong>
-        <a href="tel:+18298731211">+1 (829) 873-1211</a> ·
-        <a href="https://wa.me/18298731211" target="_blank" rel="noopener">WhatsApp</a>
+        <a href="tel:+18494604501">+18494604501</a> ·
+        <a href="https://wa.me/18494604501" target="_blank" rel="noopener">WhatsApp</a>
       </div>
       <div><strong>Aplicación segura:</strong> revisamos cada perfil de forma confidencial</div>
     </div>
@@ -112,14 +113,14 @@
       <div>
         <h3>Portal de reclutamiento</h3>
         <p>Espacio público para postulantes interesadas en aplicar con Doméstica del Cibao A&D.</p>
-        <p><strong>Soporte de aplicación:</strong> <a href="tel:+18298731211">+1 (829) 873-1211</a></p>
+        <p><strong>Soporte de aplicación:</strong> <a href="tel:+18494604501">+18494604501</a></p>
       </div>
       <div>
         <h4>Aplicaciones</h4>
         <ul class="footer-links">
           <li><a href="{{ url_for('reclutamiento_publico.aplicar_domestica') }}">Formulario doméstica</a></li>
           <li><a href="{{ url_for('reclutamiento_publico.aplicar_empleo_general') }}">Formulario empleo general</a></li>
-          <li><a href="https://wa.me/18298731211" target="_blank" rel="noopener">WhatsApp de ayuda</a></li>
+          <li><a href="https://wa.me/18494604501" target="_blank" rel="noopener">WhatsApp de ayuda</a></li>
         </ul>
       </div>
       <div>

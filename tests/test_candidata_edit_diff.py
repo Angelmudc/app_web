@@ -44,6 +44,8 @@ def test_candidata_edit_diff_has_from_to_values():
 
     with flask_app.app_context():
         with patch('core.legacy_handlers.get_candidata_by_id', return_value=candidata_stub), \
+             patch('core.legacy_handlers._get_candidata_by_fila_or_pk', return_value=candidata_stub), \
+             patch('core.legacy_handlers.db.session.flush'), \
              patch('core.legacy_handlers.db.session.commit'):
             resp = client.post(
                 '/buscar',

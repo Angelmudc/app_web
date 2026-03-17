@@ -17,6 +17,10 @@ def test_public_home_has_professional_preview_metadata_and_trust_signals():
     html = resp.get_data(as_text=True)
     assert '<meta property="og:title"' in html
     assert '<meta property="og:description"' in html
+    assert 'property="og:title" content="Doméstica del Cibao A&amp;D — Portal Oficial"' in html
+    assert 'property="og:description" content="Agencia de empleo doméstico y reclutamiento."' in html
+    assert 'name="twitter:title" content="Doméstica del Cibao A&amp;D — Portal Oficial"' in html
+    assert 'name="twitter:description" content="Agencia de empleo doméstico y reclutamiento."' in html
     assert '<meta property="og:image"' in html
     assert '<meta property="og:url" content="https://domestica.example.com/"' in html
     assert '<meta property="og:type" content="website"' in html
@@ -38,6 +42,8 @@ def test_public_services_page_keeps_consistent_brand_preview():
     html = resp.get_data(as_text=True)
     assert "Servicios - Doméstica del Cibao A&D" in html
     assert '<meta property="og:title"' in html
+    assert 'property="og:title" content="Doméstica del Cibao A&amp;D — Portal Oficial"' in html
+    assert 'property="og:description" content="Agencia de empleo doméstico y reclutamiento."' in html
     assert 'property="og:image"' in html
     assert 'name="twitter:image"' in html
     assert 'rel="canonical"' in html
@@ -57,6 +63,10 @@ def test_recruitment_landing_has_preview_metadata_and_official_identity():
     html = resp.get_data(as_text=True)
     assert '<meta property="og:title"' in html
     assert '<meta property="og:description"' in html
+    assert 'property="og:title" content="Doméstica del Cibao A&amp;D — Reclutamiento"' in html
+    assert 'property="og:description" content="Portal oficial para postulantes a vacantes domésticas y empleo general."' in html
+    assert 'name="twitter:title" content="Doméstica del Cibao A&amp;D — Reclutamiento"' in html
+    assert 'name="twitter:description" content="Portal oficial para postulantes a vacantes domésticas y empleo general."' in html
     assert '<meta property="og:image"' in html
     assert '<meta name="twitter:card" content="summary_large_image">' in html
     assert '<meta name="twitter:title"' in html

@@ -191,6 +191,12 @@
       </span>
     </div>
 
+    {% if mensaje %}
+      <div class="alert alert-warning mb-3" role="status">
+        {{ mensaje }}
+      </div>
+    {% endif %}
+
     {% if (candidata.estado or '')|lower == 'descalificada' %}
       <div class="alert alert-danger mb-3">
         <strong>DESCALIFICADA</strong>
@@ -311,7 +317,7 @@
             <label class="form-label" for="cedula">Cédula</label>
             <div class="input-group">
               <span class="input-group-text"><i class="fa-regular fa-address-card"></i></span>
-              <input id="cedula" name="cedula" class="form-control track-change" value="{{ candidata.cedula }}">
+              <input id="cedula" name="cedula" class="form-control track-change" value="{{ edit_form_overrides.get('cedula', candidata.cedula) if edit_form_overrides is defined else candidata.cedula }}">
               <button class="btn btn-outline-secondary copy-btn" type="button"
                       data-copy="{{ candidata.cedula }}" title="Copiar cédula"
                       aria-label="Copiar cédula {{ candidata.cedula }}">
@@ -543,7 +549,8 @@
     if (tbl && window.$ && $.fn.DataTable){
       $('#tabla-busqueda').DataTable({
         pageLength: 10,
-        order: [[0,'asc']],
+        // Respetar el orden que viene del backend (evita reordenar y abrir otra fila).
+        order: [],
         autoWidth: false,
         deferRender: true,
         responsive: true,

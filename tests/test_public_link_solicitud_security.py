@@ -99,6 +99,8 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert "809" not in html
     assert 'property="og:title"' in html
     assert 'property="og:description"' in html
+    assert 'property="og:title" content="Doméstica del Cibao A&amp;D — Formulario de Solicitud"' in html
+    assert 'property="og:description" content="Formulario oficial para completar su solicitud."' in html
     assert 'property="og:image"' in html
     assert 'property="og:image:url"' in html
     assert 'property="og:image:secure_url"' in html
@@ -109,6 +111,8 @@ def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     assert 'name="twitter:card"' in html
     assert 'name="twitter:title"' in html
     assert 'name="twitter:description"' in html
+    assert 'name="twitter:title" content="Doméstica del Cibao A&amp;D — Formulario de Solicitud"' in html
+    assert 'name="twitter:description" content="Formulario oficial para completar su solicitud."' in html
     assert 'name="twitter:image"' in html
     assert 'name="twitter:image:alt"' in html
     assert 'property="og:url"' in html
