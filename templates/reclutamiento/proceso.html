@@ -18,7 +18,7 @@
     <h2 class="section-title">Etapas del proceso</h2>
     <p class="section-subtitle">Desde la postulación inicial hasta el seguimiento por nuevas oportunidades.</p>
 
-    <div class="steps-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+    <div class="steps-grid steps-grid--fluid">
       <article class="step">
         <div class="step-number">1</div>
         <h3>Aplicar</h3>
@@ -99,12 +99,12 @@
 <section class="section cta-section">
   <div class="container cta-inner">
     <div>
-      <h2 class="section-title" style="color:#fff; margin-bottom: 6px;">Inicia tu postulación</h2>
+      <h2 class="section-title">Inicia tu postulación</h2>
       <p>Escoge el formulario correcto y completa tus datos con claridad.</p>
     </div>
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Aplicar doméstica</a>
-      <a class="btn btn-outline" style="border-color:#cfe8ff; color:#fff;" href="{{ url_for('reclutas.registro_publico') }}">Aplicar empleo general</a>
+    <div class="cta-actions">
+      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Postular empleo doméstico</a>
+      <a class="btn btn-secondary" href="{{ url_for('reclutas.registro_publico') }}">Postular empleo general</a>
     </div>
   </div>
 </section>

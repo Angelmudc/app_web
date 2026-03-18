@@ -1,12 +1,14 @@
-{% extends "base_public.html" %}
+{% extends "registro/base_registro.html" %}
+
+{% block title %}Solicitud enviada{% endblock %}
 
 {% block content %}
-<div class="container" style="max-width:720px; margin:60px auto;">
-  <div class="card" style="padding:28px; text-align:center;">
+<main class="card-glass" role="main" style="max-width: 760px; margin: 0 auto;">
+  <div style="padding: 12px 6px; text-align:center;">
 
     <div style="font-size:48px; margin-bottom:10px;">✅</div>
 
-    <h2 style="margin:0 0 10px 0;">Registro enviado correctamente</h2>
+    <h2 style="margin:0 0 10px 0;">Solicitud enviada correctamente</h2>
 
     <p style="opacity:.85; font-size:1.05rem; line-height:1.6; margin-bottom:22px;">
       Gracias por compartir tu información.<br>
@@ -15,15 +17,15 @@
     </p>
 
     <p style="opacity:.85; font-size:1rem; line-height:1.5; margin-bottom:12px;">
-      Si necesitas asistencia adicional con tu postulación, puedes llamarnos al
+      Si necesitas asistencia adicional con tu solicitud, puedes llamarnos al
       <a href="tel:+18494604501">+18494604501</a> o escribir por
       <a href="https://wa.me/18494604501" target="_blank" rel="noopener">WhatsApp</a>.
     </p>
 
     <div style="margin-top:26px; opacity:.65; font-size:.9rem;">
-      Agencia Doméstica del Cibao A&amp;D
+      Conexión de Empleo
     </div>
 
   </div>
-</div>
+</main>
 {% endblock %}

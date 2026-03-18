@@ -3,199 +3,134 @@
 {% block title %}Portal de reclutamiento{% endblock %}
 
 {% block content %}
-<section class="hero" style="padding-top: 44px;">
+<section class="hero hero--home">
   <div class="container hero-grid">
     <div class="hero-text">
-      <h1>Portal de postulación laboral</h1>
-      <p>
-        Este espacio está diseñado para <strong>postulantes</strong>. Aquí puedes aplicar como candidata doméstica
-        o para empleo general y dejar tu perfil listo para vacantes actuales y futuras.
+      <p class="hero-eyebrow">Portal oficial para postulantes</p>
+      <h1>Consigue oportunidades laborales reales con una postulación profesional</h1>
+      <p class="hero-subtitle">
+        Completa tu solicitud una sola vez y entra a un proceso formal de evaluación para vacantes domésticas y de empleo general.
       </p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Aplicar como doméstica</a>
-        <a class="btn btn-outline" href="{{ url_for('reclutas.registro_publico') }}">Aplicar empleo general</a>
-      </div>
       <div class="hero-badges">
-        <span>Formulario seguro</span>
-        <span>Revisión de perfil</span>
-        <span>Seguimiento por vacantes</span>
+        <span>Proceso seguro y estructurado</span>
+        <span>Evaluación por equipo de reclutamiento</span>
+        <span>Seguimiento para vacantes actuales y futuras</span>
+        <span><a href="tel:+18494604501">Soporte directo: +1 (849) 460-4501</a></span>
       </div>
     </div>
 
     <aside class="hero-card">
-      <h2>Antes de aplicar</h2>
+      <h2>Qué necesitas para iniciar</h2>
       <ul class="hero-list">
         <li>Usa datos reales y actualizados.</li>
         <li>Ten cédula y teléfono activos.</li>
         <li>Describe tu experiencia con claridad.</li>
-        <li>Completa referencias cuando sea posible.</li>
+        <li>Incluye referencias cuando sea posible.</li>
       </ul>
       <p class="hero-card-text">
-        Completar bien el formulario mejora la evaluación y acelera la posibilidad de contacto.
+        Un perfil completo mejora la evaluación y acelera el posible contacto.
       </p>
       <a class="btn btn-secondary full-width" href="{{ url_for('reclutamiento_publico.requisitos') }}">Ver requisitos</a>
     </aside>
   </div>
 </section>
 
-<section class="section">
+<section class="section action-band">
   <div class="container">
-    <h2 class="section-title">Elige tu tipo de aplicación</h2>
-    <p class="section-subtitle">Selecciona el formulario correcto según el tipo de trabajo al que deseas postular.</p>
+    <div class="section-heading section-heading--center">
+      <h2 class="section-title">Elige cómo quieres postularte</h2>
+      <p class="section-subtitle">Ambas rutas son prioritarias. Selecciona la que mejor representa tu perfil actual.</p>
+    </div>
 
-    <div class="grid-2">
-      <article class="card">
-        <h3>Aplicación doméstica</h3>
-        <p>Dirigido a candidatas para trabajo en hogares y servicios de apoyo familiar.</p>
-        <ul class="card-list">
-          <li>• Limpieza, cocina, niñera, cuidado de envejecientes</li>
-          <li>• Preferencias de modalidad y disponibilidad</li>
-          <li>• Referencias y experiencia previa en casas de familia</li>
-        </ul>
-        <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Ir a formulario doméstica</a>
-      </article>
-
-      <article class="card">
-        <h3>Aplicación empleo general</h3>
-        <p>Dirigido a postulantes para vacantes no domésticas, operativas y administrativas.</p>
-        <ul class="card-list">
-          <li>• Perfil laboral, habilidades y nivel educativo</li>
-          <li>• Modalidad, horario y sueldo esperado</li>
-          <li>• Referencias y disponibilidad para turnos especiales</li>
-        </ul>
-        <a class="btn btn-secondary" href="{{ url_for('reclutas.registro_publico') }}">Ir a formulario empleo general</a>
-      </article>
+    <div class="hero-cta-grid hero-cta-grid--actions">
+      <a class="hero-cta hero-cta--domestico" href="{{ url_for('registro_publico.registro_publico') }}">
+        <span class="hero-cta__label">Solicitud de empleo doméstico</span>
+        <span class="hero-cta__hint">Hogar, limpieza, cocina, niñera y cuidado</span>
+      </a>
+      <a class="hero-cta hero-cta--general" href="{{ url_for('reclutas.registro_publico') }}">
+        <span class="hero-cta__label">Solicitud de empleo general</span>
+        <span class="hero-cta__hint">Vacantes operativas, técnicas y administrativas</span>
+      </a>
     </div>
   </div>
 </section>
 
 <section class="section section-alt">
   <div class="container">
-    <h2 class="section-title">Cómo funciona el proceso</h2>
-    <p class="section-subtitle">Así gestionamos cada postulación desde el envío hasta el seguimiento.</p>
-
-    <div class="steps-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
-      <article class="step">
-        <div class="step-number">1</div>
-        <h3>Aplicas</h3>
-        <p>Completa el formulario con tus datos reales.</p>
-      </article>
-      <article class="step">
-        <div class="step-number">2</div>
-        <h3>Revisión</h3>
-        <p>Se valida información principal y consistencia del perfil.</p>
-      </article>
-      <article class="step">
-        <div class="step-number">3</div>
-        <h3>Validación</h3>
-        <p>Analizamos experiencia, modalidad y referencias.</p>
-      </article>
-      <article class="step">
-        <div class="step-number">4</div>
-        <h3>Contacto</h3>
-        <p>Si hay coincidencia con vacantes, te contactamos.</p>
-      </article>
-      <article class="step">
-        <div class="step-number">5</div>
-        <h3>Seguimiento</h3>
-        <p>Tu perfil puede considerarse para oportunidades futuras.</p>
-      </article>
+    <div class="section-heading">
+      <h2 class="section-title">Beneficios de postular en esta plataforma</h2>
+      <p class="section-subtitle">Diseñada para que tu perfil genere confianza y se evalúe con criterios profesionales.</p>
     </div>
-
-    <div class="margin-top">
-      <a class="btn btn-outline" href="{{ url_for('reclutamiento_publico.proceso') }}">Ver proceso completo</a>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">Beneficios de aplicar con nosotros</h2>
-    <p class="section-subtitle">Buscamos que tu perfil se evalúe de forma más ordenada y útil para vacantes reales.</p>
 
     <div class="grid-3">
       <article class="card">
-        <h3>Mayor visibilidad</h3>
-        <p>Tu perfil queda disponible para revisión según nuevas vacantes y requerimientos.</p>
+        <h3>Mayor visibilidad profesional</h3>
+        <p>Tu perfil se organiza para revisión continua según nuevas vacantes y requerimientos reales.</p>
       </article>
       <article class="card">
-        <h3>Evaluación clara</h3>
-        <p>Los datos estructurados facilitan una valoración más completa de experiencia y disponibilidad.</p>
+        <h3>Evaluación más precisa</h3>
+        <p>Los datos estructurados permiten analizar mejor experiencia, disponibilidad y compatibilidad.</p>
       </article>
       <article class="card">
-        <h3>Seguimiento formal</h3>
-        <p>La postulación se integra a un proceso con criterios definidos y registro de avance.</p>
+        <h3>Seguimiento formal del proceso</h3>
+        <p>Tu postulación queda registrada dentro de un flujo claro de revisión y contacto.</p>
       </article>
     </div>
-  </div>
-</section>
 
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Vacantes frecuentes (empleo general)</h2>
-    <p class="section-subtitle">Estas categorías suelen tener más movimiento durante el año.</p>
-    <div style="display:flex; flex-wrap:wrap; gap:8px;">
-      {% for v in vacantes %}
-      <span style="padding:6px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.12); background:#fff; font-size:.92rem;">{{ v }}</span>
-      {% endfor %}
+    <div class="trust-chips" aria-label="Indicadores de confianza del proceso">
+      <span class="trust-chip">Validación de datos clave</span>
+      <span class="trust-chip">Registro oficial de postulación</span>
+      <span class="trust-chip">Criterios claros de evaluación</span>
+      <span class="trust-chip">Acompañamiento por soporte</span>
     </div>
   </div>
 </section>
 
 <section class="section">
   <div class="container">
-    <h2 class="section-title">Requisitos básicos para iniciar</h2>
-    <p class="section-subtitle">No todos son obligatorios, pero sí recomendados para agilizar evaluación.</p>
+    <div class="section-heading">
+      <h2 class="section-title">Contenido informativo para aplicar mejor</h2>
+      <p class="section-subtitle">Todo lo que necesitas para decidir, completar correctamente y aumentar la calidad de tu perfil.</p>
+    </div>
 
     <div class="grid-2">
       <article class="card">
-        <h3>Información esencial</h3>
+        <h3>Cómo funciona el proceso</h3>
         <ul class="card-list">
-          <li>• Nombre completo real</li>
-          <li>• Cédula válida</li>
-          <li>• Teléfono activo</li>
-          <li>• Datos de ubicación actualizados</li>
+          <li>Aplicas con datos reales y verificables.</li>
+          <li>Se revisa consistencia del perfil.</li>
+          <li>Se valida experiencia y disponibilidad.</li>
+          <li>Se contacta según coincidencia con vacantes.</li>
         </ul>
+        <a class="btn btn-outline" href="{{ url_for('reclutamiento_publico.proceso') }}">Ver proceso completo</a>
       </article>
+
       <article class="card">
-        <h3>Información que fortalece tu perfil</h3>
+        <h3>Requisitos y buenas prácticas</h3>
         <ul class="card-list">
-          <li>• Experiencia detallada</li>
-          <li>• Referencias laborales/familiares</li>
-          <li>• Disponibilidad real de horario</li>
-          <li>• Modalidad de trabajo preferida</li>
+          <li>Nombre completo, cédula y teléfono activos.</li>
+          <li>Ubicación actualizada y modalidad real.</li>
+          <li>Experiencia explicada con tareas concretas.</li>
+          <li>Referencias para fortalecer confianza.</li>
         </ul>
+        <a class="btn btn-outline" href="{{ url_for('reclutamiento_publico.requisitos') }}">Ver requisitos</a>
       </article>
-    </div>
-  </div>
-</section>
 
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Preguntas rápidas</h2>
-    <p class="section-subtitle">Resumen de dudas frecuentes antes de completar tu aplicación.</p>
+      <article class="card">
+        <h3>Preguntas frecuentes</h3>
+        <p>Aclara dudas clave sobre tiempos de contacto, doble aplicación, referencias y seguimiento.</p>
+        <a class="btn btn-outline" href="{{ url_for('reclutamiento_publico.faq') }}">Ver FAQ completa</a>
+      </article>
 
-    <div class="grid-2">
-      <article class="faq-item">
-        <h3>¿Puedo aplicar a ambos formularios?</h3>
-        <p>Sí. Si tu perfil encaja en ambos tipos de vacantes, puedes completar los dos.</p>
+      <article class="card">
+        <h3>Vacantes frecuentes (empleo general)</h3>
+        <p>Estas categorías suelen tener más movimiento durante el año.</p>
+        <div class="vacancy-chips">
+          {% for v in vacantes %}
+          <span class="vacancy-chip">{{ v }}</span>
+          {% endfor %}
+        </div>
       </article>
-      <article class="faq-item">
-        <h3>¿Debo llenar todo en una sola vez?</h3>
-        <p>Recomendado, pero puedes volver a completar luego con información más completa.</p>
-      </article>
-      <article class="faq-item">
-        <h3>¿Qué pasa si no tengo referencias ahora?</h3>
-        <p>Puedes aplicar igual, pero las referencias mejoran la evaluación del perfil.</p>
-      </article>
-      <article class="faq-item">
-        <h3>¿Cuándo me contactan?</h3>
-        <p>Cuando exista coincidencia con vacantes disponibles y requisitos del puesto.</p>
-      </article>
-    </div>
-
-    <div class="margin-top">
-      <a class="btn btn-outline" href="{{ url_for('reclutamiento_publico.faq') }}">Ver FAQ completa</a>
     </div>
   </div>
 </section>
@@ -203,12 +138,12 @@
 <section class="section cta-section">
   <div class="container cta-inner">
     <div>
-      <h2 class="section-title" style="color:#fff; margin-bottom: 6px;">¿Lista para postularte?</h2>
-      <p>Selecciona el formulario adecuado y envía tu perfil hoy.</p>
+      <h2 class="section-title">Empieza hoy tu postulación</h2>
+      <p>Selecciona el formulario correcto y envía tu perfil con información clara.</p>
     </div>
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Formulario doméstica</a>
-      <a class="btn btn-outline" style="border-color:#cfe8ff; color:#fff;" href="{{ url_for('reclutas.registro_publico') }}">Formulario empleo general</a>
+    <div class="cta-actions">
+      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Solicitud de empleo doméstico</a>
+      <a class="btn btn-secondary" href="{{ url_for('reclutas.registro_publico') }}">Solicitud de empleo general</a>
     </div>
   </div>
 </section>

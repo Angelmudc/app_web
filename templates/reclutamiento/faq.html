@@ -22,7 +22,7 @@
     <article class="faq-item">
       <h3>¿Qué formulario debo elegir?</h3>
       <p>
-        Si buscas trabajo en hogares (limpieza, cocina, niñera, cuidado), usa doméstica.
+        Si buscas trabajo en hogares (limpieza, cocina, niñera, cuidado), usa la solicitud de empleo doméstico.
         Para otros oficios o empleos, usa empleo general.
       </p>
     </article>
@@ -91,12 +91,12 @@
 <section class="section cta-section">
   <div class="container cta-inner">
     <div>
-      <h2 class="section-title" style="color:#fff; margin-bottom: 6px;">¿Lista para aplicar?</h2>
+      <h2 class="section-title">¿Lista para aplicar?</h2>
       <p>Selecciona el formulario correcto y envía tu perfil.</p>
     </div>
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Formulario doméstica</a>
-      <a class="btn btn-outline" style="border-color:#cfe8ff; color:#fff;" href="{{ url_for('reclutas.registro_publico') }}">Formulario empleo general</a>
+    <div class="cta-actions">
+      <a class="btn btn-primary" href="{{ url_for('registro_publico.registro_publico') }}">Solicitud de empleo doméstico</a>
+      <a class="btn btn-secondary" href="{{ url_for('reclutas.registro_publico') }}">Solicitud de empleo general</a>
     </div>
   </div>
 </section>
