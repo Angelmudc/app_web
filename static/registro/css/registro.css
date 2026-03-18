@@ -4,18 +4,23 @@
 ========================================================= */
 
 :root{
-  --bg: #f4f6fb;
+  --brand-cyan: #2bb7c3;
+  --brand-cyan-soft: #3ad1c8;
+  --brand-purple: #7b4dff;
+  --brand-purple-soft: #a66cff;
+  --brand-navy: #2e3a8c;
+  --bg: #f8fafc;
   --card: rgba(255,255,255,.86);
   --card-solid: #ffffff;
-  --text: #1f2937;
-  --muted: #64748b;
-  --border: rgba(15, 23, 42, .10);
-  --shadow: 0 18px 45px rgba(2, 6, 23, .12);
-  --shadow-soft: 0 10px 30px rgba(2, 6, 23, .10);
+  --text: #1f2a44;
+  --muted: #5b6280;
+  --border: rgba(46, 58, 140, .10);
+  --shadow: 0 18px 45px rgba(31, 42, 68, .12);
+  --shadow-soft: 0 10px 30px rgba(31, 42, 68, .10);
 
-  --primary: #1d4ed8;
-  --primary2: #6d28d9;
-  --accent: #06b6d4;
+  --primary: var(--brand-cyan);
+  --primary2: var(--brand-purple);
+  --accent: var(--brand-cyan-soft);
 
   --radius: 18px;
   --radius2: 14px;
@@ -31,8 +36,8 @@
 /* Reset básico solo para registro */
 body.registro-page{
   margin:0;
-  background: radial-gradient(1200px 800px at 20% 0%, #dbeafe 0%, transparent 55%),
-              radial-gradient(900px 700px at 90% 20%, #ede9fe 0%, transparent 55%),
+  background: radial-gradient(1200px 800px at 20% 0%, rgba(166,108,255,.17) 0%, transparent 55%),
+              radial-gradient(900px 700px at 90% 20%, rgba(58,209,200,.22) 0%, transparent 55%),
               var(--bg);
   color: var(--text);
   font-family: "Manrope", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
@@ -56,9 +61,9 @@ body.registro-page{
   position: sticky;
   top: 0;
   z-index: 5;
-  background: linear-gradient(115deg, rgba(255,255,255,.92), rgba(237,233,254,.84), rgba(224,242,254,.84));
+  background: linear-gradient(115deg, rgba(255,255,255,.93), rgba(245,241,255,.86), rgba(236,252,252,.86));
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(109, 40, 217, .18);
+  border-bottom: 1px solid rgba(46, 58, 140, .16);
 }
 
 .topbar__inner{
@@ -115,7 +120,7 @@ body.registro-page{
 .brand__collab{
   margin-top: .05rem;
   font-size: .78rem;
-  color: #475569;
+  color: var(--muted);
 }
 
 .topbar__actions{ display:flex; gap:.6rem; }
@@ -155,9 +160,9 @@ body.registro-page{
   display:flex;
   align-items:center;
   gap: .55rem;
-  background: rgba(109,40,217,.10);
-  color: #312e81;
-  border: 1px solid rgba(109,40,217,.24);
+  background: rgba(123,77,255,.10);
+  color: var(--brand-navy);
+  border: 1px solid rgba(123,77,255,.24);
   padding: .55rem .8rem;
   border-radius: 999px;
   font-weight: 700;
@@ -168,12 +173,12 @@ body.registro-page{
 .badge-dot{
   width:10px; height:10px; border-radius: 999px;
   background: linear-gradient(135deg, var(--primary), var(--primary2), var(--accent));
-  box-shadow: 0 0 0 3px rgba(109,40,217,.16);
+  box-shadow: 0 0 0 3px rgba(123,77,255,.16);
 }
 
 .accent-line{
   height: 1px;
-  background: linear-gradient(90deg, rgba(29,78,216,.0), rgba(109,40,217,.6), rgba(6,182,212,.0));
+  background: linear-gradient(90deg, rgba(43,183,195,.0), rgba(123,77,255,.6), rgba(58,209,200,.0));
   margin: 1rem 0 1.1rem 0;
 }
 
@@ -181,19 +186,19 @@ body.registro-page{
   margin: 0 0 1rem 0;
   padding: .95rem 1rem;
   border-radius: 14px;
-  border: 1px solid rgba(109,40,217,.22);
-  background: linear-gradient(180deg, rgba(239,246,255,.95), rgba(245,243,255,.92));
+  border: 1px solid rgba(123,77,255,.24);
+  background: linear-gradient(180deg, rgba(239,252,252,.96), rgba(245,241,255,.94));
 }
 .intro-note__title{
   margin: 0 0 .35rem 0;
   font-size: .92rem;
   font-weight: 900;
-  color: #312e81;
+  color: var(--brand-navy);
 }
 .intro-note__list{
   margin: 0;
   padding-left: 1rem;
-  color: #334155;
+  color: var(--text);
   display: grid;
   gap: .22rem;
   font-size: .92rem;
@@ -215,10 +220,10 @@ body.registro-page{
 .alert__icon{ font-size: 1.1rem; margin-top: .08rem; }
 .alert__text{ color: #0f172a; }
 
-.alert--success{ border-color: rgba(16,185,129,.25); background: rgba(236,253,245,.85); }
-.alert--warning{ border-color: rgba(245,158,11,.25); background: rgba(255,251,235,.85); }
-.alert--danger { border-color: rgba(239,68,68,.25); background: rgba(254,242,242,.85); }
-.alert--info   { border-color: rgba(59,130,246,.25); background: rgba(239,246,255,.85); }
+.alert--success{ border-color: rgba(43,183,195,.3); background: rgba(236,252,252,.92); }
+.alert--warning{ border-color: rgba(166,108,255,.28); background: rgba(247,243,255,.92); }
+.alert--danger { border-color: rgba(123,77,255,.3); background: rgba(244,241,255,.92); }
+.alert--info   { border-color: rgba(46,58,140,.22); background: rgba(241,245,255,.9); }
 
 /* Error summary */
 .error-summary{
@@ -227,12 +232,12 @@ body.registro-page{
   align-items:flex-start;
   padding: .95rem 1rem;
   border-radius: 14px;
-  border: 1px solid rgba(239,68,68,.28);
-  background: rgba(254,242,242,.85);
+  border: 1px solid rgba(123,77,255,.3);
+  background: rgba(244,241,255,.92);
   margin-bottom: 1rem;
 }
 .error-summary__icon{ font-size: 1.1rem; }
-.error-summary__text{ font-weight: 700; color: #7f1d1d; }
+.error-summary__text{ font-weight: 700; color: var(--brand-navy); }
 .d-none{ display:none !important; }
 
 /* Sections */
@@ -274,9 +279,9 @@ body.registro-page{
   font-weight: 900;
   letter-spacing: .04em;
   text-transform: uppercase;
-  color: #334155;
+  color: var(--brand-navy);
   border-radius: 999px;
-  border: 1px solid rgba(51,65,85,.18);
+  border: 1px solid rgba(46,58,140,.24);
   background: rgba(255,255,255,.95);
   padding: .2rem .55rem;
 }
@@ -301,7 +306,7 @@ body.registro-page{
   font-weight: 800;
   margin-bottom: .45rem;
 }
-.req{ color: #dc2626; font-weight: 900; }
+.req{ color: var(--brand-purple); font-weight: 900; }
 
 .help{
   margin-top: .45rem;
@@ -315,7 +320,7 @@ body.registro-page{
   display:flex;
   align-items:stretch;
   border-radius: 16px;
-  border: 1px solid rgba(15,23,42,.12);
+  border: 1px solid rgba(46,58,140,.16);
   background: #fbfcff;
   overflow:hidden;
   transition: box-shadow .15s, border-color .15s, background .15s;
@@ -326,9 +331,9 @@ body.registro-page{
   align-items:center;
   justify-content:center;
   padding: 0 .85rem;
-  color: rgba(15,23,42,.55);
-  background: rgba(15,23,42,.03);
-  border-right: 1px solid rgba(15,23,42,.08);
+  color: rgba(46,58,140,.56);
+  background: rgba(46,58,140,.04);
+  border-right: 1px solid rgba(46,58,140,.1);
   min-width: 52px;
   font-weight: 800;
 }
@@ -356,9 +361,9 @@ body.registro-page{
 .textarea{ resize: vertical; min-height: 88px; }
 
 .control-wrap:focus-within{
-  border-color: rgba(109,40,217,.5);
+  border-color: rgba(123,77,255,.55);
   background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(6,182,212,.14);
+  box-shadow: 0 0 0 4px rgba(43,183,195,.18);
 }
 
 /* radio chips */
@@ -374,12 +379,12 @@ body.registro-page{
   gap:.6rem;
   padding: .75rem .95rem;
   border-radius: 999px;
-  border: 1px solid rgba(15,23,42,.12);
+  border: 1px solid rgba(46,58,140,.14);
   background: rgba(255,255,255,.78);
   cursor:pointer;
   user-select:none;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--text);
   transition: transform .12s, box-shadow .12s, border-color .12s, background .12s;
 }
 
@@ -387,8 +392,8 @@ body.registro-page{
 .chip:hover{ transform: translateY(-1px); box-shadow: 0 10px 20px rgba(2,6,23,.10); }
 
 .chip:has(input:checked){
-  border-color: rgba(74,105,189,.40);
-  background: rgba(74,105,189,.10);
+  border-color: rgba(123,77,255,.42);
+  background: rgba(123,77,255,.1);
 }
 
 /* option grid */
@@ -405,7 +410,7 @@ body.registro-page{
   display:block;
   padding: .9rem 1rem;
   border-radius: 16px;
-  border: 1px solid rgba(15,23,42,.12);
+  border: 1px solid rgba(46,58,140,.14);
   background: rgba(255,255,255,.78);
   font-weight: 850;
   cursor:pointer;
@@ -415,8 +420,8 @@ body.registro-page{
 .opt__box:hover{ transform: translateY(-1px); box-shadow: 0 10px 20px rgba(2,6,23,.10); }
 
 .opt__input:checked + .opt__box{
-  border-color: rgba(74,105,189,.45);
-  background: rgba(74,105,189,.10);
+  border-color: rgba(123,77,255,.46);
+  background: rgba(123,77,255,.1);
 }
 
 /* checkbox grid */
@@ -433,7 +438,7 @@ body.registro-page{
   gap:.6rem;
   padding: .85rem .9rem;
   border-radius: 16px;
-  border: 1px solid rgba(15,23,42,.12);
+  border: 1px solid rgba(46,58,140,.14);
   background: rgba(255,255,255,.78);
   cursor:pointer;
   font-weight: 800;
@@ -442,8 +447,8 @@ body.registro-page{
 .check input{ accent-color: var(--primary); }
 .check:hover{ transform: translateY(-1px); box-shadow: 0 10px 20px rgba(2,6,23,.10); }
 .check:has(input:checked){
-  border-color: rgba(74,105,189,.45);
-  background: rgba(74,105,189,.10);
+  border-color: rgba(123,77,255,.46);
+  background: rgba(123,77,255,.1);
 }
 
 .choice-grid{
@@ -473,7 +478,7 @@ body.registro-page{
 }
 .choice-group{
   padding: .85rem .9rem;
-  border: 1px solid rgba(15,23,42,.10);
+  border: 1px solid rgba(46,58,140,.12);
   border-radius: 14px;
   background: rgba(255,255,255,.64);
 }
@@ -483,7 +488,7 @@ body.registro-page{
   letter-spacing: .05em;
   text-transform: uppercase;
   font-weight: 900;
-  color: #334155;
+  color: var(--brand-navy);
 }
 
 .choice-card{
@@ -508,7 +513,7 @@ body.registro-page{
   position: relative;
   padding: .92rem 1rem .92rem 2.35rem;
   border-radius: 16px;
-  border: 1px solid rgba(15,23,42,.14);
+  border: 1px solid rgba(46,58,140,.16);
   background: rgba(255,255,255,.82);
   transition: transform .12s, box-shadow .12s, border-color .12s, background .12s;
 }
@@ -519,7 +524,7 @@ body.registro-page{
   width: 1.08rem;
   height: 1.08rem;
   border-radius: 999px;
-  border: 1px solid rgba(100,116,139,.6);
+  border: 1px solid rgba(46,58,140,.48);
   color: transparent;
   background: #fff;
   display: inline-flex;
@@ -532,14 +537,14 @@ body.registro-page{
   display: block;
   font-size: .95rem;
   font-weight: 850;
-  color: #0f172a;
+  color: var(--text);
   line-height: 1.25;
 }
 .choice-card__desc{
   display: block;
   margin-top: .24rem;
   font-size: .86rem;
-  color: #475569;
+  color: var(--muted);
   line-height: 1.36;
 }
 .choice-card:hover .choice-card__body{
@@ -547,18 +552,18 @@ body.registro-page{
   box-shadow: 0 10px 20px rgba(2,6,23,.10);
 }
 .choice-card:has(input:checked) .choice-card__body{
-  border-color: rgba(109,40,217,.52);
-  background: linear-gradient(180deg, rgba(29,78,216,.11), rgba(109,40,217,.10));
-  box-shadow: 0 8px 24px rgba(109,40,217,.14);
+  border-color: rgba(123,77,255,.54);
+  background: linear-gradient(180deg, rgba(43,183,195,.12), rgba(123,77,255,.12));
+  box-shadow: 0 8px 24px rgba(123,77,255,.18);
 }
 .choice-card:has(input:checked) .choice-card__check{
   color: #fff;
-  border-color: rgba(109,40,217,.95);
-  background: linear-gradient(180deg, #1d4ed8, #6d28d9);
+  border-color: rgba(123,77,255,.95);
+  background: linear-gradient(180deg, #2bb7c3, #7b4dff);
 }
 .choice-card:focus-within .choice-card__body{
-  border-color: rgba(109,40,217,.72);
-  box-shadow: 0 0 0 4px rgba(6,182,212,.14);
+  border-color: rgba(123,77,255,.72);
+  box-shadow: 0 0 0 4px rgba(43,183,195,.18);
 }
 
 .switch-card{
@@ -567,7 +572,7 @@ body.registro-page{
   gap: .7rem;
   padding: .9rem 1rem;
   border-radius: 16px;
-  border: 1px solid rgba(15,23,42,.12);
+  border: 1px solid rgba(46,58,140,.14);
   background: rgba(255,255,255,.78);
   cursor: pointer;
   transition: transform .12s, box-shadow .12s, border-color .12s, background .12s;
@@ -587,7 +592,7 @@ body.registro-page{
   display: block;
   font-size: .95rem;
   font-weight: 850;
-  color: #0f172a;
+  color: var(--text);
   line-height: 1.3;
 }
 .switch-card__hint{
@@ -598,12 +603,12 @@ body.registro-page{
   line-height: 1.35;
 }
 .switch-card:has(input:checked){
-  border-color: rgba(74,105,189,.45);
-  background: rgba(74,105,189,.10);
+  border-color: rgba(123,77,255,.46);
+  background: rgba(123,77,255,.1);
 }
 .switch-card:focus-within{
-  border-color: rgba(74,105,189,.6);
-  box-shadow: 0 0 0 4px rgba(74,105,189,.14);
+  border-color: rgba(123,77,255,.62);
+  box-shadow: 0 0 0 4px rgba(43,183,195,.18);
 }
 
 /* mini note */
@@ -613,12 +618,12 @@ body.registro-page{
   align-items:flex-start;
   padding: .95rem 1rem;
   border-radius: 16px;
-  border: 1px dashed rgba(74,105,189,.35);
-  background: rgba(239,246,255,.75);
+  border: 1px dashed rgba(123,77,255,.35);
+  background: rgba(241,245,255,.9);
   height: 100%;
 }
 .mini-note__icon{ font-size: 1.15rem; }
-.mini-note__text{ color: #1e3a8a; font-weight: 750; }
+.mini-note__text{ color: var(--brand-navy); font-weight: 750; }
 
 /* actions */
 .actions{
@@ -639,15 +644,19 @@ body.registro-page{
   font-size: 1.05rem;
   color: #fff;
   background: linear-gradient(135deg, var(--primary), var(--primary2), var(--accent));
-  box-shadow: 0 18px 40px rgba(29,78,216,.34);
+  box-shadow: 0 18px 40px rgba(123,77,255,.3);
   display:flex;
   align-items:center;
   justify-content:center;
   gap:.65rem;
   transition: transform .12s, box-shadow .12s, filter .12s;
 }
-.btn-pill:hover{ transform: translateY(-2px); box-shadow: 0 24px 54px rgba(109,40,217,.38); }
+.btn-pill:hover{ transform: translateY(-2px); box-shadow: 0 24px 54px rgba(123,77,255,.38); }
 .btn-pill:disabled{ opacity:.75; cursor:not-allowed; transform:none; }
+.btn-pill:focus-visible{
+  outline: 3px solid rgba(43,183,195,.34);
+  outline-offset: 2px;
+}
 
 .btn-ico{ filter: drop-shadow(0 6px 10px rgba(0,0,0,.16)); }
 
@@ -669,17 +678,17 @@ body.registro-page{
 
 /* Field error */
 .is-invalid .control-wrap{
-  border-color: rgba(239,68,68,.55);
-  box-shadow: 0 0 0 4px rgba(239,68,68,.12);
+  border-color: rgba(123,77,255,.62);
+  box-shadow: 0 0 0 4px rgba(166,108,255,.16);
 }
-.is-invalid .help{ color: #b91c1c; font-weight: 700; }
+.is-invalid .help{ color: var(--brand-navy); font-weight: 700; }
 .input:focus, .textarea:focus{ outline: none; }
 
 /* footer */
 .footer{
   margin-top: 1.2rem;
   padding: 1.2rem 0;
-  border-top: 1px solid rgba(109,40,217,.14);
+  border-top: 1px solid rgba(46,58,140,.14);
 }
 .footer__inner{
   max-width: 1100px;

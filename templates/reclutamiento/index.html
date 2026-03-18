@@ -11,6 +11,29 @@
       <p class="hero-subtitle">
         Completa tu solicitud una sola vez y entra a un proceso formal de evaluación para vacantes domésticas y de empleo general.
       </p>
+      <div class="hero-action-signal" role="note" aria-label="Indicación para iniciar postulación">
+        <p class="hero-action-signal__title">Selecciona un formulario para continuar</p>
+        <p class="hero-action-signal__hint">Toca una opción para iniciar tu postulación.</p>
+      </div>
+      <div class="hero-cta-grid hero-cta-grid--priority" aria-label="Formularios principales de postulación">
+        <a class="hero-cta hero-cta--general" href="{{ url_for('reclutas.registro_publico') }}">
+          <span class="hero-cta__row">
+            <span class="hero-cta__label">Solicitud de empleo general</span>
+            <span class="hero-cta__arrow" aria-hidden="true">></span>
+          </span>
+          <span class="hero-cta__tag">Formulario principal</span>
+          <span class="hero-cta__hint">Vacantes operativas, técnicas y administrativas</span>
+          <span class="hero-cta__action">Continuar</span>
+        </a>
+        <a class="hero-cta hero-cta--domestico" href="{{ url_for('registro_publico.registro_publico') }}">
+          <span class="hero-cta__row">
+            <span class="hero-cta__label">Solicitud de empleo doméstico</span>
+            <span class="hero-cta__arrow" aria-hidden="true">></span>
+          </span>
+          <span class="hero-cta__hint">Hogar, limpieza, cocina, niñera y cuidado</span>
+          <span class="hero-cta__action">Continuar</span>
+        </a>
+      </div>
       <div class="hero-badges">
         <span>Proceso seguro y estructurado</span>
         <span>Evaluación por equipo de reclutamiento</span>
@@ -32,26 +55,6 @@
       </p>
       <a class="btn btn-secondary full-width" href="{{ url_for('reclutamiento_publico.requisitos') }}">Ver requisitos</a>
     </aside>
-  </div>
-</section>
-
-<section class="section action-band">
-  <div class="container">
-    <div class="section-heading section-heading--center">
-      <h2 class="section-title">Elige cómo quieres postularte</h2>
-      <p class="section-subtitle">Ambas rutas son prioritarias. Selecciona la que mejor representa tu perfil actual.</p>
-    </div>
-
-    <div class="hero-cta-grid hero-cta-grid--actions">
-      <a class="hero-cta hero-cta--domestico" href="{{ url_for('registro_publico.registro_publico') }}">
-        <span class="hero-cta__label">Solicitud de empleo doméstico</span>
-        <span class="hero-cta__hint">Hogar, limpieza, cocina, niñera y cuidado</span>
-      </a>
-      <a class="hero-cta hero-cta--general" href="{{ url_for('reclutas.registro_publico') }}">
-        <span class="hero-cta__label">Solicitud de empleo general</span>
-        <span class="hero-cta__hint">Vacantes operativas, técnicas y administrativas</span>
-      </a>
-    </div>
   </div>
 </section>
 
