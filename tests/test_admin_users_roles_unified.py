@@ -20,7 +20,7 @@ def test_owner_can_open_unified_users_module():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     resp = client.get("/admin/usuarios", follow_redirects=False)
     assert resp.status_code == 200
@@ -33,7 +33,7 @@ def test_owner_can_create_user_and_change_role_and_toggle_status():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     suffix = uuid.uuid4().hex[:8]
     username = f"staff_unif_{suffix}"

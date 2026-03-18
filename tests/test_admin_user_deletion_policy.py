@@ -29,7 +29,7 @@ def test_owner_can_delete_user_without_history():
         user_id = int(user.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
     resp = client.post(f"/admin/usuarios/{user_id}/eliminar", data={}, follow_redirects=False)
     assert resp.status_code in (302, 303)
 
@@ -59,7 +59,7 @@ def test_owner_cannot_hard_delete_user_with_history_only_deactivates():
         db.session.commit()
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
     resp = client.post(f"/admin/usuarios/{user_id}/eliminar", data={}, follow_redirects=True)
     assert resp.status_code == 200
     assert "no puede eliminarse".encode("utf-8") in resp.data

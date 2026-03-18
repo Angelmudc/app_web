@@ -548,9 +548,11 @@ def create_app():
         role_clean = _normalize_staff_role(role)
         min_len = _staff_password_min_len()
 
+        normalized_password = StaffUser.normalize_password(password)
+
         if not username_clean:
             raise click.ClickException("Debes indicar --username.")
-        if not password or len(password) < min_len:
+        if not normalized_password or len(normalized_password) < min_len:
             raise click.ClickException(f"La contraseña debe tener al menos {min_len} caracteres.")
 
         exists_username = StaffUser.query.filter(
@@ -567,7 +569,7 @@ def create_app():
                 raise click.ClickException("Ese email ya existe.")
 
         u = StaffUser(username=username_clean, email=email_clean, role=role_clean, is_active=bool(is_active))
-        u.set_password(password)
+        u.set_password(normalized_password)
         db.session.add(u)
         db.session.commit()
         click.echo(f"Staff creado: username={u.username} role={u.role} id={u.id} active={u.is_active}")
@@ -633,13 +635,66 @@ def create_app():
         db.session.commit()
         click.echo(f"Actualizado: id={user.id} username={user.username} active={user.is_active}")
 
+    @app.cli.command("audit-staff-passwords")
+    def audit_staff_passwords_command():
+        """Audita hashes de staff sin modificar datos."""
+        from models import StaffUser
+
+        users = StaffUser.query.order_by(StaffUser.id.asc()).all()
+        total = len(users)
+        suspicious = []
+
+        def _reason_for_hash(raw_hash: str) -> str:
+            h = (raw_hash or "").strip()
+            if not h:
+                return "empty_hash"
+            if h == "DISABLED_RESET_REQUIRED":
+                return "disabled_reset_required"
+            if "$" not in h:
+                return "not_kdf_format"
+            if h.startswith(("pbkdf2:", "scrypt:", "argon2:")):
+                return ""
+            return "unknown_scheme"
+
+        for u in users:
+            reason = _reason_for_hash(getattr(u, "password_hash", ""))
+            if reason:
+                suspicious.append(
+                    {
+                        "id": int(u.id),
+                        "username": (u.username or ""),
+                        "role": (u.role or ""),
+                        "active": bool(u.is_active),
+                        "reason": reason,
+                    }
+                )
+
+        dup_rows = (
+            db.session.query(func.lower(StaffUser.username).label("u"), func.count(StaffUser.id).label("n"))
+            .group_by(func.lower(StaffUser.username))
+            .having(func.count(StaffUser.id) > 1)
+            .all()
+        )
+        dup_usernames = [{"username_norm": str(r.u), "count": int(r.n)} for r in dup_rows]
+
+        click.echo(f"staff_total={total}")
+        click.echo(f"suspicious_hashes={len(suspicious)}")
+        for row in suspicious:
+            click.echo(
+                f"- id={row['id']} username={row['username']} role={row['role']} "
+                f"active={int(row['active'])} reason={row['reason']}"
+            )
+        click.echo(f"case_insensitive_username_duplicates={len(dup_usernames)}")
+        for row in dup_usernames:
+            click.echo(f"- username_norm={row['username_norm']} count={row['count']}")
+
     def _seed_testing_staff_users() -> None:
         if env not in ("test", "testing"):
             return
         from models import StaffUser
 
         seed = [
-            ("Owner", "owner", "8899"),
+            ("Owner", "owner", "admin123"),
             ("Cruz", "admin", "8998"),
             ("Karla", "secretaria", "9989"),
             ("Anyi", "secretaria", "0931"),

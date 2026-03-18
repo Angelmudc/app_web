@@ -44,7 +44,7 @@ def test_owner_can_delete_simple_cliente():
         survivor_id = int(survivor.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
     with patch(
         "admin.routes._collect_cliente_delete_plan",
         return_value={"solicitud_ids": [], "summary": {}, "warnings": [], "blocked_issues": []},
@@ -103,7 +103,7 @@ def test_owner_delete_is_blocked_when_critical_dependencies_exist():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     with patch(
         "admin.routes._collect_cliente_delete_plan",
@@ -135,7 +135,7 @@ def test_owner_can_delete_cliente_with_related_test_solicitudes_when_plan_is_saf
         other_id = int(other.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     plan = {
         "solicitud_ids": [9001, 9002],
@@ -189,7 +189,7 @@ def test_owner_delete_rolls_back_when_tree_delete_fails():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     with patch(
         "admin.routes._collect_cliente_delete_plan",

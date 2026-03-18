@@ -16,7 +16,7 @@ def test_owner_sees_create_user_link_and_can_open_route():
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     home = client.get("/home", follow_redirects=False)
     assert home.status_code == 200
@@ -67,7 +67,7 @@ def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
 
-    for usuario, clave in (("Owner", "8899"), ("Cruz", "8998"), ("Karla", "9989")):
+    for usuario, clave in (("Owner", "admin123"), ("Cruz", "8998"), ("Karla", "9989")):
         client = flask_app.test_client()
         assert _login(client, usuario, clave).status_code in (302, 303)
         resp = client.get("/home", follow_redirects=False)
@@ -95,7 +95,7 @@ def test_admin_existing_client_public_link_view_shows_only_short_url_and_copy_ma
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     fake_cliente = SimpleNamespace(id=99, nombre_completo="Cliente Demo", codigo="CL-0099")
     with flask_app.app_context():

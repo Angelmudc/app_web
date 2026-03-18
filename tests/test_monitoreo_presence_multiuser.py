@@ -15,7 +15,7 @@ def test_presence_summary_multi_user_owner_admin_secretaria():
     c_admin = flask_app.test_client()
     c_sec = flask_app.test_client()
 
-    assert _login(c_owner, 'Owner', '8899').status_code in (302, 303)
+    assert _login(c_owner, 'Owner', 'admin123').status_code in (302, 303)
     assert _login(c_admin, 'Cruz', '8998').status_code in (302, 303)
     assert _login(c_sec, 'Karla', '9989').status_code in (302, 303)
 

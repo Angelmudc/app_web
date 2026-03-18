@@ -93,18 +93,22 @@
   {% set _p_name = cliente.nombre_completo or '' %}
   {% set _p_code = cliente.codigo or '' %}
 {% endif %}
+{% set _staff_role = ((session.get('role') if session else '') or (current_user.role if current_user.is_authenticated and current_user.role is defined else ''))|string|lower %}
+{% if _staff_role in ['secretary', 'secre', 'secretaría'] %}
+  {% set _staff_role = 'secretaria' %}
+{% endif %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
-      data-live-presence-enabled="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}1{% else %}0{% endif %}"
-      data-live-presence-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}"
+      data-live-presence-enabled="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}1{% else %}0{% endif %}"
+      data-live-presence-url="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and request.endpoint != 'admin.login' %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}"
       data-presence-entity-type="{{ _p_type }}"
       data-presence-entity-id="{{ _p_id }}"
       data-presence-entity-name="{{ _p_name }}"
       data-presence-entity-code="{{ _p_code }}"
-      data-entity-lock-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
-      data-entity-lock-takeover-url="{% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
-      data-staff-role="{{ current_user.role|default('') if current_user.is_authenticated else '' }}">
+      data-entity-lock-url="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
+      data-entity-lock-takeover-url="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
+      data-staff-role="{{ _staff_role if current_user.is_authenticated else '' }}">
 
   <noscript>
     <div class="container mt-3">
@@ -189,35 +193,35 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.monitoreo_staff') and current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin']) %}
+          {% if has_endpoint('admin.monitoreo_staff') and current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.monitoreo_staff', 'admin.monitoreo_logs'] %}active{% endif %}"
                href="{{ url_for('admin.monitoreo_staff') }}">Control Room</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.metricas_dashboard') and current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin']) %}
+          {% if has_endpoint('admin.metricas_dashboard') and current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view'] %}active{% endif %}"
                href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.matching_inteligente') and current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) %}
+          {% if has_endpoint('admin.matching_inteligente') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
                href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.alertas_canales') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
+          {% if has_endpoint('admin.alertas_canales') and current_user.is_authenticated and (_staff_role == 'owner') %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.alertas_canales'] %}active{% endif %}"
                href="{{ url_for('admin.alertas_canales') }}">Canales</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (current_user.role|default('') == 'owner') %}
+          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (_staff_role == 'owner') %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles'] %}active{% endif %}"
                href="{{ url_for('admin.listar_usuarios') }}">Usuarios y roles</a>
@@ -247,7 +251,7 @@
               {% set ns_reg.ep = ep %}
             {% endif %}
           {% endfor %}
-          {% if ns_reg.url and current_user.is_authenticated and ((current_user.role|default('')|lower) in ['owner', 'admin']) %}
+          {% if ns_reg.url and current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint==ns_reg.ep %}active{% endif %}"
                href="{{ ns_reg.url }}">Registrar candidata</a>
@@ -274,7 +278,7 @@
           </li>
           {% endif %}
 
-          {% if current_user.is_authenticated and (current_user.role|default('') in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.logout') %}
+          {% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.logout') %}
           <li class="nav-item ms-lg-2">
             <form method="post" action="{{ url_for('admin.logout') }}" class="m-0">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

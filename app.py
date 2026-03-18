@@ -104,26 +104,39 @@ def _is_authenticated_any() -> bool:
     return bool(session.get("usuario") and session.get("role"))
 
 
+def _normalize_staff_role_loose(role_raw) -> str:
+    role = str(role_raw or "").strip().lower()
+    if role in ("owner", "admin", "secretaria"):
+        return role
+    if role in ("secretary", "secre", "secretaría"):
+        return "secretaria"
+    return ""
+
+
 def _is_admin_any() -> bool:
     try:
         if bool(getattr(current_user, "is_authenticated", False)):
-            role = (getattr(current_user, "role", None) or getattr(current_user, "rol", None) or "").strip().lower()
+            role = _normalize_staff_role_loose(
+                getattr(current_user, "role", None) or getattr(current_user, "rol", None) or ""
+            )
             if role in ("owner", "admin") or bool(getattr(current_user, "is_admin", False)):
                 return True
     except Exception:
         pass
-    return (str(session.get("role") or "").strip().lower() in ("owner", "admin"))
+    return (_normalize_staff_role_loose(session.get("role")) in ("owner", "admin"))
 
 
 def _is_staff_any() -> bool:
     try:
         if bool(getattr(current_user, "is_authenticated", False)):
-            role = (getattr(current_user, "role", None) or getattr(current_user, "rol", None) or "").strip().lower()
+            role = _normalize_staff_role_loose(
+                getattr(current_user, "role", None) or getattr(current_user, "rol", None) or ""
+            )
             if role in ("owner", "admin", "secretaria"):
                 return True
     except Exception:
         pass
-    return (str(session.get("role") or "").strip().lower() in ("owner", "admin", "secretaria"))
+    return (_normalize_staff_role_loose(session.get("role")) in ("owner", "admin", "secretaria"))
 
 
 @app.before_request

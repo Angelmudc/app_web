@@ -24,7 +24,7 @@ def test_home_public_notifications_count_list_and_mark_read():
     _ensure_notification_tables()
     client = flask_app.test_client()
 
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     with flask_app.app_context():
         db.session.add(
@@ -83,7 +83,7 @@ def test_home_public_notifications_list_limits_pending_and_reviewed():
     _ensure_notification_tables()
     client = flask_app.test_client()
 
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     with flask_app.app_context():
         created_ids = []

@@ -482,12 +482,20 @@ class StaffUser(UserMixin, db.Model):
     def is_staff_admin_level(self) -> bool:
         return self.is_admin
 
+    @staticmethod
+    def normalize_password(raw_password: str) -> str:
+        # El login staff recorta espacios externos y limita a 128.
+        # Mantener la misma normalización evita hashes desalineados.
+        return (raw_password or "").strip()[:128]
+
     def set_password(self, raw_password: str) -> None:
-        self.password_hash = generate_password_hash(raw_password, method="pbkdf2:sha256")
+        normalized = self.normalize_password(raw_password)
+        self.password_hash = generate_password_hash(normalized, method="pbkdf2:sha256")
 
     def check_password(self, raw_password: str) -> bool:
         try:
-            return check_password_hash(self.password_hash or "", raw_password or "")
+            normalized = self.normalize_password(raw_password)
+            return check_password_hash(self.password_hash or "", normalized)
         except Exception:
             return False
 

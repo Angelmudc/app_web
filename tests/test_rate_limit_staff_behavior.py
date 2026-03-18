@@ -62,7 +62,7 @@ def test_staff_multi_tab_polling_no_false_429():
         login_page = client.get("/admin/login", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
         login_csrf = _extract_csrf(login_page.data.decode("utf-8", errors="ignore"))
         assert login_csrf
-        assert _login(client, "Owner", "8899", ip, login_csrf).status_code in (302, 303)
+        assert _login(client, "Owner", "admin123", ip, login_csrf).status_code in (302, 303)
 
         flask_app.config["TESTING"] = False
 

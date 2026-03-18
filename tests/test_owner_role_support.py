@@ -15,7 +15,7 @@ def test_owner_login_works():
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
-    resp = _login(client, "Owner", "8899")
+    resp = _login(client, "Owner", "admin123")
     assert resp.status_code in (302, 303)
 
     home = client.get("/home", follow_redirects=False)
@@ -27,7 +27,7 @@ def test_owner_has_admin_access():
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
-    assert _login(client, "Owner", "8899").status_code in (302, 303)
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
 
     usuarios = client.get("/admin/usuarios", follow_redirects=False)
     crear_usuario = client.get("/admin/usuarios/nuevo", follow_redirects=False)
@@ -62,7 +62,7 @@ def test_menu_visibility_for_owner():
     flask_app.config["WTF_CSRF_ENABLED"] = False
 
     owner_client = flask_app.test_client()
-    assert _login(owner_client, "Owner", "8899").status_code in (302, 303)
+    assert _login(owner_client, "Owner", "admin123").status_code in (302, 303)
     owner_home = owner_client.get("/home", follow_redirects=False)
     assert owner_home.status_code == 200
     assert b'href="/admin/usuarios"' in owner_home.data

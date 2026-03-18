@@ -1103,6 +1103,20 @@ def _operational_rate_limits_enabled() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def _login_debug_enabled() -> bool:
+    raw = (os.getenv("LOGIN_DEBUG", "0") or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _normalize_staff_role_loose(role_raw) -> str:
+    role = (str(role_raw or "").strip().lower())
+    if role in ("owner", "admin", "secretaria"):
+        return role
+    if role in ("secretary", "secre", "secretaría"):
+        return "secretaria"
+    return ""
+
+
 def _client_ip() -> str:
     """Obtiene la IP del cliente.
     - En local: NO confía en cabeceras proxy.
@@ -1195,7 +1209,9 @@ def login():
             return "", 400
 
         usuario_raw = (request.form.get('usuario') or '').strip()[:64]
-        clave       = (request.form.get('clave')   or '').strip()[:128]
+        clave_input_raw = (request.form.get('clave') or '')
+        clave_input_trimmed = clave_input_raw.strip()
+        clave = clave_input_trimmed[:128]
 
         # ✅ Normaliza para llaves internas (bloqueos) y consistencia
         usuario_norm = usuario_raw.lower().strip()
@@ -1209,6 +1225,7 @@ def login():
 
         # 1) Primero intentar StaffUser (BD) por username o email (case-insensitive)
         staff_user = None
+        staff_lookup_error = False
         try:
             staff_user = StaffUser.query.filter(
                 or_(
@@ -1217,15 +1234,23 @@ def login():
                 )
             ).first()
         except Exception:
+            staff_lookup_error = True
+            try:
+                current_app.logger.exception("LOGIN_DB_LOOKUP_ERROR /login usuario=%s", usuario_norm)
+            except Exception:
+                pass
             staff_user = None
 
         staff_ok = False
+        staff_password_ok = False
         if staff_user and bool(getattr(staff_user, "is_active", True)):
-            role = (getattr(staff_user, "role", "") or "").strip().lower()
+            role = _normalize_staff_role_loose(getattr(staff_user, "role", "") or "")
             if role in ("owner", "admin", "secretaria"):
                 try:
-                    staff_ok = bool(staff_user.check_password(clave))
+                    staff_password_ok = bool(staff_user.check_password(clave))
+                    staff_ok = bool(staff_password_ok)
                 except Exception:
+                    staff_password_ok = False
                     staff_ok = False
 
         breakglass_ok = False
@@ -1237,6 +1262,47 @@ def login():
                 log_breakglass_attempt(True, ip, ua)
             else:
                 log_breakglass_attempt(False, ip, ua)
+
+        if _login_debug_enabled():
+            try:
+                current_app.logger.warning(
+                    "LOGIN_DEBUG_LEGACY %s",
+                    json.dumps(
+                        {
+                            "route": "/login",
+                            "usuario_input": usuario_raw,
+                            "usuario_norm": usuario_norm,
+                            "has_clave_field": bool("clave" in request.form),
+                            "form_keys": sorted(list(request.form.keys()))[:40],
+                            "clave_value_count": int(len(request.form.getlist("clave"))),
+                            "password_len_raw": int(len(clave_input_raw)),
+                            "password_len_after_strip": int(len(clave_input_trimmed)),
+                            "password_len_final": int(len(clave)),
+                            "password_empty": bool(not clave),
+                            "password_had_outer_spaces": bool(clave_input_raw != clave_input_trimmed),
+                            "password_truncated_128": bool(len(clave_input_trimmed) > 128),
+                            "locked": bool(_is_locked(usuario_norm)),
+                            "staff_lookup_error": bool(staff_lookup_error),
+                            "staff_found": bool(staff_user),
+                            "staff_id": int(staff_user.id) if isinstance(staff_user, StaffUser) else None,
+                            "staff_role": (getattr(staff_user, "role", None) if staff_user else None),
+                            "staff_active": bool(getattr(staff_user, "is_active", False)) if staff_user else False,
+                            "staff_password_ok": bool(staff_password_ok),
+                            "breakglass_ok": bool(breakglass_ok),
+                            "auth_ok": bool(staff_ok or breakglass_ok),
+                        },
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                )
+            except Exception:
+                pass
+
+        if staff_lookup_error:
+            return render_template(
+                'login.html',
+                mensaje="Error temporal validando credenciales. Intenta de nuevo."
+            ), 503
 
         if staff_ok:
             # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global (IP+endpoint+usuario)
@@ -1263,7 +1329,7 @@ def login():
             session.permanent = False
             login_user(staff_user, remember=False)
             session['usuario'] = (staff_user.username or usuario_raw)
-            session['role'] = (staff_user.role or "secretaria")
+            session['role'] = _normalize_staff_role_loose(staff_user.role) or "secretaria"
             session['is_staff'] = True
             session['is_admin_session'] = True
             session['logged_at'] = utc_now_naive().isoformat(timespec='seconds')
@@ -1278,6 +1344,23 @@ def login():
             except Exception:
                 db.session.rollback()
 
+            if _login_debug_enabled():
+                try:
+                    current_app.logger.warning(
+                        "LOGIN_DEBUG_LEGACY_SESSION %s",
+                        json.dumps(
+                            {
+                                "route": "/login",
+                                "usuario_session": session.get("usuario"),
+                                "role_session": session.get("role"),
+                                "is_admin_session": bool(session.get("is_admin_session")),
+                            },
+                            ensure_ascii=False,
+                            default=str,
+                        ),
+                    )
+                except Exception:
+                    pass
             return safe_redirect_next('home')
 
         if breakglass_ok:

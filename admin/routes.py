@@ -159,6 +159,10 @@ def _is_true_env(value: str, default: bool = False) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def _login_debug_enabled() -> bool:
+    return _is_true_env(os.getenv("LOGIN_DEBUG", "0"), default=False)
+
+
 def _staff_password_min_len() -> int:
     try:
         return max(8, int((os.getenv("STAFF_PASSWORD_MIN_LEN") or "8").strip()))
@@ -174,6 +178,15 @@ def _operational_rate_limits_enabled() -> bool:
 def _admin_default_role() -> str:
     role = (os.getenv("ADMIN_DEFAULT_ROLE") or "secretaria").strip().lower()
     return role if role in ("owner", "admin", "secretaria") else "secretaria"
+
+
+def _normalize_staff_role_loose(role_raw) -> str:
+    role = (str(role_raw or "").strip().lower())
+    if role in ("owner", "admin", "secretaria"):
+        return role
+    if role in ("secretary", "secre", "secretaría"):
+        return "secretaria"
+    return ""
 
 
 def _emergency_hide_prefix() -> str:
@@ -360,7 +373,7 @@ def _ensure_testing_staff_defaults() -> None:
     if not bool(current_app.config.get("TESTING")):
         return
     seed = [
-        ("Owner", "owner", "8899"),
+        ("Owner", "owner", "admin123"),
         ("Cruz", "admin", "8998"),
         ("Karla", "secretaria", "9989"),
         ("Anyi", "secretaria", "0931"),
@@ -1300,6 +1313,7 @@ def login():
 
         # 1) Intento principal: staff_users (BD) por username o email
         staff_user = None
+        staff_lookup_error = False
         try:
             staff_user = StaffUser.query.filter(
                 or_(
@@ -1308,9 +1322,20 @@ def login():
                 )
             ).first()
         except Exception:
+            staff_lookup_error = True
+            try:
+                current_app.logger.exception("LOGIN_DB_LOOKUP_ERROR /admin/login usuario=%s", usuario_norm)
+            except Exception:
+                pass
             staff_user = None
 
-        if staff_user and staff_user.is_active and staff_user.check_password(clave):
+        staff_password_ok = False
+        if staff_user and staff_user.is_active:
+            try:
+                staff_password_ok = bool(staff_user.check_password(clave))
+            except Exception:
+                staff_password_ok = False
+        if staff_user and staff_user.is_active and staff_password_ok:
             auth_ok = True
             authenticated_user = staff_user
             authenticated_username = staff_user.username
@@ -1324,6 +1349,36 @@ def login():
                 auth_ok = True
                 authenticated_user = build_breakglass_user()
                 authenticated_username = breakglass_username()
+
+        if _login_debug_enabled():
+            try:
+                current_app.logger.warning(
+                    "LOGIN_DEBUG_ADMIN %s",
+                    json.dumps(
+                        {
+                            "route": "/admin/login",
+                            "usuario_input": usuario_raw,
+                            "usuario_norm": usuario_norm,
+                            "locked": bool((not is_testing) and _admin_is_locked(usuario_norm)),
+                            "staff_lookup_error": bool(staff_lookup_error),
+                            "staff_found": bool(staff_user),
+                            "staff_id": int(staff_user.id) if isinstance(staff_user, StaffUser) else None,
+                            "staff_role": (getattr(staff_user, "role", None) if staff_user else None),
+                            "staff_active": bool(getattr(staff_user, "is_active", False)) if staff_user else False,
+                            "staff_password_ok": bool(staff_password_ok),
+                            "breakglass_ok": bool(breakglass_ok),
+                            "auth_ok": bool(auth_ok),
+                        },
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                )
+            except Exception:
+                pass
+
+        if staff_lookup_error:
+            error = "Error temporal validando credenciales. Intenta de nuevo."
+            return render_template('admin/login.html', error=error), 503
 
         if auth_ok and authenticated_user is not None:
             # ✅ Login correcto
@@ -1343,7 +1398,8 @@ def login():
             try:
                 session[_ADMIN_SESSION_MARKER] = True
                 session["usuario"] = str(authenticated_username)
-                session["role"] = (getattr(authenticated_user, "role", "") or "").strip().lower()
+                normalized_role = _normalize_staff_role_loose(getattr(authenticated_user, "role", "") or "")
+                session["role"] = normalized_role or (str(getattr(authenticated_user, "role", "") or "").strip().lower())
                 if breakglass_ok:
                     set_breakglass_session(session)
                 else:
@@ -1372,6 +1428,23 @@ def login():
                     db.session.rollback()
 
             fallback = url_for('admin.listar_clientes')
+            if _login_debug_enabled():
+                try:
+                    current_app.logger.warning(
+                        "LOGIN_DEBUG_ADMIN_SESSION %s",
+                        json.dumps(
+                            {
+                                "route": "/admin/login",
+                                "usuario_session": session.get("usuario"),
+                                "role_session": session.get("role"),
+                                "is_admin_session": bool(session.get("is_admin_session")),
+                            },
+                            ensure_ascii=False,
+                            default=str,
+                        ),
+                    )
+                except Exception:
+                    pass
             return redirect(_safe_next_url(fallback))
 
         # ❌ Login incorrecto
@@ -1529,7 +1602,7 @@ def crear_usuario():
         username = (form.username.data or '').strip()
         email = (form.email.data or '').strip().lower() or None
         role = (form.role.data or '').strip().lower()
-        password = (form.password.data or '')
+        password = StaffUser.normalize_password(form.password.data or "")
 
         if role not in ('owner', 'admin', 'secretaria'):
             flash('Rol inválido.', 'danger')
@@ -1578,7 +1651,7 @@ def editar_usuario(user_id: int):
     if form.validate_on_submit():
         email = (form.email.data or '').strip().lower() or None
         role = (form.role.data or '').strip().lower()
-        new_password = (form.new_password.data or '')
+        new_password = StaffUser.normalize_password(form.new_password.data or "")
 
         if role not in ('owner', 'admin', 'secretaria'):
             flash('Rol inválido.', 'danger')
