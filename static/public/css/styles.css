@@ -1024,6 +1024,10 @@ body.recruitment-brand {
   --rb-purple: #7b4dff;
   --rb-purple-soft: #a66cff;
   --rb-navy: #2e3a8c;
+  --rb-hero-glow-purple: rgba(123, 77, 255, 0.24);
+  --rb-hero-glow-cyan: rgba(43, 183, 195, 0.24);
+  --rb-cta-primary-shadow: 0 24px 42px rgba(123, 77, 255, 0.34);
+  --rb-cta-secondary-shadow: 0 14px 26px rgba(46, 58, 140, 0.14);
   --color-primario: var(--rb-navy);
   --color-secundario: var(--rb-purple);
   --color-acento: var(--rb-cyan);
@@ -1225,15 +1229,16 @@ body.recruitment-brand {
 }
 
 .recruitment-brand .hero {
-  padding: 3.25rem 0 2.9rem;
-  background: radial-gradient(circle at 8% 0%, rgba(123, 77, 255, 0.16) 0%, transparent 44%),
-              radial-gradient(circle at 92% 10%, rgba(43, 183, 195, 0.2) 0%, transparent 48%),
-              #f8fafc;
+  padding: 3.45rem 0 3.05rem;
+  background: radial-gradient(circle at 9% 4%, var(--rb-hero-glow-purple) 0%, transparent 42%),
+              radial-gradient(circle at 92% 4%, var(--rb-hero-glow-cyan) 0%, transparent 44%),
+              linear-gradient(165deg, #f7f8ff 0%, #f0f4ff 56%, #edf9f7 100%);
+  border-bottom: 1px solid rgba(46, 58, 140, 0.12);
 }
 
 .recruitment-brand .hero--home {
-  padding-top: 1.2rem;
-  padding-bottom: 2.1rem;
+  padding-top: 1.35rem;
+  padding-bottom: 2.35rem;
 }
 
 .recruitment-brand .hero-eyebrow {
@@ -1246,27 +1251,28 @@ body.recruitment-brand {
 }
 
 .recruitment-brand .hero-text h1 {
-  font-size: clamp(2rem, 4.4vw, 3rem);
-  line-height: 1.08;
-  margin-bottom: 0.8rem;
+  font-size: clamp(2.08rem, 4.5vw, 3.08rem);
+  line-height: 1.06;
+  margin-bottom: 0.9rem;
   color: var(--color-texto);
 }
 
 .recruitment-brand .hero-subtitle {
-  font-size: 1.04rem;
-  color: var(--color-texto-suave);
-  margin-bottom: 0.95rem;
+  font-size: 1.05rem;
+  color: #4a557f;
+  line-height: 1.54;
+  margin-bottom: 1.06rem;
   max-width: 58ch;
 }
 
 .recruitment-brand .hero-action-signal {
-  border: 1px solid var(--rb-border);
-  border-left: 5px solid rgba(123, 77, 255, 0.72);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(244, 241, 255, 0.95));
-  border-radius: 12px;
-  padding: 0.64rem 0.86rem 0.62rem;
-  margin-bottom: 0.9rem;
-  box-shadow: 0 10px 18px rgba(9, 29, 62, 0.08);
+  border: 1px solid rgba(123, 77, 255, 0.26);
+  border-left: 5px solid rgba(123, 77, 255, 0.78);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(240, 249, 252, 0.95));
+  border-radius: 13px;
+  padding: 0.68rem 0.9rem 0.66rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 12px 22px rgba(9, 29, 62, 0.09);
 }
 
 .recruitment-brand .hero-action-signal__title {
@@ -1281,7 +1287,7 @@ body.recruitment-brand {
 
 .recruitment-brand .hero-action-signal__hint {
   margin: 0.18rem 0 0;
-  color: #4f5681;
+  color: #4a557f;
   font-size: 0.86rem;
   line-height: 1.35;
   font-weight: 650;
@@ -1290,12 +1296,12 @@ body.recruitment-brand {
 .recruitment-brand .hero-cta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.88rem;
-  margin-bottom: 1.1rem;
+  gap: 1rem;
+  margin-bottom: 1.18rem;
 }
 
 .recruitment-brand .hero-cta-grid--priority {
-  margin-bottom: 0.95rem;
+  margin-bottom: 1.05rem;
   position: relative;
 }
 
@@ -1303,26 +1309,36 @@ body.recruitment-brand {
   display: block;
   text-decoration: none;
   cursor: pointer;
-  border-radius: 16px;
-  padding: 1.08rem 1rem 1rem;
-  min-height: 116px;
+  border-radius: 18px;
+  padding: 1.14rem 1.04rem 1.04rem;
+  min-height: 120px;
   border: 1px solid var(--rb-border);
-  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
   box-shadow: var(--rb-shadow-card);
 }
 
 .recruitment-brand .hero-cta--general {
-  border: 1px solid rgba(123, 77, 255, 0.72);
-  background: linear-gradient(145deg, #24b9c5 0%, #3ad1c8 44%, #7b4dff 100%);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(166, 108, 255, 0.78);
+  background: linear-gradient(142deg, #23b6c2 0%, #3ad1c8 36%, #7b4dff 100%);
   color: #ffffff;
-  box-shadow: 0 22px 40px rgba(123, 77, 255, 0.34);
+  box-shadow: var(--rb-cta-primary-shadow);
   transform: translateY(-1px);
-  min-height: 124px;
+  min-height: 128px;
+}
+
+.recruitment-brand .hero-cta--general::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 42%);
+  pointer-events: none;
 }
 
 .recruitment-brand .hero-cta--general:hover {
-  border-color: rgba(166, 108, 255, 0.86);
-  box-shadow: 0 26px 44px rgba(123, 77, 255, 0.42);
+  border-color: rgba(166, 108, 255, 0.96);
+  box-shadow: 0 28px 46px rgba(123, 77, 255, 0.42);
 }
 
 .recruitment-brand .hero-cta__row {
@@ -1334,20 +1350,26 @@ body.recruitment-brand {
 
 .recruitment-brand .hero-cta--domestico {
   color: var(--rb-navy);
-  background: linear-gradient(135deg, #ffffff 0%, #f7f6ff 68%, #eefbfb 100%);
-  border-color: rgba(46, 58, 140, 0.2);
-  box-shadow: 0 12px 22px rgba(46, 58, 140, 0.1);
+  background: linear-gradient(138deg, rgba(255, 255, 255, 0.97) 0%, rgba(246, 245, 255, 0.96) 58%, rgba(237, 250, 249, 0.96) 100%);
+  border-color: rgba(46, 58, 140, 0.3);
+  box-shadow: var(--rb-cta-secondary-shadow);
+}
+
+.recruitment-brand .hero-cta--domestico:hover {
+  border-color: rgba(123, 77, 255, 0.54);
+  box-shadow: 0 18px 30px rgba(46, 58, 140, 0.18);
 }
 
 .recruitment-brand .hero-cta:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   border-color: rgba(123, 77, 255, 0.5);
-  box-shadow: 0 18px 32px rgba(46, 58, 140, 0.16);
+  box-shadow: 0 20px 34px rgba(46, 58, 140, 0.18);
 }
 
 .recruitment-brand .hero-cta:focus-visible {
-  outline: 3px solid rgba(43, 183, 195, 0.32);
+  outline: 3px solid rgba(58, 209, 200, 0.42);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(43, 183, 195, 0.22);
 }
 
 .recruitment-brand .hero-cta:active {
@@ -1405,11 +1427,11 @@ body.recruitment-brand {
   display: block;
   margin-top: .38rem;
   font-size: .88rem;
-  opacity: .92;
+  opacity: 1;
 }
 
 .recruitment-brand .hero-cta--domestico .hero-cta__hint {
-  color: #59638d;
+  color: #4c5782;
 }
 
 .recruitment-brand .hero-cta__action {
@@ -1434,9 +1456,9 @@ body.recruitment-brand {
 }
 
 .recruitment-brand .hero-cta--domestico .hero-cta__action {
-  color: var(--rb-navy);
-  background: rgba(123, 77, 255, 0.08);
-  border-color: rgba(123, 77, 255, 0.24);
+  color: #23306b;
+  background: rgba(46, 58, 140, 0.1);
+  border-color: rgba(46, 58, 140, 0.28);
 }
 
 .recruitment-brand .hero-badges {
@@ -1562,6 +1584,50 @@ body.recruitment-brand {
   border-color: rgba(255, 255, 255, 0.98);
   color: #f8fafc;
   background: rgba(255, 255, 255, 0.16);
+}
+
+.recruitment-brand .cta-section {
+  background: radial-gradient(circle at 12% 20%, rgba(58, 209, 200, 0.24) 0%, transparent 42%),
+              radial-gradient(circle at 88% 10%, rgba(166, 108, 255, 0.22) 0%, transparent 46%),
+              linear-gradient(135deg, #2e3a8c 0%, #2a3582 44%, #1f2a67 100%);
+}
+
+.recruitment-brand .cta-inner p {
+  color: rgba(237, 250, 255, 0.94);
+}
+
+.recruitment-brand .cta-actions {
+  gap: 0.88rem;
+}
+
+.recruitment-brand .cta-section .btn-primary {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: linear-gradient(142deg, #24b6c2 0%, #3ad1c8 42%, #7b4dff 100%);
+  color: #ffffff;
+  box-shadow: 0 18px 32px rgba(26, 31, 78, 0.44);
+}
+
+.recruitment-brand .cta-section .btn-primary:hover {
+  box-shadow: 0 22px 34px rgba(26, 31, 78, 0.52);
+}
+
+.recruitment-brand .cta-section .btn-secondary {
+  border: 1px solid rgba(58, 209, 200, 0.76);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(166, 108, 255, 0.24));
+  color: #f8fbff;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 14px 28px rgba(8, 13, 40, 0.38);
+}
+
+.recruitment-brand .cta-section .btn-secondary:hover {
+  border-color: rgba(58, 209, 200, 0.96);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.26), rgba(166, 108, 255, 0.34));
+  box-shadow: 0 18px 30px rgba(8, 13, 40, 0.46);
+}
+
+.recruitment-brand .cta-section .btn-secondary:focus-visible {
+  outline: 3px solid rgba(58, 209, 200, 0.4);
+  outline-offset: 2px;
 }
 
 @media (max-width: 900px) {
@@ -1701,13 +1767,18 @@ body.recruitment-brand {
   }
 
   .recruitment-brand .hero-cta {
-    min-height: 108px;
-    padding: 0.92rem 0.9rem;
+    min-height: 112px;
+    padding: 0.94rem 0.92rem;
   }
 
   .recruitment-brand .hero-cta--general {
+    min-height: 120px;
+    box-shadow: 0 20px 36px rgba(123, 77, 255, 0.34);
+  }
+
+  .recruitment-brand .hero-cta--domestico {
     min-height: 114px;
-    box-shadow: 0 18px 34px rgba(123, 77, 255, 0.32);
+    box-shadow: 0 14px 26px rgba(46, 58, 140, 0.17);
   }
 
   .recruitment-brand .hero-cta__label {
