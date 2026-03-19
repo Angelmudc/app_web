@@ -1126,6 +1126,22 @@ def _reset_inicio_seguimiento_si_reactiva(s, now: datetime):
         s.fecha_inicio_seguimiento = now
 
 
+def _pasaje_copy_phrase_from_solicitud(s: Solicitud) -> str:
+    """Frase de pasaje para textos de copiado: legado booleano + texto libre."""
+    mode, other_text = read_pasaje_mode_text(
+        pasaje_aporte=getattr(s, "pasaje_aporte", False),
+        detalles_servicio=getattr(s, "detalles_servicio", None),
+        nota_cliente=getattr(s, "nota_cliente", ""),
+    )
+
+    custom = str(other_text or "").strip()
+    if mode == "otro" and custom:
+        return custom
+    if mode == "aparte":
+        return "incluye ayuda de pasaje"
+    return "no incluye ayuda de pasaje"
+
+
 def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     """
     Arma un resumen limpio y entendible de la solicitud para compartir con el cliente.
@@ -1190,7 +1206,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     # Dinero
     sueldo_raw    = getattr(s, 'sueldo', None)
     sueldo_txt    = _format_money_usd(sueldo_raw)
-    pasaje_aporte = bool(getattr(s, 'pasaje_aporte', False))
+    pasaje_texto = _pasaje_copy_phrase_from_solicitud(s)
 
     lineas = []
 
@@ -1264,8 +1280,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     # Dinero
     lineas.append("💰 Oferta económica:")
     if sueldo_txt:
-        extra = "más ayuda del pasaje" if pasaje_aporte else "pasaje incluido"
-        lineas.append(f"• Sueldo: {sueldo_txt} mensual, {extra}")
+        lineas.append(f"• Sueldo: {sueldo_txt} mensual, {pasaje_texto}")
     else:
         lineas.append("• (No se especificó sueldo)")
 
@@ -7261,6 +7276,7 @@ def detalle_solicitud(cliente_id, id):
 
     # 👉 Resumen listo para enviar al cliente (helper que ya te di antes)
     resumen_cliente = build_resumen_cliente_solicitud(s)
+    pasaje_copy_text = _pasaje_copy_phrase_from_solicitud(s)
     role = (
         str(getattr(current_user, "role", "") or "").strip().lower()
         or str(session.get("role", "") or "").strip().lower()
@@ -7275,6 +7291,7 @@ def detalle_solicitud(cliente_id, id):
         reemplazos     = reemplazos_ordenados,
         reemplazo_activo=reemplazo_activo,
         resumen_cliente=resumen_cliente,
+        pasaje_copy_text=pasaje_copy_text,
         is_admin_role=is_admin_role,
     )
 
@@ -9475,7 +9492,7 @@ def copiar_solicitudes():
 
         # Sueldo
         sueldo_final  = _format_money_usd(getattr(s, 'sueldo', None))
-        pasaje_aporte = bool(getattr(s, 'pasaje_aporte', False))
+        pasaje_texto = _pasaje_copy_phrase_from_solicitud(s)
 
         # Nota del cliente (al final, sin prefijo)
         nota_cli = _s(getattr(s, 'nota_cliente', None))
@@ -9621,7 +9638,7 @@ def copiar_solicitudes():
         if sueldo_final:
             sueldo_block = (
                 f"Sueldo: {sueldo_final} mensual"
-                + (", más ayuda del pasaje" if pasaje_aporte else ", pasaje incluido")
+                + f", {pasaje_texto}"
             )
 
         # Armamos el orden final SIN cambiar el modelo original,

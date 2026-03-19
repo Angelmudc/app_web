@@ -222,6 +222,7 @@
       {# Sueldo + pasaje #}
       {% set _sueldo = (solicitud.sueldo or '') %}
       {% set _pasaje = (solicitud.pasaje_aporte if solicitud.pasaje_aporte is defined else False) %}
+      {% set _pasaje_texto = (pasaje_copy_text if pasaje_copy_text is defined and pasaje_copy_text else ('incluye ayuda de pasaje' if _pasaje else 'no incluye ayuda de pasaje')) %}
       {% set _nota = (solicitud.nota_cliente if solicitud.nota_cliente is defined else '') %}
       {% if (not _nota) and solicitud.notas is defined and solicitud.notas %}
         {% set _nota = solicitud.notas %}
@@ -244,7 +245,7 @@
         ~ ('Niños: ' ~ (_ninos|string if _ninos is not none else '') ~ '\n' if (_ninos is not none and (_ninos|string)|trim != '' and (_ninos|string)|int > 0) else '')
         ~ ('Edades niños: ' ~ _edades_ninos ~ '\n' if (_edades_ninos|string)|trim != '' else '')
         ~ ('Mascota: ' ~ _mascota ~ '\n\n' if _mascota else '\n')
-        ~ 'Sueldo: $' ~ (_sueldo|string) ~ ' mensual' ~ (', incluye ayuda de pasaje' if _pasaje else ', no incluye ayuda de pasaje')
+        ~ 'Sueldo: $' ~ (_sueldo|string) ~ ' mensual, ' ~ _pasaje_texto
         ~ ('\n\nNotas: ' ~ _nota if (_nota|string)|trim != '' else '')
       ) %}
 

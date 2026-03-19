@@ -10,6 +10,27 @@ def _to_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _base_mode_and_text_from_pasaje_aporte(pasaje_aporte: Any) -> tuple[str, str]:
+    """Interpreta legado booleano y soporta casos donde el valor llegue como texto libre."""
+    if isinstance(pasaje_aporte, bool):
+        return ("aparte", "") if pasaje_aporte else ("incluido", "")
+
+    raw = _to_text(pasaje_aporte)
+    if not raw:
+        return "incluido", ""
+
+    low = raw.lower()
+    truthy = {"1", "true", "t", "y", "yes", "si", "sí", "on", "aparte"}
+    falsy = {"0", "false", "f", "n", "no", "off", "incluido"}
+
+    if low in truthy:
+        return "aparte", ""
+    if low in falsy:
+        return "incluido", ""
+
+    return "otro", raw[:120]
+
+
 def normalize_pasaje_mode_text(
     mode_raw: Any,
     text_raw: Any,
@@ -65,8 +86,7 @@ def read_pasaje_mode_text(
     detalles_servicio: Any,
     nota_cliente: Any,
 ) -> tuple[str, str]:
-    mode = "aparte" if bool(pasaje_aporte) else "incluido"
-    text = ""
+    mode, text = _base_mode_and_text_from_pasaje_aporte(pasaje_aporte)
 
     if isinstance(detalles_servicio, dict):
         pasaje_data = detalles_servicio.get("pasaje")

@@ -575,8 +575,6 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch {
         text = btn.dataset.orderText || '';
       }
-      text = text.replace(/\n\s*Dominicana\b/g, '\nDominicana');
-      text = text.replace(/[\t ]+Dominicana\b/g, '\nDominicana');
 
       let copied = false;
       if (navigator.clipboard && window.isSecureContext) {

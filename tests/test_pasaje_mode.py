@@ -93,3 +93,13 @@ def test_read_pasaje_mode_text_keeps_legacy_boolean_pasaje_when_no_otro_data():
 
     assert (mode_true, text_true) == ("aparte", "")
     assert (mode_false, text_false) == ("incluido", "")
+
+
+def test_read_pasaje_mode_text_accepts_free_text_in_pasaje_field():
+    mode, text = read_pasaje_mode_text(
+        pasaje_aporte="pasaje incluido por el empleador",
+        detalles_servicio=None,
+        nota_cliente="",
+    )
+
+    assert (mode, text) == ("otro", "pasaje incluido por el empleador")

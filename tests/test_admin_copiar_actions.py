@@ -212,6 +212,38 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('<button type="submit" class="btn btn-danger" data-no-loader="true">Confirmar cancelación</button>', html)
         self.assertIn('id="contextActionPanelClose"', html)
 
+    def test_copiar_solicitudes_respeta_pasaje_texto_libre(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="activa")
+        solicitud.pasaje_aporte = False
+        solicitud.detalles_servicio = {"pasaje": {"mode": "otro", "text": "pasaje aparte por ruta"}}
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([solicitud])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("pasaje aparte por ruta", html)
+
+    def test_build_resumen_cliente_solicitud_pasaje_usa_mensajes_claros(self):
+        solicitud_false = _SolicitudStub(estado="activa")
+        solicitud_false.pasaje_aporte = False
+        solicitud_false.detalles_servicio = {}
+
+        solicitud_true = _SolicitudStub(estado="activa")
+        solicitud_true.pasaje_aporte = True
+        solicitud_true.detalles_servicio = {}
+
+        with flask_app.app_context():
+            with patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resumen_false = admin_routes.build_resumen_cliente_solicitud(solicitud_false)
+                resumen_true = admin_routes.build_resumen_cliente_solicitud(solicitud_true)
+
+        self.assertIn("no incluye ayuda de pasaje", resumen_false)
+        self.assertIn("incluye ayuda de pasaje", resumen_true)
+
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
         self._login("Cruz", "8998")
         solicitud = _SolicitudStub(estado="activa")
