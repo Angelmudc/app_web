@@ -9710,14 +9710,27 @@ def copiar_solicitud(id):
     fallback = url_for('admin.copiar_solicitudes')
 
     if s.estado not in ('activa', 'reemplazo'):
-        flash('Esta solicitud no es copiable en su estado actual.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='Esta solicitud no es copiable en su estado actual.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+        )
 
     start_utc, _ = _utc_day_bounds()
     last = _to_naive_utc(getattr(s, 'last_copiado_at', None))
     if last is not None and last >= start_utc:
-        flash('Esta solicitud ya fue marcada como copiada hoy.', 'info')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=True,
+            message='Esta solicitud ya fue marcada como copiada hoy.',
+            category='info',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": s.estado, "remove_card": True},
+        )
 
     try:
         s.last_copiado_at = func.now()
@@ -9728,15 +9741,35 @@ def copiar_solicitud(id):
             entity_id=s.id,
             summary=f"Solicitud marcada como publicada/copiada: {s.codigo_solicitud or s.id}",
         )
-        flash(f'Solicitud { _s(s.codigo_solicitud) } copiada. Ya no se mostrará hasta mañana.', 'success')
+        return _copiar_action_response(
+            ok=True,
+            message=f'Solicitud { _s(s.codigo_solicitud) } copiada. Ya no se mostrará hasta mañana.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": s.estado, "remove_card": True},
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('No se pudo marcar la solicitud como copiada.', 'danger')
+        return _copiar_action_response(
+            ok=False,
+            message='No se pudo marcar la solicitud como copiada.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+        )
     except Exception:
         db.session.rollback()
-        flash('Ocurrió un error al marcar como copiada.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='Ocurrió un error al marcar como copiada.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+        )
 
 
 @admin_bp.route('/solicitudes/<int:id>/pausar_espera_perfil', methods=['POST'])
@@ -9748,13 +9781,26 @@ def pausar_espera_perfil_desde_copiar(id):
     fallback = url_for('admin.copiar_solicitudes')
 
     if s.estado == 'espera_pago':
-        flash('La solicitud ya está en pausa por espera de perfil.', 'info')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=True,
+            message='La solicitud ya está en pausa por espera de perfil.',
+            category='info',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": "espera_pago", "remove_card": True},
+        )
 
     estado_actual = (s.estado or '').strip().lower()
     if estado_actual in ('cancelada', 'pagada'):
-        flash('No se puede pausar por espera de perfil en el estado actual.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='No se puede pausar por espera de perfil en el estado actual.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+        )
 
     try:
         if hasattr(s, 'estado_previo_espera_pago'):
@@ -9776,12 +9822,25 @@ def pausar_espera_perfil_desde_copiar(id):
             summary=f"Solicitud en pausa por espera de perfil: {s.codigo_solicitud or s.id}",
             changes={"estado": {"from": estado_actual, "to": "espera_pago"}},
         )
-        flash('Solicitud pausada por espera de perfil.', 'success')
+        return _copiar_action_response(
+            ok=True,
+            message='Solicitud pausada por espera de perfil.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": "espera_pago", "remove_card": True},
+        )
     except Exception:
         db.session.rollback()
-        flash('No se pudo pausar la solicitud por espera de perfil.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=False,
+            message='No se pudo pausar la solicitud por espera de perfil.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+        )
 
 
 @admin_bp.route('/solicitudes/<int:id>/reanudar_espera_perfil', methods=['POST'])

@@ -113,7 +113,7 @@
               <i class="bi bi-clipboard-check me-1"></i> Copiar
             </button>
 
-            <form method="post" action="{{ url_for('admin.copiar_solicitud', id=s.id) }}" class="d-none copy-form">
+            <form method="post" action="{{ url_for('admin.copiar_solicitud', id=s.id) }}" class="d-none copy-form js-inline-async-action" data-success-message="Solicitud copiada." data-remove-card="1">
               {% if csrf_token is defined %}
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               {% endif %}
@@ -127,7 +127,7 @@
               <ul class="dropdown-menu dropdown-menu-end">
                 {% if s.estado != 'espera_pago' %}
                 <li>
-                  <form method="post" action="{{ url_for('admin.pausar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1">
+                  <form method="post" action="{{ url_for('admin.pausar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1 js-inline-async-action" data-success-message="Solicitud pausada por espera de perfil." data-remove-card="1">
                     {% if csrf_token is defined %}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     {% endif %}
@@ -139,7 +139,7 @@
                 </li>
                 {% else %}
                 <li>
-                  <form method="post" action="{{ url_for('admin.reanudar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1">
+                  <form method="post" action="{{ url_for('admin.reanudar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1 js-inline-async-action" data-success-message="Solicitud reanudada." data-remove-card="0">
                     {% if csrf_token is defined %}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     {% endif %}
@@ -548,6 +548,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function submitInlineActionAjax(form, successMessage, removeCardDefault = false) {
+    if (!form || !window.fetch) return { handled: false, ok: false };
+    clearUiLoaders();
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const resp = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('application/json')) {
+        clearUiLoaders();
+        return { handled: false, ok: false };
+      }
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        showActionToast(data.message || 'No se pudo completar la acción.', true);
+        return { handled: true, ok: false, data };
+      }
+      const solicitudId = data.solicitud_id || (form.closest('li[id^="sol-"]')?.id || '').replace('sol-', '');
+      const shouldRemove = Boolean(data.remove_card) || Boolean(removeCardDefault);
+      if (shouldRemove && solicitudId) {
+        removeSolicitudCardFromUi(solicitudId);
+      }
+      showActionToast(data.message || successMessage, false);
+      return { handled: true, ok: true, data };
+    } catch (_err) {
+      clearUiLoaders();
+      return { handled: false, ok: false };
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+      clearUiLoaders();
+    }
+  }
+
   function fallbackCopy(text) {
     try {
       const ta = document.createElement('textarea');
@@ -589,23 +630,53 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (copied) {
-        showToast();
-        btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Copiado';
-        btn.classList.remove('btn-primary');
-        btn.classList.add('btn-success');
-        btn.disabled = true;
-
         const form = btn.closest('.text-end')?.querySelector('.copy-form');
-        if (form) {
-          const nextInput = form.querySelector('input[name="next"]');
-          if (nextInput && btn.dataset.solicitudId) {
-            nextInput.value = `${window.location.pathname}${window.location.search}#sol-${btn.dataset.solicitudId}`;
-          }
-          setTimeout(() => { form.submit(); }, 500);
+        if (!form) {
+          showToast();
+          return;
         }
+        const nextInput = form.querySelector('input[name="next"]');
+        if (nextInput && btn.dataset.solicitudId) {
+          nextInput.value = `${window.location.pathname}${window.location.search}#sol-${btn.dataset.solicitudId}`;
+        }
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Guardando...';
+
+        const action = await submitInlineActionAjax(form, 'Solicitud copiada.', true);
+        if (!action.handled) {
+          clearUiLoaders();
+          form.dataset.asyncBypass = '1';
+          form.submit();
+          return;
+        }
+        if (action.ok) {
+          return;
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
       } else {
         alert('❌ No se pudo copiar. Intenta de nuevo.');
       }
+    });
+  });
+
+  document.querySelectorAll('form.js-inline-async-action').forEach((form) => {
+    if (form.classList.contains('copy-form')) return;
+    form.addEventListener('submit', async (ev) => {
+      if (form.dataset.asyncBypass === '1') {
+        form.dataset.asyncBypass = '';
+        return;
+      }
+      ev.preventDefault();
+      const successMessage = form.dataset.successMessage || 'Acción completada.';
+      const removeCardDefault = (form.dataset.removeCard || '') === '1';
+      const action = await submitInlineActionAjax(form, successMessage, removeCardDefault);
+      if (action.handled) return;
+      clearUiLoaders();
+      form.dataset.asyncBypass = '1';
+      form.submit();
     });
   });
 

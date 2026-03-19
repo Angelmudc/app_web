@@ -329,6 +329,59 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("/admin/solicitudes/copiar?page=2#sol-10", resp.location)
         commit_mock.assert_called_once()
 
+    def test_copiar_solicitud_ajax_devuelve_json_y_remueve_tarjeta(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="activa")
+        solicitud.last_copiado_at = datetime.utcnow() - timedelta(days=2)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/copiar",
+                    data={"next": "/admin/solicitudes/copiar?page=2#sol-10"},
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["category"], "success")
+        self.assertEqual(data["solicitud_id"], 10)
+        self.assertTrue(data["remove_card"])
+        commit_mock.assert_called_once()
+
+    def test_pausar_espera_perfil_ajax_devuelve_json_y_remueve_tarjeta(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="activa")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/pausar_espera_perfil",
+                    data={"next": "/admin/solicitudes/copiar?page=1#sol-10"},
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["category"], "success")
+        self.assertEqual(data["solicitud_id"], 10)
+        self.assertEqual(data["estado"], "espera_pago")
+        self.assertTrue(data["remove_card"])
+        self.assertEqual(solicitud.estado, "espera_pago")
+        commit_mock.assert_called_once()
+
     def test_acciones_desde_copiar_cancelar_y_pausa_perfil(self):
         self._login("Karla", "9989")
         solicitud = _SolicitudStub(estado="activa")
