@@ -26,6 +26,11 @@
   let summaryPollTimer = null;
   let productivityPollTimer = null;
   let presencePollTimer = null;
+  let sseWatchdogTimer = null;
+  let sseStalled = false;
+  let lastSseEventAtMs = 0;
+  const SSE_STALL_AFTER_MS = 12000;
+  const SSE_WATCHDOG_TICK_MS = 3000;
   let presencePingTimer = null;
   let presencePingDelayMs = 10000;
   let presencePingStatus = 'live';
@@ -519,6 +524,10 @@
       sse.close();
       sse = null;
     }
+    if (sseWatchdogTimer) clearInterval(sseWatchdogTimer);
+    sseWatchdogTimer = null;
+    lastSseEventAtMs = 0;
+    sseStalled = false;
   }
 
   function stopPolling() {
@@ -535,7 +544,11 @@
   function startPolling() {
     if (!isMonitoringPage()) return;
     stopPolling();
-    setLiveStatus(true);
+    if (sseStalled) {
+      setLiveStatus(false);
+    } else {
+      setLiveStatus(true);
+    }
     pollLogs().catch(() => {});
     pollSummary().catch(() => {});
     pollProductivity().catch(() => {});
@@ -549,11 +562,33 @@
   function startSSE() {
     if (!streamUrl || paused || !isMonitoringPage()) return;
     stopSSE();
+    sseStalled = false;
     const url = streamUrl + '?last_id=' + encodeURIComponent(String(lastId || 0));
     sse = new EventSource(url, { withCredentials: true });
+    const markSseAlive = function () {
+      lastSseEventAtMs = Date.now();
+      if (sseStalled) {
+        sseStalled = false;
+        stopPolling();
+      }
+      setLiveStatus(true);
+    };
+    markSseAlive();
+
+    if (sseWatchdogTimer) clearInterval(sseWatchdogTimer);
+    sseWatchdogTimer = setInterval(function () {
+      if (!sse || paused || !isMonitoringPage()) return;
+      if (!lastSseEventAtMs) return;
+      const elapsedMs = Date.now() - lastSseEventAtMs;
+      if (elapsedMs <= SSE_STALL_AFTER_MS) return;
+      sseStalled = true;
+      // Keep UI live through polling if the SSE socket stays open but stops delivering events.
+      startPolling();
+    }, SSE_WATCHDOG_TICK_MS);
 
     sse.addEventListener('log', (ev) => {
       try {
+        markSseAlive();
         const item = JSON.parse(ev.data || '{}');
         insertLogRow(item);
         lastId = Math.max(lastId, Number(item.id || 0));
@@ -565,6 +600,7 @@
 
     sse.addEventListener('summary', (ev) => {
       try {
+        markSseAlive();
         const data = JSON.parse(ev.data || '{}');
         updateMetrics(data);
       } catch (_) {}
@@ -572,13 +608,16 @@
 
     sse.addEventListener('presence', (ev) => {
       try {
+        markSseAlive();
         const data = JSON.parse(ev.data || '{}');
         updatePresenceTable((data && data.items) || []);
+        updateConflicts((data && data.conflicts) || []);
       } catch (_) {}
     });
 
     sse.addEventListener('active_snapshot', (ev) => {
       try {
+        markSseAlive();
         const data = JSON.parse(ev.data || '{}');
         updatePresenceTable((data && data.items) || []);
         updateConflicts((data && data.conflicts) || []);
@@ -587,6 +626,7 @@
 
     sse.addEventListener('operations', (ev) => {
       try {
+        markSseAlive();
         const data = JSON.parse(ev.data || '{}');
         updateOperations((data && data.metrics) || {});
       } catch (_) {}
@@ -594,17 +634,19 @@
 
     sse.addEventListener('activity', (ev) => {
       try {
+        markSseAlive();
         const data = JSON.parse(ev.data || '{}');
         updateActivityStream((data && data.items) || []);
       } catch (_) {}
     });
 
     sse.addEventListener('heartbeat', () => {
-      setLiveStatus(true);
+      markSseAlive();
     });
 
     sse.onerror = function () {
       stopSSE();
+      sseStalled = true;
       startPolling();
     };
 

@@ -19,4 +19,6 @@ def test_monitoreo_sse_stream_once_mode():
     assert 'text/event-stream' in (resp.content_type or '')
 
     body = resp.data.decode('utf-8', errors='ignore')
+    assert 'event: active_snapshot' in body
+    assert 'event: presence' in body
     assert 'event: heartbeat' in body

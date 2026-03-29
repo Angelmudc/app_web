@@ -5421,11 +5421,23 @@ def monitoreo_stream():
         try:
             if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
                 snapshot = _presence_rows()
+                active = _presence_active_rows(snapshot)
+                conflicts = _build_presence_conflicts(active)
                 yield _sse(
                     "active_snapshot",
                     {
                         "items": snapshot,
-                        "active_count": len(_presence_active_rows(snapshot)),
+                        "active_count": len(active),
+                        "conflicts": conflicts,
+                        "interval_sec": 1,
+                    },
+                )
+                yield _sse(
+                    "presence",
+                    {
+                        "items": snapshot,
+                        "active_count": len(active),
+                        "conflicts": conflicts,
                         "interval_sec": 1,
                     },
                 )
@@ -5468,15 +5480,15 @@ def monitoreo_stream():
                     presence = _presence_rows()
                     active = _presence_active_rows(presence)
                     conflicts = _build_presence_conflicts(active)
-                    yield _sse(
-                        "active_snapshot",
-                        {
-                            "items": presence,
-                            "active_count": len(active),
-                            "conflicts": conflicts,
-                            "interval_sec": 1,
-                        },
-                    )
+                    payload = {
+                        "items": presence,
+                        "active_count": len(active),
+                        "conflicts": conflicts,
+                        "interval_sec": 1,
+                    }
+                    # Emit both event names for backwards-compatible listeners.
+                    yield _sse("active_snapshot", payload)
+                    yield _sse("presence", payload)
                     last_presence_at = now_ts
 
                 if (now_ts - last_summary_at) >= 5.0:
