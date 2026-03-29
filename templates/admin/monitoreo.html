@@ -85,28 +85,71 @@
 
   <div class="row g-4 mb-4">
     <div class="col-lg-5">
-      <h2 class="h6">Usuarios activos ahora</h2>
+      <h2 class="h6">Presencia viva por usuaria</h2>
       <div class="table-responsive">
-        <table class="table table-sm table-striped" id="presenceTable">
-          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ruta</th><th>Ruta real</th><th>Acción</th><th>Última interacción</th><th>Entidad</th><th>Último ping</th></tr></thead>
+        <table class="table table-sm table-striped align-middle" id="presenceTable">
+          <thead><tr><th>Usuaria</th><th>Estado</th><th>Ahora</th><th>Entidad</th><th>Señales</th><th>Interacción</th></tr></thead>
           <tbody>
             {% for p in summary_payload.presence %}
             <tr>
-              <td>{{ p.username }} <small class="text-muted">({{ p.role }})</small></td>
               <td>
-                <span class="badge {% if p.status == 'active' %}bg-success{% elif p.status == 'idle' %}bg-warning text-dark{% elif p.status == 'hidden' %}bg-secondary{% else %}bg-light text-dark border{% endif %}">
-                  {{ p.status|upper }}
-                </span>
+                <div><strong>{{ p.username }}</strong> <small class="text-muted">({{ p.role }})</small></div>
+                <small class="text-muted">{{ p.route_label or p.route_human or '-' }}</small>
+                {% if (p.session_count or 0) > 1 %}
+                <div><small class="badge bg-light text-dark border">{{ p.session_count }} pestañas</small></div>
+                {% endif %}
               </td>
-              <td><small>{{ p.route_human or '-' }}</small></td>
-              <td><small title="{{ p.current_path or '-' }}">{{ p.current_path or '-' }}</small></td>
-              <td><small>{{ p.current_action_human or p.last_action_type or p.last_action_hint or 'sin acciones registradas' }}</small></td>
-              <td><small>{{ p.last_interaction_human or ('Hace ' ~ (p.last_interaction_seconds or 0) ~ 's') }}</small></td>
+              <td>
+                <span class="badge {% if p.status == 'active' %}bg-success{% elif p.status == 'idle' %}bg-warning text-dark{% elif p.status == 'hidden' %}bg-secondary{% else %}bg-light text-dark border{% endif %}">{{ p.status_human or p.status|upper }}</span>
+                {% if p.is_typing %}
+                <span class="badge bg-info text-dark">Escribiendo</span>
+                {% endif %}
+              </td>
+              <td>
+                <div>{{ p.supervision_human or p.current_action_human or '-' }}</div>
+                <small class="text-muted">{{ p.current_path or '-' }}</small>
+              </td>
               <td><small>{{ p.entity_display or '-' }}</small></td>
-              <td>Hace {{ p.last_seen_seconds }}s</td>
+              <td>
+                {% if p.has_unsaved_changes %}
+                <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Sin guardar</span>
+                {% endif %}
+                {% if p.modal_open %}
+                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Modal abierto</span>
+                {% endif %}
+                {% if p.lock_owner %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">Lock: {{ p.lock_owner }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <div><small>{{ p.last_interaction_human or ('Hace ' ~ (p.last_interaction_seconds or 0) ~ 's') }}</small></div>
+                <small class="text-muted">ping hace {{ p.last_seen_seconds }}s</small>
+              </td>
             </tr>
+            {% if (p.sessions or [])|length > 1 %}
+            <tr class="presence-session-row">
+              <td colspan="6">
+                <details>
+                  <summary>Ver sesiones activas ({{ p.session_count or (p.sessions|length) }})</summary>
+                  <div class="presence-session-list mt-2">
+                    {% for s in p.sessions %}
+                    <div class="presence-session-item">
+                      <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+                        <span class="badge {% if s.status == 'active' %}bg-success{% elif s.status == 'idle' %}bg-warning text-dark{% elif s.status == 'hidden' %}bg-secondary{% else %}bg-light text-dark border{% endif %}">{{ s.status_human or s.status|upper }}</span>
+                        <small class="text-muted">sesión: {{ s.session_id }}</small>
+                        <small class="text-muted">{{ s.route_label or '-' }}</small>
+                      </div>
+                      <div><small>{{ s.current_action_human or '-' }}</small></div>
+                      <div><small class="text-muted">{{ s.entity_display or '-' }} | {{ s.last_interaction_human or '-' }} | ping hace {{ s.last_seen_seconds or 0 }}s</small></div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </details>
+              </td>
+            </tr>
+            {% endif %}
             {% else %}
-            <tr><td colspan="8" class="text-muted">Sin presencia reciente.</td></tr>
+            <tr><td colspan="6" class="text-muted">Sin presencia reciente.</td></tr>
             {% endfor %}
           </tbody>
         </table>

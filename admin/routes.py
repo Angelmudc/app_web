@@ -39,6 +39,7 @@ from models import (
     ContratoDigital,
     Entrevista,
     StaffAuditLog,
+    StaffPresenceState,
     TrustedDevice,
     PublicSolicitudTokenUso,
     PublicSolicitudClienteNuevoTokenUso,
@@ -166,6 +167,11 @@ from utils.timezone import (
     to_rd,
     utc_now_naive,
     utc_timestamp,
+)
+from utils.staff_presence import (
+    build_presence_snapshot,
+    list_recent_staff_presence_states,
+    upsert_staff_presence_snapshot,
 )
 from utils.staff_mfa import (
     MFA_PENDING_SESSION_KEY,
@@ -2059,7 +2065,8 @@ def _admin_guard_and_rate_limit():
                 flash("Debes completar MFA para acceder al panel.", "warning")
                 return redirect(url_for("admin.login"))
 
-        _touch_staff_presence(current_path=request.path, page_title=(request.endpoint or request.path))
+        if request.endpoint != "admin.monitoreo_presence_ping":
+            _touch_staff_presence(current_path=request.path, page_title=(request.endpoint or request.path))
 
         required_permission = permission_required_for_path(request.path or "")
         if required_permission:
@@ -4245,6 +4252,23 @@ def _presence_key(user_id: int) -> str:
     return f"staff_presence:{int(user_id)}"
 
 
+def _resolve_presence_session_id(raw_session_id: str | None = None) -> str:
+    val = str(raw_session_id or "").strip()
+    if val:
+        return val[:120]
+
+    token = str(session.get("staff_session_token") or "").strip()
+    if token:
+        return token[:120]
+
+    fallback = str(session.get("_presence_session_id") or "").strip()
+    if not fallback:
+        fallback = f"legacy-{secrets.token_hex(16)}"
+        session["_presence_session_id"] = fallback
+        session.modified = True
+    return fallback[:120]
+
+
 def _parse_iso_utc(raw: str | None):
     dt = parse_iso_utc(raw)
     if dt is None:
@@ -4281,6 +4305,13 @@ def _touch_staff_presence(
     client_status: str | None = None,
     route_label: str | None = None,
     action_label: str | None = None,
+    session_id: str | None = None,
+    tab_visible: bool | None = None,
+    is_idle: bool | None = None,
+    is_typing: bool | None = None,
+    has_unsaved_changes: bool | None = None,
+    modal_open: bool | None = None,
+    lock_owner: str | None = None,
     preserve_entity_when_missing: bool = True,
     log_event: bool = False,
 ) -> None:
@@ -4292,24 +4323,36 @@ def _touch_staff_presence(
         if not isinstance(current_user, StaffUser):
             return
 
-        now = utc_now_naive()
         uid = int(current_user.id)
-        prev = bp_get(_presence_key(uid), default={}, context="admin_presence_prev_get") or {}
-        effective_path = (current_path or prev.get("current_path") or request.path or "")[:255]
-        effective_hint = (action_hint or last_action_hint or prev.get("action_hint") or _infer_action_hint_from_path(effective_path))[:80]
-        effective_action_type = (action_type or prev.get("action_type") or "LIVE_HEARTBEAT")[:80]
+        sid = _resolve_presence_session_id(session_id)
+        prev = (
+            StaffPresenceState.query
+            .filter(
+                StaffPresenceState.user_id == uid,
+                StaffPresenceState.session_id == sid,
+            )
+            .first()
+        )
+        effective_path = (current_path or (getattr(prev, "route", "") or "") or request.path or "")[:255]
+        effective_hint = (
+            action_hint
+            or last_action_hint
+            or (getattr(prev, "current_action", "") or "")
+            or _infer_action_hint_from_path(effective_path)
+        )[:80]
+        effective_action_type = (action_type or "LIVE_HEARTBEAT")[:80]
         incoming_entity_type = _normalize_entity_type(entity_type)
         incoming_entity_id = (entity_id or "")[:64]
         if preserve_entity_when_missing:
-            effective_entity_type = _normalize_entity_type(incoming_entity_type or prev.get("entity_type"))
-            effective_entity_id = (incoming_entity_id or prev.get("entity_id") or "")[:64]
+            effective_entity_type = _normalize_entity_type(incoming_entity_type or getattr(prev, "entity_type", ""))
+            effective_entity_id = (incoming_entity_id or getattr(prev, "entity_id", "") or "")[:64]
         else:
             effective_entity_type = _normalize_entity_type(incoming_entity_type)
             effective_entity_id = incoming_entity_id
 
         effective_entity_display = _human_entity_display(entity_name, entity_code)
         if not effective_entity_display and preserve_entity_when_missing:
-            effective_entity_display = prev.get("entity_display")
+            effective_entity_display = _human_entity_display(getattr(prev, "entity_name", ""), getattr(prev, "entity_code", ""))
         if not effective_entity_id:
             effective_entity_display = ""
         if not effective_entity_display and effective_entity_type and effective_entity_id:
@@ -4319,10 +4362,7 @@ def _touch_staff_presence(
         base_action_human = (
             action_label
             or action_human
-            or (
-                prev.get("current_action_human")
-                if preserve_entity_when_missing else ""
-            )
+            or (getattr(prev, "action_label", "") if preserve_entity_when_missing else "")
             or _humanize_action(effective_action_type, route=effective_path, action_hint=effective_hint)
         )[:120]
         effective_action_human = _humanize_presence_action(
@@ -4332,52 +4372,39 @@ def _touch_staff_presence(
             effective_entity_display,
         )[:120]
         has_client_status = bool((client_status or "").strip())
-        interaction_dt = _parse_iso_utc(last_interaction_at) or (now if not has_client_status else (_parse_iso_utc(prev.get("last_interaction_at")) or now))
-        interaction_iso = iso_utc_z(interaction_dt)
+        now = utc_now_naive()
+        prev_interaction = getattr(prev, "last_interaction_at", None)
+        interaction_dt = _parse_iso_utc(last_interaction_at) or (now if not has_client_status else (prev_interaction or now))
         normalized_client_status = _normalize_client_status(client_status) if has_client_status else "active"
-
-        payload = {
-            "user_id": uid,
-            "username": (current_user.username or str(current_user.id)),
-            "role": (current_user.role or "").strip().lower(),
-            "current_path": effective_path,
-            "page_title": (page_title or request.endpoint or request.path or "")[:160],
-            "route_label": (route_label or prev.get("route_label") or _humanize_route(effective_path))[:120],
-            "last_action_hint": (last_action_hint or "")[:120],
-            "event_type": (event_type or prev.get("event_type") or "heartbeat")[:32],
-            "action_type": effective_action_type,
-            "action_hint": effective_hint,
-            "current_action_human": effective_action_human,
-            "action_label": (action_label or prev.get("action_label") or "")[:120],
-            "entity_type": effective_entity_type,
-            "entity_id": effective_entity_id,
-            "entity_display": (effective_entity_display or "")[:200],
-            "last_seen_at": iso_utc_z(now),
-            "last_interaction_at": interaction_iso,
-            "client_status": normalized_client_status,
-            "ip": (_client_ip() or "")[:64],
-            "user_agent": (request.headers.get("User-Agent") or "")[:255],
-        }
-        bp_set(
-            _presence_key(uid),
-            payload,
-            timeout=_PRESENCE_TTL_SECONDS,
-            context="admin_presence_payload_set",
+        payload = build_presence_snapshot(
+            {
+                "route": effective_path,
+                "page_title": (page_title or request.endpoint or request.path or "")[:160],
+                "route_label": (route_label or getattr(prev, "route_label", "") or _humanize_route(effective_path))[:120],
+                "entity_type": effective_entity_type,
+                "entity_id": effective_entity_id,
+                "entity_name": (entity_name or getattr(prev, "entity_name", "") or "")[:160],
+                "entity_code": (entity_code or getattr(prev, "entity_code", "") or "")[:64],
+                "current_action": effective_hint,
+                "action_label": effective_action_human,
+                "client_status": normalized_client_status,
+                "last_interaction_at": iso_utc_z(interaction_dt),
+                "tab_visible": tab_visible,
+                "is_idle": is_idle,
+                "is_typing": is_typing,
+                "has_unsaved_changes": has_unsaved_changes,
+                "modal_open": modal_open,
+                "lock_owner": lock_owner,
+                "ip": (_client_ip() or "")[:64],
+                "user_agent": (request.headers.get("User-Agent") or "")[:255],
+            },
+            fallback_route=effective_path,
         )
-
-        idx = bp_get(_PRESENCE_INDEX_KEY, default=[], context="admin_presence_index_get") or []
-        try:
-            idx = [int(x) for x in idx]
-        except Exception:
-            idx = []
-        if uid not in idx:
-            idx.append(uid)
-        idx = idx[-500:]
-        bp_set(
-            _PRESENCE_INDEX_KEY,
-            idx,
-            timeout=max(3600, _PRESENCE_TTL_SECONDS * 20),
-            context="admin_presence_index_set",
+        upsert_staff_presence_snapshot(
+            user_id=uid,
+            session_id=sid,
+            snapshot=payload,
+            now=now,
         )
 
         if log_event and _should_log_live_event(
@@ -4409,81 +4436,38 @@ def _touch_staff_presence(
 
 
 def _presence_rows() -> list[dict]:
-    idx = bp_get(_PRESENCE_INDEX_KEY, default=[], context="admin_presence_rows_idx_get") or []
-    try:
-        user_ids = [int(x) for x in idx]
-    except Exception:
-        user_ids = []
-    if not user_ids:
-        return []
-
     now = utc_now_naive()
-    presence_raw = []
-    for uid in user_ids:
-        row = bp_get(_presence_key(uid), default=None, context="admin_presence_rows_item_get")
-        if not row:
-            continue
-        presence_raw.append(row)
-    if not presence_raw:
-        presence_raw = []
-
-    known_user_ids = {int(r.get("user_id")) for r in presence_raw if r.get("user_id") is not None}
-    # Fallback robusto: si faltan entradas de presencia por cache, recuperar sesiones recientes.
-    sessions_rows = list_active_sessions()
-    for sess in sessions_rows:
-        try:
-            uid = int(sess.get("user_id") or 0)
-        except Exception:
-            uid = 0
-        if uid <= 0 or uid in known_user_ids:
-            continue
-        seen_seconds = int(sess.get("last_seen_seconds") or 999999)
-        if seen_seconds > (_PRESENCE_TTL_SECONDS * 3):
-            continue
-        now_minus_seen = now - timedelta(seconds=max(0, seen_seconds))
-        presence_raw.append(
-            {
-                "user_id": uid,
-                "username": sess.get("username"),
-                "role": sess.get("role"),
-                "current_path": (sess.get("current_path") or "")[:255],
-                "page_title": "Sesion activa",
-                "last_action_hint": "browsing",
-                "event_type": "session_fallback",
-                "action_type": "LIVE_HEARTBEAT",
-                "action_hint": _infer_action_hint_from_path(sess.get("current_path")),
-                "current_action_human": "Sesion activa",
-                "entity_type": "",
-                "entity_id": "",
-                "entity_display": "",
-                "last_seen_at": iso_utc_z(now_minus_seen),
-                "last_interaction_at": iso_utc_z(now_minus_seen),
-                "client_status": "active" if seen_seconds <= _PRESENCE_ACTIVE_SECONDS else "idle",
-            }
-        )
-        known_user_ids.add(uid)
-    if not presence_raw:
+    raw_rows = list_recent_staff_presence_states(max_age_seconds=(_PRESENCE_TTL_SECONDS * 3))
+    if not raw_rows:
         return []
 
-    ids = [int(r.get("user_id")) for r in presence_raw if r.get("user_id") is not None]
+    grouped: dict[int, list[StaffPresenceState]] = {}
+    for row in raw_rows:
+        grouped.setdefault(int(row.user_id), []).append(row)
+
+    user_ids = sorted(grouped.keys())
+    users_map = {}
+    if user_ids:
+        users = StaffUser.query.filter(StaffUser.id.in_(user_ids)).all()
+        users_map = {int(u.id): u for u in users}
+
     last_action_map = {}
-    if ids:
-        latest_subq = (
-            db.session.query(
-                StaffAuditLog.actor_user_id.label("uid"),
-                func.max(StaffAuditLog.id).label("max_id"),
-            )
-            .filter(StaffAuditLog.actor_user_id.in_(ids))
-            .group_by(StaffAuditLog.actor_user_id)
-            .subquery()
+    latest_subq = (
+        db.session.query(
+            StaffAuditLog.actor_user_id.label("uid"),
+            func.max(StaffAuditLog.id).label("max_id"),
         )
-        rows = (
-            db.session.query(StaffAuditLog)
-            .join(latest_subq, StaffAuditLog.id == latest_subq.c.max_id)
-            .all()
-        )
-        for item in rows:
-            last_action_map[int(item.actor_user_id)] = item
+        .filter(StaffAuditLog.actor_user_id.in_(user_ids))
+        .group_by(StaffAuditLog.actor_user_id)
+        .subquery()
+    )
+    action_rows = (
+        db.session.query(StaffAuditLog)
+        .join(latest_subq, StaffAuditLog.id == latest_subq.c.max_id)
+        .all()
+    )
+    for item in action_rows:
+        last_action_map[int(item.actor_user_id)] = item
 
     last_serialized_map: dict[int, dict] = {}
     if last_action_map:
@@ -4494,70 +4478,151 @@ def _presence_rows() -> list[dict]:
                 continue
             last_serialized_map[int(item.actor_user_id)] = _serialize_log_item(item, entity_display_map=entity_map)
 
-    out = []
-    for p in presence_raw:
-        uid = int(p.get("user_id"))
-        seen_at = _parse_iso_utc(p.get("last_seen_at"))
-        if seen_at is None:
-            continue
-        interaction_at = _parse_iso_utc(p.get("last_interaction_at")) or seen_at
-        delta = max(0, int((now - seen_at).total_seconds()))
-        interaction_delta = max(0, int((now - interaction_at).total_seconds()))
-        client_status = _normalize_client_status(p.get("client_status"))
-        if client_status == "active" and interaction_delta > _PRESENCE_INTERACTION_ACTIVE_SECONDS:
-            client_status = "idle"
-        status = _resolve_presence_status(delta, client_status)
+    status_priority = {"active": 0, "idle": 1, "hidden": 2, "inactive": 3}
+    status_human_map = {
+        "active": "Activa",
+        "idle": "Inactiva",
+        "hidden": "Oculta",
+        "inactive": "Desconectada",
+    }
+    out: list[dict] = []
+    for uid, sessions in grouped.items():
+        per_session: list[dict] = []
         last = last_action_map.get(uid)
         last_serialized = last_serialized_map.get(uid) or {}
-        current_action_human = (p.get("current_action_human") or last_serialized.get("action_human") or _humanize_action(
-            getattr(last, "action_type", None),
-            getattr(last, "summary", None),
-            getattr(last, "metadata_json", {}),
-            route=p.get("current_path"),
-            action_hint=p.get("action_hint"),
-        ))[:120]
-        entity_display = (p.get("entity_display") or last_serialized.get("entity_display") or "").strip()
-        current_action_human = _humanize_presence_action(
-            current_action_human,
-            p.get("action_hint"),
-            p.get("entity_type"),
-            entity_display,
-        )[:120]
+        for row in sessions:
+            seen_at = row.last_seen_at
+            if seen_at is None:
+                continue
+            interaction_at = row.last_interaction_at or seen_at
+            delta = max(0, int((now - seen_at).total_seconds()))
+            interaction_delta = max(0, int((now - interaction_at).total_seconds()))
+            client_status = _normalize_client_status(row.client_status)
+            if client_status == "active" and interaction_delta > _PRESENCE_INTERACTION_ACTIVE_SECONDS:
+                client_status = "idle"
+            status = _resolve_presence_status(delta, client_status)
+            entity_display = _human_entity_display(row.entity_name, row.entity_code) or (last_serialized.get("entity_display") or "").strip()
+            current_action_human = (row.action_label or last_serialized.get("action_human") or _humanize_action(
+                getattr(last, "action_type", None),
+                getattr(last, "summary", None),
+                getattr(last, "metadata_json", {}),
+                route=row.route,
+                action_hint=row.current_action,
+            ))[:120]
+            current_action_human = _humanize_presence_action(
+                current_action_human,
+                row.current_action,
+                row.entity_type,
+                entity_display,
+            )[:120]
+            per_session.append(
+                {
+                    "session_id": row.session_id,
+                    "status": status,
+                    "status_human": status_human_map.get(status, "Sin estado"),
+                    "client_status": client_status,
+                    "last_seen_seconds": delta,
+                    "last_interaction_seconds": interaction_delta,
+                    "last_interaction_at": iso_utc_z(interaction_at),
+                    "last_interaction_human": (
+                        f"Hace {interaction_delta}s"
+                        if interaction_delta < 60
+                        else f"Hace {max(1, int(interaction_delta / 60))}m"
+                    ),
+                    "route": row.route,
+                    "route_label": row.route_label or _humanize_route(row.route),
+                    "page_title": row.page_title,
+                    "current_action": row.current_action,
+                    "action_label": row.action_label,
+                    "current_action_human": current_action_human,
+                    "entity_type": row.entity_type,
+                    "entity_id": row.entity_id,
+                    "entity_display": entity_display,
+                    "tab_visible": bool(row.tab_visible),
+                    "is_idle": bool(row.is_idle),
+                    "is_typing": bool(row.is_typing),
+                    "has_unsaved_changes": bool(row.has_unsaved_changes),
+                    "modal_open": bool(row.modal_open),
+                    "lock_owner": row.lock_owner or "",
+                    "updated_at": iso_utc_z(row.updated_at) if row.updated_at else None,
+                    "_updated_epoch": int(row.updated_at.timestamp()) if row.updated_at else 0,
+                    "_seen_epoch": float(row.last_seen_at.timestamp()) if row.last_seen_at else 0.0,
+                    "_row_id": int(row.id or 0),
+                }
+            )
+
+        if not per_session:
+            continue
+        per_session.sort(
+            key=lambda x: (
+                status_priority.get(str(x.get("status") or ""), 99),
+                -1
+                if (
+                    str(x.get("entity_id") or "").strip()
+                    and str(x.get("current_action") or "").strip().lower() not in {"", "browsing", "dashboard"}
+                )
+                else 0,
+                -float(x.get("_seen_epoch") or 0.0),
+                -int(x.get("_updated_epoch") or 0),
+                -int(x.get("_row_id") or 0),
+            )
+        )
+        primary = per_session[0]
+        for item in per_session:
+            item.pop("_seen_epoch", None)
+            item.pop("_updated_epoch", None)
+            item.pop("_row_id", None)
+        usr = users_map.get(uid)
+        username = getattr(usr, "username", None) or str(uid)
+        role = (getattr(usr, "role", None) or "").strip().lower()
         out.append(
             {
                 "user_id": uid,
-                "username": p.get("username"),
-                "role": p.get("role"),
-                "status": status,
-                "current_path": p.get("current_path"),
-                "route_human": _humanize_route(p.get("current_path")),
-                "route_label": p.get("route_label") or _humanize_route(p.get("current_path")),
-                "page_title": p.get("page_title"),
-                "last_seen_seconds": delta,
-                "last_interaction_at": iso_utc_z(interaction_at),
-                "last_interaction_seconds": interaction_delta,
+                "username": username,
+                "role": role,
+                "status": primary.get("status"),
+                "status_human": status_human_map.get(str(primary.get("status") or ""), "Sin estado"),
+                "current_path": primary.get("route"),
+                "route_human": _humanize_route(primary.get("route")),
+                "route_label": primary.get("route_label") or _humanize_route(primary.get("route")),
+                "page_title": primary.get("page_title"),
+                "last_seen_seconds": primary.get("last_seen_seconds"),
+                "last_interaction_at": primary.get("last_interaction_at"),
+                "last_interaction_seconds": primary.get("last_interaction_seconds"),
                 "last_interaction_human": (
-                    f"Hace {interaction_delta}s"
-                    if interaction_delta < 60
-                    else f"Hace {max(1, int(interaction_delta / 60))}m"
+                    f"Hace {int(primary.get('last_interaction_seconds') or 0)}s"
+                    if int(primary.get("last_interaction_seconds") or 0) < 60
+                    else f"Hace {max(1, int((int(primary.get('last_interaction_seconds') or 0)) / 60))}m"
                 ),
-                "client_status": client_status,
-                "last_action_hint": p.get("last_action_hint"),
-                "action_type": p.get("action_type"),
-                "action_hint": p.get("action_hint"),
-                "action_label": p.get("action_label"),
-                "current_action_human": current_action_human,
-                "entity_type": p.get("entity_type"),
-                "entity_id": p.get("entity_id"),
-                "entity_display": entity_display,
+                "client_status": primary.get("client_status"),
+                "last_action_hint": primary.get("current_action"),
+                "action_type": primary.get("current_action"),
+                "action_hint": primary.get("current_action"),
+                "action_label": primary.get("action_label"),
+                "current_action_human": primary.get("current_action_human"),
+                "supervision_human": (
+                    f"{primary.get('current_action_human')}"
+                    if str(primary.get("current_action_human") or "").strip()
+                    else "Sin actividad reciente"
+                ),
+                "entity_type": primary.get("entity_type"),
+                "entity_id": primary.get("entity_id"),
+                "entity_display": primary.get("entity_display"),
+                "tab_visible": bool(primary.get("tab_visible")),
+                "is_idle": bool(primary.get("is_idle")),
+                "is_typing": bool(primary.get("is_typing")),
+                "has_unsaved_changes": bool(primary.get("has_unsaved_changes")),
+                "modal_open": bool(primary.get("modal_open")),
+                "lock_owner": primary.get("lock_owner") or "",
+                "session_count": len(per_session),
+                "sessions": per_session,
                 "last_action_type": getattr(last, "action_type", None),
                 "last_action_summary": getattr(last, "summary", None),
                 "last_action_at": iso_utc_z(getattr(last, "created_at", None)) if getattr(last, "created_at", None) else None,
             }
         )
 
-    status_rank = {"active": 0, "idle": 1, "hidden": 2, "inactive": 3}
-    out.sort(key=lambda x: (status_rank.get(str(x.get("status") or "").lower(), 99), x.get("last_seen_seconds", 999999)))
+    out.sort(key=lambda x: (status_priority.get(str(x.get("status") or "").lower(), 99), x.get("last_seen_seconds", 999999)))
     return out
 
 
@@ -5548,7 +5613,23 @@ def monitoreo_presence_ping():
     current_path = (payload.get("current_path") or request.path or "").strip()[:255]
     page_title = (payload.get("page_title") or request.endpoint or "").strip()[:160]
     event_type = (payload.get("event_type") or "heartbeat").strip().lower()[:32]
-    if event_type not in {"page_load", "heartbeat", "tab_focus", "open_entity", "submit", "intent_change"}:
+    if event_type not in {
+        "page_load",
+        "heartbeat",
+        "tab_focus",
+        "open_entity",
+        "submit",
+        "intent_change",
+        "typing_start",
+        "typing_stop",
+        "dirty_on",
+        "dirty_off",
+        "modal_open",
+        "modal_close",
+        "tab_hidden",
+        "idle",
+        "resume",
+    }:
         event_type = "heartbeat"
 
     raw_action_type = (payload.get("action_type") or "").strip().upper()
@@ -5558,6 +5639,13 @@ def monitoreo_presence_ping():
     route_label = (payload.get("route_label") or "").strip()[:120]
     client_status = _normalize_client_status(payload.get("client_status"))
     last_interaction_at = (payload.get("last_interaction_at") or "").strip()[:40]
+    session_id = (payload.get("session_id") or "").strip()[:120]
+    tab_visible = payload.get("tab_visible")
+    is_idle = payload.get("is_idle")
+    is_typing = payload.get("is_typing")
+    has_unsaved_changes = payload.get("has_unsaved_changes")
+    modal_open = payload.get("modal_open")
+    lock_owner = (payload.get("lock_owner") or "").strip()[:120]
     if not action_hint:
         action_hint = _infer_action_hint_from_path(current_path)[:80]
     ctx = _extract_entity_context(payload, current_path=current_path)
@@ -5581,6 +5669,13 @@ def monitoreo_presence_ping():
         entity_code=ctx.get("entity_code"),
         last_interaction_at=last_interaction_at,
         client_status=client_status,
+        session_id=session_id,
+        tab_visible=tab_visible,
+        is_idle=is_idle,
+        is_typing=is_typing,
+        has_unsaved_changes=has_unsaved_changes,
+        modal_open=modal_open,
+        lock_owner=lock_owner,
         preserve_entity_when_missing=False,
         log_event=True,
     )

@@ -196,53 +196,97 @@
     if (!tbody) return;
     tbody.textContent = '';
     if (!Array.isArray(presence) || !presence.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin presencia reciente.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Sin presencia reciente.</td></tr>';
       return;
     }
+
+    const statusBadgeClass = (status) => {
+      const val = String(status || '').toLowerCase();
+      if (val === 'active') return 'bg-success';
+      if (val === 'idle') return 'bg-warning text-dark';
+      if (val === 'hidden') return 'bg-secondary';
+      return 'bg-light text-dark border';
+    };
+
+    const statusText = (p) => String(p.status_human || p.status || '-');
+
+    const buildFlagsHtml = (p) => {
+      const out = [];
+      if (p && p.has_unsaved_changes) {
+        out.push('<span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle me-1">Sin guardar</span>');
+      }
+      if (p && p.modal_open) {
+        out.push('<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle me-1">Modal abierto</span>');
+      }
+      if (p && p.lock_owner) {
+        out.push('<span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">Lock: ' + escapeHtml(p.lock_owner) + '</span>');
+      }
+      return out.join('');
+    };
+
+    const buildSessionDetailsHtml = (sessions) => {
+      if (!Array.isArray(sessions) || sessions.length <= 1) return '';
+      const items = sessions.map((s) => {
+        return [
+          '<div class="presence-session-item">',
+          '<div class="d-flex flex-wrap gap-2 align-items-center mb-1">',
+          '<span class="badge ' + statusBadgeClass(s.status) + '">' + escapeHtml(String(s.status_human || s.status || '-')) + '</span>',
+          '<small class="text-muted">sesión: ' + escapeHtml(String(s.session_id || '-')) + '</small>',
+          '<small class="text-muted">' + escapeHtml(String(s.route_label || '-')) + '</small>',
+          '</div>',
+          '<div><small>' + escapeHtml(String(s.current_action_human || '-')) + '</small></div>',
+          '<div><small class="text-muted">' + escapeHtml(String(s.entity_display || '-')) + ' | ' + escapeHtml(String(s.last_interaction_human || '-')) + ' | ping hace ' + escapeHtml(String(s.last_seen_seconds || 0)) + 's</small></div>',
+          '</div>'
+        ].join('');
+      }).join('');
+      return [
+        '<tr class="presence-session-row">',
+        '<td colspan="6">',
+        '<details>',
+        '<summary>Ver sesiones activas (' + String(sessions.length) + ')</summary>',
+        '<div class="presence-session-list mt-2">' + items + '</div>',
+        '</details>',
+        '</td>',
+        '</tr>'
+      ].join('');
+    };
+
     presence.forEach((p) => {
-      const tr = document.createElement('tr');
-      const status = String(p.status || '').toLowerCase();
-      const badge = status === 'active'
-        ? 'bg-success'
-        : (status === 'idle'
-          ? 'bg-warning text-dark'
-          : (status === 'hidden' ? 'bg-secondary' : 'bg-light text-dark border'));
+      const sessions = Array.isArray(p.sessions) ? p.sessions : [];
+      const countTabs = Number(p.session_count || sessions.length || 0);
+      const userBlock = [
+        '<div><strong>' + escapeHtml(String(p.username || '-')) + '</strong> <small class="text-muted">(' + escapeHtml(String(p.role || '-')) + ')</small></div>',
+        '<small class="text-muted">' + escapeHtml(String(p.route_label || p.route_human || '-')) + '</small>',
+        (countTabs > 1 ? '<div><small class="badge bg-light text-dark border">' + String(countTabs) + ' pestañas</small></div>' : '')
+      ].join('');
 
-      const addCell = (value, options) => {
-        const td = document.createElement('td');
-        if (options && options.useSmall) {
-          const small = document.createElement('small');
-          small.textContent = String(value);
-          if (options.title) small.title = String(options.title);
-          td.appendChild(small);
-        } else {
-          td.textContent = String(value);
-        }
-        tr.appendChild(td);
-      };
+      const statusBlock = [
+        '<span class="badge ' + statusBadgeClass(p.status) + '">' + escapeHtml(statusText(p)) + '</span>',
+        (p.is_typing ? ' <span class="badge bg-info text-dark">Escribiendo</span>' : '')
+      ].join('');
 
-      const userTd = document.createElement('td');
-      userTd.appendChild(document.createTextNode(String(p.username || '-') + ' '));
-      const userRole = document.createElement('small');
-      userRole.className = 'text-muted';
-      userRole.textContent = '(' + String(p.role || '-') + ')';
-      userTd.appendChild(userRole);
-      tr.appendChild(userTd);
+      const nowBlock = [
+        '<div>' + escapeHtml(String(p.supervision_human || p.current_action_human || '-')) + '</div>',
+        '<small class="text-muted">' + escapeHtml(String(p.current_path || '-')) + '</small>'
+      ].join('');
 
-      const statusTd = document.createElement('td');
-      const statusSpan = document.createElement('span');
-      statusSpan.className = 'badge ' + badge;
-      statusSpan.textContent = String(p.status || '').toUpperCase();
-      statusTd.appendChild(statusSpan);
-      tr.appendChild(statusTd);
+      const interactionBlock = [
+        '<div><small>' + escapeHtml(String(p.last_interaction_human || ('Hace ' + Number(p.last_interaction_seconds || 0) + 's')) + '</small></div>',
+        '<small class="text-muted">ping hace ' + escapeHtml(String(p.last_seen_seconds || 0)) + 's</small>'
+      ].join('');
 
-      addCell(p.route_human || '-', { useSmall: true });
-      addCell(p.current_path || '-', { useSmall: true, title: (p.current_path || '-') });
-      addCell(p.current_action_human || p.last_action_type || p.last_action_hint || 'sin acciones registradas', { useSmall: true });
-      addCell(p.last_interaction_human || ('Hace ' + Number(p.last_interaction_seconds || 0) + 's'), { useSmall: true });
-      addCell(p.entity_display || '-', { useSmall: true });
-      addCell('Hace ' + (p.last_seen_seconds || 0) + 's');
-      tbody.appendChild(tr);
+      const rowHtml = [
+        '<tr>',
+        '<td>' + userBlock + '</td>',
+        '<td>' + statusBlock + '</td>',
+        '<td>' + nowBlock + '</td>',
+        '<td><small>' + escapeHtml(String(p.entity_display || '-')) + '</small></td>',
+        '<td>' + buildFlagsHtml(p) + '</td>',
+        '<td>' + interactionBlock + '</td>',
+        '</tr>',
+        buildSessionDetailsHtml(sessions)
+      ].join('');
+      tbody.insertAdjacentHTML('beforeend', rowHtml);
     });
   }
 

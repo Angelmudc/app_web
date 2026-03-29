@@ -4,9 +4,8 @@ import re
 from datetime import datetime, timedelta
 
 from app import app as flask_app
-from config_app import db, cache
-from models import StaffUser
-from admin.routes import _presence_key, _PRESENCE_INDEX_KEY
+from config_app import db
+from models import StaffPresenceState, StaffUser
 from sqlalchemy import func
 
 
@@ -58,12 +57,8 @@ def test_monitoreo_presence_status_rich_payload_and_summary_states():
             cruz = _ensure_staff_user("CruzStatus", "admin", "8998")
             maria = _ensure_staff_user("MariaInactiveStatus", "secretaria", "9989")
             _ensure_staff_user("ViewerStatus", "admin", "8998")
-
-            cache.delete(_presence_key(int(karla.id)))
-            cache.delete(_presence_key(int(anyi.id)))
-            cache.delete(_presence_key(int(cruz.id)))
-            cache.delete(_presence_key(int(maria.id)))
-            cache.delete(_PRESENCE_INDEX_KEY)
+            db.session.query(StaffPresenceState).delete()
+            db.session.commit()
 
         client_karla = flask_app.test_client()
         login_karla = _login_staff(client_karla, "KarlaStatus", "9989")
@@ -93,59 +88,63 @@ def test_monitoreo_presence_status_rich_payload_and_summary_states():
             maria = StaffUser.query.filter(func.lower(StaffUser.username) == "mariainactivestatus").first()
             assert anyi and cruz and maria
 
-            now_iso = now.isoformat(timespec="seconds") + "Z"
-            old_seen_iso = (now - timedelta(seconds=45)).isoformat(timespec="seconds") + "Z"
-            old_interaction_iso = (now - timedelta(minutes=2)).isoformat(timespec="seconds") + "Z"
-
-            cache.set(
-                _presence_key(int(anyi.id)),
-                {
-                        "user_id": int(anyi.id),
-                        "username": "AnyiStatus",
-                    "role": "secretaria",
-                    "current_path": "/admin/monitoreo/logs",
-                    "page_title": "Logs",
-                    "last_seen_at": now_iso,
-                    "last_interaction_at": old_interaction_iso,
-                    "client_status": "idle",
-                    "action_type": "LIVE_HEARTBEAT",
-                    "action_hint": "logs",
-                },
-                timeout=65,
+            old_seen_dt = now - timedelta(seconds=45)
+            old_interaction_dt = now - timedelta(minutes=2)
+            db.session.add(
+                StaffPresenceState(
+                    user_id=int(anyi.id),
+                    session_id="session-anyi",
+                    route="/admin/monitoreo/logs",
+                    page_title="Logs",
+                    client_status="idle",
+                    current_action="logs",
+                    action_label="Revisando logs",
+                    tab_visible=True,
+                    is_idle=True,
+                    last_seen_at=now,
+                    last_interaction_at=old_interaction_dt,
+                    started_at=old_interaction_dt,
+                    updated_at=now,
+                    state_hash="seed-anyi",
+                )
             )
-            cache.set(
-                _presence_key(int(cruz.id)),
-                {
-                        "user_id": int(cruz.id),
-                        "username": "CruzStatus",
-                    "role": "admin",
-                    "current_path": "/admin/monitoreo/candidatas/22",
-                    "page_title": "Historial candidata",
-                    "last_seen_at": now_iso,
-                    "last_interaction_at": now_iso,
-                    "client_status": "hidden",
-                    "action_type": "LIVE_HEARTBEAT",
-                    "action_hint": "candidatas",
-                },
-                timeout=65,
+            db.session.add(
+                StaffPresenceState(
+                    user_id=int(cruz.id),
+                    session_id="session-cruz",
+                    route="/admin/monitoreo/candidatas/22",
+                    page_title="Historial candidata",
+                    client_status="hidden",
+                    current_action="candidatas",
+                    action_label="Viendo candidata",
+                    tab_visible=False,
+                    is_idle=False,
+                    last_seen_at=now,
+                    last_interaction_at=now,
+                    started_at=now,
+                    updated_at=now,
+                    state_hash="seed-cruz",
+                )
             )
-            cache.set(
-                _presence_key(int(maria.id)),
-                {
-                        "user_id": int(maria.id),
-                        "username": "MariaInactiveStatus",
-                    "role": "secretaria",
-                    "current_path": "/admin/monitoreo",
-                    "page_title": "Monitoreo",
-                    "last_seen_at": old_seen_iso,
-                    "last_interaction_at": old_interaction_iso,
-                    "client_status": "active",
-                    "action_type": "LIVE_HEARTBEAT",
-                    "action_hint": "dashboard",
-                },
-                timeout=65,
+            db.session.add(
+                StaffPresenceState(
+                    user_id=int(maria.id),
+                    session_id="session-maria",
+                    route="/admin/monitoreo",
+                    page_title="Monitoreo",
+                    client_status="active",
+                    current_action="dashboard",
+                    action_label="Viendo control room",
+                    tab_visible=True,
+                    is_idle=False,
+                    last_seen_at=old_seen_dt,
+                    last_interaction_at=old_interaction_dt,
+                    started_at=old_interaction_dt,
+                    updated_at=old_seen_dt,
+                    state_hash="seed-maria",
+                )
             )
-            cache.set(_PRESENCE_INDEX_KEY, [int(karla.id), int(anyi.id), int(cruz.id), int(maria.id)], timeout=3600)
+            db.session.commit()
 
         client_admin = flask_app.test_client()
         login_admin = _login_staff(client_admin, "ViewerStatus", "8998")

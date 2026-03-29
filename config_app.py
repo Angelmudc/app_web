@@ -972,9 +972,10 @@ def create_app():
 
     if env in ("test", "testing"):
         with app.app_context():
-            from models import StaffUser, StaffAuditLog, OperationalMetricSnapshot, TrustedDevice
+            from models import StaffUser, StaffAuditLog, StaffPresenceState, OperationalMetricSnapshot, TrustedDevice
             StaffUser.__table__.create(bind=db.engine, checkfirst=True)
             StaffAuditLog.__table__.create(bind=db.engine, checkfirst=True)
+            StaffPresenceState.__table__.create(bind=db.engine, checkfirst=True)
             OperationalMetricSnapshot.__table__.create(bind=db.engine, checkfirst=True)
             TrustedDevice.__table__.create(bind=db.engine, checkfirst=True)
             try:

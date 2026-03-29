@@ -33,3 +33,30 @@
   0% { background-color: #fff6d9; }
   100% { background-color: transparent; }
 }
+
+#presenceTable td {
+  vertical-align: top;
+}
+
+.presence-session-row td {
+  background: #fafbfc;
+}
+
+.presence-session-row details > summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  color: #4b5563;
+}
+
+.presence-session-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+.presence-session-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.6rem;
+  background: #ffffff;
+}

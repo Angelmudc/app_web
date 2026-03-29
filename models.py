@@ -636,6 +636,50 @@ def _prevent_staff_audit_log_delete(_mapper, _connection, _target):
     raise RuntimeError("StaffAuditLog is immutable and cannot be deleted.")
 
 
+class StaffPresenceState(db.Model):
+    __tablename__ = "staff_presence_state"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "session_id", name="uq_staff_presence_user_session"),
+        db.Index("ix_staff_presence_user_last_seen", "user_id", "last_seen_at"),
+        db.Index("ix_staff_presence_entity", "entity_type", "entity_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=False, index=True)
+    session_id = db.Column(db.String(120), nullable=False, index=True)
+
+    route = db.Column(db.String(255), nullable=False, default="", server_default=text("''"))
+    route_label = db.Column(db.String(120), nullable=False, default="", server_default=text("''"))
+
+    entity_type = db.Column(db.String(40), nullable=False, default="", server_default=text("''"))
+    entity_id = db.Column(db.String(64), nullable=False, default="", server_default=text("''"))
+    entity_name = db.Column(db.String(160), nullable=False, default="", server_default=text("''"))
+    entity_code = db.Column(db.String(64), nullable=False, default="", server_default=text("''"))
+
+    current_action = db.Column(db.String(80), nullable=False, default="", server_default=text("''"))
+    action_label = db.Column(db.String(120), nullable=False, default="", server_default=text("''"))
+
+    tab_visible = db.Column(db.Boolean, nullable=False, default=True, server_default=text("true"), index=True)
+    is_idle = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    is_typing = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    has_unsaved_changes = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    modal_open = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    lock_owner = db.Column(db.String(120), nullable=False, default="", server_default=text("''"))
+
+    client_status = db.Column(db.String(20), nullable=False, default="active", server_default=text("'active'"), index=True)
+    page_title = db.Column(db.String(160), nullable=False, default="", server_default=text("''"))
+    last_interaction_at = db.Column(db.DateTime, nullable=True)
+    state_hash = db.Column(db.String(64), nullable=False, default="", server_default=text("''"), index=True)
+    ip = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
+
+    started_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    last_seen_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    user = db.relationship("StaffUser", backref=db.backref("presence_states", lazy="dynamic"))
+
+
 class PublicSolicitudTokenUso(db.Model):
     __tablename__ = "public_solicitud_tokens_usados"
 
