@@ -155,6 +155,7 @@ def init_security(app, cache):
         "/admin/monitoreo/summary.json",
         "/admin/monitoreo/productividad.json",
         "/admin/monitoreo/presence.json",
+        "/admin/seguridad/locks/ping",
         "/admin/solicitudes/live",
         "/clientes/live/ping",
         "/clientes/solicitudes/live",

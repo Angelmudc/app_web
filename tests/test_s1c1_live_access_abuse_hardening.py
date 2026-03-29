@@ -82,12 +82,45 @@ def test_s1c1_presence_ping_returns_429_on_abuse():
         client = flask_app.test_client()
         assert _login(client, "Cruz", "8998").status_code in (302, 303)
 
-        ok = client.post("/admin/monitoreo/presence/ping", json={"current_path": "/admin/monitoreo"}, follow_redirects=False)
-        blocked = client.post("/admin/monitoreo/presence/ping", json={"current_path": "/admin/monitoreo"}, follow_redirects=False)
+        ok = client.post(
+            "/admin/monitoreo/presence/ping",
+            json={"session_id": "rl-abuse-tab", "current_path": "/admin/monitoreo?a=1"},
+            follow_redirects=False,
+        )
+        blocked = client.post(
+            "/admin/monitoreo/presence/ping",
+            json={"session_id": "rl-abuse-tab", "current_path": "/admin/monitoreo?a=2"},
+            follow_redirects=False,
+        )
         assert ok.status_code == 200
         assert blocked.status_code == 429
         payload = blocked.get_json() or {}
         assert payload.get("error") == "rate_limited"
+
+
+def test_s1c1_locks_ping_returns_429_on_abuse():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    cache.clear()
+    env = {
+        "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+        "LIVE_LOCKS_PING_WINDOW": "60",
+        "LIVE_LOCKS_PING_MAX_USER": "1",
+        "LIVE_LOCKS_PING_MAX_IP": "1",
+        "LIVE_LOCKS_PING_MAX_SESSION": "1",
+        "LIVE_LOCKS_PING_BLOCK": "60",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        client = flask_app.test_client()
+        assert _login(client, "Cruz", "8998").status_code in (302, 303)
+
+        payload = {"entity_type": "candidata", "entity_id": "7777", "current_path": "/buscar?candidata_id=7777"}
+        ok = client.post("/admin/seguridad/locks/ping", json=payload, follow_redirects=False)
+        blocked = client.post("/admin/seguridad/locks/ping", json=payload, follow_redirects=False)
+        assert ok.status_code == 200
+        assert blocked.status_code == 429
+        body = blocked.get_json() or {}
+        assert body.get("error") == "rate_limited"
 
 
 def test_s1c1_live_stream_blocks_n_plus_1_with_429():

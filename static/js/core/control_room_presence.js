@@ -13,15 +13,17 @@
   var IDLE_AFTER_MS = 60000;
   var IDLE_CHECK_MS = 1000;
   var TYPING_STOP_MS = 1200;
-  var ACTIVITY_THROTTLE_MS = 1000;
-  var IMPORTANT_CHANGE_DEBOUNCE_MS = 120;
-  var MIN_IMMEDIATE_SEND_GAP_MS = 700;
+  var ACTIVITY_THROTTLE_MS = 1200;
+  var IMPORTANT_CHANGE_DEBOUNCE_MS = 250;
+  var MIN_IMMEDIATE_SEND_GAP_MS = 1500;
+  var MUTATION_MIN_GAP_MS = 2000;
 
   var typingStopTimer = null;
   var importantChangeTimer = null;
   var heartbeatTimer = null;
   var idleCheckTimer = null;
   var lastActivityUpdateMs = 0;
+  var lastMutationSendMs = 0;
 
   var pendingReason = 'init';
   var paused = false;
@@ -573,18 +575,19 @@
 
   function installEntityMutationWatch() {
     if (!window.MutationObserver) return;
-    var root = document.querySelector('main') || document.body;
+    var root = document.body;
     if (!root) return;
 
     var observer = new MutationObserver(function () {
+      var nowMs = Date.now();
+      if ((nowMs - lastMutationSendMs) < MUTATION_MIN_GAP_MS) return;
+      lastMutationSendMs = nowMs;
       queueImportantSend('context_change');
     });
 
     observer.observe(root, {
-      subtree: true,
-      childList: true,
       attributes: true,
-      attributeFilter: ['data-presence-entity-id', 'data-presence-entity-type', 'value']
+      attributeFilter: ['data-presence-entity-id', 'data-presence-entity-type', 'data-presence-entity-name', 'data-presence-entity-code']
     });
   }
 

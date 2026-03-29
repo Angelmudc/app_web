@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import os
 import re
+from unittest.mock import patch
 
 from app import app as flask_app
 
@@ -52,3 +54,40 @@ def test_presence_ping_10_requests_without_429():
     finally:
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
+
+
+def test_presence_ping_identical_burst_is_deduped_before_live_limit():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    env = {
+        "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+        "LIVE_PING_WINDOW": "60",
+        "LIVE_PING_MAX_USER": "3",
+        "LIVE_PING_MAX_IP": "3",
+        "LIVE_PING_MAX_SESSION": "3",
+        "LIVE_PING_BLOCK": "60",
+        "LIVE_PING_DEDUPE_SECONDS": "2",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        client = flask_app.test_client()
+        assert client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False).status_code in (302, 303)
+
+        payload = {
+            "session_id": "dedupe-test-tab-1",
+            "current_path": "/buscar?candidata_id=100",
+            "route_label": "Buscar / Editar candidata",
+            "entity_type": "candidata",
+            "entity_id": "100",
+            "current_action": "searching",
+            "action_label": "Buscando",
+            "tab_visible": True,
+            "is_idle": False,
+            "is_typing": False,
+            "has_unsaved_changes": False,
+            "modal_open": False,
+            "lock_owner": "",
+        }
+        for _ in range(8):
+            resp = client.post("/admin/monitoreo/presence/ping", json=payload, follow_redirects=False)
+            assert resp.status_code == 200
+            assert (resp.get_json() or {}).get("ok") is True

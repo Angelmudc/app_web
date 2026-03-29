@@ -457,7 +457,10 @@ def _live_rate_limits(capability: str) -> dict[str, int]:
 
     defaults = {
         "poll": {"window": 60, "max_user": 24, "max_ip": 60, "max_session": 24, "block": 60},
-        "ping": {"window": 60, "max_user": 180, "max_ip": 240, "max_session": 180, "block": 45},
+        # presence ping is high-frequency internal telemetry; keep abuse protection but tolerate real multi-tab usage.
+        "ping": {"window": 60, "max_user": 480, "max_ip": 6000, "max_session": 480, "block": 20},
+        # entity lock heartbeat runs in edit forms; allow sustained normal editing across office IPs.
+        "locks_ping": {"window": 60, "max_user": 240, "max_ip": 4000, "max_session": 240, "block": 20},
         "stream_open": {"window": 60, "max_user": 20, "max_ip": 40, "max_session": 20, "block": 45},
     }
     cfg = dict(defaults.get(cap, defaults["poll"]))
@@ -630,6 +633,48 @@ def _enforce_live_rate_limit(capability: str):
         "scope": scope_txt,
         "retry_after_sec": int(max(1, retry_after)),
     }
+
+
+def _presence_ping_state_hash(payload: dict | None, current_path: str) -> str:
+    try:
+        snapshot = build_presence_snapshot(payload or {}, fallback_route=(current_path or ""))
+        return str(snapshot.get("state_hash") or "").strip()[:64]
+    except Exception:
+        return ""
+
+
+def _presence_ping_should_count_rate_limit(
+    *,
+    user_id: int,
+    session_id: str,
+    state_hash: str,
+    dedupe_seconds: int = 2,
+) -> bool:
+    uid = int(user_id or 0)
+    sid = str(session_id or "").strip()[:120]
+    shash = str(state_hash or "").strip()[:64]
+    if uid <= 0 or not sid or not shash:
+        return True
+
+    key = f"live_presence_ping_dedupe:{uid}:{sid}"
+    now_ts = float(utc_timestamp())
+    prior = bp_get(key, default=None, context="live_presence_ping_dedupe_get")
+    if isinstance(prior, dict):
+        if str(prior.get("state_hash") or "") == shash:
+            try:
+                prior_ts = float(prior.get("ts") or 0.0)
+            except Exception:
+                prior_ts = 0.0
+            if (now_ts - prior_ts) < max(1, int(dedupe_seconds or 2)):
+                return False
+
+    bp_set(
+        key,
+        {"state_hash": shash, "ts": now_ts},
+        timeout=max(10, int(dedupe_seconds or 2) * 8),
+        context="live_presence_ping_dedupe_set",
+    )
+    return True
 
 
 def _stream_registry_key(scope: str, identity: str) -> str:
@@ -2069,6 +2114,9 @@ def _admin_guard_and_rate_limit():
             _touch_staff_presence(current_path=request.path, page_title=(request.endpoint or request.path))
 
         required_permission = permission_required_for_path(request.path or "")
+        # Live pings de presencia/locks tienen política propia por capability y deben permitir staff operativo.
+        if request.endpoint in {"admin.monitoreo_presence_ping", "admin.seguridad_locks_ping"}:
+            required_permission = None
         if required_permission:
             role = role_for_user(current_user)
             if not rbac_can(role, required_permission):
@@ -5603,27 +5651,36 @@ def monitoreo_presence_ping():
         )
         abort(403)
 
-    rl = _enforce_live_rate_limit("ping")
-    if rl:
-        _audit_live_security_block(
-            action_type="LIVE_RATE_LIMITED",
-            summary="Rate limit bloqueó presence ping",
-            reason="presence_ping_rate_limited",
-            metadata={"path": request.path, "scope": rl.get("scope"), "retry_after_sec": rl.get("retry_after_sec")},
-        )
-        response = jsonify({
-            "ok": False,
-            "error": "rate_limited",
-            "scope": rl.get("scope"),
-            "retry_after_sec": int(rl.get("retry_after_sec") or 1),
-        })
-        response.status_code = 429
-        response.headers["Retry-After"] = str(int(rl.get("retry_after_sec") or 1))
-        return response
-
     payload = request.get_json(silent=True) or {}
     current_path = (payload.get("current_path") or request.path or "").strip()[:255]
     page_title = (payload.get("page_title") or request.endpoint or "").strip()[:160]
+    session_id = _resolve_presence_session_id((payload.get("session_id") or "").strip()[:120])
+    dedupe_seconds = max(1, min(10, int(os.getenv("LIVE_PING_DEDUPE_SECONDS", "2") or 2)))
+    should_count_rl = _presence_ping_should_count_rate_limit(
+        user_id=int(getattr(current_user, "id", 0) or 0),
+        session_id=session_id,
+        state_hash=_presence_ping_state_hash(payload, current_path=current_path),
+        dedupe_seconds=dedupe_seconds,
+    )
+    if should_count_rl:
+        rl = _enforce_live_rate_limit("ping")
+        if rl:
+            _audit_live_security_block(
+                action_type="LIVE_RATE_LIMITED",
+                summary="Rate limit bloqueó presence ping",
+                reason="presence_ping_rate_limited",
+                metadata={"path": request.path, "scope": rl.get("scope"), "retry_after_sec": rl.get("retry_after_sec")},
+            )
+            response = jsonify({
+                "ok": False,
+                "error": "rate_limited",
+                "scope": rl.get("scope"),
+                "retry_after_sec": int(rl.get("retry_after_sec") or 1),
+            })
+            response.status_code = 429
+            response.headers["Retry-After"] = str(int(rl.get("retry_after_sec") or 1))
+            return response
+
     event_type = (payload.get("event_type") or "heartbeat").strip().lower()[:32]
     if event_type not in {
         "page_load",
@@ -5651,7 +5708,6 @@ def monitoreo_presence_ping():
     route_label = (payload.get("route_label") or "").strip()[:120]
     client_status = _normalize_client_status(payload.get("client_status"))
     last_interaction_at = (payload.get("last_interaction_at") or "").strip()[:40]
-    session_id = (payload.get("session_id") or "").strip()[:120]
     tab_visible = payload.get("tab_visible")
     is_idle = payload.get("is_idle")
     is_typing = payload.get("is_typing")
@@ -5726,6 +5782,23 @@ def seguridad_locks_ping():
             metadata={"path": request.path, "role": role_for_user(current_user), "capability": "locks_ping"},
         )
         abort(403)
+    rl = _enforce_live_rate_limit("locks_ping")
+    if rl:
+        _audit_live_security_block(
+            action_type="LIVE_RATE_LIMITED",
+            summary="Rate limit bloqueó locks ping",
+            reason="locks_ping_rate_limited",
+            metadata={"path": request.path, "scope": rl.get("scope"), "retry_after_sec": rl.get("retry_after_sec")},
+        )
+        response = jsonify({
+            "ok": False,
+            "error": "rate_limited",
+            "scope": rl.get("scope"),
+            "retry_after_sec": int(rl.get("retry_after_sec") or 1),
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(int(rl.get("retry_after_sec") or 1))
+        return response
     payload = request.get_json(silent=True) or {}
     entity_type = (payload.get("entity_type") or "").strip().lower()
     entity_id = str(payload.get("entity_id") or "").strip()
