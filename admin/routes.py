@@ -1032,7 +1032,9 @@ def live_invalidation_stream():
 
                 if redis_client is not None and stream_key:
                     try:
-                        messages = redis_client.xread({stream_key: last_stream_id}, count=25, block=10000) or []
+                        # block_ms debe ser menor que socket_timeout del cliente Redis
+                        # para evitar falsos degradados a heartbeat-only.
+                        messages = redis_client.xread({stream_key: last_stream_id}, count=25, block=1500) or []
                         for _stream_name, entries in (messages or []):
                             for entry_id, fields in (entries or []):
                                 last_stream_id = str(entry_id or last_stream_id)
@@ -1051,6 +1053,10 @@ def live_invalidation_stream():
                                 yield _sse("invalidation", normalized)
                                 emitted = True
                     except Exception as exc:
+                        if type(exc).__name__ == "TimeoutError":
+                            # Timeout de lectura bloqueante: fallback normal, no desactivar stream.
+                            pass
+                            continue
                         redis_client = None
                         current_app.logger.warning(
                             "[f4-live] stream read failed; switching to heartbeat-only mode (%s: %s)",
@@ -9661,7 +9667,7 @@ def registrar_pago(cliente_id, id):
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@staff_required
 @admin_action_limit(bucket="reemplazos", max_actions=15, window_sec=60)
 def nuevo_reemplazo(s_id):
     sol = (
