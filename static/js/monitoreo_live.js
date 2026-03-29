@@ -1,4 +1,21 @@
 (function () {
+  const MONITOREO_LIVE_VERSION = '2026-03-29.3';
+  if (window.__monitoreoLiveInitialized) {
+    window.__monitoreoLiveBoot = {
+      version: MONITOREO_LIVE_VERSION,
+      initialized: true,
+      duplicateInitSkipped: true,
+      ts: new Date().toISOString(),
+    };
+    return;
+  }
+  window.__monitoreoLiveInitialized = true;
+  window.__monitoreoLiveBoot = {
+    version: MONITOREO_LIVE_VERSION,
+    initialized: true,
+    ts: new Date().toISOString(),
+  };
+
   const root = document.querySelector('[data-monitoreo-page]');
   if (!root) return;
 

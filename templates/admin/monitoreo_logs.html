@@ -71,5 +71,35 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/monitoreo_live.js') }}" defer></script>
+<script>
+  window.__monitoreoLiveExpectedVersion = '2026-03-29.3';
+</script>
+<script src="{{ url_for('static', filename='js/monitoreo_live.js', v='2026-03-29.3') }}" defer></script>
+<script defer>
+  (function () {
+    var EXPECTED = String(window.__monitoreoLiveExpectedVersion || '').trim();
+    function ensureLiveBundleBooted() {
+      var root = document.querySelector('[data-monitoreo-page="logs"]');
+      if (!root) return;
+      var boot = window.__monitoreoLiveBoot || {};
+      var version = String(boot.version || '').trim();
+      if (boot.initialized === true && version === EXPECTED) return;
+
+      var src = "{{ url_for('static', filename='js/monitoreo_live.js', v='2026-03-29.3') }}";
+      var rescue = document.createElement('script');
+      rescue.src = src + '&r=' + Date.now();
+      rescue.defer = true;
+      rescue.setAttribute('data-monitoreo-live-rescue', '1');
+      document.body.appendChild(rescue);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () {
+        setTimeout(ensureLiveBundleBooted, 1200);
+      }, { once: true });
+      return;
+    }
+    setTimeout(ensureLiveBundleBooted, 1200);
+  })();
+</script>
 {% endblock %}

@@ -80,3 +80,18 @@ def test_control_room_logs_human_action_mapping_and_entity_name_code():
     item = items[-1]
     assert item.get("action_human") == "Guardo entrevista"
     assert "DOM-1023" in (item.get("entity_display") or "")
+
+
+def test_control_room_template_includes_versioned_live_bundle_bootstrap():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client_admin = flask_app.test_client()
+    assert _login(client_admin, "Cruz", "8998").status_code in (302, 303)
+
+    resp = client_admin.get("/admin/monitoreo", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8", errors="ignore")
+    assert "window.__monitoreoLiveExpectedVersion" in html
+    assert "js/monitoreo_live.js?v=2026-03-29.3" in html
+    assert "data-monitoreo-live-rescue" in html
