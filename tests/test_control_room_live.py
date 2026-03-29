@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime
+from pathlib import Path
 
 from app import app as flask_app
 from config_app import db
@@ -93,5 +94,13 @@ def test_control_room_template_includes_versioned_live_bundle_bootstrap():
     assert resp.status_code == 200
     html = resp.data.decode("utf-8", errors="ignore")
     assert "window.__monitoreoLiveExpectedVersion" in html
-    assert "js/monitoreo_live.js?v=2026-03-29.3" in html
+    assert "js/monitoreo_live.js?v=2026-03-29.4" in html
     assert "data-monitoreo-live-rescue" in html
+
+
+def test_control_room_live_bundle_exposes_boot_status_and_sse_fallback():
+    js_path = Path("static/js/monitoreo_live.js")
+    text = js_path.read_text(encoding="utf-8", errors="ignore")
+    assert "window.__monitoreoLiveBoot" in text
+    assert "window.__monitoreoLiveStatus" in text
+    assert "SSE init fallido, fallback a polling" in text

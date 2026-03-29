@@ -373,6 +373,32 @@ def test_pending_mfa_blocks_admin_routes_and_json(monkeypatch):
     assert ("/admin/mfa/verify" in loc_post) or ("/admin/login" in loc_post)
 
 
+def test_presence_tracker_disabled_on_login_and_mfa_verify(monkeypatch):
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    _enable_mfa_flags(monkeypatch)
+
+    secret = "JBSWY3DPEHPK3PXP"
+    _set_staff_mfa(username="Cruz", enabled=True, secret=secret)
+
+    client = flask_app.test_client()
+    login_page = client.get("/admin/login", follow_redirects=False)
+    assert login_page.status_code == 200
+    login_html = login_page.data.decode("utf-8", errors="ignore")
+    assert 'data-live-presence-enabled="0"' in login_html
+    assert "/admin/monitoreo/presence/ping" not in login_html
+
+    start = _login_admin(client, "Cruz", "8998")
+    assert start.status_code in (302, 303)
+    assert "/admin/mfa/verify" in (start.headers.get("Location") or "")
+
+    verify_page = client.get("/admin/mfa/verify", follow_redirects=False)
+    assert verify_page.status_code == 200
+    verify_html = verify_page.data.decode("utf-8", errors="ignore")
+    assert 'data-live-presence-enabled="0"' in verify_html
+    assert "/admin/monitoreo/presence/ping" not in verify_html
+
+
 def test_totp_code_reuse_is_denied(monkeypatch):
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

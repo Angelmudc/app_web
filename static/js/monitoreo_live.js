@@ -1,23 +1,52 @@
 (function () {
-  const MONITOREO_LIVE_VERSION = '2026-03-29.3';
+  const MONITOREO_LIVE_VERSION = '2026-03-29.4';
+  const bootNow = new Date().toISOString();
+  window.__monitoreoLiveStatus = window.__monitoreoLiveStatus || {};
+  window.__monitoreoLiveBoot = {
+    version: MONITOREO_LIVE_VERSION,
+    initialized: false,
+    phase: 'booting',
+    ts: bootNow,
+  };
+
+  function setStatus(patch) {
+    const next = Object.assign(
+      {
+        version: MONITOREO_LIVE_VERSION,
+        updatedAt: new Date().toISOString(),
+      },
+      window.__monitoreoLiveStatus || {},
+      patch || {}
+    );
+    window.__monitoreoLiveStatus = next;
+    return next;
+  }
+
   if (window.__monitoreoLiveInitialized) {
     window.__monitoreoLiveBoot = {
       version: MONITOREO_LIVE_VERSION,
       initialized: true,
+      phase: 'duplicate_init_skipped',
       duplicateInitSkipped: true,
       ts: new Date().toISOString(),
     };
+    setStatus({ phase: 'duplicate_init_skipped' });
     return;
   }
   window.__monitoreoLiveInitialized = true;
-  window.__monitoreoLiveBoot = {
-    version: MONITOREO_LIVE_VERSION,
-    initialized: true,
-    ts: new Date().toISOString(),
-  };
+  setStatus({ phase: 'initialized' });
 
   const root = document.querySelector('[data-monitoreo-page]');
-  if (!root) return;
+  if (!root) {
+    window.__monitoreoLiveBoot = {
+      version: MONITOREO_LIVE_VERSION,
+      initialized: true,
+      phase: 'no_root',
+      ts: new Date().toISOString(),
+    };
+    setStatus({ phase: 'no_root' });
+    return;
+  }
 
   const page = root.dataset.monitoreoPage || 'dashboard';
   const streamUrl = root.dataset.streamUrl || '';
@@ -27,6 +56,7 @@
   const presenceUrl = root.dataset.presenceUrl || '';
   const presencePingUrl = root.dataset.presencePingUrl || '';
   const hasFilters = String(root.dataset.hasFilters || '0') === '1';
+  setStatus({ phase: 'root_found', page, hasFilters, path: window.location.pathname || '' });
 
   function getLiveStatusEl() {
     return document.getElementById('liveStatus');
@@ -123,11 +153,20 @@
     if (presencePingStatus === nextState) return;
     presencePingStatus = nextState;
     if (nextState === 'paused') {
+      setStatus({ presencePing: 'paused', presencePingReason: String(reason || '') });
       console.warn('[monitoreo] presence ping pausado: ' + reason);
       return;
     }
     if (!manualPaused) syncLiveUi();
+    setStatus({ presencePing: 'live', presencePingReason: String(reason || '') });
     console.warn('[monitoreo] presence ping reanudado');
+  }
+
+  function describeError(err) {
+    if (!err) return 'unknown_error';
+    if (typeof err === 'string') return err;
+    if (err.message) return String(err.message);
+    return String(err);
   }
 
   function formatDate(iso) {
@@ -583,6 +622,7 @@
   function startPolling() {
     if (!isMonitoringPage()) return;
     stopPolling();
+    setStatus({ phase: 'polling_start', transport: 'polling' });
     syncLiveUi();
     pollLogs().catch(() => {});
     pollSummary().catch(() => {});
@@ -599,7 +639,22 @@
     stopSSE();
     sseStalled = false;
     const url = streamUrl + '?last_id=' + encodeURIComponent(String(lastId || 0));
-    sse = new EventSource(url, { withCredentials: true });
+    let nextSse = null;
+    try {
+      nextSse = new EventSource(url, { withCredentials: true });
+    } catch (_) {
+      try {
+        nextSse = new EventSource(url);
+      } catch (err) {
+        const reason = describeError(err);
+        setStatus({ phase: 'sse_init_failed', transport: 'polling', lastError: reason });
+        console.warn('[monitoreo] SSE init fallido, fallback a polling:', reason);
+        startPolling();
+        return;
+      }
+    }
+    sse = nextSse;
+    setStatus({ phase: 'sse_connecting', transport: 'sse', streamUrl: url });
     const markSseAlive = function () {
       lastSseEventAtMs = Date.now();
       if (sseStalled) {
@@ -607,6 +662,7 @@
         stopPolling();
       }
       setLiveStatus(true);
+      setStatus({ phase: 'sse_live', transport: 'sse', lastSseEventAtMs });
     };
     markSseAlive();
 
@@ -680,6 +736,7 @@
     });
 
     sse.onerror = function () {
+      setStatus({ phase: 'sse_error', transport: 'polling' });
       stopSSE();
       sseStalled = true;
       startPolling();
@@ -788,6 +845,20 @@
   if (page === 'dashboard' && !hasFilters) startSSE();
   else startPolling();
   syncLiveUi();
+  window.__monitoreoLiveBoot = {
+    version: MONITOREO_LIVE_VERSION,
+    initialized: true,
+    phase: 'ready',
+    ts: new Date().toISOString(),
+  };
+  setStatus({
+    phase: 'ready',
+    page,
+    realtimeMode: (sse ? 'sse' : (hasActivePolling() ? 'polling' : 'paused')),
+    streamUrl,
+    summaryUrl,
+    presenceUrl,
+  });
 
   window.addEventListener('popstate', function () {
     if (!isMonitoringPage()) stopMonitoringRealtime();
