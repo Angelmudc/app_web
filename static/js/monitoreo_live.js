@@ -11,8 +11,13 @@
   const presencePingUrl = root.dataset.presencePingUrl || '';
   const hasFilters = String(root.dataset.hasFilters || '0') === '1';
 
-  const liveStatus = document.getElementById('liveStatus');
-  const liveToggleBtn = document.getElementById('liveToggleBtn');
+  function getLiveStatusEl() {
+    return document.getElementById('liveStatus');
+  }
+
+  function getLiveToggleBtnEl() {
+    return document.getElementById('liveToggleBtn');
+  }
   const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
   function getLogsTableBody() {
@@ -65,8 +70,10 @@
   }
 
   function setLiveStatus(isLive) {
+    const liveStatus = getLiveStatusEl();
+    const liveToggleBtn = getLiveToggleBtnEl();
     if (!liveStatus || !liveToggleBtn) return;
-    if (isLive && !paused && presencePingStatus !== 'paused') {
+    if (isLive && !paused) {
       liveStatus.textContent = '● EN VIVO';
       liveStatus.classList.remove('paused');
       liveStatus.classList.add('live');
@@ -83,7 +90,6 @@
     if (presencePingStatus === nextState) return;
     presencePingStatus = nextState;
     if (nextState === 'paused') {
-      setLiveStatus(false);
       console.warn('[monitoreo] presence ping pausado: ' + reason);
       return;
     }
@@ -544,11 +550,7 @@
   function startPolling() {
     if (!isMonitoringPage()) return;
     stopPolling();
-    if (sseStalled) {
-      setLiveStatus(false);
-    } else {
-      setLiveStatus(true);
-    }
+    setLiveStatus(true);
     pollLogs().catch(() => {});
     pollSummary().catch(() => {});
     pollProductivity().catch(() => {});
@@ -714,22 +716,22 @@
     setLiveStatus(false);
   }
 
-  if (liveToggleBtn) {
-    liveToggleBtn.addEventListener('click', function () {
-      paused = !paused;
-      if (paused) {
-        stopSSE();
-        stopPolling();
-        setLiveStatus(false);
-      } else {
-        if (page === 'dashboard' && !hasFilters) {
-          startSSE();
-        } else {
-          startPolling();
-        }
-      }
-    });
-  }
+  document.addEventListener('click', function (ev) {
+    const btn = ev.target && ev.target.closest ? ev.target.closest('#liveToggleBtn') : null;
+    if (!btn) return;
+    paused = !paused;
+    if (paused) {
+      stopSSE();
+      stopPolling();
+      setLiveStatus(false);
+      return;
+    }
+    if (page === 'dashboard' && !hasFilters) {
+      startSSE();
+    } else {
+      startPolling();
+    }
+  });
 
   startActivityTracking();
   if (!isMonitoringPage()) {
