@@ -94,7 +94,7 @@ def test_control_room_template_includes_versioned_live_bundle_bootstrap():
     assert resp.status_code == 200
     html = resp.data.decode("utf-8", errors="ignore")
     assert "window.__monitoreoLiveExpectedVersion" in html
-    assert "js/monitoreo_live.js?v=2026-03-29.4" in html
+    assert "js/monitoreo_live.js?v=2026-03-29.7" in html
     assert "data-monitoreo-live-rescue" in html
 
 
@@ -104,3 +104,45 @@ def test_control_room_live_bundle_exposes_boot_status_and_sse_fallback():
     assert "window.__monitoreoLiveBoot" in text
     assert "window.__monitoreoLiveStatus" in text
     assert "SSE init fallido, fallback a polling" in text
+    assert "[monitoreo] init file loaded" in text
+    assert "[monitoreo] shell found" in text
+    assert "[monitoreo] ready" in text
+
+
+def test_home_does_not_include_control_room_presence_bundle():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client = flask_app.test_client()
+    resp = client.get("/home", follow_redirects=False)
+    assert resp.status_code in (302, 303)
+    location = resp.headers.get("Location") or ""
+    assert ("/admin/login" in location) or ("/login" in location)
+    login_resp = client.get(location, follow_redirects=False)
+    assert login_resp.status_code == 200
+    html = login_resp.data.decode("utf-8", errors="ignore")
+    assert "js/core/control_room_presence.js" not in html
+    assert 'data-live-presence-enabled="0"' in html
+
+
+def test_login_page_does_not_include_control_room_presence_bundle():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client = flask_app.test_client()
+    resp = client.get("/login", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8", errors="ignore")
+    assert "js/core/control_room_presence.js" not in html
+    assert 'data-live-presence-enabled="0"' in html
+
+
+def test_public_root_does_not_include_control_room_presence_bundle():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client = flask_app.test_client()
+    resp = client.get("/", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8", errors="ignore")
+    assert "js/core/control_room_presence.js" not in html

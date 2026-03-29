@@ -227,9 +227,9 @@
 {% endblock %}
 {% block scripts %}
 <script>
-  window.__monitoreoLiveExpectedVersion = '2026-03-29.4';
+  window.__monitoreoLiveExpectedVersion = '2026-03-29.7';
 </script>
-<script src="{{ url_for('static', filename='js/monitoreo_live.js', v='2026-03-29.4') }}" defer></script>
+<script src="{{ url_for('static', filename='js/monitoreo_live.js', v='2026-03-29.7') }}" defer></script>
 <script defer>
   (function () {
     var EXPECTED = String(window.__monitoreoLiveExpectedVersion || '').trim();
@@ -240,7 +240,7 @@
       var version = String(boot.version || '').trim();
       if (boot.initialized === true && version === EXPECTED) return;
 
-      var src = "{{ url_for('static', filename='js/monitoreo_live.js', v='2026-03-29.4') }}";
+      var src = "{{ url_for('static', filename='js/monitoreo_live.js', v='2026-03-29.7') }}";
       var rescue = document.createElement('script');
       rescue.src = src + '&r=' + Date.now();
       rescue.defer = true;

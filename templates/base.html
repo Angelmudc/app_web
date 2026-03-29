@@ -98,11 +98,33 @@
   {% set _staff_role = 'secretaria' %}
 {% endif %}
 {% set _presence_auth_endpoints = ['admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel'] %}
+{% set _presence_path = request.path or '' %}
+{% set _presence_operational_path = false %}
+{% if _presence_path.startswith('/buscar') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/entrevista') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/referencias') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/admin/clientes') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/admin/solicitudes') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/admin/matching') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/admin/reemplazo') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/admin/contratos') %}
+  {% set _presence_operational_path = true %}
+{% elif _presence_path.startswith('/admin/entrevistas') %}
+  {% set _presence_operational_path = true %}
+{% endif %}
+{% set _presence_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and (request.endpoint not in _presence_auth_endpoints) and _presence_operational_path %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
-      data-live-presence-enabled="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and (request.endpoint not in _presence_auth_endpoints) %}1{% else %}0{% endif %}"
-      data-live-presence-url="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and (request.endpoint not in _presence_auth_endpoints) %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}"
+      data-live-presence-enabled="{% if _presence_enabled %}1{% else %}0{% endif %}"
+      data-live-presence-url="{% if _presence_enabled %}{{ url_for('admin.monitoreo_presence_ping') }}{% endif %}"
       data-presence-entity-type="{{ _p_type }}"
       data-presence-entity-id="{{ _p_id }}"
       data-presence-entity-name="{{ _p_name }}"
@@ -371,7 +393,9 @@
   <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live_invalidation.js') }}" defer></script>
+  {% if _presence_enabled %}
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
+  {% endif %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>
 
 <script defer>

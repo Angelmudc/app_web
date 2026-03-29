@@ -9,7 +9,10 @@
   // Fase 2 aplica al Control Room staff/admin.
   if (endpoint.indexOf('/admin/monitoreo/presence/ping') < 0) return;
   var path = String((window.location && window.location.pathname) || '');
-  if (path === '/admin/login' || path.indexOf('/admin/mfa/') === 0) return;
+  if (path.indexOf('/login') === 0) return;
+  if (path.indexOf('/admin/login') === 0) return;
+  if (path.indexOf('/admin/mfa/') === 0) return;
+  if (path.indexOf('/home') === 0) return;
 
   const HEARTBEAT_MS = 5000;
   var IDLE_AFTER_MS = 60000;

@@ -387,6 +387,7 @@ def test_presence_tracker_disabled_on_login_and_mfa_verify(monkeypatch):
     login_html = login_page.data.decode("utf-8", errors="ignore")
     assert 'data-live-presence-enabled="0"' in login_html
     assert "/admin/monitoreo/presence/ping" not in login_html
+    assert "js/core/control_room_presence.js" not in login_html
 
     start = _login_admin(client, "Cruz", "8998")
     assert start.status_code in (302, 303)
@@ -397,6 +398,7 @@ def test_presence_tracker_disabled_on_login_and_mfa_verify(monkeypatch):
     verify_html = verify_page.data.decode("utf-8", errors="ignore")
     assert 'data-live-presence-enabled="0"' in verify_html
     assert "/admin/monitoreo/presence/ping" not in verify_html
+    assert "js/core/control_room_presence.js" not in verify_html
 
 
 def test_totp_code_reuse_is_denied(monkeypatch):
