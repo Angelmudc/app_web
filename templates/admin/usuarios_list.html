@@ -12,7 +12,14 @@
     </div>
     <p class="text-muted mb-3">Administra desde aquí creación, edición, roles y estado de acceso del equipo staff.</p>
 
-    <form class="row g-2 align-items-center mb-3" method="get" action="{{ url_for('admin.listar_usuarios') }}">
+    <form class="row g-2 align-items-center mb-3"
+          method="get"
+          action="{{ url_for('admin.listar_usuarios') }}"
+          data-admin-async-form
+          data-async-target="#usuariosAsyncRegion"
+          data-async-busy-container="#usuariosAsyncScope"
+          data-async-preserve-scroll="true"
+          data-async-fallback="native">
       <div class="col-12 col-md">
         <input name="q" class="form-control" placeholder="Buscar por username o email" value="{{ q }}">
       </div>
@@ -24,120 +31,17 @@
         </select>
       </div>
       <div class="col-6 col-md-auto">
-        <button class="btn btn-outline-secondary w-100">
+        <button class="btn btn-outline-secondary w-100" data-loading-text="Buscando...">
           <i class="fa-solid fa-magnifying-glass"></i> Buscar
         </button>
       </div>
     </form>
 
-    {% if usuarios %}
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Usuario</th>
-              <th>Email</th>
-              <th>Rol</th>
-              <th>Estado</th>
-              <th>Creación</th>
-              <th>Último login</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for u in usuarios %}
-              <tr>
-                <td>{{ u.id }}</td>
-                <td>{{ u.username }}</td>
-                <td>{{ u.email or '—' }}</td>
-                <td>
-                  {% set r = (u.role or 'secretaria')|lower %}
-                  {% if r == 'owner' %}
-                    <span class="badge bg-dark">Owner</span>
-                  {% elif r == 'admin' %}
-                    <span class="badge bg-primary">Admin</span>
-                  {% else %}
-                    <span class="badge bg-info text-dark">Secretaria</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {% if u.is_active %}
-                    <span class="badge bg-success">Activo</span>
-                  {% else %}
-                    <span class="badge bg-danger">Inactivo</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {% if u.created_at %}
-                    {{ u.created_at|rd_datetime('%Y-%m-%d %H:%M') }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td>
-                  {% if u.last_login_at %}
-                    {{ u.last_login_at|rd_datetime('%Y-%m-%d %H:%M') }}<br>
-                    <small class="text-muted">{{ u.last_login_ip or '' }}</small>
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td>
-                  <div class="d-flex flex-wrap gap-2">
-                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.editar_usuario', user_id=u.id) }}">Editar</a>
-                    <form method="post" action="{{ url_for('admin.admin_roles') }}" class="d-flex gap-1 align-items-center">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="user_id" value="{{ u.id }}">
-                      <select class="form-select form-select-sm" name="role" aria-label="Cambiar rol de {{ u.username }}">
-                        <option value="owner" {% if r == 'owner' %}selected{% endif %}>Owner</option>
-                        <option value="admin" {% if r == 'admin' %}selected{% endif %}>Admin</option>
-                        <option value="secretaria" {% if r == 'secretaria' %}selected{% endif %}>Secretaria</option>
-                      </select>
-                      <button class="btn btn-sm btn-outline-info" type="submit">Guardar rol</button>
-                    </form>
-                    <form method="post" action="{{ url_for('admin.toggle_usuario_estado', user_id=u.id) }}">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="btn btn-sm btn-outline-warning" type="submit">
-                        {{ 'Desactivar' if u.is_active else 'Activar' }}
-                      </button>
-                    </form>
-                    {% if current_user.role|default('')|lower == 'owner' %}
-                      <form method="post" action="{{ url_for('admin.eliminar_usuario', user_id=u.id) }}"
-                            onsubmit="return confirm('Eliminar definitivamente este usuario solo aplica si no tiene historial. ¿Deseas continuar?');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
-                      </form>
-                    {% endif %}
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    <div id="usuariosAsyncScope" data-admin-async-scope>
+      <div id="usuariosAsyncRegion" data-async-preserve-scroll="true">
+        {% include 'admin/_usuarios_list_results.html' %}
       </div>
-
-      <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-        {% set shown_start = ((page - 1) * per_page) + 1 if total > 0 else 0 %}
-        {% set shown_end = [page * per_page, total]|min %}
-        <small class="text-muted">Mostrando {{ shown_start }}–{{ shown_end }} de {{ total }}</small>
-        <nav>
-          <ul class="pagination pagination-sm mb-0">
-            <li class="page-item {% if page<=1 %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('admin.listar_usuarios', q=q, per_page=per_page, page=page-1) }}">Anterior</a>
-            </li>
-            <li class="page-item disabled">
-              <span class="page-link">Página {{ page }} / {{ last_page }}</span>
-            </li>
-            <li class="page-item {% if page>=last_page %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('admin.listar_usuarios', q=q, per_page=per_page, page=page+1) }}">Siguiente</a>
-            </li>
-          </ul>
-        </nav>
-      </div>
-    {% else %}
-      <div class="alert alert-info mt-4">No hay usuarios internos registrados.</div>
-    {% endif %}
+    </div>
   </div>
 </div>
 {% endblock %}

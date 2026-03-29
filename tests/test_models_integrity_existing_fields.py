@@ -11,7 +11,7 @@ class ModelsIntegrityTest(unittest.TestCase):
             self.assertTrue(hasattr(Candidata, field), f"Missing Candidata.{field}")
 
     def test_existing_solicitud_fields_still_present(self):
-        for field in ("id", "codigo_solicitud", "cliente_id", "estado", "horario", "modalidad_trabajo"):
+        for field in ("id", "codigo_solicitud", "cliente_id", "estado", "horario", "modalidad_trabajo", "fecha_seguimiento_manual"):
             self.assertTrue(hasattr(Solicitud, field), f"Missing Solicitud.{field}")
 
 

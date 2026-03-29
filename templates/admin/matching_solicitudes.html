@@ -5,47 +5,20 @@
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h4 mb-0">Matching de Solicitudes</h1>
-    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">Inicio</a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.matching_solicitudes') }}"
+         class="btn btn-outline-primary"
+         data-admin-async-link
+         data-async-target="#matchingSolicitudesAsyncRegion"
+         data-async-busy-container="#matchingSolicitudesAsyncScope"
+         data-async-fallback="native">Actualizar</a>
+      <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">Inicio</a>
+    </div>
   </div>
 
-  <div class="card shadow-sm">
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-hover mb-0 align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Código</th>
-              <th>Cliente</th>
-              <th>Ciudad</th>
-              <th>Modalidad</th>
-              <th>Horario</th>
-              <th>Fecha</th>
-              <th class="text-end">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for s in solicitudes %}
-            <tr>
-              <td><strong>{{ s.codigo_solicitud }}</strong></td>
-              <td>{{ s.cliente.nombre_completo if s.cliente else '-' }}</td>
-              <td>{{ s.ciudad_sector or '-' }}</td>
-              <td>{{ s.modalidad_trabajo or '-' }}</td>
-              <td>{{ s.horario or '-' }}</td>
-              <td>{{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') if s.fecha_solicitud else '-' }}</td>
-              <td class="text-end">
-                <a class="btn btn-sm btn-primary" href="{{ url_for('admin.matching_detalle_solicitud', solicitud_id=s.id) }}">
-                  Sugerir candidatas
-                </a>
-              </td>
-            </tr>
-            {% else %}
-            <tr>
-              <td colspan="7" class="text-center text-muted py-4">No hay solicitudes activas para matching.</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <div id="matchingSolicitudesAsyncScope" data-admin-async-scope>
+    <div id="matchingSolicitudesAsyncRegion">
+      {% include 'admin/_matching_solicitudes_region.html' %}
     </div>
   </div>
 </div>

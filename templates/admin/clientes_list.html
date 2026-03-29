@@ -3,18 +3,6 @@
 
 {% block content %}
 
-{# ──────────────────────────────────────────────────────────────
-   Paginación y slice (se calcula aquí porque la ruta solo envía `clientes` y `q`)
-────────────────────────────────────────────────────────────── #}
-{% set page = (request.args.get('page','1')|int if request.args.get('page') else 1) %}
-{% set per_page = (request.args.get('per_page','25')|int if request.args.get('per_page') else 25) %}
-{% set items = (clientes|list if clientes is iterable else []) %}
-{% set total = items|length %}
-{% set start = (page-1) * per_page %}
-{% set end = start + per_page %}
-{% set slice = items[start:end] %}
-{% set last_page = (((total-1)//per_page) + 1) if total > 0 else 1 %}
-
 <div class="py-1 clientes-shell">
   <div class="glass-card p-3 p-md-4">
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
@@ -64,7 +52,14 @@
     Usa el generador para crear un enlace tokenizado de un solo uso para clientes nuevos.
   </div>
 
-  <form class="row g-2 align-items-center mb-3" method="get" action="{{ url_for('admin.listar_clientes') }}">
+  <form class="row g-2 align-items-center mb-3"
+        method="get"
+        action="{{ url_for('admin.listar_clientes') }}"
+        data-admin-async-form
+        data-async-target="#clientesAsyncRegion"
+        data-async-busy-container="#clientesAsyncScope"
+        data-async-preserve-scroll="true"
+        data-async-fallback="native">
     <div class="col-12 col-md">
       <input name="q" class="form-control" placeholder="🔎 Buscar por ID, código, nombre, email o teléfono" value="{{ q }}">
     </div>
@@ -76,105 +71,17 @@
       </select>
     </div>
     <div class="col-6 col-md-auto">
-      <button class="btn btn-outline-secondary w-100">
+      <button class="btn btn-outline-secondary w-100" data-loading-text="Buscando...">
         <i class="fa-solid fa-magnifying-glass"></i> Buscar
       </button>
     </div>
   </form>
 
-  {% if clientes %}
-  <div class="mt-3">
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th>🆔 Código</th>
-            <th>👤 Nombre</th>
-            <th>📞 Teléfono</th>
-            <th>📋 Solicitudes</th>
-            <th>📅 Registro</th>
-            <th>⚙️ Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in slice %}
-          <tr>
-            <td data-label="Código">{{ c.codigo }}</td>
-            <td data-label="Nombre">{{ c.nombre_completo }}</td>
-            <td data-label="Teléfono">{{ c.telefono }}</td>
-            <td data-label="Solicitudes">
-              <span class="badge bg-info text-dark">{{ c.total_solicitudes }}</span>
-            </td>
-            <td data-label="Registro">
-              {% if c.fecha_registro %}
-                {{ c.fecha_registro|rd_datetime('%Y-%m-%d') }}
-              {% else %}
-                —
-              {% endif %}
-            </td>
-            <td data-label="Acciones">
-              <div class="dropdown">
-                <button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                  Acciones
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li>
-                    <a class="dropdown-item" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}">
-                      <i class="fa-solid fa-eye text-info me-2"></i>Ver Detalle
-                    </a>
-                  </li>
-                  <li>
-                    <a class="dropdown-item" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">
-                      <i class="fa-solid fa-pen-to-square text-warning me-2"></i>Editar
-                    </a>
-                  </li>
-                  <li><hr class="dropdown-divider"></li>
-                  {% if current_user.role|default('')|lower == 'owner' %}
-                    <li>
-                      <a class="dropdown-item text-danger" href="#" onclick="if(confirm('¿Eliminar cliente #{{ c.id }}? Esta acción es irreversible.')) document.getElementById('del-{{c.id}}').submit(); return false;">
-                        <i class="fa-solid fa-trash me-2"></i>Eliminar
-                      </a>
-                      <form id="del-{{c.id}}" method="post" action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}" style="display:none">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      </form>
-                    </li>
-                  {% endif %}
-                </ul>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-
-    <!-- Paginación -->
-    <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-      <small class="text-muted">
-        Mostrando {{ start+1 if total>0 else 0 }}–{{ [end, total]|min }} de {{ total }}
-      </small>
-      <nav>
-        <ul class="pagination pagination-sm mb-0">
-          {% set q_current = request.args.get('q','') %}
-          {% set per = per_page %}
-          <li class="page-item {% if page<=1 %}disabled{% endif %}">
-            <a class="page-link" href="{{ url_for('admin.listar_clientes') }}?q={{ q_current }}&per_page={{ per }}&page={{ page-1 }}">Anterior</a>
-          </li>
-          <li class="page-item disabled">
-            <span class="page-link">Página {{ page }} / {{ last_page }}</span>
-          </li>
-          <li class="page-item {% if page>=last_page %}disabled{% endif %}">
-            <a class="page-link" href="{{ url_for('admin.listar_clientes') }}?q={{ q_current }}&per_page={{ per }}&page={{ page+1 }}">Siguiente</a>
-          </li>
-        </ul>
-      </nav>
+  <div id="clientesAsyncScope" data-admin-async-scope>
+    <div id="clientesAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_clientes_list_results.html' %}
     </div>
   </div>
-  {% else %}
-  <div class="alert alert-info mt-4 text-center p-4 shadow-sm">
-    <i class="fa-solid fa-circle-info me-2"></i>No se encontraron clientes en la base de datos.
-  </div>
-  {% endif %}
   </div>
 </div>
 

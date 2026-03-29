@@ -191,6 +191,42 @@ def test_client_edit_get_exposes_modalidad_precarga_context():
     assert ctx["public_modalidad_other"] == ""
 
 
+def test_client_edit_post_preserva_modalidad_guiada_en_re_render_invalido():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    captured = {}
+
+    target = clientes_routes.editar_solicitud
+    for _ in range(3):
+        target = target.__wrapped__
+
+    s = _cliente_solicitud_dummy()
+    fake_user = SimpleNamespace(id=7)
+
+    def _capture_render(*_a, **k):
+        captured["ctx"] = k
+        return "ok"
+
+    with flask_app.test_request_context(
+        "/clientes/solicitudes/1/editar",
+        method="POST",
+        data={
+            "modalidad_grupo": "con_salida_diaria",
+            "modalidad_especifica": "Salida diaria otro",
+            "modalidad_otro_text": "lunes a viernes",
+        },
+    ):
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "render_template", side_effect=_capture_render), \
+             patch.object(clientes_routes, "Solicitud", SimpleNamespace(query=SimpleNamespace(filter_by=lambda **_k: SimpleNamespace(first_or_404=lambda: s)))):
+            target(1)
+
+    ctx = captured["ctx"]
+    assert ctx["public_modalidad_group"] == "con_salida_diaria"
+    assert ctx["public_modalidad_specific"] == "Salida diaria otro"
+    assert ctx["public_modalidad_other"] == "lunes a viernes"
+
+
 def test_shared_partial_has_independent_otro_wrappers_and_name_based_sync():
     path = "clientes/_solicitud_form_fields.html"
     content = flask_app.jinja_env.loader.get_source(flask_app.jinja_env, path)[0]
@@ -202,5 +238,7 @@ def test_shared_partial_has_independent_otro_wrappers_and_name_based_sync():
     assert 'id="wrap_pasaje_otro"' in content
     assert "function getFieldsByName(name)" in content
     assert "function syncOtherFields(fromUserEvent)" in content
+    assert "modalidadHiddenInRoot" in content
+    assert "document.querySelector('#solicitud-form')" in content
     assert "if (allRegularChecked()) setAll(false);" in content
     assert "allMasterControls[mi].checked = false;" in content

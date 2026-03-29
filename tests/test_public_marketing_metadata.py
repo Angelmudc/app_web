@@ -63,15 +63,15 @@ def test_recruitment_landing_has_preview_metadata_and_official_identity():
     html = resp.get_data(as_text=True)
     assert '<meta property="og:title"' in html
     assert '<meta property="og:description"' in html
-    assert 'property="og:title" content="Doméstica del Cibao A&amp;D — Reclutamiento"' in html
-    assert 'property="og:description" content="Portal oficial para postulantes a vacantes domésticas y empleo general."' in html
-    assert 'name="twitter:title" content="Doméstica del Cibao A&amp;D — Reclutamiento"' in html
-    assert 'name="twitter:description" content="Portal oficial para postulantes a vacantes domésticas y empleo general."' in html
+    assert 'property="og:title" content="Conexión de Empleo — Plataforma de reclutamiento laboral"' in html
+    assert 'property="og:description" content="Plataforma de reclutamiento laboral para solicitud de empleo doméstico y empleo general."' in html
+    assert 'name="twitter:title" content="Conexión de Empleo — Plataforma de reclutamiento laboral"' in html
+    assert 'name="twitter:description" content="Plataforma de reclutamiento laboral para solicitud de empleo doméstico y empleo general."' in html
     assert '<meta property="og:image"' in html
     assert '<meta name="twitter:card" content="summary_large_image">' in html
     assert '<meta name="twitter:title"' in html
     assert '<meta name="twitter:description"' in html
     assert '<meta name="twitter:image"' in html
     assert '<link rel="canonical" href="https://domestica.example.com/trabaja-con-nosotros"' in html
-    assert "Portal oficial:" in html
-    assert "Aplicación segura:" in html
+    assert "Conexión de Empleo" in html
+    assert "Soporte de aplicación:" in html

@@ -1,0 +1,29 @@
+<div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+  <h1 class="h3 mb-0">Monitoreo de Secretarias</h1>
+  <div class="d-flex align-items-center gap-2">
+    <span id="liveStatus" class="live-badge paused">● PAUSADO</span>
+    <button id="liveToggleBtn" class="btn btn-outline-dark btn-sm" type="button">Reanudar</button>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Ver logs completos</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.seguridad_locks') }}">Locks</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.errores_lista') }}">Errores</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.matching_inteligente') }}">Motor</a>
+    {% if (current_user.role or '')|lower == 'owner' %}
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.alertas_canales') }}">Canales</a>
+    {% endif %}
+  </div>
+</div>
+
+<form method="get" action="{{ url_for('admin.monitoreo_candidatas_search') }}" class="row g-2 mb-4">
+  <div class="col-md-8">
+    <label class="form-label mb-1">Buscar candidata (nombre/cédula/código)</label>
+    <input class="form-control" type="text" name="q" placeholder="Ej: Maria, 001-1234567-8, COD-001" value="{{ request.args.get('q','') }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label mb-1">Límite</label>
+    <input class="form-control" type="number" min="1" max="50" name="limit" value="20">
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <button class="btn btn-primary w-100" type="submit">Buscar</button>
+  </div>
+</form>

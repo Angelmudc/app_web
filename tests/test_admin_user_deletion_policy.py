@@ -109,5 +109,4 @@ def test_inactive_user_cannot_login():
     client = flask_app.test_client()
     resp = _login(client, username, "Pass12345")
     assert resp.status_code == 200
-    assert "Credenciales inválidas".encode("utf-8") in resp.data
-
+    assert "Credenciales incorrectas".encode("utf-8") in resp.data

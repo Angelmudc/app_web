@@ -2,6 +2,7 @@
 
 from app import app as flask_app
 from config_app import db
+from flask import url_for
 from models import StaffNotificacion, StaffNotificacionLectura
 
 
@@ -124,3 +125,24 @@ def test_home_public_notifications_list_limits_pending_and_reviewed():
     assert len(items) == 20
     assert all(it.get("is_read") is False for it in pending_items)
     assert all(it.get("is_read") is True for it in reviewed_items)
+
+
+def test_home_public_notifications_endpoint_names_and_routes_stay_compatible():
+    with flask_app.app_context():
+        with flask_app.test_request_context():
+            assert url_for("home_public_notifications_count") == "/home/notificaciones-publicas/count.json"
+            assert url_for("home_public_notifications_list") == "/home/notificaciones-publicas/list.json"
+            assert (
+                url_for("home_public_notifications_mark_read", notificacion_id=9)
+                == "/home/notificaciones-publicas/9/leer"
+            )
+            assert url_for("procesos_routes.home_public_notifications_count") == "/home/notificaciones-publicas/count.json"
+            assert url_for("procesos_routes.home_public_notifications_list") == "/home/notificaciones-publicas/list.json"
+            assert (
+                url_for("procesos_routes.home_public_notifications_mark_read", notificacion_id=9)
+                == "/home/notificaciones-publicas/9/leer"
+            )
+
+    assert flask_app.view_functions["home_public_notifications_count"].__module__ == "core.handlers.home_notifications_handlers"
+    assert flask_app.view_functions["home_public_notifications_list"].__module__ == "core.handlers.home_notifications_handlers"
+    assert flask_app.view_functions["home_public_notifications_mark_read"].__module__ == "core.handlers.home_notifications_handlers"

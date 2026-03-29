@@ -286,6 +286,25 @@ def test_public_link_invalid_token_returns_controlled_response():
     assert "PUBLIC_LINK_VIEW_FAIL" in actions
 
 
+def test_public_link_post_blocks_when_cliente_reaches_active_business_limit():
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    c = _dummy_cliente()
+    fake_form = _FakePublicForm(token="tok123", codigo=c.codigo, nombre=c.nombre_completo, email=c.email)
+    with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {"legacy_token": False})), \
+         patch("clientes.routes.enforce_business_limit", return_value=(False, 1)), \
+         patch("clientes.routes.enforce_min_human_interval", return_value=(False, 3)), \
+         patch("clientes.routes._cliente_active_solicitudes_count", return_value=99):
+        resp = client.post("/clientes/solicitudes/publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+
+    assert resp.status_code == 429
+    assert "demasiadas solicitudes activas".lower() in resp.get_data(as_text=True).lower()
+
+
 def test_public_link_is_invalidated_when_sensitive_client_data_changes():
     flask_app.config["TESTING"] = True
 

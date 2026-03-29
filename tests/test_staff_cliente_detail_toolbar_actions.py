@@ -299,6 +299,16 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self.assertNotIn("Volver a Lista para Trabajar", txt)
         self.assertNotIn("Cerrar reemplazo asignando nueva candidata", txt)
 
+    def test_8_cliente_detail_tiene_region_async_y_target_para_reemplazos(self):
+        tpl_path = os.path.join(os.getcwd(), "templates", "admin", "cliente_detail.html")
+        with open(tpl_path, "r", encoding="utf-8") as fh:
+            txt = fh.read()
+        self.assertIn('id="clienteSummaryAsyncScope"', txt)
+        self.assertIn('id="clienteSummaryAsyncRegion"', txt)
+        self.assertIn('id="clienteSolicitudesAsyncScope"', txt)
+        self.assertIn('id="clienteSolicitudesAsyncRegion"', txt)
+        self.assertIn('name="_async_target" value="#clienteSolicitudesAsyncRegion"', txt)
+
 
 if __name__ == "__main__":
     unittest.main()

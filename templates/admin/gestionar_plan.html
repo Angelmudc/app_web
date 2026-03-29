@@ -2,98 +2,44 @@
 {% block title %}Gestionar Plan – {{ solicitud.codigo_solicitud }}{% endblock %}
 
 {% block content %}
-
 <div class="container py-5" style="max-width: 720px;">
-  <div class="glass-card p-4 p-md-5">
-    <div class="card-header d-flex align-items-center gap-2 mb-4">
-      <i class="bi bi-gear-fill fs-4 text-info"></i>
-      <h1 class="h4 mb-0">⚙️ Gestionar Plan – {{ solicitud.codigo_solicitud }}</h1>
+  <div id="gestionarPlanAsyncScope" data-admin-async-scope>
+    <div id="gestionarPlanAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_gestionar_plan_form_region.html' %}
     </div>
-
-    <form method="POST" id="planForm" novalidate>
-      {{ form.csrf_token }}
-
-      <!-- Tipo de Plan -->
-      <div class="mb-4">
-        <label for="tipo_plan" class="form-label">
-          <i class="bi bi-box-seam-fill text-info me-1"></i> Plan del Cliente
-        </label>
-        <select id="tipo_plan" name="tipo_plan" class="form-select" required>
-          <option value="Básico"  {% if solicitud.tipo_plan == 'Básico'  %}selected{% endif %}>Básico 💼</option>
-          <option value="Premium" {% if solicitud.tipo_plan == 'Premium' %}selected{% endif %}>Premium 🌟</option>
-          <option value="VIP"     {% if solicitud.tipo_plan == 'VIP'     %}selected{% endif %}>VIP 👑</option>
-        </select>
-        <div class="form-text">Selecciona el plan que mejor se ajuste al cliente.</div>
-      </div>
-
-      <!-- Abono (texto para permitir comas y puntos) -->
-      <div class="mb-4">
-        <label for="abono" class="form-label">
-          <i class="bi bi-cash-stack text-success me-1"></i> Abono del Cliente
-        </label>
-        <input
-          id="abono"
-          name="abono"
-          type="text"
-          inputmode="decimal"
-          pattern="^[\d\s.,]+$"
-          class="form-control"
-          value="{{ form.abono.data or solicitud.abono or '' }}"
-          placeholder="💰 Ej: 1500, 1,500, 1.500,50"
-          required
-        >
-        <div class="form-text">Obligatorio. Acepta 1500 · 1,500 · 1.500 · 1.500,50 · 1500.50</div>
-      </div>
-
-      <!-- Botones -->
-      <div class="d-flex justify-content-end gap-2 mt-4">
-        <a href="{{ url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-secondary">
-          <i class="bi bi-x-circle me-1"></i> Cancelar
-        </a>
-        <button type="submit" class="btn btn-primary" id="btn-submit">
-          <i class="bi bi-save-fill me-1"></i> Guardar Cambios
-        </button>
-      </div>
-    </form>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-(function(){
-  const form = document.getElementById('planForm');
-  const btn  = document.getElementById('btn-submit');
-  const abonoInput = document.getElementById('abono');
-
-  // Limpieza en vivo: deja solo dígitos, coma, punto y espacios
-  abonoInput.addEventListener('input', (e) => {
-    const cleaned = e.target.value.replace(/[^\d.,\s]/g, '');
-    if (cleaned !== e.target.value) e.target.value = cleaned;
-  });
-
-  function quickValidMoney(raw) {
-    if (!raw) return false;
-    if (!/\d/.test(raw)) return false; // debe tener al menos un dígito
-    // formato básico válido: solo dígitos, puntos, comas y espacios
-    return /^[\d\s.,]+$/.test(raw);
+(function() {
+  function bindAbonoSanitizer(root) {
+    const scope = root && root.querySelector ? root : document;
+    const abonoInput = scope.querySelector('#abono');
+    if (!abonoInput || abonoInput.dataset.sanitizeBound === '1') {
+      return;
+    }
+    abonoInput.dataset.sanitizeBound = '1';
+    abonoInput.addEventListener('input', function(e) {
+      const cleaned = (e.target.value || '').replace(/[^\d.,\s]/g, '');
+      if (cleaned !== e.target.value) {
+        e.target.value = cleaned;
+      }
+    });
   }
 
-  form.addEventListener('submit', (e) => {
-    const raw = (abonoInput.value || '').trim();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      bindAbonoSanitizer(document);
+    }, { once: true });
+  } else {
+    bindAbonoSanitizer(document);
+  }
 
-    if (!raw || !quickValidMoney(raw)) {
-      e.preventDefault();
-      alert('💡 Abono obligatorio. Usa formato: 1500, 1,500 o 1.500,50');
-      abonoInput.focus();
-      return false;
-    }
-
-    // Animación y bloqueo anti doble-submit
-    btn.disabled = true;
-    btn.classList.add('btn-saving');
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
-    form.classList.add('form-disabled');
+  document.addEventListener('admin:content-updated', function(ev) {
+    const detail = ev && ev.detail ? ev.detail : {};
+    bindAbonoSanitizer(detail.container || document);
   });
 })();
 </script>

@@ -2,13 +2,25 @@
 {% block title %}Panel de Solicitudes{% endblock %}
 
 {% block content %}
-<div class="container py-4" style="max-width: 1220px;">
+<div class="container py-4"
+     style="max-width: 1220px;"
+     data-admin-focus-anchor
+     data-live-invalidation-scope="1"
+     data-live-invalidation-view="solicitudes_summary"
+     data-live-invalidation-stream-url="{{ url_for('admin.live_invalidation_stream') }}"
+     data-live-invalidation-poll-url="{{ url_for('admin.live_invalidation_poll') }}"
+     data-live-invalidation-source-url="{{ request.path }}"
+     data-live-observability-url="{{ url_for('admin.live_observability_ingest') }}"
+     data-live-region-summary-url="{{ url_for('admin.solicitudes_summary_fragment') }}">
   <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
     <div>
       <h1 class="h4 mb-1">Panel de Solicitudes</h1>
       <div class="text-muted small">Operación rápida STAFF desde listado</div>
     </div>
     <div class="d-flex gap-2">
+      <a href="{{ url_for('contratos.listado_contratos_admin') }}" class="btn btn-outline-primary">
+        <i class="bi bi-file-earmark-text me-1"></i> Contratos digitales
+      </a>
       <a href="{{ url_for('admin.copiar_solicitudes') }}" class="btn btn-primary">
         <i class="bi bi-clipboard-check me-1"></i> Copiar / Publicar
       </a>
@@ -19,21 +31,21 @@
   </div>
 
   <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="glass-card p-3 text-center">
-        <div class="small text-muted">En proceso</div>
-        <div class="h4 mb-0">{{ proc_count or 0 }}</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="glass-card p-3 text-center">
-        <div class="small text-muted">Copiables</div>
-        <div class="h4 mb-0">{{ copiable_count or 0 }}</div>
+    <div id="solicitudesSummaryAsyncScope" data-admin-async-scope class="col-md-6">
+      <div id="solicitudesSummaryAsyncRegion" data-async-preserve-scroll="true">
+        {% include 'admin/_solicitudes_summary_region.html' %}
       </div>
     </div>
     <div class="col-md-6">
       <div class="glass-card p-3">
-        <form method="get" class="row g-2 align-items-end">
+        <form method="get"
+              class="row g-2 align-items-end"
+              action="{{ url_for('admin.listar_solicitudes') }}"
+              data-admin-async-form
+              data-async-target="#solicitudesAsyncRegion"
+              data-async-busy-container="#solicitudesAsyncScope"
+              data-async-preserve-scroll="true"
+              data-async-fallback="native">
           <div class="col-md-5">
             <label class="form-label mb-1 small">Buscar</label>
             <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="Código, cliente o ciudad">
@@ -48,133 +60,16 @@
             </select>
           </div>
           <div class="col-md-3 d-grid">
-            <button type="submit" class="btn btn-primary">Filtrar</button>
+            <button type="submit" class="btn btn-primary" data-loading-text="Filtrando...">Filtrar</button>
           </div>
         </form>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th>Código</th>
-              <th>Cliente</th>
-              <th>Estado</th>
-              <th>Candidata</th>
-              <th>Fecha</th>
-              <th class="text-end">Acciones rápidas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for s in (solicitudes or []) %}
-            {% set repl = reemplazos_activos.get(s.id) %}
-            <tr>
-              <td class="fw-semibold">{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</td>
-              <td>
-                <div>{{ s.cliente and s.cliente.nombre_completo or '—' }}</div>
-                <small class="text-muted">{{ s.ciudad_sector or '' }}</small>
-              </td>
-              <td>
-                <span class="badge bg-secondary">{{ s.estado }}</span>
-                {% if s.estado == 'espera_pago' %}
-                  <span class="badge bg-warning text-dark ms-1">Espera pago</span>
-                {% endif %}
-                {% if repl %}
-                  <span class="badge bg-warning text-dark ms-1">Reemplazo activo</span>
-                {% endif %}
-              </td>
-              <td>{{ s.candidata and s.candidata.nombre_completo or '—' }}</td>
-              <td>{{ s.fecha_solicitud and s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
-              <td class="text-end">
-                <div class="d-flex flex-wrap gap-2 justify-content-end">
-                  {% if s.estado != 'espera_pago' %}
-                  <form method="post" action="{{ url_for('admin.poner_espera_pago_solicitud', id=s.id) }}" class="d-inline">
-                    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                    <input type="hidden" name="next" value="{{ request.full_path }}">
-                    <button type="submit" class="btn btn-sm btn-outline-warning">Poner espera</button>
-                  </form>
-                  {% else %}
-                  <form method="post" action="{{ url_for('admin.quitar_espera_pago_solicitud', id=s.id) }}" class="d-inline">
-                    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                    <input type="hidden" name="next" value="{{ request.full_path }}">
-                    <button type="submit" class="btn btn-sm btn-outline-success">Quitar espera</button>
-                  </form>
-                  {% endif %}
-
-                  {% if repl %}
-                    {% if is_admin_role %}
-                    <form method="post" action="{{ url_for('admin.cancelar_reemplazo', s_id=s.id, reemplazo_id=repl.id) }}" class="d-inline">
-                      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                      <input type="hidden" name="next" value="{{ request.full_path }}">
-                      <button type="submit" class="btn btn-sm btn-outline-danger">Cancelar reemplazo</button>
-                    </form>
-                    {% endif %}
-
-                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#modal-culminar-{{ s.id }}">
-                      Culminar reemplazo
-                    </button>
-                  {% elif s.candidata_id %}
-                    <a href="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}" class="btn btn-sm btn-outline-dark">
-                      Abrir reemplazo
-                    </a>
-                  {% endif %}
-
-                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-outline-primary">
-                    Ver
-                  </a>
-                </div>
-
-                {% if repl %}
-                <div class="modal fade" id="modal-culminar-{{ s.id }}" tabindex="-1" aria-hidden="true">
-                  <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                      <div class="modal-header">
-                        <h5 class="modal-title">Culminar reemplazo</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                      </div>
-                      <form method="post" action="{{ url_for('admin.cerrar_reemplazo_asignando', s_id=s.id, reemplazo_id=repl.id) }}">
-                        <div class="modal-body">
-                          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                          <input type="hidden" name="next" value="{{ request.full_path }}">
-                          <label class="form-label">ID de candidata nueva</label>
-                          <input type="number" min="1" required name="candidata_new_id" class="form-control" placeholder="Ej. 1234">
-                          <div class="form-text">Se bloqueará si la candidata está descalificada.</div>
-                        </div>
-                        <div class="modal-footer">
-                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                          <button type="submit" class="btn btn-success">Confirmar culminación</button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-                {% endif %}
-              </td>
-            </tr>
-            {% else %}
-            <tr>
-              <td colspan="6" class="text-center text-muted py-4">No hay solicitudes para mostrar.</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-    <small class="text-muted">Total: {{ total or 0 }}</small>
-    <div class="d-flex gap-2">
-      {% if page|int > 1 %}
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.listar_solicitudes', q=q, estado=estado, page=page-1, per_page=per_page) }}">Anterior</a>
-      {% endif %}
-      {% if has_more %}
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.listar_solicitudes', q=q, estado=estado, page=page+1, per_page=per_page) }}">Siguiente</a>
-      {% endif %}
+  <div id="solicitudesAsyncScope" data-admin-async-scope>
+    <div id="solicitudesAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_solicitudes_list_results.html' %}
     </div>
   </div>
 </div>

@@ -487,562 +487,589 @@
 
 <script>
 (function () {
-  if (window.__solicitudSharedFieldsInit__) return;
-  window.__solicitudSharedFieldsInit__ = true;
+  function initSolicitudSharedFields(rootEl) {
+    var root = rootEl || document;
+    var hostForm = null;
+    if (root && root.querySelector) {
+      var modalidadHiddenInRoot = root.querySelector('#modalidad_trabajo_hidden');
+      if (modalidadHiddenInRoot && modalidadHiddenInRoot.form) {
+        hostForm = modalidadHiddenInRoot.form;
+      }
+      if (!hostForm) {
+        hostForm = root.querySelector('#solicitud-form')
+          || root.querySelector('#publicSolicitudForm')
+          || root.querySelector('#publicSolicitudNuevaForm')
+          || root.querySelector('form');
+      }
+    }
+    if (!hostForm) {
+      var modalidadHiddenGlobal = document.getElementById('modalidad_trabajo_hidden');
+      if (modalidadHiddenGlobal && modalidadHiddenGlobal.form) {
+        hostForm = modalidadHiddenGlobal.form;
+      }
+    }
+    if (!hostForm) {
+      hostForm = document.querySelector('#solicitud-form')
+        || document.querySelector('#publicSolicitudForm')
+        || document.querySelector('#publicSolicitudNuevaForm')
+        || document.querySelector('form');
+    }
+    if (!hostForm) return false;
+    if (hostForm.dataset.solicitudSharedInit === '1') return true;
+    hostForm.dataset.solicitudSharedInit = '1';
 
-  function norm(v) {
-    return (v || '').toString().trim().toLowerCase();
-  }
+    function norm(v) {
+      return (v || '').toString().trim().toLowerCase();
+    }
 
-  function byId(id) {
-    return document.getElementById(id);
-  }
+    function byId(id) {
+      if (!id) return null;
+      return hostForm.querySelector('#' + id) || (root && root.querySelector && root.querySelector('#' + id)) || document.getElementById(id);
+    }
 
-  function stripAccents(v) {
-    if (!v || !String.prototype.normalize) return (v || '');
-    return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  }
+    function stripAccents(v) {
+      if (!v || !String.prototype.normalize) return (v || '');
+      return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
 
-  function getFieldsByName(name) {
-    return document.querySelectorAll('[name="' + name + '"]');
-  }
+    function getFieldsByName(name) {
+      return hostForm.querySelectorAll('[name="' + name + '"]');
+    }
 
-  function hasSelectedValue(name, wanted) {
-    var nodes = getFieldsByName(name);
-    var target = norm(wanted);
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      if (n.tagName === 'SELECT') {
-        if (n.multiple) {
-          for (var j = 0; j < n.options.length; j++) {
-            var opt = n.options[j];
-            if (norm(opt.value) === target && opt.selected) return true;
+    function hasSelectedValue(name, wanted) {
+      var nodes = getFieldsByName(name);
+      var target = norm(wanted);
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        if (n.tagName === 'SELECT') {
+          if (n.multiple) {
+            for (var j = 0; j < n.options.length; j++) {
+              var opt = n.options[j];
+              if (norm(opt.value) === target && opt.selected) return true;
+            }
+          } else if (norm(n.value) === target) {
+            return true;
           }
-        } else if (norm(n.value) === target) {
-          return true;
-        }
-        continue;
-      }
-      if (norm(n.value) === target && n.checked) return true;
-    }
-    return false;
-  }
-
-  function toggleWrapper(id, show, clearOnHide) {
-    var wrap = byId(id);
-    if (!wrap) return;
-    wrap.style.display = show ? '' : 'none';
-    if (!show && clearOnHide) {
-      var txts = wrap.querySelectorAll('input[type="text"], textarea');
-      for (var i = 0; i < txts.length; i++) txts[i].value = '';
-    }
-  }
-
-  function syncOtherField(cfg, fromUserEvent) {
-    var showByChoice = hasSelectedValue(cfg.groupName, 'otro');
-    var txt = byId(cfg.textInputId);
-    var hasValue = !!(txt && norm(txt.value));
-    var show = showByChoice || (!fromUserEvent && hasValue);
-    toggleWrapper(cfg.targetId, show, !!fromUserEvent);
-  }
-
-  function syncOtherFields(fromUserEvent) {
-    var configs = [
-      { groupName: 'edad_requerida', targetId: 'wrap_edad_otro', textInputId: '{{ form.edad_otro.id if form.edad_otro is defined else "" }}' },
-      { groupName: 'funciones', targetId: 'wrap_funciones_otro', textInputId: '{{ form.funciones_otro.id if form.funciones_otro is defined else "" }}' },
-      { groupName: 'tipo_lugar', targetId: 'wrap_tipo_lugar_otro', textInputId: '{{ form.tipo_lugar_otro.id if form.tipo_lugar_otro is defined else "" }}' },
-      { groupName: 'areas_comunes', targetId: 'wrap_area_otro', textInputId: '{{ form.area_otro.id if form.area_otro is defined else "" }}' }
-    ];
-    for (var i = 0; i < configs.length; i++) {
-      syncOtherField(configs[i], !!fromUserEvent);
-    }
-  }
-
-  function syncChoiceSelectedState() {
-    var labels = document.querySelectorAll('.public-choice-item');
-    for (var i = 0; i < labels.length; i++) {
-      var input = labels[i].querySelector('input[type="checkbox"], input[type="radio"]');
-      if (!input) continue;
-      if (input.checked) labels[i].classList.add('is-selected');
-      else labels[i].classList.remove('is-selected');
-    }
-  }
-
-  function syncPisosAndPasaje() {
-    var pisosChecked = document.querySelector('input[name="pisos_selector"]:checked');
-    var pisosHidden = byId('dos_pisos_hidden');
-    if (pisosHidden) {
-      pisosHidden.checked = !!(pisosChecked && pisosChecked.value !== '1');
-      pisosHidden.value = pisosHidden.checked ? 'y' : '';
-    }
-
-    var pasajeChecked = document.querySelector('input[name="pasaje_mode"]:checked');
-    var pasajeHidden = byId('pasaje_aporte_hidden');
-    var wrapPasajeOtro = byId('wrap_pasaje_otro');
-    if (pasajeHidden) {
-      var mode = pasajeChecked ? norm(pasajeChecked.value) : 'incluido';
-      if (pasajeHidden.type === 'hidden' && pasajeHidden.value !== undefined) {
-        if (pasajeHidden.dataset.fieldType === 'radio') {
-          pasajeHidden.value = (mode === 'aparte') ? '1' : '0';
-        } else {
-          pasajeHidden.value = (mode === 'aparte') ? 'y' : '';
-        }
-      }
-      if (wrapPasajeOtro) {
-        wrapPasajeOtro.style.display = (mode === 'otro') ? '' : 'none';
-      }
-    }
-  }
-
-  function selectedByName(name, value) {
-    return document.querySelector('input[name="' + name + '"][value="' + value + '"]');
-  }
-
-  var MODALIDAD_SPECS = {{ _modalidad_specs | tojson }};
-  var MODALIDAD_OPTIONS = {};
-  var MODALIDAD_OPTION_BY_LABEL = {};
-  var MODALIDAD_GROUP_LABELS = {
-    "con_dormida": "Con dormida 💤",
-    "con_salida_diaria": "Salida diaria"
-  };
-
-  function initModalidadMaps() {
-    var groups = Object.keys(MODALIDAD_SPECS || {});
-    for (var gi = 0; gi < groups.length; gi++) {
-      var g = groups[gi];
-      var specs = MODALIDAD_SPECS[g] || [];
-      MODALIDAD_OPTIONS[g] = [];
-      for (var si = 0; si < specs.length; si++) {
-        var spec = specs[si] || {};
-        var label = (spec.label || '').trim();
-        if (!label) continue;
-        MODALIDAD_OPTIONS[g].push(label);
-        var labelNorm = normModal(label);
-        if (!MODALIDAD_OPTION_BY_LABEL[labelNorm]) MODALIDAD_OPTION_BY_LABEL[labelNorm] = [];
-        MODALIDAD_OPTION_BY_LABEL[labelNorm].push({ group: g, label: label, key: spec.key || '' });
-        var aliases = spec.aliases || [];
-        for (var ai = 0; ai < aliases.length; ai++) {
-          var aliasNorm = normModal(aliases[ai]);
-          if (!aliasNorm) continue;
-          if (!MODALIDAD_OPTION_BY_LABEL[aliasNorm]) MODALIDAD_OPTION_BY_LABEL[aliasNorm] = [];
-          MODALIDAD_OPTION_BY_LABEL[aliasNorm].push({ group: g, label: label, key: spec.key || '' });
-        }
-      }
-    }
-  }
-
-  function resolveModalidadMatch(normValue, preferGroup, strictPrefer) {
-    var list = MODALIDAD_OPTION_BY_LABEL[normValue] || [];
-    if (!list.length) return null;
-    if (preferGroup) {
-      for (var i = 0; i < list.length; i++) {
-        if ((list[i] || {}).group === preferGroup) return list[i];
-      }
-      if (strictPrefer) return null;
-    }
-    return list[0] || null;
-  }
-
-  function normModal(v) {
-    return stripAccents(norm(v))
-      .replace(/[.,;:()]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function inferModalidadGroup(textNorm) {
-    if (!textNorm) return '';
-    if (
-      textNorm.indexOf('con dormida') >= 0 ||
-      textNorm.indexOf('dormida') >= 0 ||
-      textNorm.indexOf('interna') >= 0 ||
-      textNorm.indexOf('se queda a dormir') >= 0 ||
-      textNorm.indexOf('quincenal') >= 0
-    ) {
-      return 'con_dormida';
-    }
-    if (
-      textNorm.indexOf('salida diaria') >= 0 ||
-      textNorm.indexOf('sin dormida') >= 0 ||
-      textNorm.indexOf('por dia') >= 0 ||
-      textNorm.indexOf('dias a la semana') >= 0
-    ) {
-      return 'con_salida_diaria';
-    }
-    return '';
-  }
-
-  function stripModalidadGroupPrefix(raw, group) {
-    var txt = (raw || '').toString().trim();
-    if (!txt) return '';
-    if (group === 'con_dormida') {
-      return txt.replace(/^(?:con\s+dormida(?:\s*💤)?|dormida|interna)\s*-?\s*/i, '').trim();
-    }
-    if (group === 'con_salida_diaria') {
-      return txt.replace(/^(?:con\s+)?salida\s+diaria\s*-?\s*/i, '').trim();
-    }
-    return txt;
-  }
-
-  function normalizeModalidadOtherText(raw, group) {
-    var txt = (raw || '').toString().trim();
-    if (!txt) return '';
-    txt = txt.replace(/^otro\s*[:\-]?\s*/i, '').trim();
-    txt = stripModalidadGroupPrefix(txt, group);
-    if (normModal(txt) === 'viernes a lunes') {
-      txt = 'fin de semana';
-    }
-    if (group === 'con_salida_diaria') {
-      txt = txt.replace(/^con\s+/i, '').trim();
-    }
-    return txt.replace(/\s{2,}/g, ' ').trim();
-  }
-
-  function parseStoredModalidad(rawValue) {
-    var raw = (rawValue || '').toString().trim();
-    if (!raw) return { group: '', specific: '', other: '' };
-
-    var textNorm = normModal(raw);
-    var group = '';
-    var specific = '';
-    var other = '';
-    var rest = raw;
-
-    if (textNorm.indexOf('con dormida') === 0) {
-      group = 'con_dormida';
-      rest = raw.replace(/^con\s+dormida(?:\s*💤)?\s*-?\s*/i, '').trim();
-    } else if (textNorm.indexOf('salida diaria') === 0 || textNorm.indexOf('con salida diaria') === 0) {
-      group = 'con_salida_diaria';
-      rest = raw.replace(/^(?:con\s+)?salida\s+diaria\s*-?\s*/i, '').trim();
-    } else {
-      group = inferModalidadGroup(textNorm);
-    }
-
-    var restNorm = normModal(rest);
-    var resolvedGroup = group || '';
-    var match = resolveModalidadMatch(restNorm, resolvedGroup, true)
-      || resolveModalidadMatch(textNorm, resolvedGroup, true)
-      || resolveModalidadMatch(restNorm, resolvedGroup, false)
-      || resolveModalidadMatch(textNorm, resolvedGroup, false);
-    if (!match && resolvedGroup) {
-      match = resolveModalidadMatch(normModal((MODALIDAD_GROUP_LABELS[resolvedGroup] || '') + ' ' + rest), resolvedGroup, false);
-    }
-    if (match) {
-      specific = match.label;
-      resolvedGroup = resolvedGroup || match.group;
-    }
-
-    if (!resolvedGroup) {
-      resolvedGroup = inferModalidadGroup(textNorm) || 'con_salida_diaria';
-    }
-
-    if (!specific) {
-      var otherRaw = rest;
-      if (!otherRaw || normModal(otherRaw) === normModal(MODALIDAD_GROUP_LABELS[resolvedGroup])) {
-        otherRaw = raw;
-      }
-      otherRaw = normalizeModalidadOtherText(otherRaw, resolvedGroup);
-      if (otherRaw) {
-        specific = resolvedGroup === 'con_dormida' ? 'Con dormida 💤 otro' : 'Salida diaria otro';
-        other = otherRaw;
-      }
-    }
-
-    return { group: resolvedGroup, specific: specific, other: other };
-  }
-
-  function composeModalidadValue(group, specific, otherText) {
-    var gLabel = MODALIDAD_GROUP_LABELS[group] || '';
-    var s = (specific || '').trim();
-    var o = normalizeModalidadOtherText(otherText, group);
-    function storageClean(v) {
-      return (v || '').replace(/\s{2,}/g, ' ').trim();
-    }
-    if (!gLabel) return '';
-    if (!s) return gLabel;
-    if (normModal(s).indexOf('otro') >= 0) {
-      return storageClean(o ? (gLabel + ' ' + o) : gLabel);
-    }
-    return storageClean(s);
-  }
-
-  function isModalidadOtherOption(value) {
-    var v = normModal(value);
-    if (!v) return false;
-    return v === 'otro' || v.indexOf(' otro') >= 0 || v.indexOf('otro ') === 0;
-  }
-
-  function syncModalidadGuided(fromUserEvent) {
-    var hidden = byId('modalidad_trabajo_hidden');
-    var select = byId('modalidad_especifica_select');
-    var otherInput = byId('modalidad_otro_text');
-    var wrapSelect = byId('wrap_modalidad_especifica');
-    var wrapOther = byId('wrap_modalidad_otro');
-    var groupNode = document.querySelector('input[name="modalidad_grupo"]:checked');
-    var group = groupNode ? groupNode.value : '';
-
-    if (select) {
-      var current = select.value;
-      select.innerHTML = '<option value="">Selecciona una opción</option>';
-      var opts = MODALIDAD_OPTIONS[group] || [];
-      for (var i = 0; i < opts.length; i++) {
-        var op = document.createElement('option');
-        op.value = opts[i];
-        op.textContent = opts[i];
-        select.appendChild(op);
-      }
-      if (current && (MODALIDAD_OPTIONS[group] || []).indexOf(current) >= 0) {
-        select.value = current;
-      }
-    }
-
-    var selectedSpecific = select ? select.value : '';
-    var isOther = isModalidadOtherOption(selectedSpecific);
-    if (wrapSelect) wrapSelect.style.display = group ? '' : 'none';
-    if (wrapOther) wrapOther.style.display = (group && isOther) ? '' : 'none';
-    if (otherInput) {
-      if (!isOther && fromUserEvent) otherInput.value = '';
-    }
-    if (hidden) {
-      hidden.value = composeModalidadValue(group, selectedSpecific, otherInput ? otherInput.value : '');
-    }
-  }
-
-  function initModalidadGuided() {
-    var hidden = byId('modalidad_trabajo_hidden');
-    var select = byId('modalidad_especifica_select');
-    var otherInput = byId('modalidad_otro_text');
-    var preCheckedGroup = document.querySelector('input[name="modalidad_grupo"]:checked');
-    var preSelectedSpecific = select ? (select.value || '').trim() : '';
-    var preOtherText = otherInput ? (otherInput.value || '').trim() : '';
-    if (preCheckedGroup || preSelectedSpecific || preOtherText) {
-      syncModalidadGuided(false);
-      return;
-    }
-    var initialRaw = hidden ? (hidden.value || '').trim() : '';
-    var parsed = parseStoredModalidad(initialRaw);
-    if (parsed.group) {
-      var groupRadio = selectedByName('modalidad_grupo', parsed.group);
-      if (groupRadio) groupRadio.checked = true;
-    }
-    syncModalidadGuided(false);
-    if (select && parsed.specific && (MODALIDAD_OPTIONS[parsed.group] || []).indexOf(parsed.specific) >= 0) {
-      select.value = parsed.specific;
-    }
-    if (otherInput && parsed.other) {
-      otherInput.value = parsed.other;
-    }
-    syncModalidadGuided(false);
-    if (hidden && initialRaw && !parsed.specific && !parsed.other) {
-      hidden.value = initialRaw;
-    }
-  }
-
-  function syncNinosRules(fromUserEvent) {
-    var ninosInput = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
-    var edadesInput = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
-    var requiereCuidado = hasSelectedValue('funciones', 'ninos');
-    var ninosCnt = 0;
-
-    if (ninosInput) {
-      ninosInput.required = !!requiereCuidado;
-      ninosCnt = parseInt(ninosInput.value || '0', 10);
-      if (!isFinite(ninosCnt)) ninosCnt = 0;
-    }
-
-    var showEdades = !!(requiereCuidado && ninosCnt > 0);
-    var wrapEdades = byId('wrap_edades_ninos');
-    if (wrapEdades) {
-      wrapEdades.style.display = showEdades ? '' : 'none';
-    }
-    if (edadesInput) {
-      edadesInput.required = showEdades;
-      if (!showEdades && fromUserEvent && !norm(edadesInput.value)) {
-        edadesInput.value = '';
-      }
-    }
-  }
-
-  function extractMarker(noteText, prefix) {
-    if (!noteText || !prefix) return '';
-    var lines = noteText.split('\n');
-    for (var i = 0; i < lines.length; i++) {
-      var line = (lines[i] || '').trim();
-      if (line.indexOf(prefix) === 0) {
-        return line.slice(prefix.length).trim();
-      }
-    }
-    return '';
-  }
-
-  function removeMarkers(noteText) {
-    var lines = (noteText || '').split('\n');
-    var keep = [];
-    for (var i = 0; i < lines.length; i++) {
-      var line = (lines[i] || '').trim();
-      if (!line) {
-        if (keep.length && keep[keep.length - 1] !== '') keep.push('');
-        continue;
-      }
-      if (line.indexOf('Pisos reportados:') === 0) continue;
-      if (line.indexOf('Pasaje (otro):') === 0) continue;
-      keep.push(line);
-    }
-    while (keep.length && keep[keep.length - 1] === '') keep.pop();
-    return keep.join('\n');
-  }
-
-  function syncFromExistingMarkers() {
-    var note = document.querySelector('textarea[name="nota_cliente"]');
-    if (!note) return;
-    var raw = note.value || '';
-    var pasajeOtro = extractMarker(raw, 'Pasaje (otro):');
-    var piso3p = raw.indexOf('Pisos reportados: 3+.') >= 0;
-    if (pasajeOtro) {
-      var pasajeOtroRadio = selectedByName('pasaje_mode', 'otro');
-      if (pasajeOtroRadio) pasajeOtroRadio.checked = true;
-      var pasajeOtroInput = byId('pasaje_otro_text');
-      if (pasajeOtroInput && !pasajeOtroInput.value) pasajeOtroInput.value = pasajeOtro;
-    }
-    if (piso3p) {
-      var piso3pRadio = selectedByName('pisos_selector', '3+');
-      if (piso3pRadio) piso3pRadio.checked = true;
-    }
-    syncPisosAndPasaje();
-  }
-
-  function setupAreasTodas() {
-    var wrap = byId('wrap_areas_comunes');
-    if (!wrap) return;
-
-    var boxes = wrap.querySelectorAll('input[type="checkbox"]');
-    if (!boxes.length) return;
-
-    var master = null;
-    for (var i = 0; i < boxes.length; i++) {
-      if (norm(boxes[i].value) === 'todas_anteriores') {
-        master = boxes[i];
-        break;
-      }
-    }
-    if (!master) return;
-
-    function setAll(checked) {
-      for (var i = 0; i < boxes.length; i++) {
-        var v = norm(boxes[i].value);
-        if (v === 'todas_anteriores') continue;
-        if (v === 'otro') {
-          boxes[i].checked = false;
           continue;
         }
-        boxes[i].checked = !!checked;
+        if (norm(n.value) === target && n.checked) return true;
+      }
+      return false;
+    }
+
+    function toggleWrapper(id, show, clearOnHide) {
+      var wrap = byId(id);
+      if (!wrap) return;
+      wrap.style.display = show ? '' : 'none';
+      if (!show && clearOnHide) {
+        var txts = wrap.querySelectorAll('input[type="text"], textarea');
+        for (var i = 0; i < txts.length; i++) txts[i].value = '';
       }
     }
 
-    function allRegularChecked() {
-      for (var i = 0; i < boxes.length; i++) {
-        var v = norm(boxes[i].value);
-        if (v === 'todas_anteriores' || v === 'otro') continue;
-        if (!boxes[i].checked) return false;
-      }
-      return true;
+    function syncOtherField(cfg, fromUserEvent) {
+      var showByChoice = hasSelectedValue(cfg.groupName, 'otro');
+      var txt = byId(cfg.textInputId);
+      var hasValue = !!(txt && norm(txt.value));
+      var show = showByChoice || (!fromUserEvent && hasValue);
+      toggleWrapper(cfg.targetId, show, !!fromUserEvent);
     }
 
-    for (var i = 0; i < boxes.length; i++) {
-      boxes[i].addEventListener('change', function () {
-        var v = norm(this.value);
-        if (v === 'todas_anteriores') {
-          if (allRegularChecked()) setAll(false);
-          else setAll(true);
-          this.checked = false;
-        } else if (v === 'otro') {
-          master.checked = false;
-        } else if (!this.checked) {
-          master.checked = false;
+    function syncOtherFields(fromUserEvent) {
+      var configs = [
+        { groupName: 'edad_requerida', targetId: 'wrap_edad_otro', textInputId: '{{ form.edad_otro.id if form.edad_otro is defined else "" }}' },
+        { groupName: 'funciones', targetId: 'wrap_funciones_otro', textInputId: '{{ form.funciones_otro.id if form.funciones_otro is defined else "" }}' },
+        { groupName: 'tipo_lugar', targetId: 'wrap_tipo_lugar_otro', textInputId: '{{ form.tipo_lugar_otro.id if form.tipo_lugar_otro is defined else "" }}' },
+        { groupName: 'areas_comunes', targetId: 'wrap_area_otro', textInputId: '{{ form.area_otro.id if form.area_otro is defined else "" }}' }
+      ];
+      for (var i = 0; i < configs.length; i++) {
+        syncOtherField(configs[i], !!fromUserEvent);
+      }
+    }
+
+    function syncChoiceSelectedState() {
+      var labels = hostForm.querySelectorAll('.public-choice-item');
+      for (var i = 0; i < labels.length; i++) {
+        var input = labels[i].querySelector('input[type="checkbox"], input[type="radio"]');
+        if (!input) continue;
+        if (input.checked) labels[i].classList.add('is-selected');
+        else labels[i].classList.remove('is-selected');
+      }
+    }
+
+    function syncPisosAndPasaje() {
+      var pisosChecked = hostForm.querySelector('input[name="pisos_selector"]:checked');
+      var pisosHidden = byId('dos_pisos_hidden');
+      if (pisosHidden) {
+        pisosHidden.checked = !!(pisosChecked && pisosChecked.value !== '1');
+        pisosHidden.value = pisosHidden.checked ? 'y' : '';
+      }
+
+      var pasajeChecked = hostForm.querySelector('input[name="pasaje_mode"]:checked');
+      var pasajeHidden = byId('pasaje_aporte_hidden');
+      var wrapPasajeOtro = byId('wrap_pasaje_otro');
+      if (pasajeHidden) {
+        var mode = pasajeChecked ? norm(pasajeChecked.value) : 'incluido';
+        if (pasajeHidden.type === 'hidden' && pasajeHidden.value !== undefined) {
+          if (pasajeHidden.dataset.fieldType === 'radio') {
+            pasajeHidden.value = (mode === 'aparte') ? '1' : '0';
+          } else {
+            pasajeHidden.value = (mode === 'aparte') ? 'y' : '';
+          }
         }
-        syncOtherFields(true);
-        syncChoiceSelectedState();
-      });
+        if (wrapPasajeOtro) {
+          wrapPasajeOtro.style.display = (mode === 'otro') ? '' : 'none';
+        }
+      }
     }
 
-    if (master.checked) {
-      setAll(true);
-      master.checked = false;
-    }
-  }
-
-  var pasajeHiddenField = byId('pasaje_aporte_hidden');
-  if (pasajeHiddenField) {
-    pasajeHiddenField.dataset.fieldType = "{{ 'radio' if _pasaje_is_radio else 'boolean' }}";
-  }
-
-  initModalidadMaps();
-  initModalidadGuided();
-  syncOtherFields(false);
-  setupAreasTodas();
-  syncFromExistingMarkers();
-  syncPisosAndPasaje();
-  syncChoiceSelectedState();
-  syncNinosRules(false);
-
-  document.addEventListener('change', function (ev) {
-    var name = (ev.target && ev.target.name) || '';
-    if (
-      name === 'edad_requerida' ||
-      name === 'funciones' ||
-      name === 'tipo_lugar' ||
-      name === 'areas_comunes'
-    ) {
-      syncOtherFields(true);
-      syncChoiceSelectedState();
-      syncNinosRules(true);
+    function selectedByName(name, value) {
+      return hostForm.querySelector('input[name="' + name + '"][value="' + value + '"]');
     }
 
-    if (name === 'pisos_selector' || name === 'pasaje_mode') {
+    var MODALIDAD_SPECS = {{ _modalidad_specs | tojson }};
+    var MODALIDAD_OPTIONS = {};
+    var MODALIDAD_OPTION_BY_LABEL = {};
+    var MODALIDAD_GROUP_LABELS = {
+      "con_dormida": "Con dormida 💤",
+      "con_salida_diaria": "Salida diaria"
+    };
+
+    function initModalidadMaps() {
+      var groups = Object.keys(MODALIDAD_SPECS || {});
+      for (var gi = 0; gi < groups.length; gi++) {
+        var g = groups[gi];
+        var specs = MODALIDAD_SPECS[g] || [];
+        MODALIDAD_OPTIONS[g] = [];
+        for (var si = 0; si < specs.length; si++) {
+          var spec = specs[si] || {};
+          var label = (spec.label || '').trim();
+          if (!label) continue;
+          MODALIDAD_OPTIONS[g].push(label);
+          var labelNorm = normModal(label);
+          if (!MODALIDAD_OPTION_BY_LABEL[labelNorm]) MODALIDAD_OPTION_BY_LABEL[labelNorm] = [];
+          MODALIDAD_OPTION_BY_LABEL[labelNorm].push({ group: g, label: label, key: spec.key || '' });
+          var aliases = spec.aliases || [];
+          for (var ai = 0; ai < aliases.length; ai++) {
+            var aliasNorm = normModal(aliases[ai]);
+            if (!aliasNorm) continue;
+            if (!MODALIDAD_OPTION_BY_LABEL[aliasNorm]) MODALIDAD_OPTION_BY_LABEL[aliasNorm] = [];
+            MODALIDAD_OPTION_BY_LABEL[aliasNorm].push({ group: g, label: label, key: spec.key || '' });
+          }
+        }
+      }
+    }
+
+    function resolveModalidadMatch(normValue, preferGroup, strictPrefer) {
+      var list = MODALIDAD_OPTION_BY_LABEL[normValue] || [];
+      if (!list.length) return null;
+      if (preferGroup) {
+        for (var i = 0; i < list.length; i++) {
+          if ((list[i] || {}).group === preferGroup) return list[i];
+        }
+        if (strictPrefer) return null;
+      }
+      return list[0] || null;
+    }
+
+    function normModal(v) {
+      return stripAccents(norm(v))
+        .replace(/[.,;:()]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function inferModalidadGroup(textNorm) {
+      if (!textNorm) return '';
+      if (
+        textNorm.indexOf('con dormida') === 0 ||
+        textNorm.indexOf('dormida') === 0 ||
+        textNorm.indexOf('interna') === 0 ||
+        textNorm.indexOf('se queda a dormir') === 0 ||
+        textNorm.indexOf('quincenal') === 0
+      ) {
+        return 'con_dormida';
+      }
+      if (
+        textNorm.indexOf('salida diaria') === 0 ||
+        textNorm.indexOf('con salida diaria') === 0 ||
+        textNorm.indexOf('sin dormida') === 0 ||
+        textNorm.indexOf('por dia') === 0 ||
+        textNorm.indexOf('dias a la semana') === 0
+      ) {
+        return 'con_salida_diaria';
+      }
+      return '';
+    }
+
+    function stripModalidadGroupPrefix(raw, group) {
+      var txt = (raw || '').toString().trim();
+      if (!txt) return '';
+      if (group === 'con_dormida') {
+        return txt.replace(/^(?:con\s+dormida(?:\s*💤)?|dormida|interna)\s*-?\s*/i, '').trim();
+      }
+      if (group === 'con_salida_diaria') {
+        return txt.replace(/^(?:con\s+)?salida\s+diaria\s*-?\s*/i, '').trim();
+      }
+      return txt;
+    }
+
+    function normalizeModalidadOtherText(raw, group) {
+      var txt = (raw || '').toString().trim();
+      if (!txt) return '';
+      txt = txt.replace(/^otro\s*[:\-]?\s*/i, '').trim();
+      txt = stripModalidadGroupPrefix(txt, group);
+      if (normModal(txt) === 'viernes a lunes') {
+        txt = 'fin de semana';
+      }
+      if (group === 'con_salida_diaria') {
+        txt = txt.replace(/^con\s+/i, '').trim();
+      }
+      return txt.replace(/\s{2,}/g, ' ').trim();
+    }
+
+    function parseStoredModalidad(rawValue) {
+      var raw = (rawValue || '').toString().trim();
+      if (!raw) return { group: '', specific: '', other: '' };
+
+      var textNorm = normModal(raw);
+      var group = '';
+      var specific = '';
+      var other = '';
+      var rest = raw;
+
+      if (textNorm.indexOf('con dormida') === 0) {
+        group = 'con_dormida';
+        rest = raw.replace(/^con\s+dormida(?:\s*💤)?\s*-?\s*/i, '').trim();
+      } else if (textNorm.indexOf('salida diaria') === 0 || textNorm.indexOf('con salida diaria') === 0) {
+        group = 'con_salida_diaria';
+        rest = raw.replace(/^(?:con\s+)?salida\s+diaria\s*-?\s*/i, '').trim();
+      } else {
+        group = inferModalidadGroup(textNorm);
+      }
+
+      var restNorm = normModal(rest);
+      var resolvedGroup = group || '';
+      var match = resolveModalidadMatch(restNorm, resolvedGroup, true)
+        || resolveModalidadMatch(textNorm, resolvedGroup, true)
+        || resolveModalidadMatch(restNorm, resolvedGroup, false)
+        || resolveModalidadMatch(textNorm, resolvedGroup, false);
+      if (!match && resolvedGroup) {
+        match = resolveModalidadMatch(normModal((MODALIDAD_GROUP_LABELS[resolvedGroup] || '') + ' ' + rest), resolvedGroup, false);
+      }
+      if (match) {
+        specific = match.label;
+        resolvedGroup = resolvedGroup || match.group;
+      }
+
+      if (!resolvedGroup) {
+        resolvedGroup = inferModalidadGroup(textNorm) || 'con_salida_diaria';
+      }
+
+      if (!specific) {
+        var otherRaw = rest;
+        if (!otherRaw || normModal(otherRaw) === normModal(MODALIDAD_GROUP_LABELS[resolvedGroup])) {
+          otherRaw = raw;
+        }
+        otherRaw = normalizeModalidadOtherText(otherRaw, resolvedGroup);
+        if (otherRaw) {
+          specific = resolvedGroup === 'con_dormida' ? 'Con dormida 💤 otro' : 'Salida diaria otro';
+          other = otherRaw;
+        }
+      }
+
+      return { group: resolvedGroup, specific: specific, other: other };
+    }
+
+    function composeModalidadValue(group, specific, otherText) {
+      var gLabel = MODALIDAD_GROUP_LABELS[group] || '';
+      var s = (specific || '').trim();
+      var o = normalizeModalidadOtherText(otherText, group);
+      function storageClean(v) {
+        return (v || '').replace(/\s{2,}/g, ' ').trim();
+      }
+      if (!gLabel) return '';
+      if (!s) return gLabel;
+      if (normModal(s).indexOf('otro') >= 0) {
+        return storageClean(o ? (gLabel + ' ' + o) : gLabel);
+      }
+      return storageClean(s);
+    }
+
+    function isModalidadOtherOption(value) {
+      var v = normModal(value);
+      if (!v) return false;
+      return v === 'otro' || v.indexOf(' otro') >= 0 || v.indexOf('otro ') === 0;
+    }
+
+    function syncModalidadGuided(fromUserEvent) {
+      var hidden = byId('modalidad_trabajo_hidden');
+      var select = byId('modalidad_especifica_select');
+      var otherInput = byId('modalidad_otro_text');
+      var wrapSelect = byId('wrap_modalidad_especifica');
+      var wrapOther = byId('wrap_modalidad_otro');
+      var groupNode = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
+      var group = groupNode ? groupNode.value : '';
+
+      if (select) {
+        var current = select.value;
+        select.innerHTML = '<option value="">Selecciona una opción</option>';
+        var opts = MODALIDAD_OPTIONS[group] || [];
+        for (var i = 0; i < opts.length; i++) {
+          var op = document.createElement('option');
+          op.value = opts[i];
+          op.textContent = opts[i];
+          select.appendChild(op);
+        }
+        if (current && (MODALIDAD_OPTIONS[group] || []).indexOf(current) >= 0) {
+          select.value = current;
+        }
+      }
+
+      var selectedSpecific = select ? select.value : '';
+      var isOther = isModalidadOtherOption(selectedSpecific);
+      if (wrapSelect) wrapSelect.style.display = group ? '' : 'none';
+      if (wrapOther) wrapOther.style.display = (group && isOther) ? '' : 'none';
+      if (otherInput) {
+        if (!isOther && fromUserEvent) otherInput.value = '';
+      }
+      if (hidden) {
+        hidden.value = composeModalidadValue(group, selectedSpecific, otherInput ? otherInput.value : '');
+      }
+    }
+
+    function initModalidadGuided() {
+      var hidden = byId('modalidad_trabajo_hidden');
+      var select = byId('modalidad_especifica_select');
+      var otherInput = byId('modalidad_otro_text');
+      var preCheckedGroup = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
+      var preSelectedSpecific = select ? (select.value || '').trim() : '';
+      var preOtherText = otherInput ? (otherInput.value || '').trim() : '';
+      if (preCheckedGroup || preSelectedSpecific || preOtherText) {
+        syncModalidadGuided(false);
+        return;
+      }
+      var initialRaw = hidden ? (hidden.value || '').trim() : '';
+      var parsed = parseStoredModalidad(initialRaw);
+      if (parsed.group) {
+        var groupRadio = selectedByName('modalidad_grupo', parsed.group);
+        if (groupRadio) groupRadio.checked = true;
+      }
+      syncModalidadGuided(false);
+      if (select && parsed.specific && (MODALIDAD_OPTIONS[parsed.group] || []).indexOf(parsed.specific) >= 0) {
+        select.value = parsed.specific;
+      }
+      if (otherInput && parsed.other) {
+        otherInput.value = parsed.other;
+      }
+      syncModalidadGuided(false);
+      if (hidden && initialRaw && !parsed.specific && !parsed.other) {
+        hidden.value = initialRaw;
+      }
+    }
+
+    function syncNinosRules(fromUserEvent) {
+      var ninosInput = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
+      var edadesInput = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
+      var requiereCuidado = hasSelectedValue('funciones', 'ninos');
+      var ninosCnt = 0;
+
+      if (ninosInput) {
+        ninosInput.required = !!requiereCuidado;
+        ninosCnt = parseInt(ninosInput.value || '0', 10);
+        if (!isFinite(ninosCnt)) ninosCnt = 0;
+      }
+
+      var showEdades = !!(requiereCuidado && ninosCnt > 0);
+      var wrapEdades = byId('wrap_edades_ninos');
+      if (wrapEdades) {
+        wrapEdades.style.display = showEdades ? '' : 'none';
+      }
+      if (edadesInput) {
+        edadesInput.required = showEdades;
+        if (!showEdades && fromUserEvent && !norm(edadesInput.value)) {
+          edadesInput.value = '';
+        }
+      }
+    }
+
+    function extractMarker(noteText, prefix) {
+      if (!noteText || !prefix) return '';
+      var lines = noteText.split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        var line = (lines[i] || '').trim();
+        if (line.indexOf(prefix) === 0) {
+          return line.slice(prefix.length).trim();
+        }
+      }
+      return '';
+    }
+
+    function removeMarkers(noteText) {
+      var lines = (noteText || '').split('\n');
+      var keep = [];
+      for (var i = 0; i < lines.length; i++) {
+        var line = (lines[i] || '').trim();
+        if (!line) {
+          if (keep.length && keep[keep.length - 1] !== '') keep.push('');
+          continue;
+        }
+        if (line.indexOf('Pisos reportados:') === 0) continue;
+        if (line.indexOf('Pasaje (otro):') === 0) continue;
+        keep.push(line);
+      }
+      while (keep.length && keep[keep.length - 1] === '') keep.pop();
+      return keep.join('\n');
+    }
+
+    function syncFromExistingMarkers() {
+      var note = hostForm.querySelector('textarea[name="nota_cliente"]');
+      if (!note) return;
+      var raw = note.value || '';
+      var pasajeOtro = extractMarker(raw, 'Pasaje (otro):');
+      var piso3p = raw.indexOf('Pisos reportados: 3+.') >= 0;
+      if (pasajeOtro) {
+        var pasajeOtroRadio = selectedByName('pasaje_mode', 'otro');
+        if (pasajeOtroRadio) pasajeOtroRadio.checked = true;
+        var pasajeOtroInput = byId('pasaje_otro_text');
+        if (pasajeOtroInput && !pasajeOtroInput.value) pasajeOtroInput.value = pasajeOtro;
+      }
+      if (piso3p) {
+        var piso3pRadio = selectedByName('pisos_selector', '3+');
+        if (piso3pRadio) piso3pRadio.checked = true;
+      }
       syncPisosAndPasaje();
     }
 
-    if (name === 'modalidad_grupo' || name === 'modalidad_especifica') {
-      syncModalidadGuided(true);
+    function setupAreasTodas() {
+      var wrap = byId('wrap_areas_comunes');
+      if (!wrap) return;
+      var boxes = wrap.querySelectorAll('input[type="checkbox"]');
+      if (!boxes.length) return;
+      var master = null;
+      for (var i = 0; i < boxes.length; i++) {
+        if (norm(boxes[i].value) === 'todas_anteriores') {
+          master = boxes[i];
+          break;
+        }
+      }
+      if (!master) return;
+
+      function setAll(checked) {
+        for (var i = 0; i < boxes.length; i++) {
+          var v = norm(boxes[i].value);
+          if (v === 'todas_anteriores') continue;
+          if (v === 'otro') {
+            boxes[i].checked = false;
+            continue;
+          }
+          boxes[i].checked = !!checked;
+        }
+      }
+
+      function allRegularChecked() {
+        for (var i = 0; i < boxes.length; i++) {
+          var v = norm(boxes[i].value);
+          if (v === 'todas_anteriores' || v === 'otro') continue;
+          if (!boxes[i].checked) return false;
+        }
+        return true;
+      }
+
+      for (var i = 0; i < boxes.length; i++) {
+        boxes[i].addEventListener('change', function () {
+          var v = norm(this.value);
+          if (v === 'todas_anteriores') {
+            if (allRegularChecked()) setAll(false);
+            else setAll(true);
+            this.checked = false;
+          } else if (v === 'otro' || !this.checked) {
+            master.checked = false;
+          }
+          syncOtherFields(true);
+          syncChoiceSelectedState();
+        });
+      }
+
+      if (master.checked) {
+        setAll(true);
+        master.checked = false;
+      }
     }
 
-    if (name === '{{ form.ninos.name if form.ninos is defined else "" }}') {
-      syncNinosRules(true);
+    var pasajeHiddenField = byId('pasaje_aporte_hidden');
+    if (pasajeHiddenField) {
+      pasajeHiddenField.dataset.fieldType = "{{ 'radio' if _pasaje_is_radio else 'boolean' }}";
     }
-  });
 
-  var modalidadOtroInput = byId('modalidad_otro_text');
-  if (modalidadOtroInput) {
-    modalidadOtroInput.addEventListener('input', function () {
-      syncModalidadGuided(false);
+    initModalidadMaps();
+    initModalidadGuided();
+    syncOtherFields(false);
+    setupAreasTodas();
+    syncFromExistingMarkers();
+    syncPisosAndPasaje();
+    syncChoiceSelectedState();
+    syncNinosRules(false);
+
+    hostForm.addEventListener('change', function (ev) {
+      var name = (ev.target && ev.target.name) || '';
+      if (
+        name === 'edad_requerida' ||
+        name === 'funciones' ||
+        name === 'tipo_lugar' ||
+        name === 'areas_comunes'
+      ) {
+        syncOtherFields(true);
+        syncChoiceSelectedState();
+        syncNinosRules(true);
+      }
+      if (name === 'pisos_selector' || name === 'pasaje_mode') {
+        syncPisosAndPasaje();
+      }
+      if (name === 'modalidad_grupo' || name === 'modalidad_especifica') {
+        syncModalidadGuided(true);
+      }
+      if (name === '{{ form.ninos.name if form.ninos is defined else "" }}') {
+        syncNinosRules(true);
+      }
     });
-  }
 
-  var ninosInputNode = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
-  if (ninosInputNode) {
-    ninosInputNode.addEventListener('input', function () {
-      syncNinosRules(true);
-    });
-  }
+    var modalidadOtroInput = byId('modalidad_otro_text');
+    if (modalidadOtroInput) {
+      modalidadOtroInput.addEventListener('input', function () {
+        syncModalidadGuided(false);
+      });
+    }
 
-  var hostForm = document.querySelector('form');
-  if (hostForm) {
+    var ninosInputNode = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
+    if (ninosInputNode) {
+      ninosInputNode.addEventListener('input', function () {
+        syncNinosRules(true);
+      });
+    }
+
     hostForm.addEventListener('submit', function () {
       syncModalidadGuided(false);
       syncNinosRules(false);
-      var allMasterControls = document.querySelectorAll('input[type="checkbox"][value="todas_anteriores"]');
+      var allMasterControls = hostForm.querySelectorAll('input[type="checkbox"][value="todas_anteriores"]');
       for (var mi = 0; mi < allMasterControls.length; mi++) {
         allMasterControls[mi].checked = false;
       }
-      var note = document.querySelector('textarea[name="nota_cliente"]');
+      var note = hostForm.querySelector('textarea[name="nota_cliente"]');
       if (!note) return;
-      var pisoNode = document.querySelector('input[name="pisos_selector"]:checked');
+      var pisoNode = hostForm.querySelector('input[name="pisos_selector"]:checked');
       var piso = pisoNode ? norm(pisoNode.value) : '1';
       var base = removeMarkers(note.value || '');
       var lines = base ? [base] : [];
       if (piso === '3+') lines.push('Pisos reportados: 3+.');
       note.value = lines.join('\n').trim();
     });
+
+    return true;
   }
+
+  window.SolicitudSharedFields = window.SolicitudSharedFields || {};
+  window.SolicitudSharedFields.init = initSolicitudSharedFields;
+  initSolicitudSharedFields(document);
 })();
 </script>

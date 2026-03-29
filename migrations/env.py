@@ -11,16 +11,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 # ─── Importa tu extensión de base de datos y configuración ─────────────
 from config_app import db
-from dotenv import load_dotenv
+from utils.secrets_manager import get_required_secret
 
-# ─── Carga las variables de entorno desde .env ─────────────────────────
-dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
-load_dotenv(dotenv_path)
-
-# ─── Obtiene la URL de la base (ajusta la clave si tu .env usa otro nombre) ─
-database_url = os.getenv('DATABASE_URL') or os.getenv('SQLALCHEMY_DATABASE_URI')
-if not database_url:
-    raise RuntimeError("No se encontró DATABASE_URL o SQLALCHEMY_DATABASE_URI en .env")
+# ─── Obtiene la URL de la base desde la capa central de secretos ───────
+database_url = get_required_secret("DATABASE_URL")
 
 # ─── Configuración de Alembic ──────────────────────────────────────────
 config = context.config

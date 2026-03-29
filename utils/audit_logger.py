@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 from functools import wraps
 from typing import Any, Callable
 
-from flask import g, has_request_context, request, session
+from flask import current_app, g, has_request_context, request, session
 from flask_login import current_user
 
 from config_app import db
@@ -144,6 +146,31 @@ def _actor_from_context() -> tuple[int | None, str | None]:
     return user_id, role
 
 
+def _emit_structured_security_log(payload: dict[str, Any]) -> None:
+    try:
+        status_txt = "ok" if bool(payload.get("success")) else "fail"
+        security_log = {
+            "event": payload.get("action_type"),
+            "timestamp": utc_now_naive().isoformat(),
+            "status": status_txt,
+            "user_id": payload.get("actor_user_id"),
+            "role": payload.get("actor_role"),
+            "entity_type": payload.get("entity_type"),
+            "entity_id": payload.get("entity_id"),
+            "route": payload.get("route"),
+            "method": payload.get("method"),
+            "ip": payload.get("ip"),
+            "summary": payload.get("summary"),
+            "reason": payload.get("error_message"),
+            "metadata": payload.get("metadata_json") or {},
+        }
+        logger = current_app.logger if has_request_context() else logging.getLogger("app_web.security")
+        level = logging.INFO if status_txt == "ok" else logging.WARNING
+        logger.log(level, "SECURITY_EVENT %s", json.dumps(security_log, ensure_ascii=False, default=str))
+    except Exception:
+        return
+
+
 def is_staff_actor() -> bool:
     _, role = _actor_from_context()
     return role in {"owner", "admin", "secretaria"}
@@ -188,6 +215,7 @@ def log_action(
         "success": bool(success),
         "error_message": (error or "")[:4000] or None,
     }
+    _emit_structured_security_log(payload)
 
     try:
         with db.engine.begin() as conn:
@@ -209,6 +237,77 @@ def log_action(
             pass
     except Exception:
         return
+
+
+def log_security_event(
+    *,
+    event: str,
+    status: str = "success",
+    entity_type: str | None = "security",
+    entity_id: str | int | None = None,
+    summary: str | None = None,
+    reason: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    meta = dict(metadata or {})
+    if reason and "reason" not in meta:
+        meta["reason"] = (reason or "")[:250]
+    ok = str(status or "success").strip().lower() in {"ok", "success", "pass"}
+    log_action(
+        action_type=(event or "SECURITY_EVENT")[:80],
+        entity_type=(entity_type or "security"),
+        entity_id=entity_id,
+        summary=summary or event,
+        metadata=meta,
+        success=ok,
+        error=None if ok else (reason or "security_event_failed"),
+    )
+
+
+def log_auth_event(
+    *,
+    event: str,
+    status: str,
+    user_id: str | int | None = None,
+    user_identifier: str | None = None,
+    reason: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    meta = dict(metadata or {})
+    if user_identifier:
+        meta["user_identifier"] = str(user_identifier)[:120]
+    if reason and "reason" not in meta:
+        meta["reason"] = str(reason)[:250]
+    log_security_event(
+        event=event,
+        status=status,
+        entity_type="auth",
+        entity_id=(str(user_id)[:64] if user_id is not None else None),
+        summary=event,
+        reason=reason,
+        metadata=meta,
+    )
+
+
+def log_admin_action(
+    *,
+    event: str,
+    status: str,
+    entity_type: str | None = "admin",
+    entity_id: str | int | None = None,
+    summary: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    reason: str | None = None,
+) -> None:
+    log_security_event(
+        event=event,
+        status=status,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        summary=summary or event,
+        reason=reason,
+        metadata=metadata,
+    )
 
 
 def audit(action_type: str, entity_resolver: Callable[..., dict[str, Any] | None] | None = None):

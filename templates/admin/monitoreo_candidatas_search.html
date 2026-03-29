@@ -7,7 +7,14 @@
     <a class="btn btn-outline-dark btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver a monitoreo</a>
   </div>
 
-  <form method="get" class="row g-2 mb-3">
+  <form method="get"
+        class="row g-2 mb-3"
+        action="{{ url_for('admin.monitoreo_candidatas_search') }}"
+        data-admin-async-form
+        data-async-target="#monitoreoCandidatasAsyncRegion"
+        data-async-busy-container="#monitoreoCandidatasAsyncScope"
+        data-async-preserve-scroll="true"
+        data-async-fallback="native">
     <div class="col-md-9">
       <input class="form-control" type="text" name="q" value="{{ q }}" placeholder="Nombre, cédula, código o fila">
     </div>
@@ -19,24 +26,19 @@
     </div>
   </form>
 
-  <div class="table-responsive">
-    <table class="table table-sm table-striped">
-      <thead><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Cédula</th><th>Estado</th><th></th></tr></thead>
-      <tbody>
-        {% for c in rows %}
-        <tr>
-          <td>{{ c.fila }}</td>
-          <td>{{ c.codigo or '-' }}</td>
-          <td>{{ c.nombre_completo or '-' }}</td>
-          <td>{{ c.cedula or '-' }}</td>
-          <td>{{ c.estado or '-' }}</td>
-          <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=c.fila) }}">Ver historial</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="text-muted">Sin resultados.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="mb-3">
+    <a class="btn btn-outline-secondary btn-sm"
+       href="{{ url_for('admin.monitoreo_candidatas_search') }}"
+       data-admin-async-link
+       data-async-target="#monitoreoCandidatasAsyncRegion"
+       data-async-busy-container="#monitoreoCandidatasAsyncScope"
+       data-async-preserve-scroll="true">Limpiar</a>
+  </div>
+
+  <div id="monitoreoCandidatasAsyncScope" data-admin-async-scope>
+    <div id="monitoreoCandidatasAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_monitoreo_candidatas_search_results.html' %}
+    </div>
   </div>
 </div>
 {% endblock %}

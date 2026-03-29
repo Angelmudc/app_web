@@ -11,10 +11,13 @@
   const presencePingUrl = root.dataset.presencePingUrl || '';
   const hasFilters = String(root.dataset.hasFilters || '0') === '1';
 
-  const tableBody = document.querySelector('#liveLogsTable tbody');
   const liveStatus = document.getElementById('liveStatus');
   const liveToggleBtn = document.getElementById('liveToggleBtn');
   const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+  function getLogsTableBody() {
+    return document.querySelector('#liveLogsTable tbody');
+  }
 
   let lastId = Number(root.dataset.initialLastId || 0);
   let paused = false;
@@ -130,6 +133,7 @@
   }
 
   function insertLogRow(item) {
+    const tableBody = getLogsTableBody();
     if (!tableBody || !item || !item.id) return;
     if (tableBody.querySelector('tr[data-log-id="' + item.id + '"]')) return;
 

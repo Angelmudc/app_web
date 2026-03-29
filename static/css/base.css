@@ -157,3 +157,29 @@ header,
 .card *{
   pointer-events: auto;
 }
+
+/* ==========================================================
+   PJAX piloto: feedback visual minimo de navegacion
+   ========================================================== */
+#adminNavProgressBar{
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 3px;
+  z-index: 2000;
+  opacity: 0;
+  background: linear-gradient(90deg, #0d6efd, #4ea3ff);
+  transition: width 140ms ease, opacity 140ms ease;
+  pointer-events: none;
+}
+
+#adminNavProgressBar.is-active{
+  width: 100%;
+  opacity: 0.95;
+}
+
+html.is-admin-nav-loading,
+body.is-admin-nav-loading{
+  cursor: progress;
+}

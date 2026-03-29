@@ -47,8 +47,15 @@ except Exception:
 
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
-from utils.audit_logger import log_action
+from utils.audit_logger import log_action, log_auth_event
+from utils.business_guard import enforce_business_limit, enforce_min_human_interval
+from utils.distributed_backplane import bp_add, bp_delete, bp_get, bp_healthcheck, bp_set
 from utils.robust_save import execute_robust_save
+from services.candidata_invariants import (
+    InvariantConflictError,
+    release_solicitud_candidatas_on_cancel as invariant_release_solicitud_candidatas_on_cancel,
+    transition_solicitud_candidata_status as invariant_transition_solicitud_candidata_status,
+)
 from utils.pasaje_mode import (
     apply_pasaje_to_solicitud,
     normalize_pasaje_mode_text,
@@ -104,19 +111,26 @@ ESTADOS_SOLICITUD_ACTIVA = {'activa'}
 CLIENTE_CODIGO_PUBLICO_MIN = 2152
 PUBLIC_SHARE_CODE_LENGTH = 10
 PUBLIC_SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+BUSINESS_ACTIVE_SOLICITUD_STATES = {"proceso", "activa", "reemplazo", "espera_pago"}
+BUSINESS_MAX_CLIENTE_CREACIONES_DIA = int((os.getenv("BUSINESS_MAX_CLIENTE_CREACIONES_DIA") or "6").strip() or 6)
+BUSINESS_MAX_CLIENTE_ACTIVAS = int((os.getenv("BUSINESS_MAX_CLIENTE_ACTIVAS") or "4").strip() or 4)
+BUSINESS_MAX_PUBLIC_IP_DIA = int((os.getenv("BUSINESS_MAX_PUBLIC_IP_DIA") or "20").strip() or 20)
 
 
 # ─────────────────────────────────────────────────────────────
 # 🔒 Anti fuerza bruta (clientes/login)  IP + identificador
 # ─────────────────────────────────────────────────────────────
-_CLIENTE_LOGIN_MAX_INTENTOS = int((os.getenv("CLIENTE_LOGIN_MAX_INTENTOS") or "6").strip() or 6)
+_CLIENTE_LOGIN_MAX_INTENTOS = int((os.getenv("CLIENTE_LOGIN_MAX_INTENTOS") or "10").strip() or 10)
 _CLIENTE_LOGIN_LOCK_MINUTOS = int((os.getenv("CLIENTE_LOGIN_LOCK_MINUTOS") or "10").strip() or 10)
 _CLIENTE_LOGIN_KEY_PREFIX   = "cliente_login"
 
 
 def _operational_rate_limits_enabled() -> bool:
-    raw = (os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS") or "0").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    raw = os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS")
+    if raw is not None and str(raw).strip() != "":
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
+    return run_env in ("prod", "production")
 
 
 def _cliente_ip() -> str:
@@ -136,11 +150,7 @@ def _cliente_login_keys(ident_norm: str):
 
 
 def _cache_ok() -> bool:
-    try:
-        _ = cache.get("__ping__")
-        return True
-    except Exception:
-        return False
+    return bool(bp_healthcheck(strict=False))
 
 
 def _cliente_is_locked(ident_norm: str) -> bool:
@@ -148,10 +158,7 @@ def _cliente_is_locked(ident_norm: str) -> bool:
         return False
     if _cache_ok():
         keys = _cliente_login_keys(ident_norm)
-        try:
-            return bool(cache.get(keys["lock"]))
-        except Exception:
-            return False
+        return bool(bp_get(keys["lock"], default=False, context="cliente_login_is_locked"))
     return False
 
 
@@ -160,21 +167,21 @@ def _cliente_register_fail(ident_norm: str) -> int:
         return 0
     if _cache_ok():
         keys = _cliente_login_keys(ident_norm)
-        try:
-            n = int(cache.get(keys["fail"]) or 0) + 1
-        except Exception:
-            n = 1
-
-        try:
-            cache.set(keys["fail"], n, timeout=_CLIENTE_LOGIN_LOCK_MINUTOS * 60)
-        except Exception:
-            return n
+        n = int(bp_get(keys["fail"], default=0, context="cliente_login_fail_get") or 0) + 1
+        bp_set(
+            keys["fail"],
+            n,
+            timeout=_CLIENTE_LOGIN_LOCK_MINUTOS * 60,
+            context="cliente_login_fail_set",
+        )
 
         if n >= _CLIENTE_LOGIN_MAX_INTENTOS:
-            try:
-                cache.set(keys["lock"], True, timeout=_CLIENTE_LOGIN_LOCK_MINUTOS * 60)
-            except Exception:
-                pass
+            bp_set(
+                keys["lock"],
+                True,
+                timeout=_CLIENTE_LOGIN_LOCK_MINUTOS * 60,
+                context="cliente_login_lock_set",
+            )
         return n
 
     return 1
@@ -183,11 +190,8 @@ def _cliente_register_fail(ident_norm: str) -> int:
 def _cliente_reset_fail(ident_norm: str):
     if _cache_ok():
         keys = _cliente_login_keys(ident_norm)
-        try:
-            cache.delete(keys["fail"])
-            cache.delete(keys["lock"])
-        except Exception:
-            pass
+        bp_delete(keys["fail"], context="cliente_login_fail_del")
+        bp_delete(keys["lock"], context="cliente_login_lock_del")
 
 
 def _trust_xff() -> bool:
@@ -213,6 +217,23 @@ def _get_plan_solicitud(s: 'Solicitud') -> str:
             v = getattr(s, attr)
             return (v or '').strip().lower()
     return ''
+
+
+def _cliente_active_solicitudes_count(cliente_id: int) -> int:
+    try:
+        cid = int(cliente_id or 0)
+        if cid <= 0:
+            return 0
+        return (
+            Solicitud.query
+            .filter(
+                Solicitud.cliente_id == cid,
+                Solicitud.estado.in_(tuple(BUSINESS_ACTIVE_SOLICITUD_STATES)),
+            )
+            .count()
+        )
+    except Exception:
+        return 0
 
 
 def _cliente_tiene_banco_domesticas(cliente_id: int) -> bool:
@@ -854,6 +875,13 @@ def login():
         ident_norm = (ident_raw or "").strip().lower()
 
         if _cliente_is_locked(ident_norm):
+            log_auth_event(
+                event="CLIENTE_LOGIN_BLOCKED",
+                status="fail",
+                user_identifier=ident_norm or None,
+                reason="cliente_login_lock_active",
+                metadata={"path": "/clientes/login"},
+            )
             mins = _CLIENTE_LOGIN_LOCK_MINUTOS
             flash(f'Has excedido el máximo de intentos. Intenta de nuevo en {mins} minutos.', 'danger')
             return render_template('clientes/login.html', form=form, next_url=next_url), 429
@@ -879,16 +907,38 @@ def login():
 
         if not user:
             _cliente_register_fail(ident_norm)
-            flash('Usuario o contraseña inválidos.', 'danger')
+            log_auth_event(
+                event="CLIENTE_LOGIN_FAIL",
+                status="fail",
+                user_identifier=ident_norm or None,
+                reason="user_not_found",
+                metadata={"path": "/clientes/login"},
+            )
+            flash('Credenciales incorrectas.', 'danger')
             return redirect(url_for('clientes.login', next=next_url))
 
         if getattr(user, "password_hash", None) == "DISABLED_RESET_REQUIRED":
-            flash('Tu cuenta requiere activacion de credenciales. Contacta soporte.', 'warning')
+            _cliente_register_fail(ident_norm)
+            log_auth_event(
+                event="CLIENTE_LOGIN_FAIL",
+                status="fail",
+                user_identifier=ident_norm or None,
+                reason="password_disabled",
+                metadata={"path": "/clientes/login"},
+            )
+            flash('Credenciales incorrectas.', 'danger')
             return redirect(url_for('clientes.login', next=next_url))
 
         if not hasattr(user, 'password_hash'):
             _cliente_register_fail(ident_norm)
-            flash('Este cliente no tiene credenciales configuradas. Contacta soporte.', 'warning')
+            log_auth_event(
+                event="CLIENTE_LOGIN_FAIL",
+                status="fail",
+                user_identifier=ident_norm or None,
+                reason="password_hash_missing",
+                metadata={"path": "/clientes/login"},
+            )
+            flash('Credenciales incorrectas.', 'danger')
             return redirect(url_for('clientes.login', next=next_url))
 
         ok = False
@@ -899,12 +949,27 @@ def login():
 
         if not ok:
             _cliente_register_fail(ident_norm)
-            flash('Usuario o contraseña inválidos.', 'danger')
+            log_auth_event(
+                event="CLIENTE_LOGIN_FAIL",
+                status="fail",
+                user_identifier=ident_norm or None,
+                reason="invalid_password",
+                metadata={"path": "/clientes/login"},
+            )
+            flash('Credenciales incorrectas.', 'danger')
             return redirect(url_for('clientes.login', next=next_url))
 
         if not getattr(user, "is_active", True):
-            flash('Cuenta inactiva. Contacta soporte.', 'warning')
-            return redirect(url_for('clientes.login'))
+            _cliente_register_fail(ident_norm)
+            log_auth_event(
+                event="CLIENTE_LOGIN_FAIL",
+                status="fail",
+                user_identifier=ident_norm or None,
+                reason="inactive_user",
+                metadata={"path": "/clientes/login"},
+            )
+            flash('Credenciales incorrectas.', 'danger')
+            return redirect(url_for('clientes.login', next=next_url))
 
         # ✅ Login correcto
         _cliente_reset_fail(ident_norm)
@@ -915,6 +980,13 @@ def login():
             pass
 
         login_user(user, remember=False)
+        log_auth_event(
+            event="CLIENTE_LOGIN_SUCCESS",
+            status="success",
+            user_id=getattr(user, "id", None),
+            user_identifier=(getattr(user, "username", None) or getattr(user, "email", None) or ident_norm or None),
+            metadata={"path": "/clientes/login"},
+        )
 
         try:
             session.permanent = False
@@ -1073,11 +1145,9 @@ def _should_log_cliente_live_event(cliente_id: int, event_type: str, path: str) 
     event = (event_type or "").strip().lower() or "heartbeat"
     timeout = 30 if event == "heartbeat" else 6
     key = f"cliente_live_event:{int(cliente_id)}:{event}:{(path or '')[:140]}"
-    try:
-        if cache.get(key):
-            return False
-        cache.set(key, 1, timeout=timeout)
-    except Exception:
+    if bp_get(key, default=0, context="cliente_live_log_dedupe_get"):
+        return False
+    if not bp_set(key, 1, timeout=timeout, context="cliente_live_log_dedupe_set"):
         return event != "heartbeat"
     return True
 
@@ -1117,19 +1187,26 @@ def clientes_live_ping():
         'solicitud_id': solicitud_id,
         'last_seen_at': iso_utc_z(),
     }
+    bp_set(
+        _cliente_presence_key(cliente_id),
+        presence_payload,
+        timeout=_CLIENTE_PRESENCE_TTL_SECONDS,
+        context="cliente_presence_payload_set",
+    )
+    idx = bp_get(_CLIENTE_PRESENCE_INDEX_KEY, default=[], context="cliente_presence_idx_get") or []
     try:
-        cache.set(_cliente_presence_key(cliente_id), presence_payload, timeout=_CLIENTE_PRESENCE_TTL_SECONDS)
-        idx = cache.get(_CLIENTE_PRESENCE_INDEX_KEY) or []
-        try:
-            idx = [int(x) for x in idx]
-        except Exception:
-            idx = []
-        if cliente_id not in idx:
-            idx.append(cliente_id)
-        idx = idx[-2000:]
-        cache.set(_CLIENTE_PRESENCE_INDEX_KEY, idx, timeout=max(3600, _CLIENTE_PRESENCE_TTL_SECONDS * 20))
+        idx = [int(x) for x in idx]
     except Exception:
-        pass
+        idx = []
+    if cliente_id not in idx:
+        idx.append(cliente_id)
+    idx = idx[-2000:]
+    bp_set(
+        _CLIENTE_PRESENCE_INDEX_KEY,
+        idx,
+        timeout=max(3600, _CLIENTE_PRESENCE_TTL_SECONDS * 20),
+        context="cliente_presence_idx_set",
+    )
 
     if _should_log_cliente_live_event(cliente_id, event_type, current_path):
         meta = {
@@ -1492,6 +1569,33 @@ def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
         return
 
 
+def _resolve_modalidad_ui_context_from_request(form_obj, *, prefer_post: bool = False) -> tuple[str, str, str]:
+    """Compone estado guiado de modalidad para re-render estable en GET/POST."""
+    fallback_group = ""
+    fallback_specific = ""
+    fallback_other = ""
+    try:
+        modalidad_raw = form_obj.modalidad_trabajo.data if hasattr(form_obj, "modalidad_trabajo") else ""
+        modalidad_ui = split_modalidad_for_ui(modalidad_raw)
+        fallback_group = (modalidad_ui.get("group") or "").strip()
+        fallback_specific = (modalidad_ui.get("specific") or "").strip()
+        fallback_other = (modalidad_ui.get("other") or "").strip()
+    except Exception:
+        pass
+
+    if not prefer_post:
+        return fallback_group, fallback_specific, fallback_other
+
+    post_group = (request.form.get("modalidad_grupo") or "").strip()
+    post_specific = (request.form.get("modalidad_especifica") or "").strip()
+    post_other = (request.form.get("modalidad_otro_text") or "").strip()
+    return (
+        post_group or fallback_group,
+        post_specific or fallback_specific,
+        post_other or fallback_other,
+    )
+
+
 def _allowed_codes_from_choices(choices):
     try:
         return {str(v).strip() for v, _ in (choices or []) if str(v).strip()}
@@ -1534,33 +1638,15 @@ def _money_sanitize(raw):
 # ─────────────────────────────────────────────────────────────
 def _cache_add(cache_obj, key: str, value, timeout: int) -> bool:
     """Best-effort atomic add. Returns True if acquired/set, False otherwise."""
-    try:
-        # Flask-Caching supports .add() for many backends
-        if hasattr(cache_obj, 'add'):
-            return bool(cache_obj.add(key, value, timeout=timeout))
-        # Fallback: if get is empty, set
-        if cache_obj.get(key) is None:
-            cache_obj.set(key, value, timeout=timeout)
-            return True
-        return False
-    except Exception:
-        return False
+    return bool(bp_add(key, value, timeout=timeout, context="cliente_cache_add"))
 
 
 def _cache_set(cache_obj, key: str, value, timeout: int) -> bool:
-    try:
-        cache_obj.set(key, value, timeout=timeout)
-        return True
-    except Exception:
-        return False
+    return bool(bp_set(key, value, timeout=timeout, context="cliente_cache_set"))
 
 
 def _cache_del(cache_obj, key: str) -> bool:
-    try:
-        cache_obj.delete(key)
-        return True
-    except Exception:
-        return False
+    return bool(bp_delete(key, context="cliente_cache_del"))
 
 
 def _solicitud_fingerprint(form_obj) -> str:
@@ -1660,6 +1746,9 @@ def _prevent_double_post(scope: str, seconds: int = 8) -> bool:
 def nueva_solicitud():
     form = SolicitudForm()
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
+    public_modalidad_group = ""
+    public_modalidad_specific = ""
+    public_modalidad_other = ""
 
     if request.method == 'GET':
         form.funciones.data       = form.funciones.data or []
@@ -1680,8 +1769,68 @@ def nueva_solicitud():
         )
         if hasattr(form, "pasaje_aporte"):
             form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=True)
+    else:
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=False)
 
     if form.validate_on_submit():
+        actor_user = str(int(getattr(current_user, 'id', 0) or 0))
+        actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
+
+        blocked_daily, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="cliente_solicitud_create_day",
+            actor=actor_user,
+            limit=BUSINESS_MAX_CLIENTE_CREACIONES_DIA,
+            window_seconds=86400,
+            reason="daily_create_limit",
+            summary="Bloqueo por creación diaria de solicitudes (cliente)",
+            metadata={"route": (request.path or ""), "ip": actor_ip},
+        )
+        if blocked_daily:
+            flash('Superaste el límite diario de nuevas solicitudes. Intenta mañana o contacta soporte.', 'warning')
+            return redirect(url_for('clientes.listar_solicitudes'))
+
+        blocked_fast, _ = enforce_min_human_interval(
+            cache_obj=cache,
+            scope="cliente_solicitud_create_interval",
+            actor=actor_user,
+            min_seconds=8,
+            reason="timing_too_fast",
+            summary="Bloqueo por patrón no humano en creación de solicitudes (cliente)",
+            metadata={"route": (request.path or ""), "ip": actor_ip},
+        )
+        if blocked_fast:
+            flash('Espera unos segundos antes de enviar otra solicitud.', 'warning')
+            return redirect(url_for('clientes.listar_solicitudes'))
+
+        active_count = _cliente_active_solicitudes_count(int(getattr(current_user, 'id', 0) or 0))
+        if active_count >= BUSINESS_MAX_CLIENTE_ACTIVAS:
+            log_action(
+                action_type="BUSINESS_FLOW_BLOCKED",
+                entity_type="cliente",
+                entity_id=int(getattr(current_user, 'id', 0) or 0),
+                summary="Límite de solicitudes activas alcanzado",
+                metadata={
+                    "rule": "max_active_solicitudes",
+                    "active_count": int(active_count),
+                    "max_allowed": int(BUSINESS_MAX_CLIENTE_ACTIVAS),
+                    "route": (request.path or ""),
+                },
+                success=False,
+                error="max_active_solicitudes_reached",
+            )
+            flash('Tienes demasiadas solicitudes activas en este momento. Gestiona las actuales antes de crear otra.', 'warning')
+            return redirect(url_for('clientes.listar_solicitudes'))
+
         # Anti doble submit (global, sin JS)
         if not _prevent_double_post('solicitud_create', seconds=10):
             flash('Ya esa solicitud se está enviando. Evitamos duplicados.', 'warning')
@@ -1704,7 +1853,7 @@ def nueva_solicitud():
 
                 fp = _solicitud_fingerprint(form)
                 dedupe_key = f"solicitud:dedupe:{int(getattr(current_user, 'id', 0) or 0)}:{fp}"
-                if cache.get(dedupe_key):
+                if bp_get(dedupe_key, default=False, context="cliente_solicitud_dedupe_get"):
                     flash('Esa solicitud ya fue enviada hace un momento. Evitamos duplicados.', 'info')
                     return redirect(url_for('clientes.listar_solicitudes'))
 
@@ -1743,24 +1892,35 @@ def nueva_solicitud():
 
             funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
             selected_funciones = _clean_list(form.funciones.data)
+            if funciones_otro_txt and 'otro' not in selected_funciones:
+                selected_funciones.append('otro')
             funciones_otro_clean = funciones_otro_txt if 'otro' in selected_funciones else ''
             _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
             s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
             areas_selected_raw = _clean_list(form.areas_comunes.data)
-            areas_has_otro = 'otro' in areas_selected_raw
+            area_otro_txt = (form.area_otro.data or '').strip() if hasattr(form, 'area_otro') else ''
+            areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
             s.areas_comunes  = _normalize_areas_comunes_selected(
                 areas_selected_raw,
                 form.areas_comunes.choices,
             )
+            edad_codes_selected = _clean_list(form.edad_requerida.data)
+            edad_otro_txt = (getattr(form, 'edad_otro', None).data or '').strip() if hasattr(form, 'edad_otro') else ''
+            if edad_otro_txt and 'otro' not in edad_codes_selected:
+                edad_codes_selected.append('otro')
             s.edad_requerida = _map_edad_choices(
-                form.edad_requerida.data,
+                edad_codes_selected,
                 form.edad_requerida.choices,
-                getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else ''
+                edad_otro_txt,
             )
-            s.tipo_lugar     = _map_tipo_lugar(
-                getattr(s, 'tipo_lugar', ''),
-                getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+            tipo_lugar_value = getattr(s, 'tipo_lugar', '')
+            tipo_lugar_otro_txt = (getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
+            if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
+                tipo_lugar_value = 'otro'
+            s.tipo_lugar = _map_tipo_lugar(
+                tipo_lugar_value,
+                tipo_lugar_otro_txt,
             )
 
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
@@ -1830,6 +1990,9 @@ def nueva_solicitud():
         nuevo=True,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
+        public_modalidad_group=public_modalidad_group,
+        public_modalidad_specific=public_modalidad_specific,
+        public_modalidad_other=public_modalidad_other,
     )
 
 
@@ -1905,11 +2068,11 @@ def editar_solicitud(id):
             detalles_servicio=getattr(s, "detalles_servicio", None),
             nota_cliente=getattr(s, "nota_cliente", ""),
         )
-        modalidad_raw = form.modalidad_trabajo.data if hasattr(form, "modalidad_trabajo") else ""
-        modalidad_ui = split_modalidad_for_ui(modalidad_raw)
-        public_modalidad_group = modalidad_ui.get("group", "")
-        public_modalidad_specific = modalidad_ui.get("specific", "")
-        public_modalidad_other = modalidad_ui.get("other", "")
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=False)
 
     if request.method == "POST":
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
@@ -1919,8 +2082,28 @@ def editar_solicitud(id):
         )
         if hasattr(form, "pasaje_aporte"):
             form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=True)
 
     if form.validate_on_submit():
+        actor_user = str(int(getattr(current_user, 'id', 0) or 0))
+        blocked_edit_burst, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="cliente_solicitud_edit_hour",
+            actor=actor_user,
+            limit=30,
+            window_seconds=3600,
+            reason="edit_burst_limit",
+            summary="Bloqueo por ediciones masivas de solicitudes (cliente)",
+            metadata={"route": (request.path or ""), "solicitud_id": int(id)},
+        )
+        if blocked_edit_burst:
+            flash('Demasiadas actualizaciones en poco tiempo. Intenta nuevamente más tarde.', 'warning')
+            return redirect(url_for('clientes.detalle_solicitud', id=id))
+
         # Anti doble submit (sin JS) + lock corto por usuario/solicitud
         if not _prevent_double_post('solicitud_edit', seconds=8):
             flash('Ya esa actualización se está enviando. Evitamos duplicados.', 'warning')
@@ -1968,24 +2151,35 @@ def editar_solicitud(id):
 
             funciones_otro_txt = _first_form_data(form, 'funciones_otro', default='')
             selected_funciones = _clean_list(form.funciones.data)
+            if funciones_otro_txt and 'otro' not in selected_funciones:
+                selected_funciones.append('otro')
             funciones_otro_clean = funciones_otro_txt if 'otro' in selected_funciones else ''
             _set_attr_if_exists(s, 'funciones_otro', funciones_otro_clean or None)
 
             s.funciones      = _map_funciones(selected_funciones, funciones_otro_clean)
             areas_selected_raw = _clean_list(form.areas_comunes.data)
-            areas_has_otro = 'otro' in areas_selected_raw
+            area_otro_txt = (form.area_otro.data or '').strip() if hasattr(form, 'area_otro') else ''
+            areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
             s.areas_comunes  = _normalize_areas_comunes_selected(
                 areas_selected_raw,
                 form.areas_comunes.choices,
             )
+            edad_codes_selected = _clean_list(form.edad_requerida.data)
+            edad_otro_txt = (getattr(form, 'edad_otro', None).data or '').strip() if hasattr(form, 'edad_otro') else ''
+            if edad_otro_txt and 'otro' not in edad_codes_selected:
+                edad_codes_selected.append('otro')
             s.edad_requerida = _map_edad_choices(
-                form.edad_requerida.data,
+                edad_codes_selected,
                 form.edad_requerida.choices,
-                getattr(form, 'edad_otro', None).data if hasattr(form, 'edad_otro') else ''
+                edad_otro_txt,
             )
-            s.tipo_lugar     = _map_tipo_lugar(
-                getattr(s, 'tipo_lugar', ''),
-                getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+            tipo_lugar_value = getattr(s, 'tipo_lugar', '')
+            tipo_lugar_otro_txt = (getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
+            if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
+                tipo_lugar_value = 'otro'
+            s.tipo_lugar = _map_tipo_lugar(
+                tipo_lugar_value,
+                tipo_lugar_otro_txt,
             )
 
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
@@ -2361,8 +2555,23 @@ def solicitud_candidata_detalle(solicitud_id, sc_id):
     solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
 
     if sc.status == 'enviada':
-        sc.status = 'vista'
-        db.session.commit()
+        try:
+            invariant_transition_solicitud_candidata_status(
+                solicitud_id=int(solicitud.id),
+                sc_id=int(sc.id),
+                to_status="vista",
+                actor=str(int(getattr(current_user, "id", 0) or 0) or "cliente"),
+            )
+            db.session.commit()
+        except InvariantConflictError:
+            db.session.rollback()
+        except Exception:
+            db.session.rollback()
+            sc.status = 'vista'
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
     card = _candidate_public_payload(sc)
     return render_template(
@@ -2379,8 +2588,50 @@ def solicitar_entrevista_whatsapp(solicitud_id, sc_id):
     solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
     if candidata_esta_descalificada(getattr(sc, "candidata", None)):
         abort(403)
-    sc.status = 'seleccionada'
-    db.session.commit()
+    if (sc.status or "") not in {"enviada", "vista"}:
+        flash('Esta candidata ya fue procesada y no se puede solicitar entrevista nuevamente.', 'warning')
+        return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
+
+    actor_user = str(int(getattr(current_user, "id", 0) or 0))
+    blocked, _ = enforce_business_limit(
+        cache_obj=cache,
+        scope="cliente_candidata_select_hour",
+        actor=actor_user,
+        limit=20,
+        window_seconds=3600,
+        reason="candidate_selection_burst",
+        summary="Bloqueo por ráfaga de selección de candidatas",
+        metadata={"route": (request.path or ""), "solicitud_id": int(solicitud.id), "sc_id": int(sc.id)},
+    )
+    if blocked:
+        flash('Demasiadas acciones seguidas sobre candidatas. Intenta nuevamente más tarde.', 'warning')
+        return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
+
+    try:
+        invariant_transition_solicitud_candidata_status(
+            solicitud_id=int(solicitud.id),
+            sc_id=int(sc.id),
+            to_status="seleccionada",
+            actor=actor_user,
+        )
+        db.session.commit()
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        flash(str(inv_exc) or "No se pudo seleccionar esta candidata en este momento.", "warning")
+        return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
+    except Exception:
+        db.session.rollback()
+        sc.status = 'seleccionada'
+        snapshot = sc.breakdown_snapshot if isinstance(sc.breakdown_snapshot, dict) else {}
+        snapshot["client_action"] = "solicitar_entrevista"
+        snapshot["client_action_at"] = iso_utc_z()
+        sc.breakdown_snapshot = snapshot
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('No se pudo seleccionar esta candidata en este momento.', 'warning')
+            return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
 
     cliente_nombre = (getattr(current_user, 'nombre_completo', None) or 'Cliente').strip()
     codigo_solicitud = getattr(solicitud, 'codigo_solicitud', None) or f"SOL-{solicitud.id}"
@@ -2399,15 +2650,50 @@ def solicitar_entrevista_whatsapp(solicitud_id, sc_id):
 @cliente_required
 def descartar_candidata_enviada(solicitud_id, sc_id):
     solicitud, sc = _get_cliente_sc_or_404(solicitud_id, sc_id)
-    sc.status = 'descartada'
-    snapshot = sc.breakdown_snapshot if isinstance(sc.breakdown_snapshot, dict) else {}
-    snapshot["client_action"] = "rechazada"
-    snapshot["client_action_at"] = iso_utc_z()
+    actor_user = str(int(getattr(current_user, "id", 0) or 0))
+    blocked, _ = enforce_business_limit(
+        cache_obj=cache,
+        scope="cliente_candidata_discard_hour",
+        actor=actor_user,
+        limit=25,
+        window_seconds=3600,
+        reason="candidate_discard_burst",
+        summary="Bloqueo por ráfaga de descarte de candidatas",
+        metadata={"route": (request.path or ""), "solicitud_id": int(solicitud.id), "sc_id": int(sc.id)},
+    )
+    if blocked:
+        flash('Demasiadas acciones seguidas sobre candidatas. Intenta nuevamente más tarde.', 'warning')
+        return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
+
     reason = (request.form.get("client_reason") or "").strip()
-    if reason:
-        snapshot["client_reason"] = reason[:500]
-    sc.breakdown_snapshot = snapshot
-    db.session.commit()
+    try:
+        invariant_transition_solicitud_candidata_status(
+            solicitud_id=int(solicitud.id),
+            sc_id=int(sc.id),
+            to_status="descartada",
+            actor=actor_user,
+            reason=reason,
+        )
+        db.session.commit()
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        flash(str(inv_exc) or "No se pudo descartar la candidata en este momento.", "warning")
+        return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
+    except Exception:
+        db.session.rollback()
+        sc.status = 'descartada'
+        snapshot = sc.breakdown_snapshot if isinstance(sc.breakdown_snapshot, dict) else {}
+        snapshot["client_action"] = "rechazada"
+        snapshot["client_action_at"] = iso_utc_z()
+        if reason:
+            snapshot["client_reason"] = reason[:500]
+        sc.breakdown_snapshot = snapshot
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('No se pudo descartar la candidata en este momento.', 'warning')
+            return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
     flash('Candidata descartada.', 'info')
     return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
 
@@ -2470,11 +2756,23 @@ def seguimiento_solicitud(id):
 @cliente_required
 def cancelar_solicitud(id):
     s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
+    if (s.estado or "") == "cancelada":
+        flash('Esta solicitud ya está cancelada.', 'info')
+        return redirect(url_for('clientes.detalle_solicitud', id=id))
+
     form = ClienteCancelForm()
     if form.validate_on_submit():
         s.estado = 'cancelada'
         s.fecha_cancelacion = utc_now_naive()
         s.motivo_cancelacion = form.motivo.data
+        try:
+            invariant_release_solicitud_candidatas_on_cancel(
+                solicitud=s,
+                actor=str(int(getattr(current_user, "id", 0) or 0) or "cliente"),
+                motivo=(form.motivo.data or ""),
+            )
+        except Exception:
+            db.session.rollback()
         db.session.commit()
         flash('Solicitud marcada como cancelada (pendiente aprobación).', 'warning')
         return redirect(url_for('clientes.listar_solicitudes'))
@@ -2880,6 +3178,74 @@ def solicitud_publica_nueva_token(token):
             form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
 
     if form.validate_on_submit():
+        actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
+        blocked_ip_day, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="public_new_solicitud_ip_day",
+            actor=actor_ip,
+            limit=BUSINESS_MAX_PUBLIC_IP_DIA,
+            window_seconds=86400,
+            reason="public_ip_daily_limit",
+            summary="Bloqueo por abuso de formulario público (cliente nuevo)",
+            metadata={"route": (request.path or ""), "token_hash": token_hash_storage[:16]},
+        )
+        if blocked_ip_day:
+            flash("Este formulario alcanzó su límite diario de envíos desde tu red. Intenta mañana.", "warning")
+            return render_template(
+                'clientes/solicitud_form_publica_nueva.html',
+                form=form,
+                nuevo=True,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                service_section_title="Seccion 2 - Datos de la solicitud",
+                service_section_desc="Completa los detalles del servicio y la ubicacion especifica donde se trabajara.",
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+        blocked_token_burst, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="public_new_solicitud_token_10m",
+            actor=token_hash_storage,
+            limit=5,
+            window_seconds=600,
+            reason="public_token_burst_limit",
+            summary="Bloqueo por reintentos masivos en token público nuevo",
+            metadata={"route": (request.path or ""), "ip": actor_ip},
+        )
+        if blocked_token_burst:
+            flash("Detectamos demasiados reintentos con este enlace. Solicita un nuevo enlace.", "warning")
+            return render_template(
+                'clientes/public_link_invalid.html',
+                reason_key="invalid",
+                status_code=429,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+        blocked_fast, _ = enforce_min_human_interval(
+            cache_obj=cache,
+            scope="public_new_solicitud_submit_interval",
+            actor=actor_ip,
+            min_seconds=2,
+            reason="timing_too_fast",
+            summary="Patrón no humano en formulario público (cliente nuevo)",
+            metadata={"route": (request.path or ""), "token_hash": token_hash_storage[:16]},
+        )
+        if blocked_fast:
+            flash("Espera un momento antes de reenviar el formulario.", "warning")
+            return render_template(
+                'clientes/solicitud_form_publica_nueva.html',
+                form=form,
+                nuevo=True,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                service_section_title="Seccion 2 - Datos de la solicitud",
+                service_section_desc="Completa los detalles del servicio y la ubicacion especifica donde se trabajara.",
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+
         email_norm = (form.email_contacto.data or '').strip().lower()
         tel_raw = (form.telefono_contacto.data or '').strip()
         dup_row, dup_field = _find_cliente_contact_duplicate(email_norm, tel_raw)
@@ -2941,6 +3307,8 @@ def solicitud_publica_nueva_token(token):
 
                 selected_funciones = _clean_list(getattr(form, 'funciones', type('x', (object,), {'data': []})).data)
                 funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
+                if (funciones_otro_raw or '').strip() and 'otro' not in selected_funciones:
+                    selected_funciones.append('otro')
                 funciones_otro_clean = (funciones_otro_raw or '').strip() if 'otro' in selected_funciones else ''
 
                 s.funciones = _map_funciones(selected_funciones, funciones_otro_clean)
@@ -2950,21 +3318,32 @@ def solicitud_publica_nueva_token(token):
                 areas_selected_raw = _clean_list(
                     getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
                 )
-                areas_has_otro = 'otro' in areas_selected_raw
+                area_otro_txt = (getattr(getattr(form, 'area_otro', None), 'data', '') or '').strip() if hasattr(form, 'area_otro') else ''
+                areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
                 s.areas_comunes = _normalize_areas_comunes_selected(
                     areas_selected_raw,
                     getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
                 ) or []
 
+                edad_codes_selected = _clean_list(
+                    getattr(form, 'edad_requerida', type('x', (object,), {'data': []})).data
+                )
+                edad_otro_txt = (getattr(getattr(form, 'edad_otro', None), 'data', '') or '').strip() if hasattr(form, 'edad_otro') else ''
+                if edad_otro_txt and 'otro' not in edad_codes_selected:
+                    edad_codes_selected.append('otro')
                 s.edad_requerida = _map_edad_choices(
-                    getattr(form, 'edad_requerida', type('x', (object,), {'data': []})).data,
+                    edad_codes_selected,
                     getattr(getattr(form, 'edad_requerida', None), 'choices', []) if hasattr(form, 'edad_requerida') else [],
-                    getattr(getattr(form, 'edad_otro', None), 'data', '') if hasattr(form, 'edad_otro') else ''
+                    edad_otro_txt,
                 ) or []
 
+                tipo_lugar_value = getattr(s, 'tipo_lugar', '')
+                tipo_lugar_otro_txt = (getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
+                if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
+                    tipo_lugar_value = 'otro'
                 s.tipo_lugar = _map_tipo_lugar(
-                    getattr(s, 'tipo_lugar', ''),
-                    getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+                    tipo_lugar_value,
+                    tipo_lugar_otro_txt,
                 )
 
                 if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
@@ -3229,6 +3608,125 @@ def solicitud_publica(token):
         form.email_cliente.data = c.email or ''
 
     if form.validate_on_submit():
+        actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
+        blocked_ip_day, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="public_existing_solicitud_ip_day",
+            actor=actor_ip,
+            limit=BUSINESS_MAX_PUBLIC_IP_DIA,
+            window_seconds=86400,
+            reason="public_ip_daily_limit",
+            summary="Bloqueo por abuso de formulario público (cliente existente)",
+            metadata={"route": (request.path or ""), "token_hash": token_hash_storage[:16]},
+        )
+        if blocked_ip_day:
+            flash("Este formulario alcanzó su límite diario de envíos desde tu red. Intenta mañana.", "warning")
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+        blocked_token_burst, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="public_existing_solicitud_token_10m",
+            actor=token_hash_storage,
+            limit=5,
+            window_seconds=600,
+            reason="public_token_burst_limit",
+            summary="Bloqueo por reintentos masivos en token público existente",
+            metadata={"route": (request.path or ""), "ip": actor_ip, "cliente_id": int(c.id)},
+        )
+        if blocked_token_burst:
+            flash("Detectamos demasiados reintentos con este enlace. Solicita un nuevo enlace.", "warning")
+            return render_template(
+                'clientes/public_link_invalid.html',
+                reason_key="invalid",
+                status_code=429,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+        blocked_fast, _ = enforce_min_human_interval(
+            cache_obj=cache,
+            scope="public_existing_solicitud_submit_interval",
+            actor=actor_ip,
+            min_seconds=2,
+            reason="timing_too_fast",
+            summary="Patrón no humano en formulario público (cliente existente)",
+            metadata={"route": (request.path or ""), "token_hash": token_hash_storage[:16], "cliente_id": int(c.id)},
+        )
+        if blocked_fast:
+            flash("Espera un momento antes de reenviar el formulario.", "warning")
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+
+        blocked_cliente_day, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="cliente_public_solicitud_create_day",
+            actor=str(int(c.id)),
+            limit=BUSINESS_MAX_CLIENTE_CREACIONES_DIA,
+            window_seconds=86400,
+            reason="cliente_public_daily_limit",
+            summary="Bloqueo por creación diaria de solicitudes vía enlace público",
+            metadata={"route": (request.path or ""), "cliente_id": int(c.id), "ip": actor_ip},
+        )
+        if blocked_cliente_day:
+            flash("Este cliente alcanzó su límite diario de nuevas solicitudes.", "warning")
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+
+        active_count = _cliente_active_solicitudes_count(int(c.id))
+        if active_count >= BUSINESS_MAX_CLIENTE_ACTIVAS:
+            log_action(
+                action_type="BUSINESS_FLOW_BLOCKED",
+                entity_type="cliente",
+                entity_id=int(c.id),
+                summary="Límite de solicitudes activas alcanzado vía enlace público",
+                metadata={
+                    "rule": "max_active_solicitudes",
+                    "active_count": int(active_count),
+                    "max_allowed": int(BUSINESS_MAX_CLIENTE_ACTIVAS),
+                    "route": (request.path or ""),
+                },
+                success=False,
+                error="max_active_solicitudes_reached",
+            )
+            flash("Este cliente ya tiene demasiadas solicitudes activas. Contacta a la agencia.", "warning")
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
+
         pisos_selector = (request.form.get("pisos_selector") or "").strip()
         if hasattr(form, "dos_pisos"):
             form.dos_pisos.data = (pisos_selector in ("2", "3+"))
@@ -3326,6 +3824,8 @@ def solicitud_publica(token):
 
             selected_funciones = _clean_list(getattr(form, 'funciones', type('x',(object,),{'data':[]})).data)
             funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
+            if (funciones_otro_raw or '').strip() and 'otro' not in selected_funciones:
+                selected_funciones.append('otro')
             funciones_otro_clean = (funciones_otro_raw or '').strip() if 'otro' in selected_funciones else ''
 
             s.funciones = _map_funciones(selected_funciones, funciones_otro_clean)
@@ -3335,21 +3835,32 @@ def solicitud_publica(token):
             areas_selected_raw = _clean_list(
                 getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data
             )
-            areas_has_otro = 'otro' in areas_selected_raw
+            area_otro_txt = (getattr(getattr(form, 'area_otro', None), 'data', '') or '').strip() if hasattr(form, 'area_otro') else ''
+            areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
             s.areas_comunes = _normalize_areas_comunes_selected(
                 areas_selected_raw,
                 getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
             ) or []
 
+            edad_codes_selected = _clean_list(
+                getattr(form, 'edad_requerida', type('x',(object,),{'data':[]})).data
+            )
+            edad_otro_txt = (getattr(getattr(form, 'edad_otro', None), 'data', '') or '').strip() if hasattr(form, 'edad_otro') else ''
+            if edad_otro_txt and 'otro' not in edad_codes_selected:
+                edad_codes_selected.append('otro')
             s.edad_requerida = _map_edad_choices(
-                getattr(form, 'edad_requerida', type('x',(object,),{'data':[]})).data,
+                edad_codes_selected,
                 getattr(getattr(form, 'edad_requerida', None), 'choices', []) if hasattr(form, 'edad_requerida') else [],
-                getattr(getattr(form, 'edad_otro', None), 'data', '') if hasattr(form, 'edad_otro') else ''
+                edad_otro_txt,
             ) or []
 
+            tipo_lugar_value = getattr(s, 'tipo_lugar', '')
+            tipo_lugar_otro_txt = (getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
+            if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
+                tipo_lugar_value = 'otro'
             s.tipo_lugar = _map_tipo_lugar(
-                getattr(s, 'tipo_lugar', ''),
-                getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') if hasattr(form, 'tipo_lugar_otro') else ''
+                tipo_lugar_value,
+                tipo_lugar_otro_txt,
             )
 
             if hasattr(s, 'mascota') and hasattr(form, 'mascota'):

@@ -1,0 +1,2276 @@
+
+
++===========================================================================================================================================================================================+
+
+
+DEPRECATED: this command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.
+
+
+We highly encourage switching to the new `scan` command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.
+
+
++===========================================================================================================================================================================================+
+
+
+{
+    "report_meta": {
+        "scan_target": "files",
+        "scanned": [
+            "requirements.txt"
+        ],
+        "scanned_full_path": [
+            "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+        ],
+        "target_languages": [
+            "python"
+        ],
+        "policy_file": null,
+        "policy_file_source": "local",
+        "audit_and_monitor": false,
+        "api_key": false,
+        "account": "",
+        "local_database_path": null,
+        "safety_version": "3.7.0",
+        "timestamp": "2026-03-19 22:56:33",
+        "packages_found": 77,
+        "vulnerabilities_found": 5,
+        "vulnerabilities_ignored": 0,
+        "remediations_recommended": 0,
+        "telemetry": {
+            "safety_options": {
+                "files": {
+                    "-r": 1
+                },
+                "json": {
+                    "--json": 1
+                }
+            },
+            "safety_version": "3.7.0",
+            "safety_source": "cli",
+            "os_type": "Darwin",
+            "os_release": "25.2.0",
+            "os_description": "macOS-26.2-arm64-arm-64bit",
+            "python_version": "3.9.6",
+            "safety_command": "check"
+        },
+        "git": {
+            "branch": "main",
+            "tag": "",
+            "commit": "42398cfe31cf9b8672607df6aff7e5dc1cc6dc33",
+            "dirty": "True",
+            "origin": "https://github.com/Angelmudc/app_web.git"
+        },
+        "project": null,
+        "json_version": "1.1",
+        "remediations_attempted": 0,
+        "remediations_completed": 0,
+        "remediation_mode": "NON_INTERACTIVE"
+    },
+    "scanned_packages": {
+        "alembic": {
+            "name": "alembic",
+            "version": "1.16.1",
+            "requirements": [
+                {
+                    "raw": "alembic==1.16.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "alembic",
+                    "specifier": "==1.16.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "blinker": {
+            "name": "blinker",
+            "version": "1.9.0",
+            "requirements": [
+                {
+                    "raw": "blinker==1.9.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "blinker",
+                    "specifier": "==1.9.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "cachelib": {
+            "name": "cachelib",
+            "version": "0.9.0",
+            "requirements": [
+                {
+                    "raw": "cachelib==0.9.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "cachelib",
+                    "specifier": "==0.9.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "cachetools": {
+            "name": "cachetools",
+            "version": "5.5.0",
+            "requirements": [
+                {
+                    "raw": "cachetools==5.5.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "cachetools",
+                    "specifier": "==5.5.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "certifi": {
+            "name": "certifi",
+            "version": "2024.12.14",
+            "requirements": [
+                {
+                    "raw": "certifi==2024.12.14",
+                    "extras": [],
+                    "marker": null,
+                    "name": "certifi",
+                    "specifier": "==2024.12.14",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "chardet": {
+            "name": "chardet",
+            "version": "5.2.0",
+            "requirements": [
+                {
+                    "raw": "chardet==5.2.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "chardet",
+                    "specifier": "==5.2.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "charset-normalizer": {
+            "name": "charset-normalizer",
+            "version": "3.4.0",
+            "requirements": [
+                {
+                    "raw": "charset-normalizer==3.4.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "charset-normalizer",
+                    "specifier": "==3.4.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "click": {
+            "name": "click",
+            "version": "8.1.7",
+            "requirements": [
+                {
+                    "raw": "click==8.1.7",
+                    "extras": [],
+                    "marker": null,
+                    "name": "click",
+                    "specifier": "==8.1.7",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "cloudinary": {
+            "name": "cloudinary",
+            "version": "1.42.2",
+            "requirements": [
+                {
+                    "raw": "cloudinary==1.42.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "cloudinary",
+                    "specifier": "==1.42.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "colorama": {
+            "name": "colorama",
+            "version": "0.4.6",
+            "requirements": [
+                {
+                    "raw": "colorama==0.4.6",
+                    "extras": [],
+                    "marker": null,
+                    "name": "colorama",
+                    "specifier": "==0.4.6",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "cryptography": {
+            "name": "cryptography",
+            "version": "46.0.5",
+            "requirements": [
+                {
+                    "raw": "cryptography==46.0.5",
+                    "extras": [],
+                    "marker": null,
+                    "name": "cryptography",
+                    "specifier": "==46.0.5",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "defusedxml": {
+            "name": "defusedxml",
+            "version": "0.7.1",
+            "requirements": [
+                {
+                    "raw": "defusedxml==0.7.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "defusedxml",
+                    "specifier": "==0.7.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "dnspython": {
+            "name": "dnspython",
+            "version": "2.7.0",
+            "requirements": [
+                {
+                    "raw": "dnspython==2.7.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "dnspython",
+                    "specifier": "==2.7.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "email-validator": {
+            "name": "email-validator",
+            "version": "2.2.0",
+            "requirements": [
+                {
+                    "raw": "email_validator==2.2.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "email_validator",
+                    "specifier": "==2.2.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "et-xmlfile": {
+            "name": "et-xmlfile",
+            "version": "2.0.0",
+            "requirements": [
+                {
+                    "raw": "et_xmlfile==2.0.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "et_xmlfile",
+                    "specifier": "==2.0.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask": {
+            "name": "flask",
+            "version": "3.1.3",
+            "requirements": [
+                {
+                    "raw": "Flask==3.1.3",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask",
+                    "specifier": "==3.1.3",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask-caching": {
+            "name": "flask-caching",
+            "version": "2.3.0",
+            "requirements": [
+                {
+                    "raw": "Flask-Caching==2.3.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask-Caching",
+                    "specifier": "==2.3.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask-login": {
+            "name": "flask-login",
+            "version": "0.6.3",
+            "requirements": [
+                {
+                    "raw": "Flask-Login==0.6.3",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask-Login",
+                    "specifier": "==0.6.3",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask-mail": {
+            "name": "flask-mail",
+            "version": "0.10.0",
+            "requirements": [
+                {
+                    "raw": "Flask-Mail==0.10.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask-Mail",
+                    "specifier": "==0.10.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask-migrate": {
+            "name": "flask-migrate",
+            "version": "4.1.0",
+            "requirements": [
+                {
+                    "raw": "Flask-Migrate==4.1.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask-Migrate",
+                    "specifier": "==4.1.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask-paginate": {
+            "name": "flask-paginate",
+            "version": "2024.4.12",
+            "requirements": [
+                {
+                    "raw": "flask-paginate==2024.4.12",
+                    "extras": [],
+                    "marker": null,
+                    "name": "flask-paginate",
+                    "specifier": "==2024.4.12",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask-sqlalchemy": {
+            "name": "flask-sqlalchemy",
+            "version": "3.0.3",
+            "requirements": [
+                {
+                    "raw": "Flask-SQLAlchemy==3.0.3",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask-SQLAlchemy",
+                    "specifier": "==3.0.3",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "flask-wtf": {
+            "name": "flask-wtf",
+            "version": "1.2.2",
+            "requirements": [
+                {
+                    "raw": "Flask-WTF==1.2.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask-WTF",
+                    "specifier": "==1.2.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "fonttools": {
+            "name": "fonttools",
+            "version": "4.60.2",
+            "requirements": [
+                {
+                    "raw": "fonttools==4.60.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "fonttools",
+                    "specifier": "==4.60.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "fpdf2": {
+            "name": "fpdf2",
+            "version": "2.8.2",
+            "requirements": [
+                {
+                    "raw": "fpdf2==2.8.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "fpdf2",
+                    "specifier": "==2.8.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "git-filter-repo": {
+            "name": "git-filter-repo",
+            "version": "2.47.0",
+            "requirements": [
+                {
+                    "raw": "git-filter-repo==2.47.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "git-filter-repo",
+                    "specifier": "==2.47.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "google-api-core": {
+            "name": "google-api-core",
+            "version": "2.24.0",
+            "requirements": [
+                {
+                    "raw": "google-api-core==2.24.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "google-api-core",
+                    "specifier": "==2.24.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "google-api-python-client": {
+            "name": "google-api-python-client",
+            "version": "2.156.0",
+            "requirements": [
+                {
+                    "raw": "google-api-python-client==2.156.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "google-api-python-client",
+                    "specifier": "==2.156.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "google-auth": {
+            "name": "google-auth",
+            "version": "2.37.0",
+            "requirements": [
+                {
+                    "raw": "google-auth==2.37.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "google-auth",
+                    "specifier": "==2.37.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "google-auth-httplib2": {
+            "name": "google-auth-httplib2",
+            "version": "0.2.0",
+            "requirements": [
+                {
+                    "raw": "google-auth-httplib2==0.2.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "google-auth-httplib2",
+                    "specifier": "==0.2.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "google-auth-oauthlib": {
+            "name": "google-auth-oauthlib",
+            "version": "1.2.1",
+            "requirements": [
+                {
+                    "raw": "google-auth-oauthlib==1.2.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "google-auth-oauthlib",
+                    "specifier": "==1.2.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "googleapis-common-protos": {
+            "name": "googleapis-common-protos",
+            "version": "1.66.0",
+            "requirements": [
+                {
+                    "raw": "googleapis-common-protos==1.66.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "googleapis-common-protos",
+                    "specifier": "==1.66.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "greenlet": {
+            "name": "greenlet",
+            "version": "3.2.2",
+            "requirements": [
+                {
+                    "raw": "greenlet==3.2.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "greenlet",
+                    "specifier": "==3.2.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "gspread": {
+            "name": "gspread",
+            "version": "6.1.4",
+            "requirements": [
+                {
+                    "raw": "gspread==6.1.4",
+                    "extras": [],
+                    "marker": null,
+                    "name": "gspread",
+                    "specifier": "==6.1.4",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "gunicorn": {
+            "name": "gunicorn",
+            "version": "23.0.0",
+            "requirements": [
+                {
+                    "raw": "gunicorn==23.0.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "gunicorn",
+                    "specifier": "==23.0.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "httplib2": {
+            "name": "httplib2",
+            "version": "0.22.0",
+            "requirements": [
+                {
+                    "raw": "httplib2==0.22.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "httplib2",
+                    "specifier": "==0.22.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "idna": {
+            "name": "idna",
+            "version": "3.10",
+            "requirements": [
+                {
+                    "raw": "idna==3.10",
+                    "extras": [],
+                    "marker": null,
+                    "name": "idna",
+                    "specifier": "==3.10",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "iniconfig": {
+            "name": "iniconfig",
+            "version": "2.1.0",
+            "requirements": [
+                {
+                    "raw": "iniconfig==2.1.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "iniconfig",
+                    "specifier": "==2.1.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "itsdangerous": {
+            "name": "itsdangerous",
+            "version": "2.2.0",
+            "requirements": [
+                {
+                    "raw": "itsdangerous==2.2.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "itsdangerous",
+                    "specifier": "==2.2.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "jinja2": {
+            "name": "jinja2",
+            "version": "3.1.6",
+            "requirements": [
+                {
+                    "raw": "Jinja2==3.1.6",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Jinja2",
+                    "specifier": "==3.1.6",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "mako": {
+            "name": "mako",
+            "version": "1.3.10",
+            "requirements": [
+                {
+                    "raw": "Mako==1.3.10",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Mako",
+                    "specifier": "==1.3.10",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "markupsafe": {
+            "name": "markupsafe",
+            "version": "3.0.2",
+            "requirements": [
+                {
+                    "raw": "MarkupSafe==3.0.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "MarkupSafe",
+                    "specifier": "==3.0.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "numpy": {
+            "name": "numpy",
+            "version": "2.0.2",
+            "requirements": [
+                {
+                    "raw": "numpy==2.0.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "numpy",
+                    "specifier": "==2.0.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "oauth2client": {
+            "name": "oauth2client",
+            "version": "4.1.3",
+            "requirements": [
+                {
+                    "raw": "oauth2client==4.1.3",
+                    "extras": [],
+                    "marker": null,
+                    "name": "oauth2client",
+                    "specifier": "==4.1.3",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "oauthlib": {
+            "name": "oauthlib",
+            "version": "3.2.2",
+            "requirements": [
+                {
+                    "raw": "oauthlib==3.2.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "oauthlib",
+                    "specifier": "==3.2.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "openpyxl": {
+            "name": "openpyxl",
+            "version": "3.1.5",
+            "requirements": [
+                {
+                    "raw": "openpyxl==3.1.5",
+                    "extras": [],
+                    "marker": null,
+                    "name": "openpyxl",
+                    "specifier": "==3.1.5",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "packaging": {
+            "name": "packaging",
+            "version": "24.2",
+            "requirements": [
+                {
+                    "raw": "packaging==24.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "packaging",
+                    "specifier": "==24.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pandas": {
+            "name": "pandas",
+            "version": "2.2.3",
+            "requirements": [
+                {
+                    "raw": "pandas==2.2.3",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pandas",
+                    "specifier": "==2.2.3",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pillow": {
+            "name": "pillow",
+            "version": "11.3.0",
+            "requirements": [
+                {
+                    "raw": "pillow==11.3.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pillow",
+                    "specifier": "==11.3.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pluggy": {
+            "name": "pluggy",
+            "version": "1.6.0",
+            "requirements": [
+                {
+                    "raw": "pluggy==1.6.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pluggy",
+                    "specifier": "==1.6.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "proto-plus": {
+            "name": "proto-plus",
+            "version": "1.25.0",
+            "requirements": [
+                {
+                    "raw": "proto-plus==1.25.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "proto-plus",
+                    "specifier": "==1.25.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "protobuf": {
+            "name": "protobuf",
+            "version": "5.29.6",
+            "requirements": [
+                {
+                    "raw": "protobuf==5.29.6",
+                    "extras": [],
+                    "marker": null,
+                    "name": "protobuf",
+                    "specifier": "==5.29.6",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pyasn1": {
+            "name": "pyasn1",
+            "version": "0.6.3",
+            "requirements": [
+                {
+                    "raw": "pyasn1==0.6.3",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pyasn1",
+                    "specifier": "==0.6.3",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pyasn1-modules": {
+            "name": "pyasn1-modules",
+            "version": "0.4.1",
+            "requirements": [
+                {
+                    "raw": "pyasn1_modules==0.4.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pyasn1_modules",
+                    "specifier": "==0.4.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pyparsing": {
+            "name": "pyparsing",
+            "version": "3.2.0",
+            "requirements": [
+                {
+                    "raw": "pyparsing==3.2.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pyparsing",
+                    "specifier": "==3.2.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pytest": {
+            "name": "pytest",
+            "version": "7.4.0",
+            "requirements": [
+                {
+                    "raw": "pytest==7.4.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pytest",
+                    "specifier": "==7.4.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "python-dateutil": {
+            "name": "python-dateutil",
+            "version": "2.9.0.post0",
+            "requirements": [
+                {
+                    "raw": "python-dateutil==2.9.0.post0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "python-dateutil",
+                    "specifier": "==2.9.0.post0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "python-dotenv": {
+            "name": "python-dotenv",
+            "version": "1.0.1",
+            "requirements": [
+                {
+                    "raw": "python-dotenv==1.0.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "python-dotenv",
+                    "specifier": "==1.0.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "qrcode": {
+            "name": "qrcode",
+            "version": "8.2",
+            "requirements": [
+                {
+                    "raw": "qrcode==8.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "qrcode",
+                    "specifier": "==8.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "pytz": {
+            "name": "pytz",
+            "version": "2024.2",
+            "requirements": [
+                {
+                    "raw": "pytz==2024.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pytz",
+                    "specifier": "==2024.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "rapidfuzz": {
+            "name": "rapidfuzz",
+            "version": "3.11.0",
+            "requirements": [
+                {
+                    "raw": "RapidFuzz==3.11.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "RapidFuzz",
+                    "specifier": "==3.11.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "reportlab": {
+            "name": "reportlab",
+            "version": "4.2.5",
+            "requirements": [
+                {
+                    "raw": "reportlab==4.2.5",
+                    "extras": [],
+                    "marker": null,
+                    "name": "reportlab",
+                    "specifier": "==4.2.5",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "requests": {
+            "name": "requests",
+            "version": "2.32.4",
+            "requirements": [
+                {
+                    "raw": "requests==2.32.4",
+                    "extras": [],
+                    "marker": null,
+                    "name": "requests",
+                    "specifier": "==2.32.4",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "requests-oauthlib": {
+            "name": "requests-oauthlib",
+            "version": "2.0.0",
+            "requirements": [
+                {
+                    "raw": "requests-oauthlib==2.0.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "requests-oauthlib",
+                    "specifier": "==2.0.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "rsa": {
+            "name": "rsa",
+            "version": "4.9",
+            "requirements": [
+                {
+                    "raw": "rsa==4.9",
+                    "extras": [],
+                    "marker": null,
+                    "name": "rsa",
+                    "specifier": "==4.9",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "six": {
+            "name": "six",
+            "version": "1.17.0",
+            "requirements": [
+                {
+                    "raw": "six==1.17.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "six",
+                    "specifier": "==1.17.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "sqlalchemy": {
+            "name": "sqlalchemy",
+            "version": "2.0.41",
+            "requirements": [
+                {
+                    "raw": "SQLAlchemy==2.0.41",
+                    "extras": [],
+                    "marker": null,
+                    "name": "SQLAlchemy",
+                    "specifier": "==2.0.41",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "tqdm": {
+            "name": "tqdm",
+            "version": "4.67.1",
+            "requirements": [
+                {
+                    "raw": "tqdm==4.67.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "tqdm",
+                    "specifier": "==4.67.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "typing-extensions": {
+            "name": "typing-extensions",
+            "version": "4.13.2",
+            "requirements": [
+                {
+                    "raw": "typing_extensions==4.13.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "typing_extensions",
+                    "specifier": "==4.13.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "tzdata": {
+            "name": "tzdata",
+            "version": "2024.2",
+            "requirements": [
+                {
+                    "raw": "tzdata==2024.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "tzdata",
+                    "specifier": "==2024.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "uritemplate": {
+            "name": "uritemplate",
+            "version": "4.1.1",
+            "requirements": [
+                {
+                    "raw": "uritemplate==4.1.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "uritemplate",
+                    "specifier": "==4.1.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "urllib3": {
+            "name": "urllib3",
+            "version": "2.6.3",
+            "requirements": [
+                {
+                    "raw": "urllib3==2.6.3",
+                    "extras": [],
+                    "marker": null,
+                    "name": "urllib3",
+                    "specifier": "==2.6.3",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "waitress": {
+            "name": "waitress",
+            "version": "3.0.2",
+            "requirements": [
+                {
+                    "raw": "waitress==3.0.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "waitress",
+                    "specifier": "==3.0.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "werkzeug": {
+            "name": "werkzeug",
+            "version": "3.1.6",
+            "requirements": [
+                {
+                    "raw": "Werkzeug==3.1.6",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Werkzeug",
+                    "specifier": "==3.1.6",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "wtforms": {
+            "name": "wtforms",
+            "version": "3.2.1",
+            "requirements": [
+                {
+                    "raw": "WTForms==3.2.1",
+                    "extras": [],
+                    "marker": null,
+                    "name": "WTForms",
+                    "specifier": "==3.2.1",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "psycopg": {
+            "name": "psycopg",
+            "version": "3.2.9",
+            "requirements": [
+                {
+                    "raw": "psycopg[binary]==3.2.9",
+                    "extras": [
+                        "binary"
+                    ],
+                    "marker": null,
+                    "name": "psycopg",
+                    "specifier": "==3.2.9",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        },
+        "psycopg2-binary": {
+            "name": "psycopg2-binary",
+            "version": "2.9.9",
+            "requirements": [
+                {
+                    "raw": "psycopg2-binary==2.9.9",
+                    "extras": [],
+                    "marker": null,
+                    "name": "psycopg2-binary",
+                    "specifier": "==2.9.9",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ]
+        }
+    },
+    "affected_packages": {
+        "protobuf": {
+            "name": "protobuf",
+            "version": "5.29.6",
+            "requirements": [
+                {
+                    "raw": "protobuf==5.29.6",
+                    "extras": [],
+                    "marker": null,
+                    "name": "protobuf",
+                    "specifier": "==5.29.6",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ],
+            "found": null,
+            "insecure_versions": [
+                "2.0.0b0",
+                "2.0.3",
+                "2.3.0",
+                "2.4.1",
+                "2.5.0",
+                "2.6.0",
+                "2.6.1",
+                "3.0.0",
+                "3.0.0a2",
+                "3.0.0a3",
+                "3.0.0b1",
+                "3.0.0b1.post1",
+                "3.0.0b1.post2",
+                "3.0.0b2",
+                "3.0.0b2.post1",
+                "3.0.0b2.post2",
+                "3.0.0b3",
+                "3.0.0b4",
+                "3.1.0",
+                "3.10.0",
+                "3.10.0rc1",
+                "3.1.0.post1",
+                "3.11.0",
+                "3.11.0rc1",
+                "3.11.0rc2",
+                "3.11.1",
+                "3.11.2",
+                "3.11.3",
+                "3.12.0",
+                "3.12.0rc1",
+                "3.12.0rc2",
+                "3.12.1",
+                "3.12.2",
+                "3.12.4",
+                "3.13.0",
+                "3.13.0rc3",
+                "3.14.0",
+                "3.14.0rc1",
+                "3.14.0rc2",
+                "3.14.0rc3",
+                "3.15.0",
+                "3.15.0rc1",
+                "3.15.0rc2",
+                "3.15.1",
+                "3.15.2",
+                "3.15.3",
+                "3.15.4",
+                "3.15.5",
+                "3.15.6",
+                "3.15.7",
+                "3.15.8",
+                "3.16.0",
+                "3.16.0rc1",
+                "3.16.0rc2",
+                "3.17.0",
+                "3.17.0rc1",
+                "3.17.0rc2",
+                "3.17.1",
+                "3.17.2",
+                "3.17.3",
+                "3.18.0",
+                "3.18.0rc1",
+                "3.18.0rc2",
+                "3.18.1",
+                "3.18.3",
+                "3.19.0",
+                "3.19.0rc1",
+                "3.19.0rc2",
+                "3.19.1",
+                "3.19.2",
+                "3.19.3",
+                "3.19.4",
+                "3.19.5",
+                "3.19.6",
+                "3.2.0",
+                "3.20.0",
+                "3.20.0rc1",
+                "3.20.0rc2",
+                "3.20.1",
+                "3.20.1rc1",
+                "3.20.2",
+                "3.20.3",
+                "3.2.0rc1",
+                "3.2.0rc1.post1",
+                "3.2.0rc2",
+                "3.3.0",
+                "3.4.0",
+                "3.5.0.post1",
+                "3.5.1",
+                "3.5.2",
+                "3.5.2.post1",
+                "3.6.0",
+                "3.6.1",
+                "3.7.0",
+                "3.7.0rc2",
+                "3.7.0rc3",
+                "3.7.1",
+                "3.8.0",
+                "3.8.0rc1",
+                "3.9.0",
+                "3.9.0rc1",
+                "3.9.1",
+                "3.9.2",
+                "4.0.0rc1",
+                "4.0.0rc2",
+                "4.21.0",
+                "4.21.0rc1",
+                "4.21.0rc2",
+                "4.21.1",
+                "4.21.10",
+                "4.21.11",
+                "4.21.12",
+                "4.21.2",
+                "4.21.3",
+                "4.21.4",
+                "4.21.5",
+                "4.21.6",
+                "4.21.7",
+                "4.21.8",
+                "4.21.9",
+                "4.22.0",
+                "4.22.0rc1",
+                "4.22.0rc2",
+                "4.22.0rc3",
+                "4.22.1",
+                "4.22.3",
+                "4.22.4",
+                "4.22.5",
+                "4.23.0",
+                "4.23.0rc2",
+                "4.23.0rc3",
+                "4.23.1",
+                "4.23.2",
+                "4.23.3",
+                "4.23.4",
+                "4.24.0",
+                "4.24.0rc1",
+                "4.24.0rc2",
+                "4.24.0rc3",
+                "4.24.1",
+                "4.24.2",
+                "4.24.3",
+                "4.24.4",
+                "4.25.0",
+                "4.25.0rc1",
+                "4.25.0rc2",
+                "4.25.1",
+                "4.25.2",
+                "4.25.3",
+                "4.25.4",
+                "4.25.5",
+                "4.25.6",
+                "4.25.7",
+                "4.25.8",
+                "5.26.0",
+                "5.26.0rc1",
+                "5.26.0rc2",
+                "5.26.0rc3",
+                "5.26.1",
+                "5.27.0",
+                "5.27.0rc1",
+                "5.27.0rc2",
+                "5.27.0rc3",
+                "5.27.1",
+                "5.27.2",
+                "5.27.3",
+                "5.27.4",
+                "5.27.5",
+                "5.28.0",
+                "5.28.0rc1",
+                "5.28.0rc2",
+                "5.28.0rc3",
+                "5.28.1",
+                "5.28.2",
+                "5.28.3",
+                "5.29.0",
+                "5.29.0rc1",
+                "5.29.0rc2",
+                "5.29.0rc3",
+                "5.29.1",
+                "5.29.2",
+                "5.29.3",
+                "5.29.4",
+                "5.29.5",
+                "5.29.6",
+                "6.30.0",
+                "6.30.0rc1",
+                "6.30.0rc2",
+                "6.30.1",
+                "6.30.2",
+                "6.31.0",
+                "6.31.0rc1",
+                "6.31.0rc2",
+                "6.31.1",
+                "6.32.0",
+                "6.32.0rc1",
+                "6.32.0rc2",
+                "6.32.1",
+                "6.33.0",
+                "6.33.0rc1",
+                "6.33.0rc2",
+                "6.33.1",
+                "6.33.2",
+                "6.33.3",
+                "6.33.4"
+            ],
+            "secure_versions": [
+                "7.34.0",
+                "7.34.0rc2",
+                "7.34.0rc1",
+                "6.33.5"
+            ],
+            "latest_version_without_known_vulnerabilities": "7.34.0",
+            "latest_version": "7.34.0",
+            "more_info_url": "https://data.safetycli.com/p/pypi/protobuf/97c/"
+        },
+        "pillow": {
+            "name": "pillow",
+            "version": "11.3.0",
+            "requirements": [
+                {
+                    "raw": "pillow==11.3.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "pillow",
+                    "specifier": "==11.3.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ],
+            "found": null,
+            "insecure_versions": [
+                "1.0",
+                "10.0.0",
+                "10.0.1",
+                "10.1.0",
+                "10.2.0",
+                "10.3.0",
+                "10.4.0",
+                "1.1",
+                "11.0.0",
+                "11.1.0",
+                "11.2.1",
+                "11.3.0",
+                "1.2",
+                "12.0.0",
+                "12.1.0",
+                "1.3",
+                "1.4",
+                "1.5",
+                "1.6",
+                "1.7.0",
+                "1.7.1",
+                "1.7.2",
+                "1.7.3",
+                "1.7.4",
+                "1.7.5",
+                "1.7.6",
+                "1.7.7",
+                "1.7.8",
+                "2.0.0",
+                "2.1.0",
+                "2.2.0",
+                "2.2.1",
+                "2.2.2",
+                "2.3.0",
+                "2.3.1",
+                "2.3.2",
+                "2.4.0",
+                "2.5.0",
+                "2.5.1",
+                "2.5.2",
+                "2.5.3",
+                "2.6.0",
+                "2.6.1",
+                "2.6.2",
+                "2.7.0",
+                "2.8.0",
+                "2.8.1",
+                "2.8.2",
+                "2.9.0",
+                "3.0.0",
+                "3.1.0",
+                "3.1.0rc1",
+                "3.1.1",
+                "3.1.2",
+                "3.2.0",
+                "3.3.0",
+                "3.3.1",
+                "3.3.2",
+                "3.3.3",
+                "3.4.0",
+                "3.4.1",
+                "3.4.2",
+                "4.0.0",
+                "4.1.0",
+                "4.1.1",
+                "4.2.0",
+                "4.2.1",
+                "4.3.0",
+                "5.0.0",
+                "5.1.0",
+                "5.2.0",
+                "5.3.0",
+                "5.4.0",
+                "5.4.0.dev0",
+                "5.4.1",
+                "6.0.0",
+                "6.1.0",
+                "6.2.0",
+                "6.2.1",
+                "6.2.2",
+                "7.0.0",
+                "7.1.0",
+                "7.1.1",
+                "7.1.2",
+                "7.2.0",
+                "8.0.0",
+                "8.0.1",
+                "8.1.0",
+                "8.1.1",
+                "8.1.2",
+                "8.2.0",
+                "8.3.0",
+                "8.3.1",
+                "8.3.2",
+                "8.4.0",
+                "9.0.0",
+                "9.0.1",
+                "9.1.0",
+                "9.1.1",
+                "9.2.0",
+                "9.3.0",
+                "9.4.0",
+                "9.5.0"
+            ],
+            "secure_versions": [
+                "12.1.1"
+            ],
+            "latest_version_without_known_vulnerabilities": "12.1.1",
+            "latest_version": "12.1.1",
+            "more_info_url": "https://data.safetycli.com/p/pypi/pillow/97c/"
+        },
+        "fpdf2": {
+            "name": "fpdf2",
+            "version": "2.8.2",
+            "requirements": [
+                {
+                    "raw": "fpdf2==2.8.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "fpdf2",
+                    "specifier": "==2.8.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ],
+            "found": null,
+            "insecure_versions": [
+                "2.0.0",
+                "2.0.1",
+                "2.0.3",
+                "2.0.4",
+                "2.0.5",
+                "2.0.6",
+                "2.1.0",
+                "2.1.0rc1",
+                "2.2.0",
+                "2.2.0rc1",
+                "2.2.0rc2",
+                "2.2.0rc3",
+                "2.3.0",
+                "2.3.1",
+                "2.3.2",
+                "2.3.3",
+                "2.3.4",
+                "2.3.5",
+                "2.4.0",
+                "2.4.1",
+                "2.4.2",
+                "2.4.3",
+                "2.4.4",
+                "2.4.5",
+                "2.4.6",
+                "2.5.0",
+                "2.5.1",
+                "2.5.2",
+                "2.5.3",
+                "2.5.4",
+                "2.5.5",
+                "2.5.6",
+                "2.5.7",
+                "2.6.0",
+                "2.6.1",
+                "2.7.0",
+                "2.7.1",
+                "2.7.2",
+                "2.7.3",
+                "2.7.4",
+                "2.7.5",
+                "2.7.6",
+                "2.7.7",
+                "2.7.8",
+                "2.7.9",
+                "2.8.1",
+                "2.8.2",
+                "2.8.3"
+            ],
+            "secure_versions": [
+                "2.8.7",
+                "2.8.6",
+                "2.8.5",
+                "2.8.4"
+            ],
+            "latest_version_without_known_vulnerabilities": "2.8.7",
+            "latest_version": "2.8.7",
+            "more_info_url": "https://data.safetycli.com/p/pypi/fpdf2/97c/"
+        },
+        "fonttools": {
+            "name": "fonttools",
+            "version": "4.60.2",
+            "requirements": [
+                {
+                    "raw": "fonttools==4.60.2",
+                    "extras": [],
+                    "marker": null,
+                    "name": "fonttools",
+                    "specifier": "==4.60.2",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ],
+            "found": null,
+            "insecure_versions": [
+                "1.0",
+                "2.0b1",
+                "2.3",
+                "2.4",
+                "2.5",
+                "3.0",
+                "3.1.0",
+                "3.10.0",
+                "3.1.1",
+                "3.11.0",
+                "3.1.2",
+                "3.12.0",
+                "3.12.1",
+                "3.13.0",
+                "3.13.1",
+                "3.14.0",
+                "3.15.0",
+                "3.15.1",
+                "3.16.0",
+                "3.17.0",
+                "3.18.0",
+                "3.19.0",
+                "3.2.0",
+                "3.20.0",
+                "3.20.1",
+                "3.2.1",
+                "3.21.0",
+                "3.21.1",
+                "3.21.2",
+                "3.2.2",
+                "3.22.0",
+                "3.2.3",
+                "3.23.0",
+                "3.24.0",
+                "3.24.1",
+                "3.24.2",
+                "3.25.0",
+                "3.26.0",
+                "3.27.0",
+                "3.27.1",
+                "3.28.0",
+                "3.29.0",
+                "3.29.1",
+                "3.3.0",
+                "3.30.0",
+                "3.3.1",
+                "3.31.0",
+                "3.32.0",
+                "3.33.0",
+                "3.34.0",
+                "3.34.1",
+                "3.34.2",
+                "3.35.0",
+                "3.35.1",
+                "3.35.2",
+                "3.36.0",
+                "3.37.0",
+                "3.37.1",
+                "3.37.2",
+                "3.37.3",
+                "3.38.0",
+                "3.39.0",
+                "3.4.0",
+                "3.40.0",
+                "3.41.0",
+                "3.41.1",
+                "3.41.2",
+                "3.42.0",
+                "3.43.0",
+                "3.43.1",
+                "3.43.2",
+                "3.44.0",
+                "3.5.0",
+                "3.6.0",
+                "3.6.1",
+                "3.6.2",
+                "3.6.3",
+                "3.7.0",
+                "3.7.1",
+                "3.7.2",
+                "3.8.0",
+                "3.9.0",
+                "3.9.1",
+                "3.9.2",
+                "4.0.0",
+                "4.0.1",
+                "4.0.2",
+                "4.1.0",
+                "4.10.0",
+                "4.10.1",
+                "4.10.2",
+                "4.11.0",
+                "4.12.0",
+                "4.12.1",
+                "4.13.0",
+                "4.14.0",
+                "4.15.0",
+                "4.16.0",
+                "4.16.1",
+                "4.17.0",
+                "4.17.1",
+                "4.18.0",
+                "4.18.1",
+                "4.18.2",
+                "4.19.0",
+                "4.19.1",
+                "4.2.0",
+                "4.20.0",
+                "4.2.1",
+                "4.21.0",
+                "4.21.1",
+                "4.2.2",
+                "4.22.0",
+                "4.22.1",
+                "4.2.3",
+                "4.23.0",
+                "4.23.1",
+                "4.2.4",
+                "4.24.0",
+                "4.24.1",
+                "4.24.2",
+                "4.24.3",
+                "4.24.4",
+                "4.2.5",
+                "4.25.0",
+                "4.25.1",
+                "4.25.2",
+                "4.26.0",
+                "4.26.1",
+                "4.26.2",
+                "4.27.0",
+                "4.27.1",
+                "4.28.0",
+                "4.28.1",
+                "4.28.2",
+                "4.28.3",
+                "4.28.4",
+                "4.28.5",
+                "4.29.0",
+                "4.29.1",
+                "4.3.0",
+                "4.30.0",
+                "4.31.0",
+                "4.31.1",
+                "4.31.2",
+                "4.32.0",
+                "4.33.0",
+                "4.33.1",
+                "4.33.2",
+                "4.33.3",
+                "4.34.0",
+                "4.34.1",
+                "4.34.2",
+                "4.34.3",
+                "4.34.4",
+                "4.35.0",
+                "4.36.0",
+                "4.37.0",
+                "4.37.1",
+                "4.37.2",
+                "4.37.3",
+                "4.37.4",
+                "4.38.0",
+                "4.38.1.dev0",
+                "4.39.0",
+                "4.39.1",
+                "4.39.2",
+                "4.39.3",
+                "4.39.4",
+                "4.4.0",
+                "4.40.0",
+                "4.4.1",
+                "4.41.0",
+                "4.41.1",
+                "4.4.2",
+                "4.42.0",
+                "4.42.1",
+                "4.4.2.dev0",
+                "4.4.3",
+                "4.43.0",
+                "4.43.1",
+                "4.44.0",
+                "4.44.1",
+                "4.44.3",
+                "4.45.0",
+                "4.45.1",
+                "4.46.0",
+                "4.47.0",
+                "4.47.2",
+                "4.48.1",
+                "4.49.0",
+                "4.5.0",
+                "4.50.0",
+                "4.51.0",
+                "4.52.1",
+                "4.52.3",
+                "4.52.4",
+                "4.53.0",
+                "4.53.1",
+                "4.54.0",
+                "4.54.1",
+                "4.55.0",
+                "4.55.1",
+                "4.55.2",
+                "4.55.3",
+                "4.55.4",
+                "4.55.5",
+                "4.55.6",
+                "4.55.7",
+                "4.55.8",
+                "4.56.0",
+                "4.57.0",
+                "4.58.0",
+                "4.58.1",
+                "4.58.2",
+                "4.58.3",
+                "4.58.4",
+                "4.58.5",
+                "4.59.0",
+                "4.59.1",
+                "4.59.2",
+                "4.6.0",
+                "4.60.0",
+                "4.60.1",
+                "4.60.2",
+                "4.61.0",
+                "4.61.1",
+                "4.7.0",
+                "4.8.0",
+                "4.8.1",
+                "4.9.0"
+            ],
+            "secure_versions": [
+                "4.62.1",
+                "4.62.0"
+            ],
+            "latest_version_without_known_vulnerabilities": "4.62.1",
+            "latest_version": "4.62.1",
+            "more_info_url": "https://data.safetycli.com/p/pypi/fonttools/97c/"
+        },
+        "flask-caching": {
+            "name": "flask-caching",
+            "version": "2.3.0",
+            "requirements": [
+                {
+                    "raw": "Flask-Caching==2.3.0",
+                    "extras": [],
+                    "marker": null,
+                    "name": "Flask-Caching",
+                    "specifier": "==2.3.0",
+                    "url": null,
+                    "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                }
+            ],
+            "found": null,
+            "insecure_versions": [
+                "1.0.0",
+                "1.0.1",
+                "1.1.0",
+                "1.10.0",
+                "1.10.1",
+                "1.1.1",
+                "1.11.0",
+                "1.11.1",
+                "1.2.0",
+                "1.3.0",
+                "1.3.1",
+                "1.3.2",
+                "1.3.3",
+                "1.4.0",
+                "1.5.0",
+                "1.6.0",
+                "1.7.0",
+                "1.7.1",
+                "1.7.2",
+                "1.8.0",
+                "1.9.0",
+                "2.0.0",
+                "2.0.1",
+                "2.0.2",
+                "2.1.0",
+                "2.2.0",
+                "2.3.0"
+            ],
+            "secure_versions": [
+                "2.3.1"
+            ],
+            "latest_version_without_known_vulnerabilities": "2.3.1",
+            "latest_version": "2.3.1",
+            "more_info_url": "https://data.safetycli.com/p/pypi/flask-caching/97c/"
+        }
+    },
+    "announcements": [],
+    "vulnerabilities": [
+        {
+            "vulnerability_id": "85151",
+            "package_name": "protobuf",
+            "ignored": {},
+            "ignored_reason": null,
+            "ignored_expires": null,
+            "vulnerable_spec": [
+                "<=6.33.4"
+            ],
+            "all_vulnerable_specs": [
+                "<=6.33.4"
+            ],
+            "analyzed_version": "5.29.6",
+            "analyzed_requirement": {
+                "raw": "protobuf==5.29.6",
+                "extras": [],
+                "marker": null,
+                "name": "protobuf",
+                "specifier": "==5.29.6",
+                "url": null,
+                "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+            },
+            "advisory": "Affected versions of the protobuf package are vulnerable to Denial of Service (DoS) due to missing recursion depth accounting that allows the max_recursion_depth limit to be bypassed. The google.protobuf.json_format.ParseDict() parser fails to increment or enforce max_recursion_depth when traversing nested google.protobuf.Any messages in its internal Any-handling logic, allowing attacker-controlled JSON to recurse far deeper than intended.",
+            "is_transitive": false,
+            "published_date": null,
+            "fixed_versions": [],
+            "closest_versions_without_known_vulnerabilities": [],
+            "resources": [],
+            "CVE": "CVE-2026-0994",
+            "severity": null,
+            "affected_versions": [],
+            "more_info_url": "https://data.safetycli.com/v/85151/97c"
+        },
+        {
+            "vulnerability_id": "86269",
+            "package_name": "pillow",
+            "ignored": {},
+            "ignored_reason": null,
+            "ignored_expires": null,
+            "vulnerable_spec": [
+                ">=10.3.0,<12.1.1"
+            ],
+            "all_vulnerable_specs": [
+                ">=10.3.0,<12.1.1"
+            ],
+            "analyzed_version": "11.3.0",
+            "analyzed_requirement": {
+                "raw": "pillow==11.3.0",
+                "extras": [],
+                "marker": null,
+                "name": "pillow",
+                "specifier": "==11.3.0",
+                "url": null,
+                "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+            },
+            "advisory": "Affected versions of the Pillow package are vulnerable to an Out-of-bounds Write issue due to insufficient validation of tile extents when decoding PSD image data. When Image.open() loads a PSD and the decoder paths in src/decode.c and src/encode.c process tile offsets and sizes, negative xoff/yoff values (and related invalid extents) can bypass expected bounds checks and lead to writes outside the intended image buffer.",
+            "is_transitive": false,
+            "published_date": null,
+            "fixed_versions": [],
+            "closest_versions_without_known_vulnerabilities": [],
+            "resources": [],
+            "CVE": "CVE-2026-25990",
+            "severity": null,
+            "affected_versions": [],
+            "more_info_url": "https://data.safetycli.com/v/86269/97c"
+        },
+        {
+            "vulnerability_id": "80915",
+            "package_name": "fpdf2",
+            "ignored": {},
+            "ignored_reason": null,
+            "ignored_expires": null,
+            "vulnerable_spec": [
+                "<2.8.4"
+            ],
+            "all_vulnerable_specs": [
+                "<2.8.4"
+            ],
+            "analyzed_version": "2.8.2",
+            "analyzed_requirement": {
+                "raw": "fpdf2==2.8.2",
+                "extras": [],
+                "marker": null,
+                "name": "fpdf2",
+                "specifier": "==2.8.2",
+                "url": null,
+                "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+            },
+            "advisory": "Affected versions of the fpdf2 package are vulnerable to Regular Expression Denial of Service (ReDoS) due to an inefficient regular expression in the SVG transform parser that can trigger catastrophic backtracking. The convert_transforms() function in fpdf/svg.py uses the TRANSFORM_GETTER pattern to parse transform attributes, and the earlier pattern employed nested quantifiers that lead the Python regex engine to super-linear matching behaviour on crafted input.",
+            "is_transitive": false,
+            "published_date": null,
+            "fixed_versions": [],
+            "closest_versions_without_known_vulnerabilities": [],
+            "resources": [],
+            "CVE": null,
+            "severity": null,
+            "affected_versions": [],
+            "more_info_url": "https://data.safetycli.com/v/80915/97c"
+        },
+        {
+            "vulnerability_id": "82065",
+            "package_name": "fonttools",
+            "ignored": {},
+            "ignored_reason": null,
+            "ignored_expires": null,
+            "vulnerable_spec": [
+                "<4.61.0"
+            ],
+            "all_vulnerable_specs": [
+                "<4.61.0"
+            ],
+            "analyzed_version": "4.60.2",
+            "analyzed_requirement": {
+                "raw": "fonttools==4.60.2",
+                "extras": [],
+                "marker": null,
+                "name": "fonttools",
+                "specifier": "==4.60.2",
+                "url": null,
+                "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+            },
+            "advisory": "Affected versions of this package are vulnerable to path traversal due to improper handling of file paths. The `varLib.main` function does not correctly sanitize input paths, allowing the use of potentially malicious file paths. An attacker can exploit this vulnerability by crafting a path that traverses directories, potentially accessing unauthorized files or directories on the system.",
+            "is_transitive": false,
+            "published_date": null,
+            "fixed_versions": [],
+            "closest_versions_without_known_vulnerabilities": [],
+            "resources": [],
+            "CVE": "CVE-2025-66034",
+            "severity": null,
+            "affected_versions": [],
+            "more_info_url": "https://data.safetycli.com/v/82065/97c"
+        },
+        {
+            "vulnerability_id": "40459",
+            "package_name": "flask-caching",
+            "ignored": {},
+            "ignored_reason": null,
+            "ignored_expires": null,
+            "vulnerable_spec": [
+                "<=2.3.0"
+            ],
+            "all_vulnerable_specs": [
+                "<=2.3.0"
+            ],
+            "analyzed_version": "2.3.0",
+            "analyzed_requirement": {
+                "raw": "Flask-Caching==2.3.0",
+                "extras": [],
+                "marker": null,
+                "name": "Flask-Caching",
+                "specifier": "==2.3.0",
+                "url": null,
+                "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+            },
+            "advisory": "Flask-caching is vulnerable to CVE-2021-33026: Flask-Caching extension for Flask relies on Pickle for deserialization, which may lead to remote code execution or local privilege escalation. If an attacker gains access to cache storage (e.g., filesystem, Memcached, Redis, etc.), they can construct a crafted payload, poison the cache, and execute Python code. \r\nNOTE: Project maintainers indicate that exploitation is extremely unlikely unless the machine is already compromised; in other cases, the attacker would be unable to write their payload to the cache and generate the required collision.",
+            "is_transitive": false,
+            "published_date": null,
+            "fixed_versions": [],
+            "closest_versions_without_known_vulnerabilities": [],
+            "resources": [],
+            "CVE": "CVE-2021-33026",
+            "severity": null,
+            "affected_versions": [],
+            "more_info_url": "https://data.safetycli.com/v/40459/97c"
+        }
+    ],
+    "ignored_vulnerabilities": [],
+    "remediations": {
+        "protobuf": {
+            "requirements": {
+                "==5.29.6": {
+                    "vulnerabilities_found": 1,
+                    "version": "5.29.6",
+                    "requirement": {
+                        "raw": "protobuf==5.29.6",
+                        "extras": [],
+                        "marker": null,
+                        "name": "protobuf",
+                        "specifier": "==5.29.6",
+                        "url": null,
+                        "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                    },
+                    "more_info_url": "https://data.safetycli.com/p/pypi/protobuf/97c/"
+                }
+            },
+            "current_version": null,
+            "vulnerabilities_found": null,
+            "recommended_version": null,
+            "other_recommended_versions": [],
+            "more_info_url": null
+        },
+        "pillow": {
+            "requirements": {
+                "==11.3.0": {
+                    "vulnerabilities_found": 1,
+                    "version": "11.3.0",
+                    "requirement": {
+                        "raw": "pillow==11.3.0",
+                        "extras": [],
+                        "marker": null,
+                        "name": "pillow",
+                        "specifier": "==11.3.0",
+                        "url": null,
+                        "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                    },
+                    "more_info_url": "https://data.safetycli.com/p/pypi/pillow/97c/"
+                }
+            },
+            "current_version": null,
+            "vulnerabilities_found": null,
+            "recommended_version": null,
+            "other_recommended_versions": [],
+            "more_info_url": null
+        },
+        "fpdf2": {
+            "requirements": {
+                "==2.8.2": {
+                    "vulnerabilities_found": 1,
+                    "version": "2.8.2",
+                    "requirement": {
+                        "raw": "fpdf2==2.8.2",
+                        "extras": [],
+                        "marker": null,
+                        "name": "fpdf2",
+                        "specifier": "==2.8.2",
+                        "url": null,
+                        "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                    },
+                    "more_info_url": "https://data.safetycli.com/p/pypi/fpdf2/97c/"
+                }
+            },
+            "current_version": null,
+            "vulnerabilities_found": null,
+            "recommended_version": null,
+            "other_recommended_versions": [],
+            "more_info_url": null
+        },
+        "fonttools": {
+            "requirements": {
+                "==4.60.2": {
+                    "vulnerabilities_found": 1,
+                    "version": "4.60.2",
+                    "requirement": {
+                        "raw": "fonttools==4.60.2",
+                        "extras": [],
+                        "marker": null,
+                        "name": "fonttools",
+                        "specifier": "==4.60.2",
+                        "url": null,
+                        "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                    },
+                    "more_info_url": "https://data.safetycli.com/p/pypi/fonttools/97c/"
+                }
+            },
+            "current_version": null,
+            "vulnerabilities_found": null,
+            "recommended_version": null,
+            "other_recommended_versions": [],
+            "more_info_url": null
+        },
+        "flask-caching": {
+            "requirements": {
+                "==2.3.0": {
+                    "vulnerabilities_found": 1,
+                    "version": "2.3.0",
+                    "requirement": {
+                        "raw": "Flask-Caching==2.3.0",
+                        "extras": [],
+                        "marker": null,
+                        "name": "Flask-Caching",
+                        "specifier": "==2.3.0",
+                        "url": null,
+                        "found": "/Users/angeldelacruz/Proyectos/app_web/requirements.txt"
+                    },
+                    "more_info_url": "https://data.safetycli.com/p/pypi/flask-caching/97c/"
+                }
+            },
+            "current_version": null,
+            "vulnerabilities_found": null,
+            "recommended_version": null,
+            "other_recommended_versions": [],
+            "more_info_url": null
+        }
+    },
+    "remediations_results": {
+        "vulnerabilities_fixed": [],
+        "remediations_applied": {},
+        "remediations_skipped": {}
+    }
+}
+
+
++===========================================================================================================================================================================================+
+
+
+DEPRECATED: this command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.
+
+
+We highly encourage switching to the new `scan` command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.
+
+
++===========================================================================================================================================================================================+
+
+

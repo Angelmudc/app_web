@@ -193,6 +193,13 @@
           </li>
           {% endif %}
 
+          {% if has_endpoint('contratos.listado_contratos_admin') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['contratos.listado_contratos_admin', 'contratos.detalle_contrato_admin_view'] %}active{% endif %}"
+               href="{{ url_for('contratos.listado_contratos_admin') }}">Contratos</a>
+          </li>
+          {% endif %}
+
           {% if has_endpoint('admin.monitoreo_staff') and current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.monitoreo_staff', 'admin.monitoreo_logs'] %}active{% endif %}"
@@ -317,7 +324,9 @@
       {% endwith %}
     </div>
 
-    {% block content %}{% endblock %}
+    <div id="adminMainViewport" data-admin-nav-viewport="true">
+      {% block content %}{% endblock %}
+    </div>
   </main>
 
   <footer class="text-center">
@@ -349,18 +358,21 @@
   <!-- App JS -->
   <script src="{{ url_for('static', filename='js/core/toast.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/modal.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/admin_async.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/admin_nav.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/ui/theme.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/ui/ui.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/ui/search.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/forms/validate.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/forms/autosave.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/live_invalidation.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>
 
-</body>
 <script defer>
   (function(){
     const KEY = 'perf_mode';

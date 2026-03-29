@@ -107,6 +107,33 @@ def test_formulario_domestica_valido_redirige_gracias():
     notif_mock.assert_called_once()
 
 
+def test_formulario_domestica_bloquea_abuso_por_ip_con_respuesta_controlada():
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("registro.routes.hit_rate_limit", return_value=False), \
+         patch("registro.routes.enforce_business_limit", return_value=(True, 21)):
+        resp = client.post("/registro/registro_publico/", data=_domestica_base_data(), follow_redirects=False)
+
+    assert resp.status_code == 429
+    assert "demasiados envíos".lower() in resp.get_data(as_text=True).lower()
+
+
+def test_formulario_general_bloquea_timing_no_humano():
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("reclutas.routes.hit_rate_limit", return_value=False), \
+         patch("reclutas.routes.enforce_business_limit", return_value=(False, 1)), \
+         patch("reclutas.routes.enforce_min_human_interval", return_value=(True, 1)):
+        resp = client.post("/reclutas/registro", data=_general_base_data(), follow_redirects=False)
+
+    assert resp.status_code == 429
+    assert "espera un momento".lower() in resp.get_data(as_text=True).lower()
+
+
 def test_formulario_domestica_guarda_campos_nuevos_en_columnas_reales():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

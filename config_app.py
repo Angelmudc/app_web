@@ -4,10 +4,11 @@
 import os
 import re
 import json
+import secrets
 import click
 from pathlib import Path
-from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, List
+from urllib.parse import urlsplit
 
 from flask import Flask, request, redirect, url_for, abort, session, render_template, g
 from datetime import timedelta
@@ -20,7 +21,7 @@ from flask_login import LoginManager, logout_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf import CSRFProtect
 
-from sqlalchemy import text, func
+from sqlalchemy import text, func, inspect as sa_inspect
 from sqlalchemy.pool import NullPool
 from utils.compat_engine import format_compat_result
 from utils.funciones_formatter import format_funciones, format_funciones_display
@@ -31,15 +32,8 @@ from utils.timezone import (
     to_rd,
     utc_now_naive,
 )
+from utils.secrets_manager import get_secret
 
-# ─────────────────────────────────────────────────────────────
-# Carga .env (siempre desde la raíz del proyecto)
-# ─────────────────────────────────────────────────────────────
-env_path = Path(__file__).parent / ".env"
-# Respetar variables de entorno del proceso (por ejemplo pytest/CI) por encima de .env.
-load_dotenv(env_path, override=False)
-
-# ─────────────────────────────────────────────────────────────
 # Instancias globales
 # ─────────────────────────────────────────────────────────────
 db = SQLAlchemy()
@@ -67,7 +61,7 @@ def _normalize_db_url(url: str) -> str:
     - Asegura 'sslmode=require' en la querystring (para Render/Supabase/Neon/etc).
     """
     if not url:
-        raise RuntimeError("❌ Debes definir DATABASE_URL en tu .env (URL REMOTA).")
+        raise RuntimeError("DATABASE_URL no configurada.")
 
     url = url.strip()
 
@@ -119,6 +113,43 @@ def create_app():
     def _env_str(name: str, default: str) -> str:
         return (os.getenv(name) or default).strip()
 
+    def _split_csv(raw: str) -> list[str]:
+        parts = []
+        for item in (raw or "").split(","):
+            val = item.strip()
+            if val:
+                parts.append(val)
+        return parts
+
+    def _normalize_origin(raw: str) -> str:
+        value = (raw or "").strip()
+        if not value:
+            return ""
+        parsed = urlsplit(value)
+        scheme = (parsed.scheme or "").strip().lower()
+        netloc = (parsed.netloc or "").strip().lower()
+        if scheme not in {"http", "https"} or not netloc:
+            return ""
+        return f"{scheme}://{netloc}"
+
+    def _default_cors_origins() -> set[str]:
+        out = set()
+        public_origin = _normalize_origin(_env_str("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com"))
+        if public_origin:
+            out.add(public_origin)
+        if not prod:
+            out.update(
+                {
+                    "http://localhost:3000",
+                    "http://127.0.0.1:3000",
+                    "http://localhost:5173",
+                    "http://127.0.0.1:5173",
+                    "http://localhost:8080",
+                    "http://127.0.0.1:8080",
+                }
+            )
+        return out
+
     # ─────────────────────────────────────────────────────────
     # Seguridad de sesión/cookies
     # ─────────────────────────────────────────────────────────
@@ -136,10 +167,11 @@ def create_app():
     # Si NO hay request context (en startup), usamos variable opcional
     is_localhost_flag = (os.getenv("IS_LOCALHOST", "").strip().lower() in ("1", "true", "yes", "on"))
 
-    default_secret = "cambia_esta_clave_a_una_muy_segura"
-    app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", default_secret)
-    if app.config["SECRET_KEY"] == default_secret and env not in ("development", "dev", "testing", "test"):
-        raise RuntimeError("SECRET_KEY no configurada. Define FLASK_SECRET_KEY en .env")
+    default_secret = "dev-only-secret-change-me"
+    app.config["SECRET_KEY"] = (
+        get_secret("FLASK_SECRET_KEY", required=prod)
+        or default_secret
+    )
 
     # Cookies secure:
     # - En prod: True (pero SOLO si estás bajo HTTPS real)
@@ -184,6 +216,44 @@ def create_app():
             "PUBLIC_BASE_URL": _env_str("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com"),
         }
     )
+
+    configured_cors = _split_csv(os.getenv("CORS_ALLOWED_ORIGINS", ""))
+    cors_allowed_origins = {
+        origin for origin in (_normalize_origin(x) for x in configured_cors) if origin
+    }
+    if not cors_allowed_origins:
+        cors_allowed_origins = _default_cors_origins()
+
+    cors_allowed_methods = {
+        m.upper()
+        for m in _split_csv(os.getenv("CORS_ALLOWED_METHODS", "GET,POST,PUT,PATCH,DELETE,OPTIONS"))
+        if m
+    }
+    if not cors_allowed_methods:
+        cors_allowed_methods = {"GET", "POST", "OPTIONS"}
+
+    cors_allowed_headers = {
+        h.lower()
+        for h in _split_csv(
+            os.getenv(
+                "CORS_ALLOWED_HEADERS",
+                "Content-Type,Authorization,X-CSRFToken,X-CSRF-Token,X-Requested-With",
+            )
+        )
+        if h
+    }
+    if not cors_allowed_headers:
+        cors_allowed_headers = {"content-type"}
+
+    app.config["CORS_ALLOWED_ORIGINS"] = sorted(cors_allowed_origins)
+    app.config["CORS_ALLOWED_METHODS"] = sorted(cors_allowed_methods)
+    app.config["CORS_ALLOWED_HEADERS"] = sorted(cors_allowed_headers)
+    app.config["CORS_ALLOW_CREDENTIALS"] = _is_true(os.getenv("CORS_ALLOW_CREDENTIALS", "1"))
+    try:
+        cors_max_age = max(60, int((os.getenv("CORS_MAX_AGE_SECONDS") or "600").strip()))
+    except Exception:
+        cors_max_age = 600
+    app.config["CORS_MAX_AGE_SECONDS"] = cors_max_age
 
     # ✅ Limitar tamaño de requests (evita payloads gigantes)
     app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH", str(4 * 1024 * 1024)))  # 4MB total request
@@ -234,10 +304,74 @@ def create_app():
             app.config["REMEMBER_COOKIE_SECURE"] = False
             app.config["WTF_CSRF_SSL_STRICT"] = False
 
+    def _origin_allowed(origin: str) -> bool:
+        normalized = _normalize_origin(origin)
+        return bool(normalized and normalized in cors_allowed_origins)
+
+    def _append_vary(resp, value: str):
+        existing = (resp.headers.get("Vary") or "").strip()
+        values = [x.strip() for x in existing.split(",") if x.strip()]
+        if value not in values:
+            values.append(value)
+        resp.headers["Vary"] = ", ".join(values)
+
+    def _apply_cors_headers(resp, origin: str, requested_headers: Optional[List[str]] = None):
+        normalized = _normalize_origin(origin)
+        if not normalized:
+            return resp
+        resp.headers["Access-Control-Allow-Origin"] = normalized
+        _append_vary(resp, "Origin")
+        if bool(app.config.get("CORS_ALLOW_CREDENTIALS")):
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Allow-Methods"] = ", ".join(sorted(cors_allowed_methods))
+        if requested_headers:
+            resp.headers["Access-Control-Allow-Headers"] = ", ".join(requested_headers)
+        else:
+            resp.headers["Access-Control-Allow-Headers"] = ", ".join(sorted(h for h in cors_allowed_headers))
+        resp.headers["Access-Control-Max-Age"] = str(int(app.config.get("CORS_MAX_AGE_SECONDS", 600)))
+        resp.headers["Access-Control-Expose-Headers"] = "X-Request-ID"
+        return resp
+
+    @app.before_request
+    def _cors_preflight_guard():
+        origin = (request.headers.get("Origin") or "").strip()
+        if not origin:
+            return None
+
+        if request.method != "OPTIONS":
+            return None
+
+        requested_method = (request.headers.get("Access-Control-Request-Method") or "").strip().upper()
+        if not requested_method:
+            return None
+
+        if not _origin_allowed(origin):
+            abort(403, description="Origen CORS no permitido.")
+
+        if requested_method not in cors_allowed_methods:
+            abort(405, description="Metodo CORS no permitido.")
+
+        requested_header_values = []
+        req_headers = (request.headers.get("Access-Control-Request-Headers") or "").strip()
+        for header in req_headers.split(","):
+            h = header.strip()
+            if not h:
+                continue
+            if h.lower() not in cors_allowed_headers:
+                abort(400, description="Header CORS no permitido.")
+            requested_header_values.append(h)
+
+        resp = app.make_default_options_response()
+        resp.status_code = 204
+        return _apply_cors_headers(resp, origin=origin, requested_headers=requested_header_values)
+
     # ─────────────────────────────────────────────────────────
     # Base de datos (Postgres en prod, SQLite aislada para tests)
     # ─────────────────────────────────────────────────────────
-    raw_db_url = (os.getenv("DATABASE_URL", "") or "").strip()
+    raw_db_url = (
+        get_secret("DATABASE_URL", required=prod)
+        or ""
+    ).strip()
     if env in ("test", "testing"):
         # En tests siempre usar SQLite aislada para evitar tocar BD real.
         if not raw_db_url.startswith("sqlite:"):
@@ -287,14 +421,55 @@ def create_app():
             "SQLALCHEMY_TRACK_MODIFICATIONS": False,
             "SQLALCHEMY_ENGINE_OPTIONS": engine_opts,
 
-            # Cache (simple)
-            "CACHE_TYPE": "simple",
-            "CACHE_DEFAULT_TIMEOUT": 120,
-
             "TEMPLATES_AUTO_RELOAD": not prod,
             "JSON_SORT_KEYS": False,
         }
     )
+
+    cache_type_env = (os.getenv("CACHE_TYPE") or "").strip().lower()
+    redis_url = (
+        (os.getenv("BACKPLANE_REDIS_URL") or "").strip()
+        or (os.getenv("REDIS_URL") or "").strip()
+        or (os.getenv("CACHE_REDIS_URL") or "").strip()
+    )
+    distributed_backplane_enabled = bool(
+        redis_url
+        or cache_type_env in {"redis", "rediscache"}
+    )
+    distributed_backplane_required = _is_true(
+        os.getenv("DISTRIBUTED_BACKPLANE_REQUIRED", "1" if prod else "0")
+    )
+    strict_runtime = _is_true(
+        os.getenv("DISTRIBUTED_BACKPLANE_STRICT_RUNTIME", "0")
+    )
+
+    if distributed_backplane_enabled and not redis_url:
+        raise RuntimeError(
+            "Backplane distribuido habilitado pero falta BACKPLANE_REDIS_URL/REDIS_URL."
+        )
+    if distributed_backplane_required and not distributed_backplane_enabled:
+        raise RuntimeError(
+            "DISTRIBUTED_BACKPLANE_REQUIRED=1 exige Redis distribuido, pero no hay URL configurada."
+        )
+
+    cache_config = {
+        "CACHE_DEFAULT_TIMEOUT": int(os.getenv("CACHE_DEFAULT_TIMEOUT", "120")),
+    }
+    if distributed_backplane_enabled:
+        cache_config.update(
+            {
+                "CACHE_TYPE": "RedisCache",
+                "CACHE_REDIS_URL": redis_url,
+                "CACHE_KEY_PREFIX": (os.getenv("CACHE_KEY_PREFIX") or "app_web:").strip(),
+            }
+        )
+    else:
+        cache_config.update({"CACHE_TYPE": "simple"})
+
+    app.config.update(cache_config)
+    app.config["DISTRIBUTED_BACKPLANE_ENABLED"] = bool(distributed_backplane_enabled)
+    app.config["DISTRIBUTED_BACKPLANE_REQUIRED"] = bool(distributed_backplane_required)
+    app.config["DISTRIBUTED_BACKPLANE_STRICT_RUNTIME"] = bool(strict_runtime)
 
     # ─────────────────────────────────────────────────────────
     # Inicializar extensiones
@@ -302,6 +477,14 @@ def create_app():
     db.init_app(app)
     cache.init_app(app)
     migrate.init_app(app, db)
+
+    if distributed_backplane_enabled:
+        from utils.distributed_backplane import bp_healthcheck
+
+        backplane_ok = bool(bp_healthcheck(strict=distributed_backplane_required))
+        if not backplane_ok and distributed_backplane_required:
+            raise RuntimeError("Redis backplane requerido no disponible.")
+        app.config["DISTRIBUTED_BACKPLANE_HEALTHY_AT_STARTUP"] = backplane_ok
 
     # Importar modelos para Alembic/Migrate
     try:
@@ -321,11 +504,17 @@ def create_app():
         # No sobreescribir si ya existe (por capas: security_layer también setea)
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("X-XSS-Protection", "0")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault(
             "Permissions-Policy",
             "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
         )
+        try:
+            resp.headers.pop("Server", None)
+            resp.headers.pop("X-Powered-By", None)
+        except Exception:
+            pass
 
         # CSP se maneja en utils/security_layer.py (una sola fuente de verdad)
 
@@ -345,6 +534,13 @@ def create_app():
             resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
             resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
             resp.headers.setdefault("Cross-Origin-Embedder-Policy", "require-corp")
+
+        try:
+            origin = (request.headers.get("Origin") or "").strip()
+            if origin and _origin_allowed(origin):
+                _apply_cors_headers(resp, origin=origin)
+        except Exception:
+            pass
 
         return resp
 
@@ -377,30 +573,15 @@ def create_app():
 
     def _raw_error_event(error_type: str, err: str, code: int = 500):
         try:
-            from models import StaffAuditLog
-            payload = {
-                "created_at": utc_now_naive(),
-                "actor_user_id": None,
-                "actor_role": (session.get("role") or "").strip().lower() or None,
-                "action_type": "ERROR_EVENT",
-                "entity_type": "system",
-                "entity_id": None,
-                "route": (request.path or "")[:255] or None,
-                "method": (request.method or "")[:10] or None,
-                "ip": (request.headers.get("CF-Connecting-IP") or request.remote_addr or "")[:64] or None,
-                "user_agent": (request.headers.get("User-Agent") or "")[:512] or None,
-                "summary": f"Error en operación ({(error_type or 'SERVER_ERROR')[:60]})",
-                "metadata_json": {
-                    "error_type": (error_type or "SERVER_ERROR")[:60],
-                    "request_id": (getattr(request, "request_id", None) or "")[:120] or None,
-                    "status_code": int(code or 500),
-                },
-                "changes_json": None,
-                "success": False,
-                "error_message": (err or "")[:4000] or None,
-            }
-            with db.engine.begin() as conn:
-                conn.execute(StaffAuditLog.__table__.insert().values(**payload))
+            from utils.enterprise_layer import log_error_event
+
+            log_error_event(
+                error_type=(error_type or "SERVER_ERROR")[:60],
+                exc=(err or "Unhandled error"),
+                route=(request.path or "")[:255] or None,
+                request_id=(getattr(request, "request_id", None) or "")[:120] or None,
+                status_code=int(code or 500),
+            )
         except Exception:
             pass
 
@@ -426,6 +607,14 @@ def create_app():
             g._error_event_logged = True
         except Exception:
             pass
+        wants_json = False
+        try:
+            best = (request.accept_mimetypes.best or "").strip().lower()
+            wants_json = (best == "application/json") or request.path.endswith(".json")
+        except Exception:
+            wants_json = False
+        if wants_json:
+            return {"error": "Ha ocurrido un error interno."}, 500
         return render_template("errors/500.html"), 500
 
     @app.after_request
@@ -439,6 +628,41 @@ def create_app():
                     code=code,
                 )
                 g._error_event_logged = True
+        except Exception:
+            pass
+        return resp
+
+    @app.after_request
+    def _capture_security_http_events(resp):
+        try:
+            code = int(getattr(resp, "status_code", 0) or 0)
+            path = (request.path or "").strip()
+            if (not path) or path.startswith("/static/"):
+                return resp
+
+            from utils.audit_logger import log_security_event
+
+            if code == 403 and not bool(getattr(g, "_authz_denied_logged", False)):
+                log_security_event(
+                    event="AUTHZ_DENIED",
+                    status="fail",
+                    entity_type="security",
+                    summary="Acceso denegado",
+                    reason="http_403",
+                    metadata={"path": path, "method": request.method, "status_code": 403},
+                )
+                g._authz_denied_logged = True
+
+            is_validation_code = code in {400, 422}
+            if is_validation_code and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                log_security_event(
+                    event="VALIDATION_FAILED",
+                    status="fail",
+                    entity_type="validation",
+                    summary="Validación de request fallida",
+                    reason=f"http_{code}",
+                    metadata={"path": path, "method": request.method, "status_code": code},
+                )
         except Exception:
             pass
         return resp
@@ -458,6 +682,7 @@ def create_app():
     app.jinja_env.filters["format_funciones_display"] = format_funciones_display
     app.jinja_env.globals["format_compat_result"] = format_compat_result
     app.jinja_env.filters["compat_fmt"] = format_compat_result
+    app.jinja_env.globals["new_idempotency_key"] = lambda: secrets.token_urlsafe(24)
 
     # ─────────────────────────────────────────────────────────
     # Login manager (staff en BD + clientes)
@@ -688,6 +913,43 @@ def create_app():
         for row in dup_usernames:
             click.echo(f"- username_norm={row['username_norm']} count={row['count']}")
 
+    from utils.outbox_relay import outbox_relay_cli
+    app.cli.add_command(outbox_relay_cli)
+
+    @app.cli.group("operational-snapshots")
+    def operational_snapshots_group():
+        """Snapshots operativos O2 (retención mínima y tendencias básicas)."""
+
+    @operational_snapshots_group.command("capture")
+    @click.option("--once", is_flag=True, default=False, help="Compatibilidad operativa; en CLI siempre es una ejecución.")
+    @click.option("--window-minutes", default=15, show_default=True, type=int, help="Ventana O1 para capturar métricas.")
+    @click.option("--skip-cleanup", is_flag=True, default=False, help="No ejecutar limpieza por retención después de capturar.")
+    def operational_snapshots_capture_command(once: bool, window_minutes: int, skip_cleanup: bool):
+        """Captura un snapshot operativo puntual para cron/scheduler externo."""
+        from utils.enterprise_layer import operational_snapshot_capture
+
+        out = operational_snapshot_capture(
+            window_minutes=max(5, min(int(window_minutes), 120)),
+            cleanup=(not bool(skip_cleanup)),
+        )
+        click.echo(
+            f"snapshot_id={int(out.get('snapshot_id', 0))} "
+            f"captured_at={out.get('captured_at')} "
+            f"window_minutes={int(out.get('window_minutes', 15))} "
+            f"pruned={int(out.get('pruned', 0))} "
+            f"once={int(bool(once))}"
+        )
+
+    @operational_snapshots_group.command("cleanup")
+    @click.option("--retention-hours", default=0, show_default=True, type=int, help="Horas a retener; 0 usa la política O2.")
+    def operational_snapshots_cleanup_command(retention_hours: int):
+        """Limpia snapshots operativos fuera de retención."""
+        from utils.enterprise_layer import cleanup_operational_snapshots
+
+        hours = int(retention_hours) if int(retention_hours or 0) > 0 else None
+        deleted = cleanup_operational_snapshots(retention_hours=hours)
+        click.echo(f"deleted={int(deleted)}")
+
     def _seed_testing_staff_users() -> None:
         if env not in ("test", "testing"):
             return
@@ -710,9 +972,40 @@ def create_app():
 
     if env in ("test", "testing"):
         with app.app_context():
-            from models import StaffUser, StaffAuditLog
+            from models import StaffUser, StaffAuditLog, OperationalMetricSnapshot, TrustedDevice
             StaffUser.__table__.create(bind=db.engine, checkfirst=True)
             StaffAuditLog.__table__.create(bind=db.engine, checkfirst=True)
+            OperationalMetricSnapshot.__table__.create(bind=db.engine, checkfirst=True)
+            TrustedDevice.__table__.create(bind=db.engine, checkfirst=True)
+            try:
+                col_names = {
+                    c.get("name")
+                    for c in sa_inspect(db.engine).get_columns("staff_users")
+                    if c.get("name")
+                }
+                if "mfa_enabled" not in col_names:
+                    db.session.execute(text("ALTER TABLE staff_users ADD COLUMN mfa_enabled BOOLEAN DEFAULT 0 NOT NULL"))
+                if "mfa_secret" not in col_names:
+                    db.session.execute(text("ALTER TABLE staff_users ADD COLUMN mfa_secret VARCHAR(512)"))
+                if "mfa_last_timestep" not in col_names:
+                    db.session.execute(text("ALTER TABLE staff_users ADD COLUMN mfa_last_timestep INTEGER"))
+                trusted_col_names = {
+                    c.get("name")
+                    for c in sa_inspect(db.engine).get_columns("trusted_devices")
+                    if c.get("name")
+                }
+                if "device_token_hash" not in trusted_col_names:
+                    db.session.execute(text("ALTER TABLE trusted_devices ADD COLUMN device_token_hash VARCHAR(64)"))
+                db.session.execute(
+                    text(
+                        "UPDATE trusted_devices "
+                        "SET device_token_hash = device_fingerprint "
+                        "WHERE device_token_hash IS NULL"
+                    )
+                )
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             _seed_testing_staff_users()
 
         @app.route("/_test/error", methods=["GET"])
@@ -739,6 +1032,9 @@ def create_app():
 
     from public import public_bp
     app.register_blueprint(public_bp)  # "/"
+
+    from contratos import contratos_bp
+    app.register_blueprint(contratos_bp)
 
     from reclutamiento_publico import reclutamiento_publico_bp
     app.register_blueprint(reclutamiento_publico_bp)

@@ -1,0 +1,169 @@
+{% set _style = style or 'list' %}
+{% set _modal_prefix = ('cliente' if _style == 'cliente' else 'list') ~ '-reemplazo-' ~ solicitud.id %}
+{% set _open_modal_id = 'modal-abrir-' ~ _modal_prefix %}
+{% set _close_modal_id = 'modal-culminar-' ~ _modal_prefix %}
+
+<div class="d-inline-flex flex-wrap gap-2 align-items-center">
+  {% if not repl_activo %}
+    <button
+      type="button"
+      class="btn btn-sm {{ 'btn-secondary' if _style == 'cliente' else 'btn-outline-dark' }}"
+      data-bs-toggle="modal"
+      data-bs-target="#{{ _open_modal_id }}"
+      {% if not solicitud.candidata_id %}disabled{% endif %}
+      title="Abrir reemplazo">
+      {% if _style == 'cliente' %}🔁{% else %}Abrir reemplazo{% endif %}
+    </button>
+  {% elif repl_operable %}
+    {% if is_admin_role %}
+    <form method="post"
+          action="{{ url_for('admin.cancelar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}"
+          class="d-inline"
+          data-admin-async-form
+          data-async-target="{{ async_target }}"
+          data-async-busy-container="{{ async_scope }}"
+          data-async-preserve-scroll="true"
+          data-async-fallback="native"
+          data-async-confirm="¿Cancelar este reemplazo activo?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="_async_target" value="{{ async_target }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+      <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
+      <button type="submit" class="btn btn-sm btn-outline-danger" title="Cancelar reemplazo">
+        {% if _style == 'cliente' %}🛑{% else %}Cancelar reemplazo{% endif %}
+      </button>
+    </form>
+    {% elif _style == 'cliente' %}
+      <button class="btn btn-sm btn-outline-danger" disabled title="Cancelar reemplazo (solo admin)">🛑</button>
+    {% endif %}
+
+    <button
+      type="button"
+      class="btn btn-sm {{ 'btn-dark' if _style == 'cliente' else 'btn-success' }}"
+      data-bs-toggle="modal"
+      data-bs-target="#{{ _close_modal_id }}"
+      title="Cierre rápido (operativo)"
+      aria-label="Cierre rápido">
+      {% if _style == 'cliente' %}✅ Cierre rápido{% else %}Cierre rápido{% endif %}
+    </button>
+
+    <a
+      href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}"
+      class="btn btn-sm btn-outline-primary"
+      title="Cierre completo (flujo con búsqueda y selección)">
+      {% if _style == 'cliente' %}Cierre completo{% else %}Cierre completo{% endif %}
+    </a>
+  {% else %}
+    <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Estado desfasado: revisa la solicitud">
+      {% if _style == 'cliente' %}⚠️{% else %}Reemplazo no operable{% endif %}
+    </button>
+  {% endif %}
+</div>
+
+{% if (not repl_activo) and solicitud.candidata_id %}
+<div class="modal fade" id="{{ _open_modal_id }}" tabindex="-1" aria-hidden="true" data-reemplazo-modal="1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Abrir reemplazo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post"
+            action="{{ url_for('admin.nuevo_reemplazo', s_id=solicitud.id) }}"
+            data-admin-async-form
+            data-async-target="{{ async_target }}"
+            data-async-busy-container="{{ async_scope }}"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        <div class="modal-body text-start">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="_async_target" value="{{ async_target }}">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+          <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
+          <div class="mb-2">
+            <label class="form-label">Motivo del fallo</label>
+            <textarea class="form-control" name="motivo_fallo" rows="3" required></textarea>
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="descalificar_candidata_fallida" value="1" id="dcf-{{ _modal_prefix }}">
+            <label class="form-check-label" for="dcf-{{ _modal_prefix }}">
+              Descalificar candidata que falló
+            </label>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Motivo descalificación (si aplica)</label>
+            <textarea class="form-control" name="motivo_descalificacion" rows="2"></textarea>
+          </div>
+          <small class="text-muted">Si no se descalifica, se intenta volver a lista para trabajar según readiness.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-primary">Abrir reemplazo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if repl_operable %}
+<div class="modal fade" id="{{ _close_modal_id }}" tabindex="-1" aria-hidden="true" data-reemplazo-modal="1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cierre rápido de reemplazo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post"
+            action="{{ url_for('admin.cerrar_reemplazo_asignando', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}"
+            data-admin-async-form
+            data-async-target="{{ async_target }}"
+            data-async-busy-container="{{ async_scope }}"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        <div class="modal-body text-start">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="_async_target" value="{{ async_target }}">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+          <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
+          <div class="alert alert-info py-2 mb-3">
+            <strong>Cierre rápido:</strong> usa ID de candidata para una culminación operativa.
+            <a href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}" class="alert-link">
+              Ir a cierre completo
+            </a>.
+          </div>
+          <div data-reemplazo-quick-close>
+            <label class="form-label">Buscar candidata nueva</label>
+            <div class="input-group mb-2">
+              <input
+                type="text"
+                class="form-control"
+                autocomplete="off"
+                placeholder="Código, nombre o cédula"
+                data-reemplazo-search-input
+                data-search-url="{{ url_for('admin.candidatas_reemplazo_quick_search') }}">
+              <button type="button" class="btn btn-outline-secondary" data-reemplazo-search-trigger>
+                Buscar
+              </button>
+            </div>
+
+            <label class="form-label small text-muted mb-1">Selecciona resultado</label>
+            <select name="candidata_new_id" required class="form-select" data-reemplazo-search-select>
+              <option value="">— Busca una candidata para mostrar opciones —</option>
+            </select>
+            <div class="form-text" data-reemplazo-search-feedback>Busca por código, nombre o cédula.</div>
+          </div>
+          <div class="form-text mt-1">Se bloqueará si la candidata está descalificada.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-success">{{ 'Confirmar cierre rápido' if _style == 'cliente' else 'Confirmar cierre rápido' }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}

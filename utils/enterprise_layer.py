@@ -4,18 +4,38 @@ from __future__ import annotations
 import traceback
 import uuid
 import os
+import re
 import urllib.parse
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
 from typing import Any
 
 from flask import request
-from sqlalchemy import func, case, text
+from sqlalchemy import func, case, text, or_
 
-from config_app import cache, db
-from models import StaffAuditLog, StaffUser, Solicitud, SolicitudCandidata
+from config_app import db
+from models import (
+    StaffAuditLog,
+    StaffUser,
+    Solicitud,
+    SolicitudCandidata,
+    DomainOutbox,
+    RequestIdempotencyKey,
+    OperationalMetricSnapshot,
+)
 from utils.audit_logger import log_action
+from utils.distributed_backplane import (
+    BackplaneUnavailable,
+    bp_add,
+    bp_delete,
+    bp_get,
+    bp_healthcheck,
+    bp_set,
+)
 from utils.matching_service import rank_candidates
+from utils.secrets_manager import get_secret
+from utils.ssrf_guard import OutboundURLBlocked, validate_external_url, build_no_redirect_opener
 from utils.timezone import iso_utc_z, parse_iso_utc, utc_now_naive
 
 LOCK_TTL_SECONDS = 120
@@ -30,6 +50,11 @@ SESSION_REV_KEY_PREFIX = "enterprise:session_rev"
 ANOMALY_WINDOW_SEC = 60
 ALERT_DEDUPE_DEFAULT_SEC = 180
 TELEGRAM_CFG_CACHE_KEY = "enterprise:telegram:cfg"
+O1_WINDOW_MINUTES_DEFAULT = 15
+O1_COUNTER_TTL_SECONDS = 20 * 60
+O2_SNAPSHOT_INTERVAL_MINUTES_DEFAULT = 5
+O2_SNAPSHOT_RETENTION_HOURS_DEFAULT = 24 * 7
+_LIVE_REGION_SANITIZE_RE = re.compile(r"[^a-z0-9:_-]+")
 
 
 def _utcnow() -> datetime:
@@ -69,51 +94,73 @@ def _user_agent() -> str | None:
 
 
 def _safe_cache_get(key: str, default=None):
-    try:
-        return cache.get(key)
-    except Exception:
-        return default
+    return bp_get(key, default=default, context="enterprise_safe_get")
 
 
 def _safe_cache_set(key: str, value, timeout: int):
-    try:
-        cache.set(key, value, timeout=timeout)
-        return True
-    except Exception:
-        return False
+    return bp_set(
+        key,
+        value,
+        timeout=timeout,
+        context="enterprise_safe_set",
+    )
 
 
 def _safe_cache_delete(key: str):
-    try:
-        cache.delete(key)
-    except Exception:
-        pass
+    bp_delete(key, context="enterprise_safe_delete")
 
 
 def _safe_cache_add(key: str, value, timeout: int) -> bool:
     try:
-        if cache.get(key):
-            return False
-        cache.set(key, value, timeout=timeout)
-        return True
+        return bp_add(
+            key,
+            value,
+            timeout=timeout,
+            context="enterprise_safe_add",
+        )
     except Exception:
+        # Para flujos best-effort (alert dedupe), preferimos no bloquear.
         return True
+
+
+def _coord_get(key: str, default=None):
+    return bp_get(key, default=default, strict=True, context="enterprise_coord_get")
+
+
+def _coord_set(key: str, value, timeout: int) -> bool:
+    return bp_set(
+        key,
+        value,
+        timeout=timeout,
+        strict=True,
+        context="enterprise_coord_set",
+    )
+
+
+def _coord_add(key: str, value, timeout: int) -> bool:
+    return bp_add(
+        key,
+        value,
+        timeout=timeout,
+        strict=True,
+        context="enterprise_coord_add",
+    )
 
 
 def _append_index(index_key: str, item: str, timeout: int = 3600):
-    idx = _safe_cache_get(index_key, default=[]) or []
+    idx = _coord_get(index_key, default=[]) or []
     idx = [x for x in idx if isinstance(x, str) and x]
     if item not in idx:
         idx.append(item)
     if len(idx) > 2000:
         idx = idx[-2000:]
-    _safe_cache_set(index_key, idx, timeout=timeout)
+    _coord_set(index_key, idx, timeout=timeout)
 
 
 def telegram_channel_config() -> dict[str, Any]:
     cached = _safe_cache_get(TELEGRAM_CFG_CACHE_KEY, default={}) or {}
-    token = str(cached.get("token") or os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-    chat_id = str(cached.get("chat_id") or os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+    token = str(cached.get("token") or get_secret("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = str(cached.get("chat_id") or get_secret("TELEGRAM_CHAT_ID") or "").strip()
     enabled_raw = cached.get("enabled")
     if enabled_raw is None:
         enabled_raw = os.getenv("TELEGRAM_ALERTS_ENABLED") or "1"
@@ -149,6 +196,11 @@ def save_telegram_channel_config(*, token: str, chat_id: str, enabled: bool, act
     )
 
 
+def clear_telegram_channel_runtime_cache() -> None:
+    """Forces next read to use current env/secrets manager values."""
+    _safe_cache_delete(TELEGRAM_CFG_CACHE_KEY)
+
+
 def _send_telegram_message(text: str) -> tuple[bool, str]:
     cfg = telegram_channel_config()
     if not cfg.get("enabled"):
@@ -159,7 +211,10 @@ def _send_telegram_message(text: str) -> tuple[bool, str]:
         return False, "Falta TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID"
 
     try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        url = validate_external_url(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            allowed_hosts={"api.telegram.org"},
+        )
         payload = urllib.parse.urlencode(
             {
                 "chat_id": chat_id,
@@ -169,13 +224,21 @@ def _send_telegram_message(text: str) -> tuple[bool, str]:
         ).encode("utf-8")
         req = urllib.request.Request(url, data=payload, method="POST")
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        opener = build_no_redirect_opener()
+        with opener.open(req, timeout=6) as resp:
             code = int(getattr(resp, "status", 0) or 0)
             if 200 <= code < 300:
                 return True, "ok"
         return False, "Respuesta no exitosa de Telegram"
-    except Exception as exc:
-        return False, str(exc)
+    except OutboundURLBlocked:
+        return False, "Destino externo bloqueado por política SSRF."
+    except urllib.error.HTTPError as exc:
+        code = int(getattr(exc, "code", 0) or 0)
+        if 300 <= code < 400:
+            return False, "Redirección externa bloqueada por política SSRF."
+        return False, "Proveedor externo respondió con error."
+    except Exception:
+        return False, "No se pudo contactar proveedor externo."
 
 
 def send_telegram_test_message(*, actor_username: str | None = None) -> tuple[bool, str]:
@@ -309,12 +372,26 @@ def lock_ping(*, user: StaffUser, entity_type: str, entity_id: str, current_path
 
     key = _lock_cache_key(et, eid)
     now = _utcnow()
-    current = _safe_cache_get(key, default=None)
+    try:
+        current = _coord_get(key, default=None)
+    except BackplaneUnavailable:
+        return {
+            "ok": False,
+            "error": "distributed_backplane_unavailable",
+            "message": "Lock temporalmente no disponible. Reintenta en unos segundos.",
+        }
 
     if not isinstance(current, dict) or not current.get("owner_user_id"):
         payload = _lock_owner_payload(user, entity_type=et, entity_id=eid, current_path=current_path)
-        _safe_cache_set(key, payload, timeout=LOCK_TTL_SECONDS + 8)
-        _append_index(LOCK_INDEX_KEY, key, timeout=LOCK_TTL_SECONDS * 40)
+        try:
+            _coord_set(key, payload, timeout=LOCK_TTL_SECONDS + 8)
+            _append_index(LOCK_INDEX_KEY, key, timeout=LOCK_TTL_SECONDS * 40)
+        except BackplaneUnavailable:
+            return {
+                "ok": False,
+                "error": "distributed_backplane_unavailable",
+                "message": "Lock temporalmente no disponible. Reintenta en unos segundos.",
+            }
         return {"ok": True, "state": "owner", "lock": payload}
 
     owner_id = int(current.get("owner_user_id") or 0)
@@ -325,7 +402,14 @@ def lock_ping(*, user: StaffUser, entity_type: str, entity_id: str, current_path
         current["last_seen"] = _dt_iso(now)
         current["expires_at"] = _dt_iso(now + timedelta(seconds=LOCK_TTL_SECONDS))
         current["current_path"] = (current_path or current.get("current_path") or "")[:255]
-        _safe_cache_set(key, current, timeout=LOCK_TTL_SECONDS + 8)
+        try:
+            _coord_set(key, current, timeout=LOCK_TTL_SECONDS + 8)
+        except BackplaneUnavailable:
+            return {
+                "ok": False,
+                "error": "distributed_backplane_unavailable",
+                "message": "Lock temporalmente no disponible. Reintenta en unos segundos.",
+            }
         return {"ok": True, "state": "owner", "lock": current}
 
     return {
@@ -349,10 +433,24 @@ def lock_takeover(*, user: StaffUser, entity_type: str, entity_id: str, reason: 
         return {"ok": False, "error": "No autorizado para tomar control."}
 
     key = _lock_cache_key(et, eid)
-    before = _safe_cache_get(key, default=None)
+    try:
+        before = _coord_get(key, default=None)
+    except BackplaneUnavailable:
+        return {
+            "ok": False,
+            "error": "distributed_backplane_unavailable",
+            "message": "Takeover no disponible mientras el backplane esté degradado.",
+        }
     payload = _lock_owner_payload(user, entity_type=et, entity_id=eid)
-    _safe_cache_set(key, payload, timeout=LOCK_TTL_SECONDS + 8)
-    _append_index(LOCK_INDEX_KEY, key, timeout=LOCK_TTL_SECONDS * 40)
+    try:
+        _coord_set(key, payload, timeout=LOCK_TTL_SECONDS + 8)
+        _append_index(LOCK_INDEX_KEY, key, timeout=LOCK_TTL_SECONDS * 40)
+    except BackplaneUnavailable:
+        return {
+            "ok": False,
+            "error": "distributed_backplane_unavailable",
+            "message": "Takeover no disponible mientras el backplane esté degradado.",
+        }
 
     log_action(
         action_type="LOCK_TAKEOVER",
@@ -384,14 +482,20 @@ def lock_takeover(*, user: StaffUser, entity_type: str, entity_id: str, reason: 
 
 
 def list_active_locks() -> list[dict[str, Any]]:
-    idx = _safe_cache_get(LOCK_INDEX_KEY, default=[]) or []
+    try:
+        idx = _coord_get(LOCK_INDEX_KEY, default=[]) or []
+    except BackplaneUnavailable:
+        return []
     now = _utcnow()
     rows: list[dict[str, Any]] = []
     clean_idx: list[str] = []
     for key in idx:
         if not isinstance(key, str) or not key:
             continue
-        payload = _safe_cache_get(key, default=None)
+        try:
+            payload = _coord_get(key, default=None)
+        except BackplaneUnavailable:
+            return []
         if not isinstance(payload, dict):
             continue
         clean_idx.append(key)
@@ -401,7 +505,10 @@ def list_active_locks() -> list[dict[str, Any]]:
         row["held_for_sec"] = age
         row["active"] = (age <= LOCK_TTL_SECONDS)
         rows.append(row)
-    _safe_cache_set(LOCK_INDEX_KEY, clean_idx[-2000:], timeout=LOCK_TTL_SECONDS * 40)
+    try:
+        _coord_set(LOCK_INDEX_KEY, clean_idx[-2000:], timeout=LOCK_TTL_SECONDS * 40)
+    except BackplaneUnavailable:
+        return []
     rows.sort(key=lambda x: (not bool(x.get("active")), int(x.get("held_for_sec") or 0)))
     return rows
 
@@ -420,7 +527,10 @@ def touch_staff_session(*, user: StaffUser, flask_session, path: str) -> dict[st
 
     uid = int(user.id)
     rev_key = _session_rev_key(uid)
-    current_rev = int(_safe_cache_get(rev_key, default=1) or 1)
+    try:
+        current_rev = int(_coord_get(rev_key, default=1) or 1)
+    except BackplaneUnavailable:
+        return {"ok": False, "reason": "backplane_unavailable"}
     token = str(flask_session.get("staff_session_token") or "").strip()
     session_rev = int(flask_session.get("staff_session_rev") or current_rev)
 
@@ -434,7 +544,10 @@ def touch_staff_session(*, user: StaffUser, flask_session, path: str) -> dict[st
         flask_session["staff_session_rev"] = current_rev
         flask_session["staff_session_created_at"] = _dt_iso(now)
 
-    payload = _safe_cache_get(_session_key(token), default={}) or {}
+    try:
+        payload = _coord_get(_session_key(token), default={}) or {}
+    except BackplaneUnavailable:
+        return {"ok": False, "reason": "backplane_unavailable"}
     payload.update(
         {
             "token": token,
@@ -448,20 +561,29 @@ def touch_staff_session(*, user: StaffUser, flask_session, path: str) -> dict[st
             "created_at": payload.get("created_at") or flask_session.get("staff_session_created_at") or _dt_iso(now),
         }
     )
-    _safe_cache_set(_session_key(token), payload, timeout=SESSION_TTL_SECONDS)
+    try:
+        _coord_set(_session_key(token), payload, timeout=SESSION_TTL_SECONDS)
+    except BackplaneUnavailable:
+        return {"ok": False, "reason": "backplane_unavailable"}
     _append_index(SESSION_INDEX_KEY, token, timeout=SESSION_TTL_SECONDS * 4)
     return {"ok": True, "token": token, "payload": payload}
 
 
 def list_active_sessions() -> list[dict[str, Any]]:
-    idx = _safe_cache_get(SESSION_INDEX_KEY, default=[]) or []
+    try:
+        idx = _coord_get(SESSION_INDEX_KEY, default=[]) or []
+    except BackplaneUnavailable:
+        return []
     now = _utcnow()
     rows: list[dict[str, Any]] = []
     clean: list[str] = []
     for token in idx:
         if not isinstance(token, str) or not token:
             continue
-        payload = _safe_cache_get(_session_key(token), default=None)
+        try:
+            payload = _coord_get(_session_key(token), default=None)
+        except BackplaneUnavailable:
+            return []
         if not isinstance(payload, dict):
             continue
         clean.append(token)
@@ -470,7 +592,10 @@ def list_active_sessions() -> list[dict[str, Any]]:
         row = dict(payload)
         row["last_seen_seconds"] = age
         rows.append(row)
-    _safe_cache_set(SESSION_INDEX_KEY, clean[-4000:], timeout=SESSION_TTL_SECONDS * 4)
+    try:
+        _coord_set(SESSION_INDEX_KEY, clean[-4000:], timeout=SESSION_TTL_SECONDS * 4)
+    except BackplaneUnavailable:
+        return []
     rows.sort(key=lambda x: (int(x.get("last_seen_seconds") or 999999), str(x.get("username") or "")))
     return rows
 
@@ -478,8 +603,8 @@ def list_active_sessions() -> list[dict[str, Any]]:
 def close_user_sessions(*, actor: StaffUser, user_id: int, reason: str = "") -> None:
     uid = int(user_id)
     rev_key = _session_rev_key(uid)
-    rev = int(_safe_cache_get(rev_key, default=1) or 1) + 1
-    _safe_cache_set(rev_key, rev, timeout=SESSION_TTL_SECONDS * 8)
+    rev = int(_coord_get(rev_key, default=1) or 1) + 1
+    _coord_set(rev_key, rev, timeout=SESSION_TTL_SECONDS * 8)
     log_action(
         action_type="SESSION_FORCED_LOGOUT",
         entity_type="staff_user",
@@ -505,6 +630,9 @@ def log_error_event(
     status_code: int = 500,
 ) -> None:
     try:
+        def _clip(value: Any, limit: int) -> str:
+            return str(value or "")[: max(0, int(limit))]
+
         if isinstance(exc, BaseException):
             stack = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             err_text = str(exc)
@@ -519,8 +647,8 @@ def log_error_event(
             summary=f"Error en operación ({error_type})",
             metadata={
                 "error_type": (error_type or "SERVER_ERROR")[:60],
-                "route": (route or request.path if request else "")[:255],
-                "request_id": (request_id or request.headers.get("X-Request-ID") if request else "")[:120],
+                "route": _clip(route or (request.path if request else ""), 255),
+                "request_id": _clip(request_id or (request.headers.get("X-Request-ID") if request else ""), 120),
                 "status_code": int(status_code or 500),
                 "entity_type": (entity_type or "system"),
                 "entity_id": (str(entity_id)[:64] if entity_id is not None else None),
@@ -564,7 +692,14 @@ def evaluate_security_anomalies(
     uid = int(actor_user_id or 0)
     ip = (_client_ip() or "no_ip")[:64]
 
-    if (not success) and at in {"LOGIN", "ADMIN_LOGIN", "CLIENTE_LOGIN", "STAFF_LOGIN_FAIL"}:
+    if (not success) and at in {
+        "LOGIN",
+        "ADMIN_LOGIN",
+        "CLIENTE_LOGIN",
+        "STAFF_LOGIN_FAIL",
+        "CLIENTE_LOGIN_FAIL",
+        "AUTH_LOGIN_FAIL",
+    }:
         key = f"enterprise:anom:login_fail:{ip}:{uid or 'na'}"
         n = int(_safe_cache_get(key, default=0) or 0) + 1
         _safe_cache_set(key, n, timeout=10 * 60)
@@ -586,6 +721,57 @@ def evaluate_security_anomalies(
                 entity_id=f"ip:{ip}",
                 metadata={"count": n, "window_sec": 600, "scope": f"ip:{ip}"},
                 dedupe_seconds=180,
+                telegram=True,
+                )
+
+    if at in {"AUTH_LOGIN_BLOCKED", "AUTH_LOGIN_RATE_LIMITED"}:
+        key = f"enterprise:anom:login_throttle:{ip}"
+        n = int(_safe_cache_get(key, default=0) or 0) + 1
+        _safe_cache_set(key, n, timeout=10 * 60)
+        if n >= 6:
+            emit_critical_alert(
+                rule="login_throttle_burst",
+                summary=f"Bloqueos/rate limit de login repetidos: {n} en 10 minutos (IP {ip})",
+                entity_type="security",
+                entity_id=f"ip:{ip}",
+                metadata={"count": n, "window_sec": 600, "scope": f"ip:{ip}", "event": at},
+                dedupe_seconds=120,
+                telegram=True,
+            )
+        elif n >= 3:
+            emit_warning_alert(
+                rule="login_throttle_burst",
+                summary=f"Patrón de login sospechoso: {n} bloqueos/rate limit en 10 minutos (IP {ip})",
+                entity_type="security",
+                entity_id=f"ip:{ip}",
+                metadata={"count": n, "window_sec": 600, "scope": f"ip:{ip}", "event": at},
+                dedupe_seconds=120,
+                telegram=True,
+            )
+
+    if at in {"AUTHZ_DENIED", "PERMISSION_DENIED"}:
+        scope = f"{ip}:{uid or 'anon'}"
+        key = f"enterprise:anom:authz_denied:{scope}"
+        n = int(_safe_cache_get(key, default=0) or 0) + 1
+        _safe_cache_set(key, n, timeout=5 * 60)
+        if n >= 10:
+            emit_critical_alert(
+                rule="authz_denied_burst",
+                summary=f"Accesos denegados repetidos: {n} en 5 minutos ({scope})",
+                entity_type="security",
+                entity_id=scope,
+                metadata={"count": n, "window_sec": 300, "scope": scope, "route": route},
+                dedupe_seconds=90,
+                telegram=True,
+            )
+        elif n >= 5:
+            emit_warning_alert(
+                rule="authz_denied_burst",
+                summary=f"Accesos denegados frecuentes: {n} en 5 minutos ({scope})",
+                entity_type="security",
+                entity_id=scope,
+                metadata={"count": n, "window_sec": 300, "scope": scope, "route": route},
+                dedupe_seconds=90,
                 telegram=True,
             )
 
@@ -675,6 +861,22 @@ def evaluate_security_anomalies(
                     "window_sec": ANOMALY_WINDOW_SEC,
                     "detail": "Se detectó un patrón de navegación con frecuencia no humana.",
                 },
+                )
+
+    if at in {"STAFF_USER_CREATE", "STAFF_USER_DELETE", "ROLE_CHANGED", "STAFF_PASSWORD_CHANGED"} and success:
+        actor_scope = str(uid or ip)
+        key = f"enterprise:anom:admin_sensitive:{actor_scope}"
+        n = int(_safe_cache_get(key, default=0) or 0) + 1
+        _safe_cache_set(key, n, timeout=10 * 60)
+        if n >= 8:
+            emit_warning_alert(
+                rule="admin_sensitive_burst",
+                summary=f"Actividad admin sensible alta: {n} eventos en 10 minutos (actor {actor_scope})",
+                entity_type="security",
+                entity_id=actor_scope,
+                metadata={"count": n, "window_sec": 600, "scope": actor_scope, "event": at},
+                dedupe_seconds=120,
+                telegram=True,
             )
 
 
@@ -770,12 +972,7 @@ def health_payload() -> dict[str, Any]:
         db_error = str(exc)
 
     # No hay cola dedicada en este sistema; se reporta stream/cache como infraestructura en vivo.
-    stream_ok = True
-    try:
-        _safe_cache_set("enterprise:health_ping", 1, timeout=20)
-        stream_ok = bool(_safe_cache_get("enterprise:health_ping", default=0))
-    except Exception:
-        stream_ok = False
+    stream_ok = bool(bp_healthcheck(strict=False))
 
     err_since = now - timedelta(minutes=15)
     last_errors = (
@@ -790,6 +987,519 @@ def health_payload() -> dict[str, Any]:
         "stream": {"ok": bool(stream_ok)},
         "errors_last_15m": int(last_errors),
     }
+
+
+def _metric_status(value: float | int | None, *, warn_at: float, crit_at: float, lower_is_better: bool = True) -> str:
+    if value is None:
+        return "unknown"
+    try:
+        n = float(value)
+    except Exception:
+        return "unknown"
+    if lower_is_better:
+        if n >= float(crit_at):
+            return "critical"
+        if n >= float(warn_at):
+            return "warning"
+    else:
+        if n <= float(crit_at):
+            return "critical"
+        if n <= float(warn_at):
+            return "warning"
+    return "ok"
+
+
+def _o1_counter_key(name: str) -> str:
+    safe = (name or "").strip().lower()
+    safe = _LIVE_REGION_SANITIZE_RE.sub("_", safe)
+    return f"o1:ops:{safe}"
+
+
+_LIVE_REGION_INDEX_KEY = _o1_counter_key("live:regions:index")
+
+
+def _safe_bp_incr_counter(name: str, *, delta: int = 1, timeout: int = O1_COUNTER_TTL_SECONDS) -> int:
+    try:
+        return int(bp_incr(_o1_counter_key(name), delta=int(delta), timeout=max(60, int(timeout)), strict=False, context="o1_counter_incr"))
+    except Exception:
+        return 0
+
+
+def _safe_bp_get_counter(name: str, default: int = 0) -> int:
+    try:
+        return int(bp_get(_o1_counter_key(name), default=default, strict=False, context="o1_counter_get") or default)
+    except Exception:
+        return int(default)
+
+
+def _live_region_slug(region: str | None) -> str:
+    raw = (region or "").strip().lower()
+    if not raw:
+        return "unknown"
+    return _LIVE_REGION_SANITIZE_RE.sub("_", raw).strip("_") or "unknown"
+
+
+def bump_operational_counter(name: str, *, delta: int = 1, timeout: int = O1_COUNTER_TTL_SECONDS) -> int:
+    return _safe_bp_incr_counter(name, delta=delta, timeout=timeout)
+
+
+def ingest_live_observability_event(payload: dict[str, Any] | None, *, user_id: int | None = None) -> dict[str, Any]:
+    data = dict(payload or {})
+    event = str(data.get("event") or "").strip().lower()
+    region = _live_region_slug(data.get("region"))
+    try:
+        duration_ms = int(data.get("duration_ms") or 0)
+    except Exception:
+        duration_ms = 0
+    duration_ms = max(0, min(duration_ms, 120000))
+    ok_flag = bool(data.get("ok", True))
+
+    accepted = False
+    if event == "fallback_entered":
+        _safe_bp_incr_counter("live:fallback_entered_count")
+        accepted = True
+    elif event == "sse_open":
+        _safe_bp_incr_counter("live:sse_open_count")
+        accepted = True
+    elif event == "refetch_region":
+        _safe_bp_incr_counter(f"live:refetch:{region}:count")
+        if duration_ms > 0:
+            _safe_bp_incr_counter(f"live:refetch:{region}:sum_ms", delta=duration_ms)
+        if not ok_flag:
+            _safe_bp_incr_counter(f"live:refetch:{region}:fail_count")
+        try:
+            known = bp_get(_LIVE_REGION_INDEX_KEY, default=[], strict=False, context="o1_regions_idx_get") or []
+            known = [str(x).strip() for x in known if str(x).strip()]
+            if region not in known:
+                known.append(region)
+                known = known[-50:]
+            bp_set(_LIVE_REGION_INDEX_KEY, known, timeout=O1_COUNTER_TTL_SECONDS, strict=False, context="o1_regions_idx_set")
+        except Exception:
+            pass
+        accepted = True
+
+    return {
+        "ok": True,
+        "accepted": bool(accepted),
+        "event": event,
+        "region": region,
+        "user_id": int(user_id) if user_id is not None else None,
+    }
+
+
+O2_TREND_METRIC_KEYS = (
+    "outbox_backlog_pending",
+    "outbox_oldest_pending_age_seconds",
+    "outbox_quarantined_total",
+    "outbox_quarantined_last_15m",
+    "relay_fail_rate_pct_15m",
+    "relay_retry_rate_pct_15m",
+    "live_polling_fallback_pct_15m",
+    "live_poll_degraded_outbox_fallback_count_15m",
+    "concurrency_idempotency_conflicts_15m",
+    "critical_5xx_endpoints_15m",
+)
+
+
+def _o2_int_env(name: str, default: int, *, min_value: int, max_value: int) -> int:
+    raw = str(os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        val = int(raw)
+    except Exception:
+        return default
+    return max(min_value, min(val, max_value))
+
+
+def o2_snapshot_policy() -> dict[str, int]:
+    interval_m = _o2_int_env(
+        "O2_SNAPSHOT_INTERVAL_MINUTES",
+        O2_SNAPSHOT_INTERVAL_MINUTES_DEFAULT,
+        min_value=1,
+        max_value=60,
+    )
+    retention_h = _o2_int_env(
+        "O2_SNAPSHOT_RETENTION_HOURS",
+        O2_SNAPSHOT_RETENTION_HOURS_DEFAULT,
+        min_value=24,
+        max_value=24 * 30,
+    )
+    return {
+        "interval_minutes": int(interval_m),
+        "retention_hours": int(retention_h),
+    }
+
+
+def _o2_pick_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key in O2_TREND_METRIC_KEYS:
+        out[key] = metrics.get(key)
+    return out
+
+
+def _o2_dir(current: Any, previous: Any) -> tuple[float | None, str]:
+    if current is None or previous is None:
+        return None, "unknown"
+    try:
+        c = float(current)
+        p = float(previous)
+    except Exception:
+        return None, "unknown"
+    delta = round(c - p, 2)
+    if abs(delta) < 0.01:
+        return delta, "flat"
+    return delta, ("up" if delta > 0 else "down")
+
+
+def _o2_baseline(snapshots: list[OperationalMetricSnapshot], since: datetime) -> OperationalMetricSnapshot | None:
+    in_window = [row for row in snapshots if getattr(row, "captured_at", None) and row.captured_at >= since]
+    if not in_window:
+        return None
+    return in_window[0]
+
+
+def cleanup_operational_snapshots(*, retention_hours: int | None = None) -> int:
+    policy = o2_snapshot_policy()
+    retention_h = int(retention_hours or policy["retention_hours"])
+    cutoff = _utcnow() - timedelta(hours=max(24, retention_h))
+    try:
+        deleted = (
+            OperationalMetricSnapshot.query
+            .filter(OperationalMetricSnapshot.captured_at < cutoff)
+            .delete(synchronize_session=False)
+        )
+        db.session.commit()
+        return int(deleted or 0)
+    except Exception:
+        db.session.rollback()
+        return 0
+
+
+def operational_snapshot_capture(*, window_minutes: int = O1_WINDOW_MINUTES_DEFAULT, cleanup: bool = True) -> dict[str, Any]:
+    payload = operational_semaphore_payload(window_minutes=window_minutes, include_trends=False)
+    metrics = _o2_pick_metrics(payload.get("metrics") or {})
+    now = _utcnow()
+    row = OperationalMetricSnapshot(
+        captured_at=now,
+        window_minutes=max(5, min(int(window_minutes or O1_WINDOW_MINUTES_DEFAULT), 120)),
+        metrics=metrics,
+    )
+    db.session.add(row)
+    db.session.commit()
+    pruned = 0
+    if cleanup:
+        pruned = cleanup_operational_snapshots()
+    return {
+        "ok": True,
+        "snapshot_id": int(row.id),
+        "captured_at": _dt_iso(row.captured_at),
+        "window_minutes": int(row.window_minutes),
+        "metrics": metrics,
+        "pruned": int(pruned),
+        "policy": o2_snapshot_policy(),
+    }
+
+
+def operational_trends_payload(*, current_metrics: dict[str, Any] | None = None) -> dict[str, Any]:
+    now = _utcnow()
+    metrics = dict(current_metrics or {})
+    if not metrics:
+        metrics = _o2_pick_metrics((operational_semaphore_payload(include_trends=False).get("metrics") or {}))
+    tracked = _o2_pick_metrics(metrics)
+
+    since_24h = now - timedelta(hours=24)
+    snapshots = (
+        OperationalMetricSnapshot.query
+        .filter(OperationalMetricSnapshot.captured_at >= since_24h)
+        .order_by(OperationalMetricSnapshot.captured_at.asc(), OperationalMetricSnapshot.id.asc())
+        .all()
+    )
+    last_snapshot = snapshots[-1] if snapshots else None
+    prev_snapshot = snapshots[-2] if len(snapshots) >= 2 else None
+    baseline_1h = _o2_baseline(snapshots, now - timedelta(hours=1))
+    baseline_24h = _o2_baseline(snapshots, since_24h)
+
+    out: dict[str, Any] = {}
+    for key in O2_TREND_METRIC_KEYS:
+        current_val = tracked.get(key)
+        previous_val = None
+        if last_snapshot is not None:
+            previous_val = (dict(getattr(last_snapshot, "metrics", {}) or {})).get(key)
+        delta_prev, direction = _o2_dir(current_val, previous_val)
+
+        baseline_1h_val = None if baseline_1h is None else (dict(getattr(baseline_1h, "metrics", {}) or {})).get(key)
+        baseline_24h_val = None if baseline_24h is None else (dict(getattr(baseline_24h, "metrics", {}) or {})).get(key)
+        delta_1h, direction_1h = _o2_dir(current_val, baseline_1h_val)
+        delta_24h, direction_24h = _o2_dir(current_val, baseline_24h_val)
+
+        out[key] = {
+            "current": current_val,
+            "previous": previous_val,
+            "delta": delta_prev,
+            "direction": direction,
+            "previous_captured_at": _dt_iso(last_snapshot.captured_at) if last_snapshot is not None else None,
+            "windows": {
+                "1h": {
+                    "baseline": baseline_1h_val,
+                    "delta": delta_1h,
+                    "direction": direction_1h,
+                    "captured_at": _dt_iso(baseline_1h.captured_at) if baseline_1h is not None else None,
+                },
+                "24h": {
+                    "baseline": baseline_24h_val,
+                    "delta": delta_24h,
+                    "direction": direction_24h,
+                    "captured_at": _dt_iso(baseline_24h.captured_at) if baseline_24h is not None else None,
+                },
+            },
+        }
+
+    return {
+        "generated_at": _dt_iso(now),
+        "metrics": out,
+        "latest_snapshot_at": _dt_iso(last_snapshot.captured_at) if last_snapshot is not None else None,
+        "previous_snapshot_at": _dt_iso(prev_snapshot.captured_at) if prev_snapshot is not None else None,
+        "samples_last_24h": int(len(snapshots)),
+    }
+
+
+def _o1_build_alerts(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    alerts: list[dict[str, Any]] = []
+    backlog = int(metrics.get("outbox_backlog_pending") or 0)
+    oldest_s = int(metrics.get("outbox_oldest_pending_age_seconds") or 0)
+    fail_rate = float(metrics.get("relay_fail_rate_pct_15m") or 0.0)
+    retry_rate = float(metrics.get("relay_retry_rate_pct_15m") or 0.0)
+    fallback_pct = metrics.get("live_polling_fallback_pct_15m")
+    fallback_pct_val = float(fallback_pct) if fallback_pct is not None else None
+    quarantined_total = int(metrics.get("outbox_quarantined_total") or 0)
+    quarantined_last_15m = int(metrics.get("outbox_quarantined_last_15m") or 0)
+
+    if backlog >= 200 or oldest_s >= 900:
+        alerts.append(
+            {
+                "code": "outbox_lag_high",
+                "severity": "critical" if (backlog >= 500 or oldest_s >= 1800) else "warning",
+                "message": (
+                    f"Outbox atrasada: pendientes={backlog}, evento mas viejo={oldest_s}s."
+                ),
+                "condition": "backlog>=200 OR oldest_pending_age>=900s",
+            }
+        )
+    if fail_rate >= 5.0 or retry_rate >= 20.0:
+        alerts.append(
+            {
+                "code": "relay_reliability_degraded",
+                "severity": "critical" if (fail_rate >= 10.0 or retry_rate >= 35.0) else "warning",
+                "message": (
+                    f"Relay degradado: fail_rate={fail_rate:.2f}% retry_rate={retry_rate:.2f}% en 15m."
+                ),
+                "condition": "fail_rate>=5% OR retry_rate>=20% (15m)",
+            }
+        )
+    if fallback_pct_val is not None and fallback_pct_val >= 25.0:
+        alerts.append(
+            {
+                "code": "live_polling_fallback_spike",
+                "severity": "critical" if fallback_pct_val >= 50.0 else "warning",
+                "message": f"Fallback a polling elevado: {fallback_pct_val:.2f}% en 15m.",
+                "condition": "polling_fallback_pct>=25% (15m)",
+            }
+        )
+    if quarantined_total > 0 or quarantined_last_15m > 0:
+        alerts.append(
+            {
+                "code": "outbox_quarantine_growth",
+                "severity": "critical" if (quarantined_last_15m >= 10 or quarantined_total >= 50) else "warning",
+                "message": (
+                    f"Eventos en cuarentena: total={quarantined_total}, nuevos_15m={quarantined_last_15m}."
+                ),
+                "condition": "quarantined_total>0 OR quarantined_last_15m>0",
+            }
+        )
+    return alerts
+
+
+def operational_semaphore_payload(*, window_minutes: int = O1_WINDOW_MINUTES_DEFAULT, include_trends: bool = True) -> dict[str, Any]:
+    now = _utcnow()
+    window_m = max(5, min(int(window_minutes or O1_WINDOW_MINUTES_DEFAULT), 120))
+    since = now - timedelta(minutes=window_m)
+
+    try:
+        backlog_pending = int(
+            DomainOutbox.query
+            .filter(DomainOutbox.published_at.is_(None))
+            .count()
+        )
+    except Exception:
+        backlog_pending = 0
+    try:
+        quarantined_total = int(
+            DomainOutbox.query
+            .filter(DomainOutbox.relay_status == "quarantined")
+            .count()
+        )
+    except Exception:
+        quarantined_total = 0
+    try:
+        quarantined_last_15m = int(
+            DomainOutbox.query
+            .filter(DomainOutbox.relay_status == "quarantined", DomainOutbox.quarantined_at.isnot(None), DomainOutbox.quarantined_at >= since)
+            .count()
+        )
+    except Exception:
+        quarantined_last_15m = 0
+    try:
+        retrying_total = int(
+            DomainOutbox.query
+            .filter(DomainOutbox.relay_status == "retrying")
+            .count()
+        )
+    except Exception:
+        retrying_total = 0
+    try:
+        oldest_pending = (
+            DomainOutbox.query
+            .with_entities(func.min(DomainOutbox.created_at))
+            .filter(DomainOutbox.published_at.is_(None))
+            .scalar()
+        )
+    except Exception:
+        oldest_pending = None
+    oldest_pending_age_seconds = 0
+    if oldest_pending is not None:
+        try:
+            oldest_pending_age_seconds = max(0, int((now - oldest_pending).total_seconds()))
+        except Exception:
+            oldest_pending_age_seconds = 0
+
+    try:
+        relay_published = int(
+            DomainOutbox.query
+            .filter(DomainOutbox.published_at.isnot(None), DomainOutbox.published_at >= since)
+            .count()
+        )
+    except Exception:
+        relay_published = 0
+    try:
+        relay_failed = int(
+            DomainOutbox.query
+            .filter(DomainOutbox.published_at.is_(None), DomainOutbox.last_attempt_at.isnot(None), DomainOutbox.last_attempt_at >= since)
+            .filter(DomainOutbox.last_error.isnot(None))
+            .count()
+        )
+    except Exception:
+        relay_failed = 0
+    try:
+        relay_retried = int(
+            DomainOutbox.query
+            .filter(DomainOutbox.last_attempt_at.isnot(None), DomainOutbox.last_attempt_at >= since)
+            .filter(DomainOutbox.published_attempts > 1)
+            .count()
+        )
+    except Exception:
+        relay_retried = 0
+    relay_attempted_total = int(relay_published + relay_failed)
+    relay_fail_rate_pct = round((relay_failed / relay_attempted_total) * 100.0, 2) if relay_attempted_total > 0 else 0.0
+    relay_retry_rate_pct = round((relay_retried / relay_attempted_total) * 100.0, 2) if relay_attempted_total > 0 else 0.0
+    relay_throughput_per_min = round(relay_published / float(window_m), 2)
+
+    sse_open_count = _safe_bp_get_counter("live:sse_open_count", default=0)
+    fallback_count = _safe_bp_get_counter("live:fallback_entered_count", default=0)
+    degraded_outbox_fallback_count = _safe_bp_get_counter("live:poll:degraded_outbox_fallback_count", default=0)
+    fallback_den = int(sse_open_count + fallback_count)
+    fallback_pct = round((fallback_count / fallback_den) * 100.0, 2) if fallback_den > 0 else None
+
+    latency_regions: dict[str, dict[str, Any]] = {}
+    known_regions = bp_get(_LIVE_REGION_INDEX_KEY, default=[], strict=False, context="o1_regions_idx_get_payload") or []
+    known_regions = [str(r).strip().lower() for r in known_regions if str(r).strip()]
+    if not known_regions:
+        known_regions = ["unknown"]
+    for region in known_regions:
+        count = _safe_bp_get_counter(f"live:refetch:{region}:count", default=0)
+        if count <= 0:
+            continue
+        sum_ms = _safe_bp_get_counter(f"live:refetch:{region}:sum_ms", default=0)
+        fail_count = _safe_bp_get_counter(f"live:refetch:{region}:fail_count", default=0)
+        avg_ms = round((sum_ms / count), 2) if count > 0 else None
+        latency_regions[region] = {
+            "count": int(count),
+            "avg_ms": avg_ms,
+            "fail_count": int(fail_count),
+            "fail_rate_pct": round((fail_count / count) * 100.0, 2) if count > 0 else 0.0,
+        }
+
+    try:
+        idempotency_conflicts = int(
+            RequestIdempotencyKey.query
+            .filter(RequestIdempotencyKey.created_at >= since, RequestIdempotencyKey.response_status == 409)
+            .count()
+        )
+    except Exception:
+        idempotency_conflicts = 0
+    concurrency_conflicts = _safe_bp_get_counter("concurrency_conflict_count", default=0)
+    conflicts_total = int(idempotency_conflicts + concurrency_conflicts)
+
+    critical_paths = (
+        "/admin/solicitudes",
+        "/admin/clientes",
+        "/admin/live/invalidation",
+        "/admin/monitoreo",
+    )
+    try:
+        errors_5xx_critical = int(
+            StaffAuditLog.query
+            .filter(StaffAuditLog.action_type == "ERROR_EVENT", StaffAuditLog.created_at >= since)
+            .filter(or_(*[StaffAuditLog.route.like(f"{p}%") for p in critical_paths]))
+            .count()
+        )
+    except Exception:
+        errors_5xx_critical = 0
+
+    metrics = {
+        "window_minutes": int(window_m),
+        "outbox_backlog_pending": backlog_pending,
+        "outbox_oldest_pending_age_seconds": oldest_pending_age_seconds,
+        "outbox_quarantined_total": quarantined_total,
+        "outbox_quarantined_last_15m": quarantined_last_15m,
+        "outbox_retrying_total": retrying_total,
+        "relay_fail_rate_pct_15m": relay_fail_rate_pct,
+        "relay_retry_rate_pct_15m": relay_retry_rate_pct,
+        "relay_throughput_per_min_15m": relay_throughput_per_min,
+        "relay_published_15m": relay_published,
+        "relay_failed_15m": relay_failed,
+        "live_polling_fallback_pct_15m": fallback_pct,
+        "live_sse_open_count_15m": int(sse_open_count),
+        "live_fallback_count_15m": int(fallback_count),
+        "live_poll_degraded_outbox_fallback_count_15m": int(degraded_outbox_fallback_count),
+        "live_refetch_latency_by_region_15m": latency_regions,
+        "concurrency_idempotency_conflicts_15m": conflicts_total,
+        "critical_5xx_endpoints_15m": errors_5xx_critical,
+    }
+
+    statuses = {
+        "outbox_backlog_pending": _metric_status(backlog_pending, warn_at=120, crit_at=300),
+        "outbox_oldest_pending_age_seconds": _metric_status(oldest_pending_age_seconds, warn_at=600, crit_at=1200),
+        "outbox_quarantined_total": _metric_status(quarantined_total, warn_at=1, crit_at=25),
+        "outbox_quarantined_last_15m": _metric_status(quarantined_last_15m, warn_at=1, crit_at=10),
+        "relay_fail_rate_pct_15m": _metric_status(relay_fail_rate_pct, warn_at=5.0, crit_at=10.0),
+        "relay_retry_rate_pct_15m": _metric_status(relay_retry_rate_pct, warn_at=20.0, crit_at=35.0),
+        "live_polling_fallback_pct_15m": _metric_status(fallback_pct, warn_at=25.0, crit_at=50.0) if fallback_pct is not None else "unknown",
+        "concurrency_idempotency_conflicts_15m": _metric_status(conflicts_total, warn_at=5, crit_at=15),
+        "critical_5xx_endpoints_15m": _metric_status(errors_5xx_critical, warn_at=3, crit_at=8),
+    }
+    alerts = _o1_build_alerts(metrics)
+
+    payload = {
+        "generated_at": _dt_iso(now),
+        "metrics": metrics,
+        "statuses": statuses,
+        "alerts": alerts,
+        "snapshot_policy": o2_snapshot_policy(),
+    }
+    if include_trends:
+        payload["trends"] = operational_trends_payload(current_metrics=metrics)
+    return payload
 
 
 def _range_bounds(period: str) -> tuple[datetime, datetime]:

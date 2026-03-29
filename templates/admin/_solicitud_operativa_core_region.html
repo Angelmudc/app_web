@@ -1,0 +1,304 @@
+{% set estado = (solicitud.estado or '')|lower %}
+{% set _solicitud_detail_url = (solicitud_detail_url if solicitud_detail_url is defined and solicitud_detail_url else url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id)) %}
+{% set estado_class =
+  'badge-activa' if estado == 'activa' else
+  'badge-proceso' if estado == 'proceso' else
+  'badge-cancelada' if estado == 'cancelada' else
+  'badge-pagada' if estado == 'pagada' else
+  'bg-warning text-dark' if estado == 'espera_pago' else
+  'badge-reemplazo' if estado == 'reemplazo' else 'bg-secondary'
+%}
+{% set _puede_registrar_pago = estado not in ['cancelada', 'pagada'] %}
+{% set _puede_activar = estado == 'proceso' %}
+{% set _last_activity_at = solicitud.fecha_ultima_actividad or solicitud.fecha_ultima_modificacion or solicitud.updated_at or solicitud.fecha_solicitud %}
+{% set _now_utc = now_utc if now_utc is defined else None %}
+{% if _last_activity_at and _now_utc %}
+  {% set _hours_since_activity = ((_now_utc - _last_activity_at).total_seconds() // 3600)|int %}
+{% else %}
+  {% set _hours_since_activity = 9999 %}
+{% endif %}
+{% if _hours_since_activity < 0 %}
+  {% set _hours_since_activity = 0 %}
+{% endif %}
+{% set _is_stagnant = _hours_since_activity >= 72 %}
+{% set _priority_label_operativa = (priority_label_operativa if priority_label_operativa is defined else '')|lower %}
+{% set _needs_followup_today = needs_followup_today if needs_followup_today is defined else (_is_stagnant or _priority_label_operativa == 'alta') %}
+{% if manual_followup is defined and manual_followup %}
+  {% set _manual_followup = manual_followup %}
+{% else %}
+  {% set _manual_date = solicitud.fecha_seguimiento_manual %}
+  {% set _today_ref = _now_utc.date() if _now_utc else None %}
+  {% if not _manual_date %}
+    {% set _manual_followup = {'state': 'normal', 'label': 'Sin fecha', 'badge_class': 'bg-secondary', 'hint': 'No hay seguimiento manual programado.', 'date_value': ''} %}
+  {% elif _today_ref and _manual_date > _today_ref %}
+    {% set _manual_followup = {'state': 'pendiente', 'label': 'Pendiente', 'badge_class': 'bg-primary', 'hint': 'Seguimiento manual programado para una fecha futura.', 'date_value': _manual_date.isoformat()} %}
+  {% elif _today_ref and _manual_date == _today_ref %}
+    {% set _manual_followup = {'state': 'hoy', 'label': 'Hoy', 'badge_class': 'bg-info text-dark', 'hint': 'Seguimiento manual programado para hoy.', 'date_value': _manual_date.isoformat()} %}
+  {% else %}
+    {% set _manual_followup = {'state': 'vencida', 'label': 'Vencida', 'badge_class': 'bg-danger', 'hint': 'La fecha manual de seguimiento ya pasó.', 'date_value': _manual_date.isoformat()} %}
+  {% endif %}
+{% endif %}
+{% set _cta_label = '' %}
+{% set _cta_href = '' %}
+{% set _cta_form_action = '' %}
+{% set _cta_as_form = false %}
+{% set _cta_help = '' %}
+
+{% if estado == 'proceso' %}
+  {% set _cta_label = 'Activar solicitud' %}
+  {% set _cta_as_form = true %}
+  {% set _cta_form_action = url_for('admin.activar_solicitud_directa', id=solicitud.id) %}
+  {% set _cta_help = 'Siguiente paso recomendado: activar esta solicitud para moverla a operación activa.' %}
+{% elif estado in ['activa', 'espera_pago'] %}
+  {% set _cta_label = 'Registrar pago' %}
+  {% set _cta_href = url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) %}
+  {% set _cta_help = 'Siguiente paso recomendado: registrar el pago para acercar el cierre de la solicitud.' %}
+{% elif estado == 'reemplazo' %}
+  {% set _cta_label = 'Gestionar reemplazo' %}
+  {% set _cta_href = url_for('admin.nuevo_reemplazo', s_id=solicitud.id) %}
+  {% set _cta_help = 'Siguiente paso recomendado: gestionar el reemplazo activo para destrabar el proceso.' %}
+{% endif %}
+
+<div class="glass-card mb-4">
+  <div class="glass-header">
+    <i class="bi bi-lightning-charge-fill"></i> Solicitud Operativa Core
+  </div>
+  <div class="p-4">
+    {% if async_feedback and async_feedback.message %}
+      {% set _cat = async_feedback.category or 'info' %}
+      <div class="alert alert-{{ 'danger' if _cat in ['danger', 'error'] else _cat }} border-0 mb-3" role="alert" aria-live="polite">
+        {{ async_feedback.message }}
+      </div>
+    {% endif %}
+    <div class="alert alert-light border mb-3" data-testid="manual-followup-panel">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <div class="fw-semibold">Seguimiento manual</div>
+          <div class="small text-muted">Fecha elegida manualmente. No reemplaza prioridad ni estancamiento automático.</div>
+        </div>
+        <span class="badge {{ _manual_followup.badge_class }}" data-testid="manual-followup-detail-badge">{{ _manual_followup.label }}</span>
+      </div>
+      <div class="small text-muted mt-1 mb-2">{{ _manual_followup.hint }}</div>
+      <form method="post"
+            action="{{ url_for('admin.actualizar_seguimiento_manual_solicitud', id=solicitud.id) }}"
+            class="d-flex flex-wrap align-items-end gap-2"
+            data-admin-async-form
+            data-async-target="#solicitudOperativaCoreAsyncRegion"
+            data-async-busy-container="#solicitudOperativaCoreAsyncScope"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="_async_target" value="#solicitudOperativaCoreAsyncRegion">
+        <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
+        <div>
+          <label class="form-label form-label-sm mb-1" for="fechaSeguimientoManual">Fecha</label>
+          <input id="fechaSeguimientoManual"
+                 type="date"
+                 name="fecha_seguimiento_manual"
+                 class="form-control form-control-sm"
+                 value="{{ _manual_followup.date_value or '' }}"
+                 data-testid="manual-followup-input">
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary" data-testid="manual-followup-save" data-loading-text="Guardando...">Guardar</button>
+        <button type="submit"
+                class="btn btn-sm btn-outline-secondary"
+                data-testid="manual-followup-clear"
+                name="fecha_seguimiento_manual"
+                value=""
+                data-loading-text="Limpiando...">Limpiar fecha</button>
+      </form>
+    </div>
+    {% if _needs_followup_today %}
+    <div class="alert alert-warning border-0 d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-testid="followup-today-panel">
+      <div>
+        <div class="fw-semibold">Atención hoy</div>
+        <div class="small">Esta solicitud requiere acción hoy para no perder avance.</div>
+      </div>
+      <div>
+        {% if _cta_label %}
+          {% if _cta_as_form %}
+          <form method="post"
+                action="{{ _cta_form_action }}"
+                class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudOperativaCoreAsyncRegion"
+                data-async-busy-container="#solicitudOperativaCoreAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="_async_target" value="#solicitudOperativaCoreAsyncRegion">
+        <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
+        <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+        <button type="submit" class="btn btn-sm btn-warning" data-testid="followup-today-action" data-loading-text="Procesando...">{{ _cta_label }}</button>
+      </form>
+          {% else %}
+          <a href="{{ _cta_href }}" class="btn btn-sm btn-warning" data-testid="followup-today-action">{{ _cta_label }}</a>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-3">
+        <div><strong>Estado actual:</strong> <span class="badge {{ estado_class }}">{{ estado or '—' }}</span></div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div><strong>Plan:</strong> {{ solicitud.tipo_plan or '—' }}</div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div><strong>Abono:</strong> {{ solicitud.abono or '—' }}</div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div><strong>Monto pagado:</strong> {{ solicitud.monto_pagado or '—' }}</div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div><strong>Candidata asignada:</strong> {{ solicitud.candidata and solicitud.candidata.nombre_completo or '—' }}</div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="d-flex flex-wrap gap-2">
+          <span class="badge {{ 'bg-warning text-dark' if estado == 'espera_pago' else 'bg-secondary' }}">
+            Espera pago: {{ 'Sí' if estado == 'espera_pago' else 'No' }}
+          </span>
+          <span class="badge {{ 'bg-success' if estado == 'pagada' else 'bg-secondary' }}">
+            Pagada: {{ 'Sí' if estado == 'pagada' else 'No' }}
+          </span>
+          <span class="badge {{ 'bg-primary' if estado in ['activa', 'espera_pago', 'reemplazo'] else 'bg-secondary' }}">
+            Activa operativa: {{ 'Sí' if estado in ['activa', 'espera_pago', 'reemplazo'] else 'No' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    {% if _cta_label %}
+    <div class="alert alert-primary border-0 d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-testid="cta-recomendada-panel">
+      <div>
+        <div class="fw-semibold">Acción recomendada ahora</div>
+        <div class="small text-muted">{{ _cta_help }}</div>
+      </div>
+      <div>
+        {% if _cta_as_form %}
+        <form method="post"
+              action="{{ _cta_form_action }}"
+              class="d-inline"
+              data-admin-async-form
+              data-async-target="#solicitudOperativaCoreAsyncRegion"
+              data-async-busy-container="#solicitudOperativaCoreAsyncScope"
+              data-async-preserve-scroll="true"
+              data-async-fallback="native">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input type="hidden" name="_async_target" value="#solicitudOperativaCoreAsyncRegion">
+          <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
+          <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+          <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+          <button type="submit" class="btn btn-sm btn-primary" data-testid="cta-recomendada-action" data-loading-text="Activando...">{{ _cta_label }}</button>
+        </form>
+        {% else %}
+        <a href="{{ _cta_href }}" class="btn btn-sm btn-primary" data-testid="cta-recomendada-action">{{ _cta_label }}</a>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-light border mb-3" data-testid="cta-recomendada-info">
+      <div class="fw-semibold">Acción recomendada ahora</div>
+      <div class="small text-muted">Sin acción operativa prioritaria en este estado.</div>
+    </div>
+    {% endif %}
+
+    {% if _is_stagnant %}
+    <div class="alert alert-warning border-0 mb-3" data-testid="stagnation-recovery-panel">
+      <div class="fw-semibold">Solicitud sin movimiento</div>
+      <div class="small">Esta solicitud lleva más de 72h sin avance.</div>
+      <div class="small text-muted mb-2">Se recomienda retomar contacto o tomar acción ahora.</div>
+      {% if _cta_label %}
+        {% if _cta_as_form %}
+        <form method="post"
+              action="{{ _cta_form_action }}"
+              class="d-inline"
+              data-admin-async-form
+              data-async-target="#solicitudOperativaCoreAsyncRegion"
+              data-async-busy-container="#solicitudOperativaCoreAsyncScope"
+              data-async-preserve-scroll="true"
+              data-async-fallback="native">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input type="hidden" name="_async_target" value="#solicitudOperativaCoreAsyncRegion">
+          <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
+          <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+          <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+          <button type="submit" class="btn btn-sm btn-warning" data-testid="stagnation-recovery-action" data-loading-text="Procesando...">{{ _cta_label }}</button>
+        </form>
+        {% else %}
+        <a href="{{ _cta_href }}" class="btn btn-sm btn-warning" data-testid="stagnation-recovery-action">{{ _cta_label }}</a>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) }}" class="btn btn-sm btn-outline-secondary">
+        Editar
+      </a>
+      <a href="{{ url_for('admin.gestionar_plan', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) }}" class="btn btn-sm btn-outline-primary">
+        Plan / Abono
+      </a>
+      {% if _puede_registrar_pago %}
+      <a href="{{ url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) }}" class="btn btn-sm btn-success">
+        Registrar pago
+      </a>
+      {% endif %}
+
+      {% if estado != 'espera_pago' %}
+      <form method="post"
+            action="{{ url_for('admin.poner_espera_pago_solicitud', id=solicitud.id) }}"
+            class="d-inline"
+            data-admin-async-form
+            data-async-target="#solicitudOperativaCoreAsyncRegion"
+            data-async-busy-container="#solicitudOperativaCoreAsyncScope"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="_async_target" value="#solicitudOperativaCoreAsyncRegion">
+        <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
+        <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+        <button type="submit" class="btn btn-sm btn-outline-warning" data-loading-text="Guardando...">Poner espera</button>
+      </form>
+      {% else %}
+      <form method="post"
+            action="{{ url_for('admin.quitar_espera_pago_solicitud', id=solicitud.id) }}"
+            class="d-inline"
+            data-admin-async-form
+            data-async-target="#solicitudOperativaCoreAsyncRegion"
+            data-async-busy-container="#solicitudOperativaCoreAsyncScope"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="_async_target" value="#solicitudOperativaCoreAsyncRegion">
+        <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
+        <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+        <button type="submit" class="btn btn-sm btn-outline-success" data-loading-text="Guardando...">Quitar espera</button>
+      </form>
+      {% endif %}
+
+      {% if _puede_activar %}
+      <form method="post"
+            action="{{ url_for('admin.activar_solicitud_directa', id=solicitud.id) }}"
+            class="d-inline"
+            data-admin-async-form
+            data-async-target="#solicitudOperativaCoreAsyncRegion"
+            data-async-busy-container="#solicitudOperativaCoreAsyncScope"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="_async_target" value="#solicitudOperativaCoreAsyncRegion">
+        <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
+        <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+        <button type="submit" class="btn btn-sm btn-primary" data-loading-text="Activando...">Activar</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>

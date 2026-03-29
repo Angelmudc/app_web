@@ -1,0 +1,206 @@
+{% if async_feedback and async_feedback.message %}
+  {% set _cat = async_feedback.category or 'info' %}
+  <div class="alert alert-{{ 'danger' if _cat in ['danger', 'error'] else _cat }} border-0 mb-4" role="alert" aria-live="polite">
+    {{ async_feedback.message }}
+  </div>
+{% endif %}
+
+    <form id="solicitud-form"
+          method="post"
+          action="{{ url_for('admin.editar_solicitud_admin', cliente_id=(solicitud.cliente_id if solicitud is defined else cliente_id), id=(solicitud.id if solicitud is defined else 0), next=next_url) if solicitud is defined else '' }}"
+          novalidate
+          {% if not nuevo %}
+          data-admin-async-form
+          data-async-target="#editarSolicitudAsyncRegion"
+          data-async-busy-container="#editarSolicitudAsyncScope"
+          data-async-preserve-scroll="true"
+          data-async-fallback="native"
+          {% endif %}>
+      {{ form.hidden_tag() }}
+      {% if not nuevo %}
+      <input type="hidden" name="_async_target" value="#editarSolicitudAsyncRegion">
+      {% endif %}
+      {% if next_url %}
+      <input type="hidden" name="next" value="{{ next_url }}">
+      {% endif %}
+
+      {% if form.errors %}
+        <div class="alert alert-danger border-0 mb-4">
+          <div class="d-flex">
+            <i class="fa-solid fa-triangle-exclamation me-2"></i>
+            <div>
+              <strong>Revisa los campos con errores:</strong>
+              <ul class="mb-0 mt-1">
+                {% for field, errs in form.errors.items() %}
+                  {% for e in errs %}
+                    <li><strong>{{ form[field].label.text if form[field] else field }}:</strong> {{ e }}</li>
+                  {% endfor %}
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <section class="mb-3">
+        <h2 class="h5 fw-semibold mb-3">
+          <i class="fa-solid fa-list-check text-warning"></i> Tipo de solicitud
+        </h2>
+        <div class="row g-4">
+          <div class="col-md-6">
+            <label class="form-label required">{{ form.tipo_servicio.label.text }}</label>
+            {{ form.tipo_servicio(class="form-select", id=form.tipo_servicio.id) }}
+            <div class="hint mt-1">
+              Selecciona si la solicitud es para doméstica de limpieza, niñera, enfermera/cuidadora o chofer.
+            </div>
+          </div>
+          <div class="col-md-6 d-flex align-items-end justify-content-md-end">
+            {% if not nuevo and solicitud is defined %}
+              <span class="badge-tipo">
+                <i class="fa-solid fa-circle-info me-1"></i>
+                Tipo actual: {{ solicitud.tipo_servicio_label if solicitud.tipo_servicio_label else 'Doméstica general' }}
+              </span>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+
+      <div class="admin-solicitud-form">
+        {% include 'clientes/_solicitud_form_fields.html' %}
+      </div>
+
+      <section class="mt-4">
+        <div class="divider"></div>
+        <h2 class="h5 fw-semibold mb-3">
+          <i class="fa-solid fa-user-gear text-warning"></i> Detalles específicos según el tipo
+        </h2>
+
+        <div id="bloque-ninera" class="{{ 'd-block' if (form.tipo_servicio.data == 'NINERA') else 'd-none' }}">
+          <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>niñera</strong>.</div>
+          <div class="row g-4">
+            <div class="col-md-3">
+              <label class="form-label">{{ form.ninera_cant_ninos.label.text }}</label>
+              {{ form.ninera_cant_ninos(class="form-control", type="number", min="1", step="1") }}
+            </div>
+            <div class="col-md-5">
+              <label class="form-label">{{ form.ninera_edades.label.text }}</label>
+              {{ form.ninera_edades(class="form-control", placeholder="Ej. 2 y 6 años") }}
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.ninera_tareas.label.text }}</label>
+            <div class="row g-2">
+              {% for sub in form.ninera_tareas %}
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="form-check">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-block' if (form.ninera_tareas.data and ('otro' in form.ninera_tareas.data)) else 'd-none' }}">
+              <label class="form-label">{{ form.ninera_tareas_otro.label.text }}</label>
+              {{ form.ninera_tareas_otro(class="form-control", placeholder="Especifica otras tareas") }}
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.ninera_condicion_especial.label.text }}</label>
+            {{ form.ninera_condicion_especial(class="form-control", rows="3") }}
+            <div class="hint mt-1">Si el niño tiene alguna condición especial, descríbela brevemente.</div>
+          </div>
+        </div>
+
+        <div id="bloque-enfermera" class="{{ 'd-block' if (form.tipo_servicio.data == 'ENFERMERA') else 'd-none' }}">
+          <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>enfermera o cuidadora</strong>.</div>
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label">{{ form.enf_a_quien_cuida.label.text }}</label>
+              {{ form.enf_a_quien_cuida(class="form-control", placeholder="Ej. Señora de 80 años, adulto postrado…") }}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ form.enf_movilidad.label.text }}</label>
+              {{ form.enf_movilidad(class="form-select") }}
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.enf_condicion_principal.label.text }}</label>
+            {{ form.enf_condicion_principal(class="form-control", rows="3") }}
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.enf_tareas.label.text }}</label>
+            <div class="row g-2">
+              {% for sub in form.enf_tareas %}
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="form-check">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            <div id="wrap-enf-tareas-otro" class="mt-2 {{ 'd-block' if (form.enf_tareas.data and ('otro' in form.enf_tareas.data)) else 'd-none' }}">
+              <label class="form-label">{{ form.enf_tareas_otro.label.text }}</label>
+              {{ form.enf_tareas_otro(class="form-control", placeholder="Especifica otras tareas de cuidado") }}
+            </div>
+          </div>
+        </div>
+
+        <div id="bloque-chofer" class="{{ 'd-block' if (form.tipo_servicio.data == 'CHOFER') else 'd-none' }}">
+          <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>chofer</strong>.</div>
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label">{{ form.chofer_vehiculo.label.text }}</label>
+              <div>
+                {% for sub in form.chofer_vehiculo %}
+                <div class="form-check form-check-inline">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ form.chofer_tipo_vehiculo.label.text }}</label>
+              {{ form.chofer_tipo_vehiculo(class="form-select", id=form.chofer_tipo_vehiculo.id) }}
+              <div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if (form.chofer_tipo_vehiculo.data == 'otro') else 'd-none' }}">
+                <label class="form-label">{{ form.chofer_tipo_vehiculo_otro.label.text }}</label>
+                {{ form.chofer_tipo_vehiculo_otro(class="form-control", placeholder="Ej. Minibús, camión ligero…") }}
+              </div>
+            </div>
+          </div>
+          <div class="row g-4 mt-2">
+            <div class="col-md-8">
+              <label class="form-label">{{ form.chofer_rutas.label.text }}</label>
+              {{ form.chofer_rutas(class="form-control", placeholder="Ej. Puerto Plata – Santiago, dentro de la ciudad…") }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label d-block">{{ form.chofer_viajes_largos.label.text }}</label>
+              <div>
+                {% for sub in form.chofer_viajes_largos %}
+                <div class="form-check form-check-inline">
+                  {{ sub(class="form-check-input", id=sub.id) }}
+                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">{{ form.chofer_licencia_detalle.label.text }}</label>
+            {{ form.chofer_licencia_detalle(class="form-control", placeholder="Ej. Licencia categoría 3, maneja mecánico…") }}
+          </div>
+        </div>
+      </section>
+
+      <div class="sticky-actions mt-4">
+        <div class="d-flex gap-2 justify-content-end">
+          <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
+            <i class="fa-solid fa-circle-xmark me-1"></i> Cancelar
+          </a>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="fa-solid fa-floppy-disk me-1"></i> {{ 'Crear' if nuevo else 'Actualizar' }}
+          </button>
+        </div>
+      </div>
+    </form>

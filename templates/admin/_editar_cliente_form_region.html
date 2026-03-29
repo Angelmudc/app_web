@@ -1,0 +1,204 @@
+<div class="glass-card p-4 p-md-5">
+  {% if async_feedback and async_feedback.message %}
+    {% set _cat = async_feedback.category or 'info' %}
+    <div class="alert alert-{{ 'danger' if _cat in ['danger', 'error'] else _cat }} border-0 mb-4" role="alert" aria-live="polite">
+      {{ async_feedback.message }}
+    </div>
+  {% endif %}
+
+  <form
+    id="cliente-form"
+    method="POST"
+    novalidate
+    data-admin-async-form
+    data-async-target="#editarClienteAsyncRegion"
+    data-async-busy-container="#editarClienteAsyncScope"
+    data-async-preserve-scroll="true"
+    data-async-fallback="native">
+    {{ cliente_form.hidden_tag() }}
+
+    {% if cliente_form.errors %}
+      <div class="alert alert-warning border-0 mb-3" role="alert" aria-live="polite">
+        <div class="d-flex">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <div>
+            <strong>No se guardó. Revisa los campos marcados y corrige los errores.</strong>
+            <ul class="mb-0 mt-1">
+              {% for field_name, errs in cliente_form.errors.items() %}
+                {% set field = cliente_form._fields.get(field_name) %}
+                {% for e in errs %}
+                  <li>
+                    <strong>{{ field.label.text if field else field_name }}:</strong> {{ e }}
+                  </li>
+                {% endfor %}
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="mb-4">
+      <h5 class="mb-3"><i class="bi bi-person-badge-fill section-icon"></i> Identificación</h5>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Código <span class="text-danger">*</span></label>
+          {% set has_err = cliente_form.codigo.errors %}
+          {{ cliente_form.codigo(
+            class="form-control" + (" is-invalid" if has_err else ""),
+            placeholder="Ej. CLI-001",
+            autocomplete="off",
+            readonly=true
+          ) }}
+          {% if has_err %}
+            <div class="invalid-feedback">{{ cliente_form.codigo.errors[0] }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-8">
+          <label class="form-label">Nombre completo <span class="text-danger">*</span></label>
+          {% set has_err = cliente_form.nombre_completo.errors %}
+          {{ cliente_form.nombre_completo(
+            class="form-control" + (" is-invalid" if has_err else ""),
+            placeholder="Ej. Juan Pérez",
+            autocomplete="name"
+          ) }}
+          {% if has_err %}
+            <div class="invalid-feedback">{{ cliente_form.nombre_completo.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider my-4">
+
+    <div class="mb-4">
+      <h5 class="mb-3"><i class="bi bi-envelope-paper-heart-fill section-icon"></i> Contacto</h5>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Email <span class="text-danger">*</span></label>
+          {% set has_err = cliente_form.email.errors %}
+          {{ cliente_form.email(
+            class="form-control" + (" is-invalid" if has_err else ""),
+            placeholder="correo@dominio.com",
+            autocomplete="email"
+          ) }}
+          {% if has_err %}
+            <div class="invalid-feedback">{{ cliente_form.email.errors[0] }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Teléfono <span class="text-danger">*</span></label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-telephone"></i></span>
+            {% set has_err = cliente_form.telefono.errors %}
+            {{ cliente_form.telefono(
+              class="form-control" + (" is-invalid" if has_err else ""),
+              placeholder="809-123-4567",
+              autocomplete="tel"
+            ) }}
+          </div>
+          {% if has_err %}
+            <div class="invalid-feedback d-block">{{ cliente_form.telefono.errors[0] }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider my-4">
+
+    <div class="mb-4">
+      <h5 class="mb-3"><i class="bi bi-shield-lock-fill section-icon"></i> Credenciales</h5>
+      <div class="row g-3">
+
+        <div class="col-md-6">
+          <label class="form-label">Usuario (opcional)</label>
+          {% set has_err = cliente_form.username.errors %}
+          {{ cliente_form.username(
+            class="form-control" + (" is-invalid" if has_err else ""),
+            placeholder="Ej. juan.perez",
+            autocomplete="username"
+          ) }}
+          {% if has_err %}
+            <div class="invalid-feedback">{{ cliente_form.username.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text mt-1">
+            Si lo dejas vacío, se usará el email como usuario.
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Contraseña (opcional)</label>
+          {% set has_err_pw = cliente_form.password.errors %}
+          {{ cliente_form.password(
+            class="form-control" + (" is-invalid" if has_err_pw else ""),
+            placeholder="Solo si deseas habilitar acceso",
+            autocomplete="new-password"
+          ) }}
+          {% if has_err_pw %}
+            <div class="invalid-feedback">{{ cliente_form.password.errors[0] }}</div>
+          {% endif %}
+          <div class="form-text mt-1">
+            Si se define, debe tener al menos 8 caracteres. Si no escribes contraseña, el cliente no podra iniciar sesion.
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Confirmar contraseña</label>
+          {% set has_err_pw2 = cliente_form.password_confirm.errors %}
+          {{ cliente_form.password_confirm(
+            class="form-control" + (" is-invalid" if has_err_pw2 else ""),
+            placeholder="Repite la contraseña",
+            autocomplete="new-password"
+          ) }}
+          {% if has_err_pw2 %}
+            <div class="invalid-feedback">{{ cliente_form.password_confirm.errors[0] }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6 d-flex align-items-end">
+          <div class="alert alert-info w-100 mb-0" style="border-radius: 12px;">
+            <div class="small">
+              <strong>Nota:</strong> Estas credenciales son para el <b>portal privado</b>.
+              Si no las llenas, el cliente se guarda igual.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider my-4">
+
+    <div class="mb-4">
+      <h5 class="mb-3"><i class="bi bi-geo-alt-fill section-icon"></i> Ubicación</h5>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Ciudad</label>
+          {{ cliente_form.ciudad(class="form-control", placeholder="Ej. Santiago") }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Sector</label>
+          {{ cliente_form.sector(class="form-control", placeholder="Ej. Los Jardines") }}
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider my-4">
+
+    <div class="mb-4">
+      <h5 class="mb-3"><i class="bi bi-journal-text section-icon"></i> Notas administrativas</h5>
+      {{ cliente_form.notas_admin(class="form-control", rows=3, placeholder="Observaciones internas...") }}
+      <div class="form-text mt-1">📝 Máximo 1000 caracteres.</div>
+    </div>
+
+    <div class="text-end mt-4">
+      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary me-2">
+        <i class="bi bi-x-circle"></i> Cancelar
+      </a>
+      <button id="btn-submit" type="submit" class="btn btn-primary" data-loading-text="Guardando...">
+        <i class="bi bi-save"></i> Guardar cambios
+      </button>
+    </div>
+  </form>
+</div>

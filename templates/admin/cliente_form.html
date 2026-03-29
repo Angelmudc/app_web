@@ -18,6 +18,7 @@
     </a>
   </div>
 
+  {% if nuevo %}
   <div class="glass-card p-4 p-md-5">
     <form id="cliente-form" method="POST" novalidate>
       {{ cliente_form.hidden_tag() }}
@@ -212,6 +213,13 @@
       </div>
     </form>
   </div>
+  {% else %}
+  <div id="editarClienteAsyncScope" data-admin-async-scope>
+    <div id="editarClienteAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_editar_cliente_form_region.html' %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 

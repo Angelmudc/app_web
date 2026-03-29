@@ -228,6 +228,8 @@
   let timer = null;
   let backoffMs = HEARTBEAT_MS;
   let quickRetriesLeft = MAX_QUICK_RETRIES;
+  let heartbeatPaused = false;
+  let heartbeatPauseReason = '';
   let lastWakeAt = Date.now();
   let lastInteractionAt = new Date().toISOString();
   const loc0 = currentLocation();
@@ -235,6 +237,17 @@
   let lastHint = inferActionHint(loc0.pathname || '', knownEntity.entity_type);
   let lastEntitySig = entitySignature(knownEntity);
   let syncTimer = null;
+
+  function pauseHeartbeat(reason) {
+    if (heartbeatPaused) return;
+    heartbeatPaused = true;
+    heartbeatPauseReason = toText(reason) || 'auth_error';
+    if (timer) clearTimeout(timer);
+    timer = null;
+    try {
+      console.warn('[presence] ping pausado: ' + heartbeatPauseReason);
+    } catch (_) {}
+  }
 
   function registerInteraction() {
     lastInteractionAt = new Date().toISOString();
@@ -256,6 +269,11 @@
   }
 
   async function sendEvent(eventType, extras) {
+    if (heartbeatPaused) {
+      const pausedErr = new Error('presence_paused');
+      pausedErr.code = 'presence_paused';
+      throw pausedErr;
+    }
     const headers = { 'Content-Type': 'application/json' };
     if (csrfToken) headers['X-CSRFToken'] = csrfToken;
     const loc = currentLocation();
@@ -287,7 +305,17 @@
       headers: headers,
       body: JSON.stringify(payload),
     });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    if (!resp.ok) {
+      const err = new Error('HTTP ' + resp.status);
+      err.status = resp.status;
+      try {
+        const body = await resp.json();
+        err.errorCode = toText(body && body.error_code).toLowerCase();
+      } catch (_) {
+        err.errorCode = '';
+      }
+      throw err;
+    }
     return resp;
   }
 
@@ -297,6 +325,7 @@
   }
 
   function fire(eventType, extras) {
+    if (heartbeatPaused) return;
     sendEvent(eventType, extras).catch(function () {});
   }
 
@@ -329,12 +358,19 @@
   }
 
   async function runHeartbeat() {
+    if (heartbeatPaused) return;
     try {
       await sendEvent('heartbeat');
       backoffMs = HEARTBEAT_MS;
       quickRetriesLeft = MAX_QUICK_RETRIES;
       schedule(HEARTBEAT_MS);
-    } catch (_) {
+    } catch (err) {
+      const status = Number(err && err.status);
+      const errorCode = toText(err && err.errorCode).toLowerCase();
+      if (status === 401 || status === 403 || (status === 400 && errorCode === 'csrf')) {
+        pauseHeartbeat(status === 400 ? 'csrf' : ('http_' + status));
+        return;
+      }
       if (quickRetriesLeft > 0) {
         quickRetriesLeft -= 1;
         schedule(QUICK_RETRY_MS);

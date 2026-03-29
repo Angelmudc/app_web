@@ -1,0 +1,19 @@
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Cédula</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for c in rows %}
+      <tr>
+        <td>{{ c.fila }}</td>
+        <td>{{ c.codigo or '-' }}</td>
+        <td>{{ c.nombre_completo or '-' }}</td>
+        <td>{{ c.cedula or '-' }}</td>
+        <td>{{ c.estado or '-' }}</td>
+        <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=c.fila) }}">Ver historial</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted">Sin resultados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

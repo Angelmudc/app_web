@@ -24,6 +24,7 @@ from utils.public_intake import (
     hit_rate_limit,
     normalize_phone_for_store,
 )
+from utils.business_guard import enforce_business_limit, enforce_min_human_interval
 from utils.timezone import utc_now_naive
 from utils.staff_notifications import create_staff_notification
 
@@ -61,10 +62,35 @@ def registro_publico():
     if (request.form.get('website') or '').strip():
         return redirect(url_for('registro_publico.registro_publico_gracias'))
 
+    ip = get_request_ip(request)
     if not bool(current_app.config.get("TESTING")):
-        ip = get_request_ip(request)
         if hit_rate_limit(cache=cache, scope="registro_domestica", actor=ip, limit=8, window_seconds=600):
             flash("Demasiados intentos en poco tiempo. Espera unos minutos e intenta de nuevo.", "warning")
+            return render_template('registro/registro_publico.html'), 429
+        blocked, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="registro_publico_ip_1h",
+            actor=ip,
+            limit=20,
+            window_seconds=3600,
+            reason="ip_hourly_limit",
+            summary="Bloqueo por actividad excesiva en registro público",
+            metadata={"route": (request.path or ""), "channel": "domestica"},
+        )
+        if blocked:
+            flash("Detectamos demasiados envíos en poco tiempo. Intenta nuevamente más tarde.", "warning")
+            return render_template('registro/registro_publico.html'), 429
+        blocked_fast, _ = enforce_min_human_interval(
+            cache_obj=cache,
+            scope="registro_publico_submit_interval",
+            actor=ip,
+            min_seconds=2,
+            reason="timing_too_fast",
+            summary="Patrón no humano detectado en registro público",
+            metadata={"route": (request.path or ""), "channel": "domestica"},
+        )
+        if blocked_fast:
+            flash("Espera un momento antes de volver a enviar el formulario.", "warning")
             return render_template('registro/registro_publico.html'), 429
 
     # --- POST: recoger datos del formulario (limitando tamaños) ---
@@ -145,6 +171,24 @@ def registro_publico():
         )
 
     cedula_digits_input = normalize_cedula_for_compare(cedula_raw)
+    if not bool(current_app.config.get("TESTING")) and cedula_digits_input:
+        blocked_ced, _ = enforce_business_limit(
+            cache_obj=cache,
+            scope="registro_publico_cedula_1d",
+            actor=cedula_digits_input,
+            limit=3,
+            window_seconds=86400,
+            reason="cedula_daily_limit",
+            summary="Bloqueo por intentos repetidos con misma cédula en registro público",
+            metadata={"route": (request.path or ""), "channel": "domestica"},
+        )
+        if blocked_ced:
+            return _fail(
+                "Esta cédula superó el límite de intentos del día. Intenta mañana o contacta soporte.",
+                "warning",
+                429,
+                error_message="cedula_daily_limit",
+            )
 
     if faltantes:
         return _fail(

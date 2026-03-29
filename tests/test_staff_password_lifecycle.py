@@ -82,7 +82,7 @@ def test_staff_password_lifecycle_create_edit_and_login(role: str):
     old_login_client = flask_app.test_client()
     old_login = _login_admin(old_login_client, username, created_password)
     assert old_login.status_code == 200
-    assert "Credenciales inválidas".encode("utf-8") in old_login.data
+    assert "Credenciales incorrectas".encode("utf-8") in old_login.data
 
     new_login_client = flask_app.test_client()
     assert _login_admin(new_login_client, username, updated_password).status_code in (302, 303)

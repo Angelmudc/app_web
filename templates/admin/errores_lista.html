@@ -6,24 +6,10 @@
     <h1 class="h4 mb-0">Errores del sistema</h1>
     <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_staff') }}">Volver a Control Room</a>
   </div>
-  <div class="table-responsive">
-    <table class="table table-sm table-striped align-middle">
-      <thead><tr><th>Fecha</th><th>Tipo</th><th>Ruta</th><th>Resumen</th><th>Estado</th><th></th></tr></thead>
-      <tbody>
-        {% for e in errors %}
-        <tr>
-          <td><small>{{ e.created_at }}</small></td>
-          <td>{{ e.error_type or 'SERVER_ERROR' }}</td>
-          <td><small>{{ e.route or '-' }}</small></td>
-          <td>{{ e.summary or 'Error detectado' }}</td>
-          <td>{% if e.is_resolved %}<span class="badge bg-success">Resuelto</span>{% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}</td>
-          <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.errores_detalle', error_id=e.id) }}">Ver</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="text-muted">No hay errores registrados.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div id="erroresListaAsyncScope" data-admin-async-scope>
+    <div id="erroresListaAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_errores_lista_region.html' %}
+    </div>
   </div>
 </div>
 {% endblock %}

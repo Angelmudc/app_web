@@ -3,59 +3,34 @@
 
 {% block content %}
 
-<div class="container py-5" style="max-width: 1200px;">
-  <!-- Encabezado -->
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-      <h1 class="h3 mb-1">
-        📄 Detalle Solicitud <span class="text-info">{{ solicitud.codigo_solicitud }}</span>
-      </h1>
-      <div class="text-muted small">
-        Estado:
-        {% set estado_class = 
-          'badge-activa' if solicitud.estado == 'activa' else
-          'badge-proceso' if solicitud.estado == 'proceso' else
-          'badge-cancelada' if solicitud.estado == 'cancelada' else
-          'badge-pagada' if solicitud.estado == 'pagada' else
-          'bg-warning text-dark' if solicitud.estado == 'espera_pago' else
-          'badge-reemplazo' if solicitud.estado == 'reemplazo' else 'bg-secondary'
-        %}
-        <span class="badge {{ estado_class }}">{{ solicitud.estado }}</span>
-      </div>
-    </div>
-    <div class="d-flex gap-2">
-      <a href="{{ url_for('admin.sugerencias_solicitud', solicitud_id=solicitud.id) }}" class="btn btn-outline-primary">
-        <i class="bi bi-lightbulb me-1"></i> Ver sugerencias
-      </a>
-      <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary">
-        <i class="bi bi-arrow-left-circle me-1"></i> Volver al Cliente
-      </a>
+<div class="container py-5"
+     style="max-width: 1200px;"
+     data-admin-focus-anchor
+     data-live-invalidation-scope="1"
+     data-live-invalidation-view="solicitud_detail"
+     data-live-invalidation-stream-url="{{ url_for('admin.live_invalidation_stream') }}"
+     data-live-invalidation-poll-url="{{ url_for('admin.live_invalidation_poll') }}"
+     data-live-invalidation-source-url="{{ solicitud_detail_url or request.path }}"
+     data-live-observability-url="{{ url_for('admin.live_observability_ingest') }}"
+     data-live-solicitud-id="{{ solicitud.id }}"
+     data-live-region-summary-url="{{ url_for('admin.solicitud_detail_summary_fragment', cliente_id=solicitud.cliente_id, id=solicitud.id) }}"
+     data-live-region-operativa-url="{{ url_for('admin.solicitud_detail_operativa_core_fragment', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">
+  <div id="solicitudSummaryAsyncScope" data-admin-async-scope>
+    <div id="solicitudSummaryAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_solicitud_detail_summary_region.html' %}
     </div>
   </div>
 
-  <!-- Información general -->
-  <div class="glass-card mb-4">
-    <div class="glass-header">
-      <i class="bi bi-info-circle-fill"></i> Información General
+  <div id="solicitudOperativaCoreAsyncScope" data-admin-async-scope>
+    <div id="solicitudOperativaCoreAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_solicitud_operativa_core_region.html' %}
     </div>
-    <dl class="row p-4 mb-0">
-      <dt class="col-sm-3">📅 Fecha Solicitud</dt>
-      <dd class="col-sm-9">{{ solicitud.fecha_solicitud|rd_datetime('%Y-%m-%d') }}</dd>
+  </div>
 
-      <dt class="col-sm-3">🏙️ Ciudad / Sector</dt>
-      <dd class="col-sm-9">{{ solicitud.ciudad_sector }}</dd>
-
-      <dt class="col-sm-3">⚙️ Modalidad</dt>
-      <dd class="col-sm-9">{{ solicitud.modalidad_trabajo }}</dd>
-
-      {% if solicitud.fecha_cancelacion %}
-      <dt class="col-sm-3">⛔ Fecha Cancelación</dt>
-      <dd class="col-sm-9">{{ solicitud.fecha_cancelacion|rd_datetime('%Y-%m-%d %H:%M') }}</dd>
-
-      <dt class="col-sm-3">💬 Motivo Cancelación</dt>
-      <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
-      {% endif %}
-    </dl>
+  <div id="solicitudContratoAsyncScope" data-admin-async-scope>
+    <div id="solicitudContratoAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_solicitud_contract_block.html' %}
+    </div>
   </div>
 
   <!-- 🔥 Resumen listo para enviar al cliente -->
@@ -70,9 +45,10 @@
       <div class="mb-3">
         <textarea id="resumenCliente" class="form-control" rows="12" readonly>{{ resumen_cliente }}</textarea>
       </div>
-      <button type="button" class="btn btn-secondary" onclick="copiarResumenCliente()">
+      <button type="button" class="btn btn-secondary js-copy-resumen-cliente">
         <i class="bi bi-clipboard me-1"></i> Copiar resumen
       </button>
+      <div id="resumenCopyFeedback" class="alert d-none py-2 px-3 mt-2 mb-0" role="alert" aria-live="polite"></div>
     </div>
   </div>
 
@@ -406,110 +382,9 @@
   </div>
 
   <div class="text-end mt-4">
-    <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary">
+    <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary" data-admin-nav="true">
       <i class="bi bi-arrow-left-circle me-1"></i> Volver al Cliente
     </a>
   </div>
 </div>
-
-<div id="copy-toast" class="copy-toast" style="display:none;">✅ Copiado al portapapeles</div>
-
-<script>
-  function copiarResumenCliente() {
-    const textarea = document.getElementById('resumenCliente');
-    if (!textarea) return;
-
-    const text = textarea.value;
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(
-        function () { alert('Resumen copiado al portapapeles.'); },
-        function () { alert('No se pudo copiar automáticamente. Copia el texto manualmente.'); }
-      );
-    } else {
-      textarea.select();
-      textarea.setSelectionRange(0, 99999);
-      try {
-        const ok = document.execCommand('copy');
-        if (ok) {
-          alert('Resumen copiado al portapapeles.');
-        } else {
-          alert('No se pudo copiar automáticamente. Copia el texto manualmente.');
-        }
-      } catch (e) {
-        alert('No se pudo copiar automáticamente. Copia el texto manualmente.');
-      }
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const toast = document.getElementById('copy-toast');
-
-    function showToast() {
-      if (!toast) return;
-      toast.style.display = 'block';
-      setTimeout(() => { toast.style.display = 'none'; }, 1800);
-    }
-
-    function fallbackCopy(text) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.top = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        return ok;
-      } catch (e) {
-        return false;
-      }
-    }
-
-    document.querySelectorAll('.copy-btn-interno').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        // Lee el JSON embebido en el data-attribute.
-        let text = '';
-        try {
-          text = JSON.parse(btn.dataset.orderText);
-          if (typeof text !== 'string') { text = String(text ?? ''); }
-        } catch {
-          text = btn.dataset.orderText || '';
-        }
-
-        // Copia robusta
-        let copied = false;
-        if (navigator.clipboard && window.isSecureContext) {
-          try {
-            await navigator.clipboard.writeText(text);
-            copied = true;
-          } catch (e) {
-            copied = fallbackCopy(text);
-          }
-        } else {
-          copied = fallbackCopy(text);
-        }
-
-        if (copied) {
-          showToast();
-          btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Copiado';
-          btn.classList.remove('btn-primary');
-          btn.classList.add('btn-success');
-          btn.disabled = true;
-
-          setTimeout(() => {
-            btn.disabled = false;
-            btn.classList.remove('btn-success');
-            btn.classList.add('btn-primary');
-            btn.innerHTML = '<i class="bi bi-clipboard-check me-1"></i> Copiar interno';
-          }, 2000);
-        } else {
-          alert('❌ No se pudo copiar. Intenta de nuevo.');
-        }
-      });
-    });
-  });
-</script>
 {% endblock %}

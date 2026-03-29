@@ -52,7 +52,7 @@ def test_audit_logs_created_on_actions():
 
     with flask_app.app_context():
         with patch('core.legacy_handlers.get_candidata_by_id', return_value=candidata_stub), \
-             patch('core.legacy_handlers.db.session.commit'):
+             patch('core.legacy_handlers.execute_robust_save', return_value=SimpleNamespace(ok=True, attempts=1, error_message='')):
             resp_edit = client.post(
                 '/buscar',
                 data={

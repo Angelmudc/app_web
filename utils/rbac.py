@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from flask import request, session
+from flask import g, request, session
 
 from config_app import cache
 from models import StaffUser
@@ -101,6 +101,10 @@ def permission_required_for_path(path: str) -> str | None:
     if not p.startswith("/admin/"):
         return None
 
+    # Presence ping se valida en la propia vista para staff autenticado.
+    if p.startswith("/admin/monitoreo/presence/ping"):
+        return None
+
     if p.startswith("/admin/roles"):
         return "admin:roles"
     if p.startswith("/admin/alertas/canales"):
@@ -164,3 +168,7 @@ def log_permission_denied(*, user: Any, required_permission: str, dedupe_seconds
         success=False,
         error="No autorizado para esta sección.",
     )
+    try:
+        g._authz_denied_logged = True
+    except Exception:
+        pass

@@ -5,12 +5,18 @@
   const streamUrl = root.dataset.candidataStreamUrl || '';
   const logsUrl = root.dataset.candidataLogsUrl || '';
   const presencePingUrl = root.dataset.presencePingUrl || '';
-  const activeFilter = root.dataset.activeFilter || '';
+  let activeFilter = root.dataset.activeFilter || '';
   const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
   const liveStatus = document.getElementById('liveStatus');
   const liveToggleBtn = document.getElementById('liveToggleBtn');
-  const timeline = document.getElementById('candidataTimeline');
+  function currentTimeline() {
+    return document.getElementById('candidataTimeline');
+  }
+
+  function currentRegionState() {
+    return document.querySelector('#monitoreoCandidataHistorialAsyncRegion [data-candidata-historial-state]');
+  }
 
   let lastId = Number(root.dataset.initialLastId || 0);
   let paused = false;
@@ -88,6 +94,7 @@
   }
 
   function insertLog(item) {
+    const timeline = currentTimeline();
     if (!timeline || !item || !item.id) return;
     if (timeline.querySelector('[data-log-id="' + item.id + '"]')) return;
 
@@ -138,6 +145,32 @@
     if (rows.length > 300) {
       for (let i = 300; i < rows.length; i += 1) rows[i].remove();
     }
+  }
+
+  function applyRegionStateAndRestartLive() {
+    const state = currentRegionState();
+    if (!state) return;
+    const nextFilter = String(state.dataset.activeFilter || '').trim().toLowerCase();
+    const nextLastId = Number(state.dataset.initialLastId || 0);
+
+    activeFilter = nextFilter;
+    if (!Number.isNaN(nextLastId) && nextLastId >= 0) {
+      lastId = nextLastId;
+    } else {
+      lastId = 0;
+    }
+
+    root.dataset.activeFilter = activeFilter;
+    root.dataset.initialLastId = String(lastId);
+
+    stopSSE();
+    stopPolling();
+    if (paused) {
+      setLiveStatus(false);
+      return;
+    }
+    if (activeFilter) startPolling();
+    else startSSE();
   }
 
   async function fetchJson(url) {
@@ -268,6 +301,12 @@
   startPresencePing();
   if (activeFilter) startPolling();
   else startSSE();
+
+  document.addEventListener('admin:content-updated', function (ev) {
+    const detail = (ev && ev.detail) || {};
+    if (detail.targetSelector !== '#monitoreoCandidataHistorialAsyncRegion') return;
+    applyRegionStateAndRestartLive();
+  });
 
   window.addEventListener('popstate', function () {
     if (!isMonitoringPage()) stopMonitoringRealtime();

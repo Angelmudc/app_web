@@ -20,74 +20,18 @@
       </div>
 
       <hr class="my-4">
-
-      <!-- 🔎 BÚSQUEDA server-side (sin JS) -->
-      <form method="GET"
-            action="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
-            class="mb-3">
-        <div class="d-flex gap-2 flex-wrap">
-          <input type="text"
-                 name="q"
-                 value="{{ q or '' }}"
-                 class="form-control"
-                 placeholder="Buscar doméstica por nombre, cédula, código o teléfono…"
-                 autocomplete="off">
-          <button type="submit" class="btn btn-primary">
-            <i class="bi bi-search me-1"></i> Buscar
-          </button>
-          <a href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
-             class="btn btn-outline-secondary">
-            Limpiar
-          </a>
+      <div id="reemplazoFinAsyncScope" data-admin-async-scope>
+        <div id="reemplazoFinSearchRegion" data-async-preserve-scroll="true">
+          {% include 'admin/_reemplazo_fin_search_region.html' %}
         </div>
-        <div class="form-text mt-1">
-          Escribe y presiona <strong>Buscar</strong>. Verás la lista abajo y también se llenará el selector.
-        </div>
-      </form>
-
-      <!-- 📋 LISTA visible -->
-      {% if q %}
-        {% if candidatas and candidatas|length > 0 %}
-          <div class="table-responsive mb-4">
-            <table class="table table-sm align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>Nombre</th>
-                  <th>Cédula</th>
-                  <th>Teléfono</th>
-                  <th>Código</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for c in candidatas %}
-                  <tr>
-                    <td class="fw-semibold">{{ c.nombre_completo or '' }}</td>
-                    <td>{{ c.cedula or '' }}</td>
-                    <td>{{ c.numero_telefono or '' }}</td>
-                    <td>{{ c.codigo or '' }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <div class="alert alert-warning mb-4">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            No se encontraron domésticas con “<strong>{{ q }}</strong>”.
-          </div>
-        {% endif %}
-      {% else %}
-        <div class="alert alert-info mb-4">
-          <i class="bi bi-info-circle me-1"></i>
-          Escribe una búsqueda arriba para cargar domésticas.
-        </div>
-      {% endif %}
 
       <form method="POST"
             action="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id, q=(q or '')) }}"
             novalidate>
         {{ form.hidden_tag() }}
         <input type="hidden" name="q" value="{{ q or '' }}">
+        <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
 
         {% if form.errors %}
           <div class="alert alert-danger mb-4">
@@ -104,46 +48,9 @@
 
         <div class="row g-4">
           <div class="col-12 col-md-8">
-            {# ✅ Renderizar el field correcto según pick_name #}
-            {% if pick_name == 'domestica_id' %}
-              {% set pick_field = form.domestica_id %}
-            {% elif pick_name == 'candidata_new_id' %}
-              {% set pick_field = form.candidata_new_id %}
-            {% else %}
-              {% set pick_field = form.candidata_id %}
-            {% endif %}
-
-            <label class="form-label">
-              <i class="bi bi-person-fill text-info me-1"></i>
-              {{ pick_field.label.text }} <span class="text-danger">*</span>
-            </label>
-
-            {# ✅ FIX: contenedor arriba en z-index para que NADA tape el select #}
-            <div style="position: relative; z-index: 2;">
-              {# ✅ FIX: is-invalid si tiene error + pointer-events auto por si un CSS lo bloquea #}
-              {% set sel_class = "form-select" %}
-              {% if pick_field.errors %}
-                {% set sel_class = "form-select is-invalid" %}
-              {% endif %}
-
-              {{ pick_field(class=sel_class, id=pick_name, style="pointer-events:auto;") }}
-
-              {% if pick_field.errors %}
-                <div class="invalid-feedback d-block">
-                  {% for e in pick_field.errors %}
-                    <div>{{ e }}</div>
-                  {% endfor %}
-                </div>
-              {% endif %}
+            <div id="reemplazoFinPickRegion" data-async-preserve-scroll="true">
+              {% include 'admin/_reemplazo_fin_pick_region.html' %}
             </div>
-
-            {% if not q %}
-              <div class="form-text mt-1 text-warning">
-                Primero haz una búsqueda arriba para cargar opciones en el selector.
-              </div>
-            {% else %}
-              <div class="form-text mt-1">Selecciona una doméstica de la lista filtrada.</div>
-            {% endif %}
           </div>
 
           <div class="col-12 col-md-4">
@@ -168,6 +75,7 @@
         </div>
 
       </form>
+      </div>
 
     </div>
   </div>

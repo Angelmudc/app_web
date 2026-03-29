@@ -1,0 +1,85 @@
+<div class="glass-card p-4 p-md-5">
+  <div class="card-header d-flex align-items-center gap-2 mb-4">
+    <i class="bi bi-gear-fill fs-4 text-info"></i>
+    <h1 class="h4 mb-0">⚙️ Gestionar Plan – {{ solicitud.codigo_solicitud }}</h1>
+  </div>
+
+  {% if async_feedback and async_feedback.message %}
+    {% set _cat = async_feedback.category or 'info' %}
+    <div class="alert alert-{{ 'danger' if _cat in ['danger', 'error'] else _cat }} border-0 mb-3" role="alert" aria-live="polite">
+      {{ async_feedback.message }}
+    </div>
+  {% endif %}
+
+  {% if form.errors %}
+    <div class="alert alert-warning border-0 mb-3" role="alert" aria-live="polite">
+      No se guardó. Revisa los campos marcados y corrige los errores.
+    </div>
+  {% endif %}
+
+  <form
+    method="POST"
+    id="planForm"
+    novalidate
+    data-admin-async-form
+    data-async-target="#gestionarPlanAsyncRegion"
+    data-async-busy-container="#gestionarPlanAsyncScope"
+    data-async-preserve-scroll="true"
+    data-async-fallback="native">
+    {{ form.csrf_token }}
+    <input type="hidden" name="next" value="{{ next_url or '' }}">
+
+    {% set plan_value = (form.tipo_plan.data if form and form.tipo_plan and form.tipo_plan.data is not none else (solicitud.tipo_plan or '')) %}
+    {% set abono_value = (form.abono.data if form and form.abono and form.abono.data is not none else (solicitud.abono or '')) %}
+
+    <div class="mb-4">
+      <label for="tipo_plan" class="form-label">
+        <i class="bi bi-box-seam-fill text-info me-1"></i> Plan del Cliente
+      </label>
+      <select
+        id="tipo_plan"
+        name="tipo_plan"
+        class="form-select{% if form.tipo_plan.errors %} is-invalid{% endif %}"
+        required>
+        <option value="Básico" {% if plan_value == 'Básico' %}selected{% endif %}>Básico 💼</option>
+        <option value="Premium" {% if plan_value == 'Premium' %}selected{% endif %}>Premium 🌟</option>
+        <option value="VIP" {% if plan_value == 'VIP' %}selected{% endif %}>VIP 👑</option>
+      </select>
+      {% if form.tipo_plan.errors %}
+        <div class="invalid-feedback d-block">{{ form.tipo_plan.errors[0] }}</div>
+      {% else %}
+        <div class="form-text">Selecciona el plan que mejor se ajuste al cliente.</div>
+      {% endif %}
+    </div>
+
+    <div class="mb-4">
+      <label for="abono" class="form-label">
+        <i class="bi bi-cash-stack text-success me-1"></i> Abono del Cliente
+      </label>
+      <input
+        id="abono"
+        name="abono"
+        type="text"
+        inputmode="decimal"
+        pattern="^[\d\s.,]+$"
+        class="form-control{% if form.abono.errors %} is-invalid{% endif %}"
+        value="{{ abono_value }}"
+        placeholder="💰 Ej: 1500, 1,500, 1.500,50"
+        required>
+      {% if form.abono.errors %}
+        <div class="invalid-feedback d-block">{{ form.abono.errors[0] }}</div>
+      {% else %}
+        <div class="form-text">Obligatorio. Acepta 1500 · 1,500 · 1.500 · 1.500,50 · 1500.50</div>
+      {% endif %}
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-4">
+      <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-secondary">
+        <i class="bi bi-x-circle me-1"></i> Cancelar
+      </a>
+      <button type="submit" class="btn btn-primary" id="btn-submit" data-loading-text="Guardando...">
+        <i class="bi bi-save-fill me-1"></i> Guardar cambios
+      </button>
+    </div>
+  </form>
+</div>

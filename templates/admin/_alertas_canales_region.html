@@ -1,0 +1,46 @@
+<p class="text-muted">Configura Telegram para alertas críticas. No se guarda nada en código, solo entorno/runtime.</p>
+
+<form method="post"
+      action="{{ url_for('admin.alertas_canales') }}"
+      class="card p-3 mb-3"
+      data-admin-async-form
+      data-async-target="#alertasCanalesAsyncRegion"
+      data-async-busy-container="#alertasCanalesAsyncScope"
+      data-async-fallback="native">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="next" value="{{ request.path }}">
+  <input type="hidden" name="_async_target" value="#alertasCanalesAsyncRegion">
+
+  <div class="form-check form-switch mb-3">
+    <input class="form-check-input" type="checkbox" id="telegram_enabled" name="telegram_enabled" {% if cfg.enabled %}checked{% endif %}>
+    <label class="form-check-label" for="telegram_enabled">Activar Telegram</label>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">TELEGRAM_BOT_TOKEN</label>
+    <input class="form-control" type="password" name="telegram_bot_token" value="" placeholder="Dejar en blanco para mantener el actual">
+    <div class="form-text">Token actual: {{ cfg.masked_token or 'No configurado' }}</div>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">TELEGRAM_CHAT_ID</label>
+    <input class="form-control" type="text" name="telegram_chat_id" value="" placeholder="Dejar en blanco para mantener el actual">
+    <div class="form-text">Chat actual: {{ ('***' ~ cfg.chat_id[-4:]) if cfg.chat_id else 'No configurado' }}</div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary" type="submit">Guardar canal</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.alertas_canales') }}">Recargar</a>
+  </div>
+</form>
+
+<form method="post"
+      action="{{ url_for('admin.alertas_canales_probar') }}"
+      data-admin-async-form
+      data-async-target="#alertasCanalesAsyncRegion"
+      data-async-busy-container="#alertasCanalesAsyncScope"
+      data-async-fallback="native">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="next" value="{{ request.path }}">
+  <button class="btn btn-success" type="submit">Probar envio</button>
+</form>

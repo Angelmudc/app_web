@@ -1,0 +1,238 @@
+<!-- Contrato digital -->
+<div class="glass-card mb-4">
+  <div class="glass-header">
+    <i class="bi bi-file-earmark-text"></i> Contrato digital
+  </div>
+  <div class="p-4">
+    {% if contracts_schema_ready is defined and not contracts_schema_ready %}
+      <p class="mb-0 text-muted">Módulo de contratos no disponible todavía en esta base de datos (migración pendiente).</p>
+    {% elif latest_contract %}
+      {% set state = contract_effective_state or latest_contract.estado %}
+      {% set state_badge =
+        'bg-secondary' if state == 'borrador' else
+        'bg-primary' if state in ['enviado', 'visto'] else
+        'bg-success' if state == 'firmado' else
+        'bg-warning text-dark' if state == 'expirado' else
+        'bg-danger' if state == 'anulado' else
+        'bg-light text-dark'
+      %}
+      <div class="row g-3 mb-3">
+        <div class="col-md-3">
+          <div data-testid="solicitud-contract-state"><strong>Estado:</strong> <span class="badge {{ state_badge }}">{{ state }}</span> <span class="badge bg-dark">Actual</span></div>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Versión:</strong> v{{ latest_contract.version }}</div>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Enviado:</strong> {{ latest_contract.enviado_at and latest_contract.enviado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Primer acceso:</strong> {{ latest_contract.primer_visto_at and latest_contract.primer_visto_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Firmado:</strong> {{ latest_contract.firmado_at and latest_contract.firmado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Expira:</strong> {{ latest_contract.token_expira_at and latest_contract.token_expira_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Expirado:</strong> {{ 'Sí' if contrato_expirado else 'No' }}</div>
+        </div>
+        <div class="col-md-3">
+          <div><strong>PDF final:</strong> {{ 'Sí' if latest_contract.pdf_final_size_bytes else 'No' }}</div>
+        </div>
+        <div class="col-md-12">
+          <div><strong>Snapshot:</strong> {{ contract_snapshot_summary or 'Ver detalle de contrato para snapshot completo.' }}</div>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        {% if state == 'borrador' %}
+          <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=latest_contract.id) }}" class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudContratoAsyncRegion"
+                data-async-busy-container="#solicitudContratoAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-primary btn-sm" data-loading-text="Enviando...">Enviar contrato</button>
+          </form>
+          <form method="post" action="{{ url_for('contratos.anular_contrato_ui', contrato_id=latest_contract.id) }}" class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudContratoAsyncRegion"
+                data-async-busy-container="#solicitudContratoAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native"
+                data-async-confirm="¿Anular este contrato digital?">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-outline-danger btn-sm" data-loading-text="Anulando...">Anular</button>
+          </form>
+        {% elif state in ['enviado', 'visto'] %}
+          <button type="button"
+                  class="btn btn-outline-secondary btn-sm js-copy-contract-link"
+                  data-copy-text="{{ latest_contract_link or '' }}"
+                  data-inline-feedback-target="#solicitudContractCopyFeedback"
+                  {% if not latest_contract_link %}disabled{% endif %}>
+            Copiar link
+          </button>
+          <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=latest_contract.id) }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-eye me-1"></i> Ver contrato
+          </a>
+          <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=latest_contract.id) }}" class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudContratoAsyncRegion"
+                data-async-busy-container="#solicitudContratoAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-primary btn-sm" data-loading-text="Reemitiendo...">Reemitir</button>
+          </form>
+          <form method="post" action="{{ url_for('contratos.anular_contrato_ui', contrato_id=latest_contract.id) }}" class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudContratoAsyncRegion"
+                data-async-busy-container="#solicitudContratoAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native"
+                data-async-confirm="¿Anular este contrato digital?">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-outline-danger btn-sm" data-loading-text="Anulando...">Anular</button>
+          </form>
+        {% elif state == 'firmado' %}
+          <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=latest_contract.id) }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-eye me-1"></i> Ver contrato
+          </a>
+          {% if latest_contract.pdf_final_size_bytes %}
+            <a href="{{ url_for('contratos.descargar_pdf_admin', contrato_id=latest_contract.id) }}" class="btn btn-success btn-sm">
+              <i class="bi bi-download me-1"></i> Descargar PDF
+            </a>
+          {% endif %}
+          <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=solicitud.id) }}" class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudContratoAsyncRegion"
+                data-async-busy-container="#solicitudContratoAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-outline-primary btn-sm" data-loading-text="Procesando...">Crear nueva versión</button>
+          </form>
+        {% elif state == 'expirado' %}
+          <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=solicitud.id) }}" class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudContratoAsyncRegion"
+                data-async-busy-container="#solicitudContratoAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-primary btn-sm" data-loading-text="Procesando...">Crear nueva versión</button>
+          </form>
+        {% elif state == 'anulado' %}
+          <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=latest_contract.id) }}" class="btn btn-outline-secondary btn-sm">
+            Ver detalle
+          </a>
+          <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=solicitud.id) }}" class="d-inline"
+                data-admin-async-form
+                data-async-target="#solicitudContratoAsyncRegion"
+                data-async-busy-container="#solicitudContratoAsyncScope"
+                data-async-preserve-scroll="true"
+                data-async-fallback="native">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-outline-primary btn-sm" data-loading-text="Procesando...">Crear nueva versión</button>
+          </form>
+        {% endif %}
+        <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=latest_contract.id) }}" class="btn btn-outline-dark btn-sm">
+          Ver detalle y eventos
+        </a>
+      </div>
+      {% if latest_contract_link %}
+      <div class="mt-3">
+        <label class="form-label small mb-1">Link público (último generado en esta sesión)</label>
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control" id="latestContractLink" value="{{ latest_contract_link }}" readonly>
+          <button type="button"
+                  class="btn btn-outline-secondary js-copy-contract-link"
+                  data-copy-target="#latestContractLink"
+                  data-inline-feedback-target="#solicitudContractCopyFeedback">Copiar link</button>
+        </div>
+        <div id="solicitudContractCopyFeedback" class="alert d-none py-2 px-3 mt-2 mb-0" role="alert" aria-live="polite"></div>
+      </div>
+      {% endif %}
+      {% if contract_history %}
+      <div class="mt-4">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="mb-0">Historial de contratos</h6>
+          <small class="text-muted">Más reciente primero</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Contrato</th>
+                <th>Estado</th>
+                <th>Creado</th>
+                <th>Enviado</th>
+                <th>Firmado</th>
+                <th>Expira</th>
+                <th>PDF</th>
+                <th class="text-end">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in contract_history %}
+              {% set hc = item.contract %}
+              {% set hstate = item.effective_state %}
+              {% set hbadge =
+                'bg-secondary' if hstate == 'borrador' else
+                'bg-primary' if hstate in ['enviado', 'visto'] else
+                'bg-success' if hstate == 'firmado' else
+                'bg-warning text-dark' if hstate == 'expirado' else
+                'bg-danger' if hstate == 'anulado' else
+                'bg-light text-dark'
+              %}
+              <tr>
+                <td>
+                  <div class="fw-semibold">#{{ hc.id }} · v{{ hc.version }}</div>
+                  <div class="small text-muted">
+                    {% if item.is_current %}<span class="badge bg-dark me-1">Actual</span>{% endif %}
+                    {% if item.is_latest_signed %}<span class="badge bg-success">Último firmado</span>{% endif %}
+                  </div>
+                </td>
+                <td><span class="badge {{ hbadge }}">{{ hstate }}</span></td>
+                <td>{{ hc.created_at and hc.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
+                <td>{{ hc.enviado_at and hc.enviado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
+                <td>{{ hc.firmado_at and hc.firmado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
+                <td>{{ hc.token_expira_at and hc.token_expira_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
+                <td>{{ 'Sí' if item.has_pdf else 'No' }}</td>
+                <td class="text-end">
+                  <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=hc.id) }}" class="btn btn-outline-primary btn-sm">Ver</a>
+                  {% if item.has_pdf and hc.firmado_at %}
+                    <a href="{{ url_for('contratos.descargar_pdf_admin', contrato_id=hc.id) }}" class="btn btn-success btn-sm">PDF</a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-3 text-muted">No hay contrato digital asociado todavía.</p>
+      <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=solicitud.id) }}"
+            data-admin-async-form
+            data-async-target="#solicitudContratoAsyncRegion"
+            data-async-busy-container="#solicitudContratoAsyncScope"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button type="submit" class="btn btn-primary btn-sm" data-loading-text="Creando...">Crear contrato (borrador)</button>
+      </form>
+    {% endif %}
+  </div>
+</div>

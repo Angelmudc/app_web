@@ -6,35 +6,11 @@
 {% endblock %}
 {% block content %}
 <div class="container py-4" data-monitoreo-page="dashboard" data-initial-last-id="{{ initial_last_id }}" data-stream-url="{{ url_for('admin.monitoreo_stream') }}" data-logs-url="{{ url_for('admin.monitoreo_logs_json') }}" data-summary-url="{{ url_for('admin.monitoreo_summary_json') }}" data-productivity-url="{{ url_for('admin.monitoreo_productividad_json') }}" data-presence-url="{{ url_for('admin.monitoreo_presence_json') }}" data-presence-ping-url="{{ url_for('admin.monitoreo_presence_ping') }}">
-  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
-    <h1 class="h3 mb-0">Monitoreo de Secretarias</h1>
-    <div class="d-flex align-items-center gap-2">
-      <span id="liveStatus" class="live-badge paused">● PAUSADO</span>
-      <button id="liveToggleBtn" class="btn btn-outline-dark btn-sm" type="button">Reanudar</button>
-      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Ver logs completos</a>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.seguridad_locks') }}">Locks</a>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.errores_lista') }}">Errores</a>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.matching_inteligente') }}">Motor</a>
-      {% if (current_user.role or '')|lower == 'owner' %}
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.alertas_canales') }}">Canales</a>
-      {% endif %}
+  <div id="monitoreoDashboardShellAsyncScope" data-admin-async-scope>
+    <div id="monitoreoDashboardShellAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_monitoreo_dashboard_shell_region.html' %}
     </div>
   </div>
-
-  <form method="get" action="{{ url_for('admin.monitoreo_candidatas_search') }}" class="row g-2 mb-4">
-    <div class="col-md-8">
-      <label class="form-label mb-1">Buscar candidata (nombre/cédula/código)</label>
-      <input class="form-control" type="text" name="q" placeholder="Ej: Maria, 001-1234567-8, COD-001" value="{{ request.args.get('q','') }}">
-    </div>
-    <div class="col-md-2">
-      <label class="form-label mb-1">Límite</label>
-      <input class="form-control" type="number" min="1" max="50" name="limit" value="20">
-    </div>
-    <div class="col-md-2 d-flex align-items-end">
-      <button class="btn btn-primary w-100" type="submit">Buscar</button>
-    </div>
-  </form>
 
   <div class="card mb-4">
     <div class="card-body">
@@ -101,44 +77,9 @@
     {% endif %}
   </div>
 
-  <div class="card mb-4">
-    <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h2 class="h6 mb-0">Alertas críticas (últimas 10)</h2>
-        <a href="{{ url_for('admin.seguridad_alertas') }}" class="btn btn-sm btn-outline-dark">Ver todas</a>
-      </div>
-      <div id="alertsBox">
-        {% set alerts = summary_payload.critical_alerts or summary_payload.alerts or [] %}
-        {% if alerts %}
-          {% for a in alerts[:10] %}
-          <div class="alert {{ 'alert-danger' if a.severity in ['critical', 'error'] else 'alert-warning' }} py-2 mb-2">
-            <div class="d-flex justify-content-between align-items-center gap-2">
-              <div>
-                <strong>
-                  {% if a.severity == 'critical' %}Crítica{% elif a.severity == 'warning' %}Advertencia{% elif a.action_type == 'ERROR_EVENT' %}Error{% else %}Seguridad{% endif %}
-                </strong>:
-                {{ a.summary or 'Evento detectado' }}
-                <small class="text-muted d-block">{{ a.route or '-' }}</small>
-                {% if a.action_type == 'ERROR_EVENT' and a.id %}
-                  <a class="small" href="{{ url_for('admin.errores_detalle', error_id=a.id) }}">Ver detalle</a>
-                {% elif a.entity_type == 'candidata' and a.entity_id %}
-                  <a class="small" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=a.entity_id) }}">Ver candidata</a>
-                {% elif a.entity_type in ['candidata', 'solicitud'] %}
-                  <a class="small" href="{{ url_for('admin.seguridad_locks') }}">Ver lock</a>
-                {% endif %}
-              </div>
-              <form method="post" action="{{ url_for('admin.resolver_alerta', alert_id=a.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="next" value="{{ request.path }}">
-                <button class="btn btn-sm btn-outline-dark" type="submit">Marcar resuelta</button>
-              </form>
-            </div>
-          </div>
-          {% endfor %}
-        {% else %}
-          <div class="text-muted">No hay alertas pendientes.</div>
-        {% endif %}
-      </div>
+  <div id="monitoreoAlertsAsyncScope" data-admin-async-scope>
+    <div id="monitoreoAlertsAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_monitoreo_alertas_region.html' %}
     </div>
   </div>
 

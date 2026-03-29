@@ -1,0 +1,44 @@
+<div id="prioridadSummaryAsyncRegion" data-async-preserve-scroll="true">
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-muted">Total</div>
+          <div class="h5 mb-0" data-testid="metric-total">{{ total_count if total_count is defined else (total or 0) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="card border-primary-subtle h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-primary">Activas</div>
+          <div class="h5 mb-0 text-primary" data-testid="metric-activa">{{ count_activa if count_activa is defined else 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="card border-warning-subtle h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-warning-emphasis">Espera pago</div>
+          <div class="h5 mb-0 text-warning-emphasis" data-testid="metric-espera-pago">{{ count_espera_pago if count_espera_pago is defined else 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="card border-success-subtle h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-success">Pagadas</div>
+          <div class="h5 mb-0 text-success" data-testid="metric-pagada">{{ count_pagada if count_pagada is defined else 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="card border-danger-subtle h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-danger">Estancadas</div>
+          <div class="h5 mb-0 text-danger" data-testid="metric-stagnant">{{ count_stagnant if count_stagnant is defined else 0 }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

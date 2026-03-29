@@ -6,7 +6,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from config_app import db, cache
 from models import ReclutaPerfil, ReclutaCambio, TIPOS_EMPLEO_GENERAL
 from .forms import ReclutaForm, ReclutaPublicForm
+from decorators import staff_required
 from utils.public_intake import get_request_ip, hit_rate_limit
+from utils.business_guard import enforce_business_limit, enforce_min_human_interval
 from utils.staff_notifications import create_staff_notification
 
 reclutas_bp = Blueprint(
@@ -21,6 +23,7 @@ reclutas_bp = Blueprint(
 # ─────────────────────────────────────────────────────────────
 @reclutas_bp.route('/', methods=['GET'])
 @login_required
+@staff_required
 def lista():
     query = ReclutaPerfil.query
 
@@ -72,10 +75,45 @@ def registro_publico():
     form = ReclutaPublicForm()
 
     if request.method == "POST":
+        ip = get_request_ip(request)
         if not bool(current_app.config.get("TESTING")):
-            ip = get_request_ip(request)
             if hit_rate_limit(cache=cache, scope="registro_general", actor=ip, limit=8, window_seconds=600):
                 flash("Demasiados intentos en poco tiempo. Espera unos minutos e intenta de nuevo.", "warning")
+                return render_template(
+                    'reclutas/registro_publico.html',
+                    form=form,
+                    modo='publico',
+                    is_public_page=True
+                ), 429
+            blocked, _ = enforce_business_limit(
+                cache_obj=cache,
+                scope="reclutas_publico_ip_1h",
+                actor=ip,
+                limit=20,
+                window_seconds=3600,
+                reason="ip_hourly_limit",
+                summary="Bloqueo por actividad excesiva en reclutas público",
+                metadata={"route": (request.path or ""), "channel": "empleo_general"},
+            )
+            if blocked:
+                flash("Detectamos demasiados envíos en poco tiempo. Intenta nuevamente más tarde.", "warning")
+                return render_template(
+                    'reclutas/registro_publico.html',
+                    form=form,
+                    modo='publico',
+                    is_public_page=True
+                ), 429
+            blocked_fast, _ = enforce_min_human_interval(
+                cache_obj=cache,
+                scope="reclutas_publico_submit_interval",
+                actor=ip,
+                min_seconds=2,
+                reason="timing_too_fast",
+                summary="Patrón no humano detectado en reclutas público",
+                metadata={"route": (request.path or ""), "channel": "empleo_general"},
+            )
+            if blocked_fast:
+                flash("Espera un momento antes de volver a enviar el formulario.", "warning")
                 return render_template(
                     'reclutas/registro_publico.html',
                     form=form,
@@ -182,6 +220,7 @@ def registro_publico_ok():
 # ─────────────────────────────────────────────────────────────
 @reclutas_bp.route('/nuevo', methods=['GET', 'POST'])
 @login_required
+@staff_required
 def nuevo():
     form = ReclutaForm()
 
@@ -240,6 +279,7 @@ def nuevo():
 # ─────────────────────────────────────────────────────────────
 @reclutas_bp.route('/<int:recluta_id>/editar', methods=['GET', 'POST'])
 @login_required
+@staff_required
 def editar(recluta_id):
     recluta = ReclutaPerfil.query.get_or_404(recluta_id)
     form = ReclutaForm(obj=recluta)
@@ -270,6 +310,7 @@ def editar(recluta_id):
 # ─────────────────────────────────────────────────────────────
 @reclutas_bp.route('/<int:recluta_id>', methods=['GET'])
 @login_required
+@staff_required
 def detalle(recluta_id):
     recluta = ReclutaPerfil.query.get_or_404(recluta_id)
     cambios = ReclutaCambio.query.filter_by(recluta_id=recluta.id).order_by(ReclutaCambio.creado_en.desc()).all()
@@ -281,12 +322,32 @@ def detalle(recluta_id):
 # ─────────────────────────────────────────────────────────────
 @reclutas_bp.route('/<int:recluta_id>/estado/<string:nuevo_estado>', methods=['POST'])
 @login_required
+@staff_required
 def cambiar_estado(recluta_id, nuevo_estado):
     if nuevo_estado not in ('nuevo', 'aprobado', 'rechazado'):
         flash('Estado inválido', 'danger')
         return redirect(url_for('reclutas.lista'))
 
+    actor = str(getattr(current_user, "id", "") or getattr(current_user, "email", "") or "staff")
+    blocked, _ = enforce_business_limit(
+        cache_obj=cache,
+        scope="reclutas_staff_estado_10m",
+        actor=actor,
+        limit=30,
+        window_seconds=600,
+        reason="state_change_burst",
+        summary="Bloqueo por cambios masivos de estado en reclutas",
+        metadata={"route": (request.path or ""), "target_state": nuevo_estado},
+    )
+    if blocked:
+        flash('Demasiados cambios de estado en poco tiempo. Intenta nuevamente en unos minutos.', 'warning')
+        return redirect(url_for('reclutas.lista'))
+
     recluta = ReclutaPerfil.query.get_or_404(recluta_id)
+    if (recluta.estado or "") == nuevo_estado:
+        flash('Este perfil ya tiene ese estado.', 'info')
+        return redirect(url_for('reclutas.detalle', recluta_id=recluta.id))
+
     recluta.estado = nuevo_estado
     recluta.actualizado_por = current_user.email if hasattr(current_user, 'email') else str(current_user)
 
@@ -312,6 +373,7 @@ def cambiar_estado(recluta_id, nuevo_estado):
 # ─────────────────────────────────────────────────────────────
 @reclutas_bp.route('/<int:recluta_id>/eliminar', methods=['POST'])
 @login_required
+@staff_required
 def eliminar(recluta_id):
     recluta = ReclutaPerfil.query.get_or_404(recluta_id)
 

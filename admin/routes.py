@@ -5,22 +5,28 @@ import re
 import os
 import time
 import json
+import hashlib
+import secrets
+import ipaddress
+from contextlib import contextmanager
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
-from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app, Response, stream_with_context
+from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app, Response, stream_with_context, make_response, has_request_context
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 
-from sqlalchemy import or_, func, cast, desc, case, inspect as sa_inspect, Table, MetaData, select as sa_select
+from sqlalchemy import or_, func, cast, desc, case, inspect as sa_inspect, Table, MetaData, select as sa_select, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.types import Numeric
 from sqlalchemy.orm import joinedload, load_only, selectinload  # ➜ para evitar N+1 en copiar_solicitudes
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+from sqlalchemy.orm.exc import StaleDataError
 
 from functools import wraps  # si otros decoradores locales lo usan
 
-from config_app import db, cache
+from config_app import db, cache, csrf
 from models import (
     Cliente,
     Solicitud,
@@ -30,10 +36,14 @@ from models import (
     StaffUser,
     SolicitudCandidata,
     ClienteNotificacion,
+    ContratoDigital,
     Entrevista,
     StaffAuditLog,
+    TrustedDevice,
     PublicSolicitudTokenUso,
     PublicSolicitudClienteNuevoTokenUso,
+    RequestIdempotencyKey,
+    DomainOutbox,
 )
 from admin.forms import (
     StaffUserCreateForm,
@@ -85,7 +95,9 @@ from utils.staff_auth import (
     is_breakglass_session_valid,
     clear_breakglass_session,
 )
-from utils.audit_logger import log_action
+from utils.audit_logger import log_action, log_admin_action, log_auth_event
+from utils.business_guard import enforce_business_limit, enforce_min_human_interval
+from utils.distributed_backplane import bp_get, bp_healthcheck, bp_set
 from utils.enterprise_layer import (
     touch_staff_session,
     list_active_sessions,
@@ -107,6 +119,10 @@ from utils.enterprise_layer import (
     telegram_channel_config,
     save_telegram_channel_config,
     send_telegram_test_message,
+    operational_semaphore_payload,
+    operational_trends_payload,
+    ingest_live_observability_event,
+    bump_operational_counter,
 )
 from utils.audit_entity import (
     candidata_entity_meta,
@@ -132,6 +148,14 @@ from utils.modalidad import (
     split_modalidad_for_ui,
     should_preserve_existing_modalidad_on_edit,
 )
+from utils.admin_async import payload as shared_admin_async_payload, wants_json as shared_admin_async_wants_json
+from utils.outbox_relay import OUTBOX_RELAY_ALLOWED_EVENT_TYPES, _redis_client as relay_redis_client, _redis_stream_key as relay_redis_stream_key
+from services.candidata_invariants import (
+    InvariantConflictError,
+    change_candidate_state as invariant_change_candidate_state,
+    release_solicitud_candidatas_on_cancel as invariant_release_solicitud_candidatas_on_cancel,
+    sync_solicitud_candidatas_after_assignment as invariant_sync_solicitud_candidatas_after_assignment,
+)
 from utils.timezone import (
     format_rd_datetime,
     iso_utc_z,
@@ -143,6 +167,21 @@ from utils.timezone import (
     utc_now_naive,
     utc_timestamp,
 )
+from utils.staff_mfa import (
+    MFA_PENDING_SESSION_KEY,
+    MFA_SETUP_SECRET_SESSION_KEY,
+    generate_mfa_secret,
+    generate_qr_png_data_uri,
+    mfa_enforced_for_staff,
+    mfa_issuer_name,
+    provisioning_uri,
+    session_begin_mfa_pending,
+    session_clear_mfa_pending,
+    session_get_mfa_pending,
+    staff_role_requires_mfa,
+    verify_totp_code,
+)
+from core.services.search import search_candidatas_limited
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
@@ -171,8 +210,881 @@ def _staff_password_min_len() -> int:
 
 
 def _operational_rate_limits_enabled() -> bool:
-    raw = (os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS") or "0").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    raw = os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS")
+    if raw is not None and str(raw).strip() != "":
+        return _is_true_env(raw, default=False)
+    run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
+    return run_env in ("prod", "production")
+
+
+def _critical_concurrency_guards_enabled() -> bool:
+    raw = os.getenv("ENABLE_CRITICAL_CONCURRENCY_GUARDS")
+    if raw is None or str(raw).strip() == "":
+        return True
+    return _is_true_env(str(raw), default=True)
+
+
+def _idempotency_enabled() -> bool:
+    raw = os.getenv("ENABLE_CRITICAL_IDEMPOTENCY")
+    if raw is None or str(raw).strip() == "":
+        return True
+    return _is_true_env(str(raw), default=True)
+
+
+def _request_actor_id() -> str:
+    try:
+        uid = int(getattr(current_user, "id", 0) or 0)
+        if uid > 0:
+            return str(uid)
+    except Exception:
+        pass
+    return str(session.get("usuario") or "anon")
+
+
+def _parse_if_match_version(raw: str | None) -> int | None:
+    txt = (raw or "").strip()
+    if not txt:
+        return None
+    # Soporta formatos: W/"12", "12", 12
+    txt = txt.replace("W/", "").replace('"', "").strip()
+    if txt.isdigit():
+        return int(txt)
+    return None
+
+
+def _expected_row_version() -> int | None:
+    candidates = (
+        _parse_if_match_version(request.headers.get("If-Match")),
+        request.headers.get("X-Entity-Version"),
+        request.form.get("row_version"),
+        request.args.get("row_version"),
+    )
+    for raw in candidates:
+        if raw is None:
+            continue
+        val = _parse_if_match_version(str(raw))
+        if val is not None:
+            return val
+    return None
+
+
+def _build_request_hash() -> str:
+    body = ""
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        if request.is_json:
+            try:
+                payload = request.get_json(silent=True) or {}
+                body = json.dumps(payload, sort_keys=True, ensure_ascii=True)
+            except Exception:
+                body = ""
+        else:
+            try:
+                pairs = sorted((k, v) for k, v in request.form.items())
+                body = "&".join(f"{k}={v}" for k, v in pairs)
+            except Exception:
+                body = ""
+    base = f"{request.method}|{request.path}|{body}"
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
+def _incoming_idempotency_key() -> str:
+    for raw in (
+        request.headers.get("Idempotency-Key"),
+        request.form.get("idempotency_key"),
+        request.args.get("idempotency_key"),
+    ):
+        value = (str(raw or "")).strip()
+        if value:
+            return value[:128]
+    return ""
+
+
+def _fallback_idempotency_key(scope: str, entity_id: int | str, action: str) -> str:
+    # Fallback corto para flujos legacy sin header/hidden-field.
+    stamp = f"{_request_actor_id()}|{scope}|{entity_id}|{action}|{_expected_row_version() or 0}|{_build_request_hash()}"
+    return hashlib.sha256(stamp.encode("utf-8")).hexdigest()[:64]
+
+
+def _claim_idempotency(*, scope: str, entity_type: str, entity_id: int | str, action: str):
+    if not _idempotency_enabled():
+        return None, False
+
+    key = _incoming_idempotency_key() or _fallback_idempotency_key(scope, entity_id, action)
+    req_hash = _build_request_hash()
+    actor_id = _request_actor_id()
+
+    row = RequestIdempotencyKey(
+        scope=scope,
+        idempotency_key=key,
+        actor_id=actor_id,
+        entity_type=(entity_type or "")[:50],
+        entity_id=str(entity_id)[:64],
+        request_hash=req_hash,
+    )
+    try:
+        db.session.add(row)
+        db.session.flush()
+        setattr(row, "request_hash_conflict", False)
+        return row, False
+    except IntegrityError:
+        db.session.rollback()
+        existing = (
+            RequestIdempotencyKey.query
+            .filter_by(scope=scope, idempotency_key=key)
+            .first()
+        )
+        if existing is None:
+            return None, True
+        if str(getattr(existing, "request_hash", "") or "") != req_hash:
+            setattr(existing, "request_hash_conflict", True)
+            existing.last_seen_at = utc_now_naive()
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            return existing, True
+        setattr(existing, "request_hash_conflict", False)
+        existing.last_seen_at = utc_now_naive()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return existing, True
+    except SQLAlchemyError:
+        # Fail-open en esta fase para no bloquear operación si falta tabla/migración.
+        db.session.rollback()
+        return None, False
+
+
+def _set_idempotency_response(row: RequestIdempotencyKey | None, *, status: int, code: str | None = None):
+    if row is None:
+        return
+    try:
+        row.response_status = int(status)
+        row.response_code = (code or "")[:80] or None
+        row.last_seen_at = utc_now_naive()
+        db.session.add(row)
+    except Exception:
+        return
+
+
+def _idempotency_request_conflict(row: RequestIdempotencyKey | None) -> bool:
+    return bool(getattr(row, "request_hash_conflict", False))
+
+
+def _idempotency_conflict_message() -> str:
+    return 'La misma Idempotency-Key fue reutilizada con datos distintos. Genera una nueva acción e intenta nuevamente.'
+
+
+def _new_form_idempotency_key() -> str:
+    return secrets.token_urlsafe(24)
+
+
+def _incoming_correlation_id() -> str:
+    for raw in (
+        request.headers.get("X-Correlation-ID"),
+        request.headers.get("X-Request-ID"),
+    ):
+        value = (str(raw or "")).strip()
+        if value:
+            return value[:64]
+    return ""
+
+
+def _emit_domain_outbox_event(
+    *,
+    event_type: str,
+    aggregate_type: str,
+    aggregate_id: int | str,
+    aggregate_version: int | None,
+    payload: dict | None = None,
+):
+    event_id = secrets.token_hex(16)
+    db.session.add(
+        DomainOutbox(
+            event_id=event_id,
+            event_type=(event_type or "")[:80],
+            aggregate_type=(aggregate_type or "")[:80],
+            aggregate_id=str(aggregate_id)[:64],
+            aggregate_version=aggregate_version,
+            occurred_at=utc_now_naive(),
+            actor_id=_request_actor_id(),
+            region="admin",
+            payload=dict(payload or {}),
+            schema_version=1,
+            correlation_id=_incoming_correlation_id() or None,
+            idempotency_key=_incoming_idempotency_key() or None,
+        )
+    )
+
+
+_F4_LIVE_ALLOWED_EVENT_TYPES = {str(ev or "").strip().upper() for ev in OUTBOX_RELAY_ALLOWED_EVENT_TYPES}
+_F4_LIVE_POLL_APPROVED_VIEWS = {
+    "solicitud_detail",
+    "cliente_detail",
+    "solicitudes_summary",
+    "solicitudes_prioridad_summary",
+}
+_LIVE_INVALIDATION_MODE_RELAY = "relay_published"
+_LIVE_INVALIDATION_MODE_DEGRADED = "degraded_outbox_fallback"
+_LIVE_STREAM_CONCURRENCY_KEY_PREFIX = "admin_live_stream_concurrency"
+
+
+def _live_endpoint_roles(capability: str) -> set[str]:
+    cap = (capability or "").strip().lower()
+    policy = {
+        "invalidation_poll": {"owner", "admin", "secretaria"},
+        "invalidation_stream": {"owner", "admin", "secretaria"},
+        "presence_ping": {"owner", "admin", "secretaria"},
+        "locks_ping": {"owner", "admin", "secretaria"},
+    }
+    return set(policy.get(cap, {"owner", "admin"}))
+
+
+def _live_access_allowed(capability: str) -> bool:
+    role = role_for_user(current_user)
+    return role in _live_endpoint_roles(capability)
+
+
+def _live_rate_limits(capability: str) -> dict[str, int]:
+    cap = (capability or "").strip().lower()
+
+    defaults = {
+        "poll": {"window": 60, "max_user": 24, "max_ip": 60, "max_session": 24, "block": 60},
+        "ping": {"window": 60, "max_user": 180, "max_ip": 240, "max_session": 180, "block": 45},
+        "stream_open": {"window": 60, "max_user": 20, "max_ip": 40, "max_session": 20, "block": 45},
+    }
+    cfg = dict(defaults.get(cap, defaults["poll"]))
+
+    env_prefix = f"LIVE_{cap.upper()}"
+    for k in ("window", "max_user", "max_ip", "max_session", "block"):
+        raw = os.getenv(f"{env_prefix}_{k.upper()}")
+        if raw is None or str(raw).strip() == "":
+            continue
+        try:
+            cfg[k] = int(raw)
+        except Exception:
+            continue
+
+    cfg["window"] = max(5, min(int(cfg.get("window", 60) or 60), 3600))
+    cfg["max_user"] = max(1, min(int(cfg.get("max_user", 24) or 24), 5000))
+    cfg["max_ip"] = max(1, min(int(cfg.get("max_ip", 60) or 60), 10000))
+    cfg["max_session"] = max(1, min(int(cfg.get("max_session", 24) or 24), 5000))
+    cfg["block"] = max(5, min(int(cfg.get("block", cfg["window"]) or cfg["window"]), 3600))
+    return cfg
+
+
+def _live_stream_concurrency_limits() -> dict[str, int]:
+    limits = {
+        "max_user": 2,
+        "max_ip": 8,
+        "max_session": 2,
+        "ttl_sec": 90,
+    }
+    for key, env_name in (
+        ("max_user", "LIVE_STREAM_MAX_CONCURRENT_USER"),
+        ("max_ip", "LIVE_STREAM_MAX_CONCURRENT_IP"),
+        ("max_session", "LIVE_STREAM_MAX_CONCURRENT_SESSION"),
+        ("ttl_sec", "LIVE_STREAM_CONCURRENCY_TTL_SEC"),
+    ):
+        raw = os.getenv(env_name)
+        if raw is None or str(raw).strip() == "":
+            continue
+        try:
+            limits[key] = int(raw)
+        except Exception:
+            continue
+    limits["max_user"] = max(1, min(int(limits["max_user"]), 30))
+    limits["max_ip"] = max(1, min(int(limits["max_ip"]), 100))
+    limits["max_session"] = max(1, min(int(limits["max_session"]), 30))
+    limits["ttl_sec"] = max(20, min(int(limits["ttl_sec"]), 600))
+    return limits
+
+
+def _live_session_key() -> str:
+    token = (session.get("staff_session_token") or "").strip()
+    if token:
+        return token[:80]
+    actor = ""
+    try:
+        actor = str(current_user.get_id() or "").strip().lower()
+    except Exception:
+        actor = str(session.get("usuario") or "anon").strip().lower()
+    ua = (request.headers.get("User-Agent") or "")[:120]
+    return hashlib.sha1(f"{actor}|{ua}".encode("utf-8", errors="ignore")).hexdigest()[:40]
+
+
+def _live_rate_identity() -> dict[str, str]:
+    uid = "anon"
+    try:
+        if isinstance(current_user, StaffUser):
+            uid = str(int(current_user.id))
+        else:
+            raw = str(current_user.get_id() or "").strip()
+            uid = raw or "anon"
+    except Exception:
+        uid = "anon"
+
+    return {
+        "user": uid[:64],
+        "ip": (_client_ip() or "0.0.0.0").strip()[:64],
+        "session": _live_session_key(),
+    }
+
+
+def _live_security_audit_dedupe(action_type: str, reason: str, dedupe_seconds: int = 20) -> bool:
+    key = f"live_audit_dedupe:{(action_type or '')[:40]}:{(_live_session_key() or '')[:40]}:{(reason or '')[:64]}:{(request.path or '')[:120]}"
+    if bp_get(key, default=0, context="live_security_audit_dedupe_get"):
+        return False
+    bp_set(key, 1, timeout=max(5, int(dedupe_seconds)), context="live_security_audit_dedupe_set")
+    return True
+
+
+def _audit_live_security_block(*, action_type: str, summary: str, reason: str, metadata: dict | None = None) -> None:
+    if not _live_security_audit_dedupe(action_type=action_type, reason=reason, dedupe_seconds=20):
+        return
+    log_action(
+        action_type=(action_type or "LIVE_SECURITY_BLOCKED")[:80],
+        entity_type="security",
+        entity_id=(str(getattr(current_user, "id", ""))[:64] or None),
+        summary=(summary or "Seguridad live")[:255],
+        metadata=dict(metadata or {}),
+        success=False,
+        error=(reason or "blocked")[:255],
+    )
+
+
+def _live_rate_store_get(key: str):
+    if _cache_ok():
+        try:
+            return cache.get(key)
+        except Exception:
+            pass
+    return session.get(key)
+
+
+def _live_rate_store_set(key: str, value: dict, timeout: int) -> None:
+    if _cache_ok():
+        try:
+            cache.set(key, value, timeout=timeout)
+            return
+        except Exception:
+            pass
+    session[key] = value
+    session.modified = True
+
+
+def _enforce_live_rate_limit(capability: str):
+    if not _operational_rate_limits_enabled():
+        return None
+
+    limits = _live_rate_limits(capability)
+    identities = _live_rate_identity()
+    now_ts = utc_timestamp()
+    blocked_scopes: list[tuple[str, int]] = []
+
+    for scope, raw_ident in (("user", identities["user"]), ("ip", identities["ip"]), ("session", identities["session"])):
+        ident = (raw_ident or "").strip().lower()[:80] or "anon"
+        key = f"live_rl:{capability}:{scope}:{ident}"
+        data = _live_rate_store_get(key) or {}
+
+        try:
+            window_start = float(data.get("window_start") or 0.0)
+        except Exception:
+            window_start = 0.0
+        if not window_start or (now_ts - window_start) > int(limits["window"]):
+            data = {"window_start": now_ts, "count": 0}
+
+        locked_until = data.get("locked_until")
+        if locked_until:
+            try:
+                left = int(float(locked_until) - now_ts)
+            except Exception:
+                left = int(limits["block"])
+            if left > 0:
+                blocked_scopes.append((scope, max(1, left)))
+                continue
+            data.pop("locked_until", None)
+
+        data["count"] = int(data.get("count") or 0) + 1
+        max_allowed = int(limits.get(f"max_{scope}", limits["max_user"]))
+        if int(data["count"]) > max_allowed:
+            data["locked_until"] = now_ts + int(limits["block"])
+            blocked_scopes.append((scope, int(limits["block"])))
+
+        ttl = max(int(limits["window"]), int(limits["block"])) + 5
+        _live_rate_store_set(key, data, timeout=ttl)
+
+    if not blocked_scopes:
+        return None
+
+    scope_txt, retry_after = blocked_scopes[0]
+    return {
+        "blocked": True,
+        "scope": scope_txt,
+        "retry_after_sec": int(max(1, retry_after)),
+    }
+
+
+def _stream_registry_key(scope: str, identity: str) -> str:
+    return f"{_LIVE_STREAM_CONCURRENCY_KEY_PREFIX}:{(scope or '')[:12]}:{(identity or 'anon')[:120]}"
+
+
+def _stream_registry_load(scope: str, identity: str) -> dict[str, float]:
+    key = _stream_registry_key(scope, identity)
+    data = bp_get(key, default={}, context="live_stream_registry_get") or {}
+    if not isinstance(data, dict):
+        data = {}
+    now_ts = float(time.time())
+    cleaned: dict[str, float] = {}
+    for sid, exp in data.items():
+        try:
+            expf = float(exp)
+        except Exception:
+            continue
+        if expf > now_ts:
+            cleaned[str(sid)[:64]] = expf
+    return cleaned
+
+
+def _stream_registry_store(scope: str, identity: str, data: dict[str, float], ttl_sec: int) -> bool:
+    key = _stream_registry_key(scope, identity)
+    return bool(bp_set(key, data, timeout=max(20, int(ttl_sec) * 3), context="live_stream_registry_set"))
+
+
+def _live_stream_register(stream_id: str):
+    limits = _live_stream_concurrency_limits()
+    identities = _live_rate_identity()
+    now_ts = float(time.time())
+    expires_at = now_ts + float(limits["ttl_sec"])
+    added: list[tuple[str, str]] = []
+
+    for scope, raw_ident, max_allowed in (
+        ("user", identities["user"], int(limits["max_user"])),
+        ("session", identities["session"], int(limits["max_session"])),
+        ("ip", identities["ip"], int(limits["max_ip"])),
+    ):
+        ident = (raw_ident or "").strip().lower()[:80] or "anon"
+        reg = _stream_registry_load(scope, ident)
+        if len(reg) >= max_allowed:
+            for prev_scope, prev_ident in added:
+                prev_reg = _stream_registry_load(prev_scope, prev_ident)
+                prev_reg.pop(stream_id, None)
+                _stream_registry_store(prev_scope, prev_ident, prev_reg, ttl_sec=int(limits["ttl_sec"]))
+            return {
+                "ok": False,
+                "scope": scope,
+                "limit": int(max_allowed),
+                "active": int(len(reg)),
+            }
+        reg[stream_id] = expires_at
+        if not _stream_registry_store(scope, ident, reg, ttl_sec=int(limits["ttl_sec"])):
+            return {"ok": False, "scope": scope, "limit": int(max_allowed), "active": int(len(reg))}
+        added.append((scope, ident))
+
+    return {"ok": True}
+
+
+def _live_stream_refresh(stream_id: str) -> None:
+    limits = _live_stream_concurrency_limits()
+    identities = _live_rate_identity()
+    expires_at = float(time.time()) + float(limits["ttl_sec"])
+    for scope, raw_ident in (("user", identities["user"]), ("session", identities["session"]), ("ip", identities["ip"])):
+        ident = (raw_ident or "").strip().lower()[:80] or "anon"
+        reg = _stream_registry_load(scope, ident)
+        if stream_id in reg:
+            reg[stream_id] = expires_at
+            _stream_registry_store(scope, ident, reg, ttl_sec=int(limits["ttl_sec"]))
+
+
+def _live_stream_release(stream_id: str) -> None:
+    limits = _live_stream_concurrency_limits()
+    identities = _live_rate_identity()
+    for scope, raw_ident in (("user", identities["user"]), ("session", identities["session"]), ("ip", identities["ip"])):
+        ident = (raw_ident or "").strip().lower()[:80] or "anon"
+        reg = _stream_registry_load(scope, ident)
+        if stream_id in reg:
+            reg.pop(stream_id, None)
+            _stream_registry_store(scope, ident, reg, ttl_sec=int(limits["ttl_sec"]))
+
+
+def _live_poll_outbox_fallback_enabled() -> bool:
+    raw = os.getenv("LIVE_POLL_OUTBOX_FALLBACK_ENABLED")
+    if raw is None or str(raw).strip() == "":
+        return True
+    return _is_true_env(str(raw), default=False)
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+_P1C1_PERF_HEADER_PREFIX = "X-P1C1-Perf-"
+
+
+@event.listens_for(Engine, "before_cursor_execute")
+def _p1c1_perf_before_cursor_execute(conn, _cursor, _statement, _parameters, _context, _executemany):
+    if not has_request_context():
+        return
+    try:
+        env = request.environ
+    except Exception:
+        return
+    if not bool(env.get("_p1c1_perf_enabled")):
+        return
+    stack = conn.info.setdefault("_p1c1_perf_stack", [])
+    stack.append(time.perf_counter())
+
+
+@event.listens_for(Engine, "after_cursor_execute")
+def _p1c1_perf_after_cursor_execute(conn, _cursor, _statement, _parameters, _context, _executemany):
+    if not has_request_context():
+        return
+    try:
+        env = request.environ
+    except Exception:
+        return
+    if not bool(env.get("_p1c1_perf_enabled")):
+        return
+    stack = conn.info.get("_p1c1_perf_stack") or []
+    started = stack.pop() if stack else None
+    if started is None:
+        return
+    elapsed_ms = max(0.0, (time.perf_counter() - float(started)) * 1000.0)
+    env["_p1c1_perf_db_ms"] = float(env.get("_p1c1_perf_db_ms", 0.0)) + elapsed_ms
+    env["_p1c1_perf_db_queries"] = int(env.get("_p1c1_perf_db_queries", 0)) + 1
+
+
+@contextmanager
+def _p1c1_perf_scope(scope_name: str, *, enabled: bool = True):
+    started = time.perf_counter()
+    env = request.environ if has_request_context() else {}
+    if enabled:
+        env["_p1c1_perf_enabled"] = True
+        env["_p1c1_perf_db_ms"] = 0.0
+        env["_p1c1_perf_db_queries"] = 0
+
+    def _finalize(response_like, *, html_bytes: int | None = None, extra: dict | None = None):
+        response = make_response(response_like)
+        if not enabled:
+            return response
+        elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+        db_ms = float(env.get("_p1c1_perf_db_ms", 0.0))
+        db_queries = int(env.get("_p1c1_perf_db_queries", 0))
+        response.headers[f"{_P1C1_PERF_HEADER_PREFIX}Scope"] = str(scope_name or "")
+        response.headers[f"{_P1C1_PERF_HEADER_PREFIX}Latency-Ms"] = f"{elapsed_ms:.2f}"
+        response.headers[f"{_P1C1_PERF_HEADER_PREFIX}DB-Queries"] = str(db_queries)
+        response.headers[f"{_P1C1_PERF_HEADER_PREFIX}DB-Time-Ms"] = f"{db_ms:.2f}"
+        if html_bytes is not None and int(html_bytes) >= 0:
+            response.headers[f"{_P1C1_PERF_HEADER_PREFIX}HTML-Bytes"] = str(int(html_bytes))
+
+        payload = {
+            "scope": str(scope_name or ""),
+            "path": str(request.path or ""),
+            "latency_ms": round(elapsed_ms, 2),
+            "db_queries": db_queries,
+            "db_time_ms": round(db_ms, 2),
+            "html_bytes": int(html_bytes) if html_bytes is not None else None,
+        }
+        if isinstance(extra, dict) and extra:
+            payload.update(extra)
+        try:
+            current_app.logger.info("[p1-c1-baseline] %s", json.dumps(payload, ensure_ascii=True, sort_keys=True))
+        except Exception:
+            pass
+        return response
+
+    try:
+        yield _finalize
+    finally:
+        if enabled:
+            env.pop("_p1c1_perf_enabled", None)
+            env.pop("_p1c1_perf_db_ms", None)
+            env.pop("_p1c1_perf_db_queries", None)
+
+
+def _normalize_live_invalidation_event(event: dict, *, stream_id: str | None = None) -> dict | None:
+    event_type = str((event or {}).get("event_type") or "").strip().upper()
+    if not event_type or event_type not in _F4_LIVE_ALLOWED_EVENT_TYPES:
+        return None
+
+    aggregate = dict((event or {}).get("aggregate") or {})
+    payload = dict((event or {}).get("payload") or {})
+    aggregate_type = str(aggregate.get("type") or "").strip() or "Solicitud"
+    aggregate_id = str(aggregate.get("id") or "").strip()
+    solicitud_id_raw = payload.get("solicitud_id") or aggregate_id
+    solicitud_id = _safe_int(solicitud_id_raw, default=0)
+    if solicitud_id <= 0:
+        return None
+
+    cliente_id_raw = payload.get("cliente_id")
+    cliente_id = _safe_int(cliente_id_raw, default=0)
+    if cliente_id <= 0:
+        cliente_id = None
+
+    return {
+        "event_id": str((event or {}).get("event_id") or ""),
+        "event_type": event_type,
+        "occurred_at": (event or {}).get("occurred_at"),
+        "recorded_at": (event or {}).get("recorded_at"),
+        "stream_id": str(stream_id or "") or None,
+        "aggregate": {
+            "type": aggregate_type,
+            "id": str(solicitud_id),
+            "version": aggregate.get("version"),
+        },
+        "target": {
+            "entity_type": "solicitud",
+            "solicitud_id": int(solicitud_id),
+            "cliente_id": cliente_id,
+        },
+    }
+
+
+def _normalize_live_invalidation_from_outbox(row: DomainOutbox) -> dict | None:
+    event = {
+        "event_id": str(getattr(row, "event_id", "") or ""),
+        "event_type": str(getattr(row, "event_type", "") or ""),
+        "occurred_at": iso_utc_z(getattr(row, "occurred_at", None)),
+        "recorded_at": iso_utc_z(getattr(row, "created_at", None)),
+        "aggregate": {
+            "type": str(getattr(row, "aggregate_type", "") or ""),
+            "id": str(getattr(row, "aggregate_id", "") or ""),
+            "version": getattr(row, "aggregate_version", None),
+        },
+        "payload": dict(getattr(row, "payload", None) or {}),
+    }
+    return _normalize_live_invalidation_event(event)
+
+
+@admin_bp.route('/live/invalidation/poll', methods=['GET'])
+@login_required
+@staff_required
+def live_invalidation_poll():
+    if not _live_access_allowed("invalidation_poll"):
+        _audit_live_security_block(
+            action_type="LIVE_ACCESS_DENIED",
+            summary="Acceso denegado a live invalidation poll",
+            reason="live_poll_role_forbidden",
+            metadata={"path": request.path, "role": role_for_user(current_user), "capability": "invalidation_poll"},
+        )
+        abort(403)
+    rl = _enforce_live_rate_limit("poll")
+    if rl:
+        _audit_live_security_block(
+            action_type="LIVE_RATE_LIMITED",
+            summary="Rate limit bloqueó live invalidation poll",
+            reason="live_poll_rate_limited",
+            metadata={"path": request.path, "scope": rl.get("scope"), "retry_after_sec": rl.get("retry_after_sec")},
+        )
+        response = jsonify({
+            "ok": False,
+            "error": "rate_limited",
+            "scope": rl.get("scope"),
+            "retry_after_sec": int(rl.get("retry_after_sec") or 1),
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(int(rl.get("retry_after_sec") or 1))
+        return response
+
+    requested_view = str(request.args.get("view") or "").strip().lower()
+    fallback_view_allowed = requested_view in _F4_LIVE_POLL_APPROVED_VIEWS
+    perf_enabled = requested_view in {"solicitud_detail", "solicitudes_prioridad_summary", "solicitudes_summary"}
+    with _p1c1_perf_scope("live_invalidation_poll", enabled=perf_enabled) as perf_done:
+        after_id = max(0, _safe_int(request.args.get("after_id"), default=0))
+        limit = min(80, max(1, _safe_int(request.args.get("limit"), default=25)))
+        mode = _LIVE_INVALIDATION_MODE_RELAY
+
+        rows = (
+            DomainOutbox.query
+            .filter(DomainOutbox.id > after_id)
+            .filter(DomainOutbox.published_at.isnot(None))
+            .filter(DomainOutbox.event_type.in_(sorted(_F4_LIVE_ALLOWED_EVENT_TYPES)))
+            .order_by(DomainOutbox.id.asc())
+            .limit(limit)
+            .all()
+        )
+
+        if (not rows) and fallback_view_allowed and _live_poll_outbox_fallback_enabled():
+            degraded_rows = (
+                DomainOutbox.query
+                .filter(DomainOutbox.id > after_id)
+                .filter(DomainOutbox.published_at.is_(None))
+                .filter(DomainOutbox.event_type.in_(sorted(_F4_LIVE_ALLOWED_EVENT_TYPES)))
+                .order_by(DomainOutbox.id.asc())
+                .limit(limit)
+                .all()
+            )
+            if degraded_rows:
+                rows = degraded_rows
+                mode = _LIVE_INVALIDATION_MODE_DEGRADED
+                bump_operational_counter("live:poll:degraded_outbox_fallback_count")
+
+        items = []
+        cursor = int(after_id)
+        for row in (rows or []):
+            rid = int(getattr(row, "id", 0) or 0)
+            if rid > cursor:
+                cursor = rid
+            normalized = _normalize_live_invalidation_from_outbox(row)
+            if normalized is not None:
+                items.append(normalized)
+
+        response = jsonify({
+            "ok": True,
+            "items": items,
+            "next_after_id": int(cursor),
+            "count": len(items),
+            "mode": mode,
+            "ts": iso_utc_z(),
+        })
+        response.headers["X-Live-Invalidation-Mode"] = mode
+        return perf_done(
+            response,
+            extra={"count": len(items), "view": requested_view or None, "mode": mode},
+        )
+
+
+@admin_bp.route('/live/invalidation/stream', methods=['GET'])
+@login_required
+@staff_required
+def live_invalidation_stream():
+    if not _live_access_allowed("invalidation_stream"):
+        _audit_live_security_block(
+            action_type="LIVE_ACCESS_DENIED",
+            summary="Acceso denegado a live invalidation stream",
+            reason="live_stream_role_forbidden",
+            metadata={"path": request.path, "role": role_for_user(current_user), "capability": "invalidation_stream"},
+        )
+        abort(403)
+    rl = _enforce_live_rate_limit("stream_open")
+    if rl:
+        _audit_live_security_block(
+            action_type="LIVE_RATE_LIMITED",
+            summary="Rate limit bloqueó apertura de live stream",
+            reason="live_stream_open_rate_limited",
+            metadata={"path": request.path, "scope": rl.get("scope"), "retry_after_sec": rl.get("retry_after_sec")},
+        )
+        response = jsonify({
+            "ok": False,
+            "error": "rate_limited",
+            "scope": rl.get("scope"),
+            "retry_after_sec": int(rl.get("retry_after_sec") or 1),
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(int(rl.get("retry_after_sec") or 1))
+        return response
+
+    stream_slot_id = secrets.token_hex(12)
+    stream_slot = _live_stream_register(stream_slot_id)
+    if not bool(stream_slot.get("ok")):
+        _audit_live_security_block(
+            action_type="LIVE_STREAM_CONCURRENCY_BLOCKED",
+            summary="Bloqueo por concurrencia en live stream",
+            reason="live_stream_concurrency_limit",
+            metadata={
+                "path": request.path,
+                "scope": stream_slot.get("scope"),
+                "limit": stream_slot.get("limit"),
+                "active": stream_slot.get("active"),
+            },
+        )
+        return jsonify({
+            "ok": False,
+            "error": "concurrency_limit",
+            "scope": stream_slot.get("scope"),
+            "limit": int(stream_slot.get("limit") or 1),
+            "active": int(stream_slot.get("active") or 0),
+        }), 429
+
+    def _sse(event: str, payload: dict) -> str:
+        return f"event: {event}\\ndata: {json.dumps(payload, ensure_ascii=False)}\\n\\n"
+
+    @stream_with_context
+    def generate():
+        try:
+            if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
+                yield _sse("heartbeat", {"ts": iso_utc_z()})
+                return
+
+            last_stream_id = (request.args.get("last_stream_id") or "").strip() or "$"
+            heartbeat_every_sec = 15.0
+            last_heartbeat_at = 0.0
+
+            try:
+                redis_client = relay_redis_client()
+                stream_key = relay_redis_stream_key()
+            except Exception as exc:
+                redis_client = None
+                stream_key = ""
+                current_app.logger.warning(
+                    "[f4-live] redis stream unavailable; using heartbeat-only mode (%s: %s)",
+                    type(exc).__name__,
+                    str(exc),
+                )
+
+            while True:
+                now_ts = time.time()
+                emitted = False
+
+                if redis_client is not None and stream_key:
+                    try:
+                        messages = redis_client.xread({stream_key: last_stream_id}, count=25, block=10000) or []
+                        for _stream_name, entries in (messages or []):
+                            for entry_id, fields in (entries or []):
+                                last_stream_id = str(entry_id or last_stream_id)
+                                raw = None
+                                if isinstance(fields, dict):
+                                    raw = fields.get("event")
+                                if not raw:
+                                    continue
+                                try:
+                                    envelope = json.loads(raw)
+                                except Exception:
+                                    continue
+                                normalized = _normalize_live_invalidation_event(envelope, stream_id=last_stream_id)
+                                if normalized is None:
+                                    continue
+                                yield _sse("invalidation", normalized)
+                                emitted = True
+                    except Exception as exc:
+                        redis_client = None
+                        current_app.logger.warning(
+                            "[f4-live] stream read failed; switching to heartbeat-only mode (%s: %s)",
+                            type(exc).__name__,
+                            str(exc),
+                        )
+
+                if (now_ts - last_heartbeat_at) >= heartbeat_every_sec:
+                    _live_stream_refresh(stream_slot_id)
+                    yield _sse(
+                        "heartbeat",
+                        {
+                            "ts": iso_utc_z(),
+                            "last_stream_id": last_stream_id,
+                            "mode": "streaming" if redis_client is not None else "heartbeat_only",
+                        },
+                    )
+                    last_heartbeat_at = now_ts
+                    emitted = True
+
+                if not emitted:
+                    time.sleep(0.5)
+        except (GeneratorExit, ConnectionError, OSError):
+            return
+        finally:
+            _live_stream_release(stream_slot_id)
+
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
+    return Response(generate(), mimetype="text/event-stream", headers=headers)
 
 
 def _admin_default_role() -> str:
@@ -406,6 +1318,278 @@ def _ensure_testing_staff_defaults() -> None:
 # ─────────────────────────────────────────────────────────────
 # Marcador de sesión: si no existe, NO se permite navegar en /admin/*
 _ADMIN_SESSION_MARKER = "is_admin_session"
+_MFA_VERIFIED_SESSION_KEY = "mfa_verified"
+_TRUSTED_DEVICE_COOKIE_NAME = "trusted_device_token"
+_TRUSTED_DEVICE_SESSION_REASON = "_trusted_device_reason"
+
+
+def _staff_mfa_is_enforced() -> bool:
+    return mfa_enforced_for_staff(testing=bool(current_app.config.get("TESTING")))
+
+
+def _staff_user_needs_mfa(user: StaffUser | None) -> bool:
+    if not isinstance(user, StaffUser):
+        return False
+    if not bool(getattr(user, "is_active", False)):
+        return False
+    if not _staff_mfa_is_enforced():
+        return False
+    role = (getattr(user, "role", "") or "").strip().lower()
+    return staff_role_requires_mfa(role)
+
+
+def _session_redirect_after_mfa(pending: dict | None = None) -> str:
+    default_url = url_for("admin.listar_clientes")
+    if not isinstance(pending, dict):
+        return default_url
+    candidate = str(pending.get("next_url") or "").strip()
+    if candidate and _is_safe_next(candidate):
+        return candidate
+    return default_url
+
+
+def _get_pending_staff_user() -> StaffUser | None:
+    pending = session_get_mfa_pending(session)
+    raw = pending.get("staff_user_id")
+    try:
+        sid = int(raw)
+    except Exception:
+        return None
+    if sid <= 0:
+        return None
+    return StaffUser.query.get(sid)
+
+
+def _begin_pending_staff_mfa(*, staff_user: StaffUser, source: str, next_url: str) -> str:
+    role = _normalize_staff_role_loose(getattr(staff_user, "role", "") or "")
+    session.clear()
+    session.permanent = True
+    session_begin_mfa_pending(
+        session,
+        staff_user_id=int(staff_user.id),
+        username=(staff_user.username or ""),
+        role=role or "secretaria",
+        next_url=next_url,
+        source=source,
+    )
+    if bool(staff_user.mfa_enabled) and bool(staff_user.get_mfa_secret()):
+        return url_for("admin.mfa_verify")
+    session[MFA_SETUP_SECRET_SESSION_KEY] = generate_mfa_secret()
+    session.modified = True
+    return url_for("admin.mfa_setup")
+
+
+def _trusted_device_cookie_ttl_seconds() -> int:
+    days_raw = os.getenv("TRUSTED_DEVICE_COOKIE_DAYS", "30")
+    try:
+        days = max(1, int(str(days_raw).strip()))
+    except Exception:
+        days = 30
+    return days * 24 * 60 * 60
+
+
+def _trusted_device_fail_threshold() -> int:
+    raw = os.getenv("TRUSTED_DEVICE_FAIL_COUNT_FORCE_2FA", "3")
+    try:
+        return max(1, int(str(raw).strip()))
+    except Exception:
+        return 3
+
+
+def _trusted_device_current_token() -> str:
+    return (request.cookies.get(_TRUSTED_DEVICE_COOKIE_NAME) or "").strip()[:255]
+
+
+def _trusted_device_issue_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _trusted_device_set_cookie(resp, token: str) -> None:
+    value = (token or "").strip()
+    if not value:
+        return
+    secure_cookie = not bool(current_app.config.get("TESTING"))
+    resp.set_cookie(
+        _TRUSTED_DEVICE_COOKIE_NAME,
+        value,
+        max_age=_trusted_device_cookie_ttl_seconds(),
+        httponly=True,
+        secure=secure_cookie,
+        samesite="Lax",
+        path="/",
+    )
+
+
+def _trusted_device_user_agent() -> str:
+    return (request.headers.get("User-Agent") or "").strip()[:512]
+
+
+def _trusted_device_legacy_ip_bucket(ip_raw: str) -> str:
+    txt = (ip_raw or "").strip()
+    if not txt:
+        return "none"
+    try:
+        parsed = ipaddress.ip_address(txt)
+        if parsed.version == 4:
+            network = ipaddress.ip_network(f"{parsed}/24", strict=False)
+            return str(network.network_address)
+        network = ipaddress.ip_network(f"{parsed}/48", strict=False)
+        return str(network.network_address)
+    except Exception:
+        return txt[:64]
+
+
+def _trusted_device_token_hash(token: str) -> str:
+    raw_token = (token or "").strip()
+    if not raw_token:
+        return ""
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _trusted_device_legacy_fingerprint(user: StaffUser, token: str) -> str:
+    uid = int(getattr(user, "id", 0) or 0)
+    if uid <= 0:
+        return ""
+    raw_token = (token or "").strip()
+    if not raw_token:
+        return ""
+    ua = _trusted_device_user_agent().lower()
+    ip_bucket = _trusted_device_legacy_ip_bucket(_client_ip())
+    payload = f"v1|{uid}|{raw_token}|{ua}|{ip_bucket}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _trusted_device_ip_changed_significantly(old_ip: str, new_ip: str) -> bool:
+    old_txt = (old_ip or "").strip()
+    new_txt = (new_ip or "").strip()
+    if not old_txt or not new_txt:
+        return True
+    if old_txt == new_txt:
+        return False
+    try:
+        old_parsed = ipaddress.ip_address(old_txt)
+        new_parsed = ipaddress.ip_address(new_txt)
+        if old_parsed.version != new_parsed.version:
+            return True
+        if old_parsed.version == 4:
+            old_net = ipaddress.ip_network(f"{old_parsed}/24", strict=False)
+            new_net = ipaddress.ip_network(f"{new_parsed}/24", strict=False)
+            return old_net.network_address != new_net.network_address
+        old_net = ipaddress.ip_network(f"{old_parsed}/48", strict=False)
+        new_net = ipaddress.ip_network(f"{new_parsed}/48", strict=False)
+        return old_net.network_address != new_net.network_address
+    except Exception:
+        return True
+
+
+def _trusted_device_reason_from_session(default: str = "new_device") -> str:
+    reason = str(session.pop(_TRUSTED_DEVICE_SESSION_REASON, default) or "").strip().lower()
+    if not reason:
+        return default
+    return reason[:60]
+
+
+def is_trusted_device(user: StaffUser, device_token_hash: str) -> bool:
+    if not isinstance(user, StaffUser):
+        return False
+    token_hash = (device_token_hash or "").strip().lower()
+    if not token_hash:
+        return False
+    device = TrustedDevice.query.filter_by(
+        user_id=int(user.id),
+        device_token_hash=token_hash,
+        is_trusted=True,
+    ).first()
+    if not isinstance(device, TrustedDevice):
+        legacy_fp = _trusted_device_legacy_fingerprint(user, _trusted_device_current_token())
+        if legacy_fp:
+            device = TrustedDevice.query.filter_by(
+                user_id=int(user.id),
+                device_fingerprint=legacy_fp,
+                is_trusted=True,
+            ).first()
+            if isinstance(device, TrustedDevice):
+                device.device_token_hash = token_hash
+    if not isinstance(device, TrustedDevice):
+        return False
+    current_ip = _client_ip()
+    if _trusted_device_ip_changed_significantly(device.ip_address or "", current_ip):
+        session[_TRUSTED_DEVICE_SESSION_REASON] = "ip_change"
+        session.modified = True
+        return False
+    device.last_used_at = utc_now_naive()
+    device.ip_address = current_ip
+    device.user_agent = _trusted_device_user_agent()
+    if not (device.device_token_hash or "").strip():
+        device.device_token_hash = token_hash
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return True
+
+
+def register_trusted_device(user: StaffUser, device_token_hash: str) -> TrustedDevice | None:
+    if not isinstance(user, StaffUser):
+        return None
+    token_hash = (device_token_hash or "").strip().lower()
+    if not token_hash:
+        return None
+    device = TrustedDevice.query.filter_by(
+        user_id=int(user.id),
+        device_token_hash=token_hash,
+    ).first()
+    now = utc_now_naive()
+    if not isinstance(device, TrustedDevice):
+        fallback_fp = _trusted_device_legacy_fingerprint(user, _trusted_device_current_token())
+        if fallback_fp:
+            device = TrustedDevice.query.filter_by(
+                user_id=int(user.id),
+                device_fingerprint=fallback_fp,
+            ).first()
+    if not isinstance(device, TrustedDevice):
+        device = TrustedDevice(
+            user_id=int(user.id),
+            device_fingerprint=token_hash,
+            device_token_hash=token_hash,
+            created_at=now,
+        )
+        db.session.add(device)
+    else:
+        device.device_token_hash = token_hash
+        if not (device.device_fingerprint or "").strip():
+            device.device_fingerprint = token_hash
+    device.is_trusted = True
+    device.last_used_at = now
+    device.ip_address = _client_ip()
+    device.user_agent = _trusted_device_user_agent()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return None
+    return device
+
+
+def _complete_staff_login_session(
+    user_obj,
+    *,
+    username_for_session: str,
+    breakglass_ok: bool,
+) -> None:
+    session.clear()
+    session.permanent = True
+    login_user(user_obj, remember=False)
+    session[_ADMIN_SESSION_MARKER] = True
+    session["usuario"] = str(username_for_session)
+    normalized_role = _normalize_staff_role_loose(getattr(user_obj, "role", "") or "")
+    session["role"] = normalized_role or (str(getattr(user_obj, "role", "") or "").strip().lower())
+    session[_MFA_VERIFIED_SESSION_KEY] = True
+    if breakglass_ok:
+        set_breakglass_session(session)
+    else:
+        clear_breakglass_session(session)
+    session.modified = True
 
 # Rate-limit global para acciones ADMIN (POST/PUT/PATCH/DELETE)
 # Configurable por env:
@@ -770,7 +1954,7 @@ def _admin_guard_and_rate_limit():
 
     2) Rate-limit global para acciones sensibles:
        - Solo aplica a métodos mutadores: POST/PUT/PATCH/DELETE
-       - Excluye: login/logout/ping/solicitudes_live
+       - Excluye: login/logout/MFA
     """
     try:
         # Endpoint actual
@@ -781,11 +1965,22 @@ def _admin_guard_and_rate_limit():
         allow_eps = {
             "admin.login",
             "admin.logout",
-            "admin.admin_ping",
-            "admin.solicitudes_live",
+            "admin.mfa_setup",
+            "admin.mfa_verify",
+            "admin.mfa_cancel",
         }
         if ep in allow_eps:
             return None
+
+        pending = session_get_mfa_pending(session)
+        if pending:
+            pending_user = _get_pending_staff_user()
+            if pending_user is None or not bool(getattr(pending_user, "is_active", False)):
+                session_clear_mfa_pending(session)
+                return redirect(url_for("admin.login"))
+            if bool(pending_user.mfa_enabled) and bool(pending_user.get_mfa_secret()):
+                return redirect(url_for("admin.mfa_verify"))
+            return redirect(url_for("admin.mfa_setup"))
 
         # Si NO hay usuario logueado, que flask-login maneje @login_required más abajo
         # (pero aquí evitamos que un cliente autenticado con otra sesión se cuele).
@@ -826,7 +2021,7 @@ def _admin_guard_and_rate_limit():
             flask_session=session,
             path=(request.full_path or request.path or ""),
         )
-        if not bool(sess_state.get("ok")) and sess_state.get("reason") == "revoked":
+        if not bool(sess_state.get("ok")) and sess_state.get("reason") in {"revoked", "backplane_unavailable"}:
             try:
                 logout_user()
             except Exception:
@@ -835,8 +2030,28 @@ def _admin_guard_and_rate_limit():
                 session.clear()
             except Exception:
                 pass
+            if sess_state.get("reason") == "backplane_unavailable":
+                flash("Control de sesión no disponible por degradación de infraestructura. Reintenta en unos segundos.", "danger")
+                return redirect(url_for("admin.login")), 503
             flash("Tu sesión fue cerrada por administración.", "warning")
             return redirect(url_for("admin.login"))
+
+        if isinstance(current_user, StaffUser) and _staff_user_needs_mfa(current_user):
+            if _MFA_VERIFIED_SESSION_KEY not in session:
+                # Compatibilidad: sesiones previas al despliegue MFA quedan válidas hasta logout.
+                session[_MFA_VERIFIED_SESSION_KEY] = True
+                session.modified = True
+            if not bool(session.get(_MFA_VERIFIED_SESSION_KEY)):
+                try:
+                    logout_user()
+                except Exception:
+                    pass
+                try:
+                    session.clear()
+                except Exception:
+                    pass
+                flash("Debes completar MFA para acceder al panel.", "warning")
+                return redirect(url_for("admin.login"))
 
         _touch_staff_presence(current_path=request.path, page_title=(request.endpoint or request.path))
 
@@ -845,6 +2060,15 @@ def _admin_guard_and_rate_limit():
             role = role_for_user(current_user)
             if not rbac_can(role, required_permission):
                 log_permission_denied(user=current_user, required_permission=required_permission)
+                if _admin_async_wants_json():
+                    login_url = url_for("admin.login", next=(request.full_path or request.path))
+                    return jsonify(_admin_async_payload(
+                        success=False,
+                        message="No tienes permisos para esta acción.",
+                        category="danger",
+                        redirect_url=login_url,
+                        error_code="forbidden",
+                    )), 403
                 abort(403)
 
         # Rate-limit solo para acciones que cambian cosas
@@ -892,7 +2116,7 @@ def _admin_guard_and_rate_limit():
 # Nota: usamos `cache` (Flask-Caching) para que el lock sea real incluso si el usuario cambia de navegador.
 # Fallback seguro: si `cache` no está disponible o falla, usamos sesión (NO rompe el login).
 # Configurable por env: ADMIN_LOGIN_MAX_INTENTOS y ADMIN_LOGIN_LOCK_MINUTOS.
-_ADMIN_LOGIN_MAX_INTENTOS = int((os.getenv("ADMIN_LOGIN_MAX_INTENTOS") or "6").strip() or 6)
+_ADMIN_LOGIN_MAX_INTENTOS = int((os.getenv("ADMIN_LOGIN_MAX_INTENTOS") or "10").strip() or 10)
 _ADMIN_LOGIN_LOCK_MINUTOS = int((os.getenv("ADMIN_LOGIN_LOCK_MINUTOS") or "10").strip() or 10)
 _ADMIN_LOGIN_KEY_PREFIX   = "admin_login"
 
@@ -937,12 +2161,7 @@ def _admin_login_keys(usuario_norm: str):
 
 def _cache_ok() -> bool:
     """Retorna True si el cache está disponible y operativo."""
-    try:
-        # Un get simple no debería explotar; si explota, asumimos cache no usable
-        _ = cache.get("__ping__")
-        return True
-    except Exception:
-        return False
+    return bool(bp_healthcheck(strict=False))
 
 
 def _sess_key(usuario_norm: str) -> str:
@@ -1103,7 +2322,7 @@ def _is_safe_next(target: str) -> bool:
 
 def _safe_next_url(fallback: str) -> str:
     nxt = (request.args.get("next") or request.form.get("next") or "").strip()
-    return nxt if _is_safe_next(nxt) else fallback
+    return nxt if _is_safe_redirect_url(nxt) else fallback
 
 
 def _reset_inicio_seguimiento_si_reactiva(s, now: datetime):
@@ -1318,6 +2537,13 @@ def login():
 
         # Si está bloqueado por IP+usuario
         if (not is_testing) and _admin_is_locked(usuario_norm):
+            log_auth_event(
+                event="STAFF_LOGIN_BLOCKED",
+                status="fail",
+                user_identifier=usuario_norm or None,
+                reason="admin_login_lock_active",
+                metadata={"path": "/admin/login"},
+            )
             mins = _admin_login_lock_minutos()
             error = f'Has excedido el máximo de intentos. Intenta de nuevo en {mins} minutos.'
             return render_template('admin/login.html', error=error), 429
@@ -1396,36 +2622,101 @@ def login():
             return render_template('admin/login.html', error=error), 503
 
         if auth_ok and authenticated_user is not None:
-            # ✅ Login correcto
-            try:
-                session.clear()
-            except Exception:
-                pass
-
-            try:
-                session.permanent = True
-            except Exception:
-                pass
-
-            login_user(authenticated_user, remember=False)
-
-            # ✅ MARCAR ESTA SESIÓN COMO ADMIN (AISLAMIENTO REAL)
-            try:
-                session[_ADMIN_SESSION_MARKER] = True
-                session["usuario"] = str(authenticated_username)
-                normalized_role = _normalize_staff_role_loose(getattr(authenticated_user, "role", "") or "")
-                session["role"] = normalized_role or (str(getattr(authenticated_user, "role", "") or "").strip().lower())
-                if breakglass_ok:
-                    set_breakglass_session(session)
-                else:
-                    clear_breakglass_session(session)
-                session.modified = True
-            except Exception:
-                pass
-
-            # Reset locks
+            previous_fail_count = 0
+            if not is_testing:
+                try:
+                    previous_fail_count = int(_admin_fail_count(usuario_norm) or 0)
+                except Exception:
+                    previous_fail_count = 0
+            # Reset locks después de validar credenciales correctas.
             _admin_reset_fail(usuario_norm)
             _clear_security_layer_lock_admin(endpoint="/admin/login", usuario=str(authenticated_username))
+
+            if isinstance(authenticated_user, StaffUser) and _staff_user_needs_mfa(authenticated_user):
+                trusted_device_allowed = False
+                trusted_device_token = _trusted_device_current_token()
+                trusted_device_hash = ""
+                trust_reason = "new_device"
+                force_mfa_by_failures = (not is_testing) and (previous_fail_count >= _trusted_device_fail_threshold())
+                if force_mfa_by_failures:
+                    trust_reason = "failed_attempts"
+                elif trusted_device_token:
+                    trusted_device_hash = _trusted_device_token_hash(trusted_device_token)
+                    if trusted_device_hash and is_trusted_device(authenticated_user, trusted_device_hash):
+                        trusted_device_allowed = True
+                    else:
+                        trust_reason = _trusted_device_reason_from_session(default="new_device")
+                else:
+                    trust_reason = "missing_cookie"
+
+                if trusted_device_allowed:
+                    _complete_staff_login_session(
+                        authenticated_user,
+                        username_for_session=authenticated_username,
+                        breakglass_ok=False,
+                    )
+                    try:
+                        authenticated_user.last_login_at = utc_now_naive()
+                        authenticated_user.last_login_ip = _client_ip()
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                    log_auth_event(
+                        event="STAFF_LOGIN_TRUSTED_DEVICE",
+                        status="success",
+                        user_id=authenticated_user.id,
+                        user_identifier=authenticated_user.username,
+                        metadata={"path": "/admin/login", "trusted": True},
+                    )
+                    try:
+                        current_app.logger.info(
+                            "STAFF_LOGIN_TRUSTED user=%s ip=%s",
+                            authenticated_user.username,
+                            _client_ip(),
+                        )
+                    except Exception:
+                        pass
+                    fallback = url_for("admin.listar_clientes")
+                    resp = redirect(_safe_next_url(fallback))
+                    _trusted_device_set_cookie(resp, trusted_device_token)
+                    return resp
+
+                session[_TRUSTED_DEVICE_SESSION_REASON] = trust_reason
+                session.modified = True
+                log_auth_event(
+                    event="STAFF_2FA_REQUIRED",
+                    status="success",
+                    user_id=authenticated_user.id,
+                    user_identifier=authenticated_user.username,
+                    metadata={"path": "/admin/login", "reason": trust_reason},
+                )
+                try:
+                    current_app.logger.info(
+                        "STAFF_LOGIN_NEW_DEVICE user=%s reason=%s ip=%s",
+                        authenticated_user.username,
+                        trust_reason,
+                        _client_ip(),
+                    )
+                except Exception:
+                    pass
+                fallback = url_for("admin.listar_clientes")
+                next_url = _safe_next_url(fallback)
+                mfa_url = _begin_pending_staff_mfa(
+                    staff_user=authenticated_user,
+                    source="admin",
+                    next_url=next_url,
+                )
+                resp = redirect(mfa_url)
+                if not trusted_device_token:
+                    trusted_device_token = _trusted_device_issue_token()
+                _trusted_device_set_cookie(resp, trusted_device_token)
+                return resp
+
+            _complete_staff_login_session(
+                authenticated_user,
+                username_for_session=authenticated_username,
+                breakglass_ok=bool(breakglass_ok),
+            )
 
             # Auditoría de último login para staff en BD
             if isinstance(authenticated_user, StaffUser):
@@ -1439,8 +2730,22 @@ def login():
                         entity_id=authenticated_user.id,
                         summary=f"Login staff exitoso: {authenticated_user.username}",
                     )
+                    log_auth_event(
+                        event="STAFF_LOGIN_SUCCESS",
+                        status="success",
+                        user_id=authenticated_user.id,
+                        user_identifier=authenticated_user.username,
+                        metadata={"path": "/admin/login"},
+                    )
                 except Exception:
                     db.session.rollback()
+            else:
+                log_auth_event(
+                    event="BREAKGLASS_LOGIN_SUCCESS",
+                    status="success",
+                    user_identifier=authenticated_username,
+                    metadata={"path": "/admin/login"},
+                )
 
             fallback = url_for('admin.listar_clientes')
             if _login_debug_enabled():
@@ -1453,6 +2758,7 @@ def login():
                                 "usuario_session": session.get("usuario"),
                                 "role_session": session.get("role"),
                                 "is_admin_session": bool(session.get("is_admin_session")),
+                                "mfa_verified": bool(session.get(_MFA_VERIFIED_SESSION_KEY)),
                             },
                             ensure_ascii=False,
                             default=str,
@@ -1473,9 +2779,235 @@ def login():
             success=False,
             error="Credenciales inválidas",
         )
-        error = 'Credenciales inválidas.'
+        log_auth_event(
+            event="STAFF_LOGIN_FAIL",
+            status="fail",
+            user_identifier=usuario_norm or None,
+            reason="invalid_credentials",
+            metadata={"path": "/admin/login"},
+        )
+        error = 'Credenciales incorrectas.'
 
     return render_template('admin/login.html', error=error)
+
+
+@admin_bp.route("/mfa/setup", methods=["GET", "POST"])
+def mfa_setup():
+    pending = session_get_mfa_pending(session)
+    staff_user = _get_pending_staff_user()
+    if not pending or not isinstance(staff_user, StaffUser):
+        session_clear_mfa_pending(session)
+        return redirect(url_for("admin.login"))
+    if not _staff_user_needs_mfa(staff_user):
+        _complete_staff_login_session(
+            staff_user,
+            username_for_session=(staff_user.username or ""),
+            breakglass_ok=False,
+        )
+        return redirect(_session_redirect_after_mfa(pending))
+    if bool(staff_user.mfa_enabled) and bool(staff_user.get_mfa_secret()):
+        return redirect(url_for("admin.mfa_verify"))
+
+    setup_secret = (session.get(MFA_SETUP_SECRET_SESSION_KEY) or "").strip().upper()
+    if not setup_secret:
+        setup_secret = generate_mfa_secret()
+        session[MFA_SETUP_SECRET_SESSION_KEY] = setup_secret
+        session.modified = True
+
+    issuer = mfa_issuer_name()
+    otp_uri = provisioning_uri(setup_secret, username=(staff_user.username or ""), issuer=issuer)
+    qr_data_uri = generate_qr_png_data_uri(otp_uri)
+    error = None
+
+    if request.method == "POST":
+        code = (request.form.get("code") or "").strip()
+        ok, matched_counter, reason = verify_totp_code(
+            setup_secret,
+            code,
+            last_used_counter=None,
+        )
+        if ok and matched_counter is not None:
+            try:
+                staff_user.set_mfa_secret(setup_secret)
+                staff_user.mfa_enabled = True
+                staff_user.mfa_last_timestep = int(matched_counter)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                error = "No fue posible activar MFA. Intenta de nuevo."
+                log_auth_event(
+                    event="MFA_SETUP_FAIL",
+                    status="fail",
+                    user_id=staff_user.id,
+                    user_identifier=staff_user.username,
+                    reason="mfa_setup_db_error",
+                    metadata={"path": "/admin/mfa/setup"},
+                )
+            else:
+                _complete_staff_login_session(
+                    staff_user,
+                    username_for_session=(staff_user.username or ""),
+                    breakglass_ok=False,
+                )
+                try:
+                    staff_user.last_login_at = utc_now_naive()
+                    staff_user.last_login_ip = _client_ip()
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                trusted_token = _trusted_device_current_token()
+                if not trusted_token:
+                    trusted_token = _trusted_device_issue_token()
+                trusted_hash = _trusted_device_token_hash(trusted_token)
+                if trusted_hash:
+                    _ = register_trusted_device(staff_user, trusted_hash)
+                reason = _trusted_device_reason_from_session(default="new_device")
+                log_auth_event(
+                    event="STAFF_LOGIN_NEW_DEVICE",
+                    status="success",
+                    user_id=staff_user.id,
+                    user_identifier=staff_user.username,
+                    metadata={"path": "/admin/mfa/setup", "reason": reason},
+                )
+                log_auth_event(
+                    event="MFA_SETUP_SUCCESS",
+                    status="success",
+                    user_id=staff_user.id,
+                    user_identifier=staff_user.username,
+                    metadata={"path": "/admin/mfa/setup"},
+                )
+                session_clear_mfa_pending(session)
+                resp = redirect(_session_redirect_after_mfa(pending))
+                _trusted_device_set_cookie(resp, trusted_token)
+                return resp
+        else:
+            if reason == "reused":
+                error = "Código ya utilizado. Espera el siguiente código."
+            else:
+                error = "Código de verificación inválido."
+            log_auth_event(
+                event="MFA_SETUP_FAIL",
+                status="fail",
+                user_id=staff_user.id,
+                user_identifier=staff_user.username,
+                reason=(reason or "invalid_code"),
+                metadata={"path": "/admin/mfa/setup"},
+            )
+
+    return render_template(
+        "admin/mfa_setup.html",
+        error=error,
+        qr_data_uri=qr_data_uri,
+        secret=setup_secret,
+        issuer=issuer,
+        username=(staff_user.username or ""),
+    )
+
+
+@admin_bp.route("/mfa/verify", methods=["GET", "POST"])
+def mfa_verify():
+    pending = session_get_mfa_pending(session)
+    staff_user = _get_pending_staff_user()
+    if not pending or not isinstance(staff_user, StaffUser):
+        session_clear_mfa_pending(session)
+        return redirect(url_for("admin.login"))
+    if not _staff_user_needs_mfa(staff_user):
+        _complete_staff_login_session(
+            staff_user,
+            username_for_session=(staff_user.username or ""),
+            breakglass_ok=False,
+        )
+        return redirect(_session_redirect_after_mfa(pending))
+
+    secret = staff_user.get_mfa_secret()
+    if (not bool(staff_user.mfa_enabled)) or (not secret):
+        return redirect(url_for("admin.mfa_setup"))
+
+    error = None
+    if request.method == "POST":
+        code = (request.form.get("code") or "").strip()
+        ok, matched_counter, reason = verify_totp_code(
+            secret,
+            code,
+            last_used_counter=staff_user.mfa_last_timestep,
+        )
+        if ok and matched_counter is not None:
+            try:
+                staff_user.mfa_last_timestep = int(matched_counter)
+                staff_user.last_login_at = utc_now_naive()
+                staff_user.last_login_ip = _client_ip()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                error = "No fue posible validar MFA. Intenta de nuevo."
+                log_auth_event(
+                    event="MFA_VERIFY_FAIL",
+                    status="fail",
+                    user_id=staff_user.id,
+                    user_identifier=staff_user.username,
+                    reason="mfa_verify_db_error",
+                    metadata={"path": "/admin/mfa/verify"},
+                )
+            else:
+                _complete_staff_login_session(
+                    staff_user,
+                    username_for_session=(staff_user.username or ""),
+                    breakglass_ok=False,
+                )
+                trusted_token = _trusted_device_current_token()
+                if not trusted_token:
+                    trusted_token = _trusted_device_issue_token()
+                trusted_hash = _trusted_device_token_hash(trusted_token)
+                if trusted_hash:
+                    _ = register_trusted_device(staff_user, trusted_hash)
+                reason = _trusted_device_reason_from_session(default="new_device")
+                log_auth_event(
+                    event="STAFF_LOGIN_NEW_DEVICE",
+                    status="success",
+                    user_id=staff_user.id,
+                    user_identifier=staff_user.username,
+                    metadata={"path": "/admin/mfa/verify", "reason": reason},
+                )
+                log_auth_event(
+                    event="MFA_VERIFY_SUCCESS",
+                    status="success",
+                    user_id=staff_user.id,
+                    user_identifier=staff_user.username,
+                    metadata={"path": "/admin/mfa/verify"},
+                )
+                session_clear_mfa_pending(session)
+                resp = redirect(_session_redirect_after_mfa(pending))
+                _trusted_device_set_cookie(resp, trusted_token)
+                return resp
+        else:
+            if reason == "reused":
+                error = "Código ya utilizado. Espera el siguiente código."
+            else:
+                error = "Código de verificación inválido."
+            log_auth_event(
+                event="MFA_VERIFY_FAIL",
+                status="fail",
+                user_id=staff_user.id,
+                user_identifier=staff_user.username,
+                reason=(reason or "invalid_code"),
+                metadata={"path": "/admin/mfa/verify"},
+            )
+
+    return render_template(
+        "admin/mfa_verify.html",
+        error=error,
+        username=(staff_user.username or ""),
+    )
+
+
+@admin_bp.route("/mfa/cancel", methods=["POST"])
+def mfa_cancel():
+    session_clear_mfa_pending(session)
+    try:
+        logout_user()
+    except Exception:
+        pass
+    return redirect(url_for("admin.login"))
 
 
 @admin_bp.route('/logout', methods=['POST'])
@@ -1492,6 +3024,8 @@ def logout():
         # ✅ bajar marcador de sesión admin (por si session.clear falla)
         try:
             session.pop(_ADMIN_SESSION_MARKER, None)
+            session.pop(_MFA_VERIFIED_SESSION_KEY, None)
+            session_clear_mfa_pending(session)
         except Exception:
             pass
 
@@ -1567,31 +3101,39 @@ def listar_usuarios():
     page = max(1, request.args.get('page', default=1, type=int) or 1)
     per_page = request.args.get('per_page', default=20, type=int) or 20
     per_page = max(10, min(per_page, 100))
-
-    query = StaffUser.query
-    hidden_username = _emergency_hide_username()
-    hidden_prefix = _emergency_hide_prefix()
-    if hidden_username:
-        query = query.filter(func.lower(StaffUser.username) != hidden_username)
-    if hidden_prefix:
-        query = query.filter(~func.lower(StaffUser.username).like(f"{hidden_prefix}%"))
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            or_(
-                StaffUser.username.ilike(like),
-                StaffUser.email.ilike(like),
-            )
-        )
-
-    total = query.count()
-    usuarios = (
-        query.order_by(StaffUser.created_at.desc(), StaffUser.id.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
+    usuarios, total, last_page = _usuarios_list_page_data(
+        q=q,
+        page=page,
+        per_page=per_page,
     )
-    last_page = max(1, (total + per_page - 1) // per_page)
+    list_next = _usuarios_list_next_url(q=q, page=page, per_page=per_page)
+
+    if _admin_async_wants_json():
+        html = render_template(
+            'admin/_usuarios_list_results.html',
+            usuarios=usuarios,
+            q=q,
+            page=page,
+            per_page=per_page,
+            total=total,
+            last_page=last_page,
+            list_next=list_next,
+            min_password_len=_staff_password_min_len(),
+        )
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='',
+            category='info',
+            replace_html=html,
+            update_target='#usuariosAsyncRegion',
+            extra={
+                "query": q,
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "last_page": last_page,
+            },
+        )), 200
 
     return render_template(
         'admin/usuarios_list.html',
@@ -1601,6 +3143,7 @@ def listar_usuarios():
         per_page=per_page,
         total=total,
         last_page=last_page,
+        list_next=list_next,
         min_password_len=_staff_password_min_len(),
     )
 
@@ -1643,13 +3186,37 @@ def crear_usuario():
             u.set_password(password)
             db.session.add(u)
             db.session.commit()
+            log_admin_action(
+                event="STAFF_USER_CREATE",
+                status="success",
+                entity_type="staff_user",
+                entity_id=u.id,
+                summary=f"Usuario staff creado: {u.username}",
+                metadata={"role": role},
+            )
             flash('Usuario creado correctamente.', 'success')
             return redirect(url_for('admin.listar_usuarios'))
         except IntegrityError:
             db.session.rollback()
+            log_admin_action(
+                event="STAFF_USER_CREATE",
+                status="fail",
+                entity_type="staff_user",
+                entity_id=username.lower(),
+                reason="integrity_error",
+                metadata={"role": role},
+            )
             flash('No se pudo crear el usuario: username o email duplicado.', 'danger')
         except SQLAlchemyError:
             db.session.rollback()
+            log_admin_action(
+                event="STAFF_USER_CREATE",
+                status="fail",
+                entity_type="staff_user",
+                entity_id=username.lower(),
+                reason="db_error",
+                metadata={"role": role},
+            )
             flash('No se pudo crear el usuario por un error de base de datos.', 'danger')
 
     return render_template('admin/usuario_form.html', form=form, nuevo=True, min_password_len=min_password_len)
@@ -1662,15 +3229,92 @@ def editar_usuario(user_id: int):
     user = StaffUser.query.get_or_404(user_id)
     form = StaffUserEditForm(obj=user)
     min_password_len = _staff_password_min_len()
+    wants_async = _admin_async_wants_json()
+
+    def _flatten_form_errors() -> list[str]:
+        out: list[str] = []
+        try:
+            for field_errors in (form.errors or {}).values():
+                for msg in (field_errors or []):
+                    text = str(msg or '').strip()
+                    if text:
+                        out.append(text)
+        except Exception:
+            return []
+        return out
+
+    def _render_edit_region(async_feedback=None) -> str:
+        return render_template(
+            'admin/_editar_usuario_form_region.html',
+            form=form,
+            user=user,
+            min_password_len=min_password_len,
+            async_feedback=async_feedback,
+        )
+
+    def _render_edit_page(async_feedback=None):
+        return render_template(
+            'admin/usuario_form.html',
+            form=form,
+            user=user,
+            nuevo=False,
+            min_password_len=min_password_len,
+            async_feedback=async_feedback,
+        )
+
+    def _async_edit_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+        include_region: bool = True,
+        async_feedback=None,
+    ):
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            replace_html=_render_edit_region(async_feedback=async_feedback) if include_region else None,
+            update_target="#editarUsuarioAsyncRegion",
+            errors=_flatten_form_errors(),
+            error_code=error_code,
+        )
+        return jsonify(payload), http_status
+
+    if request.method == 'POST' and not form.validate_on_submit():
+        if wants_async:
+            return _async_edit_response(
+                ok=False,
+                message='No se guardó. Revisa los campos marcados y corrige los errores.',
+                category='warning',
+                http_status=200,
+                error_code='invalid_input',
+                async_feedback={"message": "No se guardó. Revisa los campos marcados y corrige los errores.", "category": "warning"},
+            )
+        flash('No se guardó. Revisa los campos marcados y corrige los errores.', 'danger')
+        return _render_edit_page()
 
     if form.validate_on_submit():
         email = (form.email.data or '').strip().lower() or None
-        role = (form.role.data or '').strip().lower()
         new_password = StaffUser.normalize_password(form.new_password.data or "")
+        old_role = (user.role or "").strip().lower()
+        role_from_form = (form.role.data or '').strip().lower()
+        role_to_apply = old_role if wants_async else role_from_form
 
-        if role not in ('owner', 'admin', 'secretaria'):
+        if role_to_apply not in ('owner', 'admin', 'secretaria'):
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message='No se pudo guardar la edición del usuario.',
+                    category='danger',
+                    http_status=400,
+                    error_code='invalid_input',
+                    async_feedback={"message": "No se pudo guardar la edición del usuario.", "category": "danger"},
+                )
             flash('Rol inválido.', 'danger')
-            return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+            return _render_edit_page()
 
         if email:
             dup_email = StaffUser.query.filter(
@@ -1678,29 +3322,113 @@ def editar_usuario(user_id: int):
                 StaffUser.id != user.id
             ).first()
             if dup_email:
+                form.email.errors.append('El email ya está en uso por otro usuario.')
+                if wants_async:
+                    return _async_edit_response(
+                        ok=False,
+                        message='Este email ya está en uso por otro usuario.',
+                        category='danger',
+                        http_status=409,
+                        error_code='conflict',
+                        async_feedback={"message": "Este email ya está en uso por otro usuario.", "category": "danger"},
+                    )
                 flash('El email ya está en uso por otro usuario.', 'danger')
-                return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+                return _render_edit_page()
 
         if new_password and len(new_password) < min_password_len:
+            form.new_password.errors.append(f'La nueva contraseña debe tener al menos {min_password_len} caracteres.')
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message=f'La nueva contraseña debe tener al menos {min_password_len} caracteres.',
+                    category='danger',
+                    http_status=200,
+                    error_code='invalid_input',
+                    async_feedback={"message": f"La nueva contraseña debe tener al menos {min_password_len} caracteres.", "category": "danger"},
+                )
             flash(f'La nueva contraseña debe tener al menos {min_password_len} caracteres.', 'danger')
-            return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+            return _render_edit_page()
 
         try:
             user.email = email
-            user.role = role
+            if not wants_async:
+                user.role = role_to_apply
             if new_password:
                 user.set_password(new_password)
             db.session.commit()
-            flash('Usuario actualizado correctamente.', 'success')
+            new_role_effective = (user.role or "").strip().lower()
+            log_admin_action(
+                event="STAFF_USER_UPDATE",
+                status="success",
+                entity_type="staff_user",
+                entity_id=user.id,
+                summary=f"Usuario actualizado: {user.username}",
+                metadata={"old_role": old_role, "new_role": new_role_effective, "password_changed": bool(new_password)},
+            )
+            if new_password:
+                log_admin_action(
+                    event="STAFF_PASSWORD_CHANGED",
+                    status="success",
+                    entity_type="staff_user",
+                    entity_id=user.id,
+                    summary=f"Contraseña staff actualizada: {user.username}",
+                    metadata={"trigger": "admin_edit_user"},
+                )
+            success_msg = 'Usuario actualizado correctamente.'
+            if wants_async:
+                form = StaffUserEditForm(formdata=None, obj=user)
+                return _async_edit_response(
+                    ok=True,
+                    message=success_msg,
+                    category='success',
+                    http_status=200,
+                    async_feedback={"message": success_msg, "category": "success"},
+                )
+            flash(success_msg, 'success')
             return redirect(url_for('admin.listar_usuarios'))
         except IntegrityError:
             db.session.rollback()
-            flash('No se pudo guardar: email duplicado.', 'danger')
+            form.email.errors.append('Este email ya está en uso por otro usuario.')
+            log_admin_action(
+                event="STAFF_USER_UPDATE",
+                status="fail",
+                entity_type="staff_user",
+                entity_id=user.id,
+                reason="integrity_error",
+            )
+            msg = 'No se pudo guardar porque el email ya está en uso.'
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message=msg,
+                    category='danger',
+                    http_status=409,
+                    error_code='conflict',
+                    async_feedback={"message": msg, "category": "danger"},
+                )
+            flash(msg, 'danger')
         except SQLAlchemyError:
             db.session.rollback()
-            flash('No se pudo guardar por un error de base de datos.', 'danger')
+            log_admin_action(
+                event="STAFF_USER_UPDATE",
+                status="fail",
+                entity_type="staff_user",
+                entity_id=user.id,
+                reason="db_error",
+            )
+            msg = 'No se pudo guardar el usuario. Intenta nuevamente.'
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message=msg,
+                    category='danger',
+                    http_status=500,
+                    error_code='server_error',
+                    async_feedback={"message": msg, "category": "danger"},
+                )
+            flash(msg, 'danger')
 
-    return render_template('admin/usuario_form.html', form=form, user=user, nuevo=False, min_password_len=min_password_len)
+    return _render_edit_page()
 
 
 @admin_bp.route('/usuarios/<int:user_id>/toggle-estado', methods=['POST'])
@@ -1708,22 +3436,59 @@ def editar_usuario(user_id: int):
 def toggle_usuario_estado(user_id: int):
     _owner_only()
     user = StaffUser.query.get_or_404(user_id)
+    next_url = (request.form.get("next") or request.args.get("next") or request.referrer or "").strip()
+    fallback = url_for('admin.listar_usuarios')
     try:
         if isinstance(current_user, StaffUser) and int(current_user.id) == int(user.id):
-            flash('No puedes desactivar tu propio usuario.', 'warning')
-            return redirect(url_for('admin.listar_usuarios'))
+            return _usuarios_list_action_response(
+                ok=False,
+                message='No puedes desactivar tu propio usuario.',
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code='conflict',
+            )
     except Exception:
         pass
 
     try:
         user.is_active = not bool(user.is_active)
         db.session.commit()
+        log_admin_action(
+            event="STAFF_USER_STATUS_CHANGED",
+            status="success",
+            entity_type="staff_user",
+            entity_id=user.id,
+            summary=f"Estado de usuario staff actualizado: {user.username}",
+            metadata={"is_active": bool(user.is_active)},
+        )
         estado = "activado" if user.is_active else "desactivado"
-        flash(f'Usuario {estado} correctamente.', 'success')
+        return _usuarios_list_action_response(
+            ok=True,
+            message=f'Usuario {estado} correctamente.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('No se pudo actualizar el estado del usuario.', 'danger')
-    return redirect(url_for('admin.listar_usuarios'))
+        log_admin_action(
+            event="STAFF_USER_STATUS_CHANGED",
+            status="fail",
+            entity_type="staff_user",
+            entity_id=user.id,
+            reason="db_error",
+        )
+        return _usuarios_list_action_response(
+            ok=False,
+            message='No se pudo actualizar el estado del usuario. Intenta nuevamente.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+            error_code='server_error',
+        )
 
 
 @admin_bp.route('/roles', methods=['GET', 'POST'])
@@ -1731,28 +3496,58 @@ def toggle_usuario_estado(user_id: int):
 @admin_required
 def admin_roles():
     _owner_only()
+    next_url = (request.form.get("next") or request.args.get("next") or request.referrer or "").strip()
+    fallback = url_for("admin.listar_usuarios")
 
     if request.method == 'POST':
         raw_user_id = (request.form.get("user_id") or "").strip()
         new_role = normalize_staff_role(request.form.get("role"))
         if not raw_user_id.isdigit():
-            flash("Usuario inválido.", "danger")
-            return redirect(url_for("admin.listar_usuarios"))
+            return _usuarios_list_action_response(
+                ok=False,
+                message="Usuario inválido.",
+                category="danger",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=400,
+                error_code="invalid_input",
+            )
         if new_role not in {"owner", "admin", "secretaria"}:
-            flash("Rol inválido.", "danger")
-            return redirect(url_for("admin.listar_usuarios"))
+            return _usuarios_list_action_response(
+                ok=False,
+                message="Rol inválido.",
+                category="danger",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=400,
+                error_code="invalid_input",
+            )
 
         user = StaffUser.query.filter_by(id=int(raw_user_id)).first_or_404()
         old_role = normalize_staff_role(user.role)
         if old_role == new_role:
-            flash("Ese usuario ya tiene ese rol.", "info")
-            return redirect(url_for("admin.listar_usuarios"))
+            return _usuarios_list_action_response(
+                ok=False,
+                message="Ese usuario ya tiene ese rol.",
+                category="info",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code="conflict",
+            )
 
         if old_role == "owner" and new_role != "owner":
             owners = StaffUser.query.filter(func.lower(StaffUser.role) == "owner", StaffUser.is_active.is_(True)).count()
             if int(owners or 0) <= 1:
-                flash("Debe existir al menos un Owner activo.", "warning")
-                return redirect(url_for("admin.listar_usuarios"))
+                return _usuarios_list_action_response(
+                    ok=False,
+                    message="Debe existir al menos un Owner activo.",
+                    category="warning",
+                    next_url=next_url,
+                    fallback=fallback,
+                    http_status=409,
+                    error_code="conflict",
+                )
 
         user.role = new_role
         try:
@@ -1765,14 +3560,42 @@ def admin_roles():
                 metadata={"old_role": old_role, "new_role": new_role},
                 success=True,
             )
-            flash(f"Rol de {user.username} actualizado a {new_role}.", "success")
+            log_admin_action(
+                event="ROLE_CHANGED",
+                status="success",
+                entity_type="staff_user",
+                entity_id=user.id,
+                summary=f"Rol actualizado para {user.username}",
+                metadata={"old_role": old_role, "new_role": new_role},
+            )
+            return _usuarios_list_action_response(
+                ok=True,
+                message=f"Rol de {user.username} actualizado correctamente.",
+                category="success",
+                next_url=next_url,
+                fallback=fallback,
+            )
         except Exception:
             db.session.rollback()
-            flash("No se pudo actualizar el rol.", "danger")
+            log_admin_action(
+                event="ROLE_CHANGED",
+                status="fail",
+                entity_type="staff_user",
+                entity_id=user.id,
+                reason="db_error",
+                metadata={"old_role": old_role, "new_role": new_role},
+            )
+            return _usuarios_list_action_response(
+                ok=False,
+                message="No se pudo actualizar el rol. Intenta nuevamente.",
+                category="danger",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=500,
+                error_code="server_error",
+            )
 
-        return redirect(url_for("admin.listar_usuarios"))
-
-    return redirect(url_for("admin.listar_usuarios"))
+    return redirect(fallback)
 
 
 @admin_bp.route('/usuarios/<int:user_id>/eliminar', methods=['POST'])
@@ -1780,10 +3603,19 @@ def admin_roles():
 def eliminar_usuario(user_id: int):
     _owner_only()
     user = StaffUser.query.get_or_404(user_id)
+    next_url = (request.form.get("next") or request.args.get("next") or request.referrer or "").strip()
+    fallback = url_for('admin.listar_usuarios')
     try:
         if isinstance(current_user, StaffUser) and int(current_user.id) == int(user.id):
-            flash('No puedes eliminar tu propio usuario.', 'warning')
-            return redirect(url_for('admin.listar_usuarios'))
+            return _usuarios_list_action_response(
+                ok=False,
+                message='No puedes eliminar tu propio usuario.',
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code='conflict',
+            )
     except Exception:
         pass
 
@@ -1816,16 +3648,58 @@ def eliminar_usuario(user_id: int):
         if _has_linked_history(user):
             user.is_active = False
             db.session.commit()
-            flash('Este usuario tiene actividad registrada y no puede eliminarse. Solo puede desactivarse.', 'warning')
-            return redirect(url_for('admin.listar_usuarios'))
+            log_admin_action(
+                event="STAFF_USER_DELETE_BLOCKED",
+                status="fail",
+                entity_type="staff_user",
+                entity_id=user.id,
+                reason="linked_history",
+                metadata={"username": user.username},
+            )
+            return _usuarios_list_action_response(
+                ok=False,
+                message='Este usuario tiene actividad registrada y no puede eliminarse. Solo puede desactivarse.',
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code='conflict',
+            )
 
         db.session.delete(user)
         db.session.commit()
-        flash('Usuario eliminado definitivamente.', 'success')
+        log_admin_action(
+            event="STAFF_USER_DELETE",
+            status="success",
+            entity_type="staff_user",
+            entity_id=user_id,
+            summary=f"Usuario staff eliminado: {user.username}",
+        )
+        return _usuarios_list_action_response(
+            ok=True,
+            message='Usuario eliminado correctamente.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('No se pudo eliminar el usuario.', 'danger')
-    return redirect(url_for('admin.listar_usuarios'))
+        log_admin_action(
+            event="STAFF_USER_DELETE",
+            status="fail",
+            entity_type="staff_user",
+            entity_id=user_id,
+            reason="db_error",
+        )
+        return _usuarios_list_action_response(
+            ok=False,
+            message='No se pudo eliminar el usuario. Intenta nuevamente.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+            error_code='server_error',
+        )
 
 
 def _parse_monitoreo_date(raw: str, end_of_day: bool = False):
@@ -2354,11 +4228,9 @@ def _should_log_live_event(user_id: int, event_type: str, path: str, action_hint
     ev = (event_type or "").strip().lower() or "heartbeat"
     base = f"{_LIVE_EVENT_PREFIX}:{int(user_id)}:{ev}:{(path or '')[:120]}:{(action_hint or '')[:60]}:{(entity_id or '')[:40]}"
     timeout = 25 if ev == "heartbeat" else 2
-    try:
-        if cache.get(base):
-            return False
-        cache.set(base, 1, timeout=timeout)
-    except Exception:
+    if bp_get(base, default=0, context="admin_live_event_dedupe_get"):
+        return False
+    if not bp_set(base, 1, timeout=timeout, context="admin_live_event_dedupe_set"):
         return ev != "heartbeat"
     return True
 
@@ -2416,7 +4288,7 @@ def _touch_staff_presence(
 
         now = utc_now_naive()
         uid = int(current_user.id)
-        prev = cache.get(_presence_key(uid)) or {}
+        prev = bp_get(_presence_key(uid), default={}, context="admin_presence_prev_get") or {}
         effective_path = (current_path or prev.get("current_path") or request.path or "")[:255]
         effective_hint = (action_hint or last_action_hint or prev.get("action_hint") or _infer_action_hint_from_path(effective_path))[:80]
         effective_action_type = (action_type or prev.get("action_type") or "LIVE_HEARTBEAT")[:80]
@@ -2480,9 +4352,14 @@ def _touch_staff_presence(
             "ip": (_client_ip() or "")[:64],
             "user_agent": (request.headers.get("User-Agent") or "")[:255],
         }
-        cache.set(_presence_key(uid), payload, timeout=_PRESENCE_TTL_SECONDS)
+        bp_set(
+            _presence_key(uid),
+            payload,
+            timeout=_PRESENCE_TTL_SECONDS,
+            context="admin_presence_payload_set",
+        )
 
-        idx = cache.get(_PRESENCE_INDEX_KEY) or []
+        idx = bp_get(_PRESENCE_INDEX_KEY, default=[], context="admin_presence_index_get") or []
         try:
             idx = [int(x) for x in idx]
         except Exception:
@@ -2490,7 +4367,12 @@ def _touch_staff_presence(
         if uid not in idx:
             idx.append(uid)
         idx = idx[-500:]
-        cache.set(_PRESENCE_INDEX_KEY, idx, timeout=max(3600, _PRESENCE_TTL_SECONDS * 20))
+        bp_set(
+            _PRESENCE_INDEX_KEY,
+            idx,
+            timeout=max(3600, _PRESENCE_TTL_SECONDS * 20),
+            context="admin_presence_index_set",
+        )
 
         if log_event and _should_log_live_event(
             user_id=uid,
@@ -2521,7 +4403,7 @@ def _touch_staff_presence(
 
 
 def _presence_rows() -> list[dict]:
-    idx = cache.get(_PRESENCE_INDEX_KEY) or []
+    idx = bp_get(_PRESENCE_INDEX_KEY, default=[], context="admin_presence_rows_idx_get") or []
     try:
         user_ids = [int(x) for x in idx]
     except Exception:
@@ -2532,7 +4414,7 @@ def _presence_rows() -> list[dict]:
     now = utc_now_naive()
     presence_raw = []
     for uid in user_ids:
-        row = cache.get(_presence_key(uid))
+        row = bp_get(_presence_key(uid), default=None, context="admin_presence_rows_item_get")
         if not row:
             continue
         presence_raw.append(row)
@@ -3049,6 +4931,16 @@ def _candidata_logs_query(candidata_entity_id: str, filter_tag: str = ""):
 @login_required
 @admin_required
 def monitoreo_staff():
+    if _admin_async_wants_json():
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Shell del dashboard actualizada.",
+            category="success",
+            replace_html=render_template("admin/_monitoreo_dashboard_shell_region.html"),
+            update_target="#monitoreoDashboardShellAsyncRegion",
+            redirect_url=url_for("admin.monitoreo_staff"),
+        ))
+
     now = utc_now_naive()
     day_start, _ = rd_day_range_utc_naive()
     week_start = now - timedelta(days=7)
@@ -3087,6 +4979,7 @@ def monitoreo_staff():
     ranking_today = _activity_ranking(day_start)
     ranking_week = _activity_ranking(now - timedelta(days=7))
     ranking_month = _activity_ranking(now - timedelta(days=30))
+    monitoreo_alerts = list(summary.get("critical_alerts") or summary.get("alerts") or [])
 
     return render_template(
         "admin/monitoreo.html",
@@ -3101,6 +4994,7 @@ def monitoreo_staff():
         ranking_today=ranking_today,
         ranking_week=ranking_week,
         ranking_month=ranking_month,
+        monitoreo_alerts=monitoreo_alerts,
         summary_payload=summary,
         initial_last_id=int(latest_logs[0].id) if latest_logs else 0,
     )
@@ -3112,21 +5006,31 @@ def monitoreo_staff():
 def monitoreo_logs():
     page = max(1, request.args.get("page", default=1, type=int))
     per_page = min(100, max(10, request.args.get("per_page", default=25, type=int)))
-    pagination = _logs_filtered_query().order_by(StaffAuditLog.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
-    users = StaffUser.query.order_by(StaffUser.username.asc()).all()
-    action_types = [r[0] for r in db.session.query(StaffAuditLog.action_type).distinct().order_by(StaffAuditLog.action_type.asc()).all()]
-    entity_types = [r[0] for r in db.session.query(StaffAuditLog.entity_type).filter(StaffAuditLog.entity_type.isnot(None)).distinct().order_by(StaffAuditLog.entity_type.asc()).all()]
-    user_map = {u.id: u for u in users}
-    username_map = {int(u.id): u.username for u in users}
-    entity_display_map = _build_entity_display_map(list(pagination.items))
-    logs_items = [
-        _serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map)
-        for log in pagination.items
-    ]
+    try:
+        pagination = _logs_filtered_query().order_by(StaffAuditLog.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        users = StaffUser.query.order_by(StaffUser.username.asc()).all()
+        action_types = [r[0] for r in db.session.query(StaffAuditLog.action_type).distinct().order_by(StaffAuditLog.action_type.asc()).all()]
+        entity_types = [r[0] for r in db.session.query(StaffAuditLog.entity_type).filter(StaffAuditLog.entity_type.isnot(None)).distinct().order_by(StaffAuditLog.entity_type.asc()).all()]
+        user_map = {u.id: u for u in users}
+        username_map = {int(u.id): u.username for u in users}
+        entity_display_map = _build_entity_display_map(list(pagination.items))
+        logs_items = [
+            _serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map)
+            for log in pagination.items
+        ]
+    except Exception:
+        if _admin_async_wants_json():
+            current_app.logger.exception("monitoreo_logs_async_error")
+            return jsonify(_admin_async_payload(
+                success=False,
+                message="No se pudo actualizar el listado de logs. Intenta de nuevo.",
+                category="danger",
+                error_code="internal_error",
+            )), 500
+        raise
 
-    return render_template(
-        "admin/monitoreo_logs.html",
+    list_ctx = dict(
         logs=logs_items,
         pagination=pagination,
         users=users,
@@ -3145,6 +5049,23 @@ def monitoreo_logs():
             or request.args.get("success")
         ),
     )
+
+    if _admin_async_wants_json():
+        html = render_template("admin/_monitoreo_logs_results.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Listado actualizado.",
+            category="info",
+            replace_html=html,
+            update_target="#monitoreoLogsAsyncRegion",
+            extra={
+                "page": pagination.page,
+                "per_page": per_page,
+                "total": pagination.total,
+            },
+        )), 200
+
+    return render_template("admin/monitoreo_logs.html", **list_ctx)
 
 
 @admin_bp.route('/monitoreo/candidatas', methods=['GET'])
@@ -3172,12 +5093,47 @@ def monitoreo_candidatas_search():
             .limit(limit)
             .all()
         )
-    return render_template(
-        "admin/monitoreo_candidatas_search.html",
+    list_ctx = dict(
         q=q,
         limit=limit,
         rows=rows,
     )
+    if _admin_async_wants_json():
+        redirect_url = url_for(
+            "admin.monitoreo_candidatas_search",
+            q=(q or None),
+            limit=limit,
+        )
+        html = render_template("admin/_monitoreo_candidatas_search_results.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Listado actualizado.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#monitoreoCandidatasAsyncRegion",
+            extra={
+                "query": q,
+                "limit": limit,
+                "count": len(rows),
+            },
+        )), 200
+    return render_template(
+        "admin/monitoreo_candidatas_search.html",
+        **list_ctx,
+    )
+
+
+def _render_monitoreo_alertas_region(*, alerts=None, next_url: str | None = None) -> str:
+    return render_template(
+        "admin/_monitoreo_alertas_region.html",
+        alerts=list(alerts or []),
+        next_url=(next_url or url_for("admin.monitoreo_staff")),
+    )
+
+
+def _monitoreo_dashboard_alerts() -> list[dict]:
+    return list(get_alert_items(limit=10, scope="critical", include_resolved=False) or [])
 
 
 @admin_bp.route('/monitoreo/candidatas/<candidata_entity_id>', methods=['GET'])
@@ -3201,14 +5157,32 @@ def monitoreo_candidata_historial(candidata_entity_id: str):
     items = [_serialize_log_item(log, username_map=username_map, entity_display_map=entity_display_map) for log in logs]
     for item in items:
         item["metadata_json"] = _sanitize_monitoreo_metadata(item.get("metadata_json"))
-    return render_template(
-        "admin/monitoreo_candidata_historial.html",
+    list_ctx = dict(
         candidata_entity_id=str(candidata_entity_id),
         candidata=cand,
         candidata_meta=(candidata_entity_meta(cand) if cand else {}),
         logs=items,
         active_filter=filter_tag,
         initial_last_id=max([i["id"] for i in items], default=0),
+    )
+    if _admin_async_wants_json():
+        redirect_url = url_for(
+            "admin.monitoreo_candidata_historial",
+            candidata_entity_id=candidata_entity_id,
+            filter=(filter_tag or None),
+        )
+        html = render_template("admin/_monitoreo_candidata_historial_region.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Historial actualizado.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#monitoreoCandidataHistorialAsyncRegion",
+        )), 200
+    return render_template(
+        "admin/monitoreo_candidata_historial.html",
+        **list_ctx,
     )
 
 
@@ -3251,13 +5225,40 @@ def monitoreo_secretaria(user_id: int):
         .all()
     )
 
-    return render_template(
-        "admin/monitoreo_secretaria.html",
+    date_from_raw = (request.args.get("date_from") or "").strip()
+    date_to_raw = (request.args.get("date_to") or "").strip()
+    list_ctx = dict(
         target_user=user,
         logs=logs_items,
         pagination=pagination,
         per_day_rows=per_day_rows,
+        date_from_q=date_from_raw,
+        date_to_q=date_to_raw,
     )
+    if _admin_async_wants_json():
+        redirect_url = url_for(
+            "admin.monitoreo_secretaria",
+            user_id=user.id,
+            page=pagination.page,
+            date_from=(date_from_raw or None),
+            date_to=(date_to_raw or None),
+        )
+        html = render_template("admin/_monitoreo_secretaria_region.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Listado actualizado.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#monitoreoSecretariaAsyncRegion",
+            extra={
+                "page": pagination.page,
+                "total": pagination.total,
+                "pages": pagination.pages or 1,
+            },
+        )), 200
+
+    return render_template("admin/monitoreo_secretaria.html", **list_ctx)
 
 
 @admin_bp.route('/monitoreo/logs.json', methods=['GET'])
@@ -3510,6 +5511,32 @@ def monitoreo_presence_ping():
     role = role_for_user(current_user)
     if role not in ("owner", "admin", "secretaria"):
         abort(403)
+    if not _live_access_allowed("presence_ping"):
+        _audit_live_security_block(
+            action_type="LIVE_ACCESS_DENIED",
+            summary="Acceso denegado a presence ping",
+            reason="presence_ping_role_forbidden",
+            metadata={"path": request.path, "role": role, "capability": "presence_ping"},
+        )
+        abort(403)
+
+    rl = _enforce_live_rate_limit("ping")
+    if rl:
+        _audit_live_security_block(
+            action_type="LIVE_RATE_LIMITED",
+            summary="Rate limit bloqueó presence ping",
+            reason="presence_ping_rate_limited",
+            metadata={"path": request.path, "scope": rl.get("scope"), "retry_after_sec": rl.get("retry_after_sec")},
+        )
+        response = jsonify({
+            "ok": False,
+            "error": "rate_limited",
+            "scope": rl.get("scope"),
+            "retry_after_sec": int(rl.get("retry_after_sec") or 1),
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(int(rl.get("retry_after_sec") or 1))
+        return response
 
     payload = request.get_json(silent=True) or {}
     current_path = (payload.get("current_path") or request.path or "").strip()[:255]
@@ -3559,13 +5586,33 @@ def monitoreo_presence_ping():
 @admin_required
 def seguridad_locks():
     rows = list_active_locks()
-    return render_template("admin/seguridad_locks.html", locks=rows, now=utc_now_naive())
+    list_ctx = dict(locks=rows, now=utc_now_naive())
+    if _admin_async_wants_json():
+        redirect_url = url_for("admin.seguridad_locks")
+        html = render_template("admin/_seguridad_locks_region.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Locks actualizados.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#seguridadLocksAsyncRegion",
+        )), 200
+    return render_template("admin/seguridad_locks.html", **list_ctx)
 
 
 @admin_bp.route('/seguridad/locks/ping', methods=['POST'])
 @login_required
 @staff_required
 def seguridad_locks_ping():
+    if not _live_access_allowed("locks_ping"):
+        _audit_live_security_block(
+            action_type="LIVE_ACCESS_DENIED",
+            summary="Acceso denegado a locks ping",
+            reason="locks_ping_role_forbidden",
+            metadata={"path": request.path, "role": role_for_user(current_user), "capability": "locks_ping"},
+        )
+        abort(403)
     payload = request.get_json(silent=True) or {}
     entity_type = (payload.get("entity_type") or "").strip().lower()
     entity_id = str(payload.get("entity_id") or "").strip()
@@ -3574,6 +5621,8 @@ def seguridad_locks_ping():
         return jsonify({"ok": False, "error": "Sesión inválida."}), 403
     data = lock_ping(user=current_user, entity_type=entity_type, entity_id=entity_id, current_path=current_path)
     if not data.get("ok"):
+        if data.get("error") == "distributed_backplane_unavailable":
+            return jsonify(data), 503
         return jsonify(data), 400
     return jsonify(data)
 
@@ -3590,6 +5639,8 @@ def seguridad_locks_takeover():
         return jsonify({"ok": False, "error": "Sesión inválida."}), 403
     data = lock_takeover(user=current_user, entity_type=entity_type, entity_id=entity_id, reason=reason)
     if not data.get("ok"):
+        if data.get("error") == "distributed_backplane_unavailable":
+            return jsonify(data), 503
         return jsonify(data), 403
     return jsonify(data)
 
@@ -3602,20 +5653,55 @@ def seguridad_sesiones():
     return render_template("admin/seguridad_sesiones.html", sessions_rows=sessions_rows, now=utc_now_naive())
 
 
+def _render_seguridad_sesiones_region(*, sessions_rows) -> str:
+    return render_template("admin/_seguridad_sesiones_region.html", sessions_rows=sessions_rows)
+
+
+def _render_seguridad_alertas_region(*, alerts) -> str:
+    return render_template("admin/_seguridad_alertas_region.html", alerts=alerts)
+
+
+def _render_alertas_canales_region(*, cfg) -> str:
+    return render_template("admin/_alertas_canales_region.html", cfg=cfg)
+
+
 @admin_bp.route('/seguridad/sesiones/cerrar', methods=['POST'])
 @login_required
 @admin_required
 def seguridad_sesiones_cerrar():
     raw_user_id = request.form.get("user_id") or (request.get_json(silent=True) or {}).get("user_id")
     reason = request.form.get("reason") or (request.get_json(silent=True) or {}).get("reason") or ""
+    fallback = url_for("admin.seguridad_sesiones")
     try:
         user_id = int(raw_user_id)
     except Exception:
-        flash("Usuario inválido para cerrar sesión.", "danger")
-        return redirect(url_for("admin.seguridad_sesiones"))
-    close_user_sessions(actor=current_user, user_id=user_id, reason=reason)
-    flash("Sesiones cerradas correctamente.", "success")
-    return redirect(url_for("admin.seguridad_sesiones"))
+        return _security_admin_action_response(
+            ok=False,
+            message="Usuario inválido para cerrar sesión.",
+            category="danger",
+            fallback=fallback,
+            http_status=200,
+            error_code="invalid_input",
+        )
+    try:
+        close_user_sessions(actor=current_user, user_id=user_id, reason=reason)
+    except Exception:
+        return _security_admin_action_response(
+            ok=False,
+            message="No se pudo cerrar la sesión. Intente nuevamente.",
+            category="danger",
+            fallback=fallback,
+            http_status=500,
+            error_code="server_error",
+        )
+    return _security_admin_action_response(
+        ok=True,
+        message="Sesiones cerradas correctamente.",
+        category="success",
+        fallback=fallback,
+        replace_html=_render_seguridad_sesiones_region(sessions_rows=list_active_sessions()),
+        update_target="#seguridadSesionesAsyncRegion",
+    )
 
 
 @admin_bp.route('/seguridad/alertas', methods=['GET'])
@@ -3630,12 +5716,64 @@ def seguridad_alertas():
 @login_required
 @admin_required
 def resolver_alerta(alert_id: int):
-    resolve_alert(alert_id, actor=current_user if isinstance(current_user, StaffUser) else None)
-    flash("Alerta marcada como resuelta.", "success")
-    nxt = request.form.get("next") or request.args.get("next")
-    if nxt and str(nxt).startswith("/"):
-        return redirect(nxt)
-    return redirect(url_for("admin.monitoreo_staff"))
+    fallback = url_for("admin.monitoreo_staff")
+    dynamic_target = (request.form.get("_async_target") or request.args.get("_async_target") or "").strip()
+    is_dashboard_target = dynamic_target == "#monitoreoAlertsAsyncRegion"
+    update_target = dynamic_target if is_dashboard_target else "#seguridadAlertasAsyncRegion"
+
+    def _target_region_html() -> str:
+        if is_dashboard_target:
+            return _render_monitoreo_alertas_region(
+                alerts=_monitoreo_dashboard_alerts(),
+                next_url=url_for("admin.monitoreo_staff"),
+            )
+        return _render_seguridad_alertas_region(
+            alerts=get_alert_items(limit=200, scope="security", include_resolved=True)
+        )
+
+    def _dashboard_update_targets(html: str, *, include_shell_invalidate: bool) -> list[dict]:
+        # Contrato async v2: refresca región principal y marca región shell para refresh por URL.
+        targets = [
+            {
+                "target": "#monitoreoAlertsAsyncRegion",
+                "replace_html": html,
+            },
+        ]
+        if include_shell_invalidate:
+            targets.append({
+                "target": "#monitoreoDashboardShellAsyncRegion",
+                "invalidate": True,
+            })
+        return targets
+
+    try:
+        resolve_alert(alert_id, actor=current_user if isinstance(current_user, StaffUser) else None)
+    except Exception:
+        region_html = _target_region_html()
+        # En error evitamos invalidar shell para no disparar refresh extra/flicker innecesario.
+        update_targets = _dashboard_update_targets(region_html, include_shell_invalidate=False) if is_dashboard_target else None
+        return _security_admin_action_response(
+            ok=False,
+            message="No se pudo resolver la alerta. Intente nuevamente.",
+            category="danger",
+            fallback=fallback,
+            http_status=500,
+            error_code="server_error",
+            replace_html=region_html,
+            update_target=update_target,
+            update_targets=update_targets,
+        )
+    region_html = _target_region_html()
+    update_targets = _dashboard_update_targets(region_html, include_shell_invalidate=True) if is_dashboard_target else None
+    return _security_admin_action_response(
+        ok=True,
+        message="Alerta marcada como resuelta.",
+        category="success",
+        fallback=fallback,
+        replace_html=region_html,
+        update_target=update_target,
+        update_targets=update_targets,
+    )
 
 
 @admin_bp.route('/alertas/canales', methods=['GET', 'POST'])
@@ -3643,22 +5781,51 @@ def resolver_alerta(alert_id: int):
 @admin_required
 def alertas_canales():
     _owner_only()
+    current_cfg = telegram_channel_config()
     if request.method == "POST":
-        token = (request.form.get("telegram_bot_token") or "").strip()
-        chat_id = (request.form.get("telegram_chat_id") or "").strip()
+        fallback = url_for("admin.alertas_canales")
+        token_input = (request.form.get("telegram_bot_token") or "").strip()
+        chat_id_input = (request.form.get("telegram_chat_id") or "").strip()
+        token = token_input or str(current_cfg.get("token") or "").strip()
+        chat_id = chat_id_input or str(current_cfg.get("chat_id") or "").strip()
         enabled = str(request.form.get("telegram_enabled") or "").strip().lower() in {"1", "true", "on", "yes"}
-
-        save_telegram_channel_config(
-            token=token,
-            chat_id=chat_id,
-            enabled=enabled,
-            actor_username=getattr(current_user, "username", None),
+        if enabled and (not token or not chat_id):
+            return _security_admin_action_response(
+                ok=False,
+                message="Para activar Telegram debes configurar token y chat_id.",
+                category="warning",
+                fallback=fallback,
+                http_status=200,
+                error_code="invalid_input",
+                replace_html=_render_alertas_canales_region(cfg=current_cfg),
+                update_target="#alertasCanalesAsyncRegion",
+            )
+        try:
+            save_telegram_channel_config(
+                token=token,
+                chat_id=chat_id,
+                enabled=enabled,
+                actor_username=getattr(current_user, "username", None),
+            )
+        except Exception:
+            return _security_admin_action_response(
+                ok=False,
+                message="No se pudo actualizar el canal de alertas.",
+                category="danger",
+                fallback=fallback,
+                http_status=500,
+                error_code="server_error",
+            )
+        return _security_admin_action_response(
+            ok=True,
+            message="Canal de Telegram actualizado.",
+            category="success",
+            fallback=fallback,
+            replace_html=_render_alertas_canales_region(cfg=telegram_channel_config()),
+            update_target="#alertasCanalesAsyncRegion",
         )
-        flash("Canal de Telegram actualizado.", "success")
-        return redirect(url_for("admin.alertas_canales"))
 
-    cfg = telegram_channel_config()
-    return render_template("admin/alertas_canales.html", cfg=cfg)
+    return render_template("admin/alertas_canales.html", cfg=current_cfg)
 
 
 @admin_bp.route('/alertas/canales/probar', methods=['POST'])
@@ -3666,20 +5833,103 @@ def alertas_canales():
 @admin_required
 def alertas_canales_probar():
     _owner_only()
-    ok, detail = send_telegram_test_message(actor_username=getattr(current_user, "username", None))
+    fallback = url_for("admin.alertas_canales")
+    try:
+        ok, detail = send_telegram_test_message(actor_username=getattr(current_user, "username", None))
+    except Exception:
+        return _security_admin_action_response(
+            ok=False,
+            message="No se pudo enviar el mensaje de prueba.",
+            category="danger",
+            fallback=fallback,
+            http_status=500,
+            error_code="server_error",
+        )
     if ok:
-        flash("Mensaje de prueba enviado por Telegram.", "success")
-    else:
-        flash(f"No se pudo enviar el mensaje de prueba: {detail}", "danger")
-    return redirect(url_for("admin.alertas_canales"))
+        return _security_admin_action_response(
+            ok=True,
+            message="Mensaje de prueba enviado por Telegram.",
+            category="success",
+            fallback=fallback,
+        )
+    return _security_admin_action_response(
+        ok=False,
+        message=f"No se pudo enviar el mensaje de prueba: {detail}",
+        category="danger",
+        fallback=fallback,
+        http_status=409,
+        error_code="telegram_test_failed",
+    )
 
 
 @admin_bp.route('/errores', methods=['GET'])
 @login_required
 @admin_required
 def errores_lista():
-    errors = get_alert_items(limit=200, scope="error", include_resolved=True)
-    return render_template("admin/errores_lista.html", errors=errors)
+    q = (request.args.get("q") or "").strip().lower()
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in {"all", "pending", "resolved"}:
+        status = "all"
+    page = max(1, request.args.get("page", default=1, type=int))
+    per_page = min(100, max(10, request.args.get("per_page", default=25, type=int)))
+
+    rows = list(get_alert_items(limit=500, scope="error", include_resolved=True) or [])
+    if status == "pending":
+        rows = [r for r in rows if not bool(r.get("is_resolved"))]
+    elif status == "resolved":
+        rows = [r for r in rows if bool(r.get("is_resolved"))]
+    if q:
+        rows = [
+            r for r in rows
+            if q in str(r.get("summary") or "").lower()
+            or q in str(r.get("route") or "").lower()
+            or q in str(r.get("error_type") or "").lower()
+        ]
+
+    total = len(rows)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    start = (page - 1) * per_page
+    end = start + per_page
+    errors = rows[start:end]
+    has_prev = page > 1
+    has_next = page < pages
+
+    list_ctx = dict(
+        errors=errors,
+        q=q,
+        status=status,
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        total=total,
+        has_prev=has_prev,
+        has_next=has_next,
+    )
+    if _admin_async_wants_json():
+        redirect_url = url_for(
+            "admin.errores_lista",
+            q=(q or None),
+            status=(status if status != "all" else None),
+            page=page,
+            per_page=per_page,
+        )
+        html = render_template("admin/_errores_lista_region.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Listado actualizado.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#erroresListaAsyncRegion",
+            extra={
+                "page": page,
+                "total": total,
+                "pages": pages,
+            },
+        )), 200
+
+    return render_template("admin/errores_lista.html", **list_ctx)
 
 
 @admin_bp.route('/errores/<int:error_id>', methods=['GET'])
@@ -3690,7 +5940,10 @@ def errores_detalle(error_id: int):
     actor = None
     if row.actor_user_id:
         actor = StaffUser.query.filter_by(id=int(row.actor_user_id)).first()
-    return render_template("admin/errores_detalle.html", error_row=row, actor=actor)
+    fallback = url_for("admin.errores_lista")
+    next_url = (request.args.get("next") or request.form.get("next") or request.referrer or "").strip()
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    return render_template("admin/errores_detalle.html", error_row=row, actor=actor, next_url=safe_next)
 
 
 @admin_bp.route('/health', methods=['GET'])
@@ -3703,13 +5956,59 @@ def admin_health():
     return render_template("admin/health.html", health=payload)
 
 
+@admin_bp.route('/health/operational', methods=['GET'])
+@login_required
+@admin_required
+def admin_health_operational():
+    payload = operational_semaphore_payload(window_minutes=15)
+    if (request.args.get("format") or "").strip().lower() == "json":
+        return jsonify(payload)
+    return render_template("admin/health_operational.html", payload=payload)
+
+
+@admin_bp.route('/health/operational/trends', methods=['GET'])
+@login_required
+@admin_required
+def admin_health_operational_trends():
+    payload = operational_trends_payload()
+    return jsonify(payload)
+
+
+@admin_bp.route('/live/observability', methods=['POST'])
+@csrf.exempt
+@login_required
+@staff_required
+def live_observability_ingest():
+    data = request.get_json(silent=True) or {}
+    uid = None
+    try:
+        if current_user and getattr(current_user, "is_authenticated", False):
+            uid = int(getattr(current_user, "id", 0) or 0)
+    except Exception:
+        uid = None
+    out = ingest_live_observability_event(data, user_id=uid if uid and uid > 0 else None)
+    return jsonify(out), 200
+
+
 @admin_bp.route('/metricas', methods=['GET'])
 @login_required
 @admin_required
 def metricas_dashboard():
     period = (request.args.get("period") or "7d").strip().lower()
     payload = metrics_dashboard(period)
-    return render_template("admin/metricas_dashboard.html", period=period, payload=payload)
+    list_ctx = dict(period=period, payload=payload)
+    if _admin_async_wants_json():
+        redirect_url = url_for("admin.metricas_dashboard", period=(period or None))
+        html = render_template("admin/_metricas_dashboard_region.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Métricas actualizadas.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#metricasDashboardAsyncRegion",
+        )), 200
+    return render_template("admin/metricas_dashboard.html", **list_ctx)
 
 
 @admin_bp.route('/metricas/secretarias', methods=['GET'])
@@ -3718,7 +6017,19 @@ def metricas_dashboard():
 def metricas_secretarias_view():
     period = (request.args.get("period") or "7d").strip().lower()
     payload = metrics_secretarias(period)
-    return render_template("admin/metricas_secretarias.html", period=period, payload=payload)
+    list_ctx = dict(period=period, payload=payload)
+    if _admin_async_wants_json():
+        redirect_url = url_for("admin.metricas_secretarias_view", period=(period or None))
+        html = render_template("admin/_metricas_secretarias_region.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Métricas actualizadas.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#metricasSecretariasAsyncRegion",
+        )), 200
+    return render_template("admin/metricas_secretarias.html", **list_ctx)
 
 
 @admin_bp.route('/metricas/solicitudes', methods=['GET'])
@@ -3727,7 +6038,19 @@ def metricas_secretarias_view():
 def metricas_solicitudes_view():
     period = (request.args.get("period") or "7d").strip().lower()
     payload = metrics_solicitudes(period)
-    return render_template("admin/metricas_solicitudes.html", period=period, payload=payload)
+    list_ctx = dict(period=period, payload=payload)
+    if _admin_async_wants_json():
+        redirect_url = url_for("admin.metricas_solicitudes_view", period=(period or None))
+        html = render_template("admin/_metricas_solicitudes_region.html", **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message="Métricas actualizadas.",
+            category="info",
+            redirect_url=redirect_url,
+            replace_html=html,
+            update_target="#metricasSolicitudesAsyncRegion",
+        )), 200
+    return render_template("admin/metricas_solicitudes.html", **list_ctx)
 
 
 @admin_bp.route('/solicitudes/<int:solicitud_id>/sugerencias', methods=['GET'])
@@ -3983,6 +6306,18 @@ def listar_clientes():
     - Evita escaneos completos si la query de texto es de 1 carácter (excepto ID numérica).
     """
     q = (request.args.get('q') or '').strip()
+    try:
+        page = int(request.args.get('page', 1) or 1)
+    except Exception:
+        page = 1
+    page = max(1, page)
+
+    try:
+        per_page = int(request.args.get('per_page', 25) or 25)
+    except Exception:
+        per_page = 25
+    per_page = max(10, min(per_page, 100))
+
     query = Cliente.query
 
     if q:
@@ -4030,8 +6365,58 @@ def listar_clientes():
         if filtros:
             query = query.filter(or_(*filtros))
 
-    clientes = query.order_by(Cliente.fecha_registro.desc()).all()
-    return render_template('admin/clientes_list.html', clientes=clientes, q=q)
+    ordered_query = query.order_by(Cliente.fecha_registro.desc())
+    if all(hasattr(ordered_query, attr) for attr in ("count", "offset", "limit", "all")):
+        total = ordered_query.count()
+        clientes = (
+            ordered_query
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+    else:
+        # Fallback para stubs legacy de tests que solo exponen .all()
+        all_rows = ordered_query.all()
+        total = len(all_rows)
+        clientes = all_rows[(page - 1) * per_page: page * per_page]
+    last_page = ((total - 1) // per_page) + 1 if total > 0 else 1
+
+    if _admin_async_wants_json():
+        html = render_template(
+            'admin/_clientes_list_results.html',
+            clientes=clientes,
+            q=q,
+            page=page,
+            per_page=per_page,
+            total=total,
+            last_page=last_page,
+            server_paginated=True,
+        )
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='',
+            category='info',
+            replace_html=html,
+            update_target='#clientesAsyncRegion',
+            extra={
+                "query": q,
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "last_page": last_page,
+            },
+        )), 200
+
+    return render_template(
+        'admin/clientes_list.html',
+        clientes=clientes,
+        q=q,
+        page=page,
+        per_page=per_page,
+        total=total,
+        last_page=last_page,
+        server_paginated=True,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -4048,102 +6433,6 @@ def _today_utc_bounds():
     start = datetime(now_utc.year, now_utc.month, now_utc.day)
     end = start + timedelta(days=1)
     return start, end
-
-
-# ─────────────────────────────────────────────────────────────
-# Endpoint liviano para auto-refresh (JSON)
-# ─────────────────────────────────────────────────────────────
-
-def _dt_iso(d) -> str | None:
-    """Convierte date/datetime a ISO string (naive) para JSON."""
-    if not d:
-        return None
-    try:
-        return d.isoformat()
-    except Exception:
-        return str(d)
-
-
-def _solicitudes_live_payload(limit: int = 50) -> dict:
-    """Snapshot compacto de solicitudes para refresco silencioso en UI."""
-    try:
-        limit = int(limit)
-    except Exception:
-        limit = 50
-    limit = max(1, min(limit, 200))
-
-    # Cargamos relaciones básicas para evitar N+1
-    solicitudes = (
-        Solicitud.query
-        .options(
-            joinedload(Solicitud.cliente),
-            joinedload(Solicitud.candidata),
-        )
-        .order_by(Solicitud.id.desc())
-        .limit(limit)
-        .all()
-    )
-
-    rows = []
-    last_ts = None
-
-    for s in solicitudes:
-        # timestamps relevantes
-        ts = getattr(s, 'fecha_ultima_modificacion', None) or getattr(s, 'fecha_solicitud', None)
-        if ts and (last_ts is None or ts > last_ts):
-            last_ts = ts
-
-        cli = getattr(s, 'cliente', None)
-        cand = getattr(s, 'candidata', None)
-
-        rows.append({
-            "id": s.id,
-            "codigo_solicitud": (getattr(s, 'codigo_solicitud', None) or '').strip() or None,
-            "estado": (getattr(s, 'estado', None) or '').strip() or None,
-            "sueldo": (getattr(s, 'sueldo', None) or '').strip() if getattr(s, 'sueldo', None) is not None else None,
-            "monto_pagado": (getattr(s, 'monto_pagado', None) or '').strip() if getattr(s, 'monto_pagado', None) is not None else None,
-            "cliente": {
-                "id": getattr(cli, 'id', None),
-                "nombre": (getattr(cli, 'nombre_completo', None) or '').strip() or None,
-                "codigo": (getattr(cli, 'codigo', None) or '').strip() or None,
-            } if cli else None,
-            "candidata": {
-                "id": getattr(cand, 'fila', None),
-                "nombre": (getattr(cand, 'nombre_completo', None) or '').strip() or None,
-                "codigo": (getattr(cand, 'codigo', None) or '').strip() or None,
-            } if cand else None,
-            "fecha_solicitud": _dt_iso(getattr(s, 'fecha_solicitud', None)),
-            "fecha_ultima_modificacion": _dt_iso(getattr(s, 'fecha_ultima_modificacion', None)),
-        })
-
-    return {
-        "ok": True,
-        "count": len(rows),
-        "last_updated": _dt_iso(last_ts) or _dt_iso(utc_now_naive()),
-        "rows": rows,
-    }
-
-
-@admin_bp.route('/solicitudes/live')
-@login_required
-@staff_required
-def solicitudes_live():
-    """Endpoint JSON para refrescar la lista de solicitudes sin recargar la página.
-
-    Uso típico en el front:
-      GET /admin/solicitudes/live?limit=50
-
-    Devuelve:
-      { ok, count, last_updated, rows: [...] }
-    """
-    limit = request.args.get('limit', 50)
-    payload = _solicitudes_live_payload(limit=limit)
-
-    # Cache-control: evita que el navegador lo guarde; siempre trae lo más nuevo
-    resp = jsonify(payload)
-    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    resp.headers['Pragma'] = 'no-cache'
-    return resp
 
 
 @admin_bp.route('/ping')
@@ -4226,7 +6515,7 @@ def _norm_cliente_form(form: AdminClienteForm) -> None:
 def parse_integrity_error(err: IntegrityError) -> str:
     """
     Intenta detectar qué constraint única falló.
-    Retorna 'codigo', 'email' o '' si no se pudo identificar.
+    Retorna 'codigo', 'email', 'username' o '' si no se pudo identificar.
     Funciona para SQLite, MySQL y PostgreSQL en la mayoría de casos.
     """
     msg = ""
@@ -4246,6 +6535,8 @@ def parse_integrity_error(err: IntegrityError) -> str:
                 return "codigo"
             if "email" in cname or "correo" in cname:
                 return "email"
+            if "username" in cname or "usuario" in cname:
+                return "username"
     except Exception:
         pass
 
@@ -4254,11 +6545,15 @@ def parse_integrity_error(err: IntegrityError) -> str:
         return "codigo"
     if "email" in m or "correo" in m:
         return "email"
+    if "username" in m or "usuario" in m:
+        return "username"
 
     if "for key" in m and "email" in m:
         return "email"
     if "for key" in m and "codigo" in m:
         return "codigo"
+    if "for key" in m and ("username" in m or "usuario" in m):
+        return "username"
 
     return ""
 
@@ -4416,6 +6711,33 @@ def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
             solicitud_obj.modalidad_trabajo = txt or None
     except Exception:
         return
+
+
+def _resolve_modalidad_ui_context_from_request(form_obj, *, prefer_post: bool = False) -> tuple[str, str, str]:
+    """Compone estado guiado de modalidad para re-render estable en GET/POST."""
+    fallback_group = ""
+    fallback_specific = ""
+    fallback_other = ""
+    try:
+        modalidad_raw = form_obj.modalidad_trabajo.data if hasattr(form_obj, "modalidad_trabajo") else ""
+        modalidad_ui = split_modalidad_for_ui(modalidad_raw)
+        fallback_group = (modalidad_ui.get("group") or "").strip()
+        fallback_specific = (modalidad_ui.get("specific") or "").strip()
+        fallback_other = (modalidad_ui.get("other") or "").strip()
+    except Exception:
+        pass
+
+    if not prefer_post:
+        return fallback_group, fallback_specific, fallback_other
+
+    post_group = (request.form.get("modalidad_grupo") or "").strip()
+    post_specific = (request.form.get("modalidad_especifica") or "").strip()
+    post_other = (request.form.get("modalidad_otro_text") or "").strip()
+    return (
+        post_group or fallback_group,
+        post_specific or fallback_specific,
+        post_other or fallback_other,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -4608,6 +6930,95 @@ def editar_cliente(cliente_id):
     """
     c = Cliente.query.get_or_404(cliente_id)
     form = AdminClienteForm(obj=c)
+    wants_async = _admin_async_wants_json()
+
+    def _flatten_form_errors() -> list[str]:
+        out = []
+        try:
+            for field_errors in (form.errors or {}).values():
+                for msg in (field_errors or []):
+                    text = str(msg or "").strip()
+                    if text:
+                        out.append(text)
+        except Exception:
+            return []
+        return out
+
+    def _render_edit_region(async_feedback=None) -> str:
+        return render_template(
+            'admin/_editar_cliente_form_region.html',
+            cliente_form=form,
+            cliente=c,
+            async_feedback=async_feedback,
+        )
+
+    def _render_edit_page(async_feedback=None):
+        return render_template(
+            'admin/cliente_form.html',
+            cliente_form=form,
+            nuevo=False,
+            cliente=c,
+            async_feedback=async_feedback,
+        )
+
+    def _async_edit_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+        include_region: bool = True,
+        async_feedback=None,
+    ):
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            replace_html=_render_edit_region(async_feedback=async_feedback) if include_region else None,
+            update_target="#editarClienteAsyncRegion",
+            errors=_flatten_form_errors(),
+            error_code=error_code,
+        )
+        return jsonify(payload), http_status
+
+    required_fields = ("codigo", "nombre_completo", "email", "telefono")
+    missing_fields = [name for name in required_fields if not hasattr(form, name)]
+    if request.method == 'POST' and missing_fields:
+        msg = 'No se pudo procesar el formulario de edición. Recarga e intenta nuevamente.'
+        if wants_async:
+            return _async_edit_response(
+                ok=False,
+                message=msg,
+                category='danger',
+                http_status=400,
+                error_code='invalid_input',
+                include_region=False,
+            )
+        flash(msg, 'danger')
+        return _render_edit_page()
+
+    if request.method == 'POST' and not form.validate_on_submit():
+        if wants_async:
+            return _async_edit_response(
+                ok=False,
+                message='No se guardó. Revisa los campos marcados y corrige los errores.',
+                category='warning',
+                http_status=200,
+                error_code='invalid_input',
+                async_feedback={"message": "No se guardó. Revisa los campos marcados y corrige los errores.", "category": "warning"},
+            )
+        # Si llegó POST pero no pasó validación, NO debe “parecer” que guardó.
+        flash('No se guardó. Revisa los campos marcados y corrige los errores.', 'danger')
+        try:
+            current_app.logger.warning('editar_cliente validate_on_submit=False | cliente_id=%s | errors=%s', cliente_id, form.errors)
+        except Exception:
+            pass
+        try:
+            print('editar_cliente validate_on_submit=False', 'cliente_id=', cliente_id, 'errors=', form.errors)
+        except Exception:
+            pass
+        return _render_edit_page()
 
     if form.validate_on_submit():
         _norm_cliente_form(form)
@@ -4620,11 +7031,30 @@ def editar_cliente(cliente_id):
                 try:
                     if Cliente.query.filter(Cliente.codigo == new_codigo).first():
                         form.codigo.errors.append("Este código ya está en uso.")
+                        if wants_async:
+                            return _async_edit_response(
+                                ok=False,
+                                message='Este código ya está en uso.',
+                                category='danger',
+                                http_status=200,
+                                error_code='conflict',
+                                async_feedback={"message": "Este código ya está en uso.", "category": "danger"},
+                            )
                         flash("El código ya está en uso.", "danger")
-                        return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                        return _render_edit_page()
                 except Exception:
-                    flash("No se pudo validar el código del cliente.", "danger")
-                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                    msg = "No se pudo validar el código del cliente."
+                    if wants_async:
+                        return _async_edit_response(
+                            ok=False,
+                            message=msg,
+                            category='danger',
+                            http_status=500,
+                            error_code='server_error',
+                            include_region=False,
+                        )
+                    flash(msg, "danger")
+                    return _render_edit_page()
 
         # --- Validar email si se modifica ---
         email_norm = (getattr(form, 'email', type('x', (), {'data': ''})) .data or '').lower().strip()
@@ -4634,11 +7064,30 @@ def editar_cliente(cliente_id):
                 if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
                     if hasattr(form, 'email'):
                         form.email.errors.append("Este email ya está registrado.")
+                    if wants_async:
+                        return _async_edit_response(
+                            ok=False,
+                            message='Este email ya está registrado.',
+                            category='danger',
+                            http_status=200,
+                            error_code='conflict',
+                            async_feedback={"message": "Este email ya está registrado.", "category": "danger"},
+                        )
                     flash("Este email ya está registrado.", "danger")
-                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                    return _render_edit_page()
             except Exception:
-                flash("No se pudo validar el email del cliente.", "danger")
-                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                msg = "No se pudo validar el email del cliente."
+                if wants_async:
+                    return _async_edit_response(
+                        ok=False,
+                        message=msg,
+                        category='danger',
+                        http_status=500,
+                        error_code='server_error',
+                        include_region=False,
+                    )
+                flash(msg, "danger")
+                return _render_edit_page()
 
         # --- Username: validar solo si el usuario escribió uno ---
         username_to_set = None
@@ -4665,11 +7114,30 @@ def editar_cliente(cliente_id):
                         if exists:
                             if hasattr(form, 'username'):
                                 form.username.errors.append("Este usuario ya está registrado.")
+                            if wants_async:
+                                return _async_edit_response(
+                                    ok=False,
+                                    message='Este usuario ya está registrado.',
+                                    category='danger',
+                                    http_status=200,
+                                    error_code='conflict',
+                                    async_feedback={"message": "Este usuario ya está registrado.", "category": "danger"},
+                                )
                             flash("Este usuario ya está registrado.", "danger")
-                            return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                            return _render_edit_page()
                     except Exception:
-                        flash("No se pudo validar el usuario del cliente.", "danger")
-                        return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                        msg = "No se pudo validar el usuario del cliente."
+                        if wants_async:
+                            return _async_edit_response(
+                                ok=False,
+                                message=msg,
+                                category='danger',
+                                http_status=500,
+                                error_code='server_error',
+                                include_region=False,
+                            )
+                        flash(msg, "danger")
+                        return _render_edit_page()
 
                 username_to_set = username_norm
 
@@ -4686,8 +7154,17 @@ def editar_cliente(cliente_id):
                 if len(raw_pw) < 8:
                     if hasattr(form, 'password'):
                         form.password.errors.append("La contraseña debe tener al menos 8 caracteres.")
+                    if wants_async:
+                        return _async_edit_response(
+                            ok=False,
+                            message='La contraseña debe tener al menos 8 caracteres.',
+                            category='danger',
+                            http_status=200,
+                            error_code='invalid_input',
+                            async_feedback={"message": "La contraseña debe tener al menos 8 caracteres.", "category": "danger"},
+                        )
                     flash("La contraseña debe tener al menos 8 caracteres.", "danger")
-                    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+                    return _render_edit_page()
                 password_to_set = raw_pw
 
         # --- Guardar cambios (sin populate_obj) ---
@@ -4729,7 +7206,16 @@ def editar_cliente(cliente_id):
                 c.updated_at = utc_now_naive()
 
             db.session.commit()
-
+            success_msg = 'Cliente actualizado correctamente.'
+            if wants_async:
+                form = AdminClienteForm(formdata=None, obj=c)
+                return _async_edit_response(
+                    ok=True,
+                    message=success_msg,
+                    category='success',
+                    http_status=200,
+                    async_feedback={"message": success_msg, "category": "success"},
+                )
             flash('Cliente actualizado correctamente ✅', 'success')
             return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
 
@@ -4739,14 +7225,29 @@ def editar_cliente(cliente_id):
             if which == "codigo":
                 if hasattr(form, 'codigo'):
                     form.codigo.errors.append("Este código ya está en uso.")
-                flash("Este código ya está en uso.", "danger")
+                conflict_msg = "Este código ya está en uso."
             elif which == "email":
                 if hasattr(form, 'email'):
                     form.email.errors.append("Este email ya está registrado.")
-                flash("Este email ya está registrado.", "danger")
+                conflict_msg = "Este email ya está registrado."
+            elif which == "username":
+                if hasattr(form, 'username'):
+                    form.username.errors.append("Este usuario ya está registrado.")
+                conflict_msg = "Este usuario ya está registrado."
             else:
                 # Puede incluir username unique si el parser no lo detecta
-                flash('No se pudo actualizar: conflicto con datos únicos (código/email/usuario).', 'danger')
+                conflict_msg = 'No se pudo actualizar: conflicto con datos únicos (código, email o usuario).'
+
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message=conflict_msg,
+                    category='danger',
+                    http_status=409,
+                    error_code='conflict',
+                    async_feedback={"message": conflict_msg, "category": "danger"},
+                )
+            flash(conflict_msg, "danger")
 
         except Exception:
             db.session.rollback()
@@ -4758,21 +7259,19 @@ def editar_cliente(cliente_id):
                 print("=== FIN ERROR ===\n")
             except Exception:
                 pass
-            flash('Ocurrió un error al actualizar el cliente. Intenta de nuevo.', 'danger')
+            error_msg = 'Ocurrió un error al actualizar el cliente. Intenta de nuevo.'
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message=error_msg,
+                    category='danger',
+                    http_status=500,
+                    error_code='server_error',
+                    include_region=False,
+                )
+            flash(error_msg, 'danger')
 
-    elif request.method == 'POST':
-        # Si llegó POST pero no pasó validación, NO debe “parecer” que guardó.
-        flash('No se guardó. Revisa los campos marcados y corrige los errores.', 'danger')
-        try:
-            current_app.logger.warning('editar_cliente validate_on_submit=False | cliente_id=%s | errors=%s', cliente_id, form.errors)
-        except Exception:
-            pass
-        try:
-            print('editar_cliente validate_on_submit=False', 'cliente_id=', cliente_id, 'errors=', form.errors)
-        except Exception:
-            pass
-
-    return render_template('admin/cliente_form.html', cliente_form=form, nuevo=False, cliente=c)
+    return _render_edit_page()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -5120,6 +7619,32 @@ def eliminar_cliente(cliente_id):
     c = Cliente.query.get_or_404(cliente_id)
     cliente_pk = int(getattr(c, "id", 0) or 0)
     cliente_code = str((getattr(c, "codigo", "") or "")).strip() or str(cliente_pk)
+    next_url = (request.form.get("next") or request.args.get("next") or request.referrer or "").strip()
+    fallback = url_for("admin.listar_clientes")
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_cliente_delete",
+        entity_type="Cliente",
+        entity_id=cliente_pk,
+        limit=10,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de eliminación de cliente por patrón de abuso (cliente {cliente_pk})",
+        next_url=next_url,
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _clientes_list_action_response(
+                ok=False,
+                message="Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.",
+                category="warning",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=429,
+                error_code="rate_limit",
+            )
+        return blocked_resp
 
     plan = _collect_cliente_delete_plan(cliente_pk)
     blocked_issues = list(plan.get("blocked_issues") or [])
@@ -5142,8 +7667,15 @@ def eliminar_cliente(cliente_id):
             success=False,
             error=msg,
         )
-        flash(msg, "warning")
-        return redirect(url_for("admin.listar_clientes"))
+        return _clientes_list_action_response(
+            ok=False,
+            message=msg,
+            category="warning",
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code="conflict",
+        )
 
     try:
         deleted_rows: dict[str, int] = {}
@@ -5165,7 +7697,13 @@ def eliminar_cliente(cliente_id):
             },
             success=True,
         )
-        flash('Cliente eliminado correctamente.', 'success')
+        return _clientes_list_action_response(
+            ok=True,
+            message='Cliente eliminado correctamente.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+        )
     except IntegrityError:
         db.session.rollback()
         msg = (
@@ -5180,7 +7718,15 @@ def eliminar_cliente(cliente_id):
             success=False,
             error=msg,
         )
-        flash(msg, "danger")
+        return _clientes_list_action_response(
+            ok=False,
+            message=msg,
+            category="danger",
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code="conflict",
+        )
     except SQLAlchemyError:
         db.session.rollback()
         msg = 'No se pudo eliminar el cliente de forma segura. No se aplicaron cambios.'
@@ -5192,9 +7738,15 @@ def eliminar_cliente(cliente_id):
             success=False,
             error=msg,
         )
-        flash(msg, 'danger')
-
-    return redirect(url_for('admin.listar_clientes'))
+        return _clientes_list_action_response(
+            ok=False,
+            message=msg,
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+            error_code='server_error',
+        )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -5230,59 +7782,7 @@ def detalle_cliente(cliente_id):
     # ------------------------------
     # RESUMEN / KPI POR CLIENTE
     # ------------------------------
-    total_sol = len(solicitudes)
-    estados_count = {
-        'proceso': 0,
-        'activa': 0,
-        'pagada': 0,
-        'cancelada': 0,
-        'reemplazo': 0,
-        'otro': 0,
-    }
-
-    monto_total_pagado = Decimal('0.00')
-    primera_solicitud = None
-    ultima_solicitud = None
-
-    for s in solicitudes:
-        # Contar estados
-        estado = (s.estado or '').strip().lower() or 'otro'
-        if estado not in estados_count:
-            estado = 'otro'
-        estados_count[estado] += 1
-
-        # Monto pagado (guardado como string "1234.56" normalmente)
-        raw_monto = (s.monto_pagado or '').strip() if hasattr(s, 'monto_pagado') else ''
-        if raw_monto:
-            try:
-                monto_total_pagado += Decimal(raw_monto)
-            except Exception:
-                # Si hay valores viejos mal formateados, no rompemos el flujo
-                pass
-
-        # Fechas de solicitudes para KPIs
-        fs = getattr(s, 'fecha_solicitud', None)
-        if fs:
-            if primera_solicitud is None or fs < primera_solicitud:
-                primera_solicitud = fs
-            if ultima_solicitud is None or fs > ultima_solicitud:
-                ultima_solicitud = fs
-
-    # Última actividad del cliente (si no hay, usamos última_solicitud)
-    ultima_actividad = getattr(cliente, 'fecha_ultima_actividad', None) or ultima_solicitud
-
-    # Formato de dinero para mostrar
-    monto_total_pagado_str = f"RD$ {monto_total_pagado:,.2f}"
-
-    kpi_cliente = {
-        'total_solicitudes': total_sol,
-        'estados': estados_count,
-        'monto_total_pagado': monto_total_pagado,
-        'monto_total_pagado_str': monto_total_pagado_str,
-        'primera_solicitud': primera_solicitud,
-        'ultima_solicitud': ultima_solicitud,
-        'ultima_actividad': ultima_actividad,
-    }
+    kpi_cliente = _build_cliente_summary_kpi(cliente=cliente, solicitudes=solicitudes)
 
     # ------------------------------
     # TIMELINE SIMPLE (HUMANO)
@@ -5376,6 +7876,56 @@ def detalle_cliente(cliente_id):
         or str(session.get("role", "") or "").strip().lower()
     )
     is_admin_role = role in ("owner", "admin")
+    contracts_schema_ready = True
+    latest_contracts_by_solicitud = {}
+    contract_links_by_solicitud = {}
+    solicitud_ids = [int(s.id) for s in (solicitudes or []) if int(getattr(s, "id", 0) or 0) > 0]
+    if solicitud_ids:
+        try:
+            contract_rows = (
+                ContratoDigital.query.options(
+                    load_only(
+                        ContratoDigital.id,
+                        ContratoDigital.solicitud_id,
+                        ContratoDigital.version,
+                        ContratoDigital.estado,
+                        ContratoDigital.enviado_at,
+                        ContratoDigital.firmado_at,
+                        ContratoDigital.token_expira_at,
+                        ContratoDigital.pdf_final_size_bytes,
+                        ContratoDigital.anulado_at,
+                        ContratoDigital.anulado_motivo,
+                    )
+                )
+                .filter(ContratoDigital.solicitud_id.in_(solicitud_ids))
+                .order_by(ContratoDigital.solicitud_id.asc(), ContratoDigital.version.desc(), ContratoDigital.id.desc())
+                .all()
+            )
+            for c in (contract_rows or []):
+                sid = int(getattr(c, "solicitud_id", 0) or 0)
+                if sid <= 0 or sid in latest_contracts_by_solicitud:
+                    continue
+                is_expired = _is_contract_expired(c)
+                latest_contracts_by_solicitud[sid] = {
+                    "contract": c,
+                    "effective_state": _contract_effective_state(c, contrato_expirado=is_expired),
+                    "is_expired": bool(is_expired),
+                    "has_pdf": bool(getattr(c, "pdf_final_size_bytes", 0)),
+                    "is_annulled": bool(getattr(c, "anulado_at", None)),
+                }
+            session_links = session.get("contract_links")
+            if isinstance(session_links, dict):
+                for sid, payload in latest_contracts_by_solicitud.items():
+                    contract_obj = payload.get("contract")
+                    cid = int(getattr(contract_obj, "id", 0) or 0) if contract_obj is not None else 0
+                    if cid > 0:
+                        contract_links_by_solicitud[sid] = str(session_links.get(str(cid)) or "")
+        except OperationalError as exc:
+            db.session.rollback()
+            if _is_missing_contract_table_error(exc):
+                contracts_schema_ready = False
+            else:
+                raise
 
     return render_template(
         'admin/cliente_detail.html',
@@ -5386,6 +7936,9 @@ def detalle_cliente(cliente_id):
         tareas=tareas,
         reemplazos_activos=reemplazos_activos,
         is_admin_role=is_admin_role,
+        contracts_schema_ready=contracts_schema_ready,
+        latest_contracts_by_solicitud=latest_contracts_by_solicitud,
+        contract_links_by_solicitud=contract_links_by_solicitud,
     )
 
 
@@ -5702,6 +8255,9 @@ def nueva_solicitud_admin(cliente_id):
     form = AdminSolicitudForm()
     public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
     public_pasaje_otro = ""
+    public_modalidad_group = ""
+    public_modalidad_specific = ""
+    public_modalidad_other = ""
 
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
@@ -5751,6 +8307,17 @@ def nueva_solicitud_admin(cliente_id):
         )
         if hasattr(form, "pasaje_aporte"):
             form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=True)
+    else:
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=False)
 
     # POST válido
     if form.validate_on_submit():
@@ -5775,20 +8342,31 @@ def nueva_solicitud_admin(cliente_id):
                         pass
                 if hasattr(form, 'tipo_servicio'):
                     s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
+                tipo_lugar_value = getattr(s, 'tipo_lugar', '')
+                tipo_lugar_otro_txt = (getattr(form, 'tipo_lugar_otro', None).data or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
+                if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
+                    tipo_lugar_value = 'otro'
                 s.tipo_lugar = _map_tipo_lugar(
-                    getattr(s, 'tipo_lugar', ''),
-                    getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
+                    tipo_lugar_value,
+                    tipo_lugar_otro_txt
                 )
+                edad_codes_selected = (form.edad_requerida.data if hasattr(form, 'edad_requerida') else [])
+                edad_otro_txt = (form.edad_otro.data if hasattr(form, 'edad_otro') else '')
+                edad_codes_clean = _clean_list(edad_codes_selected)
+                if (edad_otro_txt or '').strip() and 'otro' not in edad_codes_clean:
+                    edad_codes_clean.append('otro')
                 s.edad_requerida = _map_edad_choices(
-                    codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
+                    codes_selected=edad_codes_clean,
                     edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
-                    otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
+                    otro_text=edad_otro_txt
                 )
                 if hasattr(form, 'mascota'):
                     s.mascota = (form.mascota.data or '').strip() or None
 
                 selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
                 extra_text = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+                if extra_text and 'otro' not in selected_codes:
+                    selected_codes.append('otro')
                 if 'otro' not in selected_codes:
                     extra_text = ''
                 if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
@@ -5805,7 +8383,8 @@ def nueva_solicitud_admin(cliente_id):
                     areas_selected_raw = _clean_list(
                         getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
                     )
-                    areas_has_otro = 'otro' in areas_selected_raw
+                    area_otro_txt = (form.area_otro.data or '').strip() if hasattr(form, 'area_otro') else ''
+                    areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
                     selected_areas = _normalize_areas_comunes_selected(
                         selected_vals=areas_selected_raw,
                         choices=form.areas_comunes.choices
@@ -5889,6 +8468,9 @@ def nueva_solicitud_admin(cliente_id):
         nuevo=True,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
+        public_modalidad_group=public_modalidad_group,
+        public_modalidad_specific=public_modalidad_specific,
+        public_modalidad_other=public_modalidad_other,
     )
 
 
@@ -5902,11 +8484,15 @@ def nueva_solicitud_admin(cliente_id):
 def editar_solicitud_admin(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminSolicitudForm(obj=s)
+    wants_async = _admin_async_wants_json()
     public_pasaje_mode = "aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido"
     public_pasaje_otro = ""
     public_modalidad_group = ""
     public_modalidad_specific = ""
     public_modalidad_other = ""
+    next_url = request.args.get("next") or request.form.get("next") or request.referrer or ""
+    fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id)
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
 
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
@@ -6004,11 +8590,11 @@ def editar_solicitud_admin(cliente_id, id):
 
         # Detalles específicos (JSONB)
         _populate_form_detalles_from_solicitud(form, s)
-        modalidad_raw = form.modalidad_trabajo.data if hasattr(form, "modalidad_trabajo") else ""
-        modalidad_ui = split_modalidad_for_ui(modalidad_raw)
-        public_modalidad_group = modalidad_ui.get("group", "")
-        public_modalidad_specific = modalidad_ui.get("specific", "")
-        public_modalidad_other = modalidad_ui.get("other", "")
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=False)
 
     if request.method == "POST":
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
@@ -6018,6 +8604,61 @@ def editar_solicitud_admin(cliente_id, id):
         )
         if hasattr(form, "pasaje_aporte"):
             form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
+        (
+            public_modalidad_group,
+            public_modalidad_specific,
+            public_modalidad_other,
+        ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=True)
+
+    def _flatten_form_errors() -> list[str]:
+        out = []
+        try:
+            for field_errors in (form.errors or {}).values():
+                for msg in (field_errors or []):
+                    text = str(msg or "").strip()
+                    if text:
+                        out.append(text)
+        except Exception:
+            return []
+        return out
+
+    def _render_edit_region(async_feedback=None) -> str:
+        return render_template(
+            'admin/_editar_solicitud_form_region.html',
+            form=form,
+            cliente_id=cliente_id,
+            solicitud=s,
+            nuevo=False,
+            public_pasaje_mode=public_pasaje_mode,
+            public_pasaje_otro=public_pasaje_otro,
+            public_modalidad_group=public_modalidad_group,
+            public_modalidad_specific=public_modalidad_specific,
+            public_modalidad_other=public_modalidad_other,
+            next_url=safe_next,
+            async_feedback=async_feedback,
+        )
+
+    def _async_edit_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+        include_region: bool = False,
+        async_feedback=None,
+    ):
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=safe_next,
+            replace_html=_render_edit_region(async_feedback=async_feedback) if include_region else None,
+            update_target="#editarSolicitudAsyncRegion",
+            errors=_flatten_form_errors(),
+            error_code=error_code,
+        )
+        return jsonify(payload), http_status
 
     # ─────────────────────────────────────────
     # POST válido
@@ -6049,20 +8690,31 @@ def editar_solicitud_admin(cliente_id, id):
                         pass
                 if hasattr(form, 'tipo_servicio'):
                     s.tipo_servicio = (form.tipo_servicio.data or '').strip() or None
+                tipo_lugar_value = getattr(s, 'tipo_lugar', '')
+                tipo_lugar_otro_txt = (getattr(form, 'tipo_lugar_otro', None).data or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
+                if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
+                    tipo_lugar_value = 'otro'
                 s.tipo_lugar = _map_tipo_lugar(
-                    getattr(s, 'tipo_lugar', ''),
-                    getattr(form, 'tipo_lugar_otro', None).data if hasattr(form, 'tipo_lugar_otro') else ''
+                    tipo_lugar_value,
+                    tipo_lugar_otro_txt
                 )
+                edad_codes_selected = (form.edad_requerida.data if hasattr(form, 'edad_requerida') else [])
+                edad_otro_txt = (form.edad_otro.data if hasattr(form, 'edad_otro') else '')
+                edad_codes_clean = _clean_list(edad_codes_selected)
+                if (edad_otro_txt or '').strip() and 'otro' not in edad_codes_clean:
+                    edad_codes_clean.append('otro')
                 s.edad_requerida = _map_edad_choices(
-                    codes_selected=(form.edad_requerida.data if hasattr(form, 'edad_requerida') else []),
+                    codes_selected=edad_codes_clean,
                     edad_choices=(form.edad_requerida.choices if hasattr(form, 'edad_requerida') else []),
-                    otro_text=(form.edad_otro.data if hasattr(form, 'edad_otro') else '')
+                    otro_text=edad_otro_txt
                 )
                 if hasattr(form, 'mascota'):
                     s.mascota = (form.mascota.data or '').strip() or None
 
                 selected_codes = _clean_list(form.funciones.data) if hasattr(form, 'funciones') else []
                 extra_text = (form.funciones_otro.data or '').strip() if hasattr(form, 'funciones_otro') else ''
+                if extra_text and 'otro' not in selected_codes:
+                    selected_codes.append('otro')
                 if 'otro' not in selected_codes:
                     extra_text = ''
                 if hasattr(form, 'funciones') and hasattr(form.funciones, 'choices'):
@@ -6076,7 +8728,8 @@ def editar_solicitud_admin(cliente_id, id):
                 areas_has_otro = False
                 if hasattr(form, 'areas_comunes'):
                     areas_selected_raw = _clean_list(form.areas_comunes.data)
-                    areas_has_otro = 'otro' in areas_selected_raw
+                    area_otro_txt = (form.area_otro.data or '').strip() if hasattr(form, 'area_otro') else ''
+                    areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
                     s.areas_comunes = _normalize_areas_comunes_selected(
                         selected_vals=areas_selected_raw,
                         choices=form.areas_comunes.choices
@@ -6117,8 +8770,15 @@ def editar_solicitud_admin(cliente_id, id):
                     summary=f"Solicitud editada: {s.codigo_solicitud or s.id}",
                     metadata={"cliente_id": s.cliente_id, "tipo_servicio": s.tipo_servicio},
                 )
+                if wants_async:
+                    return _async_edit_response(
+                        ok=True,
+                        message=f'Solicitud {s.codigo_solicitud} actualizada.',
+                        category='success',
+                        http_status=200,
+                    )
                 flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
-                return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+                return redirect(safe_next)
 
             log_error_event(
                 error_type="SAVE_ERROR",
@@ -6129,6 +8789,14 @@ def editar_solicitud_admin(cliente_id, id):
                 request_id=request.headers.get("X-Request-ID"),
                 status_code=500,
             )
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message='No se pudo guardar correctamente. Intente nuevamente.',
+                    category='danger',
+                    http_status=500,
+                    error_code='server_error',
+                )
             flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
         except Exception:
             db.session.rollback()
@@ -6141,9 +8809,27 @@ def editar_solicitud_admin(cliente_id, id):
                 request_id=request.headers.get("X-Request-ID"),
                 status_code=500,
             )
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message='No se pudo guardar correctamente. Intente nuevamente.',
+                    category='danger',
+                    http_status=500,
+                    error_code='server_error',
+                )
             flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
 
     elif request.method == 'POST':
+        if wants_async:
+            return _async_edit_response(
+                ok=False,
+                message='Revisa los campos marcados y corrige los errores.',
+                category='warning',
+                http_status=200,
+                error_code='invalid_input',
+                include_region=True,
+                async_feedback={"message": "Revisa los campos marcados y corrige los errores.", "category": "warning"},
+            )
         flash('Revisa los campos marcados en rojo.', 'danger')
 
     return render_template(
@@ -6157,6 +8843,7 @@ def editar_solicitud_admin(cliente_id, id):
         public_modalidad_group=public_modalidad_group,
         public_modalidad_specific=public_modalidad_specific,
         public_modalidad_other=public_modalidad_other,
+        next_url=safe_next,
     )
 
 
@@ -6413,6 +9100,76 @@ def eliminar_solicitud_admin(cliente_id, id):
 def gestionar_plan(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminGestionPlanForm(obj=s)
+    next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
+    fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
+
+    def _flatten_form_errors() -> list[str]:
+        out = []
+        try:
+            for field_errors in (form.errors or {}).values():
+                for msg in (field_errors or []):
+                    text = str(msg or '').strip()
+                    if text:
+                        out.append(text)
+        except Exception:
+            return []
+        return out
+
+    def _render_plan_region(async_feedback=None) -> str:
+        return render_template(
+            'admin/_gestionar_plan_form_region.html',
+            form=form,
+            cliente_id=cliente_id,
+            solicitud=s,
+            next_url=safe_next,
+            async_feedback=async_feedback,
+        )
+
+    def _render_plan_page(async_feedback=None):
+        return render_template(
+            'admin/gestionar_plan.html',
+            form=form,
+            cliente_id=cliente_id,
+            solicitud=s,
+            next_url=safe_next,
+            async_feedback=async_feedback,
+        )
+
+    def _async_plan_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        redirect_url: str | None = None,
+        http_status: int = 200,
+        error_code: str | None = None,
+        include_region: bool = True,
+        async_feedback=None,
+    ):
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=redirect_url,
+            replace_html=_render_plan_region(async_feedback=async_feedback) if include_region else None,
+            update_target="#gestionarPlanAsyncRegion",
+            errors=_flatten_form_errors(),
+            error_code=error_code,
+        )
+        return jsonify(payload), http_status
+
+    if request.method == 'POST' and not form.validate_on_submit():
+        if _admin_async_wants_json():
+            return _async_plan_response(
+                ok=False,
+                message='No se guardó. Revisa los campos marcados y corrige los errores.',
+                category='warning',
+                http_status=200,
+                error_code='invalid_input',
+                async_feedback={"message": "No se guardó. Revisa los campos marcados y corrige los errores.", "category": "warning"},
+            )
+        return _render_plan_page()
 
     if form.validate_on_submit():
         try:
@@ -6420,26 +9177,66 @@ def gestionar_plan(cliente_id, id):
             if hasattr(form, 'tipo_plan') and getattr(form.tipo_plan, "choices", None):
                 allowed = _choice_codes(form.tipo_plan.choices)
                 if str(form.tipo_plan.data) not in allowed:
+                    form.tipo_plan.errors.append('Tipo de plan inválido.')
+                    if _admin_async_wants_json():
+                        return _async_plan_response(
+                            ok=False,
+                            message='Tipo de plan inválido.',
+                            category='danger',
+                            http_status=200,
+                            error_code='invalid_input',
+                            async_feedback={"message": "Corrige el tipo de plan e intenta nuevamente.", "category": "danger"},
+                        )
                     flash('Tipo de plan inválido.', 'danger')
-                    return render_template('admin/gestionar_plan.html', form=form, cliente_id=cliente_id, solicitud=s)
+                    return _render_plan_page()
 
             s.tipo_plan = form.tipo_plan.data
 
             # --- Abono OBLIGATORIO + parseo robusto ---
             if not hasattr(form, 'abono'):
+                if _admin_async_wants_json():
+                    return _async_plan_response(
+                        ok=False,
+                        message='No se pudo procesar el formulario de plan.',
+                        category='danger',
+                        http_status=200,
+                        error_code='invalid_input',
+                        include_region=True,
+                        async_feedback={"message": "No se pudo procesar el formulario de plan.", "category": "danger"},
+                    )
                 flash('Falta el campo abono en el formulario.', 'danger')
-                return render_template('admin/gestionar_plan.html', form=form, cliente_id=cliente_id, solicitud=s)
+                return _render_plan_page()
 
             raw_abono = (form.abono.data or '').strip()
             if not raw_abono:
+                form.abono.errors.append('El abono es obligatorio.')
+                if _admin_async_wants_json():
+                    return _async_plan_response(
+                        ok=False,
+                        message='El abono es obligatorio.',
+                        category='danger',
+                        http_status=200,
+                        error_code='invalid_input',
+                        async_feedback={"message": "Completa el campo de abono.", "category": "danger"},
+                    )
                 flash('El abono es obligatorio.', 'danger')
-                return render_template('admin/gestionar_plan.html', form=form, cliente_id=cliente_id, solicitud=s)
+                return _render_plan_page()
 
             try:
                 s_abono = _parse_money_to_decimal_str(raw_abono)  # '1500.00'
             except ValueError as e:
+                form.abono.errors.append(f'Abono inválido: {e}.')
+                if _admin_async_wants_json():
+                    return _async_plan_response(
+                        ok=False,
+                        message='El abono no tiene un formato válido.',
+                        category='danger',
+                        http_status=200,
+                        error_code='invalid_input',
+                        async_feedback={"message": "El abono no tiene un formato válido.", "category": "danger"},
+                    )
                 flash(f'Abono inválido: {e}. Formatos válidos: 1500, 1,500, 1.500,50', 'danger')
-                return render_template('admin/gestionar_plan.html', form=form, cliente_id=cliente_id, solicitud=s)
+                return _render_plan_page()
 
             # Guardar abono
             s.abono = s_abono
@@ -6472,25 +9269,58 @@ def gestionar_plan(cliente_id, id):
             s.fecha_ultima_modificacion = now
 
             db.session.commit()
+            success_message = 'Plan y abono actualizados correctamente.'
+            if _admin_async_wants_json():
+                form = AdminGestionPlanForm(formdata=None, obj=s)
+                return _async_plan_response(
+                    ok=True,
+                    message=success_message,
+                    category='success',
+                    redirect_url=safe_next,
+                    http_status=200,
+                    include_region=False,
+                )
             flash('Plan y abono actualizados correctamente.', 'success')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+            return redirect(safe_next)
 
         except IntegrityError:
             db.session.rollback()
+            if _admin_async_wants_json():
+                return _async_plan_response(
+                    ok=False,
+                    message='Conflicto al guardar el plan. Verifica si otro cambio ocurrió al mismo tiempo.',
+                    category='danger',
+                    http_status=409,
+                    error_code='conflict',
+                    include_region=False,
+                )
             flash('Conflicto al guardar el plan (valores únicos/relaciones).', 'danger')
         except SQLAlchemyError:
             db.session.rollback()
+            if _admin_async_wants_json():
+                return _async_plan_response(
+                    ok=False,
+                    message='Error de base de datos al guardar el plan.',
+                    category='danger',
+                    http_status=500,
+                    error_code='server_error',
+                    include_region=False,
+                )
             flash('Error de base de datos al guardar el plan.', 'danger')
         except Exception:
             db.session.rollback()
+            if _admin_async_wants_json():
+                return _async_plan_response(
+                    ok=False,
+                    message='Ocurrió un error al guardar el plan.',
+                    category='danger',
+                    http_status=500,
+                    error_code='server_error',
+                    include_region=False,
+                )
             flash('Ocurrió un error al guardar el plan.', 'danger')
 
-    return render_template(
-        'admin/gestionar_plan.html',
-        form=form,
-        cliente_id=cliente_id,
-        solicitud=s
-    )
+    return _render_plan_page()
 
 
 
@@ -6504,8 +9334,58 @@ def gestionar_plan(cliente_id, id):
 def registrar_pago(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminPagoForm()
+    form_idempotency_key = _new_form_idempotency_key()
 
     q = (request.args.get('q') or request.form.get('q') or '').strip()
+    next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
+    fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
+
+    def _render_pago_region(async_feedback=None) -> str:
+        return render_template(
+            'admin/_registrar_pago_form_region.html',
+            form=form,
+            cliente_id=cliente_id,
+            solicitud=s,
+            q=q,
+            next_url=safe_next,
+            form_idempotency_key=form_idempotency_key,
+            async_feedback=async_feedback,
+        )
+
+    def _render_pago_page(async_feedback=None):
+        return render_template(
+            'admin/registrar_pago.html',
+            form=form,
+            cliente_id=cliente_id,
+            solicitud=s,
+            q=q,
+            next_url=safe_next,
+            form_idempotency_key=form_idempotency_key,
+            async_feedback=async_feedback,
+        )
+
+    def _async_pago_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        redirect_url: str | None = None,
+        http_status: int = 200,
+        error_code: str | None = None,
+        include_region: bool = True,
+    ):
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=redirect_url,
+            replace_html=_render_pago_region(async_feedback={"message": message, "category": category}) if include_region else None,
+            update_target="#registrarPagoAsyncRegion",
+            error_code=error_code,
+        )
+        payload["next"] = redirect_url or ""
+        return jsonify(payload), http_status
 
     def _build_candidata_choices(search_text):
         query = Candidata.query.filter(candidatas_activas_filter(Candidata))
@@ -6535,28 +9415,125 @@ def registrar_pago(cliente_id, id):
     if request.method == 'GET' and s.candidata_id:
         form.candidata_id.data = s.candidata_id
 
+    if request.method == 'GET' and _admin_async_wants_json():
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='Formulario actualizado.',
+            category='info',
+            replace_html=_render_pago_region(),
+            update_target='#registrarPagoAsyncRegion',
+        )), 200
+
     if form.validate_on_submit():
+        expected_version = _expected_row_version()
+        if _critical_concurrency_guards_enabled() and expected_version is not None:
+            current_version = int(getattr(s, "row_version", 0) or 0)
+            if int(expected_version) != current_version:
+                msg = 'La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.'
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=False,
+                        message=msg,
+                        category='warning',
+                        http_status=409,
+                        error_code='conflict',
+                    )
+                flash(msg, 'warning')
+                return _render_pago_page()
 
         if s.estado in ('cancelada', 'pagada'):
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message='Esta solicitud no admite pagos.',
+                    category='warning',
+                    http_status=409,
+                    error_code='conflict',
+                )
             flash('Esta solicitud no admite pagos.', 'warning')
-            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
+            return _render_pago_page()
 
         cand = Candidata.query.get(form.candidata_id.data)
         if not cand:
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message='Candidata inválida.',
+                    category='danger',
+                    http_status=404,
+                    error_code='not_found',
+                )
             flash('Candidata inválida.', 'danger')
-            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
+            return _render_pago_page()
         blocked = assert_candidata_no_descalificada(
             cand,
             action="asignar a solicitud",
             redirect_endpoint="admin.registrar_pago",
-            redirect_kwargs={"cliente_id": cliente_id, "id": id, "q": q},
+            redirect_kwargs={"cliente_id": cliente_id, "id": id, "q": q, "next": safe_next},
         )
         if blocked is not None:
             return blocked
 
+        idem_row, duplicate = _claim_idempotency(
+            scope="solicitud_pago",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            action="registrar_pago",
+        )
+        if duplicate:
+            if _idempotency_request_conflict(idem_row):
+                msg = _idempotency_conflict_message()
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=False,
+                        message=msg,
+                        category='warning',
+                        http_status=409,
+                        error_code='idempotency_conflict',
+                    )
+                flash(msg, 'warning')
+                return _render_pago_page()
+            prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+            if 200 <= prev_status < 300:
+                msg = 'Pago ya procesado previamente. No se duplicó la operación.'
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=True,
+                        message=msg,
+                        category='info',
+                        redirect_url=safe_next,
+                        include_region=False,
+                    )
+                flash(msg, 'info')
+                return redirect(safe_next)
+            msg = 'Solicitud duplicada detectada. Espera y vuelve a intentar.'
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message=msg,
+                    category='warning',
+                    http_status=409,
+                    error_code='conflict',
+                )
+            flash(msg, 'warning')
+            return _render_pago_page()
+
         s.candidata_id = cand.fila
         _sync_solicitud_candidatas_after_assignment(s, cand.fila)
-        _mark_candidata_estado(cand, "trabajando")
+        try:
+            _mark_candidata_estado(cand, "trabajando")
+        except InvariantConflictError as inv_exc:
+            msg = str(inv_exc) or "Conflicto de estado de candidata."
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message=msg,
+                    category='warning',
+                    http_status=409,
+                    error_code=getattr(inv_exc, "code", "conflict"),
+                )
+            flash(msg, 'warning')
+            return _render_pago_page()
 
         # Monto pagado
         s.monto_pagado = _parse_money_to_decimal_str(form.monto_pagado.data)
@@ -6597,34 +9574,89 @@ def registrar_pago(cliente_id, id):
 
         s.estado = 'pagada'
         s.fecha_ultima_modificacion = utc_now_naive()
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_PAGO_REGISTRADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "cliente_id": int(cliente_id),
+                "estado": "pagada",
+                "candidata_id": int(getattr(cand, "fila", 0) or 0),
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
 
         try:
             db.session.commit()
+        except StaleDataError:
+            db.session.rollback()
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+                    category='warning',
+                    http_status=409,
+                    error_code='conflict',
+                )
+            flash('La solicitud cambió por otra sesión. Recarga e intenta nuevamente.', 'warning')
+            return _render_pago_page()
         except IntegrityError as e:
             db.session.rollback()
             msg = str(getattr(e, "orig", e))
             # Caso: constraint viejo que obliga porciento entre 0 y 100
             if "chk_porciento" in msg:
-                flash(
+                constraint_msg = (
                     "Tu BD tiene un CHECK (chk_porciento) que obliga 'porciento' a estar entre 0 y 100. "
                     "Ahora estás guardando el MONTO del 25% (ej: 16000.00), por eso falla. "
-                    "Solución: cambia ese constraint para permitir montos (porciento >= 0) o guarda 25 (porcentaje) en vez del monto.",
+                    "Solución: cambia ese constraint para permitir montos (porciento >= 0) o guarda 25 (porcentaje) en vez del monto."
+                )
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=False,
+                        message=constraint_msg,
+                        category='danger',
+                        http_status=409,
+                        error_code='conflict',
+                    )
+                flash(
+                    constraint_msg,
                     "danger"
                 )
             else:
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=False,
+                        message='No se pudo registrar el pago por un conflicto de datos en la base de datos.',
+                        category='danger',
+                        http_status=409,
+                        error_code='conflict',
+                    )
                 flash('No se pudo registrar el pago por un conflicto de datos en la base de datos.', 'danger')
-            return render_template('admin/registrar_pago.html', form=form, cliente_id=cliente_id, solicitud=s, q=q)
+            return _render_pago_page()
 
+        if _admin_async_wants_json():
+            return _async_pago_response(
+                ok=True,
+                message='Pago registrado correctamente.',
+                category='success',
+                redirect_url=safe_next,
+                include_region=False,
+            )
         flash('Pago registrado correctamente.', 'success')
-        return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+        return redirect(safe_next)
 
-    return render_template(
-        'admin/registrar_pago.html',
-        form=form,
-        cliente_id=cliente_id,
-        solicitud=s,
-        q=q
-    )
+    if request.method == 'POST' and _admin_async_wants_json():
+        return _async_pago_response(
+            ok=False,
+            message='No se guardó. Revisa los campos marcados y corrige los errores.',
+            category='warning',
+            http_status=200,
+            error_code='invalid_input',
+        )
+
+    return _render_pago_page()
 
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/nuevo', methods=['GET', 'POST'])
@@ -6639,23 +9671,146 @@ def nuevo_reemplazo(s_id):
     )
 
     form = AdminReemplazoForm()
+    form_idempotency_key = (request.form.get("idempotency_key") or "").strip() or _new_form_idempotency_key()
     reemplazo_activo = _active_reemplazo_for_solicitud(sol)
     next_url = (request.form.get("next") or request.args.get("next") or "").strip()
+    dynamic_target = (request.form.get("_async_target") or request.args.get("_async_target") or "").strip()
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=sol.cliente_id)
+    fallback = (
+        url_for('admin.listar_solicitudes')
+        if dynamic_target == '#solicitudesAsyncRegion' or dynamic_target.startswith("#solicitudReemplazoActionsAsyncRegion-")
+        else fallback_detail
+    )
+
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        replace_html = None
+        update_target = dynamic_target
+        if _admin_async_wants_json():
+            if ok:
+                update_target = _reemplazo_parent_async_target(dynamic_target) or dynamic_target
+            else:
+                replace_html = _render_reemplazo_actions_region(
+                    solicitud_id=int(sol.id),
+                    dynamic_target=dynamic_target,
+                    next_url=next_url,
+                )
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url,
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+            replace_html=replace_html,
+            update_target=update_target,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_reemplazo_open",
+        entity_type="Solicitud",
+        entity_id=sol.id,
+        limit=20,
+        window_seconds=600,
+        min_interval_seconds=2,
+        summary=f"Bloqueo de apertura de reemplazo por patrón de abuso (solicitud {sol.id})",
+        next_url=next_url,
+        fallback=fallback_detail,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(sol, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="admin_reemplazo_open",
+        entity_type="Solicitud",
+        entity_id=sol.id,
+        action="abrir_reemplazo",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     # ✅ SIEMPRE usar la candidata asignada originalmente a la solicitud (por relación)
     assigned_id = getattr(sol, 'candidata_id', None)
 
     # Si no hay candidata asignada, no se puede iniciar reemplazo
     if not assigned_id or not getattr(sol, 'candidata', None):
-        flash(
-            'Esta solicitud no tiene candidata asignada. Primero asigna una candidata (por pago/asignación) antes de iniciar un reemplazo.',
-            'danger'
+        return _action_response(
+            ok=False,
+            message='Esta solicitud no tiene candidata asignada. Primero asigna una candidata antes de iniciar un reemplazo.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
         )
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
     if reemplazo_activo:
-        flash('Ya existe un reemplazo activo para esta solicitud.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
+        if _admin_noop_repeat_blocked(
+            scope="admin_reemplazo_open",
+            entity_type="Solicitud",
+            entity_id=sol.id,
+            state="reemplazo_activo",
+            summary=f"Intento repetido de abrir reemplazo ya activo (solicitud {sol.id})",
+        ):
+            return _action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente: ya existe un reemplazo activo para esta solicitud.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return _action_response(
+            ok=False,
+            message='Ya existe un reemplazo activo para esta solicitud.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     # Prefill (por si tu form/template muestra campos)
     # No hay búsqueda ni selección manual: todo viene de sol.candidata
@@ -6682,8 +9837,21 @@ def nuevo_reemplazo(s_id):
             descalificar = str(request.form.get('descalificar_candidata_fallida') or '').strip().lower() in ('1', 'true', 'on', 'yes')
             motivo_descalificacion = (request.form.get('motivo_descalificacion') or '').strip()
             if descalificar and not motivo_descalificacion:
+                if _admin_async_wants_json():
+                    return _action_response(
+                        ok=False,
+                        message='Debes indicar el motivo de descalificación.',
+                        category='warning',
+                        http_status=400,
+                        error_code='invalid_input',
+                    )
                 flash('Debes indicar el motivo de descalificación.', 'warning')
-                return render_template('admin/reemplazo_inicio.html', form=form, solicitud=sol)
+                return render_template(
+                    'admin/reemplazo_inicio.html',
+                    form=form,
+                    solicitud=sol,
+                    form_idempotency_key=form_idempotency_key,
+                )
 
             r = Reemplazo(
                 solicitud_id=sol.id,
@@ -6720,6 +9888,21 @@ def nuevo_reemplazo(s_id):
                     )
 
             db.session.add(r)
+            db.session.flush()
+            _emit_domain_outbox_event(
+                event_type="REEMPLAZO_ABIERTO",
+                aggregate_type="Solicitud",
+                aggregate_id=sol.id,
+                aggregate_version=(int(getattr(sol, "row_version", 0) or 0) + 1),
+                payload={
+                    "solicitud_id": int(sol.id),
+                    "reemplazo_id": int(r.id),
+                    "candidata_old_id": int(cand_old.fila),
+                    "estado_previo": (getattr(r, "estado_previo_solicitud", None) or "").strip().lower() or None,
+                    "descalificar": bool(descalificar),
+                },
+            )
+            _set_idempotency_response(idem_row, status=200, code="ok")
             db.session.commit()
             _audit_log(
                 action_type="REEMPLAZO_ABRIR",
@@ -6748,9 +9931,30 @@ def nuevo_reemplazo(s_id):
                     from_state=mark_lista_from_state,
                 )
 
-            flash('Reemplazo iniciado correctamente.', 'success')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
+            return _action_response(
+                ok=True,
+                message='Reemplazo iniciado correctamente.',
+                category='success',
+            )
 
+        except InvariantConflictError as inv_exc:
+            db.session.rollback()
+            return _action_response(
+                ok=False,
+                message=str(inv_exc) or "Conflicto de estado de candidata.",
+                category='warning',
+                http_status=409,
+                error_code=getattr(inv_exc, "code", "conflict"),
+            )
+        except StaleDataError:
+            db.session.rollback()
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
         except Exception:
             db.session.rollback()
             _audit_log(
@@ -6769,10 +9973,30 @@ def nuevo_reemplazo(s_id):
                 success=False,
                 error="Error al iniciar reemplazo.",
             )
-            flash('Error al iniciar el reemplazo.', 'danger')
+            return _action_response(
+                ok=False,
+                message='No se pudo iniciar el reemplazo.',
+                category='danger',
+                http_status=500,
+                error_code='server_error',
+            )
+
+    if request.method == 'POST' and _admin_async_wants_json():
+        return _action_response(
+            ok=False,
+            message='No se guardó. Revisa los campos e intenta nuevamente.',
+            category='warning',
+            http_status=400,
+            error_code='invalid_input',
+        )
 
     # 👇 Ya no se manda "q" porque eliminamos búsqueda
-    return render_template('admin/reemplazo_inicio.html', form=form, solicitud=sol)
+    return render_template(
+        'admin/reemplazo_inicio.html',
+        form=form,
+        solicitud=sol,
+        form_idempotency_key=form_idempotency_key,
+    )
 
 
 @admin_bp.route(
@@ -6793,9 +10017,19 @@ def finalizar_reemplazo(s_id, reemplazo_id):
 
     r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
     form = AdminReemplazoFinForm()
+    form_idempotency_key = (request.form.get("idempotency_key") or "").strip() or _new_form_idempotency_key()
 
     # ✅ Igual que PAGO
     q = (request.args.get('q') or request.form.get('q') or '').strip()
+
+    def _render_pick_region() -> str:
+        return render_template(
+            'admin/_reemplazo_fin_pick_region.html',
+            form=form,
+            q=q,
+            pick_name=pick_name,
+            candidatas=candidatas,
+        )
 
     # ✅ Detectar el field real que existe en el form
     if hasattr(form, 'domestica_id'):
@@ -6815,23 +10049,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
         # ✅ Si no hay búsqueda, NO cargamos nada
         if not search_text:
             return []
-
-        like = f"%{search_text}%"
-        return (
-            Candidata.query
-            .filter(candidatas_activas_filter(Candidata))
-            .filter(
-                or_(
-                    Candidata.nombre_completo.ilike(like),
-                    Candidata.cedula.ilike(like),
-                    Candidata.codigo.ilike(like),
-                    Candidata.numero_telefono.ilike(like),
-                )
-            )
-            .order_by(Candidata.nombre_completo.asc())
-            .limit(50)
-            .all()
-        )
+        return _search_candidatas_reemplazo(search_text, limit=50)
 
     def _build_choices_from_list(items):
         """✅ Para SelectField(coerce=int): value SIEMPRE int (nunca '' / None)."""
@@ -6857,6 +10075,28 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                 continue
 
         return out
+
+    def _choice_tuple_for_candidata(c):
+        if not c:
+            return None
+        nombre = (c.nombre_completo or '').strip()
+        ced = (c.cedula or '').strip()
+        tel = (c.numero_telefono or '').strip()
+
+        extra = ""
+        if ced and tel:
+            extra = f" — {ced} — {tel}"
+        elif ced:
+            extra = f" — {ced}"
+        elif tel:
+            extra = f" — {tel}"
+
+        try:
+            cid = int(c.fila)
+        except Exception:
+            return None
+        label = f"{nombre}{extra}".strip() if nombre else f"ID {cid}{extra}".strip()
+        return (cid, label)
 
     # ✅ RESULTADOS (para tabla) + CHOICES (para select)
     candidatas = _query_candidatas(q)
@@ -6898,6 +10138,27 @@ def finalizar_reemplazo(s_id, reemplazo_id):
     # ✅ Placeholder arriba (OJO: value int=0, NO '')
     pick_field.choices = [(0, '— Selecciona una doméstica —')] + choices
 
+    # ✅ POST robusto: si el submit llega con q vacío/stale, rehidratar choice seleccionada
+    # para que WTForms no falle con "Not a valid choice".
+    if request.method == 'POST':
+        raw_selected = (
+            request.form.get(pick_name)
+            or request.form.get('candidata_new_id')
+            or request.form.get('domestica_id')
+            or request.form.get('candidata_id')
+            or ''
+        )
+        try:
+            selected_id = int(str(raw_selected).strip() or 0)
+        except Exception:
+            selected_id = 0
+
+        if selected_id > 0 and all(int(v) != selected_id for v, _ in (pick_field.choices or [])):
+            selected_obj = Candidata.query.get(selected_id)
+            selected_choice = _choice_tuple_for_candidata(selected_obj)
+            if selected_choice is not None:
+                pick_field.choices = list(pick_field.choices or []) + [selected_choice]
+
     # ✅ GET: precargar si ya existe candidata_new_id en el reemplazo
     if request.method == 'GET':
         if cand_actual_id_int:
@@ -6908,7 +10169,102 @@ def finalizar_reemplazo(s_id, reemplazo_id):
         else:
             pick_field.data = 0
 
+    if request.method == 'GET' and _admin_async_wants_json():
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='Resultados actualizados.',
+            category='info',
+            replace_html=_render_pick_region(),
+            update_target='#reemplazoFinPickRegion',
+            redirect_url=None,
+        )), 200
+
     if form.validate_on_submit():
+        expected_version = _expected_row_version()
+        if _critical_concurrency_guards_enabled() and expected_version is not None:
+            current_version = int(getattr(s, "row_version", 0) or 0)
+            if int(expected_version) != current_version:
+                msg = 'La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.'
+                if _admin_async_wants_json():
+                    return jsonify(_admin_async_payload(
+                        success=False,
+                        message=msg,
+                        category='warning',
+                        redirect_url=None,
+                        error_code='conflict',
+                    )), 409
+                flash(msg, 'warning')
+                return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
+
+        if (s.estado or "").strip().lower() != "reemplazo":
+            msg = 'La solicitud no tiene un reemplazo activo para culminar.'
+            if _admin_async_wants_json():
+                return jsonify(_admin_async_payload(
+                    success=False,
+                    message=msg,
+                    category='warning',
+                    redirect_url=None,
+                    error_code='conflict',
+                )), 409
+            flash(msg, 'warning')
+            return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
+
+        if getattr(r, "fecha_fin_reemplazo", None):
+            msg = 'Este reemplazo ya está cerrado.'
+            if _admin_async_wants_json():
+                return jsonify(_admin_async_payload(
+                    success=False,
+                    message=msg,
+                    category='warning',
+                    redirect_url=None,
+                    error_code='conflict',
+                )), 409
+            flash(msg, 'warning')
+            return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
+
+        idem_row, duplicate = _claim_idempotency(
+            scope="admin_reemplazo_finalize",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            action="finalizar_reemplazo",
+        )
+        if duplicate:
+            if _idempotency_request_conflict(idem_row):
+                msg = _idempotency_conflict_message()
+                if _admin_async_wants_json():
+                    return jsonify(_admin_async_payload(
+                        success=False,
+                        message=msg,
+                        category='warning',
+                        redirect_url=None,
+                        error_code='idempotency_conflict',
+                    )), 409
+                flash(msg, 'warning')
+                return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
+            prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+            if 200 <= prev_status < 300:
+                msg = 'Acción ya aplicada previamente.'
+                if _admin_async_wants_json():
+                    return jsonify(_admin_async_payload(
+                        success=True,
+                        message=msg,
+                        category='info',
+                        redirect_url=url_for('admin.detalle_cliente', cliente_id=s.cliente_id),
+                    )), 200
+                flash(msg, 'info')
+                return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
+            msg = 'Solicitud duplicada detectada. Espera y vuelve a intentar.'
+            if _admin_async_wants_json():
+                return jsonify(_admin_async_payload(
+                    success=False,
+                    message=msg,
+                    category='warning',
+                    redirect_url=None,
+                    error_code='conflict',
+                )), 409
+            flash(msg, 'warning')
+            return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
+
         try:
             # ✅ leer id seleccionado (int)
             try:
@@ -6925,7 +10281,8 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     reemplazo=r,
                     q=q,
                     pick_name=pick_name,
-                    candidatas=candidatas
+                    candidatas=candidatas,
+                    form_idempotency_key=form_idempotency_key,
                 )
 
             cand_new = Candidata.query.get(cand_new_id)
@@ -6938,7 +10295,8 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     reemplazo=r,
                     q=q,
                     pick_name=pick_name,
-                    candidatas=candidatas
+                    candidatas=candidatas,
+                    form_idempotency_key=form_idempotency_key,
                 )
             blocked = assert_candidata_no_descalificada(
                 cand_new,
@@ -7009,6 +10367,20 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     # Si el sueldo viene raro, no rompemos el flujo
                     pass
 
+            _emit_domain_outbox_event(
+                event_type="REEMPLAZO_FINALIZADO",
+                aggregate_type="Solicitud",
+                aggregate_id=s.id,
+                aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+                payload={
+                    "solicitud_id": int(s.id),
+                    "reemplazo_id": int(r.id),
+                    "candidata_old_id": int(getattr(r, "candidata_old_id", 0) or 0) or None,
+                    "candidata_new_id": int(cand_new.fila),
+                    "estado_restaurado": estado_restore,
+                },
+            )
+            _set_idempotency_response(idem_row, status=200, code="ok")
             db.session.commit()
             _audit_log(
                 action_type="REEMPLAZO_CERRAR",
@@ -7036,6 +10408,31 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             flash('Reemplazo finalizado correctamente.', 'success')
             return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
 
+        except InvariantConflictError as inv_exc:
+            db.session.rollback()
+            if _admin_async_wants_json():
+                return jsonify(_admin_async_payload(
+                    success=False,
+                    message=str(inv_exc) or "Conflicto de estado de candidata.",
+                    category='warning',
+                    redirect_url=None,
+                    error_code=getattr(inv_exc, "code", "conflict"),
+                )), 409
+            flash(str(inv_exc) or "Conflicto de estado de candidata.", "warning")
+            return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
+        except StaleDataError:
+            db.session.rollback()
+            msg = 'La solicitud cambió por otra sesión. Recarga e intenta nuevamente.'
+            if _admin_async_wants_json():
+                return jsonify(_admin_async_payload(
+                    success=False,
+                    message=msg,
+                    category='warning',
+                    redirect_url=None,
+                    error_code='conflict',
+                )), 409
+            flash(msg, 'warning')
+            return redirect(url_for('admin.detalle_cliente', cliente_id=s.cliente_id))
         except Exception as e:
             db.session.rollback()
             # ✅ Mostrar el error real en terminal para poder corregirlo de una vez
@@ -7063,9 +10460,25 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     success=False,
                     error=str(e),
                 )
+            if _admin_async_wants_json():
+                return jsonify(_admin_async_payload(
+                    success=False,
+                    message='Error al finalizar el reemplazo.',
+                    category='danger',
+                    redirect_url=None,
+                    error_code='server_error',
+                )), 500
             flash('Error al finalizar el reemplazo.', 'danger')
 
     elif request.method == 'POST':
+        if _admin_async_wants_json():
+            return jsonify(_admin_async_payload(
+                success=False,
+                message='Revisa los campos marcados en rojo.',
+                category='warning',
+                redirect_url=None,
+                error_code='invalid_input',
+            )), 400
         flash('Revisa los campos marcados en rojo.', 'danger')
 
     return render_template(
@@ -7075,8 +10488,64 @@ def finalizar_reemplazo(s_id, reemplazo_id):
         reemplazo=r,
         q=q,
         pick_name=pick_name,
-        candidatas=candidatas
+        candidatas=candidatas,
+        form_idempotency_key=form_idempotency_key,
     )
+
+
+def _search_candidatas_reemplazo(search_text: str, *, limit: int = 25):
+    txt = (search_text or "").strip()
+    if not txt:
+        return []
+    base_query = Candidata.query.filter(candidatas_activas_filter(Candidata))
+    return search_candidatas_limited(
+        txt,
+        limit=limit,
+        base_query=base_query,
+        minimal_fields=False,
+        order_mode="nombre_asc",
+        log_label="reemplazo_quick_close",
+    )
+
+
+@admin_bp.route('/candidatas/reemplazo/quick-search', methods=['GET'])
+@login_required
+@staff_required
+def candidatas_reemplazo_quick_search():
+    q = (request.args.get("q") or "").strip()
+    try:
+        limit = int((request.args.get("limit") or 20))
+    except Exception:
+        limit = 20
+    limit = max(5, min(limit, 50))
+    if len(q) < 2:
+        return jsonify({"success": True, "items": []}), 200
+
+    rows = _search_candidatas_reemplazo(q, limit=limit)
+    items = []
+    for c in rows:
+        cid = int(getattr(c, "fila", 0) or 0)
+        if cid <= 0:
+            continue
+        nombre = (getattr(c, "nombre_completo", "") or "").strip()
+        codigo = (getattr(c, "codigo", "") or "").strip()
+        cedula = (getattr(c, "cedula", "") or "").strip()
+        label_parts = [nombre or f"ID {cid}"]
+        extras = []
+        if codigo:
+            extras.append(f"Código: {codigo}")
+        if cedula:
+            extras.append(f"Cédula: {cedula}")
+        if extras:
+            label_parts.append(" · ".join(extras))
+        items.append({
+            "id": cid,
+            "nombre": nombre,
+            "codigo": codigo,
+            "cedula": cedula,
+            "label": " — ".join(label_parts),
+        })
+    return jsonify({"success": True, "items": items}), 200
 
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/cancelar', methods=['POST'])
@@ -7087,11 +10556,143 @@ def cancelar_reemplazo(s_id, reemplazo_id):
     s = Solicitud.query.filter_by(id=s_id).first_or_404()
     r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
     next_url = (request.form.get("next") or request.args.get("next") or "").strip()
-    fallback = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
+    dynamic_target = (request.form.get("_async_target") or request.args.get("_async_target") or "").strip()
+    fallback = (
+        url_for("admin.listar_solicitudes")
+        if dynamic_target == "#solicitudesAsyncRegion" or dynamic_target.startswith("#solicitudReemplazoActionsAsyncRegion-")
+        else (
+            url_for("admin.detalle_cliente", cliente_id=s.cliente_id) + f"#sol-{s.id}"
+            if dynamic_target == "#clienteSolicitudesAsyncRegion" or dynamic_target.startswith("#clienteSolicitudReemplazoActionsAsyncRegion-")
+            else url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
+        )
+    )
+
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        replace_html = None
+        update_target = dynamic_target
+        if _admin_async_wants_json():
+            if ok:
+                update_target = _reemplazo_parent_async_target(dynamic_target) or dynamic_target
+            else:
+                replace_html = _render_reemplazo_actions_region(
+                    solicitud_id=int(s.id),
+                    dynamic_target=dynamic_target,
+                    next_url=next_url,
+                )
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url,
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+            replace_html=replace_html,
+            update_target=update_target,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_reemplazo_cancel",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=25,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de cancelación de reemplazo por patrón de abuso (solicitud {s.id})",
+        next_url=next_url,
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message="Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.",
+                category="warning",
+                http_status=429,
+                error_code="rate_limit",
+            )
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="admin_reemplazo_cancel",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="cancelar_reemplazo",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+
+    if (s.estado or "").strip().lower() != "reemplazo":
+        return _action_response(
+            ok=False,
+            message="La solicitud no tiene un reemplazo activo para cancelar.",
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
 
     if getattr(r, "fecha_fin_reemplazo", None):
-        flash("Este reemplazo ya está cerrado.", "warning")
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        if _admin_noop_repeat_blocked(
+            scope="admin_reemplazo_cancel",
+            entity_type="Reemplazo",
+            entity_id=r.id,
+            state="cerrado",
+            summary=f"Intento repetido de cancelar reemplazo ya cerrado ({r.id})",
+        ):
+            return _action_response(
+                ok=False,
+                message="Acción bloqueada temporalmente: este reemplazo ya está cerrado.",
+                category="warning",
+                http_status=429,
+                error_code="rate_limit",
+            )
+        return _action_response(
+            ok=False,
+            message="Este reemplazo ya está cerrado.",
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
 
     try:
         r.cerrar_reemplazo()
@@ -7107,6 +10708,18 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         if hasattr(s, "fecha_ultima_modificacion"):
             s.fecha_ultima_modificacion = utc_now_naive()
 
+        _emit_domain_outbox_event(
+            event_type="REEMPLAZO_CANCELADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "reemplazo_id": int(r.id),
+                "estado_restaurado": estado_restore,
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="REEMPLAZO_CANCELAR",
@@ -7115,7 +10728,20 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             summary=f"Reemplazo cancelado para solicitud {s.codigo_solicitud or s.id}",
             metadata={"reemplazo_id": r.id},
         )
-        flash("Reemplazo cancelado correctamente.", "success")
+        return _action_response(
+            ok=True,
+            message="Reemplazo cancelado correctamente.",
+            category="success",
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
     except Exception:
         db.session.rollback()
         _audit_log(
@@ -7127,9 +10753,13 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             success=False,
             error="No se pudo cancelar el reemplazo.",
         )
-        flash("No se pudo cancelar el reemplazo.", "danger")
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message="No se pudo cancelar el reemplazo.",
+            category="danger",
+            http_status=500,
+            error_code="server_error",
+        )
 
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/cerrar_asignando', methods=['POST'])
@@ -7140,24 +10770,175 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
     s = Solicitud.query.filter_by(id=s_id).first_or_404()
     r = Reemplazo.query.filter_by(id=reemplazo_id, solicitud_id=s_id).first_or_404()
     next_url = (request.form.get("next") or request.args.get("next") or "").strip()
-    fallback = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
+    dynamic_target = (request.form.get("_async_target") or request.args.get("_async_target") or "").strip()
+    fallback = (
+        url_for("admin.listar_solicitudes")
+        if dynamic_target == "#solicitudesAsyncRegion" or dynamic_target.startswith("#solicitudReemplazoActionsAsyncRegion-")
+        else (
+            url_for("admin.detalle_cliente", cliente_id=s.cliente_id) + f"#sol-{s.id}"
+            if dynamic_target == "#clienteSolicitudesAsyncRegion" or dynamic_target.startswith("#clienteSolicitudReemplazoActionsAsyncRegion-")
+            else url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
+        )
+    )
+
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        replace_html = None
+        update_target = dynamic_target
+        if _admin_async_wants_json():
+            if ok:
+                update_target = _reemplazo_parent_async_target(dynamic_target) or dynamic_target
+            else:
+                replace_html = _render_reemplazo_actions_region(
+                    solicitud_id=int(s.id),
+                    dynamic_target=dynamic_target,
+                    next_url=next_url,
+                )
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url,
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+            replace_html=replace_html,
+            update_target=update_target,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_reemplazo_close_assign",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=30,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de cierre de reemplazo por patrón de abuso (solicitud {s.id})",
+        next_url=next_url,
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message="Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.",
+                category="warning",
+                http_status=429,
+                error_code="rate_limit",
+            )
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="admin_reemplazo_close_assign",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="cerrar_reemplazo_asignando",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+
+    if (s.estado or "").strip().lower() != "reemplazo":
+        return _action_response(
+            ok=False,
+            message="La solicitud no tiene un reemplazo activo para culminar.",
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
 
     if getattr(r, "fecha_fin_reemplazo", None):
-        flash("Este reemplazo ya está cerrado.", "warning")
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        if _admin_noop_repeat_blocked(
+            scope="admin_reemplazo_close_assign",
+            entity_type="Reemplazo",
+            entity_id=r.id,
+            state="cerrado",
+            summary=f"Intento repetido de cerrar reemplazo ya cerrado ({r.id})",
+        ):
+            return _action_response(
+                ok=False,
+                message="Acción bloqueada temporalmente: este reemplazo ya está cerrado.",
+                category="warning",
+                http_status=429,
+                error_code="rate_limit",
+            )
+        return _action_response(
+            ok=False,
+            message="Este reemplazo ya está cerrado.",
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
 
     try:
         nueva_id = int((request.form.get("candidata_new_id") or "").strip())
     except Exception:
         nueva_id = 0
     if nueva_id <= 0:
-        flash("Debes indicar la candidata nueva para cerrar el reemplazo.", "warning")
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message="Debes indicar la candidata nueva para cerrar el reemplazo.",
+            category="warning",
+            http_status=400,
+            error_code="invalid_input",
+        )
 
     cand_new = Candidata.query.filter_by(fila=nueva_id).first()
     if not cand_new:
-        flash("La candidata seleccionada no existe.", "danger")
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message="La candidata seleccionada no existe.",
+            category="danger",
+            http_status=404,
+            error_code="not_found",
+        )
+
+    if int(getattr(s, "candidata_id", 0) or 0) == int(cand_new.fila):
+        return _action_response(
+            ok=False,
+            message="Esa candidata ya está asignada en la solicitud.",
+            category="info",
+            http_status=409,
+            error_code="conflict",
+        )
 
     blocked = assert_candidata_no_descalificada(
         cand_new,
@@ -7166,6 +10947,14 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
         redirect_kwargs={"cliente_id": s.cliente_id, "id": s.id},
     )
     if blocked is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message="La candidata seleccionada no está disponible para esta acción.",
+                category="warning",
+                http_status=409,
+                error_code="conflict",
+            )
         return blocked
 
     try:
@@ -7184,6 +10973,20 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
         if hasattr(s, "fecha_ultima_modificacion"):
             s.fecha_ultima_modificacion = utc_now_naive()
 
+        _emit_domain_outbox_event(
+            event_type="REEMPLAZO_CERRADO_ASIGNANDO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "reemplazo_id": int(r.id),
+                "candidata_old_id": int(getattr(r, "candidata_old_id", 0) or 0) or None,
+                "candidata_new_id": int(cand_new.fila),
+                "estado_restaurado": estado_restore,
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="REEMPLAZO_CERRAR",
@@ -7208,7 +11011,29 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
             metadata={"reemplazo_id": r.id, "solicitud_id": s.id, "cliente_id": s.cliente_id},
             success=True,
         )
-        flash("Reemplazo cerrado y nueva candidata asignada.", "success")
+        return _action_response(
+            ok=True,
+            message="Reemplazo cerrado y nueva candidata asignada.",
+            category="success",
+        )
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message=str(inv_exc) or "Conflicto de estado de candidata.",
+            category="warning",
+            http_status=409,
+            error_code=getattr(inv_exc, "code", "conflict"),
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
     except Exception:
         db.session.rollback()
         _audit_log(
@@ -7229,193 +11054,581 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
                 success=False,
                 error="No se pudo cerrar el reemplazo.",
             )
-        flash("No se pudo cerrar el reemplazo.", "danger")
+        return _action_response(
+            ok=False,
+            message="No se pudo cerrar el reemplazo.",
+            category="danger",
+            http_status=500,
+            error_code="server_error",
+        )
 
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+def _is_missing_contract_table_error(exc: OperationalError) -> bool:
+    text = str(getattr(exc, "orig", exc) or "").lower()
+    has_table_name = "contratos_digitales" in text
+    has_missing_hint = ("no such table" in text) or ("does not exist" in text) or ("undefined table" in text)
+    return has_table_name and has_missing_hint
+
+
+def _is_contract_expired(contract: ContratoDigital | None) -> bool:
+    if contract is None:
+        return False
+    if getattr(contract, "firmado_at", None) is not None:
+        return False
+    if getattr(contract, "anulado_at", None) is not None:
+        return False
+    exp_at = getattr(contract, "token_expira_at", None)
+    if exp_at is None:
+        return False
+    return utc_now_naive() > exp_at
+
+
+def _contract_effective_state(contract: ContratoDigital | None, *, contrato_expirado: bool | None = None) -> str:
+    if contract is None:
+        return "sin_contrato"
+    base = str(getattr(contract, "estado", "") or "").strip().lower()
+    if (contrato_expirado is True) or ((contrato_expirado is None) and _is_contract_expired(contract)):
+        if base in {"enviado", "visto", "expirado"}:
+            return "expirado"
+    return base or "sin_contrato"
+
+
+def _contract_snapshot_summary(snapshot_raw) -> str | None:
+    if not isinstance(snapshot_raw, dict):
+        return None
+    parts = []
+    tipo = str(snapshot_raw.get("tipo_servicio") or "").strip()
+    modalidad = str(snapshot_raw.get("modalidad_trabajo") or "").strip()
+    ciudad_sector = str(snapshot_raw.get("ciudad_sector") or "").strip()
+    if tipo:
+        parts.append(f"Tipo: {tipo}")
+    if modalidad:
+        parts.append(f"Modalidad: {modalidad}")
+    if ciudad_sector:
+        parts.append(f"Zona: {ciudad_sector}")
+    if not parts:
+        return f"Snapshot con {len(snapshot_raw.keys())} campos."
+    return " | ".join(parts)
+
+
+def _solicitud_last_activity_at(solicitud):
+    def _to_dt(raw):
+        if not raw:
+            return None
+        if isinstance(raw, datetime):
+            return raw
+        try:
+            return datetime(raw.year, raw.month, raw.day)
+        except Exception:
+            return None
+
+    for attr in ("fecha_ultima_actividad", "fecha_ultima_modificacion", "updated_at", "fecha_solicitud"):
+        val = _to_dt(getattr(solicitud, attr, None))
+        if val:
+            return val
+    return None
+
+
+def _solicitud_hours_since_activity(solicitud, *, now_dt: datetime) -> int:
+    dt = _solicitud_last_activity_at(solicitud)
+    if not dt:
+        return 9999
+    return max(0, int((now_dt - dt).total_seconds() // 3600))
+
+
+def _solicitud_priority_label(score: int) -> str:
+    if score >= 70:
+        return "alta"
+    if score >= 40:
+        return "media"
+    return "baja"
+
+
+def _solicitud_priority_snapshot(solicitud, *, now_dt: datetime):
+    estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
+    hours = _solicitud_hours_since_activity(solicitud, now_dt=now_dt)
+    if estado == "espera_pago":
+        state_points = 45
+    elif estado == "activa":
+        state_points = 32
+    elif estado == "proceso":
+        state_points = 22
+    elif estado == "reemplazo":
+        state_points = 18
+    else:
+        state_points = 10
+
+    if hours < 24:
+        inactivity_points = 5
+    elif hours < 48:
+        inactivity_points = 15
+    elif hours < 72:
+        inactivity_points = 25
+    else:
+        inactivity_points = 40
+
+    recent_points = 15 if hours < 24 else 0
+    score = int(state_points + inactivity_points + recent_points)
+    label = _solicitud_priority_label(score)
+    is_stagnant = bool(hours >= 72)
+    return score, label, is_stagnant, hours
+
+
+def _solicitud_needs_followup_today(*, is_stagnant: bool, priority_label: str) -> bool:
+    return bool(is_stagnant or str(priority_label or "").strip().lower() == "alta")
+
+
+def _manual_followup_snapshot(fecha_manual, *, today_rd):
+    if not fecha_manual:
+        return {
+            "state": "normal",
+            "label": "Sin fecha",
+            "badge_class": "bg-secondary",
+            "hint": "No hay seguimiento manual programado.",
+            "date_value": "",
+        }
+    if fecha_manual > today_rd:
+        state = "pendiente"
+        label = "Pendiente"
+        badge_class = "bg-primary"
+        hint = "Seguimiento manual programado para una fecha futura."
+    elif fecha_manual == today_rd:
+        state = "hoy"
+        label = "Hoy"
+        badge_class = "bg-info text-dark"
+        hint = "Seguimiento manual programado para hoy."
+    else:
+        state = "vencida"
+        label = "Vencida"
+        badge_class = "bg-danger"
+        hint = "La fecha manual de seguimiento ya pasó."
+    return {
+        "state": state,
+        "label": label,
+        "badge_class": badge_class,
+        "hint": hint,
+        "date_value": fecha_manual.isoformat(),
+    }
+
+
+def _resolve_solicitud_last_actor_user_ids(solicitud_ids: list[int]) -> dict[int, int | None]:
+    ids = [int(sid) for sid in (solicitud_ids or []) if int(sid or 0) > 0]
+    if not ids:
+        return {}
+    id_strings = [str(sid) for sid in sorted(set(ids))]
+    try:
+        latest_subq = (
+            db.session.query(
+                StaffAuditLog.entity_id.label("entity_id"),
+                func.max(StaffAuditLog.id).label("max_id"),
+            )
+            .filter(func.lower(StaffAuditLog.entity_type) == "solicitud")
+            .filter(StaffAuditLog.entity_id.in_(id_strings))
+            .group_by(StaffAuditLog.entity_id)
+            .subquery()
+        )
+        rows = (
+            db.session.query(StaffAuditLog.entity_id, StaffAuditLog.actor_user_id)
+            .join(latest_subq, StaffAuditLog.id == latest_subq.c.max_id)
+            .all()
+        )
+    except Exception:
+        return {}
+
+    resolved: dict[int, int | None] = {}
+    for row in (rows or []):
+        raw_entity_id = str(getattr(row, "entity_id", "") or "").strip()
+        if not raw_entity_id.isdigit():
+            continue
+        sid = int(raw_entity_id)
+        raw_actor = getattr(row, "actor_user_id", None)
+        try:
+            resolved[sid] = int(raw_actor) if raw_actor is not None else None
+        except Exception:
+            resolved[sid] = None
+    return resolved
+
+
+def _staff_username_map(user_ids: list[int]) -> dict[int, str]:
+    ids = sorted({int(uid) for uid in (user_ids or []) if int(uid or 0) > 0})
+    if not ids:
+        return {}
+    try:
+        rows = (
+            StaffUser.query
+            .options(load_only(StaffUser.id, StaffUser.username))
+            .filter(StaffUser.id.in_(ids))
+            .all()
+        )
+    except Exception:
+        return {}
+    out: dict[int, str] = {}
+    for row in (rows or []):
+        rid = int(getattr(row, "id", 0) or 0)
+        if rid <= 0:
+            continue
+        out[rid] = str(getattr(row, "username", "") or f"Staff #{rid}")
+    return out
+
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
 @login_required
 @staff_required
 def detalle_solicitud(cliente_id, id):
-    # Carga completa para evitar N+1 en plantilla
-    s = (Solicitud.query
-         .options(
-             joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new),
-             joinedload(Solicitud.candidata)
-         )
-         .filter_by(id=id, cliente_id=cliente_id)
-         .first_or_404())
+    with _p1c1_perf_scope("solicitud_detail") as perf_done:
+        # Carga completa para evitar N+1 en plantilla
+        s = (Solicitud.query
+             .options(
+                 joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new),
+                 joinedload(Solicitud.candidata)
+             )
+             .filter_by(id=id, cliente_id=cliente_id)
+             .first_or_404())
 
-    # Historial de envíos (inicial + reemplazos válidos)
-    envios = []
-    if s.candidata:
-        envios.append({
-            'tipo':     'Envío inicial',
-            'candidata': s.candidata,
-            'fecha':     s.fecha_solicitud
-        })
-
-    reemplazos_ordenados = sorted(list(s.reemplazos or []),
-                                  key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min)
-    reemplazo_activo = _active_reemplazo_for_solicitud(s)
-    for idx, r in enumerate(reemplazos_ordenados, start=1):
-        if r.candidata_new:
+        # Historial de envíos (inicial + reemplazos válidos)
+        envios = []
+        if s.candidata:
             envios.append({
-                'tipo':     f'Reemplazo {idx}',
-                'candidata': r.candidata_new,
-                'fecha':     r.fecha_inicio_reemplazo or r.created_at
+                'tipo':     'Envío inicial',
+                'candidata': s.candidata,
+                'fecha':     s.fecha_solicitud
             })
 
-    # Cancelaciones
-    cancelaciones = []
-    if s.estado == 'cancelada' and s.fecha_cancelacion:
-        cancelaciones.append({
-            'fecha':  s.fecha_cancelacion,
-            'motivo': s.motivo_cancelacion
-        })
+        reemplazos_ordenados = sorted(list(s.reemplazos or []),
+                                      key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min)
+        reemplazo_activo = _active_reemplazo_for_solicitud(s)
+        for idx, r in enumerate(reemplazos_ordenados, start=1):
+            if r.candidata_new:
+                envios.append({
+                    'tipo':     f'Reemplazo {idx}',
+                    'candidata': r.candidata_new,
+                    'fecha':     r.fecha_inicio_reemplazo or r.created_at
+                })
 
-    # 👉 Resumen listo para enviar al cliente (helper que ya te di antes)
-    resumen_cliente = build_resumen_cliente_solicitud(s)
-    pasaje_copy_text = _pasaje_copy_phrase_from_solicitud(s)
-    role = (
-        str(getattr(current_user, "role", "") or "").strip().lower()
-        or str(session.get("role", "") or "").strip().lower()
-    )
-    is_admin_role = role in ("owner", "admin")
+        # Cancelaciones
+        cancelaciones = []
+        if s.estado == 'cancelada' and s.fecha_cancelacion:
+            cancelaciones.append({
+                'fecha':  s.fecha_cancelacion,
+                'motivo': s.motivo_cancelacion
+            })
 
-    return render_template(
-        'admin/solicitud_detail.html',
-        solicitud      = s,
-        envios         = envios,
-        cancelaciones  = cancelaciones,
-        reemplazos     = reemplazos_ordenados,
-        reemplazo_activo=reemplazo_activo,
-        resumen_cliente=resumen_cliente,
-        pasaje_copy_text=pasaje_copy_text,
-        is_admin_role=is_admin_role,
-    )
+        # 👉 Resumen listo para enviar al cliente (helper que ya te di antes)
+        resumen_cliente = build_resumen_cliente_solicitud(s)
+        pasaje_copy_text = _pasaje_copy_phrase_from_solicitud(s)
+        role = (
+            str(getattr(current_user, "role", "") or "").strip().lower()
+            or str(session.get("role", "") or "").strip().lower()
+        )
+        is_admin_role = role in ("owner", "admin")
+        contracts_schema_ready = True
+        latest_contract = None
+        contract_history = []
+        latest_signed_contract = None
+        try:
+            contract_rows = (
+                ContratoDigital.query.options(
+                    load_only(
+                        ContratoDigital.id,
+                        ContratoDigital.solicitud_id,
+                        ContratoDigital.cliente_id,
+                        ContratoDigital.version,
+                        ContratoDigital.estado,
+                        ContratoDigital.snapshot_fijado_at,
+                        ContratoDigital.token_expira_at,
+                        ContratoDigital.enviado_at,
+                        ContratoDigital.primer_visto_at,
+                        ContratoDigital.firmado_at,
+                        ContratoDigital.pdf_final_size_bytes,
+                        ContratoDigital.contenido_snapshot_json,
+                        ContratoDigital.anulado_at,
+                        ContratoDigital.created_at,
+                        ContratoDigital.updated_at,
+                    )
+                )
+                .filter_by(solicitud_id=s.id)
+                .order_by(ContratoDigital.version.desc(), ContratoDigital.id.desc())
+                .all()
+            )
+            if contract_rows:
+                latest_contract = contract_rows[0]
+                latest_signed_contract = next(
+                    (
+                        row for row in contract_rows
+                        if (row.firmado_at is not None) or (str(row.estado or "").strip().lower() == "firmado")
+                    ),
+                    None,
+                )
+
+                links = session.get("contract_links")
+                links = links if isinstance(links, dict) else {}
+                for idx, row in enumerate(contract_rows):
+                    is_expired = _is_contract_expired(row)
+                    effective_state = _contract_effective_state(row, contrato_expirado=is_expired)
+                    contract_history.append({
+                        "contract": row,
+                        "effective_state": effective_state,
+                        "is_expired": is_expired,
+                        "has_pdf": bool(getattr(row, "pdf_final_size_bytes", 0)),
+                        "is_current": idx == 0,
+                        "is_latest_signed": bool(latest_signed_contract and latest_signed_contract.id == row.id),
+                        "is_active": effective_state in {"borrador", "enviado", "visto"},
+                        "session_link": links.get(str(row.id), ""),
+                    })
+        except OperationalError as exc:
+            db.session.rollback()
+            if _is_missing_contract_table_error(exc):
+                contracts_schema_ready = False
+            else:
+                raise
+        contrato_expirado = _is_contract_expired(latest_contract)
+        latest_contract_link = None
+        if latest_contract is not None:
+            links = session.get("contract_links")
+            if isinstance(links, dict):
+                latest_contract_link = links.get(str(latest_contract.id))
+        now_utc = utc_now_naive()
+        _score, priority_label, is_stagnant, _hours = _solicitud_priority_snapshot(s, now_dt=now_utc)
+        needs_followup_today = _solicitud_needs_followup_today(
+            is_stagnant=is_stagnant,
+            priority_label=priority_label,
+        )
+        manual_followup = _manual_followup_snapshot(
+            getattr(s, "fecha_seguimiento_manual", None),
+            today_rd=rd_today(),
+        )
+        solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
+
+        html = render_template(
+            'admin/solicitud_detail.html',
+            solicitud      = s,
+            envios         = envios,
+            cancelaciones  = cancelaciones,
+            reemplazos     = reemplazos_ordenados,
+            reemplazo_activo=reemplazo_activo,
+            resumen_cliente=resumen_cliente,
+            pasaje_copy_text=pasaje_copy_text,
+            is_admin_role=is_admin_role,
+            latest_contract=latest_contract,
+            contract_history=contract_history,
+            latest_signed_contract=latest_signed_contract,
+            contracts_schema_ready=contracts_schema_ready,
+            contrato_expirado=contrato_expirado,
+            contract_effective_state=_contract_effective_state(latest_contract, contrato_expirado=contrato_expirado),
+            contract_snapshot_summary=_contract_snapshot_summary(
+                getattr(latest_contract, "contenido_snapshot_json", None) if latest_contract else None
+            ),
+            latest_contract_link=latest_contract_link,
+            now_utc=now_utc,
+            priority_label_operativa=priority_label,
+            needs_followup_today=needs_followup_today,
+            manual_followup=manual_followup,
+            solicitud_detail_url=solicitud_detail_url,
+        )
+        return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
+
+
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/_summary')
+@login_required
+@staff_required
+def solicitud_detail_summary_fragment(cliente_id, id):
+    with _p1c1_perf_scope("solicitud_detail_summary_fragment") as perf_done:
+        solicitud = (
+            Solicitud.query
+            .options(joinedload(Solicitud.candidata))
+            .filter_by(id=id, cliente_id=cliente_id)
+            .first_or_404()
+        )
+        html = render_template(
+            'admin/_solicitud_detail_summary_region.html',
+            solicitud=solicitud,
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "solicitudSummaryAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_summary"})
+
+
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/_operativa_core')
+@login_required
+@staff_required
+def solicitud_detail_operativa_core_fragment(cliente_id, id):
+    with _p1c1_perf_scope("solicitud_detail_operativa_core_fragment") as perf_done:
+        solicitud = (
+            Solicitud.query
+            .options(joinedload(Solicitud.candidata))
+            .filter_by(id=id, cliente_id=cliente_id)
+            .first_or_404()
+        )
+        now_utc = utc_now_naive()
+        _score, priority_label, is_stagnant, _hours = _solicitud_priority_snapshot(solicitud, now_dt=now_utc)
+        manual_followup = _manual_followup_snapshot(
+            getattr(solicitud, "fecha_seguimiento_manual", None),
+            today_rd=rd_today(),
+        )
+        solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=solicitud.cliente_id, id=solicitud.id)
+        html = render_template(
+            'admin/_solicitud_operativa_core_region.html',
+            solicitud=solicitud,
+            async_feedback=None,
+            now_utc=now_utc,
+            priority_label_operativa=priority_label,
+            needs_followup_today=_solicitud_needs_followup_today(
+                is_stagnant=is_stagnant,
+                priority_label=priority_label,
+            ),
+            manual_followup=manual_followup,
+            solicitud_detail_url=solicitud_detail_url,
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "solicitudOperativaCoreAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_operativa_core"})
 
 from datetime import datetime, timedelta
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
 
-@admin_bp.route('/solicitudes/prioridad')
-@login_required
-@admin_required
-def solicitudes_prioridad():
-    """
-    Lista solicitudes prioritarias basadas ÚNICAMENTE en `fecha_inicio_seguimiento`.
+def _solicitudes_prioridad_next_step(*, estado_raw: str, is_stagnant: bool):
+    estado = (estado_raw or '').strip().lower()
+    if estado == 'proceso':
+        return 'Activar solicitud', 'La solicitud aún no está en operación activa.', True
+    if estado == 'activa':
+        if is_stagnant:
+            return 'Retomar hoy', 'Lleva 72h o más sin movimiento y requiere empuje inmediato.', True
+        return 'Continuar seguimiento', 'Está en ejecución y necesita continuidad operativa.', True
+    if estado == 'espera_pago':
+        return 'Registrar pago', 'Completar el pago acerca el cierre de esta solicitud.', True
+    if estado == 'reemplazo':
+        return 'Gestionar reemplazo', 'Hay un reemplazo en curso que debe destrabarse.', True
+    if estado == 'pagada':
+        return 'Cerrada', 'Proceso finalizado sin acción operativa pendiente.', False
+    if estado == 'cancelada':
+        return 'Sin acción', 'Solicitud cancelada, sin gestión operativa pendiente.', False
+    return 'Sin acción', 'Estado sin acción operativa definida en esta vista.', False
 
-    ✅ Regla clave (SQL):
-      - estado in ('proceso', 'activa', 'reemplazo')
-      - fecha_inicio_seguimiento IS NOT NULL
-      - fecha_inicio_seguimiento <= (UTC ahora - dias)
 
-    Extra:
-      - Por defecto NO muestra solicitudes con candidata asignada (porque ya no son “sin candidata”)
-        Puedes verlas con ?incluye_asignadas=1
-
-    Niveles (para tu template: s.nivel_prioridad):
-      - media:  dias_en_seguimiento >= dias_media (default 7)
-      - alta:   dias_en_seguimiento >= dias_alta  (default 10)
-      - critica:dias_en_seguimiento >= dias_critica (default 14)
-
-    Params:
-      - q=...         búsqueda
-      - estado=...    filtra por estado (si es válido)
-      - dias=7        umbral mínimo para entrar en “prioritarias”
-      - dias_media=7  umbral badge MEDIA
-      - dias_alta=10  umbral badge ALTA
-      - dias_critica=14 umbral badge CRITICA
-      - page=1, per_page=50
-      - incluye_asignadas=1  para incluir solicitudes con candidata asignada
-    """
-
-    # -------------------------
-    # View model (clave para no romper con @property sin setter)
-    # -------------------------
-    class _SolicitudVM:
-        __slots__ = ("_s", "dias_en_seguimiento", "nivel_prioridad", "es_prioritaria")
-
-        def __init__(self, s, dias: int, nivel: str, es: bool):
-            self._s = s
-            self.dias_en_seguimiento = dias
-            self.nivel_prioridad = nivel
-            self.es_prioritaria = es
-
-        def __getattr__(self, name):
-            return getattr(self._s, name)
-
-    # -------------------------
-    # Params
-    # -------------------------
-    q = (request.args.get('q') or '').strip()
-    estado = (request.args.get('estado') or '').strip().lower()
-
-    def _as_int(name, default, lo=None, hi=None):
-        try:
-            v = int(request.args.get(name, default) or default)
-        except Exception:
-            v = default
-        if lo is not None:
-            v = max(lo, v)
-        if hi is not None:
-            v = min(hi, v)
-        return v
-
-    dias = _as_int('dias', 7, lo=1, hi=90)
-
-    dias_media = _as_int('dias_media', 7, lo=1, hi=365)
-    dias_alta = _as_int('dias_alta', 10, lo=1, hi=365)
-    dias_critica = _as_int('dias_critica', 14, lo=1, hi=365)
-
-    # coherencia (critica >= alta >= media)
-    dias_media = max(1, dias_media)
-    dias_alta = max(dias_media, dias_alta)
-    dias_critica = max(dias_alta, dias_critica)
-
-    page = _as_int('page', 1, lo=1, hi=10_000)
-    per_page = _as_int('per_page', 50, lo=10, hi=200)
-
-    incluye_asignadas = (request.args.get('incluye_asignadas') or '').strip() in ('1', 'true', 'True', 'yes', 'si')
-
-    ahora = utc_now_naive()
-    limite_fecha = ahora - timedelta(days=dias)
-
-    # -------------------------
-    # Estados permitidos
-    # -------------------------
-    allowed_states = {'proceso', 'activa', 'reemplazo'}
-    estados_filtrados = [estado] if (estado and estado in allowed_states) else list(allowed_states)
-
-    # -------------------------
-    # Query base (SOLO fecha_inicio_seguimiento)
-    # -------------------------
-    query = (
-        Solicitud.query
-        .options(
-            joinedload(Solicitud.cliente),
-            joinedload(Solicitud.candidata),
-        )
-        .filter(
-            Solicitud.estado.in_(estados_filtrados),
-            Solicitud.fecha_inicio_seguimiento.isnot(None),
-            Solicitud.fecha_inicio_seguimiento <= limite_fecha,
-        )
+class _SolicitudPrioridadVM:
+    __slots__ = (
+        "_s",
+        "priority_score",
+        "priority_label",
+        "is_stagnant",
+        "last_activity_at",
+        "hours_since_activity",
+        "last_activity_human",
+        "next_step_label",
+        "next_step_reason",
+        "next_step_actionable",
+        "needs_followup_today",
+        "manual_followup_state",
+        "manual_followup_label",
+        "manual_followup_badge_class",
     )
 
-    # Por defecto: solo “sin candidata asignada”
-    if not incluye_asignadas:
-        if hasattr(Solicitud, 'candidata_id'):
-            query = query.filter(or_(Solicitud.candidata_id.is_(None), Solicitud.candidata_id == 0))
+    def __init__(self, s, *, score: int, label: str, stagnant: bool, last_activity_at, hours_since: int, today_rd):
+        self._s = s
+        self.priority_score = int(score)
+        self.priority_label = label
+        self.is_stagnant = bool(stagnant)
+        self.last_activity_at = last_activity_at
+        self.hours_since_activity = int(hours_since)
+        self.last_activity_human = f"hace {self.hours_since_activity}h" if self.hours_since_activity >= 0 else "—"
+        next_label, next_reason, next_actionable = _solicitudes_prioridad_next_step(
+            estado_raw=getattr(s, 'estado', ''),
+            is_stagnant=self.is_stagnant,
+        )
+        self.next_step_label = next_label
+        self.next_step_reason = next_reason
+        self.next_step_actionable = bool(next_actionable)
+        self.needs_followup_today = _solicitud_needs_followup_today(
+            is_stagnant=self.is_stagnant,
+            priority_label=self.priority_label,
+        )
+        manual_followup = _manual_followup_snapshot(
+            getattr(s, "fecha_seguimiento_manual", None),
+            today_rd=today_rd,
+        )
+        self.manual_followup_state = manual_followup["state"]
+        self.manual_followup_label = manual_followup["label"]
+        self.manual_followup_badge_class = manual_followup["badge_class"]
 
-    # -------------------------
-    # Búsqueda
-    # -------------------------
+    def __getattr__(self, name):
+        return getattr(self._s, name)
+
+
+def _solicitudes_prioridad_as_int(name: str, default: int, *, lo: int | None = None, hi: int | None = None) -> int:
+    try:
+        value = int(request.args.get(name, default) or default)
+    except Exception:
+        value = default
+    if lo is not None:
+        value = max(lo, value)
+    if hi is not None:
+        value = min(hi, value)
+    return value
+
+
+def _solicitudes_prioridad_context():
+    q = (request.args.get('q') or '').strip()
+    estado = (request.args.get('estado') or '').strip().lower()
+    prioridad = (request.args.get('prioridad') or '').strip().lower()
+    estancadas = (request.args.get('estancadas') or '').strip() in ('1', 'true', 'True', 'yes', 'si')
+    page = _solicitudes_prioridad_as_int('page', 1, lo=1, hi=10_000)
+    per_page = _solicitudes_prioridad_as_int('per_page', 25, lo=10, hi=200)
+    ahora = utc_now_naive()
+    today_value = rd_today()
+
+    allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pagada']
+    allowed_priority = ['alta', 'media', 'baja']
+    if estado not in allowed_states:
+        estado = ''
+    if prioridad not in allowed_priority:
+        prioridad = ''
+    estados_filtrados = [estado] if estado else list(allowed_states)
+
+    solicitud_attrs = []
+    for attr in (
+        'id',
+        'cliente_id',
+        'codigo_solicitud',
+        'ciudad_sector',
+        'estado',
+        'fecha_solicitud',
+        'fecha_ultima_actividad',
+        'fecha_ultima_modificacion',
+        'updated_at',
+        'fecha_seguimiento_manual',
+        'rutas_cercanas',
+        'modalidad_trabajo',
+        'horario',
+        'candidata_id',
+    ):
+        if hasattr(Solicitud, attr):
+            solicitud_attrs.append(getattr(Solicitud, attr))
+
+    cliente_attrs = []
+    for attr in ('id', 'nombre_completo', 'codigo'):
+        if hasattr(Cliente, attr):
+            cliente_attrs.append(getattr(Cliente, attr))
+
+    query = Solicitud.query
+    options_list = []
+    if solicitud_attrs:
+        options_list.append(load_only(*solicitud_attrs))
+    try:
+        if cliente_attrs:
+            options_list.append(joinedload(Solicitud.cliente).load_only(*cliente_attrs))
+        else:
+            options_list.append(joinedload(Solicitud.cliente))
+    except Exception:
+        pass
+    if options_list:
+        query = query.options(*options_list)
+    query = query.filter(Solicitud.estado.in_(estados_filtrados))
+
     if q:
         like = f"%{q}%"
         filtros = []
-
         for attr in ('codigo_solicitud', 'ciudad_sector', 'rutas_cercanas', 'modalidad_trabajo', 'horario'):
             if hasattr(Solicitud, attr):
                 filtros.append(getattr(Solicitud, attr).ilike(like))
@@ -7452,69 +11665,181 @@ def solicitudes_prioridad():
                     query = query.outerjoin(Candidata, Solicitud.candidata_id == Candidata.fila)
             except Exception:
                 pass
-
             query = query.filter(or_(*filtros))
 
-    # Orden: más antiguas primero (prioridad real)
-    query = query.order_by(Solicitud.fecha_inicio_seguimiento.asc(), Solicitud.id.asc())
+    rows = query.all()
+    wrapped = []
+    for s in (rows or []):
+        score, label, stale, hours = _solicitud_priority_snapshot(s, now_dt=ahora)
+        if prioridad and label != prioridad:
+            continue
+        if estancadas and not stale:
+            continue
+        wrapped.append(_SolicitudPrioridadVM(
+            s,
+            score=score,
+            label=label,
+            stagnant=stale,
+            last_activity_at=_solicitud_last_activity_at(s),
+            hours_since=hours,
+            today_rd=today_value,
+        ))
 
-    total = query.count()
-    solicitudes = (
-        query.offset((page - 1) * per_page)
-             .limit(per_page)
-             .all()
+    wrapped.sort(
+        key=lambda item: (
+            -int(item.priority_score),
+            0 if item.is_stagnant else 1,
+            -int(item.hours_since_activity),
+            int(getattr(item, 'id', 0) or 0),
+        )
     )
 
-    # -------------------------
-    # Helpers (para tu template)
-    # -------------------------
-    def _to_dt(d):
-        if not d:
-            return None
-        if isinstance(d, datetime):
-            return d
-        try:
-            return datetime(d.year, d.month, d.day)
-        except Exception:
-            return None
+    total = len(wrapped)
+    responsible_summary_raw: dict[int | None, dict] = {}
+    wrapped_ids = [int(getattr(item, 'id', 0) or 0) for item in wrapped if int(getattr(item, 'id', 0) or 0) > 0]
+    last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(wrapped_ids)
+    actor_ids = sorted({
+        int(uid) for uid in (last_actor_by_solicitud.values() or [])
+        if uid is not None and int(uid or 0) > 0
+    })
+    username_by_actor = _staff_username_map(actor_ids)
 
-    def _dias_en_seguimiento(s) -> int:
-        dt = _to_dt(getattr(s, 'fecha_inicio_seguimiento', None))
-        if not dt:
-            return 0
-        return max(0, int((ahora - dt).total_seconds() // 86400))
+    count_activa = 0
+    count_espera_pago = 0
+    count_pagada = 0
+    count_stagnant = 0
 
-    def _nivel_por_dias(n: int) -> str:
-        if n >= dias_critica:
-            return 'critica'
-        if n >= dias_alta:
-            return 'alta'
-        if n >= dias_media:
-            return 'media'
-        return 'normal'
+    for item in wrapped:
+        sid = int(getattr(item, 'id', 0) or 0)
+        actor_user_id = last_actor_by_solicitud.get(sid)
+        if actor_user_id is not None:
+            try:
+                actor_user_id = int(actor_user_id)
+            except Exception:
+                actor_user_id = None
+        if actor_user_id is not None and actor_user_id <= 0:
+            actor_user_id = None
+        key = actor_user_id if actor_user_id is not None else None
+        if key not in responsible_summary_raw:
+            responsible_summary_raw[key] = {
+                "actor_user_id": key,
+                "responsable_label": username_by_actor.get(key, f"Staff #{key}") if key is not None else "Sin responsable",
+                "total": 0,
+                "stagnant": 0,
+                "high_priority": 0,
+                "espera_pago": 0,
+                "needs_today": 0,
+            }
+        bucket = responsible_summary_raw[key]
+        bucket["total"] += 1
+        if bool(getattr(item, 'is_stagnant', False)):
+            bucket["stagnant"] += 1
+            count_stagnant += 1
+        if str(getattr(item, 'priority_label', '') or '').strip().lower() == 'alta':
+            bucket["high_priority"] += 1
+        if str(getattr(item, 'estado', '') or '').strip().lower() == 'espera_pago':
+            bucket["espera_pago"] += 1
+            count_espera_pago += 1
+        elif str(getattr(item, 'estado', '') or '').strip().lower() == 'activa':
+            count_activa += 1
+        elif str(getattr(item, 'estado', '') or '').strip().lower() == 'pagada':
+            count_pagada += 1
+        if bool(getattr(item, 'needs_followup_today', False)):
+            bucket["needs_today"] += 1
 
-    wrapped = []
-    for s in (solicitudes or []):
-        n = _dias_en_seguimiento(s)
-        nivel = _nivel_por_dias(n)
-        es = n >= dias_media
-        wrapped.append(_SolicitudVM(s, dias=n, nivel=nivel, es=es))
+    responsible_summary = sorted(
+        (value for key, value in responsible_summary_raw.items() if key is not None),
+        key=lambda row: (-int(row["total"]), str(row["responsable_label"]).lower()),
+    )
+    if None in responsible_summary_raw:
+        responsible_summary.append(responsible_summary_raw[None])
 
-    return render_template(
-        'admin/solicitudes_prioridad.html',
-        solicitudes=wrapped,
+    start = (page - 1) * per_page
+    end = start + per_page
+    paged = wrapped[start:end]
+
+    return dict(
+        solicitudes=paged,
         q=q,
         estado=estado,
-        dias=dias,
-        dias_media=dias_media,
-        dias_alta=dias_alta,
-        dias_critica=dias_critica,
+        prioridad=prioridad,
+        estancadas=estancadas,
         page=page,
         per_page=per_page,
         total=total,
-        has_more=(page * per_page) < total,
-        incluye_asignadas=incluye_asignadas
+        total_count=total,
+        count_activa=count_activa,
+        count_espera_pago=count_espera_pago,
+        count_pagada=count_pagada,
+        count_stagnant=count_stagnant,
+        responsible_summary=responsible_summary,
+        has_more=end < total,
+        allowed_states=allowed_states,
+        allowed_priority=allowed_priority,
     )
+
+
+@admin_bp.route('/solicitudes/prioridad')
+@login_required
+@admin_required
+def solicitudes_prioridad():
+    with _p1c1_perf_scope("solicitudes_prioridad") as perf_done:
+        list_ctx = _solicitudes_prioridad_context()
+        if _admin_async_wants_json():
+            html = render_template('admin/_solicitudes_prioridad_results.html', **list_ctx)
+            payload = _admin_async_payload(
+                success=True,
+                message='Listado actualizado.',
+                category='info',
+                replace_html=html,
+                update_target='#prioridadAsyncRegion',
+                extra={
+                    "page": int(list_ctx["page"]),
+                    "per_page": int(list_ctx["per_page"]),
+                    "total": int(list_ctx["total"]),
+                    "query": list_ctx["q"],
+                    "estado": list_ctx["estado"],
+                    "prioridad": list_ctx["prioridad"],
+                    "estancadas": bool(list_ctx["estancadas"]),
+                    "total_count": int(list_ctx["total_count"]),
+                    "count_activa": int(list_ctx["count_activa"]),
+                    "count_espera_pago": int(list_ctx["count_espera_pago"]),
+                    "count_pagada": int(list_ctx["count_pagada"]),
+                    "count_stagnant": int(list_ctx["count_stagnant"]),
+                },
+            )
+            response = jsonify(payload)
+            response.status_code = 200
+            return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "async_full"})
+
+        html = render_template('admin/solicitudes_prioridad.html', **list_ctx)
+        return perf_done(html, extra={"mode": "full"})
+
+
+@admin_bp.route('/solicitudes/prioridad/_summary')
+@login_required
+@admin_required
+def solicitudes_prioridad_summary_fragment():
+    with _p1c1_perf_scope("solicitudes_prioridad_summary_fragment") as perf_done:
+        list_ctx = _solicitudes_prioridad_context()
+        html = render_template('admin/_solicitudes_prioridad_summary_region.html', **list_ctx)
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "prioridadSummaryAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_summary"})
+
+
+@admin_bp.route('/solicitudes/prioridad/_responsables')
+@login_required
+@admin_required
+def solicitudes_prioridad_responsables_fragment():
+    with _p1c1_perf_scope("solicitudes_prioridad_responsables_fragment") as perf_done:
+        list_ctx = _solicitudes_prioridad_context()
+        html = render_template('admin/_solicitudes_prioridad_responsables_region.html', **list_ctx)
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "prioridadResponsablesAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_responsables"})
 
 
 
@@ -7619,95 +11944,166 @@ def api_candidatas():
 @login_required
 @staff_required
 def listar_solicitudes():
-    q = (request.args.get('q') or '').strip()
-    estado = (request.args.get('estado') or '').strip().lower()
+    with _p1c1_perf_scope("solicitudes_list") as perf_done:
+        q = (request.args.get('q') or '').strip()
+        estado = (request.args.get('estado') or '').strip().lower()
 
-    try:
-        page = int(request.args.get('page', 1) or 1)
-    except Exception:
-        page = 1
-    page = max(1, page)
+        try:
+            page = int(request.args.get('page', 1) or 1)
+        except Exception:
+            page = 1
+        page = max(1, page)
 
-    try:
-        per_page = int(request.args.get('per_page', 25) or 25)
-    except Exception:
-        per_page = 25
-    per_page = max(10, min(per_page, 200))
+        try:
+            per_page = int(request.args.get('per_page', 25) or 25)
+        except Exception:
+            per_page = 25
+        per_page = max(10, min(per_page, 200))
 
-    allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pagada', 'cancelada']
+        allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pagada', 'cancelada']
 
-    query = (
-        Solicitud.query
-        .options(
-            load_only(
-                Solicitud.id,
-                Solicitud.cliente_id,
-                Solicitud.candidata_id,
-                Solicitud.codigo_solicitud,
-                Solicitud.ciudad_sector,
-                Solicitud.estado,
-                Solicitud.fecha_solicitud,
-                Solicitud.last_copiado_at,
-            ),
-            joinedload(Solicitud.cliente),
-            joinedload(Solicitud.candidata),
-            selectinload(Solicitud.reemplazos).load_only(
-                Reemplazo.id,
-                Reemplazo.fecha_inicio_reemplazo,
-                Reemplazo.fecha_fin_reemplazo,
-                Reemplazo.created_at,
-            ),
-        )
-    )
-
-    if estado and estado in allowed_states:
-        query = query.filter(Solicitud.estado == estado)
-    else:
-        estado = ''
-
-    if q:
-        like = f"%{q}%"
         query = (
-            query
-            .outerjoin(Cliente, Solicitud.cliente_id == Cliente.id)
-            .outerjoin(Candidata, Solicitud.candidata_id == Candidata.fila)
-            .filter(or_(
-                Solicitud.codigo_solicitud.ilike(like),
-                Solicitud.ciudad_sector.ilike(like),
-                Solicitud.rutas_cercanas.ilike(like),
-                Cliente.nombre_completo.ilike(like),
-                Cliente.codigo.ilike(like),
-                Cliente.telefono.ilike(like),
-                Candidata.nombre_completo.ilike(like),
-                Candidata.codigo.ilike(like),
-                Candidata.cedula.ilike(like),
-            ))
+            Solicitud.query
+            .options(
+                load_only(
+                    Solicitud.id,
+                    Solicitud.cliente_id,
+                    Solicitud.candidata_id,
+                    Solicitud.codigo_solicitud,
+                    Solicitud.ciudad_sector,
+                    Solicitud.estado,
+                    Solicitud.fecha_solicitud,
+                    Solicitud.last_copiado_at,
+                ),
+                joinedload(Solicitud.cliente),
+                joinedload(Solicitud.candidata),
+                selectinload(Solicitud.reemplazos).load_only(
+                    Reemplazo.id,
+                    Reemplazo.fecha_inicio_reemplazo,
+                    Reemplazo.fecha_fin_reemplazo,
+                    Reemplazo.created_at,
+                ),
+            )
         )
 
-    query = query.order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
-    total = query.order_by(None).count()
+        if estado and estado in allowed_states:
+            query = query.filter(Solicitud.estado == estado)
+        else:
+            estado = ''
 
-    solicitudes = (
-        query
-        .offset((page - 1) * per_page)
-        .limit(per_page + 1)
-        .all()
-    )
-    has_more = len(solicitudes) > per_page
-    if has_more:
-        solicitudes = solicitudes[:per_page]
+        if q:
+            like = f"%{q}%"
+            query = (
+                query
+                .outerjoin(Cliente, Solicitud.cliente_id == Cliente.id)
+                .outerjoin(Candidata, Solicitud.candidata_id == Candidata.fila)
+                .filter(or_(
+                    Solicitud.codigo_solicitud.ilike(like),
+                    Solicitud.ciudad_sector.ilike(like),
+                    Solicitud.rutas_cercanas.ilike(like),
+                    Cliente.nombre_completo.ilike(like),
+                    Cliente.codigo.ilike(like),
+                    Cliente.telefono.ilike(like),
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.codigo.ilike(like),
+                    Candidata.cedula.ilike(like),
+                ))
+            )
 
-    reemplazos_activos = {}
-    for s in solicitudes:
-        repl = _active_reemplazo_for_solicitud(s)
-        if repl:
-            reemplazos_activos[s.id] = repl
+        query = query.order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+        total = query.order_by(None).count()
 
-    proc_count = Solicitud.query.filter_by(estado='proceso').count()
+        solicitudes = (
+            query
+            .offset((page - 1) * per_page)
+            .limit(per_page + 1)
+            .all()
+        )
+        has_more = len(solicitudes) > per_page
+        if has_more:
+            solicitudes = solicitudes[:per_page]
 
+        reemplazos_activos = {}
+        for s in solicitudes:
+            repl = _active_reemplazo_for_solicitud(s)
+            if repl:
+                reemplazos_activos[s.id] = repl
+
+        proc_count, copiable_count, copiable_warning = _solicitudes_summary_counts()
+        if copiable_warning and (not _admin_async_wants_json()):
+            flash(copiable_warning, "warning")
+
+        role = (
+            str(getattr(current_user, "role", "") or "").strip().lower()
+            or str(session.get("role", "") or "").strip().lower()
+        )
+        is_admin_role = role in ("owner", "admin")
+
+        list_ctx = dict(
+            q=q,
+            estado=estado,
+            solicitudes=solicitudes,
+            reemplazos_activos=reemplazos_activos,
+            is_admin_role=is_admin_role,
+            total=total,
+            page=page,
+            per_page=per_page,
+            has_more=has_more,
+        )
+
+        if _admin_async_wants_json():
+            html = render_template('admin/_solicitudes_list_results.html', **list_ctx)
+            payload = _admin_async_payload(
+                success=True,
+                message='Listado actualizado.',
+                category='info',
+                replace_html=html,
+                update_target='#solicitudesAsyncRegion',
+                extra={
+                    "page": page,
+                    "per_page": per_page,
+                    "total": total,
+                    "query": q,
+                    "estado": estado,
+                },
+            )
+            response = jsonify(payload)
+            response.status_code = 200
+            return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "async_list"})
+
+        html = render_template(
+            'admin/solicitudes_list.html',
+            proc_count=proc_count,
+            copiable_count=copiable_count,
+            allowed_states=allowed_states,
+            **list_ctx,
+        )
+        return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
+
+
+@admin_bp.route('/solicitudes/_summary')
+@login_required
+@staff_required
+def solicitudes_summary_fragment():
+    with _p1c1_perf_scope("solicitudes_summary_fragment") as perf_done:
+        proc_count, copiable_count, _warning = _solicitudes_summary_counts()
+        html = render_template(
+            'admin/_solicitudes_summary_region.html',
+            proc_count=proc_count,
+            copiable_count=copiable_count,
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "solicitudesSummaryAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_summary"})
+
+
+def _solicitudes_summary_counts() -> tuple[int, int, str]:
+    proc_count = int(Solicitud.query.filter_by(estado='proceso').count() or 0)
     start_utc, _ = _today_utc_bounds()
+    warning = ""
     try:
-        copiable_count = (
+        copiable_count = int(
             Solicitud.query
             .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
             .filter(
@@ -7717,36 +12113,20 @@ def listar_solicitudes():
                 )
             )
             .count()
+            or 0
         )
     except SQLAlchemyError:
         db.session.rollback()
-        copiable_count = Solicitud.query.filter(Solicitud.estado.in_(('activa', 'reemplazo'))).count()
-        flash(
-            "No se pudo aplicar el filtro de copia diaria; mostrando el total de solicitudes activas/reemplazo.",
-            "warning",
+        copiable_count = int(
+            Solicitud.query
+            .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
+            .count()
+            or 0
         )
-
-    role = (
-        str(getattr(current_user, "role", "") or "").strip().lower()
-        or str(session.get("role", "") or "").strip().lower()
-    )
-    is_admin_role = role in ("owner", "admin")
-
-    return render_template(
-        'admin/solicitudes_list.html',
-        proc_count=proc_count,
-        copiable_count=copiable_count,
-        q=q,
-        estado=estado,
-        allowed_states=allowed_states,
-        solicitudes=solicitudes,
-        reemplazos_activos=reemplazos_activos,
-        is_admin_role=is_admin_role,
-        total=total,
-        page=page,
-        per_page=per_page,
-        has_more=has_more,
-    )
+        warning = (
+            "No se pudo aplicar el filtro de copia diaria; mostrando el total de solicitudes activas/reemplazo."
+        )
+    return proc_count, copiable_count, warning
 
 
 def _matching_created_by() -> str:
@@ -7763,6 +12143,7 @@ def _matching_created_by() -> str:
 _NOTIF_TIPO_CANDIDATAS_ENVIADAS = "candidatas_enviadas"
 _ACTIVE_ASSIGNMENT_STATUS = ("enviada", "vista", "seleccionada")
 _ASSIGNMENT_CLOSEABLE_STATUS = ("sugerida", "enviada", "vista", "seleccionada")
+_CANCEL_RELEASEABLE_STATUS = ("sugerida", "enviada", "vista", "seleccionada")
 
 
 def _upsert_cliente_notificacion_candidatas(solicitud: Solicitud, count: int) -> None:
@@ -7866,43 +12247,59 @@ def _sync_solicitud_candidatas_after_assignment(solicitud: Solicitud, assigned_c
     """
     if not solicitud or not getattr(solicitud, "id", None) or not assigned_candidata_id:
         return
-
-    now_iso = iso_utc_z(utc_now_naive())
-    actor_value = actor or _matching_created_by()
-
-    assigned_row = (
-        SolicitudCandidata.query
-        .filter_by(solicitud_id=solicitud.id, candidata_id=int(assigned_candidata_id))
-        .first()
+    invariant_sync_solicitud_candidatas_after_assignment(
+        solicitud=solicitud,
+        assigned_candidata_id=int(assigned_candidata_id),
+        actor=(actor or _matching_created_by()),
     )
-    if assigned_row:
-        assigned_row.status = "seleccionada"
-        assigned_row.created_by = actor_value
-    else:
-        assigned_row = SolicitudCandidata(
-            solicitud_id=solicitud.id,
-            candidata_id=int(assigned_candidata_id),
-            status="seleccionada",
-            created_by=actor_value,
+
+
+def _with_for_update_if_supported(query):
+    if query is None or not hasattr(query, "with_for_update"):
+        return query
+    try:
+        return query.with_for_update()
+    except Exception:
+        return query
+
+
+def _lock_candidata_for_update(candidata_id: int) -> Candidata | None:
+    try:
+        cid = int(candidata_id)
+    except Exception:
+        return None
+    query_obj = getattr(Candidata, "query", None)
+    if query_obj is None:
+        return None
+    if hasattr(query_obj, "filter_by"):
+        query = query_obj.filter_by(fila=cid)
+        query = _with_for_update_if_supported(query)
+        if hasattr(query, "first"):
+            return query.first()
+    if hasattr(query_obj, "get"):
+        try:
+            return query_obj.get(cid)
+        except Exception:
+            return None
+    return None
+
+
+def _release_solicitud_candidatas_on_cancel(
+    solicitud: Solicitud,
+    *,
+    actor: str = "",
+    motivo: str = "",
+) -> dict:
+    if not solicitud or not getattr(solicitud, "id", None):
+        return {"released_count": 0, "candidata_ids": []}
+    try:
+        return invariant_release_solicitud_candidatas_on_cancel(
+            solicitud=solicitud,
+            actor=(actor or _matching_created_by()),
+            motivo=motivo or "",
         )
-        db.session.add(assigned_row)
-
-    rows = (
-        SolicitudCandidata.query
-        .filter_by(solicitud_id=solicitud.id)
-        .all()
-    )
-    for row in rows:
-        if int(getattr(row, "candidata_id", 0) or 0) == int(assigned_candidata_id):
-            continue
-        if (getattr(row, "status", None) or "") not in _ASSIGNMENT_CLOSEABLE_STATUS:
-            continue
-        row.status = "liberada"
-        snapshot = row.breakdown_snapshot if isinstance(row.breakdown_snapshot, dict) else {}
-        snapshot["client_action"] = "liberada_por_asignacion"
-        snapshot["client_action_at"] = now_iso
-        snapshot["assigned_candidata_id"] = int(assigned_candidata_id)
-        row.breakdown_snapshot = snapshot
+    except Exception:
+        return {"released_count": 0, "candidata_ids": []}
 
 
 def _staff_actor_name() -> str:
@@ -7915,16 +12312,125 @@ def _staff_actor_name() -> str:
     return str(actor)[:100]
 
 
+def _admin_business_actor_key() -> str:
+    actor = (_staff_actor_name() or "staff").strip().lower()[:80]
+    ip = (_client_ip() or "0.0.0.0").strip().lower()[:64]
+    return f"{actor}:{ip}"
+
+
+def _admin_block_sensitive_action(
+    *,
+    scope: str,
+    entity_type: str,
+    entity_id: int | str,
+    limit: int,
+    window_seconds: int,
+    min_interval_seconds: int = 0,
+    summary: str,
+    next_url: str,
+    fallback: str,
+) -> Response | None:
+    actor_key = _admin_business_actor_key()
+    blocked, _ = enforce_business_limit(
+        cache_obj=cache,
+        scope=scope,
+        actor=actor_key,
+        limit=limit,
+        window_seconds=window_seconds,
+        reason="admin_action_burst",
+        summary=summary,
+        metadata={"route": (request.path or ""), "entity_type": entity_type, "entity_id": str(entity_id)},
+    )
+    if blocked:
+        _audit_log(
+            action_type="BUSINESS_FLOW_BLOCKED",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            summary=summary,
+            metadata={"rule": "admin_action_burst", "scope": scope, "actor": actor_key},
+            success=False,
+            error="admin_action_burst_blocked",
+        )
+        flash("Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.", "warning")
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    if int(min_interval_seconds or 0) > 0:
+        blocked_fast, _ = enforce_min_human_interval(
+            cache_obj=cache,
+            scope=f"{scope}_interval",
+            actor=f"{actor_key}:{entity_type}:{entity_id}",
+            min_seconds=int(min_interval_seconds),
+            reason="admin_non_human_timing",
+            summary=summary,
+            metadata={"route": (request.path or ""), "entity_type": entity_type, "entity_id": str(entity_id)},
+        )
+        if blocked_fast:
+            _audit_log(
+                action_type="BUSINESS_FLOW_BLOCKED",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                summary=summary,
+                metadata={"rule": "admin_non_human_timing", "scope": f"{scope}_interval", "actor": actor_key},
+                success=False,
+                error="admin_non_human_timing_blocked",
+            )
+            flash("Acción bloqueada temporalmente por ritmo inusual. Intenta de nuevo en unos segundos.", "warning")
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    return None
+
+
+def _admin_noop_repeat_blocked(
+    *,
+    scope: str,
+    entity_type: str,
+    entity_id: int | str,
+    state: str,
+    summary: str,
+) -> bool:
+    actor_key = _admin_business_actor_key()
+    blocked, _ = enforce_business_limit(
+        cache_obj=cache,
+        scope=f"{scope}_noop",
+        actor=f"{actor_key}:{entity_type}:{entity_id}:{(state or '').strip().lower()}",
+        limit=1,
+        window_seconds=180,
+        reason="admin_repeated_noop",
+        summary=summary,
+        metadata={
+            "route": (request.path or ""),
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
+            "state": (state or "").strip().lower(),
+        },
+    )
+    if not blocked:
+        return False
+    _audit_log(
+        action_type="BUSINESS_FLOW_BLOCKED",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        summary=summary,
+        metadata={"rule": "admin_repeated_noop", "scope": f"{scope}_noop", "state": (state or "").strip().lower()},
+        success=False,
+        error="admin_repeated_noop_blocked",
+    )
+    return True
+
+
 def _mark_candidata_estado(cand: Candidata, nuevo_estado: str, *, nota_descalificacion: str | None = None) -> None:
     if not cand:
         return
-    cand.estado = str(nuevo_estado or "").strip().lower()
-    if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = utc_now_naive()
-    if hasattr(cand, "usuario_cambio_estado"):
-        cand.usuario_cambio_estado = _staff_actor_name()
-    if nota_descalificacion is not None and hasattr(cand, "nota_descalificacion"):
-        cand.nota_descalificacion = (nota_descalificacion or "").strip() or None
+    try:
+        invariant_change_candidate_state(
+            candidata_id=int(getattr(cand, "fila", 0) or 0),
+            new_state=str(nuevo_estado or "").strip().lower(),
+            actor=_staff_actor_name(),
+            nota_descalificacion=nota_descalificacion,
+            candidata_obj=cand,
+        )
+    except InvariantConflictError:
+        raise
 
 
 def _log_lista_state_change(cand: Candidata, *, source: str, faltantes: list[str] | None = None, from_state: str | None = None) -> None:
@@ -7962,116 +12468,146 @@ def _active_reemplazo_for_solicitud(solicitud: Solicitud):
     )[0]
 
 
-@admin_bp.route('/matching/solicitudes')
-@login_required
-@staff_required
-def matching_solicitudes():
-    solicitudes = (
-        Solicitud.query
-        .options(joinedload(Solicitud.cliente))
-        .filter(Solicitud.estado.in_(("activa", "reemplazo")))
-        .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
-        .limit(300)
-        .all()
-    )
-    return render_template("admin/matching_solicitudes.html", solicitudes=solicitudes)
-
-
-@admin_bp.route('/matching/solicitudes/<int:solicitud_id>')
-@login_required
-@staff_required
-def matching_detalle_solicitud(solicitud_id: int):
-    solicitud = (
-        Solicitud.query
-        .options(joinedload(Solicitud.cliente), joinedload(Solicitud.reemplazos))
-        .filter_by(id=solicitud_id)
-        .first_or_404()
-    )
-    has_reemplazo_activo = _active_reemplazo_for_solicitud(solicitud) is not None
-    ranked_candidates = rank_candidates(solicitud, top_k=30)
-    ranked_candidate_ids = []
-    for item in ranked_candidates:
-        try:
-            ranked_candidate_ids.append(int(item["candidate"].fila))
-        except Exception:
-            continue
-    blocked_candidate_ids, rejected_candidate_ids = _matching_candidate_flags(solicitud, ranked_candidate_ids)
-    disqualified_candidate_ids = {
-        int(item["candidate"].fila)
-        for item in ranked_candidates
-        if candidata_esta_descalificada(item.get("candidate"))
-    }
-    sent_candidates = (
-        SolicitudCandidata.query
-        .filter_by(solicitud_id=solicitud.id)
-        .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
-        .all()
-    )
-    return render_template(
-        "admin/matching_detalle.html",
-        solicitud=solicitud,
-        ranked_candidates=ranked_candidates,
-        sent_candidates=sent_candidates,
-        blocked_candidate_ids=blocked_candidate_ids,
-        rejected_candidate_ids=rejected_candidate_ids,
-        disqualified_candidate_ids=disqualified_candidate_ids,
-        has_reemplazo_activo=has_reemplazo_activo,
-    )
-
-
-@admin_bp.route('/matching/solicitudes/<int:solicitud_id>/enviar', methods=['POST'])
-@login_required
-@staff_required
-def matching_enviar_candidatas(solicitud_id: int):
-    solicitud = Solicitud.query.filter_by(id=solicitud_id).first_or_404()
-    raw_ids = request.form.getlist("candidata_ids")
-    candidata_ids = []
-    for raw in raw_ids:
+def _parse_matching_candidata_ids(raw_ids: list[str] | None) -> list[int]:
+    parsed: list[int] = []
+    for raw in (raw_ids or []):
         try:
             val = int(str(raw).strip())
             if val > 0:
-                candidata_ids.append(val)
+                parsed.append(val)
         except Exception:
             continue
-    candidata_ids = sorted(set(candidata_ids))
+    return sorted(set(parsed))
 
+
+def _matching_force_send_enabled(raw_value) -> bool:
+    return str(raw_value or "").strip().lower() in ("1", "true", "on", "yes")
+
+
+def _matching_send_result(
+    *,
+    success: bool,
+    message: str,
+    category: str,
+    error_code: str | None = None,
+    status_code: int = 200,
+) -> dict:
+    return {
+        "success": bool(success),
+        "message": str(message or ""),
+        "category": str(category or "info"),
+        "error_code": error_code,
+        "status_code": int(status_code or 200),
+    }
+
+
+def _matching_send_candidatas_result(
+    *,
+    solicitud_id: int,
+    candidata_ids: list[int],
+    force_send: bool,
+) -> dict:
+    solicitud = Solicitud.query.filter_by(id=solicitud_id).first_or_404()
     if not candidata_ids:
-        flash("Selecciona al menos una candidata para enviar.", "warning")
-        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+        return _matching_send_result(
+            success=False,
+            message="Selecciona al menos una candidata para enviar.",
+            category="warning",
+            error_code="no_selection",
+        )
 
-    force_send = str(request.form.get("force_send") or "").strip() in ("1", "true", "on", "yes")
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(solicitud, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _matching_send_result(
+                success=False,
+                message="La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.",
+                category="warning",
+                error_code="conflict",
+                status_code=409,
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="matching_send",
+        entity_type="Solicitud",
+        entity_id=solicitud.id,
+        action="matching_enviar_candidatas",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _matching_send_result(
+                success=False,
+                message=_idempotency_conflict_message(),
+                category="warning",
+                error_code="idempotency_conflict",
+                status_code=409,
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _matching_send_result(
+                success=True,
+                message="Acción ya aplicada previamente.",
+                category="info",
+                status_code=200,
+            )
+        return _matching_send_result(
+            success=False,
+            message="Solicitud duplicada detectada. Espera y vuelve a intentar.",
+            category="warning",
+            error_code="conflict",
+            status_code=409,
+        )
+
+    locked_candidates: dict[int, Candidata] = {}
+    for candidata_id in candidata_ids:
+        cand = _lock_candidata_for_update(candidata_id)
+        if cand is not None:
+            locked_candidates[int(cand.fila)] = cand
+
+    if not locked_candidates:
+        return _matching_send_result(
+            success=False,
+            message="No se encontraron candidatas válidas para enviar.",
+            category="warning",
+            error_code="no_valid_candidates",
+        )
+
     blocked_candidate_ids, rejected_candidate_ids = _matching_candidate_flags(solicitud, candidata_ids)
     selected_blocked = sorted(set(candidata_ids) & blocked_candidate_ids)
     if selected_blocked:
-        flash(
-            "Esta candidata ya fue enviada a otro cliente. Solo puede enviarse a otro cuando sea rechazada.",
-            "danger",
+        return _matching_send_result(
+            success=False,
+            message="Esta candidata ya fue enviada a otro cliente. Solo puede enviarse a otro cuando sea rechazada.",
+            category="danger",
+            error_code="blocked_other_client",
+            status_code=409,
         )
-        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
 
     selected_rejected = sorted(set(candidata_ids) & rejected_candidate_ids)
     if selected_rejected and not force_send:
-        flash(
-            "⚠️ Esta candidata fue rechazada por este cliente anteriormente. Marca 'Enviar de todas formas' para confirmar.",
-            "warning",
+        return _matching_send_result(
+            success=False,
+            message="⚠️ Esta candidata fue rechazada por este cliente anteriormente. Marca 'Enviar de todas formas' para confirmar.",
+            category="warning",
+            error_code="rejected_without_force",
         )
-        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
 
     selected_disqualified = {
         int(c.fila)
-        for c in Candidata.query.filter(Candidata.fila.in_(candidata_ids)).all()
+        for c in locked_candidates.values()
         if candidata_esta_descalificada(c)
     }
     if selected_disqualified:
-        abort(
-            403,
-            description=(
-                "No se puede enviar una candidata descalificada al cliente."
-            ),
+        return _matching_send_result(
+            success=False,
+            message="No se puede enviar una candidata descalificada al cliente.",
+            category="danger",
+            error_code="disqualified",
         )
 
     selected_not_ready = {}
-    for c in Candidata.query.filter(Candidata.fila.in_(candidata_ids)).all():
+    for c in locked_candidates.values():
         ready_ok, reasons = candidata_is_ready_to_send(c)
         if ready_ok:
             continue
@@ -8082,8 +12618,12 @@ def matching_enviar_candidatas(solicitud_id: int):
         sample_id = sorted(selected_not_ready.keys())[0]
         reasons = selected_not_ready.get(sample_id) or ["Faltan requisitos de completitud."]
         details = "; ".join(reasons[:4])
-        flash(f"Esta candidata no está lista para enviar: {details}", "danger")
-        abort(400, description=f"Esta candidata no está lista para enviar: {details}")
+        return _matching_send_result(
+            success=False,
+            message=f"Esta candidata no está lista para enviar: {details}",
+            category="danger",
+            error_code="not_ready",
+        )
 
     ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
     created_by = _matching_created_by()
@@ -8096,7 +12636,7 @@ def matching_enviar_candidatas(solicitud_id: int):
             state["processed_ids"] = []
             processed_candidates.clear()
             for candidata_id in candidata_ids:
-                cand = Candidata.query.filter_by(fila=candidata_id).first()
+                cand = locked_candidates.get(int(candidata_id))
                 if not cand:
                     continue
 
@@ -8105,6 +12645,9 @@ def matching_enviar_candidatas(solicitud_id: int):
                     .filter_by(solicitud_id=solicitud.id, candidata_id=candidata_id)
                     .first()
                 )
+                exists_status = (getattr(exists, "status", "") or "").strip().lower() if exists else ""
+                if exists and exists_status in _ACTIVE_ASSIGNMENT_STATUS:
+                    raise ValueError("already_sent")
 
                 ranked_item = ranking_map.get(candidata_id) or {"score": 0, "breakdown_snapshot": {}}
                 breakdown_snapshot = ranked_item.get("breakdown_snapshot") or {
@@ -8139,6 +12682,18 @@ def matching_enviar_candidatas(solicitud_id: int):
 
             if int(state.get("processed", 0)) > 0:
                 _upsert_cliente_notificacion_candidatas(solicitud, int(state.get("processed", 0)))
+                _emit_domain_outbox_event(
+                    event_type="MATCHING_CANDIDATAS_ENVIADAS",
+                    aggregate_type="Solicitud",
+                    aggregate_id=solicitud.id,
+                    aggregate_version=(int(getattr(solicitud, "row_version", 0) or 0) + 1),
+                    payload={
+                        "solicitud_id": int(solicitud.id),
+                        "candidata_ids": list(state.get("processed_ids") or []),
+                        "count": int(state.get("processed", 0) or 0),
+                    },
+                )
+                _set_idempotency_response(idem_row, status=200, code="ok")
 
         def _verify_matching_rows() -> bool:
             if int(state.get("processed", 0)) <= 0:
@@ -8182,8 +12737,23 @@ def matching_enviar_candidatas(solicitud_id: int):
                     metadata={"solicitud_id": solicitud.id, "cliente_id": getattr(solicitud, "cliente_id", None)},
                     success=True,
                 )
-            flash(f"Candidata enviada al cliente. Total procesadas: {int(state.get('processed', 0))}.", "success")
-        elif not result.ok:
+            return _matching_send_result(
+                success=True,
+                message=f"Candidata enviada al cliente. Total procesadas: {int(state.get('processed', 0))}.",
+                category="success",
+            )
+
+        if not result.ok and str(getattr(result, "error_message", "") or "").strip().lower() == "already_sent":
+            db.session.rollback()
+            return _matching_send_result(
+                success=False,
+                message="Una o más candidatas ya fueron enviadas en otra sesión. Recarga e intenta nuevamente.",
+                category="warning",
+                error_code="conflict",
+                status_code=409,
+            )
+
+        if not result.ok:
             log_error_event(
                 error_type="MATCHING_ERROR",
                 exc=f"Error robusto enviando candidatas en matching: {result.error_message}",
@@ -8211,10 +12781,20 @@ def matching_enviar_candidatas(solicitud_id: int):
                     success=False,
                     error="No se pudieron enviar candidatas.",
                 )
-            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
-        else:
-            db.session.rollback()
-            flash("No se encontraron candidatas válidas para enviar.", "warning")
+            return _matching_send_result(
+                success=False,
+                message="No se pudo guardar correctamente. Intente nuevamente.",
+                category="danger",
+                error_code="send_failed",
+            )
+
+        db.session.rollback()
+        return _matching_send_result(
+            success=False,
+            message="No se encontraron candidatas válidas para enviar.",
+            category="warning",
+            error_code="no_valid_candidates",
+        )
     except Exception:
         db.session.rollback()
         log_error_event(
@@ -8244,9 +12824,211 @@ def matching_enviar_candidatas(solicitud_id: int):
                 success=False,
                 error="No se pudieron enviar candidatas.",
             )
-        flash("No se pudieron enviar candidatas. Intenta nuevamente.", "danger")
+        return _matching_send_result(
+            success=False,
+            message="No se pudieron enviar candidatas. Intenta nuevamente.",
+            category="danger",
+            error_code="unexpected_error",
+            status_code=500,
+        )
 
+
+@admin_bp.route('/matching/solicitudes')
+@login_required
+@staff_required
+def matching_solicitudes():
+    solicitudes = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente))
+        .filter(Solicitud.estado.in_(("activa", "reemplazo")))
+        .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+        .limit(300)
+        .all()
+    )
+    if _admin_async_wants_json():
+        html = render_template(
+            "admin/_matching_solicitudes_region.html",
+            solicitudes=solicitudes,
+        )
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='Listado de matching actualizado.',
+            category='info',
+            redirect_url=url_for('admin.matching_solicitudes'),
+            replace_html=html,
+            update_target='#matchingSolicitudesAsyncRegion',
+        )), 200
+    return render_template("admin/matching_solicitudes.html", solicitudes=solicitudes)
+
+
+@admin_bp.route('/matching/solicitudes/<int:solicitud_id>')
+@login_required
+@staff_required
+def matching_detalle_solicitud(solicitud_id: int):
+    solicitud = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente), joinedload(Solicitud.reemplazos))
+        .filter_by(id=solicitud_id)
+        .first_or_404()
+    )
+    has_reemplazo_activo = _active_reemplazo_for_solicitud(solicitud) is not None
+    ranked_candidates = rank_candidates(solicitud, top_k=30)
+    ranked_candidate_ids = []
+    for item in ranked_candidates:
+        try:
+            ranked_candidate_ids.append(int(item["candidate"].fila))
+        except Exception:
+            continue
+    blocked_candidate_ids, rejected_candidate_ids = _matching_candidate_flags(solicitud, ranked_candidate_ids)
+    disqualified_candidate_ids = {
+        int(item["candidate"].fila)
+        for item in ranked_candidates
+        if candidata_esta_descalificada(item.get("candidate"))
+    }
+    sent_candidates = (
+        SolicitudCandidata.query
+        .filter_by(solicitud_id=solicitud.id)
+        .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
+        .all()
+    )
+    async_fragment = (request.args.get("fragment") or "").strip().lower()
+    template_ctx = dict(
+        solicitud=solicitud,
+        form_idempotency_key=_new_form_idempotency_key(),
+        ranked_candidates=ranked_candidates,
+        sent_candidates=sent_candidates,
+        blocked_candidate_ids=blocked_candidate_ids,
+        rejected_candidate_ids=rejected_candidate_ids,
+        disqualified_candidate_ids=disqualified_candidate_ids,
+        has_reemplazo_activo=has_reemplazo_activo,
+        async_fragment=async_fragment,
+    )
+    if _admin_async_wants_json():
+        update_target = '#matchingDetalleAsyncRegion'
+        if async_fragment == 'ranking':
+            update_target = '#matchingRankingAsyncRegion'
+        elif async_fragment in ('historial', 'history'):
+            update_target = '#matchingHistoryAsyncRegion'
+        html = render_template("admin/_matching_detalle_region.html", **template_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='Detalle de matching actualizado.',
+            category='info',
+            redirect_url=url_for('admin.matching_detalle_solicitud', solicitud_id=solicitud.id),
+            replace_html=html,
+            update_target=update_target,
+        )), 200
+    return render_template(
+        "admin/matching_detalle.html",
+        **template_ctx,
+    )
+
+
+@admin_bp.route('/matching/solicitudes/<int:solicitud_id>/enviar', methods=['POST'])
+@login_required
+@staff_required
+def matching_enviar_candidatas(solicitud_id: int):
+    candidata_ids = _parse_matching_candidata_ids(request.form.getlist("candidata_ids"))
+    force_send = _matching_force_send_enabled(request.form.get("force_send"))
+    result = _matching_send_candidatas_result(
+        solicitud_id=solicitud_id,
+        candidata_ids=candidata_ids,
+        force_send=force_send,
+    )
+    if result.get("success"):
+        flash(result.get("message") or "Candidatas enviadas.", result.get("category") or "success")
+        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+    error_code = str(result.get("error_code") or "").strip()
+    if error_code in ("conflict", "idempotency_conflict", "blocked_other_client"):
+        flash(result.get("message") or "Conflicto detectado. Recarga e intenta nuevamente.", result.get("category") or "warning")
+        return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+    if error_code == "disqualified":
+        abort(403, description=result.get("message") or "No se puede enviar una candidata descalificada al cliente.")
+    if error_code == "not_ready":
+        flash(result.get("message") or "Esta candidata no está lista para enviar.", "danger")
+        abort(400, description=result.get("message") or "Esta candidata no está lista para enviar.")
+
+    flash(result.get("message") or "No se pudieron enviar candidatas. Intenta nuevamente.", result.get("category") or "danger")
     return redirect(url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id))
+
+
+@admin_bp.route('/matching/solicitudes/<int:solicitud_id>/enviar/ui', methods=['POST'])
+@login_required
+@staff_required
+def matching_enviar_candidatas_ui(solicitud_id: int):
+    candidata_ids = _parse_matching_candidata_ids(request.form.getlist("candidata_ids"))
+    force_send = _matching_force_send_enabled(request.form.get("force_send"))
+    detail_url = url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id)
+    try:
+        result = _matching_send_candidatas_result(
+            solicitud_id=solicitud_id,
+            candidata_ids=candidata_ids,
+            force_send=force_send,
+        )
+    except Exception:
+        result = _matching_send_result(
+            success=False,
+            message="No se pudieron enviar candidatas. Intenta nuevamente.",
+            category="danger",
+            error_code="unexpected_error",
+            status_code=500,
+        )
+
+    http_status = int(result.get("status_code") or 200)
+    if http_status < 200 or http_status > 599:
+        http_status = 200
+    try:
+        solicitud = (
+            Solicitud.query
+            .options(joinedload(Solicitud.cliente), joinedload(Solicitud.reemplazos))
+            .filter_by(id=solicitud_id)
+            .first_or_404()
+        )
+        has_reemplazo_activo = _active_reemplazo_for_solicitud(solicitud) is not None
+        ranked_candidates = rank_candidates(solicitud, top_k=30)
+        ranked_candidate_ids = []
+        for item in ranked_candidates:
+            try:
+                ranked_candidate_ids.append(int(item["candidate"].fila))
+            except Exception:
+                continue
+        blocked_candidate_ids, rejected_candidate_ids = _matching_candidate_flags(solicitud, ranked_candidate_ids)
+        disqualified_candidate_ids = {
+            int(item["candidate"].fila)
+            for item in ranked_candidates
+            if candidata_esta_descalificada(item.get("candidate"))
+        }
+        sent_candidates = (
+            SolicitudCandidata.query
+            .filter_by(solicitud_id=solicitud.id)
+            .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
+            .all()
+        )
+        replace_html = render_template(
+            "admin/_matching_detalle_region.html",
+            solicitud=solicitud,
+            form_idempotency_key=_new_form_idempotency_key(),
+            ranked_candidates=ranked_candidates,
+            sent_candidates=sent_candidates,
+            blocked_candidate_ids=blocked_candidate_ids,
+            rejected_candidate_ids=rejected_candidate_ids,
+            disqualified_candidate_ids=disqualified_candidate_ids,
+            has_reemplazo_activo=has_reemplazo_activo,
+            async_fragment="",
+        )
+    except Exception:
+        replace_html = None
+
+    return jsonify(_admin_async_payload(
+        success=bool(result.get("success")),
+        message=result.get("message") or "",
+        category=result.get("category") or ("success" if result.get("success") else "danger"),
+        redirect_url=detail_url,
+        replace_html=replace_html,
+        update_target="#matchingDetalleAsyncRegion",
+        error_code=result.get("error_code"),
+    )), http_status
 
 
 def _blob_len_expr(col):
@@ -8481,55 +13263,51 @@ def descalificar_candidata(candidata_id: int):
         flash("Debes indicar el motivo de descalificación.", "warning")
         return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
-    cand.estado = "descalificada"
-    if hasattr(cand, "nota_descalificacion"):
-        cand.nota_descalificacion = motivo
-    if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = utc_now_naive()
-    if hasattr(cand, "usuario_cambio_estado"):
-        actor = (
-            getattr(current_user, "username", None)
-            or getattr(current_user, "id", None)
-            or session.get("usuario")
-            or "sistema"
-        )
-        cand.usuario_cambio_estado = str(actor)[:100]
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
 
     try:
-        def _verify_descalificada() -> bool:
-            try:
-                return bool(Candidata.query.filter_by(fila=cand.fila, estado="descalificada").first())
-            except Exception:
-                return str(getattr(cand, "estado", "") or "") == "descalificada"
-
-        result = _execute_form_save(
-            persist_fn=lambda _attempt: None,
-            verify_fn=_verify_descalificada,
+        invariant_change_candidate_state(
+            candidata_id=int(cand.fila),
+            new_state="descalificada",
+            actor=str(actor),
+            nota_descalificacion=motivo,
+            reason=motivo,
+            candidata_obj=cand,
+        )
+        db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_DESCALIFICAR",
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Descalificar candidata {cand.fila}",
+            summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
             metadata={"motivo": motivo},
+            changes={"estado": {"from": None, "to": "descalificada"}},
         )
-        if result.ok:
-            _audit_log(
-                action_type="CANDIDATA_DESCALIFICAR",
-                entity_type="Candidata",
-                entity_id=cand.fila,
-                summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
-                metadata={"motivo": motivo},
-                changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
-            )
-            log_candidata_action(
-                action_type="CANDIDATA_DESQUALIFY",
-                candidata=cand,
-                summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
-                metadata={"motivo": motivo},
-                changes={"estado": {"from": "lista_para_trabajar", "to": "descalificada"}},
-                success=True,
-            )
-            flash("Candidata descalificada correctamente.", "success")
-        else:
-            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
+        log_candidata_action(
+            action_type="CANDIDATA_DESQUALIFY",
+            candidata=cand,
+            summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+            metadata={"motivo": motivo},
+            changes={"estado": {"from": None, "to": "descalificada"}},
+            success=True,
+        )
+        _emit_domain_outbox_event(
+            event_type="CANDIDATA_ESTADO_CAMBIADO",
+            aggregate_type="Candidata",
+            aggregate_id=int(cand.fila),
+            aggregate_version=None,
+            payload={"candidata_id": int(cand.fila), "to": "descalificada", "reason": motivo[:255]},
+        )
+        db.session.commit()
+        flash("Candidata descalificada correctamente.", "success")
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        flash(str(inv_exc) or "Conflicto de estado de candidata.", "warning")
     except Exception:
         db.session.rollback()
         _audit_log(
@@ -8562,54 +13340,48 @@ def reactivar_candidata(candidata_id: int):
     next_url = (request.form.get("next") or "").strip()
     fallback = url_for("buscar_candidata", candidata_id=cand.fila)
 
-    # Estado operativo por defecto para volver a usar en matching/banco.
-    cand.estado = "lista_para_trabajar"
-    if hasattr(cand, "nota_descalificacion"):
-        cand.nota_descalificacion = None
-    if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = utc_now_naive()
-    if hasattr(cand, "usuario_cambio_estado"):
-        actor = (
-            getattr(current_user, "username", None)
-            or getattr(current_user, "id", None)
-            or session.get("usuario")
-            or "sistema"
-        )
-        cand.usuario_cambio_estado = str(actor)[:100]
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
 
     try:
-        def _verify_reactivada() -> bool:
-            try:
-                return bool(Candidata.query.filter_by(fila=cand.fila, estado="lista_para_trabajar").first())
-            except Exception:
-                return str(getattr(cand, "estado", "") or "") == "lista_para_trabajar"
-
-        result = _execute_form_save(
-            persist_fn=lambda _attempt: None,
-            verify_fn=_verify_reactivada,
+        invariant_change_candidate_state(
+            candidata_id=int(cand.fila),
+            new_state="lista_para_trabajar",
+            actor=str(actor),
+            reason="reactivar",
+            candidata_obj=cand,
+        )
+        db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_REACTIVAR",
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Reactivar candidata {cand.fila}",
-            metadata={},
+            summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
         )
-        if result.ok:
-            _audit_log(
-                action_type="CANDIDATA_REACTIVAR",
-                entity_type="Candidata",
-                entity_id=cand.fila,
-                summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
-                changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
-            )
-            log_candidata_action(
-                action_type="CANDIDATA_REACTIVATE",
-                candidata=cand,
-                summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
-                changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
-                success=True,
-            )
-            flash("Candidata reactivada correctamente.", "success")
-        else:
-            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
+        log_candidata_action(
+            action_type="CANDIDATA_REACTIVATE",
+            candidata=cand,
+            summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+            success=True,
+        )
+        _emit_domain_outbox_event(
+            event_type="CANDIDATA_ESTADO_CAMBIADO",
+            aggregate_type="Candidata",
+            aggregate_id=int(cand.fila),
+            aggregate_version=None,
+            payload={"candidata_id": int(cand.fila), "to": "lista_para_trabajar", "reason": "reactivar"},
+        )
+        db.session.commit()
+        flash("Candidata reactivada correctamente.", "success")
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        flash(str(inv_exc) or "Conflicto de estado de candidata.", "warning")
     except Exception:
         db.session.rollback()
         _audit_log(
@@ -8644,51 +13416,48 @@ def marcar_candidata_trabajando(candidata_id: int):
         flash("No se puede marcar como trabajando una candidata descalificada.", "danger")
         return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
-    cand.estado = "trabajando"
-    if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = utc_now_naive()
-    if hasattr(cand, "usuario_cambio_estado"):
-        actor = (
-            getattr(current_user, "username", None)
-            or getattr(current_user, "id", None)
-            or session.get("usuario")
-            or "sistema"
-        )
-        cand.usuario_cambio_estado = str(actor)[:100]
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
 
     try:
-        def _verify_trabajando() -> bool:
-            try:
-                return bool(Candidata.query.filter_by(fila=cand.fila, estado="trabajando").first())
-            except Exception:
-                return str(getattr(cand, "estado", "") or "") == "trabajando"
-
-        result = _execute_form_save(
-            persist_fn=lambda _attempt: None,
-            verify_fn=_verify_trabajando,
+        invariant_change_candidate_state(
+            candidata_id=int(cand.fila),
+            new_state="trabajando",
+            actor=str(actor),
+            reason="manual",
+            candidata_obj=cand,
+        )
+        db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_ESTADO_TRABAJANDO",
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Marcar candidata trabajando {cand.fila}",
-            metadata={},
+            summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
         )
-        if result.ok:
-            _audit_log(
-                action_type="CANDIDATA_ESTADO_TRABAJANDO",
-                entity_type="Candidata",
-                entity_id=cand.fila,
-                summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
-                changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
-            )
-            log_candidata_action(
-                action_type="CANDIDATA_MARK_TRABAJANDO",
-                candidata=cand,
-                summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
-                changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
-                success=True,
-            )
-            flash("Candidata marcada como trabajando.", "success")
-        else:
-            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
+        log_candidata_action(
+            action_type="CANDIDATA_MARK_TRABAJANDO",
+            candidata=cand,
+            summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": "lista_para_trabajar", "to": "trabajando"}},
+            success=True,
+        )
+        _emit_domain_outbox_event(
+            event_type="CANDIDATA_ESTADO_CAMBIADO",
+            aggregate_type="Candidata",
+            aggregate_id=int(cand.fila),
+            aggregate_version=None,
+            payload={"candidata_id": int(cand.fila), "to": "trabajando", "reason": "manual"},
+        )
+        db.session.commit()
+        flash("Candidata marcada como trabajando.", "success")
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        flash(str(inv_exc) or "Conflicto de estado de candidata.", "warning")
     except Exception:
         db.session.rollback()
         log_candidata_action(
@@ -8726,58 +13495,55 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
         return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     estado_previo = (getattr(cand, "estado", None) or "").strip().lower()
-    cand.estado = "lista_para_trabajar"
-    if hasattr(cand, "fecha_cambio_estado"):
-        cand.fecha_cambio_estado = utc_now_naive()
-    if hasattr(cand, "usuario_cambio_estado"):
-        actor = (
-            getattr(current_user, "username", None)
-            or getattr(current_user, "id", None)
-            or session.get("usuario")
-            or "sistema"
-        )
-        cand.usuario_cambio_estado = str(actor)[:100]
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
 
     try:
-        def _verify_lista() -> bool:
-            try:
-                return bool(Candidata.query.filter_by(fila=cand.fila, estado="lista_para_trabajar").first())
-            except Exception:
-                return str(getattr(cand, "estado", "") or "") == "lista_para_trabajar"
-
-        result = _execute_form_save(
-            persist_fn=lambda _attempt: None,
-            verify_fn=_verify_lista,
+        invariant_change_candidate_state(
+            candidata_id=int(cand.fila),
+            new_state="lista_para_trabajar",
+            actor=str(actor),
+            reason="manual",
+            candidata_obj=cand,
+        )
+        db.session.commit()
+        _audit_log(
+            action_type="CANDIDATA_ESTADO_LISTA",
             entity_type="Candidata",
             entity_id=cand.fila,
-            summary=f"Marcar candidata lista_para_trabajar {cand.fila}",
-            metadata={},
+            summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
+            changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
         )
-        if result.ok:
-            _audit_log(
-                action_type="CANDIDATA_ESTADO_LISTA",
-                entity_type="Candidata",
-                entity_id=cand.fila,
-                summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
-                changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
-            )
-            _log_lista_state_change(
-                cand,
-                source="manual",
-                faltantes=[],
-                from_state=estado_previo,
-            )
-            log_candidata_action(
-                action_type="CANDIDATA_ESTADO_LISTA",
-                candidata=cand,
-                summary=f"Estado candidata actualizado a lista para trabajar: {cand.nombre_completo or cand.fila}",
-                metadata={"source": "manual"},
-                changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
-                success=True,
-            )
-            flash("Candidata marcada como lista para trabajar.", "success")
-        else:
-            flash("No se pudo guardar correctamente. Intente nuevamente.", "danger")
+        _log_lista_state_change(
+            cand,
+            source="manual",
+            faltantes=[],
+            from_state=estado_previo,
+        )
+        log_candidata_action(
+            action_type="CANDIDATA_ESTADO_LISTA",
+            candidata=cand,
+            summary=f"Estado candidata actualizado a lista para trabajar: {cand.nombre_completo or cand.fila}",
+            metadata={"source": "manual"},
+            changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+            success=True,
+        )
+        _emit_domain_outbox_event(
+            event_type="CANDIDATA_ESTADO_CAMBIADO",
+            aggregate_type="Candidata",
+            aggregate_id=int(cand.fila),
+            aggregate_version=None,
+            payload={"candidata_id": int(cand.fila), "to": "lista_para_trabajar", "reason": "manual"},
+        )
+        db.session.commit()
+        flash("Candidata marcada como lista para trabajar.", "success")
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        flash(str(inv_exc) or "Conflicto de estado de candidata.", "warning")
     except Exception:
         db.session.rollback()
         log_candidata_action(
@@ -9687,15 +14453,36 @@ def copiar_solicitudes():
 
     has_more = (page * per_page) < total
     is_admin_role = _current_staff_role() in ('admin', 'owner')
-    return render_template(
-        'admin/solicitudes_copiar.html',
+
+    partial_ctx = dict(
         solicitudes=solicitudes,
         q=q,
         page=page,
         per_page=per_page,
         total=total,
         has_more=has_more,
-        is_admin_role=is_admin_role
+        is_admin_role=is_admin_role,
+    )
+
+    if _admin_async_wants_json():
+        html = render_template('admin/_solicitudes_copiar_results.html', **partial_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='Listado actualizado.',
+            category='info',
+            replace_html=html,
+            update_target='#copiarSolicitudesResults',
+            extra={
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "query": q,
+            },
+        )), 200
+
+    return render_template(
+        'admin/solicitudes_copiar.html',
+        **partial_ctx
     )
 
 
@@ -9852,8 +14639,15 @@ def reanudar_espera_perfil_desde_copiar(id):
     fallback = url_for('admin.copiar_solicitudes')
 
     if s.estado != 'espera_pago':
-        flash('La solicitud no está en pausa por espera de perfil.', 'info')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _copiar_action_response(
+            ok=True,
+            message='La solicitud no está en pausa por espera de perfil.',
+            category='info',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": s.estado, "remove_card": False},
+        )
 
     try:
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
@@ -9876,34 +14670,544 @@ def reanudar_espera_perfil_desde_copiar(id):
             summary=f"Solicitud reanudada desde espera de perfil: {s.codigo_solicitud or s.id}",
             changes={"estado": {"from": "espera_pago", "to": restore}},
         )
-        flash(f'Solicitud reanudada y puesta en {restore}.', 'success')
+        return _copiar_action_response(
+            ok=True,
+            message=f'Solicitud reanudada y puesta en {restore}.',
+            category='success',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=200,
+            extra={"solicitud_id": s.id, "estado": restore, "remove_card": False},
+        )
     except Exception:
         db.session.rollback()
-        flash('No se pudo reanudar la solicitud.', 'danger')
+        return _copiar_action_response(
+            ok=False,
+            message='No se pudo reanudar la solicitud.',
+            category='danger',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=500,
+            extra={"solicitud_id": s.id, "estado": s.estado, "remove_card": False},
+        )
 
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+def _admin_async_wants_json() -> bool:
+    # Wrapper local para evitar tocar callsites existentes.
+    return shared_admin_async_wants_json(request)
 
 
 def _copiar_wants_json() -> bool:
+    # Compatibilidad interna con tests/flujo existente.
+    return _admin_async_wants_json()
+
+
+def _admin_async_payload(
+    *,
+    success: bool,
+    message: str = '',
+    category: str = 'info',
+    redirect_url: str | None = None,
+    replace_html: str | None = None,
+    update_target: str | None = None,
+    update_targets: list | None = None,
+    invalidate_targets: list | None = None,
+    remove_element: str | None = None,
+    errors: list | None = None,
+    error_code: str | None = None,
+    extra: dict | None = None,
+) -> dict:
+    # Wrapper local para evitar tocar callsites existentes.
     try:
-        accept = (request.headers.get('Accept') or '').lower()
-        xrw = (request.headers.get('X-Requested-With') or '').lower()
-        return bool(request.is_json or ('application/json' in accept) or (xrw == 'xmlhttprequest'))
+        if (error_code or "").strip().lower() in {"conflict", "idempotency_conflict"}:
+            bump_operational_counter("concurrency_conflict_count")
     except Exception:
-        return False
+        pass
+    return shared_admin_async_payload(
+        success=success,
+        message=message,
+        category=category,
+        redirect_url=redirect_url,
+        replace_html=replace_html,
+        update_target=update_target,
+        update_targets=update_targets,
+        invalidate_targets=invalidate_targets,
+        remove_element=remove_element,
+        errors=errors,
+        error_code=error_code,
+        extra=extra,
+    )
 
 
-def _copiar_action_response(*, ok: bool, message: str, category: str, next_url: str, fallback: str, http_status: int = 200, extra=None):
+def _copiar_action_response(
+    *,
+    ok: bool,
+    message: str,
+    category: str,
+    next_url: str,
+    fallback: str,
+    http_status: int = 200,
+    error_code: str | None = None,
+    extra=None,
+):
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
-    if _copiar_wants_json():
-        payload = {
-            "ok": bool(ok),
-            "message": message,
-            "category": category,
-            "next": safe_next,
-        }
-        if extra:
-            payload.update(extra)
+    extra_payload = dict(extra or {})
+    remove_element = None
+    if bool(extra_payload.get("remove_card")) and extra_payload.get("solicitud_id"):
+        remove_element = f"#sol-{extra_payload.get('solicitud_id')}"
+    if _admin_async_wants_json():
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=safe_next,
+            update_target="#copiarSolicitudesResults",
+            remove_element=remove_element,
+            error_code=error_code,
+            extra=extra_payload,
+        )
+        payload["next"] = safe_next  # compatibilidad con flujo anterior
+        return jsonify(payload), http_status
+    flash(message, category)
+    return redirect(safe_next)
+
+
+def _solicitudes_list_action_response(
+    *,
+    ok: bool,
+    message: str,
+    category: str,
+    next_url: str,
+    fallback: str,
+    http_status: int = 200,
+    error_code: str | None = None,
+    replace_html: str | None = None,
+    update_target: str | None = None,
+    update_targets: list | None = None,
+    invalidate_targets: list | None = None,
+    redirect_url: str | None = None,
+):
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    dynamic_target = (request.form.get("_async_target") or request.args.get("_async_target") or "").strip()
+    if not dynamic_target.startswith("#"):
+        dynamic_target = ""
+    resolved_target = update_target or dynamic_target or "#solicitudesAsyncRegion"
+    resolved_redirect = redirect_url if redirect_url is not None else safe_next
+    resolved_update_targets = list(update_targets or [])
+    resolved_invalidate_targets = list(invalidate_targets or [])
+    if (
+        bool(ok)
+        and resolved_target == "#solicitudesAsyncRegion"
+        and not replace_html
+        and resolved_redirect
+        and not resolved_update_targets
+    ):
+        resolved_update_targets = [
+            {"target": "#solicitudesAsyncRegion", "invalidate": True, "redirect_url": resolved_redirect},
+            {
+                "target": "#solicitudesSummaryAsyncRegion",
+                "invalidate": True,
+                "redirect_url": url_for("admin.solicitudes_summary_fragment"),
+            },
+        ]
+    if (
+        bool(ok)
+        and resolved_target == "#clienteSolicitudesAsyncRegion"
+        and not replace_html
+        and resolved_redirect
+        and not resolved_update_targets
+    ):
+        resolved_update_targets = [
+            {"target": "#clienteSolicitudesAsyncRegion", "invalidate": True, "redirect_url": resolved_redirect},
+            {"target": "#clienteSummaryAsyncRegion", "invalidate": True, "redirect_url": resolved_redirect},
+        ]
+    if _admin_async_wants_json():
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=resolved_redirect,
+            replace_html=replace_html,
+            update_target=resolved_target,
+            update_targets=resolved_update_targets,
+            invalidate_targets=resolved_invalidate_targets,
+            error_code=error_code,
+        )
+        payload["next"] = safe_next
+        return jsonify(payload), http_status
+    flash(message, category)
+    return redirect(safe_next)
+
+
+def _reemplazo_operativo_region_config(dynamic_target: str) -> dict | None:
+    target = str(dynamic_target or "").strip()
+    if target.startswith("#solicitudReemplazoActionsAsyncRegion-"):
+        return {"style": "list", "scope": "#solicitudesAsyncScope"}
+    if target.startswith("#clienteSolicitudReemplazoActionsAsyncRegion-"):
+        return {"style": "cliente", "scope": "#clienteSolicitudesAsyncScope"}
+    return None
+
+
+def _build_cliente_summary_kpi(*, cliente, solicitudes: list) -> dict:
+    total_sol = len(solicitudes or [])
+    estados_count = {
+        "proceso": 0,
+        "activa": 0,
+        "pagada": 0,
+        "cancelada": 0,
+        "reemplazo": 0,
+        "otro": 0,
+    }
+
+    monto_total_pagado = Decimal("0.00")
+    primera_solicitud = None
+    ultima_solicitud = None
+
+    for s in (solicitudes or []):
+        estado = (getattr(s, "estado", "") or "").strip().lower() or "otro"
+        if estado not in estados_count:
+            estado = "otro"
+        estados_count[estado] += 1
+
+        raw_monto = (getattr(s, "monto_pagado", "") or "").strip()
+        if raw_monto:
+            try:
+                monto_total_pagado += Decimal(raw_monto)
+            except Exception:
+                pass
+
+        fs = getattr(s, "fecha_solicitud", None)
+        if fs:
+            if primera_solicitud is None or fs < primera_solicitud:
+                primera_solicitud = fs
+            if ultima_solicitud is None or fs > ultima_solicitud:
+                ultima_solicitud = fs
+
+    ultima_actividad = getattr(cliente, "fecha_ultima_actividad", None) or ultima_solicitud
+    monto_total_pagado_str = f"RD$ {monto_total_pagado:,.2f}"
+
+    return {
+        "total_solicitudes": total_sol,
+        "estados": estados_count,
+        "monto_total_pagado": monto_total_pagado,
+        "monto_total_pagado_str": monto_total_pagado_str,
+        "primera_solicitud": primera_solicitud,
+        "ultima_solicitud": ultima_solicitud,
+        "ultima_actividad": ultima_actividad,
+    }
+
+
+def _render_reemplazo_actions_region(*, solicitud_id: int, dynamic_target: str, next_url: str) -> str | None:
+    cfg = _reemplazo_operativo_region_config(dynamic_target)
+    if cfg is None:
+        return None
+
+    query = Solicitud.query
+    if hasattr(query, "options"):
+        try:
+            query = query.options(joinedload(Solicitud.reemplazos), joinedload(Solicitud.candidata))
+        except Exception:
+            pass
+    if hasattr(query, "filter_by"):
+        query = query.filter_by(id=solicitud_id)
+    solicitud = None
+    if hasattr(query, "first"):
+        try:
+            solicitud = query.first()
+        except Exception:
+            solicitud = None
+    if solicitud is None and hasattr(query, "first_or_404"):
+        try:
+            solicitud = query.first_or_404()
+        except Exception:
+            solicitud = None
+    if solicitud is None and hasattr(query, "all"):
+        try:
+            rows = list(query.all() or [])
+            for row in rows:
+                if int(getattr(row, "id", 0) or 0) == int(solicitud_id):
+                    solicitud = row
+                    break
+        except Exception:
+            solicitud = None
+    if solicitud is None:
+        return None
+
+    repl_activo = _active_reemplazo_for_solicitud(solicitud)
+    estado_norm = (getattr(solicitud, "estado", "") or "").strip().lower()
+    repl_operable = bool(repl_activo and estado_norm == "reemplazo")
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+    is_admin_role = role in ("owner", "admin")
+    effective_next = next_url or request.full_path
+
+    return render_template(
+        "admin/_reemplazo_actions_region.html",
+        solicitud=solicitud,
+        repl_activo=repl_activo,
+        repl_operable=repl_operable,
+        is_admin_role=is_admin_role,
+        async_target=dynamic_target,
+        async_scope=cfg["scope"],
+        next_url=effective_next,
+        style=cfg["style"],
+        form_idempotency_key=_new_form_idempotency_key(),
+    )
+
+
+def _reemplazo_parent_async_target(dynamic_target: str) -> str:
+    target = str(dynamic_target or "").strip()
+    if target == "#solicitudesAsyncRegion" or target.startswith("#solicitudReemplazoActionsAsyncRegion-"):
+        return "#solicitudesAsyncRegion"
+    if target == "#clienteSolicitudesAsyncRegion" or target.startswith("#clienteSolicitudReemplazoActionsAsyncRegion-"):
+        return "#clienteSolicitudesAsyncRegion"
+    return ""
+
+
+def _maybe_solicitud_operativa_core_async_response(
+    *,
+    solicitud_id: int,
+    ok: bool,
+    message: str,
+    category: str,
+    next_url: str,
+    fallback: str,
+    http_status: int = 200,
+    error_code: str | None = None,
+):
+    dynamic_target = (request.form.get("_async_target") or request.args.get("_async_target") or "").strip()
+    if (not _admin_async_wants_json()) or (dynamic_target != "#solicitudOperativaCoreAsyncRegion"):
+        return None
+
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    solicitud = (
+        Solicitud.query
+        .options(joinedload(Solicitud.candidata))
+        .filter_by(id=solicitud_id)
+        .first()
+    )
+    if solicitud is None:
+        payload = _admin_async_payload(
+            success=False,
+            message='No encontramos la solicitud para refrescar el bloque operativo.',
+            category='danger',
+            redirect_url=safe_next,
+            update_target=dynamic_target,
+            error_code='not_found',
+        )
+        payload["next"] = safe_next
+        return jsonify(payload), 404
+
+    now_utc = utc_now_naive()
+    _score, priority_label, is_stagnant, _hours = _solicitud_priority_snapshot(solicitud, now_dt=now_utc)
+    manual_followup = _manual_followup_snapshot(
+        getattr(solicitud, "fecha_seguimiento_manual", None),
+        today_rd=rd_today(),
+    )
+    solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=solicitud.cliente_id, id=solicitud.id)
+    html = render_template(
+        'admin/_solicitud_operativa_core_region.html',
+        solicitud=solicitud,
+        async_feedback={"message": message, "category": category},
+        now_utc=now_utc,
+        priority_label_operativa=priority_label,
+        needs_followup_today=_solicitud_needs_followup_today(
+            is_stagnant=is_stagnant,
+            priority_label=priority_label,
+        ),
+        manual_followup=manual_followup,
+        solicitud_detail_url=solicitud_detail_url,
+    )
+    payload = _admin_async_payload(
+        success=bool(ok),
+        message=message,
+        category=category,
+        redirect_url=safe_next,
+        replace_html=html,
+        update_target=dynamic_target,
+        update_targets=(
+            [
+                {
+                    "target": "#solicitudSummaryAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": url_for(
+                        "admin.solicitud_detail_summary_fragment",
+                        cliente_id=solicitud.cliente_id,
+                        id=solicitud.id,
+                    ),
+                },
+            ]
+            if bool(ok)
+            else None
+        ),
+        error_code=error_code,
+    )
+    payload["next"] = safe_next
+    return jsonify(payload), http_status
+
+
+def _clientes_list_action_response(
+    *,
+    ok: bool,
+    message: str,
+    category: str,
+    next_url: str,
+    fallback: str,
+    http_status: int = 200,
+    error_code: str | None = None,
+):
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    if _admin_async_wants_json():
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=safe_next,
+            update_target="#clientesAsyncRegion",
+            error_code=error_code,
+        )
+        payload["next"] = safe_next
+        return jsonify(payload), http_status
+    flash(message, category)
+    return redirect(safe_next)
+
+
+def _usuarios_list_next_url(*, q: str, page: int, per_page: int) -> str:
+    return url_for(
+        "admin.listar_usuarios",
+        q=q,
+        page=page,
+        per_page=per_page,
+    )
+
+
+def _usuarios_list_page_data(*, q: str, page: int, per_page: int):
+    query = StaffUser.query
+    hidden_username = _emergency_hide_username()
+    hidden_prefix = _emergency_hide_prefix()
+    if hidden_username:
+        query = query.filter(func.lower(StaffUser.username) != hidden_username)
+    if hidden_prefix:
+        query = query.filter(~func.lower(StaffUser.username).like(f"{hidden_prefix}%"))
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                StaffUser.username.ilike(like),
+                StaffUser.email.ilike(like),
+            )
+        )
+
+    total = query.count()
+    usuarios = (
+        query.order_by(StaffUser.created_at.desc(), StaffUser.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    last_page = max(1, (total + per_page - 1) // per_page)
+    return usuarios, total, last_page
+
+
+def _usuarios_list_context_for_refresh(next_url: str, fallback: str):
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    parsed = urlparse(safe_next)
+    query = parse_qs(parsed.query)
+
+    q = ((query.get("q") or [""])[0] or "").strip()
+    try:
+        page = int((query.get("page") or ["1"])[0] or 1)
+    except Exception:
+        page = 1
+    page = max(1, page)
+
+    try:
+        per_page = int((query.get("per_page") or ["20"])[0] or 20)
+    except Exception:
+        per_page = 20
+    per_page = max(10, min(per_page, 100))
+    list_next = _usuarios_list_next_url(q=q, page=page, per_page=per_page)
+    return q, page, per_page, list_next
+
+
+def _usuarios_list_action_response(
+    *,
+    ok: bool,
+    message: str,
+    category: str,
+    next_url: str,
+    fallback: str,
+    http_status: int = 200,
+    error_code: str | None = None,
+):
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    if _admin_async_wants_json():
+        q, page, per_page, list_next = _usuarios_list_context_for_refresh(
+            next_url=safe_next,
+            fallback=fallback,
+        )
+        usuarios, total, last_page = _usuarios_list_page_data(
+            q=q,
+            page=page,
+            per_page=per_page,
+        )
+        html = render_template(
+            "admin/_usuarios_list_results.html",
+            usuarios=usuarios,
+            q=q,
+            page=page,
+            per_page=per_page,
+            total=total,
+            last_page=last_page,
+            list_next=list_next,
+            min_password_len=_staff_password_min_len(),
+        )
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=safe_next,
+            replace_html=html,
+            update_target="#usuariosAsyncRegion",
+            error_code=error_code,
+        )
+        payload["next"] = safe_next
+        return jsonify(payload), http_status
+    flash(message, category)
+    return redirect(safe_next)
+
+
+def _security_admin_action_response(
+    *,
+    ok: bool,
+    message: str,
+    category: str,
+    fallback: str,
+    http_status: int = 200,
+    error_code: str | None = None,
+    replace_html: str | None = None,
+    update_target: str | None = None,
+    update_targets: list | None = None,
+    invalidate_targets: list | None = None,
+    errors: list | None = None,
+):
+    safe_next = _safe_next_url(fallback)
+    if _admin_async_wants_json():
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=safe_next,
+            replace_html=replace_html,
+            update_target=update_target,
+            update_targets=update_targets,
+            invalidate_targets=invalidate_targets,
+            errors=errors or [],
+            error_code=error_code,
+        )
+        payload["next"] = safe_next
         return jsonify(payload), http_status
     flash(message, category)
     return redirect(safe_next)
@@ -9981,6 +15285,29 @@ def cancelar_solicitud_desde_copiar(id):
     next_url = (request.form.get('next') or request.referrer or '').strip()
     fallback = url_for('admin.copiar_solicitudes')
     estado_actual = (s.estado or '').strip().lower()
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_cancelar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=25,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de cancelación de solicitud por patrón de abuso ({s.id})",
+        next_url=next_url,
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _copiar_action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return blocked_resp
 
     motivo = (request.form.get('motivo') or '').strip()
     if len(motivo) < 5:
@@ -9994,9 +15321,24 @@ def cancelar_solicitud_desde_copiar(id):
         )
 
     if estado_actual in ('cancelada', 'pagada'):
+        if _admin_noop_repeat_blocked(
+            scope="admin_solicitud_cancelar",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            state=estado_actual,
+            summary=f"Intento repetido de cancelar solicitud sin transición válida ({s.id})",
+        ):
+            return _copiar_action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente por repetición de una operación ya aplicada.',
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=429,
+            )
         return _copiar_action_response(
             ok=False,
-            message=f'La solicitud {s.codigo_solicitud} no admite cancelación en su estado actual.',
+            message='La solicitud no se puede cancelar en su estado actual.',
             category='warning',
             next_url=next_url,
             fallback=fallback,
@@ -10006,19 +15348,89 @@ def cancelar_solicitud_desde_copiar(id):
     if estado_actual not in ('proceso', 'activa', 'reemplazo', 'espera_pago'):
         return _copiar_action_response(
             ok=False,
-            message=f'No se puede cancelar la solicitud en estado «{s.estado}».',
+            message='La solicitud no se puede cancelar en su estado actual.',
             category='warning',
             next_url=next_url,
             fallback=fallback,
             http_status=409,
         )
 
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _copiar_action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_cancelar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="cancelar_solicitud_desde_copiar",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _copiar_action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _copiar_action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=200,
+            )
+        return _copiar_action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code='conflict',
+        )
+
     try:
+        released = _release_solicitud_candidatas_on_cancel(
+            s,
+            actor=_staff_actor_name(),
+            motivo=motivo,
+        )
         s.estado = 'cancelada'
         s.motivo_cancelacion = motivo
         s.fecha_cancelacion = _now_utc()
         s.fecha_ultima_modificacion = _now_utc()
         s.fecha_ultima_actividad = _now_utc()
+        if int(released.get("released_count", 0) or 0) > 0:
+            _emit_domain_outbox_event(
+                event_type="SOLICITUD_CANDIDATAS_LIBERADAS",
+                aggregate_type="Solicitud",
+                aggregate_id=s.id,
+                aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+                payload={
+                    "solicitud_id": int(s.id),
+                    "count": int(released.get("released_count", 0) or 0),
+                    "candidata_ids": list(released.get("candidata_ids") or []),
+                    "reason": "cancelacion_solicitud",
+                },
+            )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_CANCELAR_DESDE_COPIAR",
@@ -10036,6 +15448,17 @@ def cancelar_solicitud_desde_copiar(id):
             fallback=fallback,
             http_status=200,
             extra={"solicitud_id": s.id, "estado": "cancelada", "remove_card": True},
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _copiar_action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code='conflict',
         )
     except SQLAlchemyError:
         db.session.rollback()
@@ -10076,6 +15499,58 @@ def marcar_pagada_desde_copiar(id):
             next_url=next_url,
             fallback=fallback,
             http_status=409,
+            error_code='conflict',
+        )
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _copiar_action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_marcar_pagada_desde_copiar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="marcar_pagada_desde_copiar",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _copiar_action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _copiar_action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+                next_url=next_url,
+                fallback=fallback,
+                http_status=200,
+            )
+        return _copiar_action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code='conflict',
         )
 
     candidata_raw = (request.form.get('candidata_id') or '').strip()
@@ -10102,7 +15577,7 @@ def marcar_pagada_desde_copiar(id):
             http_status=400,
         )
 
-    cand = Candidata.query.get(candidata_id)
+    cand = _lock_candidata_for_update(candidata_id)
     if not cand:
         return _copiar_action_response(
             ok=False,
@@ -10121,6 +15596,19 @@ def marcar_pagada_desde_copiar(id):
             next_url=next_url,
             fallback=fallback,
             http_status=409,
+            error_code='conflict',
+        )
+
+    blocked_candidate_ids, _ = _matching_candidate_flags(s, [int(cand.fila)])
+    if int(cand.fila) in blocked_candidate_ids:
+        return _copiar_action_response(
+            ok=False,
+            message='Esta candidata ya está bloqueada por otra solicitud activa de otro cliente.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code='blocked_other_client',
         )
 
     try:
@@ -10132,6 +15620,20 @@ def marcar_pagada_desde_copiar(id):
         s.fecha_ultima_modificacion = utc_now_naive()
         if hasattr(s, 'fecha_ultima_actividad'):
             s.fecha_ultima_actividad = utc_now_naive()
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_CANDIDATA_ASIGNADA",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "candidata_id": int(cand.fila),
+                "from": estado_actual,
+                "to": "pagada",
+                "monto_pagado": s.monto_pagado,
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_MARCAR_PAGADA_DESDE_COPIAR",
@@ -10150,11 +15652,33 @@ def marcar_pagada_desde_copiar(id):
             http_status=200,
             extra={"solicitud_id": s.id, "estado": "pagada", "remove_card": True, "candidata_id": cand.fila},
         )
-    except ValueError as e:
+    except InvariantConflictError as inv_exc:
         db.session.rollback()
         return _copiar_action_response(
             ok=False,
-            message=f'Monto pagado inválido: {e}',
+            message=str(inv_exc) or 'Conflicto de estado de candidata.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code=getattr(inv_exc, "code", "conflict"),
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _copiar_action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code='conflict',
+        )
+    except ValueError:
+        db.session.rollback()
+        return _copiar_action_response(
+            ok=False,
+            message='El monto ingresado no es válido. Revísalo e inténtalo de nuevo.',
             category='danger',
             next_url=next_url,
             fallback=fallback,
@@ -10313,13 +15837,32 @@ def acciones_solicitudes_proceso():
                    .limit(per_page)
                    .all())
 
-    return render_template(
-        'admin/solicitudes_proceso_acciones.html',
+    list_ctx = dict(
         solicitudes=solicitudes,
         page=page,
         per_page=per_page,
         total=total,
-        has_more=(page * per_page) < total
+        has_more=(page * per_page) < total,
+    )
+
+    if _admin_async_wants_json():
+        html = render_template('admin/_solicitudes_proceso_acciones_results.html', **list_ctx)
+        return jsonify(_admin_async_payload(
+            success=True,
+            message='Listado actualizado.',
+            category='info',
+            replace_html=html,
+            update_target='#procesoAccionesAsyncRegion',
+            extra={
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+            },
+        )), 200
+
+    return render_template(
+        'admin/solicitudes_proceso_acciones.html',
+        **list_ctx,
     )
 
 # ---------------------------------------
@@ -10330,24 +15873,236 @@ def acciones_solicitudes_proceso():
 @staff_required
 def activar_solicitud_directa(id):
     s = Solicitud.query.get_or_404(id)
+    next_url = request.form.get('next') or request.referrer
+    fallback = url_for('admin.acciones_solicitudes_proceso')
+
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        core_async_resp = _maybe_solicitud_operativa_core_async_response(
+            solicitud_id=s.id,
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+        if core_async_resp is not None:
+            return core_async_resp
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_activar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=35,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de activación de solicitud por patrón de abuso ({s.id})",
+        next_url=next_url or "",
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return blocked_resp
+
     try:
         if s.estado != 'proceso':
-            flash(f'La solicitud {s.codigo_solicitud} no está en "proceso".', 'warning')
-            return redirect(url_for('admin.acciones_solicitudes_proceso'))
+            if _admin_noop_repeat_blocked(
+                scope="admin_solicitud_activar",
+                entity_type="Solicitud",
+                entity_id=s.id,
+                state=(s.estado or ""),
+                summary=f"Intento repetido de activar solicitud fuera de flujo ({s.id})",
+            ):
+                return _action_response(
+                    ok=False,
+                    message='Acción bloqueada temporalmente: esta solicitud no está en estado proceso.',
+                    category='warning',
+                    http_status=429,
+                    error_code='rate_limit',
+                )
+            return _action_response(
+                ok=False,
+                message=f'La solicitud {s.codigo_solicitud} no está en "proceso".',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
 
         s.estado = 'activa'
         s.fecha_ultima_modificacion = _now_utc()
         s.fecha_ultima_actividad = _now_utc()
         db.session.commit()
-        flash(f'Solicitud {s.codigo_solicitud} marcada como activa.', 'success')
+        _audit_log(
+            action_type="SOLICITUD_ACTIVAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud activada: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": "proceso", "to": "activa"}},
+        )
+        return _action_response(
+            ok=True,
+            message=f'Solicitud {s.codigo_solicitud} marcada como activa.',
+            category='success',
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('No se pudo activar la solicitud.', 'danger')
+        _audit_log(
+            action_type="SOLICITUD_ACTIVAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Fallo activando solicitud {s.codigo_solicitud or s.id}",
+            success=False,
+            error="No se pudo activar la solicitud.",
+        )
+        return _action_response(
+            ok=False,
+            message='No se pudo activar la solicitud.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
     except Exception:
         db.session.rollback()
-        flash('Ocurrió un error al activar la solicitud.', 'danger')
+        _audit_log(
+            action_type="SOLICITUD_ACTIVAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Fallo activando solicitud {s.codigo_solicitud or s.id}",
+            success=False,
+            error="Ocurrió un error al activar la solicitud.",
+        )
+        return _action_response(
+            ok=False,
+            message='Ocurrió un error al activar la solicitud.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
 
-    return redirect(url_for('admin.acciones_solicitudes_proceso'))
+
+@admin_bp.route('/solicitudes/<int:id>/seguimiento_manual', methods=['POST'])
+@login_required
+@staff_required
+def actualizar_seguimiento_manual_solicitud(id):
+    s = Solicitud.query.get_or_404(id)
+    next_url = request.form.get('next') or request.referrer
+    fallback = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
+    raw_date = (request.form.get('fecha_seguimiento_manual') or '').strip()
+
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        core_async_resp = _maybe_solicitud_operativa_core_async_response(
+            solicitud_id=s.id,
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+        if core_async_resp is not None:
+            return core_async_resp
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+
+    parsed_date = None
+    if raw_date:
+        try:
+            parsed_date = datetime.strptime(raw_date, '%Y-%m-%d').date()
+        except Exception:
+            return _action_response(
+                ok=False,
+                message='Fecha de seguimiento inválida.',
+                category='warning',
+                http_status=400,
+                error_code='invalid_date',
+            )
+
+    old_value = getattr(s, 'fecha_seguimiento_manual', None)
+    if old_value == parsed_date:
+        return _action_response(
+            ok=True,
+            message='Seguimiento manual sin cambios.',
+            category='info',
+        )
+
+    try:
+        s.fecha_seguimiento_manual = parsed_date
+        if hasattr(s, 'fecha_ultima_actividad'):
+            s.fecha_ultima_actividad = utc_now_naive()
+        if hasattr(s, 'fecha_ultima_modificacion'):
+            s.fecha_ultima_modificacion = utc_now_naive()
+        db.session.commit()
+        _audit_log(
+            action_type='SOLICITUD_SEGUIMIENTO_MANUAL_SET',
+            entity_type='Solicitud',
+            entity_id=s.id,
+            summary=f"Seguimiento manual actualizado en solicitud {s.codigo_solicitud or s.id}",
+            changes={
+                "fecha_seguimiento_manual": {
+                    "from": old_value.isoformat() if isinstance(old_value, date) else None,
+                    "to": parsed_date.isoformat() if isinstance(parsed_date, date) else None,
+                }
+            },
+        )
+        if parsed_date is None:
+            return _action_response(
+                ok=True,
+                message='Seguimiento manual limpiado.',
+                category='success',
+            )
+        return _action_response(
+            ok=True,
+            message='Seguimiento manual guardado.',
+            category='success',
+        )
+    except Exception:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='No se pudo guardar el seguimiento manual.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
 
 
 @admin_bp.route('/solicitudes/<int:id>/poner_espera_pago', methods=['POST'])
@@ -10358,14 +16113,132 @@ def poner_espera_pago_solicitud(id):
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
 
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        core_async_resp = _maybe_solicitud_operativa_core_async_response(
+            solicitud_id=s.id,
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+        if core_async_resp is not None:
+            return core_async_resp
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_espera_pago_poner",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=40,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de cambio a espera de pago por patrón de abuso ({s.id})",
+        next_url=next_url or "",
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_espera_pago_poner",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="poner_espera_pago",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+
     if s.estado == 'espera_pago':
-        flash('La solicitud ya está en espera de pago.', 'info')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        if _admin_noop_repeat_blocked(
+            scope="admin_solicitud_espera_pago_poner",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            state="espera_pago",
+            summary=f"Intento repetido de poner en espera de pago una solicitud ya en espera ({s.id})",
+        ):
+            return _action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente: la solicitud ya está en espera de pago.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return _action_response(
+            ok=False,
+            message='La solicitud ya está en espera de pago.',
+            category='info',
+            http_status=409,
+            error_code='conflict',
+        )
 
     estado_actual = (s.estado or '').strip().lower()
     if estado_actual in ('cancelada',):
-        flash('No se puede poner en espera de pago una solicitud cancelada.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message='No se puede poner en espera de pago una solicitud cancelada.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     try:
         if hasattr(s, 'estado_previo_espera_pago'):
@@ -10379,6 +16252,18 @@ def poner_espera_pago_solicitud(id):
             s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = utc_now_naive()
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_ESTADO_CAMBIADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "from": estado_actual,
+                "to": "espera_pago",
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_PONER",
@@ -10387,12 +16272,29 @@ def poner_espera_pago_solicitud(id):
             summary=f"Solicitud puesta en espera de pago: {s.codigo_solicitud or s.id}",
             changes={"estado": {"from": estado_actual, "to": "espera_pago"}},
         )
-        flash('Solicitud marcada en espera de pago.', 'success')
+        return _action_response(
+            ok=True,
+            message='Solicitud marcada en espera de pago.',
+            category='success',
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
     except Exception:
         db.session.rollback()
-        flash('No se pudo cambiar la solicitud a espera de pago.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message='No se pudo cambiar la solicitud a espera de pago.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/espera_pago/poner', methods=['POST'])
@@ -10402,8 +16304,54 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id) + f"#sol-{s.id}"
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_espera_pago_poner",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=40,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de cambio a espera de pago por patrón de abuso ({s.id})",
+        next_url=next_url or "",
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            flash('La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.', 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_espera_pago_poner",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="poner_espera_pago",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            flash(_idempotency_conflict_message(), 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            flash('Acción ya aplicada previamente.', 'info')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        flash('Solicitud duplicada detectada. Espera y vuelve a intentar.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     if s.estado == 'espera_pago':
+        if _admin_noop_repeat_blocked(
+            scope="admin_solicitud_espera_pago_poner",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            state="espera_pago",
+            summary=f"Intento repetido de poner en espera de pago una solicitud ya en espera ({s.id})",
+        ):
+            flash('Acción bloqueada temporalmente: la solicitud ya está en espera de pago.', 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
         flash('La solicitud ya está en espera de pago.', 'info')
         return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
@@ -10424,6 +16372,18 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
             s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = utc_now_naive()
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_ESTADO_CAMBIADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "from": estado_actual,
+                "to": "espera_pago",
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_PONER",
@@ -10433,6 +16393,9 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
             changes={"estado": {"from": estado_actual, "to": "espera_pago"}},
         )
         flash('Solicitud marcada en espera de pago.', 'success')
+    except StaleDataError:
+        db.session.rollback()
+        flash('La solicitud cambió por otra sesión. Recarga e intenta nuevamente.', 'warning')
     except Exception:
         db.session.rollback()
         flash('No se pudo cambiar la solicitud a espera de pago.', 'danger')
@@ -10448,9 +16411,131 @@ def quitar_espera_pago_solicitud(id):
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
 
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        core_async_resp = _maybe_solicitud_operativa_core_async_response(
+            solicitud_id=s.id,
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+        if core_async_resp is not None:
+            return core_async_resp
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_espera_pago_quitar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=40,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de salida de espera de pago por patrón de abuso ({s.id})",
+        next_url=next_url or "",
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_espera_pago_quitar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="quitar_espera_pago",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+
     if s.estado != 'espera_pago':
-        flash('La solicitud no está en espera de pago.', 'info')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        if _admin_noop_repeat_blocked(
+            scope="admin_solicitud_espera_pago_quitar",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            state=(s.estado or ""),
+            summary=f"Intento repetido de quitar espera de pago fuera de flujo ({s.id})",
+        ):
+            return _action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente: la solicitud no está en espera de pago.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        _audit_log(
+            action_type="BUSINESS_FLOW_BLOCKED",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Flujo inválido al quitar espera de pago ({s.id})",
+            metadata={"rule": "invalid_state", "estado_actual": (s.estado or "").strip().lower()},
+            success=False,
+            error="solicitud_not_in_espera_pago",
+        )
+        return _action_response(
+            ok=False,
+            message='La solicitud no está en espera de pago.',
+            category='info',
+            http_status=409,
+            error_code='conflict',
+        )
 
     try:
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
@@ -10465,6 +16550,18 @@ def quitar_espera_pago_solicitud(id):
             s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = utc_now_naive()
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_ESTADO_CAMBIADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "from": "espera_pago",
+                "to": restore,
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_QUITAR",
@@ -10473,12 +16570,29 @@ def quitar_espera_pago_solicitud(id):
             summary=f"Solicitud reactivada desde espera de pago: {s.codigo_solicitud or s.id}",
             changes={"estado": {"from": "espera_pago", "to": restore}},
         )
-        flash(f'Solicitud reactivada desde espera de pago a {restore}.', 'success')
+        return _action_response(
+            ok=True,
+            message=f'Solicitud reactivada desde espera de pago a {restore}.',
+            category='success',
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
     except Exception:
         db.session.rollback()
-        flash('No se pudo quitar espera de pago.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message='No se pudo quitar espera de pago.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/espera_pago/quitar', methods=['POST'])
@@ -10488,8 +16602,63 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id) + f"#sol-{s.id}"
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_espera_pago_quitar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=40,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de salida de espera de pago por patrón de abuso ({s.id})",
+        next_url=next_url or "",
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            flash('La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.', 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_espera_pago_quitar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="quitar_espera_pago",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            flash(_idempotency_conflict_message(), 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            flash('Acción ya aplicada previamente.', 'info')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        flash('Solicitud duplicada detectada. Espera y vuelve a intentar.', 'warning')
+        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
     if s.estado != 'espera_pago':
+        if _admin_noop_repeat_blocked(
+            scope="admin_solicitud_espera_pago_quitar",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            state=(s.estado or ""),
+            summary=f"Intento repetido de quitar espera de pago fuera de flujo ({s.id})",
+        ):
+            flash('Acción bloqueada temporalmente: la solicitud no está en espera de pago.', 'warning')
+            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        _audit_log(
+            action_type="BUSINESS_FLOW_BLOCKED",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Flujo inválido al quitar espera de pago ({s.id})",
+            metadata={"rule": "invalid_state", "estado_actual": (s.estado or "").strip().lower()},
+            success=False,
+            error="solicitud_not_in_espera_pago",
+        )
         flash('La solicitud no está en espera de pago.', 'info')
         return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
 
@@ -10506,6 +16675,18 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
             s.fecha_ultima_actividad = utc_now_naive()
         if hasattr(s, 'fecha_ultima_modificacion'):
             s.fecha_ultima_modificacion = utc_now_naive()
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_ESTADO_CAMBIADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "from": "espera_pago",
+                "to": restore,
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PAGO_QUITAR",
@@ -10515,6 +16696,9 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
             changes={"estado": {"from": "espera_pago", "to": restore}},
         )
         flash(f'Solicitud reactivada desde espera de pago a {restore}.', 'success')
+    except StaleDataError:
+        db.session.rollback()
+        flash('La solicitud cambió por otra sesión. Recarga e intenta nuevamente.', 'warning')
     except Exception:
         db.session.rollback()
         flash('No se pudo quitar espera de pago.', 'danger')
@@ -10530,57 +16714,263 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
 @staff_required
 def cancelar_solicitud(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+    wants_async = _admin_async_wants_json()
+    form_idempotency_key = _new_form_idempotency_key()
 
     # Destino preferido de regreso
     next_url = request.args.get('next') or request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id)
+    safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+
+    def _render_cancel_region(*, form_state=None, motivo_value='', async_feedback=None):
+        return render_template(
+            'admin/_cancelar_solicitud_form_region.html',
+            solicitud=s,
+            next_url=next_url,
+            form_idempotency_key=form_idempotency_key,
+            form=form_state,
+            motivo_value=motivo_value,
+            async_feedback=async_feedback,
+        )
+
+    def _async_cancel_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+        include_region: bool = False,
+        form_state=None,
+        motivo_value='',
+        async_feedback=None,
+    ):
+        payload = _admin_async_payload(
+            success=bool(ok),
+            message=message,
+            category=category,
+            redirect_url=safe_next,
+            replace_html=(
+                _render_cancel_region(
+                    form_state=form_state,
+                    motivo_value=motivo_value,
+                    async_feedback=async_feedback,
+                )
+                if include_region else None
+            ),
+            update_target="#cancelarSolicitudAsyncRegion",
+            error_code=error_code,
+        )
+        return jsonify(payload), http_status
 
     if request.method == 'GET':
         # Idempotencia y reglas de estado
         if s.estado == 'cancelada':
             flash(f'La solicitud {s.codigo_solicitud} ya estaba cancelada.', 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return redirect(safe_next)
         if s.estado == 'pagada':
             flash(f'La solicitud {s.codigo_solicitud} está pagada y no puede cancelarse.', 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return redirect(safe_next)
 
         return render_template(
             'admin/cancelar_solicitud.html',
             solicitud=s,
-            next_url=next_url
+            next_url=next_url,
+            form_idempotency_key=form_idempotency_key,
         )
 
     # POST (confirma cancelación)
     motivo = (request.form.get('motivo') or '').strip()
     if len(motivo) < 5:
+        if wants_async:
+            msg = 'Indica un motivo de cancelación (mínimo 5 caracteres).'
+            return _async_cancel_response(
+                ok=False,
+                message=msg,
+                category='warning',
+                http_status=200,
+                error_code='invalid_input',
+                include_region=True,
+                form_state={'motivo': {'errors': ['Indica un motivo válido.']}},
+                motivo_value=motivo,
+                async_feedback={"message": msg, "category": "warning"},
+            )
         flash('Indica un motivo de cancelación (mínimo 5 caracteres).', 'danger')
         return render_template(
             'admin/cancelar_solicitud.html',
             solicitud=s,
             next_url=next_url,
+            form_idempotency_key=form_idempotency_key,
             form={'motivo': {'errors': ['Indica un motivo válido.']}}
         )
 
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            msg = 'La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.'
+            if wants_async:
+                return _async_cancel_response(
+                    ok=False,
+                    message=msg,
+                    category='warning',
+                    http_status=409,
+                    error_code='conflict',
+                    include_region=True,
+                    motivo_value=motivo,
+                    async_feedback={"message": msg, "category": "warning"},
+                )
+            flash(msg, 'warning')
+            return redirect(safe_next)
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_cancelar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="cancelar_solicitud",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            msg = _idempotency_conflict_message()
+            if wants_async:
+                return _async_cancel_response(
+                    ok=False,
+                    message=msg,
+                    category='warning',
+                    http_status=409,
+                    error_code='idempotency_conflict',
+                    include_region=True,
+                    motivo_value=motivo,
+                    async_feedback={"message": msg, "category": "warning"},
+                )
+            flash(msg, 'warning')
+            return redirect(safe_next)
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            msg = 'Acción ya aplicada previamente.'
+            if wants_async:
+                return _async_cancel_response(
+                    ok=True,
+                    message=msg,
+                    category='info',
+                    http_status=200,
+                )
+            flash(msg, 'info')
+            return redirect(safe_next)
+        msg = 'Solicitud duplicada detectada. Espera y vuelve a intentar.'
+        if wants_async:
+            return _async_cancel_response(
+                ok=False,
+                message=msg,
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+                include_region=True,
+                motivo_value=motivo,
+                async_feedback={"message": msg, "category": "warning"},
+            )
+        flash(msg, 'warning')
+        return redirect(safe_next)
+
     if s.estado not in ('proceso', 'activa', 'reemplazo'):
+        if wants_async:
+            msg = 'Esta solicitud no se puede cancelar en su estado actual.'
+            return _async_cancel_response(
+                ok=False,
+                message=msg,
+                category='warning',
+                http_status=200,
+                error_code='invalid_state',
+                include_region=True,
+                form_state=None,
+                motivo_value=motivo,
+                async_feedback={"message": msg, "category": "warning"},
+            )
         flash(f'No se puede cancelar la solicitud en estado «{s.estado}».', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return redirect(safe_next)
 
     try:
+        estado_prev = (s.estado or "").strip().lower()
+        released = _release_solicitud_candidatas_on_cancel(
+            s,
+            actor=_staff_actor_name(),
+            motivo=motivo,
+        )
         s.estado = 'cancelada'
         s.motivo_cancelacion = motivo
         s.fecha_cancelacion = _now_utc()
         s.fecha_ultima_modificacion = _now_utc()
         s.fecha_ultima_actividad = _now_utc()
+        if int(released.get("released_count", 0) or 0) > 0:
+            _emit_domain_outbox_event(
+                event_type="SOLICITUD_CANDIDATAS_LIBERADAS",
+                aggregate_type="Solicitud",
+                aggregate_id=s.id,
+                aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+                payload={
+                    "solicitud_id": int(s.id),
+                    "count": int(released.get("released_count", 0) or 0),
+                    "candidata_ids": list(released.get("candidata_ids") or []),
+                    "reason": "cancelacion_solicitud",
+                },
+            )
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_ESTADO_CAMBIADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "from": estado_prev,
+                "to": "cancelada",
+                "motivo": motivo[:255],
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
+        if wants_async:
+            return _async_cancel_response(
+                ok=True,
+                message=f'Solicitud {s.codigo_solicitud} cancelada.',
+                category='success',
+                http_status=200,
+            )
         flash(f'Solicitud {s.codigo_solicitud} cancelada.', 'success')
+    except StaleDataError:
+        db.session.rollback()
+        if wants_async:
+            return _async_cancel_response(
+                ok=False,
+                message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+        flash('La solicitud cambió por otra sesión. Recarga e intenta nuevamente.', 'warning')
     except SQLAlchemyError:
         db.session.rollback()
+        if wants_async:
+            return _async_cancel_response(
+                ok=False,
+                message='No se pudo cancelar la solicitud.',
+                category='danger',
+                http_status=500,
+                error_code='server_error',
+            )
         flash('No se pudo cancelar la solicitud.', 'danger')
     except Exception:
         db.session.rollback()
+        if wants_async:
+            return _async_cancel_response(
+                ok=False,
+                message='Ocurrió un error al cancelar la solicitud.',
+                category='danger',
+                http_status=500,
+                error_code='server_error',
+            )
         flash('Ocurrió un error al cancelar la solicitud.', 'danger')
 
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+    return redirect(safe_next)
 
 # -----------------------------------------------------------------------------
 # Cancelación directa (sin formulario)
@@ -10596,34 +16986,259 @@ def cancelar_solicitud_directa(id):
     next_url = request.args.get('next') or request.form.get('next') or request.referrer
     fallback = url_for('admin.acciones_solicitudes_proceso')
 
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        core_async_resp = _maybe_solicitud_operativa_core_async_response(
+            solicitud_id=s.id,
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+        if core_async_resp is not None:
+            return core_async_resp
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_cancelar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        limit=25,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de cancelación directa de solicitud por patrón de abuso ({s.id})",
+        next_url=next_url or "",
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return blocked_resp
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_cancelar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="cancelar_solicitud_directa",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+
     if s.estado == 'cancelada':
-        flash(f'La solicitud {s.codigo_solicitud} ya estaba cancelada.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        if _admin_noop_repeat_blocked(
+            scope="admin_solicitud_cancelar",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            state="cancelada",
+            summary=f"Intento repetido de cancelar solicitud ya cancelada ({s.id})",
+        ):
+            return _action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente: la solicitud ya estaba cancelada.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return _action_response(
+            ok=False,
+            message=f'La solicitud {s.codigo_solicitud} ya estaba cancelada.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     if s.estado == 'pagada':
-        flash(f'La solicitud {s.codigo_solicitud} está pagada y no puede cancelarse.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        if _admin_noop_repeat_blocked(
+            scope="admin_solicitud_cancelar",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            state="pagada",
+            summary=f"Intento repetido de cancelar solicitud pagada ({s.id})",
+        ):
+            return _action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente: la solicitud está pagada y no puede cancelarse.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return _action_response(
+            ok=False,
+            message=f'La solicitud {s.codigo_solicitud} está pagada y no puede cancelarse.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     if s.estado not in ('proceso', 'activa', 'reemplazo'):
-        flash(f'No se puede cancelar la solicitud en estado «{s.estado}».', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        _audit_log(
+            action_type="BUSINESS_FLOW_BLOCKED",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Flujo inválido al cancelar solicitud ({s.id})",
+            metadata={"rule": "invalid_state", "estado_actual": (s.estado or "").strip().lower()},
+            success=False,
+            error="solicitud_invalid_state_for_cancel",
+        )
+        return _action_response(
+            ok=False,
+            message=f'No se puede cancelar la solicitud en estado «{s.estado}».',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     try:
+        estado_prev = (s.estado or "").strip().lower()
+        released = _release_solicitud_candidatas_on_cancel(
+            s,
+            actor=_staff_actor_name(),
+            motivo=(request.form.get('motivo') or '').strip() or 'Cancelación directa (sin motivo)',
+        )
         s.estado = 'cancelada'
         s.fecha_cancelacion = _now_utc()
         s.fecha_ultima_modificacion = _now_utc()
         s.fecha_ultima_actividad = _now_utc()
         s.motivo_cancelacion = (request.form.get('motivo') or '').strip() or 'Cancelación directa (sin motivo)'
+        if int(released.get("released_count", 0) or 0) > 0:
+            _emit_domain_outbox_event(
+                event_type="SOLICITUD_CANDIDATAS_LIBERADAS",
+                aggregate_type="Solicitud",
+                aggregate_id=s.id,
+                aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+                payload={
+                    "solicitud_id": int(s.id),
+                    "count": int(released.get("released_count", 0) or 0),
+                    "candidata_ids": list(released.get("candidata_ids") or []),
+                    "reason": "cancelacion_solicitud_directa",
+                },
+            )
+        _emit_domain_outbox_event(
+            event_type="SOLICITUD_ESTADO_CAMBIADO",
+            aggregate_type="Solicitud",
+            aggregate_id=s.id,
+            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(s.id),
+                "from": estado_prev,
+                "to": "cancelada",
+                "motivo": (s.motivo_cancelacion or "")[:255],
+            },
+        )
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
-        flash(f'Solicitud {s.codigo_solicitud} cancelada.', 'success')
+        _audit_log(
+            action_type="SOLICITUD_CANCELAR_DIRECTO",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Solicitud cancelada directo: {s.codigo_solicitud or s.id}",
+            changes={"estado": {"from": estado_prev, "to": "cancelada"}},
+            metadata={"motivo": (s.motivo_cancelacion or "")[:255]},
+        )
+        return _action_response(
+            ok=True,
+            message=f'Solicitud {s.codigo_solicitud} cancelada.',
+            category='success',
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('No se pudo cancelar la solicitud.', 'danger')
+        _audit_log(
+            action_type="SOLICITUD_CANCELAR_DIRECTO",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Fallo cancelando solicitud directo {s.codigo_solicitud or s.id}",
+            success=False,
+            error="No se pudo cancelar la solicitud.",
+        )
+        return _action_response(
+            ok=False,
+            message='No se pudo cancelar la solicitud.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
     except Exception:
         db.session.rollback()
-        flash('Ocurrió un error al cancelar la solicitud.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        _audit_log(
+            action_type="SOLICITUD_CANCELAR_DIRECTO",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Fallo cancelando solicitud directo {s.codigo_solicitud or s.id}",
+            success=False,
+            error="Ocurrió un error al cancelar la solicitud.",
+        )
+        return _action_response(
+            ok=False,
+            message='Ocurrió un error al cancelar la solicitud.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
 
 # ---------------------------------------
 # Resumen diario por cliente (UTC)

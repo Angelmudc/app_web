@@ -2,7 +2,10 @@
 {% block title %}Salud del sistema{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <h1 class="h4 mb-3">Salud del sistema</h1>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Salud del sistema</h1>
+    <a href="{{ url_for('admin.admin_health_operational') }}" class="btn btn-sm btn-outline-primary">Semáforo O1</a>
+  </div>
   <div class="row g-3">
     <div class="col-md-4"><div class="card"><div class="card-body"><small>Base de datos</small><div class="h5 mb-0">{{ 'OK' if health.db.ok else 'Fallo' }}</div></div></div></div>
     <div class="col-md-4"><div class="card"><div class="card-body"><small>Stream/cache</small><div class="h5 mb-0">{{ 'OK' if health.stream.ok else 'Fallo' }}</div></div></div></div>

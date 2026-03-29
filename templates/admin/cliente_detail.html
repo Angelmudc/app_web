@@ -2,48 +2,20 @@
 {% block title %}Detalle Cliente{% endblock %}
 
 {% block content %}
-<div class="container py-4 py-md-5" style="max-width: 1200px;">
-  <!-- ===== Encabezado ===== -->
-  <div class="d-flex flex-wrap justify-content-between align-items-start align-items-md-center gap-3 mb-4">
-    <div class="d-flex align-items-start gap-3">
-      <div class="cliente-avatar">
-        {{ (cliente.nombre_completo or 'C').strip()[0]|upper }}
-      </div>
-      <div>
-        <h1 class="h3 mb-1">Cliente: {{ cliente.nombre_completo | default('—') }}</h1>
-        <div class="text-muted small">
-          <span class="me-2">
-            Código:
-            <span class="fw-semibold text-info">{{ cliente.codigo | default('—') }}</span>
-          </span>
-          <span class="me-2">
-            Registrado:
-            {{ cliente.fecha_registro and cliente.fecha_registro|rd_datetime('%Y-%m-%d') or '—' }}
-          </span>
-          <span>
-            Solicitudes:
-            <span class="fw-semibold text-light">
-              {{ kpi_cliente.total_solicitudes or 0 }}
-            </span>
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ✅ ACCIONES HEADER (AQUÍ VA EL BOTÓN) -->
-    <div class="d-flex flex-wrap gap-2">
-      <!-- ✅ NUEVO: Link público del cliente (para crear solicitud sin login) -->
-      <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
-         class="btn btn-info">
-        🔗 Link público
-      </a>
-
-      <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
-        ✏️ <i class="bi bi-pencil-fill ms-1"></i> Editar Cliente
-      </a>
-      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-light">
-        ↩️ <i class="bi bi-arrow-left-short ms-1"></i> Volver
-      </a>
+<div class="container py-4 py-md-5"
+     style="max-width: 1200px;"
+     data-admin-focus-anchor
+     data-live-invalidation-scope="1"
+     data-live-invalidation-view="cliente_detail"
+     data-live-invalidation-stream-url="{{ url_for('admin.live_invalidation_stream') }}"
+     data-live-invalidation-poll-url="{{ url_for('admin.live_invalidation_poll') }}"
+     data-live-invalidation-source-url="{{ request.path }}"
+     data-live-region-summary-url="{{ request.path }}"
+     data-live-region-solicitudes-url="{{ request.path }}"
+     data-live-observability-url="{{ url_for('admin.live_observability_ingest') }}">
+  <div id="clienteSummaryAsyncScope" data-admin-async-scope>
+    <div id="clienteSummaryAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_cliente_detail_summary_region.html' %}
     </div>
   </div>
 
@@ -73,117 +45,6 @@
     </form>
   </div>
   <!-- ===== FIN BOTONES NUEVOS ===== -->
-
-  <!-- ===== Tarjetas de info ===== -->
-  <div class="row g-4">
-    <!-- Información general -->
-    <div class="col-lg-6">
-      <div class="glass-card h-100">
-        <div class="glass-header bg-primary">
-          <i class="bi bi-person-circle"></i>
-          Información General
-        </div>
-        <dl class="row card-body mb-0">
-          <dt class="col-sm-4">Email</dt>
-          <dd class="col-sm-8">{{ cliente.email | default('—') }}</dd>
-
-          <dt class="col-sm-4">Teléfono</dt>
-          <dd class="col-sm-8">{{ cliente.telefono | default('—') }}</dd>
-
-          <dt class="col-sm-4">Ciudad</dt>
-          <dd class="col-sm-8">{{ cliente.ciudad | default('—') }}</dd>
-
-          <dt class="col-sm-4">Sector</dt>
-          <dd class="col-sm-8">{{ cliente.sector | default('—') }}</dd>
-        </dl>
-      </div>
-    </div>
-
-    <!-- Métricas / KPIs -->
-    <div class="col-lg-6">
-      <div class="glass-card h-100">
-        <div class="glass-header bg-info">
-          <i class="bi bi-bar-chart-fill"></i>
-          Métricas
-        </div>
-        <div class="card-body">
-          <div class="row text-center mb-3">
-            <div class="col-4">
-              <div class="h4 mb-0">{{ kpi_cliente.total_solicitudes or 0 }}</div>
-              <small class="text-muted">Solicitudes</small>
-            </div>
-            <div class="col-4">
-              <div class="h4 mb-0">
-                {% set pagadas = kpi_cliente.estados.pagada or 0 %}
-                {{ pagadas }}
-              </div>
-              <small class="text-muted">Pagadas</small>
-            </div>
-            <div class="col-4">
-              <div class="h4 mb-0">
-                {% set activas = kpi_cliente.estados.activa or 0 %}
-                {{ activas }}
-              </div>
-              <small class="text-muted">Activas</small>
-            </div>
-          </div>
-
-          <hr>
-
-          <div class="row mb-2">
-            <div class="col-6">
-              <small class="text-muted d-block">En proceso</small>
-              <span>{{ kpi_cliente.estados.proceso or 0 }}</span>
-            </div>
-            <div class="col-6">
-              <small class="text-muted d-block">Con reemplazo</small>
-              <span>{{ kpi_cliente.estados.reemplazo or 0 }}</span>
-            </div>
-          </div>
-
-          <div class="row mb-2">
-            <div class="col-6">
-              <small class="text-muted d-block">Canceladas</small>
-              <span>{{ kpi_cliente.estados.cancelada or 0 }}</span>
-            </div>
-            <div class="col-6">
-              <small class="text-muted d-block">Otros estados</small>
-              <span>{{ kpi_cliente.estados.otro or 0 }}</span>
-            </div>
-          </div>
-
-          <hr>
-
-          <div class="mb-2">
-            <small class="text-muted d-block">Monto total pagado</small>
-            <span class="fw-bold">
-              {{ kpi_cliente.monto_total_pagado_str }}
-            </span>
-          </div>
-
-          <div class="row">
-            <div class="col-6">
-              <small class="text-muted d-block">Primera solicitud</small>
-              {% if kpi_cliente.primera_solicitud %}
-                <span>{{ kpi_cliente.primera_solicitud|rd_datetime('%d/%m/%Y') }}</span>
-              {% else %}
-                <span>—</span>
-              {% endif %}
-            </div>
-            <div class="col-6">
-              <small class="text-muted d-block">Última actividad</small>
-              {% if kpi_cliente.ultima_actividad %}
-                <span>{{ kpi_cliente.ultima_actividad|rd_datetime('%d/%m/%Y %H:%M') }}</span>
-              {% else %}
-                <span>—</span>
-              {% endif %}
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- ===== Notas ===== -->
   <div class="glass-card mt-4">
@@ -248,6 +109,8 @@
     </div>
   </div>
 
+  <div id="clienteSolicitudesAsyncScope" data-admin-async-scope>
+    <div id="clienteSolicitudesAsyncRegion" data-async-preserve-scroll="true">
   <!-- ===== Solicitudes ===== -->
   <div class="mt-5">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
@@ -279,13 +142,21 @@
               <th>Modalidad</th>
               <th>Plan</th>
               <th>Estado</th>
+              <th>Contrato digital</th>
               <th class="text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {% for s in solicitudes %}
             {% set repl_activo = reemplazos_activos.get(s.id) if reemplazos_activos is defined else None %}
+            {% set est_norm = (s.estado or '')|lower %}
+            {% set repl_operable = repl_activo and est_norm == 'reemplazo' %}
             {% set back_to = (url_for('admin.detalle_cliente', cliente_id=cliente.id) ~ '#sol-' ~ s.id) %}
+            {% set contract_info = latest_contracts_by_solicitud.get(s.id) if latest_contracts_by_solicitud is defined else None %}
+            {% set contract = contract_info.contract if contract_info else None %}
+            {% set contract_state = contract_info.effective_state if contract_info else 'sin_contrato' %}
+            {% set contract_is_expired = contract_info.is_expired if contract_info else False %}
+            {% set contract_link = contract_links_by_solicitud.get(s.id) if contract_links_by_solicitud is defined else '' %}
             <tr id="sol-{{ s.id }}">
               <td class="fw-semibold text-primary">{{ s.codigo_solicitud | default('—') }}</td>
               <td>
@@ -328,8 +199,120 @@
                   'bg-light'
                 %}
                 <span class="badge {{ badge_class }}">{{ s.estado | default('—') }}</span>
-                {% if repl_activo %}
+                {% if repl_activo and est_norm == 'reemplazo' %}
                   <span class="badge bg-warning text-dark ms-1">Reemplazo activo</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if contracts_schema_ready is defined and not contracts_schema_ready %}
+                  <span class="text-muted small">Módulo no disponible</span>
+                {% elif contract %}
+                  {% set state_badge =
+                    'bg-secondary' if contract_state == 'borrador' else
+                    'bg-primary' if contract_state in ['enviado', 'visto'] else
+                    'bg-success' if contract_state == 'firmado' else
+                    'bg-warning text-dark' if contract_state == 'expirado' else
+                    'bg-danger' if contract_state == 'anulado' else
+                    'bg-light text-dark'
+                  %}
+                  <div class="small" data-testid="contract-state-{{ s.id }}">
+                    <div class="mb-1">
+                      <span class="badge {{ state_badge }}">{{ contract_state }}</span>
+                      <span class="ms-1">v{{ contract.version or 1 }}</span>
+                    </div>
+                    <div>Enviado: {{ contract.enviado_at and contract.enviado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+                    <div>Firmado: {{ contract.firmado_at and contract.firmado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+                    <div>PDF final: {{ 'Sí' if contract_info.has_pdf else 'No' }}</div>
+                    <div>Expirado: {{ 'Sí' if contract_is_expired else 'No' }}</div>
+                    <div>Anulado: {{ contract.anulado_at and contract.anulado_at|rd_datetime('%Y-%m-%d %H:%M') or 'No' }}</div>
+                  </div>
+                  <div class="d-flex flex-wrap gap-1 mt-2">
+                    {% if contract_state == 'borrador' %}
+                      <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=s.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm" data-testid="contract-action-{{ s.id }}-refresh">Refrescar borrador</button>
+                      </form>
+                      <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-primary btn-sm" data-testid="contract-action-{{ s.id }}-send">Enviar contrato</button>
+                      </form>
+                    {% elif contract_state in ['enviado', 'visto'] %}
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="contract-action-{{ s.id }}-copy" {% if not contract_link %}disabled{% endif %}
+                              onclick="if(navigator.clipboard){navigator.clipboard.writeText('{{ contract_link }}');}">
+                        Copiar link
+                      </button>
+                      <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=contract.id) }}" class="btn btn-outline-primary btn-sm" data-testid="contract-action-{{ s.id }}-view">Ver contrato</a>
+                      <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-primary btn-sm" data-testid="contract-action-{{ s.id }}-reissue">Reemitir</button>
+                      </form>
+                      <form method="post" action="{{ url_for('contratos.anular_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-outline-danger btn-sm" data-testid="contract-action-{{ s.id }}-annul">Anular</button>
+                      </form>
+                    {% elif contract_state == 'firmado' %}
+                      <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=contract.id) }}" class="btn btn-outline-primary btn-sm" data-testid="contract-action-{{ s.id }}-view">Ver contrato</a>
+                      {% if contract_info.has_pdf %}
+                        <a href="{{ url_for('contratos.descargar_pdf_admin', contrato_id=contract.id) }}" class="btn btn-success btn-sm" data-testid="contract-action-{{ s.id }}-pdf">Descargar PDF</a>
+                      {% endif %}
+                    {% elif contract_state == 'expirado' %}
+                      <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-primary btn-sm" data-testid="contract-action-{{ s.id }}-reissue">Reemitir</button>
+                      </form>
+                    {% elif contract_state == 'anulado' %}
+                      <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=contract.id) }}" class="btn btn-outline-secondary btn-sm" data-testid="contract-action-{{ s.id }}-detail">Ver detalle</a>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <div class="small text-muted mb-2" data-testid="contract-state-{{ s.id }}">Sin contrato</div>
+                  <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=s.id) }}" class="d-inline"
+                        data-admin-async-form
+                        data-async-target="#clienteSolicitudesAsyncRegion"
+                        data-async-busy-container="#clienteSolicitudesAsyncScope"
+                        data-async-preserve-scroll="true"
+                        data-async-fallback="native">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                    <input type="hidden" name="next" value="{{ back_to }}">
+                    <button type="submit" class="btn btn-outline-primary btn-sm" data-testid="contract-action-{{ s.id }}-create">Crear contrato</button>
+                  </form>
                 {% endif %}
               </td>
 
@@ -337,7 +320,8 @@
                 <div class="actions-grid">
                   <!-- Ver -->
                   <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
-                     class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Ver detalle" aria-label="Ver detalle">
+                     class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Ver detalle" aria-label="Ver detalle"
+                     data-admin-nav="true">
                     👁️ <i class="bi bi-eye-fill ms-1"></i><span class="sr-only">Ver</span>
                   </a>
 
@@ -351,20 +335,20 @@
                   </a>
 
                   <!-- Editar -->
-                  <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
+                  <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id, next=request.full_path) }}"
                      class="btn btn-sm btn-warning" data-bs-toggle="tooltip" title="Editar solicitud" aria-label="Editar">
                     ✏️ <i class="bi bi-pencil-fill ms-1"></i><span class="sr-only">Editar</span>
                   </a>
 
                   <!-- Plan / Abono -->
-                  <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id) }}"
+                  <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id, next=request.full_path) }}"
                      class="btn btn-sm btn-primary" data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
                     💳 <i class="bi bi-credit-card-fill ms-1"></i><span class="sr-only">Plan</span>
                   </a>
 
                   <!-- Registrar pago -->
                   {% if s.estado in ['activa','proceso'] %}
-                  <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id) }}?next={{ request.full_path | urlencode }}"
+                  <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=request.full_path) }}"
                      class="btn btn-sm btn-success" data-bs-toggle="tooltip" title="Registrar pago" aria-label="Registrar pago">
                     💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Registrar pago</span>
                   </a>
@@ -376,6 +360,8 @@
                         class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="next" value="{{ back_to }}">
+                    <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                    <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
                     <button class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Poner en espera de pago">
                       ⏸️
                     </button>
@@ -386,44 +372,22 @@
                         class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="next" value="{{ back_to }}">
+                    <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                    <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
                     <button class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Quitar espera de pago">
                       ▶️
                     </button>
                   </form>
                   {% endif %}
 
-                  {% if not repl_activo %}
-                  <button type="button"
-                          class="btn btn-sm btn-secondary"
-                          data-bs-toggle="modal"
-                          data-bs-target="#modal-abrir-reemplazo-{{ s.id }}"
-                          {% if not s.candidata_id %}disabled{% endif %}
-                          title="Abrir reemplazo">
-                    🔁
-                  </button>
-                  {% else %}
-                    {% if is_admin_role %}
-                    <form method="post"
-                          action="{{ url_for('admin.cancelar_reemplazo', s_id=s.id, reemplazo_id=repl_activo.id) }}"
-                          class="d-inline">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="next" value="{{ back_to }}">
-                      <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Cancelar reemplazo">
-                        🛑
-                      </button>
-                    </form>
-                    {% else %}
-                    <button class="btn btn-sm btn-outline-danger" disabled title="Cancelar reemplazo (solo admin)">🛑</button>
-                    {% endif %}
-
-                    <button type="button"
-                            class="btn btn-sm btn-dark"
-                            data-bs-toggle="modal"
-                            data-bs-target="#modal-culminar-reemplazo-{{ s.id }}"
-                            title="Culminar reemplazo">
-                      ✅
-                    </button>
-                  {% endif %}
+                  {% set async_target = '#clienteSolicitudReemplazoActionsAsyncRegion-' ~ s.id %}
+                  {% set async_scope = '#clienteSolicitudesAsyncScope' %}
+                  {% set next_url = back_to %}
+                  {% set style = 'cliente' %}
+                  {% set solicitud = s %}
+                  <div id="clienteSolicitudReemplazoActionsAsyncRegion-{{ s.id }}" data-async-preserve-scroll="true" class="d-inline">
+                    {% include 'admin/_reemplazo_actions_region.html' with context %}
+                  </div>
 
                   {% if s.candidata_id %}
                     <a href="{{ url_for('admin.ver_compatibilidad', cliente_id=cliente.id, candidata_id=s.candidata_id) }}"
@@ -450,6 +414,8 @@
                           class="d-inline"
                           onsubmit="return confirm('¿Cancelar solicitud {{ s.codigo_solicitud }} sin motivo?');">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                      <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
                       <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" title="Cancelar rápido (sin motivo)" aria-label="Cancelar rápido">
                         ⛔ <i class="bi bi-x-circle-fill ms-1"></i><span class="sr-only">Cancelar rápido</span>
                       </button>
@@ -463,71 +429,6 @@
                   {% endif %}
                 </div>
 
-                <div>
-                  <div class="modal fade" id="modal-abrir-reemplazo-{{ s.id }}" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                      <div class="modal-content">
-                        <div class="modal-header">
-                          <h5 class="modal-title">Abrir reemplazo</h5>
-                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <form method="post" action="{{ url_for('admin.nuevo_reemplazo', s_id=s.id) }}">
-                          <div class="modal-body text-start">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <input type="hidden" name="next" value="{{ back_to }}">
-                            <div class="mb-2">
-                              <label class="form-label">Motivo del fallo</label>
-                              <textarea class="form-control" name="motivo_fallo" rows="3" required></textarea>
-                            </div>
-                            <div class="form-check mb-2">
-                              <input class="form-check-input" type="checkbox" name="descalificar_candidata_fallida" value="1" id="dcf-modal-{{ s.id }}">
-                              <label class="form-check-label" for="dcf-modal-{{ s.id }}">
-                                Descalificar candidata que falló
-                              </label>
-                            </div>
-                            <div class="mb-2">
-                              <label class="form-label">Motivo descalificación (si aplica)</label>
-                              <textarea class="form-control" name="motivo_descalificacion" rows="2"></textarea>
-                            </div>
-                            <small class="text-muted">
-                              Si no se descalifica, se intenta volver a lista para trabajar según readiness.
-                            </small>
-                          </div>
-                          <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                            <button type="submit" class="btn btn-primary">Abrir reemplazo</button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-
-                  {% if repl_activo %}
-                  <div class="modal fade" id="modal-culminar-reemplazo-{{ s.id }}" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                      <div class="modal-content">
-                        <div class="modal-header">
-                          <h5 class="modal-title">Culminar reemplazo</h5>
-                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <form method="post" action="{{ url_for('admin.cerrar_reemplazo_asignando', s_id=s.id, reemplazo_id=repl_activo.id) }}">
-                          <div class="modal-body text-start">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <input type="hidden" name="next" value="{{ back_to }}">
-                            <label class="form-label">ID candidata nueva</label>
-                            <input type="number" min="1" class="form-control" name="candidata_new_id" required>
-                            <div class="form-text">Se bloquea si la candidata está descalificada.</div>
-                          </div>
-                          <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                            <button type="submit" class="btn btn-success">Confirmar</button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-                  {% endif %}
-                </div>
               </td>
             </tr>
             {% endfor %}
@@ -535,6 +436,8 @@
         </table>
       </div>
     {% endif %}
+  </div>
+    </div>
   </div>
 
   <!-- ===== Historial de actividad (Timeline) ===== -->

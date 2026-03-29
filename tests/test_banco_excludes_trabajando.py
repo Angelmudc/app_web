@@ -78,7 +78,7 @@ class BancoExcludesTrabajandoTest(unittest.TestCase):
 
         with flask_app.app_context():
             with patch.object(legacy_handlers.Candidata, "query", query), \
-                 patch("core.legacy_handlers.render_template", side_effect=lambda tpl, **ctx: ",".join(x.nombre_completo for x in (ctx.get("candidatas") or []))):
+                 patch("core.handlers.candidatas_list_handlers.render_template", side_effect=lambda tpl, **ctx: ",".join(x.nombre_completo for x in (ctx.get("candidatas") or []))):
                 resp = self.client.get("/candidatas", follow_redirects=False)
 
         self.assertEqual(resp.status_code, 200)

@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
-from dotenv import load_dotenv
-load_dotenv()
-
 import os
 from datetime import timedelta
 
-from flask import session, request, redirect, url_for, render_template
+from flask import session, request, redirect, url_for, render_template, jsonify
 from flask_login import current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf.csrf import CSRFError
@@ -29,6 +26,36 @@ app.jinja_env.globals['url_for_safe'] = url_for_safe
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
+    wants_json = False
+    try:
+        accept = (request.headers.get("Accept") or "").lower()
+        xrw = (request.headers.get("X-Requested-With") or "").lower()
+        async_hdr = (request.headers.get("X-Admin-Async") or "").lower()
+        wants_json = bool(request.is_json or ("application/json" in accept) or (xrw == "xmlhttprequest") or (async_hdr in {"1", "true", "yes"}))
+    except Exception:
+        wants_json = False
+
+    if wants_json:
+        login_url = None
+        try:
+            if (request.path or "").startswith("/admin/"):
+                login_url = url_for("admin.login", next=(request.full_path or request.path))
+            elif (request.path or "").startswith("/clientes/"):
+                login_url = url_for("clientes.login", next=(request.full_path or request.path))
+        except Exception:
+            login_url = None
+
+        payload = {
+            "success": False,
+            "ok": False,
+            "error_code": "csrf",
+            "category": "danger",
+            "message": "La sesión de seguridad expiró. Recarga la página e intenta de nuevo.",
+            "redirect_url": login_url,
+            "errors": [{"field": "csrf_token", "message": "Token CSRF inválido o vencido."}],
+        }
+        return jsonify(payload), 400
+
     path = (request.path or '').strip()
     if path.startswith('/clientes/solicitudes/publica/') or path.startswith('/clientes/f/'):
         return render_template(
@@ -47,6 +74,11 @@ def handle_csrf_error(e):
             'clientes/public_link_invalid.html',
             reason_key='csrf',
             status_code=400,
+        ), 400
+    if path.startswith('/contratos/f/'):
+        return render_template(
+            'contratos/public_invalid.html',
+            reason_key='csrf',
         ), 400
     if path == '/clientes/solicitudes/nueva-publica':
         return redirect(url_for('clientes.solicitud_publica_nueva'))
@@ -148,6 +180,8 @@ def _protect_sensitive_routes():
 
     # Nunca interceptar logins/logout/health
     if path in {"/login", "/logout", "/admin/login", "/clientes/login", "/health", "/healthz", "/ping"}:
+        return None
+    if path.startswith("/admin/mfa/"):
         return None
     if path == "/clientes/reset-password":
         return None
@@ -265,9 +299,32 @@ try:
         def _unauthorized_callback():
             bp = (request.blueprint or "").strip()
             next_url = request.full_path if request.full_path else request.path
+            wants_json = False
+            try:
+                accept = (request.headers.get("Accept") or "").lower()
+                xrw = (request.headers.get("X-Requested-With") or "").lower()
+                async_hdr = (request.headers.get("X-Admin-Async") or "").lower()
+                wants_json = bool(
+                    request.is_json
+                    or ("application/json" in accept)
+                    or (xrw == "xmlhttprequest")
+                    or (async_hdr in {"1", "true", "yes"})
+                )
+            except Exception:
+                wants_json = False
             if bp == "clientes":
                 return redirect(url_for("clientes.login", next=next_url))
             if bp == "admin":
+                if wants_json:
+                    login_url = url_for("admin.login", next=next_url)
+                    return jsonify({
+                        "success": False,
+                        "ok": False,
+                        "category": "warning",
+                        "message": "Tu sesión expiró. Inicia sesión nuevamente.",
+                        "error_code": "session_expired",
+                        "redirect_url": login_url,
+                    }), 401
                 return redirect(url_for("admin.login", next=next_url))
             return redirect(url_for("login", next=next_url))
 except Exception:

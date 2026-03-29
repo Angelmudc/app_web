@@ -1,0 +1,28 @@
+<form method="GET"
+      action="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
+      class="mb-3"
+      data-admin-async-form
+      data-async-target="#reemplazoFinPickRegion"
+      data-async-busy-container="#reemplazoFinAsyncScope"
+      data-async-preserve-scroll="true"
+      data-async-fallback="native">
+  <input type="hidden" name="_async_target" value="#reemplazoFinPickRegion">
+  <div class="d-flex gap-2 flex-wrap">
+    <input type="text"
+           name="q"
+           value="{{ q or '' }}"
+           class="form-control"
+           placeholder="Buscar doméstica por nombre, cédula, código o teléfono…"
+           autocomplete="off">
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-search me-1"></i> Buscar
+    </button>
+    <a href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}"
+       class="btn btn-outline-secondary">
+      Limpiar
+    </a>
+  </div>
+  <div class="form-text mt-1">
+    Escribe y presiona <strong>Buscar</strong>. Verás la lista abajo y también se llenará el selector.
+  </div>
+</form>

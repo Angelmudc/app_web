@@ -15,70 +15,11 @@
     </a>
   </div>
 
-  {% if solicitudes %}
-    <div class="card">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th scope="col">Código</th>
-                <th scope="col">Cliente</th>
-                <th scope="col">Fecha solicitud</th>
-                <th scope="col" class="text-end">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for s in solicitudes %}
-              <tr>
-                <td class="fw-semibold">{{ s.codigo_solicitud }}</td>
-                <td>{{ s.cliente.nombre_completo }}</td>
-                <td>{{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') }}</td>
-                <td class="text-end">
-
-                  <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=s.cliente_id, id=s.id) }}"
-                     class="btn btn-sm btn-outline-secondary me-1">
-                    Editar
-                  </a>
-
-                  <form method="post"
-                        action="{{ url_for('admin.activar_solicitud_directa', id=s.id) }}"
-                        class="d-inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-success me-1" title="Marcar como activa">
-                      Activar
-                    </button>
-                  </form>
-
-                  <form method="post"
-                        action="{{ url_for('admin.cancelar_solicitud_directa', id=s.id) }}"
-                        class="d-inline"
-                        onsubmit="return confirm('¿Seguro que deseas cancelar esta solicitud?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-danger" title="Cancelar solicitud">
-                      Cancelar
-                    </button>
-                  </form>
-
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  <div id="procesoAccionesAsyncScope" data-admin-async-scope>
+    <div id="procesoAccionesAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_solicitudes_proceso_acciones_results.html' %}
     </div>
-
-    <div class="alert alert-info mt-3 mb-0">
-      Usa los botones para <b>editar</b>, <b>activar</b> o <b>cancelar</b> rápidamente las solicitudes en proceso.
-    </div>
-
-  {% else %}
-    <div class="alert alert-info d-flex align-items-center mt-4" role="alert">
-      <span class="me-2">ℹ️</span>
-      No hay solicitudes en estado <strong>proceso</strong>.
-    </div>
-  {% endif %}
+  </div>
 
 </div>
 {% endblock %}

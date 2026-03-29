@@ -1,0 +1,110 @@
+<div data-candidata-historial-state
+     data-active-filter="{{ active_filter or '' }}"
+     data-initial-last-id="{{ initial_last_id or 0 }}"></div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div><strong>Nombre:</strong> {{ candidata_meta.nombre if candidata_meta else (candidata.nombre_completo if candidata else '-') }}</div>
+    <div><strong>Código:</strong> {{ candidata_meta.codigo if candidata_meta else (candidata.codigo if candidata else '-') }}</div>
+    <div><strong>Cédula:</strong> {{ candidata_meta.cedula if candidata_meta else (candidata.cedula if candidata else '-') }}</div>
+    <div><strong>Estado:</strong> {{ candidata_meta.estado if candidata_meta else (candidata.estado if candidata else '-') }}</div>
+    <div><strong>Entity ID:</strong> {{ candidata_entity_id }}</div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 flex-wrap mb-3">
+  {% set f = active_filter or '' %}
+  <a class="btn btn-sm {{ 'btn-dark' if not f else 'btn-outline-dark' }}"
+     href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id) }}"
+     data-admin-async-link
+     data-async-target="#monitoreoCandidataHistorialAsyncRegion"
+     data-async-busy-container="#monitoreoCandidataHistorialAsyncScope"
+     data-async-preserve-scroll="true"
+     data-async-fallback="native">Todo</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f=='edits' else 'btn-outline-dark' }}"
+     href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='edits') }}"
+     data-admin-async-link
+     data-async-target="#monitoreoCandidataHistorialAsyncRegion"
+     data-async-busy-container="#monitoreoCandidataHistorialAsyncScope"
+     data-async-preserve-scroll="true"
+     data-async-fallback="native">Edits</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f=='entrevistas' else 'btn-outline-dark' }}"
+     href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='entrevistas') }}"
+     data-admin-async-link
+     data-async-target="#monitoreoCandidataHistorialAsyncRegion"
+     data-async-busy-container="#monitoreoCandidataHistorialAsyncScope"
+     data-async-preserve-scroll="true"
+     data-async-fallback="native">Entrevistas</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f=='docs' else 'btn-outline-dark' }}"
+     href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='docs') }}"
+     data-admin-async-link
+     data-async-target="#monitoreoCandidataHistorialAsyncRegion"
+     data-async-busy-container="#monitoreoCandidataHistorialAsyncScope"
+     data-async-preserve-scroll="true"
+     data-async-fallback="native">Docs</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f=='matching' else 'btn-outline-dark' }}"
+     href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='matching') }}"
+     data-admin-async-link
+     data-async-target="#monitoreoCandidataHistorialAsyncRegion"
+     data-async-busy-container="#monitoreoCandidataHistorialAsyncScope"
+     data-async-preserve-scroll="true"
+     data-async-fallback="native">Matching/envíos</a>
+  <a class="btn btn-sm {{ 'btn-dark' if f=='fallos' else 'btn-outline-dark' }}"
+     href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=candidata_entity_id, filter='fallos') }}"
+     data-admin-async-link
+     data-async-target="#monitoreoCandidataHistorialAsyncRegion"
+     data-async-busy-container="#monitoreoCandidataHistorialAsyncScope"
+     data-async-preserve-scroll="true"
+     data-async-fallback="native">Fallos</a>
+</div>
+
+<div id="candidataTimeline" class="vstack gap-2">
+  {% for log in logs %}
+  <article class="card" data-log-id="{{ log.id }}">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+        <div>
+          <div><strong>{{ log.actor_username or '-' }}</strong> <small class="text-muted">({{ log.actor_role or '-' }})</small></div>
+          <div>{{ log.action_human or log.action_type or '-' }}</div>
+          <div class="small text-muted"><code>{{ log.action_type or '-' }}</code> · {{ log.summary_human or log.summary or '-' }}</div>
+        </div>
+        <div class="text-end">
+          <div><small>{{ log.created_at_human or log.created_at or '-' }}</small></div>
+          <div>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</div>
+        </div>
+      </div>
+      <div class="text-muted"><small>{{ log.route_human or log.route or '-' }}</small></div>
+      <div><a class="btn btn-link btn-sm p-0" href="{{ url_for('admin.monitoreo_logs', entity_type='candidata', search=candidata_entity_id) }}">Ver en logs</a></div>
+      {% if log.changes_human %}
+      <div class="mt-2">
+        <div class="small fw-semibold">Cambios</div>
+        <ul class="mb-0 small">
+          {% for c in log.changes_human %}
+          <li>{{ c.sentence }}{% if not c.sensitive %} <span class="text-muted">({{ c.from }} → {{ c.to }})</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if log.metadata_human %}
+      <div class="mt-2">
+        <div class="small fw-semibold">Contexto</div>
+        <ul class="mb-0 small text-muted">
+          {% for m in log.metadata_human %}
+          <li>{{ m.label }}: {{ m.value }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if log.changes_json or log.metadata_json %}
+      <details class="mt-2">
+        <summary>Detalle técnico</summary>
+        {% if log.changes_json %}<pre class="mb-0 mt-1">changes_json: {{ log.changes_json | tojson(indent=2) }}</pre>{% endif %}
+        {% if log.metadata_json %}<pre class="mb-0 mt-1">metadata_json: {{ log.metadata_json | tojson(indent=2) }}</pre>{% endif %}
+      </details>
+      {% endif %}
+    </div>
+  </article>
+  {% else %}
+  <div class="text-muted">Sin logs para esta candidata.</div>
+  {% endfor %}
+</div>

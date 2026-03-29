@@ -21,9 +21,21 @@ def test_metricas_endpoint_ok_for_admin_and_link_in_base():
     dashboard_resp = client.get("/admin/metricas", follow_redirects=False)
     assert dashboard_resp.status_code == 200
     assert "Panel de métricas".encode("utf-8") in dashboard_resp.data
+    dashboard_html = dashboard_resp.get_data(as_text=True)
+    assert 'id="metricasDashboardAsyncRegion"' in dashboard_html
+    assert 'data-admin-async-form' in dashboard_html
 
     secretarias_resp = client.get("/admin/metricas/secretarias", follow_redirects=False)
     assert secretarias_resp.status_code == 200
+    secretarias_html = secretarias_resp.get_data(as_text=True)
+    assert 'id="metricasSecretariasAsyncRegion"' in secretarias_html
+    assert 'data-admin-async-form' in secretarias_html
+
+    solicitudes_resp = client.get("/admin/metricas/solicitudes", follow_redirects=False)
+    assert solicitudes_resp.status_code == 200
+    solicitudes_html = solicitudes_resp.get_data(as_text=True)
+    assert 'id="metricasSolicitudesAsyncRegion"' in solicitudes_html
+    assert 'data-admin-async-form' in solicitudes_html
 
 
 def test_metricas_endpoint_forbidden_for_secretaria_and_no_menu_link():

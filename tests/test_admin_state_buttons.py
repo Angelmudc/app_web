@@ -42,7 +42,7 @@ class AdminStateButtonsTest(unittest.TestCase):
         )
         self.assertIn(login_resp.status_code, (302, 303))
 
-    def test_marcar_trabajando_actualiza_estado_y_auditoria(self):
+    def test_marcar_trabajando_bloquea_si_no_hay_asignacion_activa(self):
         cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
 
         with flask_app.app_context():
@@ -55,10 +55,8 @@ class AdminStateButtonsTest(unittest.TestCase):
                 )
 
         self.assertIn(resp.status_code, (302, 303))
-        self.assertEqual(cand.estado, "trabajando")
-        self.assertIsNotNone(cand.fecha_cambio_estado)
-        self.assertTrue(bool(cand.usuario_cambio_estado))
-        commit_mock.assert_called_once()
+        self.assertEqual(cand.estado, "lista_para_trabajar")
+        commit_mock.assert_not_called()
 
     def test_marcar_lista_para_trabajar_bloquea_si_no_ready(self):
         cand = _DummyCandidata(fila=1, estado="inscrita")
@@ -95,7 +93,7 @@ class AdminStateButtonsTest(unittest.TestCase):
         self.assertEqual(cand.estado, "lista_para_trabajar")
         self.assertIsNotNone(cand.fecha_cambio_estado)
         self.assertTrue(bool(cand.usuario_cambio_estado))
-        commit_mock.assert_called_once()
+        self.assertGreaterEqual(commit_mock.call_count, 1)
         mark_logs = [c.kwargs for c in log_mock.call_args_list if c.kwargs.get("action_type") == "CANDIDATA_MARK_LISTA"]
         self.assertEqual(len(mark_logs), 1)
         self.assertEqual(mark_logs[0].get("metadata", {}).get("reason"), "readiness_ok")

@@ -1,0 +1,6 @@
+# Temporary risk acceptance file for pip-audit gate.
+# Format: vulnerability ID or alias (e.g., CVE-XXXX-YYYY)
+# GHSA-cfh3-3jmp-rvhc (CVE-2026-25990): Pillow fix requires >=12.1.1, unavailable on Python 3.9.
+# Mitigation in place: do not process untrusted PSD uploads.
+GHSA-cfh3-3jmp-rvhc
+CVE-2026-25990

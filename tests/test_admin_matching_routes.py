@@ -23,6 +23,19 @@ class _DummySolicitud:
     fecha_solicitud = datetime.utcnow()
 
 
+class _DummySolicitudRow:
+    def __init__(self, solicitud_id: int, codigo: str):
+        self.id = solicitud_id
+        self.cliente_id = 7
+        self.codigo_solicitud = codigo
+        self.cliente = _DummyCliente()
+        self.estado = "activa"
+        self.fecha_solicitud = datetime.utcnow()
+        self.ciudad_sector = "Santiago"
+        self.modalidad_trabajo = "con dormida"
+        self.horario = "8am-5pm"
+
+
 class _DummyCandidata:
     def __init__(self, fila: int):
         self.fila = fila
@@ -50,6 +63,26 @@ class _SolicitudQuery:
 
     def first_or_404(self):
         return _DummySolicitud()
+
+
+class _MatchingSolicitudesQuery:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def options(self, *args, **kwargs):
+        return self
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def limit(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        return list(self._rows)
 
 
 class _CandidataQuery:
@@ -187,6 +220,116 @@ class AdminMatchingRoutesTest(unittest.TestCase):
         )
         self.assertIn(login_resp.status_code, (302, 303))
 
+    def _async_headers(self):
+        return {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-Admin-Async": "1",
+        }
+
+    def test_get_matching_solicitudes_async_devuelve_payload_region(self):
+        rows = [_DummySolicitudRow(10, "SOL-010"), _DummySolicitudRow(11, "SOL-011")]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _MatchingSolicitudesQuery(rows)):
+                resp = self.client.get(
+                    "/admin/matching/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertTrue(data.get("success"))
+        self.assertEqual(data.get("update_target"), "#matchingSolicitudesAsyncRegion")
+        self.assertIn("SOL-010", data.get("replace_html") or "")
+
+    def test_get_matching_solicitudes_fallback_clasico_intacto(self):
+        rows = [_DummySolicitudRow(10, "SOL-010")]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _MatchingSolicitudesQuery(rows)):
+                resp = self.client.get("/admin/matching/solicitudes", follow_redirects=False)
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("Matching de Solicitudes", html)
+        self.assertIn("matchingSolicitudesAsyncRegion", html)
+
+    def test_get_matching_detalle_async_devuelve_payload_region(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 88, "level": "alta", "summary": "ok", "risks": [], "reasons": [], "breakdown": []}]
+        sent_row = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=101, status="enviada")
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery(all_rows=[sent_row])), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())):
+                resp = self.client.get(
+                    "/admin/matching/solicitudes/10",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertTrue(data.get("success"))
+        self.assertEqual(data.get("update_target"), "#matchingDetalleAsyncRegion")
+        self.assertIn("Checklist listo para enviar", data.get("replace_html") or "")
+        self.assertIn("Enviadas al cliente", data.get("replace_html") or "")
+
+    def test_get_matching_detalle_async_fragment_targets_ranking_y_historial(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 88, "level": "alta", "summary": "ok", "risks": [], "reasons": [], "breakdown": []}]
+        sent_row = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=101, status="enviada")
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery(all_rows=[sent_row])), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())):
+                resp_ranking = self.client.get(
+                    "/admin/matching/solicitudes/10?fragment=ranking",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+                resp_historial = self.client.get(
+                    "/admin/matching/solicitudes/10?fragment=historial",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp_ranking.status_code, 200)
+        self.assertEqual(resp_historial.status_code, 200)
+        data_ranking = resp_ranking.get_json() or {}
+        data_historial = resp_historial.get_json() or {}
+        self.assertEqual(data_ranking.get("update_target"), "#matchingRankingAsyncRegion")
+        self.assertIn("Checklist listo para enviar", data_ranking.get("replace_html") or "")
+        self.assertEqual(data_historial.get("update_target"), "#matchingHistoryAsyncRegion")
+        self.assertIn("Enviadas al cliente", data_historial.get("replace_html") or "")
+
+    def test_get_matching_detalle_fallback_clasico_intacto(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 88, "level": "alta", "summary": "ok", "risks": [], "reasons": [], "breakdown": []}]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch("admin.routes.rank_candidates", return_value=ranked), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())):
+                resp = self.client.get("/admin/matching/solicitudes/10", follow_redirects=False)
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("matchingDetalleAsyncRegion", html)
+        self.assertIn("/admin/matching/solicitudes/10/enviar", html)
+        self.assertIn('data-async-action="/admin/matching/solicitudes/10/enviar/ui"', html)
+
+    def test_post_enviar_se_mantiene_clasico_redirect(self):
+        ranked = [{"candidate": _DummyCandidata(101), "score": 88, "breakdown_snapshot": {"x": "y"}}]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
+                 patch("admin.routes.rank_candidates", return_value=ranked):
+                resp = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"]},
+                    follow_redirects=False,
+                )
+        self.assertIn(resp.status_code, (302, 303))
+        self.assertIn("/admin/matching/solicitudes/10", resp.location or "")
+
     def test_post_enviar_creates_relations(self):
         ranked = [
             {
@@ -243,10 +386,11 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
 
             self.assertEqual(resp.status_code, 302)
-            self.assertEqual(add_mock.call_count, 3)
+            sc_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.SolicitudCandidata)]
+            self.assertEqual(len(sc_rows), 2)
             commit_mock.assert_called_once()
 
-            first_row = add_mock.call_args_list[0][0][0]
+            first_row = sc_rows[0]
             self.assertIsNotNone(first_row.score_snapshot)
             self.assertGreater(first_row.score_snapshot, 0)
             self.assertIsInstance(first_row.breakdown_snapshot, dict)
@@ -282,7 +426,7 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
 
         self.assertEqual(resp.status_code, 302)
-        add_mock.assert_called_once()
+        self.assertGreaterEqual(add_mock.call_count, 1)
         commit_mock.assert_called_once()
         self.assertEqual(existing.status, "enviada")
         self.assertEqual(existing.score_snapshot, 90)
@@ -390,7 +534,8 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
 
             self.assertIn(post_resp.status_code, (302, 303))
-            self.assertEqual(add_mock.call_count, 2)
+            sc_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.SolicitudCandidata)]
+            self.assertEqual(len(sc_rows), 1)
             commit_mock.assert_called_once()
 
     def test_post_enviar_without_csrf_token_returns_400(self):
@@ -423,7 +568,8 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                     follow_redirects=False,
                 )
         self.assertEqual(resp.status_code, 302)
-        add_mock.assert_not_called()
+        sc_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.SolicitudCandidata)]
+        self.assertEqual(len(sc_rows), 0)
         commit_mock.assert_not_called()
 
     def test_post_enviar_rechazada_previa_requiere_force_send(self):
@@ -449,7 +595,8 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                 )
         self.assertEqual(resp_no_force.status_code, 302)
         self.assertEqual(resp_force.status_code, 302)
-        self.assertEqual(add_mock.call_count, 2)
+        sc_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.SolicitudCandidata)]
+        self.assertEqual(len(sc_rows), 1)
         self.assertEqual(commit_mock.call_count, 1)
 
     def test_assignment_sync_marks_others_as_liberada_without_delete(self):

@@ -39,7 +39,7 @@ def test_upload_does_not_overwrite_existing_when_empty():
     cand = _DummyCandidata()
     before = cand.depuracion
 
-    with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand):
+    with patch("core.handlers.archivos_handlers._get_candidata_by_fila_or_pk", return_value=cand):
         resp = client.post(
             "/subir_fotos?accion=subir&fila=1",
             data={"depuracion": (io.BytesIO(b""), "")},
@@ -58,8 +58,8 @@ def test_upload_saves_and_verifies_bytes():
     assert _login_secretaria(client).status_code in (302, 303)
 
     cand = _DummyCandidata()
-    with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
-         patch("core.legacy_handlers.validate_upload_file", return_value=(True, b"dep-new", "", {"filename_safe": "dep.jpg"})):
+    with patch("core.handlers.archivos_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
+         patch("core.handlers.archivos_handlers.validate_upload_file", return_value=(True, b"dep-new", "", {"filename_safe": "dep.jpg"})):
         resp = client.post(
             "/subir_fotos?accion=subir&fila=1",
             data={"depuracion": (io.BytesIO(b"dep-new"), "dep.jpg")},
@@ -159,9 +159,9 @@ def test_failure_shows_error_and_logs():
     assert _login_secretaria(client).status_code in (302, 303)
 
     cand = _DummyCandidata()
-    with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
-         patch("core.legacy_handlers.validate_upload_file", return_value=(True, b"dep-new", "", {"filename_safe": "dep.jpg"})), \
-         patch("core.legacy_handlers.execute_robust_save", return_value=RobustSaveResult(ok=False, attempts=3, error_message="forced")):
+    with patch("core.handlers.archivos_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
+         patch("core.handlers.archivos_handlers.validate_upload_file", return_value=(True, b"dep-new", "", {"filename_safe": "dep.jpg"})), \
+         patch("core.handlers.archivos_handlers.execute_robust_save", return_value=RobustSaveResult(ok=False, attempts=3, error_message="forced")):
         resp = client.post(
             "/subir_fotos?accion=subir&fila=1",
             data={"depuracion": (io.BytesIO(b"dep-new"), "dep.jpg")},

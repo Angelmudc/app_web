@@ -1,0 +1,5 @@
+# Optional operational dependencies for remote backup shipping.
+# Install only on hosts/jobs that execute scripts/ops/backup_ship.py with cloud backends.
+
+boto3==1.37.38
+google-cloud-storage==2.19.0

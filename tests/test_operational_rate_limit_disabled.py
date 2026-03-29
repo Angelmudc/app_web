@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+from unittest.mock import patch
 
 from app import app as flask_app
 
@@ -54,29 +55,31 @@ def test_internal_routes_monitoring_and_forms_not_rate_blocked():
     flask_app.config["WTF_CSRF_ENABLED"] = True
 
     try:
-        ip = "10.77.10.2"
-        client = flask_app.test_client()
-        login = _login(client, "Cruz", "8998", ip)
-        assert login.status_code in (302, 303)
+        # Este test valida rate limiting operativo, no flujo MFA.
+        with patch.dict("os.environ", {"STAFF_MFA_REQUIRED": "0"}, clear=False):
+            ip = "10.77.10.2"
+            client = flask_app.test_client()
+            login = _login(client, "Cruz", "8998", ip)
+            assert login.status_code in (302, 303)
 
-        # GET interno repetido (monitoreo)
-        for _ in range(80):
-            r = client.get("/admin/monitoreo/summary.json", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
-            assert r.status_code == 200
+            # GET interno repetido (monitoreo)
+            for _ in range(80):
+                r = client.get("/admin/monitoreo/summary.json", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
+                assert r.status_code == 200
 
-        # POST interno repetido (form/realtime)
-        page = client.get("/admin/login", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
-        token = _extract_csrf(page.data.decode("utf-8", errors="ignore"))
-        assert token
-        for _ in range(20):
-            p = client.post(
-                "/admin/monitoreo/presence/ping",
-                json={"current_path": "/admin/monitoreo", "page_title": "Monitoreo"},
-                headers={"X-CSRFToken": token},
-                follow_redirects=False,
-                environ_overrides={"REMOTE_ADDR": ip},
-            )
-            assert p.status_code == 200
+            # POST interno repetido (form/realtime)
+            page = client.get("/admin/login", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
+            token = _extract_csrf(page.data.decode("utf-8", errors="ignore"))
+            assert token
+            for _ in range(20):
+                p = client.post(
+                    "/admin/monitoreo/presence/ping",
+                    json={"current_path": "/admin/monitoreo", "page_title": "Monitoreo"},
+                    headers={"X-CSRFToken": token},
+                    follow_redirects=False,
+                    environ_overrides={"REMOTE_ADDR": ip},
+                )
+                assert p.status_code == 200
     finally:
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf

@@ -13,6 +13,9 @@
   // Problema típico: el loader global se muestra al hacer click, pero en descargas
   // (o enlaces que abren en otra pestaña) no hay navegación y el loader se queda pegado.
   function initNoLoaderOnDownloads() {
+    if (window.__noLoaderDownloadsBound) return;
+    window.__noLoaderDownloadsBound = true;
+
     const hideLoader = () => {
       // Si existe el loader global de la app, úsalo primero
       try {
@@ -299,9 +302,11 @@
   }
 
   // ====== Toasts (Bootstrap) ======
-  function initToasts() {
+  function initToasts(root = document) {
     if (!window.bootstrap || !bootstrap.Toast) return;
-    $$(".toast").forEach((t) => {
+    $$(".toast", root).forEach((t) => {
+      if (t.dataset.appToastBound === "1") return;
+      t.dataset.appToastBound = "1";
       try {
         new bootstrap.Toast(t).show();
       } catch (e) {}
@@ -310,6 +315,9 @@
 
   // ====== Scroll to top ======
   function initScrollTop() {
+    if (window.__scrollTopBound) return;
+    window.__scrollTopBound = true;
+
     const btn = $("#scrollTopBtn");
     if (!btn) return;
 
@@ -324,22 +332,35 @@
   }
 
   // ====== Select2 (si existe) ======
-  function initSelect2() {
+  function initSelect2(root = document) {
     // OJO: Select2 requiere jQuery.
     if (!window.$ || !$.fn || !$.fn.select2) return;
     try {
-      $(".select2").select2({ width: "100%" });
+      $$(".select2", root).forEach((el) => {
+        if (el.dataset.select2Bound === "1") return;
+        window.$(el).select2({ width: "100%" });
+        el.dataset.select2Bound = "1";
+      });
     } catch (e) {}
   }
 
   // ====== Init general ======
-  function initAll() {
+  function initAll(root = document) {
     initNoLoaderOnDownloads();
     initTheme();
-    initToasts();
+    initToasts(root);
     initScrollTop();
-    initSelect2();
+    initSelect2(root);
   }
+
+  document.addEventListener("admin:navigation-complete", (ev) => {
+    const root = ev?.detail?.viewport || document;
+    initAll(root);
+  });
+
+  window.AppCore = {
+    initAll,
+  };
 
   // Espera a que el DOM cargue
   if (document.readyState === "loading") {

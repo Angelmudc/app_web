@@ -39,6 +39,11 @@
     method="get"
     action="{{ url_for('admin.copiar_solicitudes') }}"
     class="mb-4 d-flex flex-wrap align-items-center gap-2"
+    data-admin-async-form
+    data-async-target="#copiarSolicitudesResults"
+    data-async-busy-container="#copiarSolicitudesScope"
+    data-async-preserve-scroll="true"
+    data-async-fallback="native"
   >
     <div class="search-wrapper flex-grow-1" style="max-width: 420px;">
       <i class="bi bi-search"></i>
@@ -54,175 +59,16 @@
 
     <input type="hidden" name="per_page" value="{{ per_page or 50 }}">
 
-    <button type="submit" class="btn btn-primary">
+    <button type="submit" class="btn btn-primary" data-loading-text="Buscando...">
       <i class="bi bi-search me-1"></i> Buscar
     </button>
   </form>
 
-  {% if solicitudes and solicitudes|length > 0 %}
-  <div class="glass-card p-3 p-md-4">
-    <ul class="list-group list-unstyled mb-0">
-      {% for s in solicitudes %}
-      <li id="sol-{{ s.id }}" class="list-group-item p-3 bg-body text-body border-bottom">
-        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-          <div class="flex-grow-1">
-            <div class="d-flex align-items-center flex-wrap gap-2">
-              <span class="fw-semibold text-primary">{{ s.codigo_solicitud or '—' }}</span>
-              <span class="text-body-secondary">—</span>
-              <span class="text-body">{{ s.ciudad_sector or '—' }}</span>
-            </div>
-
-            <div class="mt-1">
-              <small class="text-body-secondary">
-                <span class="me-2"><strong>Modalidad:</strong> {{ s.modalidad if s.modalidad else '—' }}</span>
-                {% if s.direccion %}
-                  <span class="me-2">— <strong>Dirección:</strong> {{ s.direccion }}</span>
-                {% endif %}
-              </small>
-            </div>
-
-            {% set _funcs = s.funcs | funciones_fmt %}
-            {% if _funcs %}
-            <div class="mt-1">
-              <small><strong>Funciones:</strong> {{ _funcs }}</small>
-            </div>
-            {% endif %}
-
-            {% if s.reemplazos and s.reemplazos|length > 0 %}
-            <div class="mt-2">
-              <small class="text-warning">
-                ⚠️ Reemplazos pendientes ({{ s.reemplazos|length }}):
-                {{ s.reemplazos
-                   | selectattr('candidata_new', 'defined')
-                   | selectattr('candidata_new', 'ne', none)
-                   | map(attribute='candidata_new.nombre_completo')
-                   | join(', ') }}
-              </small>
-            </div>
-            {% endif %}
-          </div>
-
-          <div class="text-end d-flex flex-column align-items-end gap-2">
-            <button
-              type="button"
-              class="btn btn-sm btn-primary copy-btn"
-              data-order-text='{{ s.order_text | tojson | safe }}'
-              data-solicitud-id="{{ s.id }}"
-              aria-label="Copiar texto de la solicitud {{ s.codigo_solicitud or '' }}"
-            >
-              <i class="bi bi-clipboard-check me-1"></i> Copiar
-            </button>
-
-            <form method="post" action="{{ url_for('admin.copiar_solicitud', id=s.id) }}" class="d-none copy-form js-inline-async-action" data-success-message="Solicitud copiada." data-remove-card="1">
-              {% if csrf_token is defined %}
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              {% endif %}
-              <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-            </form>
-
-            <div class="dropdown">
-              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" data-no-loader="true">
-                Acciones
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                {% if s.estado != 'espera_pago' %}
-                <li>
-                  <form method="post" action="{{ url_for('admin.pausar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1 js-inline-async-action" data-success-message="Solicitud pausada por espera de perfil." data-remove-card="1">
-                    {% if csrf_token is defined %}
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    {% endif %}
-                    <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-                    <button type="submit" class="dropdown-item px-0">
-                      ⏸️ Pausa por espera de perfil
-                    </button>
-                  </form>
-                </li>
-                {% else %}
-                <li>
-                  <form method="post" action="{{ url_for('admin.reanudar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1 js-inline-async-action" data-success-message="Solicitud reanudada." data-remove-card="0">
-                    {% if csrf_token is defined %}
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    {% endif %}
-                    <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-                    <button type="submit" class="dropdown-item px-0 text-success">
-                      ▶️ Reanudar solicitud
-                    </button>
-                  </form>
-                </li>
-                {% endif %}
-
-                <li>
-                  <button
-                    type="button"
-                    class="dropdown-item js-open-cancel"
-                    data-solicitud-id="{{ s.id }}"
-                    data-solicitud-codigo="{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
-                    data-action="{{ url_for('admin.cancelar_solicitud_desde_copiar', id=s.id) }}"
-                    data-next="{{ request.full_path }}"
-                    data-no-loader="true"
-                  >
-                    🛑 Cancelación
-                  </button>
-                </li>
-
-                {% if is_admin_role %}
-                <li>
-                  <button
-                    type="button"
-                    class="dropdown-item text-success js-open-paid"
-                    data-solicitud-id="{{ s.id }}"
-                    data-solicitud-codigo="{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
-                    data-action="{{ url_for('admin.marcar_pagada_desde_copiar', id=s.id) }}"
-                    data-next="{{ request.full_path }}"
-                    data-current-candidata-id="{{ s.candidata_id or '' }}"
-                    data-no-loader="true"
-                  >
-                    💵 Marcar pagado
-                  </button>
-                </li>
-                {% endif %}
-              </ul>
-            </div>
-          </div>
-        </div>
-
-      </li>
-      {% endfor %}
-    </ul>
-
-    <!-- Paginación conectada con la nueva ruta -->
-    {% if (total and total > per_page) or page > 1 %}
-    <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-      <div class="text-body-secondary small">
-        Mostrando {{ solicitudes|length }} de {{ total or solicitudes|length }} solicitudes
-      </div>
-      <div class="d-flex gap-2">
-        {% if page > 1 %}
-        <a
-          href="{{ url_for('admin.copiar_solicitudes', page=page-1, per_page=per_page, q=q) }}"
-          class="btn btn-outline-secondary btn-sm"
-        >
-          <i class="bi bi-arrow-left"></i> Anterior
-        </a>
-        {% endif %}
-        {% if has_more %}
-        <a
-          href="{{ url_for('admin.copiar_solicitudes', page=page+1, per_page=per_page, q=q) }}"
-          class="btn btn-outline-secondary btn-sm"
-        >
-          Siguiente <i class="bi bi-arrow-right"></i>
-        </a>
-        {% endif %}
-      </div>
+  <div id="copiarSolicitudesScope" data-admin-async-scope>
+    <div id="copiarSolicitudesResults" data-async-preserve-scroll="true">
+      {% include 'admin/_solicitudes_copiar_results.html' %}
     </div>
-    {% endif %}
   </div>
-  {% else %}
-  <div class="alert alert-info d-flex align-items-center mt-4" role="alert">
-    <i class="bi bi-info-circle-fill me-2"></i>
-    No hay solicitudes pendientes de copia.
-  </div>
-  {% endif %}
 </div>
 
 <div id="contextActionPanel" class="card mt-3 d-none">
@@ -236,6 +82,8 @@
       {% if csrf_token is defined %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% endif %}
+      <input type="hidden" name="row_version" id="cancelModalSharedRowVersion" value="">
+      <input type="hidden" name="idempotency_key" id="cancelModalSharedIdempotencyKey" value="">
       <input type="hidden" name="next" id="cancelModalSharedNext" value="{{ request.full_path }}">
       <div class="alert d-none js-modal-feedback" role="alert"></div>
       <label class="form-label fw-semibold">Motivo de cancelación</label>
@@ -252,6 +100,8 @@
       {% if csrf_token is defined %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% endif %}
+      <input type="hidden" name="row_version" id="paidModalSharedRowVersion" value="">
+      <input type="hidden" name="idempotency_key" id="paidModalSharedIdempotencyKey" value="">
       <input type="hidden" name="next" id="paidModalSharedNext" value="{{ request.full_path }}">
       <div class="alert d-none js-modal-feedback" role="alert"></div>
       <div class="mb-3">
@@ -289,21 +139,23 @@
   </div>
 </div>
 
-<div id="copy-toast" class="copy-toast" style="display:none;">✅ Copiado al portapapeles</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const toast = document.getElementById('copy-toast');
   const actionPanel = document.getElementById('contextActionPanel');
   const panelTitle = document.getElementById('contextActionPanelTitle');
   const panelClose = document.getElementById('contextActionPanelClose');
   const cancelForm = document.getElementById('cancelModalSharedForm');
   const cancelNext = document.getElementById('cancelModalSharedNext');
+  const cancelRowVersion = document.getElementById('cancelModalSharedRowVersion');
+  const cancelIdem = document.getElementById('cancelModalSharedIdempotencyKey');
   const cancelTextarea = cancelForm ? cancelForm.querySelector('textarea[name="motivo"]') : null;
   const paidForm = document.getElementById('paidModalSharedForm');
   const paidNext = document.getElementById('paidModalSharedNext');
+  const paidRowVersion = document.getElementById('paidModalSharedRowVersion');
+  const paidIdem = document.getElementById('paidModalSharedIdempotencyKey');
   const paidCandidata = document.getElementById('paidModalSharedCandidata');
   const paidSearch = document.getElementById('paidModalSharedSearch');
   const paidSearchBtn = document.getElementById('paidModalSharedSearchBtn');
@@ -314,6 +166,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const paidLookupUrl = paidForm ? (paidForm.dataset.lookupUrl || '') : '';
   let paidCurrentCandidateId = '';
   let paidLookupSeq = 0;
+
+  function newIdempotencyKey() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+    } catch (_e) {}
+    return `idem-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  }
 
   function clearUiLoaders() {
     try {
@@ -331,17 +192,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.body) document.body.classList.remove('is-loading');
   }
 
-  function showToast() {
-    toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, 1800);
-  }
-
   function showActionToast(message, isError = false) {
-    if (!toast) return;
-    toast.textContent = message;
-    toast.style.background = isError ? '#842029' : '#1e7e34';
-    toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, 2200);
+    const text = String(message || '').trim();
+    if (!text) return;
+    if (window.AppToast && typeof window.AppToast.show === 'function') {
+      window.AppToast.show(text, isError ? 'danger' : 'success');
+    }
   }
 
   function clearModalFeedback(form) {
@@ -364,12 +220,33 @@ document.addEventListener('DOMContentLoaded', () => {
     box.textContent = message || 'No se pudo completar la acción.';
   }
 
-  function removeSolicitudCardFromUi(solicitudId) {
-    const row = document.getElementById(`sol-${solicitudId}`);
-    if (!row) return;
-    row.style.transition = 'opacity .2s ease';
-    row.style.opacity = '0';
-    setTimeout(() => row.remove(), 220);
+  function hasSolicitudCards() {
+    return document.querySelectorAll('#copiarSolicitudesResults li[id^="sol-"]').length > 0;
+  }
+
+  function getCsrfTokenFromForm(form) {
+    if (!form) return '';
+    const input = form.querySelector('input[name="csrf_token"]');
+    return input ? (input.value || '') : '';
+  }
+
+  async function refreshCopiarResults(url) {
+    const targetUrl = (url || pageBasePath || '').trim();
+    const adminAsync = window.AdminAsync;
+    if (!targetUrl || !adminAsync || typeof adminAsync.request !== 'function') return false;
+    const scope = document.getElementById('copiarSolicitudesScope') || document.body;
+    const result = await adminAsync.request({
+      url: targetUrl,
+      method: 'GET',
+      body: null,
+      sourceEl: scope,
+      busyContainer: scope,
+      updateTarget: '#copiarSolicitudesResults',
+      noLoader: true,
+      headers: { 'X-CSRFToken': getCsrfTokenFromForm(cancelForm || paidForm) },
+      preserveScroll: true,
+    });
+    return result === true;
   }
 
   function closeActionPanel() {
@@ -506,87 +383,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function submitModalAjax(form, successMessage) {
-    if (!form || !window.fetch) return false;
-    clearUiLoaders();
-    clearModalFeedback(form);
-    const submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) submitBtn.disabled = true;
-    try {
-      const resp = await fetch(form.action, {
-        method: 'POST',
-        body: new FormData(form),
-        credentials: 'same-origin',
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      });
-      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
-      if (!contentType.includes('application/json')) {
-        clearUiLoaders();
-        return false;
-      }
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        setModalFeedback(form, data.message || 'No se pudo completar la acción.', data.category || 'danger');
-        return true;
-      }
-      closeActionPanel();
-      const solicitudId = data.solicitud_id || actionPanel?.dataset.solicitudId || '';
-      if (data.remove_card && solicitudId) {
-        removeSolicitudCardFromUi(solicitudId);
-      }
-      showActionToast(data.message || successMessage, false);
-      return true;
-    } catch (_err) {
-      clearUiLoaders();
-      return false;
-    } finally {
-      if (submitBtn) submitBtn.disabled = false;
-      clearUiLoaders();
+  async function submitActionWithAdminAsync(form, submitter) {
+    const adminAsync = window.AdminAsync;
+    if (!form || !adminAsync || typeof adminAsync.request !== 'function') return null;
+    const data = new FormData(form);
+    if (!data.has('_async_target')) {
+      data.append('_async_target', '#copiarSolicitudesResults');
     }
+    const scope = document.getElementById('copiarSolicitudesScope') || form;
+    return adminAsync.request({
+      url: form.action,
+      method: 'POST',
+      body: data,
+      sourceEl: form,
+      busyContainer: scope,
+      submitter: submitter || form.querySelector('button[type="submit"]'),
+      updateTarget: '#copiarSolicitudesResults',
+      noLoader: true,
+      headers: { 'X-CSRFToken': getCsrfTokenFromForm(form) },
+      preserveScroll: true,
+    });
   }
 
-  async function submitInlineActionAjax(form, successMessage, removeCardDefault = false) {
-    if (!form || !window.fetch) return { handled: false, ok: false };
+  async function submitModalAjax(form, submitter) {
+    if (!form) return false;
     clearUiLoaders();
-    const submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) submitBtn.disabled = true;
-    try {
-      const resp = await fetch(form.action, {
-        method: 'POST',
-        body: new FormData(form),
-        credentials: 'same-origin',
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      });
-      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
-      if (!contentType.includes('application/json')) {
-        clearUiLoaders();
-        return { handled: false, ok: false };
+    clearModalFeedback(form);
+    const result = await submitActionWithAdminAsync(form, submitter);
+    if (result === true) {
+      closeActionPanel();
+      if (!hasSolicitudCards()) {
+        setTimeout(() => refreshCopiarResults(pageBasePath), 220);
       }
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        showActionToast(data.message || 'No se pudo completar la acción.', true);
-        return { handled: true, ok: false, data };
-      }
-      const solicitudId = data.solicitud_id || (form.closest('li[id^="sol-"]')?.id || '').replace('sol-', '');
-      const shouldRemove = Boolean(data.remove_card) || Boolean(removeCardDefault);
-      if (shouldRemove && solicitudId) {
-        removeSolicitudCardFromUi(solicitudId);
-      }
-      showActionToast(data.message || successMessage, false);
-      return { handled: true, ok: true, data };
-    } catch (_err) {
-      clearUiLoaders();
-      return { handled: false, ok: false };
-    } finally {
-      if (submitBtn) submitBtn.disabled = false;
-      clearUiLoaders();
+      return true;
     }
+    if (result === false) {
+      setModalFeedback(form, 'No se pudo completar la acción.', 'danger');
+      return true;
+    }
+    clearUiLoaders();
+    return false;
+  }
+
+  async function submitInlineActionAjax(form, submitter) {
+    if (!form) return { handled: false, ok: false };
+    clearUiLoaders();
+    const result = await submitActionWithAdminAsync(form, submitter);
+    if (result === true) {
+      if (!hasSolicitudCards()) {
+        setTimeout(() => refreshCopiarResults(pageBasePath), 220);
+      }
+      return { handled: true, ok: true };
+    }
+    if (result === false) {
+      return { handled: true, ok: false };
+    }
+    clearUiLoaders();
+    return { handled: false, ok: false };
   }
 
   function fallbackCopy(text) {
@@ -607,8 +460,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  document.querySelectorAll('.copy-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+  function bindOnce(el, key, handler) {
+    if (!el) return;
+    const attr = `bound${key}`;
+    if (el.dataset[attr] === '1') return;
+    el.dataset[attr] = '1';
+    el.addEventListener('click', handler);
+  }
+
+  function bindCopyButtons(root = document) {
+    root.querySelectorAll('.copy-btn').forEach((btn) => {
+      bindOnce(btn, 'Copy', async () => {
       let text = '';
       try {
         text = JSON.parse(btn.dataset.orderText);
@@ -632,7 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (copied) {
         const form = btn.closest('.text-end')?.querySelector('.copy-form');
         if (!form) {
-          showToast();
+          showActionToast('Copiado al portapapeles.', false);
           return;
         }
         const nextInput = form.querySelector('input[name="next"]');
@@ -643,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.disabled = true;
         btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Guardando...';
 
-        const action = await submitInlineActionAjax(form, 'Solicitud copiada.', true);
+        const action = await submitInlineActionAjax(form, btn);
         if (!action.handled) {
           clearUiLoaders();
           form.dataset.asyncBypass = '1';
@@ -657,36 +519,43 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
       } else {
-        alert('❌ No se pudo copiar. Intenta de nuevo.');
+        showActionToast('No se pudo copiar automáticamente. Intenta de nuevo.', true);
       }
+      });
     });
-  });
+  }
 
-  document.querySelectorAll('form.js-inline-async-action').forEach((form) => {
-    if (form.classList.contains('copy-form')) return;
-    form.addEventListener('submit', async (ev) => {
-      if (form.dataset.asyncBypass === '1') {
-        form.dataset.asyncBypass = '';
-        return;
-      }
-      ev.preventDefault();
-      const successMessage = form.dataset.successMessage || 'Acción completada.';
-      const removeCardDefault = (form.dataset.removeCard || '') === '1';
-      const action = await submitInlineActionAjax(form, successMessage, removeCardDefault);
-      if (action.handled) return;
-      clearUiLoaders();
-      form.dataset.asyncBypass = '1';
-      form.submit();
+  function bindInlineActionForms(root = document) {
+    root.querySelectorAll('form.js-inline-async-action').forEach((form) => {
+      if (form.classList.contains('copy-form')) return;
+      if (form.dataset.boundSubmit === '1') return;
+      form.dataset.boundSubmit = '1';
+      form.addEventListener('submit', async (ev) => {
+        if (form.dataset.asyncBypass === '1') {
+          form.dataset.asyncBypass = '';
+          return;
+        }
+        ev.preventDefault();
+        const submitter = ev.submitter || form.querySelector('button[type="submit"]');
+        const action = await submitInlineActionAjax(form, submitter);
+        if (action.handled) return;
+        clearUiLoaders();
+        form.dataset.asyncBypass = '1';
+        form.submit();
+      });
     });
-  });
+  }
 
-  document.querySelectorAll('.js-open-cancel').forEach((btn) => {
-    btn.addEventListener('click', (ev) => {
+  function bindOpenCancelButtons(root = document) {
+    root.querySelectorAll('.js-open-cancel').forEach((btn) => {
+      bindOnce(btn, 'OpenCancel', (ev) => {
       ev.preventDefault();
       if (!cancelForm || !actionPanel) return;
       const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
       cancelForm.action = btn.dataset.action || '';
       if (cancelNext) cancelNext.value = btn.dataset.next || pageBasePath;
+      if (cancelRowVersion) cancelRowVersion.value = (btn.dataset.rowVersion || '').trim();
+      if (cancelIdem) cancelIdem.value = newIdempotencyKey();
       if (panelTitle) panelTitle.textContent = `Cancelar ${code}`;
       actionPanel.dataset.mode = 'cancel';
       actionPanel.dataset.solicitudId = btn.dataset.solicitudId || '';
@@ -700,16 +569,20 @@ document.addEventListener('DOMContentLoaded', () => {
       openActionPanelForButton(btn, () => {
         if (cancelTextarea) cancelTextarea.focus();
       });
+      });
     });
-  });
+  }
 
-  document.querySelectorAll('.js-open-paid').forEach((btn) => {
-    btn.addEventListener('click', (ev) => {
+  function bindOpenPaidButtons(root = document) {
+    root.querySelectorAll('.js-open-paid').forEach((btn) => {
+      bindOnce(btn, 'OpenPaid', (ev) => {
       ev.preventDefault();
       if (!paidForm || !actionPanel) return;
       const code = btn.dataset.solicitudCodigo || ('SOL-' + (btn.dataset.solicitudId || ''));
       paidForm.action = btn.dataset.action || '';
       if (paidNext) paidNext.value = btn.dataset.next || pageBasePath;
+      if (paidRowVersion) paidRowVersion.value = (btn.dataset.rowVersion || '').trim();
+      if (paidIdem) paidIdem.value = newIdempotencyKey();
       if (panelTitle) panelTitle.textContent = `Marcar pagado ${code}`;
       actionPanel.dataset.mode = 'paid';
       actionPanel.dataset.solicitudId = btn.dataset.solicitudId || '';
@@ -724,8 +597,18 @@ document.addEventListener('DOMContentLoaded', () => {
       openActionPanelForButton(btn, () => {
         if (paidSearch) paidSearch.focus();
       });
+      });
     });
-  });
+  }
+
+  function bindDynamicHandlers(root = document) {
+    bindCopyButtons(root);
+    bindInlineActionForms(root);
+    bindOpenCancelButtons(root);
+    bindOpenPaidButtons(root);
+  }
+
+  bindDynamicHandlers(document);
 
   if (cancelForm) {
     cancelForm.addEventListener('submit', async (ev) => {
@@ -734,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       ev.preventDefault();
-      const handled = await submitModalAjax(cancelForm, 'Solicitud cancelada.');
+      const handled = await submitModalAjax(cancelForm, ev.submitter || cancelForm.querySelector('button[type="submit"]'));
       if (!handled) {
         clearUiLoaders();
         cancelForm.dataset.asyncBypass = '1';
@@ -750,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       ev.preventDefault();
-      const handled = await submitModalAjax(paidForm, 'Solicitud marcada como pagada.');
+      const handled = await submitModalAjax(paidForm, ev.submitter || paidForm.querySelector('button[type="submit"]'));
       if (!handled) {
         clearUiLoaders();
         paidForm.dataset.asyncBypass = '1';
@@ -796,6 +679,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.querySelectorAll('.js-panel-close').forEach((btn) => {
     btn.addEventListener('click', closeActionPanel);
+  });
+
+  document.addEventListener('admin:content-updated', (ev) => {
+    const detail = ev.detail || {};
+    if (detail.targetSelector !== '#copiarSolicitudesResults') return;
+    bindDynamicHandlers(detail.container || document);
+    clearUiLoaders();
   });
 });
 </script>

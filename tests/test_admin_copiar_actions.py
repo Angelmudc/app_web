@@ -227,6 +227,29 @@ class AdminCopiarActionsTest(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn("pasaje aparte por ruta", html)
 
+    def test_copiar_solicitudes_get_async_devuelve_reemplazo_parcial(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="activa")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([solicitud])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resp = self.client.get(
+                    "/admin/solicitudes/copiar?q=santiago&page=1",
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-Admin-Async": "1",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["update_target"], "#copiarSolicitudesResults")
+        self.assertIn("list-group-item", data["replace_html"])
+
     def test_build_resumen_cliente_solicitud_pasaje_usa_mensajes_claros(self):
         solicitud_false = _SolicitudStub(estado="activa")
         solicitud_false.pasaje_aporte = False
@@ -350,9 +373,12 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data["ok"])
+        self.assertTrue(data["success"])
         self.assertEqual(data["category"], "success")
         self.assertEqual(data["solicitud_id"], 10)
         self.assertTrue(data["remove_card"])
+        self.assertEqual(data["remove_element"], "#sol-10")
+        self.assertIn("redirect_url", data)
         commit_mock.assert_called_once()
 
     def test_pausar_espera_perfil_ajax_devuelve_json_y_remueve_tarjeta(self):
@@ -379,7 +405,38 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(data["solicitud_id"], 10)
         self.assertEqual(data["estado"], "espera_pago")
         self.assertTrue(data["remove_card"])
+        self.assertEqual(data["remove_element"], "#sol-10")
         self.assertEqual(solicitud.estado, "espera_pago")
+        commit_mock.assert_called_once()
+
+    def test_reanudar_espera_perfil_ajax_usa_mismo_contrato_async(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="espera_pago")
+        solicitud.estado_previo_espera_pago = "reemplazo"
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/reanudar_espera_perfil",
+                    data={"next": "/admin/solicitudes/copiar?page=1#sol-10"},
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["success"])
+        self.assertEqual(data["category"], "success")
+        self.assertEqual(data["solicitud_id"], 10)
+        self.assertEqual(data["estado"], "reemplazo")
+        self.assertFalse(data["remove_card"])
+        self.assertIsNone(data["remove_element"])
+        self.assertEqual(solicitud.estado, "reemplazo")
         commit_mock.assert_called_once()
 
     def test_acciones_desde_copiar_cancelar_y_pausa_perfil(self):
@@ -513,6 +570,35 @@ class AdminCopiarActionsTest(unittest.TestCase):
         sync_mock.assert_called_once()
         mark_mock.assert_called_once()
         commit_mock.assert_called_once()
+
+    def test_pagado_desde_copiar_conflict_por_row_version_devuelve_409(self):
+        self._login("Cruz", "8998")
+        solicitud = _SolicitudStub(estado="activa")
+        solicitud.row_version = 9
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/marcar_pagada_desde_copiar",
+                    data={
+                        "row_version": "8",
+                        "candidata_id": "33",
+                        "monto_pagado": "12000",
+                        "next": "/admin/solicitudes/copiar?per_page=50",
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 409)
+        data = resp.get_json() or {}
+        self.assertFalse(data.get("ok"))
+        self.assertEqual(data.get("error_code"), "conflict")
+        commit_mock.assert_not_called()
 
 
 if __name__ == "__main__":

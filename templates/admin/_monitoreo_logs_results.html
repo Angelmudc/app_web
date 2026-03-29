@@ -1,0 +1,60 @@
+<div class="table-responsive">
+  <table class="table table-sm table-striped" id="liveLogsTable">
+    <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th><th>Resultado</th></tr></thead>
+    <tbody>
+    {% for log in logs %}
+      <tr data-log-id="{{ log.id }}">
+        <td>{{ log.created_at_human or log.created_at }}</td>
+        <td>{{ log.actor_username or '-' }}</td>
+        <td>{{ log.action_human or log.action_type }}</td>
+        <td>{{ log.entity_display or ((log.entity_type or '-') ~ ' ' ~ (log.entity_id or '')) }}</td>
+        <td>{{ log.summary_human or log.summary or '-' }}</td>
+        <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="py-5 text-center text-muted">
+        <div class="mb-2"><i class="bi bi-inbox fs-4"></i></div>
+        <div class="fw-semibold">No hay logs para este filtro.</div>
+        {% if has_active_filters %}
+          <div class="small mt-1">Prueba ajustando o limpiando los filtros.</div>
+          <a class="btn btn-sm btn-outline-secondary mt-2"
+             href="{{ url_for('admin.monitoreo_logs') }}"
+             data-admin-async-link
+             data-async-target="#monitoreoLogsAsyncRegion"
+             data-async-busy-container="#monitoreoLogsAsyncScope"
+             data-async-preserve-scroll="true">Limpiar filtros</a>
+        {% else %}
+          <div class="small mt-1">Cuando se registren eventos de staff, aparecerán aquí.</div>
+        {% endif %}
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+  {% set shown_start = ((pagination.page - 1) * pagination.per_page) + 1 if (pagination.total or 0) > 0 else 0 %}
+  {% set shown_end = [pagination.page * pagination.per_page, pagination.total or 0]|min %}
+  <small class="text-muted">Mostrando {{ shown_start }}–{{ shown_end }} de {{ pagination.total or 0 }}</small>
+  <nav>
+    <ul class="pagination pagination-sm mb-0">
+      <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('admin.monitoreo_logs', page=pagination.prev_num, per_page=pagination.per_page, user_id=request.args.get('user_id'), action_type=request.args.get('action_type'), entity_type=request.args.get('entity_type'), date_from=request.args.get('date_from'), date_to=request.args.get('date_to'), search=request.args.get('search')) if pagination.has_prev else '#' }}"
+           {% if pagination.has_prev %}data-admin-async-link
+           data-async-target="#monitoreoLogsAsyncRegion"
+           data-async-busy-container="#monitoreoLogsAsyncScope"
+           data-async-preserve-scroll="true"{% endif %}>Anterior</a>
+      </li>
+      <li class="page-item disabled"><span class="page-link">{{ pagination.page }} / {{ pagination.pages or 1 }}</span></li>
+      <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('admin.monitoreo_logs', page=pagination.next_num, per_page=pagination.per_page, user_id=request.args.get('user_id'), action_type=request.args.get('action_type'), entity_type=request.args.get('entity_type'), date_from=request.args.get('date_from'), date_to=request.args.get('date_to'), search=request.args.get('search')) if pagination.has_next else '#' }}"
+           {% if pagination.has_next %}data-admin-async-link
+           data-async-target="#monitoreoLogsAsyncRegion"
+           data-async-busy-container="#monitoreoLogsAsyncScope"
+           data-async-preserve-scroll="true"{% endif %}>Siguiente</a>
+      </li>
+    </ul>
+  </nav>
+</div>

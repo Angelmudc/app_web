@@ -1,0 +1,138 @@
+{# Fallback seguro: si no llega cliente_id desde la ruta, usar el de la solicitud #}
+{% set _cliente_id = (cliente_id | default(None)) or (solicitud.cliente_id if solicitud is defined and solicitud is not none else none) %}
+{% set _registrar_pago_url = url_for('admin.registrar_pago', cliente_id=_cliente_id, id=solicitud.id) if _cliente_id else url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id) %}
+
+<div class="card shadow-sm">
+  <div class="card-body p-4 p-md-5">
+
+    {% if async_feedback and async_feedback.message %}
+      {% set _cat = async_feedback.category or 'info' %}
+      <div class="alert alert-{{ 'danger' if _cat in ['danger', 'error'] else _cat }} border-0 mb-3" role="alert" aria-live="polite">
+        {{ async_feedback.message }}
+      </div>
+    {% endif %}
+
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h1 class="h4 mb-1">💰 Registrar Pago</h1>
+        <div class="text-muted small">Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong></div>
+      </div>
+      <a href="{{ next_url or (_cliente_id and url_for('admin.detalle_cliente', cliente_id=_cliente_id) or url_for('admin.clientes')) }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left-circle me-1"></i> Volver
+      </a>
+    </div>
+
+    <hr class="my-4">
+
+    <form method="GET"
+          action="{{ _registrar_pago_url }}"
+          class="mb-4"
+          data-admin-async-form
+          data-async-target="#registrarPagoAsyncRegion"
+          data-async-busy-container="#registrarPagoAsyncScope"
+          data-async-preserve-scroll="true"
+          data-async-fallback="native">
+      <input type="hidden" name="next" value="{{ next_url or '' }}">
+      <div class="d-flex gap-2 flex-wrap">
+        <input type="text"
+               name="q"
+               value="{{ q or '' }}"
+               class="form-control"
+               placeholder="Buscar candidata por nombre, cédula, código o teléfono…"
+               autocomplete="off">
+        <button type="submit" class="btn btn-primary" data-loading-text="Buscando...">
+          <i class="bi bi-search me-1"></i> Buscar
+        </button>
+        <a href="{{ _registrar_pago_url }}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}"
+           class="btn btn-outline-secondary"
+           data-admin-async-link
+           data-async-target="#registrarPagoAsyncRegion"
+           data-async-busy-container="#registrarPagoAsyncScope"
+           data-async-preserve-scroll="true">Limpiar</a>
+      </div>
+      <div class="form-text mt-1">
+        Escribe y presiona <strong>Buscar</strong>. Se cargarán resultados en el selector.
+      </div>
+    </form>
+
+    <form method="POST"
+          id="pago-form"
+          novalidate
+          data-admin-async-form
+          data-async-target="#registrarPagoAsyncRegion"
+          data-async-busy-container="#registrarPagoAsyncScope"
+          data-async-preserve-scroll="true"
+          data-async-fallback="native">
+      {{ form.hidden_tag() }}
+      <input type="hidden" name="q" value="{{ q or '' }}">
+      <input type="hidden" name="next" value="{{ next_url or '' }}">
+      <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+      <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
+
+      {% if form.errors %}
+        <div class="alert alert-danger mb-4">
+          <div class="d-flex">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <div>
+              <strong>Revisa los campos con error:</strong>
+              <ul class="mb-0 mt-1">
+                {% for field_name, errs in form.errors.items() %}
+                  {% for e in errs %}
+                    {% set _field = form[field_name] if field_name in form else None %}
+                    <li><strong>{{ _field.label.text if _field and _field.label is defined else field_name }}:</strong> {{ e }}</li>
+                  {% endfor %}
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="row g-4">
+        <div class="col-12 col-md-7">
+          {% if form.domestica_id is defined %}
+            {% set pick_field = form.domestica_id %}
+            {% set pick_id = 'domestica_id' %}
+            {% set pick_label = 'Doméstica' %}
+            {% set pick_help = 'Escribe arriba para filtrar y luego selecciona una doméstica.' %}
+          {% else %}
+            {% set pick_field = form.candidata_id %}
+            {% set pick_id = 'candidata_id' %}
+            {% set pick_label = 'Candidata' %}
+            {% set pick_help = 'Escribe arriba para filtrar y luego selecciona una candidata.' %}
+          {% endif %}
+
+          <label class="form-label">
+            <i class="bi bi-person-fill text-info me-1"></i>
+            {{ pick_field.label.text if pick_field.label is defined else pick_label }} <span class="text-danger">*</span>
+          </label>
+
+          {{ pick_field(class="form-select", id=pick_id) }}
+          <div class="form-text mt-1">{{ pick_help }}</div>
+        </div>
+
+        <div class="col-12 col-md-5">
+          <label class="form-label">
+            <i class="bi bi-cash-stack text-success me-1"></i> {{ form.monto_pagado.label.text }} <span class="text-danger">*</span>
+          </label>
+          <div class="input-group">
+            <span class="input-group-text">RD$</span>
+            {{ form.monto_pagado(class="form-control", placeholder="Ej. 10000") }}
+          </div>
+          <div class="form-text mt-1">Solo números.</div>
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <div class="d-flex justify-content-end gap-2">
+        <a href="{{ next_url or (_cliente_id and url_for('admin.detalle_cliente', cliente_id=_cliente_id) or url_for('admin.clientes')) }}" class="btn btn-outline-secondary">
+          <i class="bi bi-x-circle me-1"></i> Cancelar
+        </a>
+        <button type="submit" class="btn btn-success" data-loading-text="Registrando...">
+          <i class="bi bi-save-fill me-1"></i> {{ form.submit.label.text }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

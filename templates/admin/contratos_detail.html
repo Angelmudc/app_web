@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Contrato #{{ contrato.id }}{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 1180px;">
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h4 mb-1">Contrato #{{ contrato.id }}</h1>
+      <div class="text-muted small">Solicitud {{ contrato.solicitud_id }} · Cliente {{ contrato.cliente_id }}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('contratos.listado_contratos_admin') }}" class="btn btn-outline-secondary btn-sm">Volver al listado</a>
+      <a href="{{ url_for('admin.detalle_solicitud', cliente_id=contrato.cliente_id, id=contrato.solicitud_id) }}" class="btn btn-outline-primary btn-sm">Ver solicitud</a>
+      <a href="{{ url_for('admin.detalle_cliente', cliente_id=contrato.cliente_id) }}" class="btn btn-outline-primary btn-sm">Ver cliente</a>
+    </div>
+  </div>
+
+  <div id="contratoDetailAsyncScope" data-admin-async-scope>
+    <div id="contratoDetailAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_contratos_detail_region.html' %}
+    </div>
+  </div>
+</div>
+{% endblock %}

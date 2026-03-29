@@ -1,0 +1,235 @@
+{% set _fragment = (async_fragment or '')|lower %}
+{% set _render_full = (_fragment == '') %}
+{% set _render_ranking = _render_full or (_fragment == 'ranking') %}
+{% set _render_history = _render_full or (_fragment in ('historial', 'history')) %}
+
+{% if _render_full %}
+  <form method="post"
+        action="{{ url_for('admin.matching_enviar_candidatas', solicitud_id=solicitud.id) }}"
+        data-async-action="{{ url_for('admin.matching_enviar_candidatas_ui', solicitud_id=solicitud.id) }}"
+        data-admin-async-form
+        data-async-target="#matchingDetalleAsyncRegion"
+        data-async-busy-container="#matchingDetalleAsyncScope"
+        data-async-fallback="native">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+    <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key if form_idempotency_key is defined else '' }}">
+    <div id="matchingRankingAsyncRegion">
+{% endif %}
+
+{% if _render_ranking %}
+  {% set has_rejected = (rejected_candidate_ids and rejected_candidate_ids|length > 0) %}
+  <div class="row g-3">
+    {% for item in ranked_candidates %}
+    {% set c = item.candidate %}
+    {% set is_blocked = (blocked_candidate_ids and c.fila in blocked_candidate_ids) %}
+    {% set is_rejected = (rejected_candidate_ids and c.fila in rejected_candidate_ids) %}
+    {% set is_disqualified = (disqualified_candidate_ids and c.fila in disqualified_candidate_ids) %}
+    {% set ready_check = (item.breakdown_snapshot.ready_check if item.breakdown_snapshot is defined and item.breakdown_snapshot and item.breakdown_snapshot.ready_check is defined else {}) %}
+    {% set docs_check = (ready_check.docs if ready_check and ready_check.docs is defined else {}) %}
+    {% set docs_flags = (docs_check.flags if docs_check and docs_check.flags is defined else {}) %}
+    {% set is_ready = (ready_check.ready if ready_check and ready_check.ready is defined else true) %}
+    {% set ready_reasons = (ready_check.reasons if ready_check and ready_check.reasons is defined else []) %}
+    <div class="col-12 col-lg-6">
+      <div class="card h-100 shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h5 class="mb-1">{{ c.nombre_completo or 'Sin nombre' }}</h5>
+              <div class="small text-muted">Cédula: {{ c.cedula or '-' }} · Tel: {{ c.numero_telefono or '-' }}</div>
+            </div>
+            <span class="badge bg-primary">Score {{ item.score }}</span>
+          </div>
+
+          <div class="mt-2">
+            <span class="badge {% if item.level == 'alta' %}bg-success{% elif item.level == 'media' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+              Nivel {{ item.level|upper }}
+            </span>
+            {% if is_blocked %}
+            <span class="badge bg-danger ms-1">Bloqueada por otro cliente</span>
+            {% endif %}
+            {% if is_rejected %}
+            <span class="badge bg-warning text-dark ms-1">Rechazada antes por este cliente</span>
+            {% endif %}
+            {% if is_disqualified %}
+            <span class="badge bg-danger ms-1">Descalificada</span>
+            {% endif %}
+          </div>
+
+              <p class="mt-3 mb-1 small"><strong>Matching operativo (BD): {{ item.operational_score or item.score }}%</strong></p>
+              <p class="mb-2 small text-muted">Bonus test: +{{ item.bonus_test or 0 }}{% if item.summary %} · {{ item.summary }}{% endif %}</p>
+
+              {% if item.reasons %}
+              <div class="small">
+                <strong>Razones:</strong>
+                <ul class="mb-2">
+                  {% for reason in item.reasons[:6] %}
+                  <li>{{ reason }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              {% endif %}
+
+              {% if item.risks %}
+              <div class="small">
+                <strong>Riesgos:</strong>
+                <ul class="mb-2">
+                  {% for risk in item.risks[:3] %}
+                  <li>{{ risk }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              {% endif %}
+
+              {% if item.breakdown_snapshot and (item.breakdown_snapshot.modalidad_reason == 'gibberish' or item.breakdown_snapshot.solicitud_modalidad_norm is none) %}
+              <div class="alert alert-warning py-2 px-3 small mb-2" role="alert">
+                Modalidad de solicitud no interpretable (texto inválido). No se aplicó puntuación por modalidad.
+              </div>
+              {% endif %}
+
+              {% set component_rows = (item.breakdown_snapshot.component_rows if item.breakdown_snapshot is defined and item.breakdown_snapshot else item.breakdown) %}
+              {% if component_rows %}
+              <div class="table-responsive mt-2">
+                <table class="table table-sm mb-2">
+                  <thead>
+                    <tr>
+                      <th>Componente</th>
+                      <th class="text-end">Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for comp in component_rows %}
+                    <tr>
+                      <td>{{ comp.title }}</td>
+                      <td class="text-end">{{ comp.score }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+
+              <div class="small border rounded p-2 mt-2 matching-checklist-card">
+                <strong>Checklist listo para enviar</strong>
+                <ul class="mb-0 mt-1">
+                  <li>Código: {% if ready_check and ready_check.has_code %}✅{% else %}❌{% endif %}</li>
+                  <li>Entrevista: {% if ready_check and ready_check.has_interview %}✅{% else %}❌{% endif %}</li>
+                  <li>Depuración: {% if docs_flags.get('depuracion') %}✅{% else %}❌{% endif %}</li>
+                  <li>Perfil: {% if docs_flags.get('perfil') %}✅{% else %}❌{% endif %}</li>
+                  <li>Cédula 1: {% if docs_flags.get('cedula1') %}✅{% else %}❌{% endif %}</li>
+                  <li>Cédula 2: {% if docs_flags.get('cedula2') %}✅{% else %}❌{% endif %}</li>
+                  <li>
+                    Referencias (Laboral/Familiar):
+                    {% if ready_check and ready_check.has_referencias_laboral and ready_check.has_referencias_familiares %}
+                      ✅
+                    {% else %}
+                      ❌
+                    {% endif %}
+                  </li>
+                </ul>
+              </div>
+
+              <div class="d-flex gap-2 mt-2">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('candidata_ver_perfil', fila=c.fila) }}">Ver perfil candidata</a>
+                <div class="form-check m-0 d-flex align-items-center">
+                  <input class="form-check-input" type="checkbox" name="candidata_ids" value="{{ c.fila }}" id="cand_{{ c.fila }}" {% if is_blocked or is_disqualified or not is_ready %}disabled{% endif %}>
+                  <label class="form-check-label ms-2" for="cand_{{ c.fila }}">Seleccionar</label>
+                </div>
+              </div>
+              {% if is_disqualified %}
+              <div class="alert alert-danger py-2 px-3 small mt-2 mb-0">
+                Esta candidata está descalificada y no puede enviarse al cliente.
+              </div>
+              {% elif is_blocked %}
+              <div class="alert alert-danger py-2 px-3 small mt-2 mb-0">
+                Esta candidata ya fue enviada a otro cliente. Solo puede enviarse cuando el otro cliente la rechace.
+              </div>
+              {% elif is_rejected %}
+              <div class="alert alert-warning py-2 px-3 small mt-2 mb-0">
+                ⚠️ Esta candidata fue rechazada por este cliente anteriormente.
+              </div>
+              {% elif not is_ready %}
+              <div class="alert alert-warning py-2 px-3 small mt-2 mb-0">
+                Esta candidata no está lista para enviar.
+                {% if ready_reasons %}
+                  <ul class="mb-0 mt-1">
+                    {% for reason in ready_reasons[:4] %}
+                    <li>{{ reason }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+          <div class="alert alert-warning mb-0">No hay candidatas compatibles luego del prefiltro.</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="mt-4 d-flex justify-content-end">
+        {% if has_rejected %}
+        <div class="form-check me-3 align-self-center">
+          <input class="form-check-input" type="checkbox" name="force_send" value="1" id="force_send">
+          <label class="form-check-label small" for="force_send">
+            Enviar de todas formas si fue rechazada antes por este cliente
+          </label>
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-success">Enviar candidatas seleccionadas</button>
+      </div>
+{% endif %}
+
+{% if _render_full %}
+    </div>
+  </form>
+{% endif %}
+
+{% if _render_full %}
+  <div id="matchingHistoryAsyncRegion">
+{% endif %}
+{% if _render_history %}
+    <div class="card mt-4 shadow-sm border-0">
+      <div class="card-header bg-light">
+        <strong>Enviadas al cliente</strong>
+      </div>
+      <div class="card-body p-0">
+        {% if sent_candidates %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Código</th>
+                <th>Candidata</th>
+                <th>Status</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for sc in sent_candidates %}
+              <tr>
+                <td>{{ sc.id }}</td>
+                <td>{{ sc.candidata.codigo if sc.candidata and sc.candidata.codigo else '(sin código)' }}</td>
+                <td>{{ sc.candidata.nombre_completo if sc.candidata and sc.candidata.nombre_completo else 'Sin nombre' }}</td>
+                <td>
+                  <span class="badge bg-secondary">{{ sc.status }}</span>
+                </td>
+                <td>{{ sc.created_at|rd_datetime('%d/%m/%Y %H:%M') if sc.created_at else '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-3 text-muted">Aún no hay candidatas enviadas para esta solicitud.</div>
+        {% endif %}
+      </div>
+    </div>
+{% endif %}
+{% if _render_full %}
+  </div>
+{% endif %}

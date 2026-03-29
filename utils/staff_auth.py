@@ -7,6 +7,7 @@ from functools import wraps
 from flask import abort, current_app, flash, redirect, request, session, url_for
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash
+from utils.secrets_manager import get_secret
 from utils.timezone import utc_now_naive
 
 try:
@@ -53,26 +54,26 @@ def redirect_admin_login():
 
 
 def is_breakglass_enabled() -> bool:
-    return _is_true_env(os.getenv("BREAKGLASS_ENABLED", "0"), default=False)
+    return _is_true_env(get_secret("BREAKGLASS_ENABLED", default="0"), default=False)
 
 
 def breakglass_username() -> str:
-    return (os.getenv("BREAKGLASS_USERNAME") or BREAKGLASS_USER_ID).strip() or BREAKGLASS_USER_ID
+    return (get_secret("BREAKGLASS_USERNAME") or BREAKGLASS_USER_ID).strip() or BREAKGLASS_USER_ID
 
 
 def breakglass_password_hash() -> str:
-    return (os.getenv("BREAKGLASS_PASSWORD_HASH") or "").strip()
+    return (get_secret("BREAKGLASS_PASSWORD_HASH") or "").strip()
 
 
 def breakglass_ttl_seconds() -> int:
     try:
-        return max(60, int((os.getenv("BREAKGLASS_SESSION_TTL_SECONDS") or "3600").strip()))
+        return max(60, int((get_secret("BREAKGLASS_SESSION_TTL_SECONDS") or "3600").strip()))
     except Exception:
         return 3600
 
 
 def breakglass_allowed_ip(ip: str) -> bool:
-    allow_raw = (os.getenv("BREAKGLASS_ALLOWED_IPS") or "").strip()
+    allow_raw = (get_secret("BREAKGLASS_ALLOWED_IPS") or "").strip()
     # Breakglass 100% amarrado por IP: si no hay allowlist, NO permite.
     if not allow_raw:
         return False

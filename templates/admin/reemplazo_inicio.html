@@ -18,6 +18,8 @@
 
     <form method="POST" id="reemplazoForm" novalidate>
       {{ form.csrf_token }}
+      <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+      <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
 
       {% if form.errors %}
         <div class="alert alert-danger">

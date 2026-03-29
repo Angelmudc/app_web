@@ -4,6 +4,7 @@
 import os
 import time
 from flask import request, abort, make_response, session
+from utils.distributed_backplane import bp_delete, bp_get, bp_incr, bp_set
 
 try:
     from flask_login import current_user
@@ -63,36 +64,76 @@ def _get_client_ip() -> str:
 
 
 def _cache_get(cache, key):
-    try:
-        return cache.get(key)
-    except Exception:
-        return None
+    return bp_get(key, default=None, context="security_cache_get")
 
 
 def _cache_set(cache, key, value, timeout):
-    try:
-        cache.set(key, value, timeout=timeout)
-        return True
-    except Exception:
-        return False
+    return bp_set(key, value, timeout=timeout, context="security_cache_set")
 
 
 def _cache_delete(cache, key):
-    try:
-        cache.delete(key)
-        return True
-    except Exception:
-        return False
+    return bp_delete(key, context="security_cache_delete")
 
 
 def init_security(app, cache):
     env = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
     prod = env in ("prod", "production")
 
-    # Ventana + limites
-    LOGIN_WINDOW_SECONDS = int(os.getenv("LOGIN_WINDOW_SECONDS", "300"))   # 5 min
-    LOGIN_MAX_ATTEMPTS   = int(os.getenv("LOGIN_MAX_ATTEMPTS", "10"))      # 10 intentos
-    LOGIN_BLOCK_SECONDS  = int(os.getenv("LOGIN_BLOCK_SECONDS", "900"))    # 15 min
+    def _env_int(name: str, default: int, min_value: int = 1) -> int:
+        try:
+            return max(min_value, int((os.getenv(name) or str(default)).strip()))
+        except Exception:
+            return max(min_value, int(default))
+
+    def _log_auth_throttle(event: str, *, ip: str, path: str, username: str, reason: str, metadata=None):
+        try:
+            from utils.audit_logger import log_auth_event
+
+            log_auth_event(
+                event=event,
+                status="fail",
+                user_identifier=(username or None),
+                reason=reason,
+                metadata={
+                    "ip": ip,
+                    "path": path,
+                    **(metadata or {}),
+                },
+            )
+        except Exception:
+            return
+
+    def _login_window_seconds() -> int:
+        return _env_int("LOGIN_WINDOW_SECONDS", 3600)
+
+    def _login_block_seconds() -> int:
+        return _env_int("LOGIN_BLOCK_SECONDS", 900)
+
+    def _login_delay_threshold() -> int:
+        return _env_int("LOGIN_DELAY_THRESHOLD", 5)
+
+    def _login_block_threshold() -> int:
+        fallback_raw = (os.getenv("LOGIN_MAX_ATTEMPTS") or "10").strip() or "10"
+        try:
+            fallback = int(fallback_raw)
+        except Exception:
+            fallback = 10
+        return _env_int("LOGIN_BLOCK_THRESHOLD", fallback)
+
+    def _login_rate_ip_1m() -> int:
+        return _env_int("LOGIN_RATE_IP_1M", 5)
+
+    def _login_rate_ip_1h() -> int:
+        return _env_int("LOGIN_RATE_IP_1H", 20)
+
+    def _login_rate_user_1m() -> int:
+        return _env_int("LOGIN_RATE_USER_1M", 5)
+
+    def _login_rate_user_1h() -> int:
+        return _env_int("LOGIN_RATE_USER_1H", 20)
+
+    def _login_delay_ms_base() -> int:
+        return _env_int("LOGIN_DELAY_MS_BASE", 800, min_value=0)
 
     # Protege logins (incluye variaciones con slash final)
     LOGIN_PATHS = {
@@ -146,9 +187,16 @@ def init_security(app, cache):
     AUTH_WORK_MAX_REQ = int(os.getenv("AUTH_WORK_MAX_REQ", "180"))
     ADMIN_CRITICAL_WINDOW_SECONDS = int(os.getenv("ADMIN_CRITICAL_WINDOW_SECONDS", "60"))
     ADMIN_CRITICAL_MAX_REQ = int(os.getenv("ADMIN_CRITICAL_MAX_REQ", "60"))
-    # Kill-switch operativo: por defecto desactiva bloqueos de rate-limit
-    # para no interrumpir la operacion interna.
-    ENABLE_OPERATIONAL_RATE_LIMITS = _is_true(os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS", "0"))
+    def _operational_rate_limits_enabled() -> bool:
+        """
+        Activo por defecto en producción.
+        En desarrollo/testing, requiere activar explícitamente por ENV.
+        """
+        raw = os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS")
+        if raw is not None and str(raw).strip() != "":
+            return _is_true(raw)
+        run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
+        return run_env in ("prod", "production")
 
     BOT_UA_PATTERNS = (
         "curl",
@@ -276,9 +324,14 @@ def init_security(app, cache):
         return any(p in ua for p in BOT_UA_PATTERNS)
 
     def _bucket_inc(key: str, window_seconds: int) -> int:
-        cur = int(_cache_get(cache, key) or 0) + 1
-        _cache_set(cache, key, cur, timeout=max(1, int(window_seconds)))
-        return cur
+        return int(
+            bp_incr(
+                key,
+                delta=1,
+                timeout=max(1, int(window_seconds)),
+                context="security_bucket_incr",
+            ) or 0
+        )
 
     def _match_scrape_group(path: str, endpoint: str) -> str:
         ep = (endpoint or "").strip()
@@ -394,7 +447,7 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_scrape_guard():
-        if not ENABLE_OPERATIONAL_RATE_LIMITS:
+        if not _operational_rate_limits_enabled():
             return
         if bool(app.config.get("TESTING")):
             return
@@ -422,19 +475,7 @@ def init_security(app, cache):
         bot_factor = 0.5 if is_bot else 1.0
 
         if path in NORMALIZED_LOGIN_PATHS:
-            login_limit = max(3, int(PUBLIC_SENSITIVE_MAX_REQ * bot_factor))
-            login_count = _bucket_inc(
-                f"scrape:login:ip:{ip}:{path}",
-                PUBLIC_SENSITIVE_WINDOW_SECONDS,
-            )
-            if login_count > login_limit:
-                abort(
-                    429,
-                    description=(
-                        "Demasiados intentos de acceso en poco tiempo. "
-                        "Espera un momento y vuelve a intentar."
-                    ),
-                )
+            # Los límites de login se manejan en _anti_bruteforce_login.
             return
 
         principal = f"user:{user_key}" if (is_auth and user_key) else f"ip:{ip}"
@@ -612,7 +653,7 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_bruteforce_login():
-        if not ENABLE_OPERATIONAL_RATE_LIMITS:
+        if not _operational_rate_limits_enabled():
             return
         if bool(app.config.get("TESTING")):
             return
@@ -649,45 +690,140 @@ def init_security(app, cache):
             or ""
         ).strip()[:80].lower()
 
-        # Por IP
-        block_key = f"login:block:{path}:{ip}"
-        attempts_key = f"login:attempts:{path}:{ip}"
+        # Bloqueos por IP y por usuario global (sin depender del otro)
+        block_key_ip = f"login:block:ip:{path}:{ip}"
+        block_key_user = f"login:block:user:{path}:{raw_user}" if raw_user else None
+        block_key_ip_user = f"login:block:ip_user:{path}:{ip}:{raw_user}" if raw_user else None
 
-        # Por IP+usuario (si aplica)
-        block_key_u = f"login:block:{path}:{ip}:{raw_user}" if raw_user else None
-        attempts_key_u = f"login:attempts:{path}:{ip}:{raw_user}" if raw_user else None
+        # Contadores de fallos
+        attempts_key_ip = f"login:fail:ip:{path}:{ip}"
+        attempts_key_user = f"login:fail:user:{path}:{raw_user}" if raw_user else None
+        attempts_key_ip_user = f"login:fail:ip_user:{path}:{ip}:{raw_user}" if raw_user else None
+
+        # Rate limit por IP
+        ip_1m = _bucket_inc(f"login:req:ip:1m:{path}:{ip}", 60)
+        ip_1h = _bucket_inc(f"login:req:ip:1h:{path}:{ip}", 3600)
+        if ip_1m > _login_rate_ip_1m() or ip_1h > _login_rate_ip_1h():
+            _log_auth_throttle(
+                "AUTH_LOGIN_RATE_LIMITED",
+                ip=ip,
+                path=path,
+                username=raw_user,
+                reason="ip_rate_limit_exceeded",
+                metadata={"ip_1m": ip_1m, "ip_1h": ip_1h},
+            )
+            abort(
+                429,
+                description=(
+                    "Demasiados intentos de acceso en poco tiempo. "
+                    "Espera un momento y vuelve a intentar."
+                ),
+            )
+
+        # Rate limit por usuario (si viene identificador)
+        if raw_user:
+            user_1m = _bucket_inc(f"login:req:user:1m:{path}:{raw_user}", 60)
+            user_1h = _bucket_inc(f"login:req:user:1h:{path}:{raw_user}", 3600)
+            if user_1m > _login_rate_user_1m() or user_1h > _login_rate_user_1h():
+                _log_auth_throttle(
+                    "AUTH_LOGIN_RATE_LIMITED",
+                    ip=ip,
+                    path=path,
+                    username=raw_user,
+                    reason="user_rate_limit_exceeded",
+                    metadata={"user_1m": user_1m, "user_1h": user_1h},
+                )
+                abort(
+                    429,
+                    description=(
+                        "Demasiados intentos de acceso en poco tiempo. "
+                        "Espera un momento y vuelve a intentar."
+                    ),
+                )
 
         # bloqueado
-        if _cache_get(cache, block_key):
+        if _cache_get(cache, block_key_ip):
+            _log_auth_throttle(
+                "AUTH_LOGIN_BLOCKED",
+                ip=ip,
+                path=path,
+                username=raw_user,
+                reason="ip_temporarily_blocked",
+            )
             abort(429)
-        if block_key_u and _cache_get(cache, block_key_u):
+        if block_key_user and _cache_get(cache, block_key_user):
+            _log_auth_throttle(
+                "AUTH_LOGIN_BLOCKED",
+                ip=ip,
+                path=path,
+                username=raw_user,
+                reason="user_temporarily_blocked",
+            )
+            abort(429)
+        if block_key_ip_user and _cache_get(cache, block_key_ip_user):
+            _log_auth_throttle(
+                "AUTH_LOGIN_BLOCKED",
+                ip=ip,
+                path=path,
+                username=raw_user,
+                reason="ip_user_temporarily_blocked",
+            )
             abort(429)
 
-        # suma intento
-        attempts = int(_cache_get(cache, attempts_key) or 0) + 1
-        _cache_set(cache, attempts_key, attempts, timeout=LOGIN_WINDOW_SECONDS)
+        # suma intento fallido potencial (se limpia al autenticar)
+        attempts_ip = int(_cache_get(cache, attempts_key_ip) or 0) + 1
+        _cache_set(cache, attempts_key_ip, attempts_ip, timeout=_login_window_seconds())
 
-        # Variante por usuario (si existe)
-        attempts_u = 0
-        if attempts_key_u:
-            attempts_u = int(_cache_get(cache, attempts_key_u) or 0) + 1
-            _cache_set(cache, attempts_key_u, attempts_u, timeout=LOGIN_WINDOW_SECONDS)
+        attempts_user = 0
+        if attempts_key_user:
+            attempts_user = int(_cache_get(cache, attempts_key_user) or 0) + 1
+            _cache_set(cache, attempts_key_user, attempts_user, timeout=_login_window_seconds())
 
-        # Bloquea si se pasó
-        if attempts > LOGIN_MAX_ATTEMPTS or (attempts_key_u and attempts_u > LOGIN_MAX_ATTEMPTS):
+        attempts_ip_user = 0
+        if attempts_key_ip_user:
+            attempts_ip_user = int(_cache_get(cache, attempts_key_ip_user) or 0) + 1
+            _cache_set(cache, attempts_key_ip_user, attempts_ip_user, timeout=_login_window_seconds())
+
+        max_fail = max(attempts_ip, attempts_user, attempts_ip_user)
+
+        # Delay progresivo a partir de 5 fallos.
+        delay_threshold = _login_delay_threshold()
+        if max_fail >= delay_threshold:
+            over = max_fail - delay_threshold + 1
+            delay_ms = min(5000, max(100, int(_login_delay_ms_base() * over)))
+            time.sleep(delay_ms / 1000.0)
+
+        # Bloqueo temporal a partir de 10 fallos (IP o usuario)
+        if max_fail >= _login_block_threshold():
+            block_seconds = _login_block_seconds()
             _cache_set(
                 cache,
-                block_key,
-                int(time.time()) + LOGIN_BLOCK_SECONDS,
-                timeout=LOGIN_BLOCK_SECONDS
+                block_key_ip,
+                int(time.time()) + block_seconds,
+                timeout=block_seconds
             )
-            if block_key_u:
+            if block_key_user:
                 _cache_set(
                     cache,
-                    block_key_u,
-                    int(time.time()) + LOGIN_BLOCK_SECONDS,
-                    timeout=LOGIN_BLOCK_SECONDS
+                    block_key_user,
+                    int(time.time()) + block_seconds,
+                    timeout=block_seconds
                 )
+            if block_key_ip_user:
+                _cache_set(
+                    cache,
+                    block_key_ip_user,
+                    int(time.time()) + block_seconds,
+                    timeout=block_seconds
+                )
+            _log_auth_throttle(
+                "AUTH_LOGIN_BLOCKED",
+                ip=ip,
+                path=path,
+                username=raw_user,
+                reason="login_fail_threshold_reached",
+                metadata={"max_fail": max_fail, "block_seconds": block_seconds},
+            )
             abort(429)
 
     def clear_login_attempts(ip: str, path: str = "/admin/login", username: str = ""):
@@ -700,11 +836,13 @@ def init_security(app, cache):
         ip = ip.strip()[:64]
         username = (username or "").strip()[:80].lower()
 
-        _cache_delete(cache, f"login:attempts:{path}:{ip}")
-        _cache_delete(cache, f"login:block:{path}:{ip}")
+        _cache_delete(cache, f"login:fail:ip:{path}:{ip}")
+        _cache_delete(cache, f"login:block:ip:{path}:{ip}")
 
         if username:
-            _cache_delete(cache, f"login:attempts:{path}:{ip}:{username}")
-            _cache_delete(cache, f"login:block:{path}:{ip}:{username}")
+            _cache_delete(cache, f"login:fail:user:{path}:{username}")
+            _cache_delete(cache, f"login:block:user:{path}:{username}")
+            _cache_delete(cache, f"login:fail:ip_user:{path}:{ip}:{username}")
+            _cache_delete(cache, f"login:block:ip_user:{path}:{ip}:{username}")
 
     app.extensions["clear_login_attempts"] = clear_login_attempts

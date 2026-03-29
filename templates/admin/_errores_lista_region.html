@@ -1,0 +1,70 @@
+<form method="get"
+      action="{{ url_for('admin.errores_lista') }}"
+      class="row g-2 mb-3"
+      data-admin-async-form
+      data-async-target="#erroresListaAsyncRegion"
+      data-async-busy-container="#erroresListaAsyncScope"
+      data-async-preserve-scroll="true"
+      data-async-fallback="native">
+  <div class="col-md-6">
+    <input class="form-control" type="text" name="q" value="{{ q or '' }}" placeholder="Buscar por tipo, ruta o resumen">
+  </div>
+  <div class="col-md-3">
+    <select class="form-select" name="status">
+      <option value="all" {% if status == 'all' %}selected{% endif %}>Todos</option>
+      <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pendientes</option>
+      <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Resueltos</option>
+    </select>
+  </div>
+  <div class="col-md-3 d-flex gap-2">
+    <button class="btn btn-primary w-100" type="submit" data-loading-text="Filtrando...">Filtrar</button>
+    <a class="btn btn-outline-secondary"
+       href="{{ url_for('admin.errores_lista') }}"
+       data-admin-async-link
+       data-async-target="#erroresListaAsyncRegion"
+       data-async-busy-container="#erroresListaAsyncScope"
+       data-async-preserve-scroll="true">Limpiar</a>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped align-middle">
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Ruta</th><th>Resumen</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for e in errors %}
+      <tr>
+        <td><small>{{ e.created_at }}</small></td>
+        <td>{{ e.error_type or 'SERVER_ERROR' }}</td>
+        <td><small>{{ e.route or '-' }}</small></td>
+        <td>{{ e.summary or 'Error detectado' }}</td>
+        <td>{% if e.is_resolved %}<span class="badge bg-success">Resuelto</span>{% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}</td>
+        <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.errores_detalle', error_id=e.id) }}">Ver</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted">No hay errores registrados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<nav>
+  <ul class="pagination pagination-sm">
+    {% if has_prev %}
+    <li class="page-item"><a class="page-link"
+      href="{{ url_for('admin.errores_lista', page=(page - 1), q=q or None, status=(status if status != 'all' else None), per_page=per_page) }}"
+      data-admin-async-link
+      data-async-target="#erroresListaAsyncRegion"
+      data-async-busy-container="#erroresListaAsyncScope"
+      data-async-preserve-scroll="true">Anterior</a></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">{{ page }} / {{ pages }}</span></li>
+    {% if has_next %}
+    <li class="page-item"><a class="page-link"
+      href="{{ url_for('admin.errores_lista', page=(page + 1), q=q or None, status=(status if status != 'all' else None), per_page=per_page) }}"
+      data-admin-async-link
+      data-async-target="#erroresListaAsyncRegion"
+      data-async-busy-container="#erroresListaAsyncScope"
+      data-async-preserve-scroll="true">Siguiente</a></li>
+    {% endif %}
+  </ul>
+</nav>

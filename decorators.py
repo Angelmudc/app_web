@@ -12,6 +12,7 @@ from utils.staff_auth import (
     get_staff_role as _get_staff_role,
     redirect_admin_login as _redirect_admin_login,
 )
+from utils.staff_mfa import session_get_mfa_pending
 
 # ─────────────────────────────────────────────────────────────
 # flask-login (carga segura)
@@ -207,6 +208,10 @@ def roles_required(*permitted_roles):
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(*args, **kwargs):
+            if session_get_mfa_pending(session):
+                flash("Debes completar MFA para continuar.", "warning")
+                return _redirect_admin_login()
+
             role = _get_staff_role()
             if not role:
                 flash("Debes iniciar sesión.", "warning")
@@ -254,6 +259,10 @@ def login_required_any(view_func):
     """
     @wraps(view_func)
     def wrapper(*args, **kwargs):
+        if session_get_mfa_pending(session):
+            flash("Debes completar MFA para continuar.", "warning")
+            return _redirect_admin_login()
+
         # Flask-Login
         if _is_authenticated():
             return view_func(*args, **kwargs)

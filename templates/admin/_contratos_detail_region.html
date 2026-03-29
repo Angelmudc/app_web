@@ -1,0 +1,105 @@
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header">Datos base y estado</div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-md-4"><strong>Estado:</strong> <span class="badge {{ contrato_state_badge_class }}">{{ contrato_effective_state }}</span></div>
+          <div class="col-md-4"><strong>Versión:</strong> v{{ contrato.version }}</div>
+          <div class="col-md-4"><strong>Snapshot fijado:</strong> {{ contrato.snapshot_fijado_at and contrato.snapshot_fijado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+          <div class="col-md-4"><strong>Enviado:</strong> {{ contrato.enviado_at and contrato.enviado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+          <div class="col-md-4"><strong>Primer acceso:</strong> {{ contrato.primer_visto_at and contrato.primer_visto_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+          <div class="col-md-4"><strong>Último acceso:</strong> {{ contrato.ultimo_visto_at and contrato.ultimo_visto_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+          <div class="col-md-4"><strong>Firmado:</strong> {{ contrato.firmado_at and contrato.firmado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+          <div class="col-md-4"><strong>Expira:</strong> {{ contrato.token_expira_at and contrato.token_expira_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+          <div class="col-md-4"><strong>PDF final:</strong> {{ 'Sí' if contrato.pdf_final_size_bytes else 'No' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">Snapshot congelado</div>
+      <div class="card-body">
+        <pre class="mb-0" style="white-space: pre-wrap;">{{ contrato.contenido_snapshot_json | tojson(indent=2) }}</pre>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Eventos recientes</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Evento</th>
+                <th>Actor</th>
+                <th>Transición</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ev in eventos %}
+              <tr>
+                <td>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M:%S') or '—' }}</td>
+                <td>{{ ev.evento_tipo }}</td>
+                <td>{{ ev.actor_tipo }}</td>
+                <td>{{ ev.estado_anterior or '—' }} → {{ ev.estado_nuevo or '—' }}</td>
+                <td>{{ 'ok' if ev.success else ('error: ' ~ (ev.error_code or 'N/A')) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-muted py-3">Sin eventos.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header">Acciones</div>
+      <div class="card-body d-grid gap-2">
+        {% if contrato.estado != 'firmado' and contrato.estado != 'anulado' %}
+        <form method="post"
+              action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=contrato.id) }}"
+              data-admin-async-form
+              data-async-target="#contratoDetailAsyncRegion"
+              data-async-busy-container="#contratoDetailAsyncScope"
+              data-async-preserve-scroll="true"
+              data-async-fallback="native">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input type="hidden" name="next" value="{{ request.path }}">
+          <button type="submit" class="btn btn-primary w-100" data-loading-text="Procesando...">{{ 'Reemitir link' if contrato.estado in ['enviado','visto','expirado'] else 'Enviar contrato' }}</button>
+        </form>
+        <form method="post"
+              action="{{ url_for('contratos.anular_contrato_ui', contrato_id=contrato.id) }}"
+              data-admin-async-form
+              data-async-target="#contratoDetailAsyncRegion"
+              data-async-busy-container="#contratoDetailAsyncScope"
+              data-async-preserve-scroll="true"
+              data-async-fallback="native"
+              data-async-confirm="¿Anular este contrato digital?">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input type="hidden" name="next" value="{{ request.path }}">
+          <button type="submit" class="btn btn-outline-danger w-100" data-loading-text="Anulando...">Anular contrato</button>
+        </form>
+        {% endif %}
+        {% if contrato.firmado_at and contrato.pdf_final_size_bytes %}
+        <a href="{{ url_for('contratos.descargar_pdf_admin', contrato_id=contrato.id) }}" class="btn btn-success">Descargar PDF final</a>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if last_link %}
+    <div class="card">
+      <div class="card-header">Link público (último generado en esta sesión)</div>
+      <div class="card-body">
+        <input id="publicLink" class="form-control form-control-sm mb-2" value="{{ last_link }}" readonly>
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('publicLink').value)">Copiar link</button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>

@@ -18,6 +18,7 @@ def create_staff_notification(
     titulo: str,
     mensaje: str | None = None,
     payload: dict[str, Any] | None = None,
+    session_commit: bool = True,
 ) -> bool:
     """Crea una notificación interna sin afectar el flujo principal."""
     tipo_val = (tipo or "").strip()[:50]
@@ -45,7 +46,10 @@ def create_staff_notification(
         if not insp.has_table("staff_notificaciones"):
             return False
         db.session.add(row)
-        db.session.commit()
+        if session_commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return True
     except IntegrityError:
         db.session.rollback()

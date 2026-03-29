@@ -1,0 +1,47 @@
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h6 mb-0">Alertas críticas (últimas 10)</h2>
+      <a href="{{ url_for('admin.seguridad_alertas') }}" class="btn btn-sm btn-outline-dark">Ver todas</a>
+    </div>
+    <div id="alertsBox">
+      {% set rows = alerts if alerts is defined else (monitoreo_alerts if monitoreo_alerts is defined else (summary_payload.critical_alerts if summary_payload is defined else [])) %}
+      {% if rows %}
+        {% for a in rows[:10] %}
+        <div class="alert {{ 'alert-danger' if a.severity in ['critical', 'error'] else 'alert-warning' }} py-2 mb-2">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <div>
+              <strong>
+                {% if a.severity == 'critical' %}Crítica{% elif a.severity == 'warning' %}Advertencia{% elif a.action_type == 'ERROR_EVENT' %}Error{% else %}Seguridad{% endif %}
+              </strong>:
+              {{ a.summary or 'Evento detectado' }}
+              <small class="text-muted d-block">{{ a.route or '-' }}</small>
+              {% if a.action_type == 'ERROR_EVENT' and a.id %}
+                <a class="small" href="{{ url_for('admin.errores_detalle', error_id=a.id, next=(next_url or request.full_path)) }}">Ver detalle</a>
+              {% elif a.entity_type == 'candidata' and a.entity_id %}
+                <a class="small" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=a.entity_id) }}">Ver candidata</a>
+              {% elif a.entity_type in ['candidata', 'solicitud'] %}
+                <a class="small" href="{{ url_for('admin.seguridad_locks') }}">Ver lock</a>
+              {% endif %}
+            </div>
+            <form method="post"
+                  action="{{ url_for('admin.resolver_alerta', alert_id=a.id) }}"
+                  data-admin-async-form
+                  data-async-target="#monitoreoAlertsAsyncRegion"
+                  data-async-busy-container="#monitoreoAlertsAsyncScope"
+                  data-async-preserve-scroll="true"
+                  data-async-fallback="native">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ next_url or request.path }}">
+              <input type="hidden" name="_async_target" value="#monitoreoAlertsAsyncRegion">
+              <button class="btn btn-sm btn-outline-dark" type="submit" data-loading-text="Resolviendo...">Marcar resuelta</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-muted">No hay alertas pendientes.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>

@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-from dotenv import load_dotenv
-load_dotenv()
-
 from typing import Optional
 from urllib.parse import urlparse
 import io
@@ -92,6 +89,13 @@ from utils.staff_auth import (
     log_breakglass_attempt,
     set_breakglass_session,
 )
+from utils.staff_mfa import (
+    MFA_SETUP_SECRET_SESSION_KEY,
+    generate_mfa_secret,
+    mfa_enforced_for_staff,
+    session_begin_mfa_pending,
+    staff_role_requires_mfa,
+)
 from utils.audit_logger import log_action, snapshot_model_fields, diff_snapshots
 from utils.audit_entity import log_candidata_action
 from utils.pdf_labels import humanize_pdf_label
@@ -112,6 +116,16 @@ from utils.candidate_registration import (
 )
 from utils.timezone import format_rd_datetime, iso_utc_z, rd_today, utc_now_naive
 from utils.staff_notifications import create_staff_notification
+from core.services.cache_keys import _cache_key_with_role as _svc_cache_key_with_role
+from core.services.candidatas_shared import get_candidata_by_id as _svc_get_candidata_by_id
+from core.services.db_retry import _retry_query as _svc_retry_query
+from core.services.search import (
+    _prioritize_candidata_result as _svc_prioritize_candidata_result,
+    apply_search_to_candidata_query as _svc_apply_search_to_candidata_query,
+    build_flexible_search_filters as _svc_build_flexible_search_filters,
+    normalize_query_text as _svc_normalize_query_text,
+    search_candidatas_limited as _svc_search_candidatas_limited,
+)
 
 # Data / reportes
 import pandas as pd
@@ -318,21 +332,7 @@ def _strip_accents_py(s: str) -> str:
 
 
 def normalize_query_text(raw: str) -> str:
-    """Normaliza texto para búsquedas flexibles (nombre, etc.).
-    - lower
-    - sin acentos
-    - coma/puntos a espacios
-    - colapsa espacios
-    """
-    s = (raw or '').strip()
-    if not s:
-        return ''
-    s = s.replace(',', ' ').replace('.', ' ').replace(';', ' ').replace(':', ' ')
-    s = s.replace('\n', ' ').replace('\t', ' ')
-    s = _strip_accents_py(s).lower()
-    s = re.sub(r"[^a-z0-9\s\-]", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
+    return _svc_normalize_query_text(raw)
 
 
 def normalize_digits(raw: str) -> str:
@@ -372,79 +372,11 @@ def _sql_digits(col):
 
 
 def build_flexible_search_filters(q: str):
-    """Construye filtros flexibles para nombre/cédula/teléfono.
-
-    Reglas:
-    - Código: SOLO match estricto tipo CAN-000000 (sin búsquedas parciales por código).
-    - Nombre: flexible con coma/sin coma, acentos/no acentos, espacios extra.
-    - Cédula y teléfono: flexible por dígitos (ignorando guiones, espacios, paréntesis, etc.).
-
-    Retorna: (strict_code_filter_or_None, other_filters_list)
-    """
-    q = (q or '').strip()
-    if not q:
-        return None, []
-
-    q_code = normalize_code(q)
-    q_digits = normalize_digits(q)
-    q_text = normalize_query_text(q)
-
-    strict_code = None
-    if CODIGO_PATTERN.fullmatch(q_code):
-        # estricto: igual exacto (trim + upper)
-        strict_code = (func.trim(func.upper(Candidata.codigo)) == q_code)
-
-    filters = []
-
-    # Nombre: si hay texto
-    if q_text:
-        # Match inteligente: mientras más completo el nombre, más estricto.
-        # Requiere que TODOS los tokens estén en el nombre (AND), no cualquiera (OR).
-        tokens = [t for t in q_text.split(' ') if t]
-        name_norm = _sql_name_norm(Candidata.nombre_completo)
-
-        if tokens:
-            name_and = and_(*[name_norm.ilike(f"%{t}%") for t in tokens])
-            filters.append(name_and)
-
-    # Cédula / Teléfono: por dígitos (flexible)
-    if q_digits:
-        ced_digits = _sql_digits(Candidata.cedula).ilike(f"%{q_digits}%")
-        tel_digits = _sql_digits(Candidata.numero_telefono).ilike(f"%{q_digits}%")
-        filters.append(or_(ced_digits, tel_digits))
-
-    # Si no hay tokens ni dígitos, al menos intenta por raw como fallback
-    if not filters:
-        like = f"%{q}%"
-        filters.extend([
-            Candidata.nombre_completo.ilike(like),
-            Candidata.cedula.ilike(like),
-            Candidata.numero_telefono.ilike(like),
-        ])
-
-    return strict_code, filters
+    return _svc_build_flexible_search_filters(q)
 
 
 def apply_search_to_candidata_query(base_query, q: str):
-    """Aplica la lógica de búsqueda estándar a una query de Candidata.
-
-    IMPORTANTE:
-    - Esta función NO aplica `order_by()`, `limit()` ni `offset()`.
-    - El caller debe hacer: `apply_search_to_candidata_query(...).order_by(...).limit(...)`
-      para evitar el error de SQLAlchemy: order_by() después de limit().
-    """
-    strict_code, filters = build_flexible_search_filters(q)
-
-    # Si el usuario escribió un código válido, SOLO buscamos por código estricto.
-    if strict_code is not None:
-        return base_query.filter(Candidata.codigo.isnot(None)).filter(strict_code)
-
-    # Si NO es código válido, buscamos por nombre/cédula/teléfono (flexible) y
-    # NO hacemos búsquedas por código.
-    if filters:
-        return base_query.filter(or_(*filters))
-
-    return base_query
+    return _svc_apply_search_to_candidata_query(base_query, q)
 
 
 def search_candidatas_limited(
@@ -456,60 +388,21 @@ def search_candidatas_limited(
     order_mode: str = "nombre_asc",
     log_label: str = "default",
 ):
-    """Ejecuta la búsqueda estándar de candidatas con límite y orden consistentes."""
-    q = (q or "").strip()[:128]
-    if not q:
-        return []
-
-    query = base_query if base_query is not None else Candidata.query
-    if minimal_fields:
-        query = query.options(
-            load_only(
-                Candidata.fila,
-                Candidata.nombre_completo,
-                Candidata.cedula,
-                Candidata.numero_telefono,
-                Candidata.codigo,
-            )
-        )
-    safe_limit = max(1, min(int(limit or 300), 500))
-    t0 = perf_counter()
-    filtered = apply_search_to_candidata_query(query, q)
-    if order_mode == "id_desc":
-        filtered = filtered.order_by(Candidata.fila.desc())
-    else:
-        filtered = filtered.order_by(Candidata.nombre_completo.asc())
-    rows = filtered.limit(safe_limit).all()
-    dt_ms = round((perf_counter() - t0) * 1000, 2)
-    current_app.logger.info(
-        "search_candidatas_limited[%s] q=%r rows=%s dt_ms=%s",
-        log_label,
+    return _svc_search_candidatas_limited(
         q,
-        len(rows),
-        dt_ms,
+        limit=limit,
+        base_query=base_query,
+        minimal_fields=minimal_fields,
+        order_mode=order_mode,
+        log_label=log_label,
     )
-    return rows
 
 
 def _prioritize_candidata_result(
     rows: list,
     prioritized_fila: Optional[int],
 ) -> list:
-    """Mueve al inicio la fila indicada, si está en la lista de resultados."""
-    if not rows:
-        return rows
-    try:
-        target = int(prioritized_fila or 0)
-    except Exception:
-        return rows
-    if target <= 0:
-        return rows
-    idx = next((i for i, row in enumerate(rows) if int(getattr(row, "fila", 0) or 0) == target), None)
-    if idx is None or idx <= 0:
-        return rows
-    ordered = list(rows)
-    ordered.insert(0, ordered.pop(idx))
-    return ordered
+    return _svc_prioritize_candidata_result(rows, prioritized_fila)
 
 
 def _legacy_buscar_trace(event: str, **payload) -> None:
@@ -635,11 +528,8 @@ def _legacy_buscar_db_trace(event: str, **payload) -> None:
 
 
 def get_candidata_by_id(raw_id):
-    """Obtiene una candidata por ID de forma segura; retorna None si no es válido."""
-    cid = str(raw_id or "").strip()
-    if not cid.isdigit():
-        return None
-    return db.session.get(Candidata, int(cid))
+    """Compat: delega al helper neutral compartido."""
+    return _svc_get_candidata_by_id(raw_id)
 
 
 # ----------------------------------------------------------------------------
@@ -787,13 +677,8 @@ def safe_all(query):
 
 
 def _cache_key_with_role(prefix: str):
-    """Genera cache-key aislada por rol + querystring para evitar mezclar vistas."""
-    role = (session.get("role") or "anon")
-    try:
-        path_qs = request.full_path or request.path or ""
-    except Exception:
-        path_qs = ""
-    return f"{prefix}:{role}:{path_qs}"
+    """Compat: delega al helper neutral compartido."""
+    return _svc_cache_key_with_role(prefix)
 
 
 # -----------------------------------------------------------------------------
@@ -813,42 +698,6 @@ def normalize_nombre(raw: str) -> str:
     nfkd = unicodedata.normalize('NFKD', raw)
     no_accents = ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
     return re.sub(r'[^A-Za-z\s\-]', '', no_accents).strip()
-
-
-def parse_date(s: str) -> Optional[date]:
-    try:
-        return datetime.strptime(s or "", "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
-def parse_decimal(s: str) -> Optional[Decimal]:
-    try:
-        return Decimal((s or "").replace(',', '.'))
-    except Exception:
-        return None
-
-
-def get_date_bounds(period: str, date_str: Optional[str] = None):
-    """
-    Devuelve (start_dt, end_dt)
-    """
-    hoy = rd_today()
-    if period == 'day':
-        return hoy - timedelta(days=1), hoy
-    if period == 'week':
-        return hoy - timedelta(days=7), hoy
-    if period == 'month':
-        return hoy - timedelta(days=30), hoy
-    if period == 'date' and date_str:
-        d = date.fromisoformat(date_str)
-        return d, d
-    return None, None
-
-
-def get_start_date(period: str, date_str: Optional[str] = None):
-    start, _ = get_date_bounds(period, date_str)
-    return start
 
 
 # -----------------------------------------------------------------------------
@@ -880,8 +729,8 @@ def forbidden(e):
 
 @app.route('/robots.txt')
 def robots_txt():
-    static_folder = current_app.static_folder or os.path.join(current_app.root_path, "static")
-    return send_from_directory(static_folder, "robots.txt")
+    from core.handlers import auth_home_handlers as auth_home_h
+    return auth_home_h.robots_txt()
 
 # -----------------------------------------------------------------------------
 # AUTH (panel interno por sesión simple)
@@ -893,214 +742,69 @@ def robots_txt():
 
 @app.route('/home')
 def home():
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
-    # Evita UTC si tu app es local/DR; suficiente con fecha local del servidor
-    return render_template(
-        'home.html',
-        usuario=session['usuario'],
-        current_year=rd_today().year
-    )
+    from core.handlers import auth_home_handlers as auth_home_h
+    return auth_home_h.home()
 
 
 def _staff_reader_key() -> Optional[str]:
-    try:
-        if bool(getattr(current_user, "is_authenticated", False)):
-            raw_id = str(getattr(current_user, "get_id", lambda: "")() or "").strip()
-            if raw_id.startswith("staff:"):
-                return raw_id[:120]
-            if hasattr(current_user, "id"):
-                return f"staff:{int(getattr(current_user, 'id'))}"
-    except Exception:
-        pass
-    usuario = (session.get("usuario") or "").strip().lower()
-    if not usuario:
-        return None
-    digest = hashlib.sha256(usuario.encode("utf-8")).hexdigest()[:40]
-    return f"legacy:{digest}"
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h._staff_reader_key()
 
 
 def _notif_review_url(notif: StaffNotificacion) -> str:
-    entity_type = (getattr(notif, "entity_type", "") or "").strip().lower()
-    entity_id = int(getattr(notif, "entity_id", 0) or 0)
-    if entity_id <= 0:
-        return url_for("home")
-    if entity_type == "candidata":
-        return url_for("buscar_candidata", candidata_id=entity_id)
-    if entity_type == "recluta_perfil":
-        return url_for("reclutas.detalle", recluta_id=entity_id)
-    return url_for("home")
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h._notif_review_url(notif)
 
 
 def _staff_notifications_unread_count(reader_key: str) -> int:
-    if not reader_key:
-        return 0
-    unread_count = (
-        db.session.query(func.count(StaffNotificacion.id))
-        .outerjoin(
-            StaffNotificacionLectura,
-            and_(
-                StaffNotificacionLectura.notificacion_id == StaffNotificacion.id,
-                StaffNotificacionLectura.reader_key == reader_key,
-            ),
-        )
-        .filter(StaffNotificacionLectura.id.is_(None))
-        .scalar()
-    )
-    return int(unread_count or 0)
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h._staff_notifications_unread_count(reader_key)
 
 
 def _staff_notification_to_item(notif: StaffNotificacion, is_read: bool) -> dict:
-    return {
-        "id": int(notif.id),
-        "tipo": (notif.tipo or "").strip(),
-        "titulo": (notif.titulo or "").strip(),
-        "mensaje": (notif.mensaje or "").strip() or None,
-        "entity_type": (notif.entity_type or "").strip(),
-        "entity_id": int(notif.entity_id or 0),
-        "created_at": iso_utc_z(notif.created_at) if notif.created_at else None,
-        "review_url": _notif_review_url(notif),
-        "is_read": bool(is_read),
-    }
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h._staff_notification_to_item(notif, is_read)
 
 
 def _staff_notifications_ready() -> bool:
-    try:
-        insp = inspect(db.engine)
-        return bool(
-            insp.has_table("staff_notificaciones")
-            and insp.has_table("staff_notificaciones_lecturas")
-        )
-    except Exception:
-        return False
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h._staff_notifications_ready()
 
 
 @app.route('/home/notificaciones-publicas/count.json', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def home_public_notifications_count():
-    if not _staff_notifications_ready():
-        return jsonify({"unread": 0})
-    reader_key = _staff_reader_key()
-    unread = _staff_notifications_unread_count(reader_key or "")
-    return jsonify({"unread": int(unread)})
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h.home_public_notifications_count()
 
 
 @app.route('/home/notificaciones-publicas/list.json', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def home_public_notifications_list():
-    if not _staff_notifications_ready():
-        return jsonify(
-            {
-                "unread": 0,
-                "items": [],
-                "pending_items": [],
-                "reviewed_items": [],
-                "has_more_pending": False,
-                "has_more_reviewed": False,
-            }
-        )
-    reader_key = _staff_reader_key()
-    per_bucket_limit = min(10, max(1, int(request.args.get("limit", 10) or 10)))
-    if not reader_key:
-        return jsonify(
-            {
-                "unread": 0,
-                "items": [],
-                "pending_items": [],
-                "reviewed_items": [],
-                "has_more_pending": False,
-                "has_more_reviewed": False,
-            }
-        )
-
-    pending_rows_plus_one = (
-        db.session.query(StaffNotificacion)
-        .outerjoin(
-            StaffNotificacionLectura,
-            and_(
-                StaffNotificacionLectura.notificacion_id == StaffNotificacion.id,
-                StaffNotificacionLectura.reader_key == reader_key,
-            ),
-        )
-        .filter(StaffNotificacionLectura.id.is_(None))
-        .order_by(StaffNotificacion.created_at.desc(), StaffNotificacion.id.desc())
-        .limit(per_bucket_limit + 1)
-        .all()
-    )
-    reviewed_rows_plus_one = (
-        db.session.query(StaffNotificacion)
-        .join(
-            StaffNotificacionLectura,
-            and_(
-                StaffNotificacionLectura.notificacion_id == StaffNotificacion.id,
-                StaffNotificacionLectura.reader_key == reader_key,
-            ),
-        )
-        .order_by(StaffNotificacion.created_at.desc(), StaffNotificacion.id.desc())
-        .limit(per_bucket_limit + 1)
-        .all()
-    )
-
-    has_more_pending = len(pending_rows_plus_one) > per_bucket_limit
-    has_more_reviewed = len(reviewed_rows_plus_one) > per_bucket_limit
-    pending_rows = pending_rows_plus_one[:per_bucket_limit]
-    reviewed_rows = reviewed_rows_plus_one[:per_bucket_limit]
-    pending_items = [_staff_notification_to_item(n, is_read=False) for n in pending_rows]
-    reviewed_items = [_staff_notification_to_item(n, is_read=True) for n in reviewed_rows]
-    # Retrocompatibilidad: mantenemos "items" en el payload histórico.
-    items = pending_items + reviewed_items
-
-    unread = _staff_notifications_unread_count(reader_key)
-    return jsonify(
-        {
-            "unread": unread,
-            "items": items,
-            "pending_items": pending_items,
-            "reviewed_items": reviewed_items,
-            "has_more_pending": has_more_pending,
-            "has_more_reviewed": has_more_reviewed,
-        }
-    )
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h.home_public_notifications_list()
 
 
 @app.route('/home/notificaciones-publicas/<int:notificacion_id>/leer', methods=['POST'])
 @roles_required('admin', 'secretaria')
 def home_public_notifications_mark_read(notificacion_id: int):
-    if not _staff_notifications_ready():
-        return jsonify({"ok": False, "error": "notifications_not_ready"}), 503
-    reader_key = _staff_reader_key()
-    if not reader_key:
-        return jsonify({"ok": False, "error": "reader_not_available"}), 400
-    notif = StaffNotificacion.query.get_or_404(notificacion_id)
-    already = (
-        StaffNotificacionLectura.query
-        .filter_by(notificacion_id=int(notif.id), reader_key=reader_key)
-        .first()
-    )
-    if already is None:
-        try:
-            db.session.add(StaffNotificacionLectura(notificacion_id=int(notif.id), reader_key=reader_key))
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            # Idempotencia ante carrera: otro request insertó la lectura primero.
-            pass
-        except Exception:
-            db.session.rollback()
-            return jsonify({"ok": False, "error": "read_mark_failed"}), 500
-    return jsonify({"ok": True, "unread": _staff_notifications_unread_count(reader_key)})
+    from core.handlers import home_notifications_handlers as notif_h
+    return notif_h.home_public_notifications_mark_read(notificacion_id)
 
 
  
 # ---- Anti-bruteforce settings (ajustables)
-LOGIN_MAX_INTENTOS = int(os.getenv("LOGIN_MAX_INTENTOS", "6"))   # intentos
+LOGIN_MAX_INTENTOS = int(os.getenv("LOGIN_MAX_INTENTOS", "10"))   # intentos
 LOGIN_LOCK_MINUTOS = int(os.getenv("LOGIN_LOCK_MINUTOS", "10"))  # minutos
 LOGIN_KEY_PREFIX   = "panel_login"
 
 
 def _operational_rate_limits_enabled() -> bool:
-    raw = (os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS") or "0").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    raw = os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS")
+    if raw is not None and str(raw).strip() != "":
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
+    return run_env in ("prod", "production")
 
 
 def _login_debug_enabled() -> bool:
@@ -1115,6 +819,17 @@ def _normalize_staff_role_loose(role_raw) -> str:
     if role in ("secretary", "secre", "secretaría"):
         return "secretaria"
     return ""
+
+
+def _staff_mfa_required_for_user(staff_user) -> bool:
+    if not isinstance(staff_user, StaffUser):
+        return False
+    if not bool(getattr(staff_user, "is_active", False)):
+        return False
+    if not mfa_enforced_for_staff(testing=bool(current_app.config.get("TESTING"))):
+        return False
+    role = _normalize_staff_role_loose(getattr(staff_user, "role", "") or "")
+    return staff_role_requires_mfa(role)
 
 
 def _client_ip() -> str:
@@ -1200,216 +915,16 @@ def _reset_fail(usuario_norm: str):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    mensaje = ""
-
-    if request.method == 'POST':
-        # (Opcional pero recomendado) Honeypot: si lo llenan, es bot
-        # Si tu login.html tiene input hidden name="website", deja esto:
-        if (request.form.get("website") or "").strip():
-            return "", 400
-
-        usuario_raw = (request.form.get('usuario') or '').strip()[:64]
-        clave_input_raw = (request.form.get('clave') or '')
-        clave_input_trimmed = clave_input_raw.strip()
-        clave = clave_input_trimmed[:128]
-
-        # ✅ Normaliza para llaves internas (bloqueos) y consistencia
-        usuario_norm = usuario_raw.lower().strip()
-
-        # 🔒 Bloqueo por intentos (tu bloqueo por usuario+IP)
-        if _is_locked(usuario_norm):
-            return render_template(
-                'login.html',
-                mensaje=f"Demasiados intentos. Bloqueado por {LOGIN_LOCK_MINUTOS} minutos."
-            ), 429
-
-        # 1) Primero intentar StaffUser (BD) por username o email (case-insensitive)
-        staff_user = None
-        staff_lookup_error = False
-        try:
-            staff_user = StaffUser.query.filter(
-                or_(
-                    func.lower(StaffUser.username) == usuario_norm,
-                    func.lower(StaffUser.email) == usuario_norm,
-                )
-            ).first()
-        except Exception:
-            staff_lookup_error = True
-            try:
-                current_app.logger.exception("LOGIN_DB_LOOKUP_ERROR /login usuario=%s", usuario_norm)
-            except Exception:
-                pass
-            staff_user = None
-
-        staff_ok = False
-        staff_password_ok = False
-        if staff_user and bool(getattr(staff_user, "is_active", True)):
-            role = _normalize_staff_role_loose(getattr(staff_user, "role", "") or "")
-            if role in ("owner", "admin", "secretaria"):
-                try:
-                    staff_password_ok = bool(staff_user.check_password(clave))
-                    staff_ok = bool(staff_password_ok)
-                except Exception:
-                    staff_password_ok = False
-                    staff_ok = False
-
-        breakglass_ok = False
-        if not staff_ok and is_breakglass_enabled() and usuario_norm == breakglass_username().strip().lower():
-            ip = get_request_ip()
-            ua = request.headers.get("User-Agent") or ""
-            if breakglass_allowed_ip(ip) and check_breakglass_password(clave):
-                breakglass_ok = True
-                log_breakglass_attempt(True, ip, ua)
-            else:
-                log_breakglass_attempt(False, ip, ua)
-
-        if _login_debug_enabled():
-            try:
-                current_app.logger.warning(
-                    "LOGIN_DEBUG_LEGACY %s",
-                    json.dumps(
-                        {
-                            "route": "/login",
-                            "usuario_input": usuario_raw,
-                            "usuario_norm": usuario_norm,
-                            "has_clave_field": bool("clave" in request.form),
-                            "form_keys": sorted(list(request.form.keys()))[:40],
-                            "clave_value_count": int(len(request.form.getlist("clave"))),
-                            "password_len_raw": int(len(clave_input_raw)),
-                            "password_len_after_strip": int(len(clave_input_trimmed)),
-                            "password_len_final": int(len(clave)),
-                            "password_empty": bool(not clave),
-                            "password_had_outer_spaces": bool(clave_input_raw != clave_input_trimmed),
-                            "password_truncated_128": bool(len(clave_input_trimmed) > 128),
-                            "locked": bool(_is_locked(usuario_norm)),
-                            "staff_lookup_error": bool(staff_lookup_error),
-                            "staff_found": bool(staff_user),
-                            "staff_id": int(staff_user.id) if isinstance(staff_user, StaffUser) else None,
-                            "staff_role": (getattr(staff_user, "role", None) if staff_user else None),
-                            "staff_active": bool(getattr(staff_user, "is_active", False)) if staff_user else False,
-                            "staff_password_ok": bool(staff_password_ok),
-                            "breakglass_ok": bool(breakglass_ok),
-                            "auth_ok": bool(staff_ok or breakglass_ok),
-                        },
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                )
-            except Exception:
-                pass
-
-        if staff_lookup_error:
-            return render_template(
-                'login.html',
-                mensaje="Error temporal validando credenciales. Intenta de nuevo."
-            ), 503
-
-        if staff_ok:
-            # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global (IP+endpoint+usuario)
-            _reset_fail(usuario_norm)
-
-            # ✅ Limpia lock del security_layer con IP real (Render) si existe helper
-            try:
-                clear_fn = current_app.extensions.get("clear_login_attempts")
-                if callable(clear_fn):
-                    ip = _client_ip()
-                    # Tu security_layer usa username lower para keys
-                    clear_fn(ip, "/login", usuario_norm)
-            except Exception:
-                pass
-
-            # Si tú también tienes tu helper legacy, lo dejamos (no rompe nada)
-            try:
-                _clear_security_layer_lock("/login", usuario_norm)
-            except Exception:
-                pass
-
-            # 🔒 Regenerar sesión completamente al autenticar
-            session.clear()
-            session.permanent = False
-            login_user(staff_user, remember=False)
-            session['usuario'] = (staff_user.username or usuario_raw)
-            session['role'] = _normalize_staff_role_loose(staff_user.role) or "secretaria"
-            session['is_staff'] = True
-            session['is_admin_session'] = True
-            session['logged_at'] = utc_now_naive().isoformat(timespec='seconds')
-            clear_breakglass_session(session)
-            session.modified = True
-
-            # Auditoría de último login para StaffUser (incluye emergency admin activado).
-            try:
-                staff_user.last_login_at = utc_now_naive()
-                staff_user.last_login_ip = _client_ip()
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-
-            if _login_debug_enabled():
-                try:
-                    current_app.logger.warning(
-                        "LOGIN_DEBUG_LEGACY_SESSION %s",
-                        json.dumps(
-                            {
-                                "route": "/login",
-                                "usuario_session": session.get("usuario"),
-                                "role_session": session.get("role"),
-                                "is_admin_session": bool(session.get("is_admin_session")),
-                            },
-                            ensure_ascii=False,
-                            default=str,
-                        ),
-                    )
-                except Exception:
-                    pass
-            return safe_redirect_next('home')
-
-        if breakglass_ok:
-            _reset_fail(usuario_norm)
-            try:
-                clear_fn = current_app.extensions.get("clear_login_attempts")
-                if callable(clear_fn):
-                    ip = _client_ip()
-                    clear_fn(ip, "/login", usuario_norm)
-            except Exception:
-                pass
-            try:
-                _clear_security_layer_lock("/login", usuario_norm)
-            except Exception:
-                pass
-
-            session.clear()
-            session.permanent = False
-            login_user(build_breakglass_user(), remember=False)
-            set_breakglass_session(session)
-            session['logged_at'] = utc_now_naive().isoformat(timespec='seconds')
-            session.modified = True
-            return safe_redirect_next('home')
-
-        # ❌ Login incorrecto: registra intento
-        n = _register_fail(usuario_norm)
-
-        if _is_locked(usuario_norm):
-            return render_template(
-                'login.html',
-                mensaje=f"Demasiados intentos. Bloqueado por {LOGIN_LOCK_MINUTOS} minutos."
-            ), 429
-
-        restantes = max(0, LOGIN_MAX_INTENTOS - n)
-        mensaje = f"Usuario o clave incorrectos. Te quedan {restantes} intento(s)."
-
-    return render_template('login.html', mensaje=mensaje)
+    from core.handlers import auth_home_handlers as auth_home_h
+    return auth_home_h.login()
 
 
 
 @app.route('/logout', methods=['POST'])
 @roles_required('admin', 'secretaria')
 def logout():
-    try:
-        logout_user()
-    except Exception:
-        pass
-    session.clear()
-    return safe_redirect_next('login')
+    from core.handlers import auth_home_handlers as auth_home_h
+    return auth_home_h.logout()
 
 
 # -----------------------------------------------------------------------------
@@ -1422,250 +937,8 @@ def logout():
 @app.route('/registro_interno/', methods=['GET', 'POST'], strict_slashes=False)
 @roles_required('admin', 'secretaria')
 def registro_interno():
-    if request.method == 'GET':
-        return render_template('registro_interno.html')
-
-    # --- POST: recoger datos del formulario (limitando tamaños) ---
-    nombre       = normalize_person_name(request.form.get('nombre_completo'))
-    edad_raw     = (request.form.get('edad') or '').strip()[:10]
-    telefono     = normalize_phone(request.form.get('numero_telefono'))
-    direccion    = (request.form.get('direccion_completa') or '').strip()[:250]
-    modalidad    = (request.form.get('modalidad_trabajo_preferida') or '').strip()[:100]
-    rutas        = (request.form.get('rutas_cercanas') or '').strip()[:150]
-    empleo_prev  = (request.form.get('empleo_anterior') or '').strip()[:150]
-    anos_exp     = (request.form.get('anos_experiencia') or '').strip()[:50]
-    areas_list   = request.form.getlist('areas_experiencia')  # checkboxes
-
-    planchar_raw = (request.form.get('sabe_planchar') or '').strip().lower()[:3]
-    planchar_raw = planchar_raw.replace('í', 'i')
-
-    ref_lab      = (request.form.get('contactos_referencias_laborales') or '').strip()[:500]
-    ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
-    acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
-    cedula_raw   = (request.form.get('cedula') or '').strip()[:50]
-    disponibilidad_inicio = (request.form.get('disponibilidad_inicio') or '').strip()[:80]
-    trabaja_con_ninos_raw = (request.form.get('trabaja_con_ninos') or '').strip()[:10]
-    trabaja_con_mascotas_raw = (request.form.get('trabaja_con_mascotas') or '').strip()[:10]
-    puede_dormir_fuera_raw = (request.form.get('puede_dormir_fuera') or '').strip()[:10]
-    sueldo_esperado = (request.form.get('sueldo_esperado') or '').strip()[:80]
-    motivacion_trabajo = (request.form.get('motivacion_trabajo') or '').strip()[:350]
-
-    def _fail(message: str, category: str, status_code: int, *, error_message: str, attempts: int = 0):
-        flash(message, category)
-        log_candidate_create_fail(
-            registration_type="interno",
-            candidate=None,
-            attempt_count=attempts,
-            error_message=error_message,
-            nombre=nombre,
-            cedula=cedula_raw,
-        )
-        return render_template('registro_interno.html'), status_code
-
-    # --- Validaciones mínimas y mensajes claros ---
-    faltantes = []
-    for campo, valor in [
-        ('Nombre completo', nombre),
-        ('Edad', edad_raw),
-        ('Número de teléfono', telefono),
-        ('Dirección completa', direccion),
-        ('Modalidad de trabajo', modalidad),
-        ('Rutas cercanas', rutas),
-        ('Empleo anterior', empleo_prev),
-        ('Años de experiencia', anos_exp),
-        ('Referencias laborales', ref_lab),
-        ('Referencias familiares', ref_fam),
-        ('Cédula', cedula_raw),
-    ]:
-        if not valor:
-            faltantes.append(campo)
-
-    if planchar_raw not in ('si', 'no'):
-        faltantes.append('Sabe planchar (sí/no)')
-
-    if acepta_raw not in ('1', '0'):
-        faltantes.append('Acepta % de sueldo (sí/no)')
-
-    # Edad razonable
-    try:
-        edad_num = int(''.join(ch for ch in edad_raw if ch.isdigit()))
-        if edad_num < 16 or edad_num > 75:
-            return _fail(
-                '📛 La edad debe estar entre 16 y 75 años.',
-                'warning',
-                400,
-                error_message='invalid_age_range',
-            )
-    except ValueError:
-        faltantes.append('Edad (número)')
-        edad_num = None
-
-    # Validación de cédula
-    cedula_digits_input = normalize_cedula_for_compare(cedula_raw)
-    if not cedula_raw:
-        return _fail('📛 Cédula requerida.', 'warning', 400, error_message='cedula_required')
-
-    if faltantes:
-        return _fail(
-            'Por favor completa: ' + ', '.join(faltantes),
-            'warning',
-            400,
-            error_message='missing_required_fields',
-        )
-
-    if not phone_has_valid_digits(telefono):
-        return _fail(
-            '📛 Número de teléfono inválido. Debe tener entre 10 y 15 dígitos.',
-            'warning',
-            400,
-            error_message='invalid_phone_number',
-        )
-
-    # Convertir/normalizar algunos valores
-    areas_str     = ', '.join([s.strip() for s in areas_list if s.strip()]) if areas_list else ''
-    sabe_planchar = (planchar_raw == 'si')
-    acepta_pct    = (acepta_raw == '1')
-
-    def _parse_optional_yes_no(raw: str):
-        val = (raw or '').strip().lower().replace('í', 'i')
-        if val in ('si', '1', 'true', 'on'):
-            return True
-        if val in ('no', '0', 'false', 'off'):
-            return False
-        return None
-
-    trabaja_con_ninos = _parse_optional_yes_no(trabaja_con_ninos_raw)
-    trabaja_con_mascotas = _parse_optional_yes_no(trabaja_con_mascotas_raw)
-    puede_dormir_fuera = _parse_optional_yes_no(puede_dormir_fuera_raw)
-    disponibilidad_inicio = disponibilidad_inicio or None
-    sueldo_esperado = sueldo_esperado or None
-    motivacion_trabajo = motivacion_trabajo or None
-
-    # --- Comprobación de duplicado por cédula (DB-safe) ---
-    try:
-        dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
-    except OperationalError:
-        # reconecta/dispose y reintenta una vez
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        try:
-            _get_engine().dispose()
-        except Exception:
-            pass
-        dup, _ = find_duplicate_candidata_by_cedula(cedula_raw)
-
-    if dup:
-        return _fail(
-            duplicate_cedula_message(dup),
-            'warning',
-            400,
-            error_message='duplicate_cedula_precheck',
-        )
-
-    if len(cedula_digits_input) != 11:
-        return _fail(
-            '📛 Cédula inválida. Debe contener 11 dígitos.',
-            'warning',
-            400,
-            error_message='invalid_cedula_digits',
-        )
-
-    # Guardado normalizado SOLO para altas nuevas
-    cedula_store = normalize_cedula_for_store(cedula_raw)
-    if not cedula_store:
-        return _fail('📛 Cédula requerida.', 'warning', 400, error_message='cedula_required')
-
-    usuario = (session.get('usuario') or 'secretaria').strip()[:64]
-    source_route = (request.path or '').strip()[:120] or '/registro_interno/'
-    try:
-        result, create_state = robust_create_candidata(
-            build_candidate=lambda _attempt: Candidata(
-                marca_temporal=utc_now_naive(),
-                nombre_completo=nombre,
-                edad=str(edad_num),
-                numero_telefono=telefono,
-                direccion_completa=direccion,
-                modalidad_trabajo_preferida=modalidad,
-                rutas_cercanas=rutas,
-                empleo_anterior=empleo_prev,
-                anos_experiencia=anos_exp,
-                areas_experiencia=areas_str,
-                sabe_planchar=sabe_planchar,
-                contactos_referencias_laborales=ref_lab,
-                referencias_familiares_detalle=ref_fam,
-                referencias_laboral=ref_lab,
-                referencias_familiares=ref_fam,
-                acepta_porcentaje_sueldo=acepta_pct,
-                cedula=cedula_store,
-                disponibilidad_inicio=disponibilidad_inicio,
-                trabaja_con_ninos=trabaja_con_ninos,
-                trabaja_con_mascotas=trabaja_con_mascotas,
-                puede_dormir_fuera=puede_dormir_fuera,
-                sueldo_esperado=sueldo_esperado,
-                motivacion_trabajo=motivacion_trabajo,
-                medio_inscripcion='Oficina',
-                origen_registro='interno',
-                creado_por_staff=usuario,
-                creado_desde_ruta=source_route,
-                estado='en_proceso',
-                fecha_cambio_estado=utc_now_naive(),
-                usuario_cambio_estado=usuario,
-            ),
-            expected_fields={
-                "cedula": cedula_store,
-                "nombre_completo": nombre,
-                "numero_telefono": telefono,
-                "edad": str(edad_num),
-            },
-            max_retries=2,
-            dispose_pool_fn=lambda: _get_engine().dispose(),
-        )
-    except SQLAlchemyError as e:
-        return _fail(
-            f'❌ No se pudo guardar el registro: {e.__class__.__name__}',
-            'danger',
-            500,
-            error_message=f'{e.__class__.__name__}: {str(e)[:200]}',
-        )
-
-    if not result.ok:
-        error_msg = (result.error_message or "").strip()
-        if error_looks_like_duplicate_cedula(error_msg):
-            return _fail(
-                '⚠️ Ya existe una candidata con esta cédula (aunque esté escrita diferente).',
-                'warning',
-                400,
-                error_message=error_msg or 'duplicate_cedula_commit',
-                attempts=result.attempts,
-            )
-        return _fail(
-            '❌ No se pudo verificar el registro guardado. Intenta de nuevo en unos segundos.',
-            'danger',
-            503,
-            error_message=error_msg or 'create_verification_failed',
-            attempts=result.attempts,
-        )
-
-    if not create_state.candidate:
-        return _fail(
-            '❌ No se pudo verificar el registro guardado. Intenta de nuevo en unos segundos.',
-            'danger',
-            503,
-            error_message='candidate_instance_missing_after_commit',
-            attempts=result.attempts,
-        )
-
-    log_candidate_create_ok(
-        registration_type="interno",
-        candidate=create_state.candidate,
-        attempt_count=result.attempts,
-    )
-
-    # ✅ Sin "gracias": flash + vuelve al mismo formulario
-    flash('✅ Candidata registrada correctamente.', 'success')
-    return redirect(url_for('registro_interno'))
+    from core.handlers import registro_interno_handlers as registro_h
+    return registro_h.registro_interno()
 
 
 # -----------------------------------------------------------------------------
@@ -1674,35 +947,8 @@ def registro_interno():
 @app.route('/candidatas', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def list_candidatas():
-    # Sanitiza búsqueda y evita querys enormes
-    q = (request.args.get('q') or '').strip()[:128]
-    page = max(1, request.args.get('page', default=1, type=int))
-    per_page = min(200, max(1, request.args.get('per_page', default=80, type=int)))
-
-    try:
-        base = Candidata.query.filter(
-            candidatas_activas_filter(Candidata),
-            Candidata.estado != 'trabajando',
-        )
-        if q:
-            base = apply_search_to_candidata_query(base, q)
-
-        pagination = base.order_by(Candidata.nombre_completo.asc()).paginate(
-            page=page, per_page=per_page, error_out=False
-        )
-        candidatas = pagination.items
-        return render_template(
-            'candidatas.html',
-            candidatas=candidatas,
-            query=q,
-            pagination=pagination,
-            page=page,
-            per_page=per_page,
-        )
-    except Exception:
-        app.logger.exception("❌ Error listando candidatas")
-        flash("Ocurrió un error al listar candidatas. Intenta de nuevo.", "danger")
-        return render_template('candidatas.html', candidatas=[], query=q), 500
+    from core.handlers import candidatas_list_handlers as list_h
+    return list_h.list_candidatas()
 
 
 @app.route('/candidatas_db')
@@ -1712,65 +958,8 @@ def list_candidatas():
     key_prefix=lambda: _cache_key_with_role("candidatas_db"),
 )
 def list_candidatas_db():
-    try:
-        max_rows = min(
-            5000,
-            max(100, int(os.getenv("MAX_CANDIDATAS_DB_ROWS", "1500")))
-        )
-
-        # Cargamos solo columnas necesarias para bajar peso/riesgo
-        candidatas = (Candidata.query
-                      .options(load_only(
-                          Candidata.fila,
-                          Candidata.marca_temporal,
-                          Candidata.nombre_completo,
-                          Candidata.edad,
-                          Candidata.numero_telefono,
-                          Candidata.direccion_completa,
-                          Candidata.modalidad_trabajo_preferida,
-                          Candidata.cedula,
-                          Candidata.codigo,
-                          Candidata.disponibilidad_inicio,
-                          Candidata.trabaja_con_ninos,
-                          Candidata.trabaja_con_mascotas,
-                          Candidata.puede_dormir_fuera,
-                          Candidata.sueldo_esperado,
-                          Candidata.motivacion_trabajo,
-                      ))
-                      .limit(max_rows)
-                      .all())
-
-        resultado = []
-        for c in candidatas:
-            resultado.append({
-                "fila": c.fila,
-                "marca_temporal": iso_utc_z(c.marca_temporal) if getattr(c, "marca_temporal", None) else None,
-                "nombre_completo": c.nombre_completo,
-                "edad": c.edad,
-                "numero_telefono": c.numero_telefono,
-                "direccion_completa": c.direccion_completa,
-                "modalidad_trabajo_preferida": c.modalidad_trabajo_preferida,
-                "cedula": c.cedula,
-                "codigo": c.codigo,
-                "disponibilidad_inicio": c.disponibilidad_inicio,
-                "trabaja_con_ninos": c.trabaja_con_ninos,
-                "trabaja_con_mascotas": c.trabaja_con_mascotas,
-                "puede_dormir_fuera": c.puede_dormir_fuera,
-                "sueldo_esperado": c.sueldo_esperado,
-                "motivacion_trabajo": c.motivacion_trabajo,
-            })
-        return jsonify({
-            "candidatas": resultado,
-            "meta": {
-                "max_rows": max_rows,
-                "returned": len(resultado),
-            }
-        }), 200
-
-    except Exception:
-        app.logger.exception("❌ Error leyendo candidatas desde la DB")
-        # No exponemos el error real al cliente
-        return jsonify({"error": "Error al consultar la base de datos."}), 500
+    from core.handlers import candidatas_list_handlers as list_h
+    return list_h.list_candidatas_db()
 
 # -----------------------------------------------------------------------------
 # ENTREVISTAS (DB) - HELPERS
@@ -2346,331 +1535,9 @@ def entrevista_editar_db(entrevista_id):
 #   - Exporta una entrevista guardada en tablas Entrevista/EntrevistaRespuesta
 # -----------------------------------------------------------------------------
 
-@app.route('/entrevistas/pdf/<int:entrevista_id>')
-@roles_required('admin', 'secretaria')
 def generar_pdf_entrevista_db(entrevista_id: int):
-    # Asegura fpdf2
-    try:
-        from fpdf import FPDF as _FPDF
-        from fpdf.errors import FPDFException
-    except Exception:
-        return "❌ fpdf2 no está instalado. Ejecuta: pip uninstall -y fpdf && pip install -U fpdf2", 500
-
-    entrevista = Entrevista.query.get_or_404(entrevista_id)
-
-    fila = getattr(entrevista, 'candidata_id', None)
-    candidata = _get_candidata_safe_by_pk(int(fila)) if fila else None
-    if not candidata:
-        return "Candidata no encontrada", 404
-
-    # Respuestas + preguntas
-    respuestas = (
-        EntrevistaRespuesta.query
-        .filter_by(entrevista_id=entrevista.id)
-        .all()
-    )
-    if not respuestas:
-        return "No hay respuestas registradas para esta entrevista.", 404
-
-    pregunta_ids = [r.pregunta_id for r in respuestas if r.pregunta_id]
-    preguntas = (
-        EntrevistaPregunta.query
-        .filter(EntrevistaPregunta.id.in_(pregunta_ids))
-        .order_by(EntrevistaPregunta.orden.asc(), EntrevistaPregunta.id.asc())
-        .all()
-    )
-
-    respuestas_por_pregunta = {r.pregunta_id: (r.respuesta or "").strip() for r in respuestas}
-
-    # ⚠️ IMPORTANTE (clientes): NO incluimos datos personales en el PDF.
-    # NO incluimos nombre, cedula, telefono, direccion, modalidad, ni fecha en el PDF.
-    tipo = (getattr(entrevista, 'tipo', None) or '').strip().lower()
-
-    # Referencias (SOLO las columnas oficiales del modelo)
-    # ✅ NO usamos `contactos_referencias_laborales` ni `referencias_familiares_detalle`
-    # porque son otros campos y podrían mezclar información.
-    ref_laborales = (getattr(candidata, 'referencias_laboral', None) or '').strip()
-    ref_familiares = (getattr(candidata, 'referencias_familiares', None) or '').strip()
-
-    BRAND = (0, 102, 204)
-    FAINT = (120, 120, 120)
-    GRID  = (210, 210, 210)
-
-    def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
-        if unicode_ok:
-            return s or ""
-        s = s or ""
-        nfkd = unicodedata.normalize("NFKD", s)
-        return "".join(ch for ch in nfkd if not unicodedata.combining(ch) and ord(ch) < 0x2500)
-
-    def _collapse_ws(s: str) -> str:
-        return re.sub(r"[ \t]+", " ", (s or "").strip())
-
-    def _pretty_question(pregunta) -> str:
-        """Prioriza enunciado/etiqueta, y si no hay, humaniza la clave."""
-        for attr in ('enunciado','pregunta','texto_pregunta','texto','label','etiqueta','titulo','nombre','descripcion'):
-            v = (getattr(pregunta, attr, None) or '').strip()
-            if v:
-                return humanize_pdf_label(v)
-
-        clave = (getattr(pregunta, 'clave', None) or '').strip()
-        return humanize_pdf_label(clave) or 'Pregunta'
-
-    def _wrap_unbreakables(s: str, chunk=60) -> str:
-        out = []
-        for w in (s or "").split(" "):
-            if len(w) > chunk:
-                out.extend([w[i:i+chunk] for i in range(0, len(w), chunk)])
-            else:
-                out.append(w)
-        return " ".join(out)
-
-    def safe_multicell(pdf, txt, font_name, font_style, font_size, color=None, align="J", line_space=1.2):
-        pdf.set_x(pdf.l_margin)
-        if color:
-            pdf.set_text_color(*color)
-        try:
-            pdf.set_font(font_name, font_style, font_size)
-        except Exception:
-            try:
-                pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
-            except Exception:
-                pdf.set_font("Arial", "", 10)
-
-        try:
-            pdf.multi_cell(pdf.epw, 7, txt, align=align)
-            pdf.ln(line_space)
-        except FPDFException:
-            txt2 = _wrap_unbreakables(txt, chunk=35)
-            pdf.set_font(font_name, "", 10)
-            pdf.multi_cell(pdf.epw, 7, txt2, align="L")
-            pdf.ln(line_space)
-
-    class InterviewPDF(_FPDF):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, **kw)
-            self._logo_path   = None
-            self._base_font   = "Arial"
-            self._unicode_ok  = False
-            self._has_italic  = False
-            self._has_bold    = False
-            self._has_bi      = False
-
-        def header(self):
-            if self.page_no() == 1:
-                if self._logo_path and os.path.exists(self._logo_path):
-                    w = 92
-                    x = (self.w - w) / 2.0
-                    self.image(self._logo_path, x=x, y=10, w=w)
-                    y_line = 10 + (w * 0.38)
-                    self.set_y(y_line)
-                else:
-                    self.set_y(18)
-
-                self.set_draw_color(*GRID)
-                self.set_line_width(0.6)
-                self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
-                self.ln(3)
-
-                try:
-                    self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
-                except Exception:
-                    self.set_font("Arial", "B", 18)
-
-                # Barra azul con título (como el PDF viejo)
-                self.set_fill_color(*BRAND)
-                self.set_text_color(255, 255, 255)
-                self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
-                self.set_text_color(0, 0, 0)
-                self.ln(4)
-            else:
-                self.set_y(14)
-                self.set_draw_color(*GRID)
-                self.set_line_width(0.4)
-                self.line(self.l_margin, 14, self.w - self.r_margin, 14)
-                self.ln(7)
-
-        def footer(self):
-            self.set_y(-15)
-            try:
-                if self._has_italic or self._has_bi:
-                    self.set_font(self._base_font, "I", 9)
-                else:
-                    self.set_font(self._base_font, "", 9)
-            except Exception:
-                try:
-                    self.set_font("Arial", "I", 9)
-                except Exception:
-                    self.set_font("Arial", "", 9)
-
-            self.set_text_color(*FAINT)
-            self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
-
-    try:
-        pdf = InterviewPDF(format="A4")
-        pdf.alias_nb_pages()
-        pdf.set_auto_page_break(auto=True, margin=16)
-        pdf.set_margins(16, 16, 16)
-        pdf._logo_path = os.path.join(current_app.root_path, "static", "logo_nuevo.png")
-
-        base_font  = "Arial"
-        unicode_ok = False
-        has_bold   = False
-        has_italic = False
-        has_bi     = False
-
-        try:
-            font_dir = os.path.join(current_app.root_path, "static", "fonts")
-            reg  = os.path.join(font_dir, "DejaVuSans.ttf")
-            bold = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
-            it   = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")
-            bi   = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")
-
-            if os.path.exists(reg):
-                pdf.add_font("DejaVuSans", "", reg, uni=True)
-                base_font  = "DejaVuSans"
-                unicode_ok = True
-            if os.path.exists(bold):
-                pdf.add_font("DejaVuSans", "B", bold, uni=True)
-                has_bold = True
-            if os.path.exists(it):
-                pdf.add_font("DejaVuSans", "I", it, uni=True)
-                has_italic = True
-            if os.path.exists(bi):
-                pdf.add_font("DejaVuSans", "BI", bi, uni=True)
-                has_bi = True
-        except Exception:
-            base_font  = "Arial"
-            unicode_ok = False
-            has_bold   = True
-            has_italic = True
-            has_bi     = True
-
-        pdf._base_font  = base_font
-        pdf._unicode_ok = unicode_ok
-        pdf._has_bold   = has_bold
-        pdf._has_italic = has_italic
-        pdf._has_bi     = has_bi
-
-        pdf.add_page()
-
-        bullet = "• " if unicode_ok else "- "
-
-        # ===== ENTREVISTA =====
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 13)
-        except Exception:
-            pdf.set_font("Arial", "B", 13)
-
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(2)
-
-        for p in preguntas:
-            q_txt = _pretty_question(p)
-            ans = (respuestas_por_pregunta.get(p.id) or '').strip()
-
-            q_line = _collapse_ws(_ascii_if_needed(q_txt, unicode_ok))
-            a_line = _wrap_unbreakables(_collapse_ws(_ascii_if_needed(ans, unicode_ok)), 80)
-
-            # Pregunta (negro)
-            safe_multicell(
-                pdf,
-                (q_line + ":").strip(),
-                base_font,
-                "B" if has_bold else "",
-                12,
-                color=(0, 0, 0),
-                align="L",
-                line_space=1,
-            )
-
-            # Respuesta (azul)
-            if a_line:
-                a_out = (bullet + a_line).strip()
-            else:
-                a_out = (bullet + "—").strip()
-
-            safe_multicell(
-                pdf,
-                a_out,
-                base_font,
-                "",
-                12,
-                color=BRAND,
-                align="J",
-                line_space=2,
-            )
-
-        pdf.ln(3)
-
-        # ===== REFERENCIAS =====
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 13)
-        except Exception:
-            pdf.set_font("Arial", "B", 13)
-
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias", ln=True)
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(2)
-
-        # Laborales
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 12)
-        except Exception:
-            pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 7, "Laborales:", ln=True)
-
-        if ref_laborales:
-            safe_multicell(
-                pdf,
-                _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
-                base_font,
-                "",
-                12,
-                color=BRAND,
-                align="J",
-            )
-        else:
-            safe_multicell(pdf, "No hay referencias laborales.", base_font, "", 12, color=FAINT, align="L")
-
-        # Familiares
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 12)
-        except Exception:
-            pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 7, "Familiares:", ln=True)
-
-        if ref_familiares:
-            safe_multicell(
-                pdf,
-                _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
-                base_font,
-                "",
-                12,
-                color=BRAND,
-                align="J",
-            )
-        else:
-            safe_multicell(pdf, "No hay referencias familiares.", base_font, "", 12, color=FAINT, align="L")
-
-        raw = pdf.output(dest="S")
-        pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
-        buf = io.BytesIO(pdf_bytes)
-        buf.seek(0)
-
-        return send_file(
-            buf,
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=f"entrevista_{(tipo or 'general')}_{entrevista.id}.pdf"
-        )
-
-    except Exception as e:
-        current_app.logger.exception("❌ Error interno generando PDF entrevista (DB)")
-        return f"Error interno generando PDF: {e}", 500
+    from core.handlers import entrevistas_pdf_handlers as pdf_h
+    return pdf_h.generar_pdf_entrevista_db(entrevista_id)
 
 # -----------------------------------------------------------------------------
 # BÚSQUEDA / EDICIÓN BÁSICA
@@ -3107,121 +1974,8 @@ def buscar_candidata():
 @app.route('/filtrar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def filtrar():
-    # Captura de filtros desde request (limitamos longitudes)
-    form_data = {
-        'ciudad':            (request.values.get('ciudad') or "").strip()[:120],
-        'rutas':             (request.values.get('rutas') or "").strip()[:120],
-        'modalidad':         (request.values.get('modalidad') or "").strip()[:60],
-        'experiencia_anos':  (request.values.get('experiencia_anos') or "").strip()[:30],
-        'areas_experiencia': (request.values.get('areas_experiencia') or "").strip()[:120],
-        'estado':            (request.values.get('estado') or "").strip()[:40],
-    }
-
-    filtros = []
-
-    def _terms(raw: str, max_terms: int = 8):
-        tokens = [p.strip() for p in re.split(r'[,\s]+', raw or "") if p.strip()]
-        return tokens[:max_terms]
-
-    # Ciudad
-    if form_data['ciudad']:
-        ciudades = _terms(form_data['ciudad'])
-        if ciudades:
-            filtros.append(or_(*[Candidata.direccion_completa.ilike(f"%{c}%") for c in ciudades]))
-
-    # Rutas
-    if form_data['rutas']:
-        rutas = _terms(form_data['rutas'])
-        if rutas:
-            filtros.append(or_(*[Candidata.rutas_cercanas.ilike(f"%{r}%") for r in rutas]))
-
-    # Modalidad
-    if form_data['modalidad']:
-        filtros.append(Candidata.modalidad_trabajo_preferida.ilike(f"%{form_data['modalidad']}%"))
-
-    # Experiencia en años
-    if form_data['experiencia_anos']:
-        ea = form_data['experiencia_anos']
-        if ea == '3 años o más':
-            filtros.append(or_(
-                Candidata.anos_experiencia.ilike('%3 años%'),
-                Candidata.anos_experiencia.ilike('%4 años%'),
-                Candidata.anos_experiencia.ilike('%5 años%'),
-            ))
-        else:
-            filtros.append(Candidata.anos_experiencia == ea)
-
-    # Áreas de experiencia
-    if form_data['areas_experiencia']:
-        filtros.append(Candidata.areas_experiencia.ilike(f"%{form_data['areas_experiencia']}%"))
-
-    # Estado (mantengo tu normalización a underscores)
-    if form_data['estado']:
-        estado_norm = form_data['estado'].replace(" ", "_")
-        filtros.append(Candidata.estado == estado_norm)
-
-    # Reglas fijas
-    filtros.append(candidatas_activas_filter(Candidata))
-    filtros.append(Candidata.codigo.isnot(None))
-    filtros.append(or_(Candidata.porciento.is_(None), Candidata.porciento == 0))
-
-    mensaje = None
-    resultados = []
-
-    try:
-        query = (
-            db.session.query(
-                Candidata.nombre_completo,
-                Candidata.codigo,
-                Candidata.numero_telefono,
-                Candidata.direccion_completa,
-                Candidata.rutas_cercanas,
-                Candidata.cedula,
-                Candidata.modalidad_trabajo_preferida,
-                Candidata.anos_experiencia,
-                Candidata.estado,
-            )
-            .filter(*filtros)
-            .order_by(Candidata.nombre_completo.asc())
-        )
-        candidatas = query.limit(500).all()
-
-        if candidatas:
-            resultados = [{
-                'nombre':           c[0],
-                'codigo':           c[1],
-                'telefono':         c[2],
-                'direccion':        c[3],
-                'rutas':            c[4],
-                'cedula':           c[5],
-                'modalidad':        c[6],
-                'experiencia_anos': c[7],
-                'estado':           c[8]
-            } for c in candidatas]
-        else:
-            if any(v for v in form_data.values()):
-                mensaje = "⚠️ No se encontraron resultados para los filtros aplicados."
-
-    except Exception as e:
-        current_app.logger.error(f"❌ Error al filtrar candidatas: {e}", exc_info=True)
-        mensaje = "❌ Error al filtrar los datos."
-
-    estados = [
-        'en_proceso',
-        'proceso_inscripcion',
-        'inscrita',
-        'inscrita_incompleta',
-        'lista_para_trabajar',
-        'trabajando',
-    ]
-
-    return render_template(
-        'filtrar.html',
-        form_data=form_data,
-        resultados=resultados,
-        mensaje=mensaje,
-        estados=estados
-    )
+    from core.handlers import candidatas_filtrar_handlers as filtrar_h
+    return filtrar_h.filtrar()
 
 
 # -----------------------------------------------------------------------------
@@ -3231,494 +1985,32 @@ def filtrar():
 @app.route('/inscripcion', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def inscripcion():
-    mensaje = ""
-    resultados = []
-    candidata = None
-
-    if request.method == "POST":
-        if request.form.get("guardar_inscripcion"):
-            cid = (request.form.get("candidata_id") or "").strip()
-            if not cid.isdigit():
-                flash("❌ ID inválido.", "error")
-                return redirect(url_for('inscripcion'))
-
-            obj = get_candidata_by_id(cid)
-            if not obj:
-                flash("⚠️ Candidata no encontrada.", "error")
-                return redirect(url_for('inscripcion'))
-
-            # Genera código si falta
-            if not obj.codigo:
-                try:
-                    obj.codigo = generar_codigo_unico()
-                except Exception:
-                    app.logger.exception("❌ Error generando código único")
-                    flash("❌ No se pudo generar el código.", "error")
-                    return redirect(url_for('inscripcion'))
-
-            obj.medio_inscripcion = (request.form.get("medio") or "").strip()[:60] or obj.medio_inscripcion
-            obj.inscripcion       = (request.form.get("estado") == "si")
-            obj.monto             = parse_decimal(request.form.get("monto") or "") or obj.monto
-            obj.fecha             = parse_date(request.form.get("fecha") or "") or obj.fecha
-
-            # Estado
-            if obj.inscripcion:
-                if obj.monto and obj.fecha:
-                    obj.estado = 'inscrita'
-                else:
-                    obj.estado = 'inscrita_incompleta'
-            else:
-                obj.estado = 'proceso_inscripcion'
-
-            obj.fecha_cambio_estado    = utc_now_naive()
-            obj.usuario_cambio_estado  = session.get('usuario', 'desconocido')[:64]
-            try:
-                actor = (
-                    getattr(current_user, "username", None)
-                    or getattr(current_user, "id", None)
-                    or session.get("usuario")
-                    or "sistema"
-                )
-                maybe_update_estado_por_completitud(obj, actor=str(actor))
-            except Exception:
-                pass
-
-            try:
-                db.session.commit()
-                flash(f"✅ Inscripción guardada. Código: {obj.codigo}", "success")
-                candidata = obj
-            except Exception:
-                db.session.rollback()
-                app.logger.exception("❌ Error al guardar inscripción")
-                flash("❌ Error al guardar inscripción.", "error")
-                return redirect(url_for('inscripcion'))
-        else:
-            q = (request.form.get("buscar") or "").strip()[:128]
-            if q:
-                try:
-                    resultados = search_candidatas_limited(q, limit=300)
-                    if not resultados:
-                        flash("⚠️ No se encontraron coincidencias.", "error")
-                except Exception:
-                    app.logger.exception("❌ Error buscando en inscripción")
-                    flash("❌ Error al buscar.", "error")
-
-    else:
-        q = (request.args.get("buscar") or "").strip()[:128]
-        if q:
-            try:
-                resultados = search_candidatas_limited(q, limit=300)
-                if not resultados:
-                    mensaje = "⚠️ No se encontraron coincidencias."
-            except Exception:
-                app.logger.exception("❌ Error buscando candidatas (GET) en inscripción")
-                mensaje = "❌ Error al buscar."
-
-        sel = (request.args.get("candidata_seleccionada") or "").strip()
-        if not resultados and sel.isdigit():
-            candidata = get_candidata_by_id(sel)
-            if not candidata:
-                mensaje = "⚠️ Candidata no encontrada."
-
-    return render_template(
-        "inscripcion.html",
-        resultados=resultados,
-        candidata=candidata,
-        mensaje=mensaje
-    )
+    from core.handlers import procesos_transacciones_handlers as procesos_transacciones_h
+    return procesos_transacciones_h.inscripcion()
 
 
 @app.route('/porciento', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def porciento():
-    resultados, candidata = [], None
-
-    if request.method == "POST":
-        fila_id = (request.form.get('fila_id') or '').strip()
-        if not fila_id.isdigit():
-            flash("❌ Fila inválida.", "danger")
-            return redirect(url_for('porciento'))
-
-        obj = get_candidata_by_id(fila_id)
-        if not obj:
-            flash("⚠️ Candidata no encontrada.", "warning")
-            return redirect(url_for('porciento'))
-
-        fecha_pago   = parse_date(request.form.get("fecha_pago") or "")
-        fecha_inicio = parse_date(request.form.get("fecha_inicio") or "")
-        monto_total  = parse_decimal(request.form.get("monto_total") or "")
-
-        if None in (fecha_pago, fecha_inicio, monto_total):
-            flash("❌ Datos incompletos o inválidos.", "danger")
-            return redirect(url_for('porciento', candidata=fila_id))
-
-        try:
-            porcentaje = (monto_total * Decimal("0.25")).quantize(Decimal("0.01"))
-        except Exception:
-            flash("❌ Monto inválido.", "danger")
-            return redirect(url_for('porciento', candidata=fila_id))
-
-        obj.fecha_de_pago         = fecha_pago
-        obj.inicio                = fecha_inicio
-        obj.monto_total           = monto_total
-        obj.porciento             = porcentaje
-        obj.estado                = 'trabajando'
-        obj.fecha_cambio_estado   = utc_now_naive()
-        obj.usuario_cambio_estado = session.get('usuario', 'desconocido')[:64]
-
-        try:
-            db.session.commit()
-            flash(f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}. Estado: Trabajando.", "success")
-            candidata = obj
-        except Exception:
-            db.session.rollback()
-            app.logger.exception("❌ Error al actualizar porciento")
-            flash("❌ Error al actualizar.", "danger")
-            return redirect(url_for('porciento', candidata=fila_id))
-
-    else:
-        q = (request.args.get('busqueda') or '').strip()[:128]
-        if q:
-            try:
-                resultados = search_candidatas_limited(q, limit=300)
-                if not resultados:
-                    flash("⚠️ No se encontraron coincidencias.", "warning")
-            except Exception:
-                app.logger.exception("❌ Error buscando (GET) en porciento")
-                flash("❌ Error al buscar.", "warning")
-
-        sel = (request.args.get('candidata') or '').strip()
-        if sel.isdigit() and not resultados:
-            candidata = get_candidata_by_id(sel)
-            if not candidata:
-                flash("⚠️ Candidata no encontrada.", "warning")
-
-    return render_template("porciento.html", resultados=resultados, candidata=candidata)
+    from core.handlers import procesos_transacciones_handlers as procesos_transacciones_h
+    return procesos_transacciones_h.porciento()
 
 
 @app.route('/pagos', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def pagos():
-    resultados, candidata = [], None
-
-    def _parse_money_to_decimal(raw: str) -> Decimal:
-        """
-        Acepta:
-          - 10000
-          - 10,000
-          - 10.000
-          - 10,000.50
-          - 10.000,50
-        Devuelve Decimal con 2 decimales.
-        """
-        s = (raw or "").strip()
-        if not s:
-            raise ValueError("Monto vacío")
-
-        # deja solo dígitos y separadores comunes
-        allowed = "0123456789.,"
-        s = "".join(ch for ch in s if ch in allowed)
-
-        if not s or not any(ch.isdigit() for ch in s):
-            raise ValueError("Monto inválido")
-
-        # Caso: tiene . y ,  -> el último separador es el decimal, el otro son miles
-        if "." in s and "," in s:
-            if s.rfind(",") > s.rfind("."):
-                # 10.000,50 -> decimal=,
-                s = s.replace(".", "")
-                s = s.replace(",", ".")
-            else:
-                # 10,000.50 -> decimal=.
-                s = s.replace(",", "")
-        else:
-            # Caso: solo tiene una coma -> puede ser miles o decimal
-            if "," in s:
-                # si tiene 1 coma y al final hay 1-2 dígitos, asumimos decimal (100,50)
-                parts = s.split(",")
-                if len(parts) == 2 and parts[1].isdigit() and 1 <= len(parts[1]) <= 2:
-                    s = s.replace(",", ".")
-                else:
-                    # si no, asumimos miles (10,000)
-                    s = s.replace(",", "")
-
-            # Caso: solo tiene puntos -> puede ser miles o decimal
-            if "." in s:
-                parts = s.split(".")
-                if len(parts) == 2 and parts[1].isdigit() and 1 <= len(parts[1]) <= 2:
-                    # decimal: 100.50 (se deja)
-                    pass
-                else:
-                    # miles: 10.000 o 1.000.000
-                    s = s.replace(".", "")
-
-        try:
-            val = Decimal(s)
-        except InvalidOperation:
-            raise ValueError("Monto inválido")
-
-        if val <= Decimal("0"):
-            raise ValueError("El monto debe ser mayor que 0")
-
-        return val.quantize(Decimal("0.01"))
-
-    if request.method == 'POST':
-        fila = request.form.get('fila', type=int)
-        monto_str = (request.form.get('monto_pagado') or '').strip()[:30]
-        calificacion = (request.form.get('calificacion') or '').strip()[:200]
-
-        if not fila or not monto_str or not calificacion:
-            flash("❌ Datos inválidos.", "danger")
-            return redirect(url_for('pagos'))
-
-        try:
-            monto_pagado = _parse_money_to_decimal(monto_str)
-        except Exception as e:
-            flash(f"❌ Monto inválido: {e}", "danger")
-            return redirect(url_for('pagos'))
-
-        obj = get_candidata_by_id(fila)
-        if not obj:
-            flash("⚠️ Candidata no encontrada.", "warning")
-            return redirect(url_for('pagos'))
-
-        # En PostgreSQL Numeric normalmente ya viene Decimal; esto lo deja seguro
-        actual = obj.porciento if obj.porciento is not None else Decimal("0.00")
-        try:
-            actual = Decimal(str(actual))
-        except Exception:
-            actual = Decimal("0.00")
-
-        nuevo = actual - monto_pagado
-        if nuevo < Decimal("0"):
-            nuevo = Decimal("0.00")
-
-        obj.porciento = nuevo.quantize(Decimal("0.01"))
-        obj.calificacion = calificacion
-
-        # auditoría simple (opcional pero útil)
-        try:
-            obj.fecha_de_pago = rd_today()
-        except Exception:
-            pass
-
-        try:
-            db.session.commit()
-            flash("✅ Pago guardado con éxito.", "success")
-            candidata = obj
-        except Exception:
-            db.session.rollback()
-            app.logger.exception("❌ Error al guardar pago")
-            flash("❌ Error al guardar.", "danger")
-
-        return render_template('pagos.html', resultados=[], candidata=candidata)
-
-    # GET
-    q = (request.args.get('busqueda') or '').strip()[:128]
-    sel = (request.args.get('candidata') or '').strip()
-
-    if q:
-        try:
-            filas = search_candidatas_limited(q, limit=300)
-
-            resultados = [{
-                'fila':     c.fila,
-                'nombre':   c.nombre_completo,
-                'cedula':   c.cedula,
-                'telefono': c.numero_telefono or 'No especificado',
-            } for c in filas]
-
-            if not resultados:
-                flash("⚠️ No se encontraron coincidencias.", "warning")
-        except Exception:
-            app.logger.exception("❌ Error buscando en pagos")
-            flash("❌ Error al buscar.", "warning")
-
-    if sel.isdigit() and not resultados:
-        obj = get_candidata_by_id(sel)
-        if obj:
-            candidata = obj
-        else:
-            flash("⚠️ Candidata no encontrada.", "warning")
-
-    return render_template('pagos.html', resultados=resultados, candidata=candidata)
+    from core.handlers import procesos_transacciones_handlers as procesos_transacciones_h
+    return procesos_transacciones_h.pagos()
 
 def _retry_query(callable_fn, retries: int = 2, swallow: bool = False):
-    """
-    Ejecuta una función que hace queries a la BD con reintentos básicos.
-    - retries: número de reintentos adicionales.
-    - swallow: si True, retorna None en vez de levantar excepción tras agotar reintentos.
-    """
-    last_err = None
-    for _ in range(retries + 1):
-        try:
-            return callable_fn()
-        except (OperationalError, DBAPIError) as e:
-            # Limpia la sesión para no dejarla en estado inválido
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
-            last_err = e
-            continue
-    if swallow:
-        return None
-    raise last_err
+    return _svc_retry_query(callable_fn, retries=retries, swallow=swallow)
 
 
 @app.route('/reporte_inscripciones', methods=['GET'])
 @roles_required('admin')
 def reporte_inscripciones():
-    """
-    Reporte de inscripciones por mes/año.
-    - Visualización: pagina resultados (page/per_page) y renderiza tabla HTML.
-    - Descarga Excel (descargar=1): trae todos los resultados del mes/año y genera XLSX.
-    Robusto frente a caídas SSL/db con reintentos y rollback.
-    """
-    # 1) Parámetros (acotamos rangos para evitar explosiones)
-    try:
-        today = rd_today()
-        mes       = int(request.args.get('mes', today.month))
-        anio      = int(request.args.get('anio', today.year))
-        descargar = request.args.get('descargar', '0') == '1'
-        page      = max(1, request.args.get('page', default=1, type=int))
-        per_page  = min(200, max(1, request.args.get('per_page', default=20, type=int)))
-        if not (1 <= mes <= 12):
-            return "Parámetro 'mes' inválido.", 400
-        if anio < 2000 or anio > today.year + 1:
-            return "Parámetro 'anio' inválido.", 400
-    except Exception as e:
-        return f"Parámetros inválidos: {e}", 400
-
-    # 2) Base query (solo columnas necesarias)
-    def _base_query():
-        return (
-            db.session.query(
-                Candidata.nombre_completo,
-                Candidata.direccion_completa,
-                Candidata.numero_telefono,
-                Candidata.cedula,
-                Candidata.codigo,
-                Candidata.medio_inscripcion,
-                Candidata.inscripcion,
-                Candidata.monto,
-                Candidata.fecha
-            )
-            .filter(
-                Candidata.inscripcion.is_(True),
-                Candidata.fecha.isnot(None),
-                func.extract('month', Candidata.fecha) == mes,
-                func.extract('year',  Candidata.fecha) == anio
-            )
-        )
-
-    # 3) Modo descarga (sin paginar): exporta TODO el mes/año
-    if descargar:
-        def _fetch_all():
-            # Trae todo para el Excel, pero solo columnas mínimas
-            return _base_query().order_by(Candidata.fecha.asc()).all()
-
-        rows = _retry_query(_fetch_all, retries=2, swallow=True)
-        if rows is None:
-            return render_template(
-                "reporte_inscripciones.html",
-                reporte_html="",
-                mes=mes, anio=anio,
-                mensaje="❌ No fue posible conectarse a la base de datos para generar el Excel. Intenta de nuevo."
-            ), 200
-
-        if not rows:
-            return render_template(
-                "reporte_inscripciones.html",
-                reporte_html="",
-                mes=mes, anio=anio,
-                mensaje=f"No se encontraron inscripciones para {mes}/{anio}."
-            ), 200
-
-        # Construir DataFrame para Excel (con nulos seguros)
-        df = pd.DataFrame([{
-            "Nombre":       r[0] or "",
-            "Ciudad":       r[1] or "",
-            "Teléfono":     r[2] or "",
-            "Cédula":       r[3] or "",
-            "Código":       r[4] or "",
-            "Medio":        r[5] or "",
-            "Inscripción":  "Sí" if r[6] else "No",
-            "Monto":        float(r[7] or 0),
-            "Fecha":        format_rd_datetime(r[8], "%Y-%m-%d", "") if r[8] else ""
-        } for r in rows])
-
-        output = io.BytesIO()
-        try:
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Reporte')
-            output.seek(0)
-        except Exception as e:
-            current_app.logger.exception("❌ Error generando Excel de inscripciones")
-            return render_template(
-                "reporte_inscripciones.html",
-                reporte_html="",
-                mes=mes, anio=anio,
-                mensaje=f"❌ Error generando el archivo: {e}"
-            ), 200
-
-        filename = f"Reporte_Inscripciones_{anio}_{mes:02d}.xlsx"
-        return send_file(
-            output,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-
-    # 4) Modo visualización (paginado)
-    def _fetch_page():
-        q = _base_query().order_by(Candidata.fecha.desc())
-        total = q.count()
-        items = q.offset((page - 1) * per_page).limit(per_page).all()
-        return total, items
-
-    fetched = _retry_query(_fetch_page, retries=2, swallow=True)
-    if fetched is None:
-        return render_template(
-            "reporte_inscripciones.html",
-            reporte_html="",
-            mes=mes, anio=anio,
-            mensaje="❌ No fue posible conectarse a la base de datos. Intenta nuevamente."
-        ), 200
-
-    total, items = fetched
-
-    if not items:
-        return render_template(
-            "reporte_inscripciones.html",
-            reporte_html="",
-            mes=mes, anio=anio,
-            mensaje=f"No se encontraron inscripciones para {mes}/{anio}."
-        ), 200
-
-    # Constrúyelo rápido con pandas → HTML
-    df = pd.DataFrame([{
-        "Nombre":       r[0] or "",
-        "Ciudad":       r[1] or "",
-        "Teléfono":     r[2] or "",
-        "Cédula":       r[3] or "",
-        "Código":       r[4] or "",
-        "Medio":        r[5] or "",
-        "Inscripción":  "Sí" if r[6] else "No",
-        "Monto":        float(r[7] or 0),
-        "Fecha":        format_rd_datetime(r[8], "%Y-%m-%d", "") if r[8] else ""
-    } for r in items])
-
-    reporte_html = df.to_html(classes="table table-striped", index=False, border=0)
-    total_pages = (total + per_page - 1) // per_page
-
-    return render_template(
-        "reporte_inscripciones.html",
-        reporte_html=reporte_html,
-        mes=mes, anio=anio,
-        mensaje="",
-        page=page, per_page=per_page, total=total, total_pages=total_pages
-    )
+    from core.handlers import procesos_reportes_handlers as procesos_reportes_h
+    return procesos_reportes_h.reporte_inscripciones()
 
 
 
@@ -3729,57 +2021,8 @@ def reporte_inscripciones():
     key_prefix=lambda: _cache_key_with_role("reporte_pagos"),
 )
 def reporte_pagos():
-    """
-    Reporte de pagos pendientes (porciento > 0).
-    """
-    page     = max(1, request.args.get('page', default=1, type=int))
-    per_page = min(200, max(1, request.args.get('per_page', default=20, type=int)))
-
-    def _fetch_page():
-        q = (
-            db.session.query(
-                Candidata.nombre_completo,
-                Candidata.cedula,
-                Candidata.codigo,
-                Candidata.porciento
-            )
-            .filter(Candidata.porciento > 0)
-            .order_by(Candidata.nombre_completo.asc())
-        )
-
-        total = q.count()
-        items = q.offset((page - 1) * per_page).limit(per_page).all()
-        return total, items
-
-    fetched = _retry_query(_fetch_page, retries=2, swallow=True)
-    if fetched is None:
-        return render_template(
-            'reporte_pagos.html',
-            pagos_pendientes=[],
-            mensaje="❌ No fue posible conectarse a la base de datos. Intenta nuevamente."
-        ), 200
-
-    total, rows = fetched
-
-    pagos_pendientes = [{
-        'nombre':               r[0] or "",
-        'cedula':               r[1] or "",
-        'codigo':               r[2] or "No especificado",
-        'porcentaje_pendiente': float(r[3] or 0),
-    } for r in rows]
-
-    mensaje = None if pagos_pendientes else "⚠️ No se encontraron pagos pendientes."
-    total_pages = (total + per_page - 1) // per_page
-
-    return render_template(
-        'reporte_pagos.html',
-        pagos_pendientes=pagos_pendientes,
-        mensaje=mensaje,
-        page=page,
-        per_page=per_page,
-        total=total,
-        total_pages=total_pages
-    )
+    from core.handlers import procesos_reportes_handlers as procesos_reportes_h
+    return procesos_reportes_h.reporte_pagos()
 # -----------------------------------------------------------------------------
 # SUBIR FOTOS + GESTIONAR ARCHIVOS (BINARIOS EN DB)
 # -----------------------------------------------------------------------------
@@ -4172,417 +2415,27 @@ from sqlalchemy import or_
 @app.route("/gestionar_archivos", methods=["GET", "POST"])
 @roles_required('admin', 'secretaria')
 def gestionar_archivos():
-    accion = (request.args.get("accion") or "buscar").strip().lower()
-    mensaje = None
-    resultados = []
-    docs = {}
-    fila = (request.args.get("fila") or "").strip()
-
-    # ✅ Helper: NO pasar binarios al template, solo booleanos + entrevista
-    def build_docs_flags(c):
-        if not c:
-            return {
-                "depuracion": False,
-                "perfil": False,
-                "cedula1": False,
-                "cedula2": False,
-                "entrevista": "",
-            }
-
-        return {
-            "depuracion": bool(getattr(c, "depuracion", None)),
-            "perfil": bool(getattr(c, "perfil", None)),
-            "cedula1": bool(getattr(c, "cedula1", None)),
-            "cedula2": bool(getattr(c, "cedula2", None)),
-            # 👇 entrevista sí la pasamos (es texto, no pesado)
-            "entrevista": (getattr(c, "entrevista", "") or "").strip(),
-        }
-
-    # ========================= DESCARGAR (PDF) =========================
-    if accion == "descargar":
-        doc = (request.args.get("doc") or "").strip().lower()
-        if not fila.isdigit():
-            return "Error: Fila inválida", 400
-        idx = int(fila)
-
-        if doc == "pdf":
-            # PDF entrevista
-            return redirect(url_for("generar_pdf_entrevista", fila=idx))
-
-        return "Documento no reconocido", 400
-
-    # ========================= BUSCAR =========================
-    if accion == "buscar":
-        if request.method == "POST":
-            q = (request.form.get("busqueda") or "").strip()[:128]
-            if not q:
-                flash("⚠️ Ingresa algo para buscar.", "warning")
-                return redirect(url_for("gestionar_archivos", accion="buscar"))
-
-            try:
-                filas = (
-                    apply_search_to_candidata_query(Candidata.query, q)
-                    .order_by(Candidata.nombre_completo.asc())
-                    .limit(300)
-                    .all()
-                )
-            except Exception:
-                current_app.logger.exception("❌ Error buscando en gestionar_archivos")
-                filas = []
-
-            if filas:
-                resultados = [{
-                    "fila": c.fila,
-                    "nombre": c.nombre_completo,
-                    "telefono": c.numero_telefono or "No especificado",
-                    "cedula": c.cedula or "No especificado"
-                } for c in filas]
-            else:
-                mensaje = "⚠️ No se encontraron candidatas."
-
-        return render_template(
-            "gestionar_archivos.html",
-            accion="buscar",
-            resultados=resultados,
-            mensaje=mensaje
-        )
-
-    # ========================= VER =========================
-    if accion == "ver":
-        if not fila.isdigit():
-            mensaje = "Error: Fila inválida."
-            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
-
-        idx = int(fila)
-        c = Candidata.query.filter_by(fila=idx).first()
-        if not c:
-            mensaje = "⚠️ Candidata no encontrada."
-            return render_template("gestionar_archivos.html", accion="buscar", mensaje=mensaje)
-
-        docs = build_docs_flags(c)
-
-        return render_template(
-            "gestionar_archivos.html",
-            accion="ver",
-            fila=idx,
-            docs=docs,
-            mensaje=mensaje
-        )
-
-    # Si viene una acción rara, volvemos a buscar
-    return redirect(url_for("gestionar_archivos", accion="buscar"))
+    from core.handlers import gestionar_archivos_handlers as gestionar_h
+    return gestionar_h.gestionar_archivos()
 
 
 
-@app.route('/generar_pdf_entrevista')
-@roles_required('admin', 'secretaria')
 def generar_pdf_entrevista():
-    # Asegura fpdf2
-    try:
-        from fpdf import FPDF as _FPDF
-        from fpdf.errors import FPDFException
-    except Exception:
-        return "❌ fpdf2 no está instalado. Ejecuta: pip uninstall -y fpdf && pip install -U fpdf2", 500
-
-    fila_index = request.args.get('fila', type=int)
-    if not fila_index:
-        return "Error: falta parámetro fila", 400
-
-    c = _get_candidata_by_fila_or_pk(fila_index)
-    if not c:
-        return "Candidata no encontrada", 404
-
-    texto_entrevista = (getattr(c, "entrevista", None) or "").strip()
-    if not texto_entrevista:
-        return "No hay entrevista registrada para esa fila", 404
-
-    # OJO: aquí estás usando nombres que tal vez no coincidan con tu modelo real.
-    # Si tus columnas se llaman diferente, se ajusta después.
-    ref_laborales  = (getattr(c, "referencias_laboral", "") or "").strip()
-    ref_familiares = (getattr(c, "referencias_familiares", "") or "").strip()
-
-    BRAND = (0, 102, 204)
-    FAINT = (120, 120, 120)
-    GRID  = (210, 210, 210)
-
-    def _ascii_if_needed(s: str, unicode_ok: bool) -> str:
-        if unicode_ok:
-            return s or ""
-        s = s or ""
-        nfkd = unicodedata.normalize("NFKD", s)
-        return "".join(ch for ch in nfkd if not unicodedata.combining(ch) and ord(ch) < 0x2500)
-
-    def _collapse_ws(s: str) -> str:
-        return re.sub(r"[ \t]+", " ", (s or "").strip())
-
-    def _wrap_unbreakables(s: str, chunk=60) -> str:
-        out = []
-        for w in (s or "").split(" "):
-            if len(w) > chunk:
-                out.extend([w[i:i+chunk] for i in range(0, len(w), chunk)])
-            else:
-                out.append(w)
-        return " ".join(out)
-
-    def safe_multicell(pdf, txt, font_name, font_style, font_size, color=None, align="J", line_space=1.2):
-        pdf.set_x(pdf.l_margin)
-        if color:
-            pdf.set_text_color(*color)
-        try:
-            pdf.set_font(font_name, font_style, font_size)
-        except Exception:
-            try:
-                pdf.set_font("Arial", font_style or "", max(10, int(font_size)))
-            except Exception:
-                pdf.set_font("Arial", "", 10)
-
-        try:
-            pdf.multi_cell(pdf.epw, 7, txt, align=align)
-            pdf.ln(line_space)
-        except FPDFException:
-            txt2 = _wrap_unbreakables(txt, chunk=35)
-            pdf.set_font(font_name, "", 10)
-            pdf.multi_cell(pdf.epw, 7, txt2, align="L")
-            pdf.ln(line_space)
-
-    class InterviewPDF(_FPDF):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, **kw)
-            self._logo_path   = None
-            self._base_font   = "Arial"
-            self._unicode_ok  = False
-            self._has_italic  = False
-            self._has_bold    = False
-            self._has_bi      = False
-
-        def header(self):
-            if self.page_no() == 1:
-                if self._logo_path and os.path.exists(self._logo_path):
-                    w = 92
-                    x = (self.w - w) / 2.0
-                    self.image(self._logo_path, x=x, y=10, w=w)
-                    y_line = 10 + (w * 0.38)
-                    self.set_y(y_line)
-                else:
-                    self.set_y(18)
-
-                self.set_draw_color(*GRID)
-                self.set_line_width(0.6)
-                self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
-                self.ln(3)
-
-                try:
-                    self.set_font(self._base_font, "B", 18 if self._has_bold else 17)
-                except Exception:
-                    self.set_font("Arial", "B", 18)
-
-                self.set_fill_color(*BRAND)
-                self.set_text_color(255, 255, 255)
-                self.cell(self.epw, 11, "Entrevista", ln=True, align="C", fill=True)
-                self.set_text_color(0, 0, 0)
-                self.ln(4)
-            else:
-                self.set_y(14)
-                self.set_draw_color(*GRID)
-                self.set_line_width(0.4)
-                self.line(self.l_margin, 14, self.w - self.r_margin, 14)
-                self.ln(7)
-
-        def footer(self):
-            self.set_y(-15)
-            try:
-                if self._has_italic or self._has_bi:
-                    self.set_font(self._base_font, "I", 9)
-                else:
-                    self.set_font(self._base_font, "", 9)
-            except Exception:
-                try:
-                    self.set_font("Arial", "I", 9)
-                except Exception:
-                    self.set_font("Arial", "", 9)
-
-            self.set_text_color(*FAINT)
-            self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
-
-    try:
-        pdf = InterviewPDF(format="A4")
-        pdf.alias_nb_pages()
-        pdf.set_auto_page_break(auto=True, margin=16)
-        pdf.set_margins(16, 16, 16)
-        pdf._logo_path = os.path.join(current_app.root_path, "static", "logo_nuevo.png")
-
-        base_font  = "Arial"
-        unicode_ok = False
-        has_bold   = False
-        has_italic = False
-        has_bi     = False
-
-        try:
-            font_dir = os.path.join(current_app.root_path, "static", "fonts")
-            reg  = os.path.join(font_dir, "DejaVuSans.ttf")
-            bold = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
-            it   = os.path.join(font_dir, "DejaVuSans-Oblique.ttf")
-            bi   = os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")
-
-            if os.path.exists(reg):
-                pdf.add_font("DejaVuSans", "", reg, uni=True)
-                base_font  = "DejaVuSans"
-                unicode_ok = True
-            if os.path.exists(bold):
-                pdf.add_font("DejaVuSans", "B", bold, uni=True)
-                has_bold = True
-            if os.path.exists(it):
-                pdf.add_font("DejaVuSans", "I", it, uni=True)
-                has_italic = True
-            if os.path.exists(bi):
-                pdf.add_font("DejaVuSans", "BI", bi, uni=True)
-                has_bi = True
-        except Exception:
-            base_font  = "Arial"
-            unicode_ok = False
-            has_bold   = True
-            has_italic = True
-            has_bi     = True
-
-        pdf._base_font  = base_font
-        pdf._unicode_ok = unicode_ok
-        pdf._has_bold   = has_bold
-        pdf._has_italic = has_italic
-        pdf._has_bi     = has_bi
-
-        pdf.add_page()
-
-        bullet = "• " if unicode_ok else "- "
-
-        # ===== ENTREVISTA =====
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 13)
-        except Exception:
-            pdf.set_font("Arial", "B", 13)
-
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 9, "📝 Entrevista" if unicode_ok else "Entrevista", ln=True)
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(2)
-
-        for raw in (texto_entrevista or "").splitlines():
-            line = _collapse_ws(_ascii_if_needed(raw, unicode_ok))
-            if ":" in line:
-                q, a = line.split(":", 1)
-                q = _collapse_ws(humanize_pdf_label(q))
-                a = _collapse_ws(a)
-
-                safe_multicell(pdf, (q + ":").strip(), base_font, "B" if has_bold else "", 12,
-                               color=(0, 0, 0), align="L", line_space=1)
-
-                ans = _wrap_unbreakables(a, 60)
-                ans = (bullet + ans) if ans else ans
-                safe_multicell(pdf, ans, base_font, "", 12, color=BRAND, align="J", line_space=2)
-            else:
-                safe_multicell(pdf, _wrap_unbreakables(line, 60), base_font, "", 12,
-                               color=(0, 0, 0), align="J", line_space=1.5)
-
-        pdf.ln(3)
-
-        # ===== REFERENCIAS =====
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 13)
-        except Exception:
-            pdf.set_font("Arial", "B", 13)
-
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias", ln=True)
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(2)
-
-        # Laborales
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 12)
-        except Exception:
-            pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 7, "Laborales:", ln=True)
-
-        if ref_laborales:
-            safe_multicell(pdf, _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
-                           base_font, "", 12, color=BRAND, align="J")
-        else:
-            safe_multicell(pdf, "No hay referencias laborales.", base_font, "", 12, color=FAINT, align="L")
-
-        # Familiares
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 12)
-        except Exception:
-            pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 7, "Familiares:", ln=True)
-
-        if ref_familiares:
-            safe_multicell(pdf, _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
-                           base_font, "", 12, color=BRAND, align="J")
-        else:
-            safe_multicell(pdf, "No hay referencias familiares.", base_font, "", 12, color=FAINT, align="L")
-
-        raw = pdf.output(dest="S")
-        pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")
-        buf = io.BytesIO(pdf_bytes); buf.seek(0)
-
-        return send_file(
-            buf,
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=f"entrevista_candidata_{fila_index}.pdf"
-        )
-
-    except Exception as e:
-        current_app.logger.exception("❌ Error interno generando PDF")
-        return f"Error interno generando PDF: {e}", 500
+    from core.handlers import entrevistas_pdf_handlers as pdf_h
+    return pdf_h.generar_pdf_entrevista()
 
 # -----------------------------------------------------------------------------
 # NUEVO PDF (ENTREVISTAS NUEVAS EN BD)  ✅ NO BORRA LO VIEJO
 # -----------------------------------------------------------------------------
 
-@app.route('/entrevistas/pdf_nuevo/<int:entrevista_id>', methods=['GET'])
-@roles_required('admin', 'secretaria')
 def generar_pdf_entrevista_nueva_db(entrevista_id: int):
-    """Alias de compatibilidad para el endpoint nuevo de entrevista PDF."""
-    return generar_pdf_entrevista_db(entrevista_id)
+    from core.handlers import entrevistas_pdf_handlers as pdf_h
+    return pdf_h.generar_pdf_entrevista_nueva_db(entrevista_id)
 
 
-@app.route('/entrevistas/candidata/<int:fila>/pdf', methods=['GET'])
-@roles_required('admin', 'secretaria')
 def generar_pdf_ultima_entrevista_candidata(fila: int):
-    """Acceso rápido: genera el PDF de la última entrevista (nuevo sistema) de una candidata por fila."""
-
-    EntrevistaModel = globals().get('Entrevista')
-    if EntrevistaModel is None:
-        return "❌ No se encontró el modelo 'Entrevista' en el proyecto.", 500
-
-    # Buscar última entrevista por candidata
-    try:
-        q = db.session.query(EntrevistaModel)
-        # campo típico
-        if hasattr(EntrevistaModel, 'candidata_id'):
-            q = q.filter(EntrevistaModel.candidata_id == fila)
-        elif hasattr(EntrevistaModel, 'fila'):
-            q = q.filter(EntrevistaModel.fila == fila)
-        elif hasattr(EntrevistaModel, 'candidata_fila'):
-            q = q.filter(EntrevistaModel.candidata_fila == fila)
-
-        # ordenar por fecha/id
-        if hasattr(EntrevistaModel, 'actualizada_en'):
-            q = q.order_by(EntrevistaModel.actualizada_en.desc())
-        elif hasattr(EntrevistaModel, 'creada_en'):
-            q = q.order_by(EntrevistaModel.creada_en.desc())
-        else:
-            q = q.order_by(EntrevistaModel.id.desc())
-
-        last = q.first()
-    except Exception:
-        last = None
-
-    if not last:
-        return "No hay entrevistas nuevas registradas para esa candidata", 404
-
-    return redirect(url_for('generar_pdf_entrevista_db', entrevista_id=int(getattr(last, 'id', 0))))
+    from core.handlers import entrevistas_pdf_handlers as pdf_h
+    return pdf_h.generar_pdf_ultima_entrevista_candidata(fila)
 
 
 @app.route("/gestionar_archivos/descargar_uno", methods=["GET"])
@@ -4796,144 +2649,15 @@ def referencias():
     key_prefix=lambda: _cache_key_with_role("dashboard_procesos"),
 )
 def dashboard_procesos():
-    estado_filtro = (request.args.get('estado') or '').strip()[:40]
-    desde_str     = (request.args.get('desde') or '').strip()[:10]
-    hasta_str     = (request.args.get('hasta') or '').strip()[:10]
-    page          = max(1, request.args.get('page', 1, type=int))
-    per_page      = min(100, max(1, request.args.get('per_page', 20, type=int)))
-
-    # Parseo de fechas
-    desde = None
-    hasta = None
-    try:
-        if desde_str:
-            desde = datetime.strptime(desde_str, '%Y-%m-%d').date()
-        if hasta_str:
-            hasta = datetime.strptime(hasta_str, '%Y-%m-%d').date()
-    except ValueError:
-        desde = None
-        hasta = None
-
-    estados = [
-        'en_proceso',
-        'proceso_inscripcion',
-        'inscrita',
-        'inscrita_incompleta',
-        'lista_para_trabajar',
-        'trabajando',
-        'descalificada'
-    ]
-
-    # Defaults si la BD está caída
-    total = 0
-    entradas_hoy = 0
-    counts_por_estado = {}
-    paginado = None
-
-    try:
-        # KPIs
-        total = Candidata.query.count()
-        hoy = rd_today()
-        entradas_hoy = Candidata.query.filter(
-            cast(Candidata.fecha_cambio_estado, Date) == hoy
-        ).count()
-        counts_por_estado = dict(
-            db.session.query(
-                Candidata.estado,
-                func.count(Candidata.estado)
-            ).group_by(Candidata.estado).all()
-        )
-
-        # Query filtrada + orden + paginación
-        q = Candidata.query
-        if estado_filtro:
-            q = q.filter(Candidata.estado == estado_filtro)
-        if desde:
-            q = q.filter(cast(Candidata.fecha_cambio_estado, Date) >= desde)
-        if hasta:
-            q = q.filter(cast(Candidata.fecha_cambio_estado, Date) <= hasta)
-
-        q = q.order_by(Candidata.fecha_cambio_estado.desc())
-
-        # Paginado compatible con SQLAlchemy 1.4/2.x y Flask-SQLAlchemy 3.x
-        try:
-            paginado = q.paginate(page=page, per_page=per_page, error_out=False)
-        except AttributeError:
-            paginado = db.paginate(q, page=page, per_page=per_page, error_out=False)
-
-    except OperationalError:
-        flash("⚠️ No se pudo conectar a la base de datos. Reintenta en unos segundos.", "warning")
-
-        class _EmptyPagination:
-            def __init__(self):
-                self.items = []
-                self.total = 0
-                self.pages = 0
-                self.page = page
-                self.prev_num = None
-                self.next_num = None
-            def has_prev(self): return False
-            def has_next(self): return False
-            def iter_pages(self, left_edge=1, right_edge=1, left_current=2, right_current=2):
-                return iter([])
-
-        paginado = _EmptyPagination()
-    except Exception:
-        current_app.logger.exception("❌ Error construyendo dashboard")
-        class _EmptyPagination:
-            def __init__(self):
-                self.items = []
-                self.total = 0
-                self.pages = 0
-                self.page = page
-                self.prev_num = None
-            def has_prev(self): return False
-            def has_next(self): return False
-            def iter_pages(self, *args, **kwargs):
-                return iter([])
-        paginado = _EmptyPagination()
-
-    return render_template(
-        'dashboard_procesos.html',
-        total=total,
-        entradas_hoy=entradas_hoy,
-        counts_por_estado=counts_por_estado,
-        estados=estados,
-        estado_filtro=estado_filtro,
-        desde_str=desde_str,
-        hasta_str=hasta_str,
-        candidatas=paginado
-    )
+    from core.handlers import procesos_dashboard_handlers as procesos_dashboard_h
+    return procesos_dashboard_h.dashboard_procesos()
 
 
 @app.route('/auto_actualizar_estados', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def auto_actualizar_estados():
-    """
-    Revisa candidatas en 'inscrita_incompleta' y promueve a 'lista_para_trabajar'
-    si ya tienen todos los documentos/datos requeridos.
-    """
-    try:
-        pendientes = Candidata.query.filter_by(estado='inscrita_incompleta').all()
-        actualizadas = []
-
-        for c in pendientes:
-            if (c.codigo and c.entrevista and c.referencias_laboral and c.referencias_familiares
-                and c.perfil and c.cedula1 and c.cedula2 and c.depuracion):
-                c.estado = 'lista_para_trabajar'
-                c.fecha_cambio_estado = utc_now_naive()
-                c.usuario_cambio_estado = 'sistema'
-                actualizadas.append(c.fila)
-
-        if actualizadas:
-            db.session.commit()
-
-        return jsonify({'conteo_actualizadas': len(actualizadas),
-                        'filas_actualizadas': actualizadas})
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception("❌ Error auto_actualizando estados")
-        return jsonify({'error': 'No se pudo actualizar estados automáticamente'}), 500
+    from core.handlers import procesos_automatizaciones_handlers as procesos_auto_h
+    return procesos_auto_h.auto_actualizar_estados()
 
 
 # -----------------------------------------------------------------------------
@@ -4942,110 +2666,15 @@ def auto_actualizar_estados():
 @app.route('/candidatas/llamadas')
 @roles_required('admin','secretaria')
 def listado_llamadas_candidatas():
-    q               = (request.args.get('q') or '').strip()[:128]
-    period          = (request.args.get('period') or 'all').strip()[:16]
-    start_date_str  = request.args.get('start_date', None)
-    page            = max(1, request.args.get('page', 1, type=int))
-
-    start_dt, end_dt = get_date_bounds(period, start_date_str)
-
-    # Subconsulta de llamadas por candidata
-    calls_subq = (
-        db.session.query(
-            LlamadaCandidata.candidata_id.label('cid'),
-            func.count(LlamadaCandidata.id).label('num_calls'),
-            func.max(LlamadaCandidata.fecha_llamada).label('last_call')
-        )
-        .group_by(LlamadaCandidata.candidata_id)
-        .subquery()
-    )
-
-    base_q = (
-        db.session.query(
-            Candidata.fila,
-            Candidata.nombre_completo,
-            Candidata.codigo,
-            Candidata.numero_telefono,
-            Candidata.marca_temporal,
-            calls_subq.c.num_calls,
-            calls_subq.c.last_call
-        )
-        .outerjoin(calls_subq, Candidata.fila == calls_subq.c.cid)
-    )
-
-    if q:
-        il = f'%{q}%'
-        base_q = base_q.filter(
-            or_(
-                Candidata.codigo.ilike(il),
-                Candidata.nombre_completo.ilike(il),
-                Candidata.numero_telefono.ilike(il),
-                Candidata.cedula.ilike(il),
-            )
-        )
-
-    def section(estado: str):
-        qsec = base_q.filter(Candidata.estado == estado)
-        if start_dt and end_dt:
-            qsec = qsec.filter(
-                cast(Candidata.marca_temporal, Date) >= start_dt,
-                cast(Candidata.marca_temporal, Date) <= end_dt
-            )
-        # Paginación segura (10 por sección)
-        try:
-            return qsec.order_by(calls_subq.c.last_call.asc().nullsfirst())\
-                       .paginate(page=page, per_page=10, error_out=False)
-        except AttributeError:
-            return db.paginate(qsec.order_by(calls_subq.c.last_call.asc().nullsfirst()),
-                               page=page, per_page=10, error_out=False)
-
-    en_proceso     = section('en_proceso')
-    en_inscripcion = section('proceso_inscripcion')
-    lista_trabajar = section('lista_para_trabajar')
-
-    return render_template('llamadas_candidatas.html',
-                           q=q,
-                           period=period,
-                           start_date=start_date_str,
-                           en_proceso=en_proceso,
-                           en_inscripcion=en_inscripcion,
-                           lista_trabajar=lista_trabajar)
+    from core.handlers import llamadas_candidatas_handlers as llamadas_h
+    return llamadas_h.listado_llamadas_candidatas()
 
 
 @app.route('/candidatas/<int:fila>/llamar', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def registrar_llamada_candidata(fila):
-    candidata = Candidata.query.get_or_404(fila)
-    form      = LlamadaCandidataForm()
-
-    if form.validate_on_submit():
-        minutos  = form.duracion_minutos.data
-        segundos = (minutos * 60) if (minutos is not None) else None
-
-        llamada = LlamadaCandidata(
-            candidata_id      = candidata.fila,
-            fecha_llamada     = func.now(),
-            agente            = session.get('usuario', 'desconocido')[:64],
-            resultado         = (form.resultado.data or '').strip()[:200],
-            duracion_segundos = segundos,
-            notas             = (form.notas.data or '').strip()[:2000],
-            created_at        = utc_now_naive()
-        )
-        db.session.add(llamada)
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception("❌ Error guardando llamada de candidata")
-            flash('❌ Error al registrar la llamada.', 'danger')
-            return redirect(url_for('listado_llamadas_candidatas'))
-
-        flash(f'Llamada registrada para {candidata.nombre_completo}.', 'success')
-        return redirect(url_for('listado_llamadas_candidatas'))
-
-    return render_template('registrar_llamada_candidata.html',
-                           form=form,
-                           candidata=candidata)
+    from core.handlers import llamadas_candidatas_handlers as llamadas_h
+    return llamadas_h.registrar_llamada_candidata(fila)
 
 
 @app.route('/candidatas/llamadas/reporte')
@@ -5055,120 +2684,8 @@ def registrar_llamada_candidata(fila):
     key_prefix=lambda: _cache_key_with_role("reporte_llamadas"),
 )
 def reporte_llamadas_candidatas():
-    period         = (request.args.get('period') or 'week').strip()[:16]
-    start_date_str = request.args.get('start_date', None)
-    start_dt       = get_start_date(period, start_date_str)
-    hoy            = rd_today()
-    page           = max(1, request.args.get('page', 1, type=int))
-
-    stats_subq = (
-        db.session.query(
-            LlamadaCandidata.candidata_id.label('cid'),
-            func.count(LlamadaCandidata.id).label('num_calls'),
-            func.max(LlamadaCandidata.fecha_llamada).label('last_call')
-        )
-        .group_by(LlamadaCandidata.candidata_id)
-        .subquery()
-    )
-
-    base_q = (
-        db.session.query(
-            Candidata.fila,
-            Candidata.nombre_completo,
-            Candidata.codigo,
-            Candidata.numero_telefono,
-            Candidata.marca_temporal,
-            stats_subq.c.num_calls,
-            stats_subq.c.last_call
-        )
-        .outerjoin(stats_subq, Candidata.fila == stats_subq.c.cid)
-    )
-
-    def paginate_estado(estado: str):
-        qy = base_q.filter(Candidata.estado == estado)
-        if start_dt:
-            qy = qy.filter(
-                or_(
-                    stats_subq.c.last_call == None,
-                    cast(stats_subq.c.last_call, Date) < start_dt
-                )
-            )
-        try:
-            return qy.order_by(cast(stats_subq.c.last_call, Date).desc().nullsfirst())\
-                     .paginate(page=page, per_page=10, error_out=False)
-        except AttributeError:
-            return db.paginate(qy.order_by(cast(stats_subq.c.last_call, Date).desc().nullsfirst()),
-                               page=page, per_page=10, error_out=False)
-
-    estancadas_en_proceso  = paginate_estado('en_proceso')
-    estancadas_inscripcion = paginate_estado('proceso_inscripcion')
-    estancadas_lista       = paginate_estado('lista_para_trabajar')
-
-    calls_query    = db.session.query(
-                         LlamadaCandidata.candidata_id,
-                         func.count().label('cnt')
-                     ).group_by(LlamadaCandidata.candidata_id).all()
-    total_calls    = sum(c.cnt for c in calls_query)
-    num_with_calls = len(calls_query)
-    promedio       = round(total_calls / num_with_calls, 1) if num_with_calls else 0
-
-    calls_q = db.session.query(LlamadaCandidata).order_by(LlamadaCandidata.fecha_llamada.desc())
-    if start_dt:
-        start_dt_dt = datetime.combine(start_dt, datetime.min.time())
-        calls_q = calls_q.filter(LlamadaCandidata.fecha_llamada >= start_dt_dt)
-    max_calls_period = min(
-        10000,
-        max(100, int(os.getenv("MAX_REPORT_CALLS_PERIOD_ROWS", "2500")))
-    )
-    calls_period = calls_q.limit(max_calls_period).all()
-
-    filtros = []
-    if start_dt:
-        filtros.append(LlamadaCandidata.fecha_llamada >= start_dt_dt)
-
-    calls_by_day = (
-        db.session.query(
-            func.date_trunc('day', LlamadaCandidata.fecha_llamada).label('periodo'),
-            func.count().label('cnt')
-        )
-        .filter(*filtros)
-        .group_by('periodo')
-        .order_by('periodo')
-        .all()
-    )
-    calls_by_week = (
-        db.session.query(
-            func.date_trunc('week', LlamadaCandidata.fecha_llamada).label('periodo'),
-            func.count().label('cnt')
-        )
-        .filter(*filtros)
-        .group_by('periodo')
-        .order_by('periodo')
-        .all()
-    )
-    calls_by_month = (
-        db.session.query(
-            func.date_trunc('month', LlamadaCandidata.fecha_llamada).label('periodo'),
-            func.count().label('cnt')
-        )
-        .filter(*filtros)
-        .group_by('periodo')
-        .order_by('periodo')
-        .all()
-    )
-
-    return render_template('reporte_llamadas.html',
-                           period=period,
-                           start_date=start_date_str,
-                           hoy=hoy,
-                           estancadas_en_proceso=estancadas_en_proceso,
-                           estancadas_inscripcion=estancadas_inscripcion,
-                           estancadas_lista=estancadas_lista,
-                           promedio=promedio,
-                           calls_period=calls_period,
-                           calls_by_day=calls_by_day,
-                           calls_by_week=calls_by_week,
-                           calls_by_month=calls_by_month)
+    from core.handlers import llamadas_candidatas_handlers as llamadas_h
+    return llamadas_h.reporte_llamadas_candidatas()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -5225,171 +2742,8 @@ def _s(v):
 @app.route('/secretarias/solicitudes/copiar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def secretarias_copiar_solicitudes():
-    """
-    Lista solicitudes copiables. En el texto:
-    - NO imprime 'Modalidad:' ni 'Hogar:' como etiqueta.
-    - Si hay modalidad, imprime SOLO el valor en una línea.
-    - Si hay descripción de hogar, imprime SOLO la descripción (sin prefijo).
-    """
-    hoy = rd_today()
-
-    base_q = (
-        Solicitud.query
-        .options(joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new))
-        .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
-        .filter(or_(Solicitud.last_copiado_at.is_(None),
-                    func.date(Solicitud.last_copiado_at) < hoy))
-        .order_by(Solicitud.fecha_solicitud.desc())
-    )
-
-    try:
-        raw_sols = base_q.limit(500).all()
-    except Exception:
-        current_app.logger.exception("❌ Error listando solicitudes copiables")
-        raw_sols = []
-
-    # Mapear funciones code->label (igual que admin)
-    FUNCIONES_CHOICES = {}
-    try:
-        form = AdminSolicitudForm() if AdminSolicitudForm else None
-        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
-            FUNCIONES_CHOICES = dict(form.funciones.choices)
-    except Exception:
-        FUNCIONES_CHOICES = {}
-
-    solicitudes = []
-    for s in raw_sols:
-        # Funciones (labels + otro)
-        funcs = []
-        try:
-            seleccion = set(_as_list(getattr(s, 'funciones', None)))
-        except Exception:
-            seleccion = set()
-        for code in seleccion:
-            if code == 'otro':
-                continue
-            label = FUNCIONES_CHOICES.get(code)
-            if label:
-                funcs.append(label)
-        custom_otro = (getattr(s, 'funciones_otro', None) or '').strip()
-        if custom_otro:
-            funcs.append(custom_otro)
-
-        # Adultos / Niños / Mascota
-        adultos = s.adultos or ""
-        ninos_line = ""
-        if getattr(s, 'ninos', None):
-            ninos_line = f"Niños: {s.ninos}"
-            if getattr(s, 'edades_ninos', None):
-                ninos_line += f" ({s.edades_ninos})"
-        mascota_val = (getattr(s, 'mascota', None) or '').strip()
-        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
-
-        # Modalidad (solo valor)
-        modalidad_val = (
-            getattr(s, 'modalidad_trabajo', None)
-            or getattr(s, 'modalidad', None)
-            or getattr(s, 'tipo_modalidad', None)
-            or ''
-        )
-        modalidad_val = _normalize_modalidad_publicar(modalidad_val)
-
-        # Hogar (solo descripción, sin prefijo)
-        hogar_partes = []
-        if getattr(s, 'habitaciones', None):
-            hogar_partes.append(f"{s.habitaciones} habitaciones")
-        banos_txt = _fmt_banos(getattr(s, 'banos', None))
-        if banos_txt:
-            hogar_partes.append(f"{banos_txt} baños")
-        if bool(getattr(s, 'dos_pisos', False)):
-            hogar_partes.append("2 pisos")
-
-        areas = []
-        if getattr(s, 'areas_comunes', None):
-            try:
-                for a in s.areas_comunes:
-                    a = str(a).strip()
-                    if a:
-                        area_norm = _norm_area(a)
-                        if area_norm:
-                            areas.append(area_norm)
-            except Exception:
-                pass
-        area_otro = (getattr(s, 'area_otro', None) or "").strip()
-        if area_otro:
-            area_norm = _norm_area(area_otro)
-            if area_norm:
-                areas.append(area_norm)
-        if areas:
-            hogar_partes.append(", ".join(areas))
-
-        tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
-        if tipo_lugar and hogar_partes:
-            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
-        elif tipo_lugar:
-            hogar_descr = tipo_lugar
-        else:
-            hogar_descr = ", ".join(hogar_partes)
-        hogar_val = hogar_descr.strip() if hogar_descr else ""
-
-        # Edad requerida
-        if isinstance(s.edad_requerida, (list, tuple, set)):
-            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
-        else:
-            edad_req = s.edad_requerida or ""
-
-        nota_cli  = (s.nota_cliente or "").strip()
-        nota_line = f"Nota: {nota_cli}" if nota_cli else ""
-        sueldo_txt = f"Sueldo: ${_s(s.sueldo)} mensual{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
-
-        # ===== Texto final (sin etiquetas fijas) =====
-        lines = [
-            f"Disponible ( {s.codigo_solicitud or ''} )",
-            f"📍 {s.ciudad_sector or ''}",
-            f"Ruta más cercana: {s.rutas_cercanas or ''}",
-            "",
-        ]
-        if modalidad_val:
-            lines += [modalidad_val, ""]
-
-        lines += [
-            f"Edad: {edad_req}",
-            "Dominicana",
-            "Que sepa leer y escribir",
-            f"Experiencia en: {s.experiencia or ''}",
-            f"Horario: {s.horario or ''}",
-            "",
-            f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
-        ]
-        if hogar_val:
-            lines += ["", hogar_val]
-
-        lines += ["", f"Adultos: {adultos}"]
-        if ninos_line:
-            lines.append(ninos_line)
-        if mascota_line:
-            lines.append(mascota_line)
-        lines += ["", sueldo_txt]
-        if nota_line:
-            lines += ["", nota_line]
-
-        order_text = "\n".join(lines).strip()[:4000]  # seguridad
-
-        solicitudes.append({
-            "id": s.id,
-            "codigo_solicitud": _s(s.codigo_solicitud),
-            "ciudad_sector": _s(s.ciudad_sector),
-            "modalidad": modalidad_val,
-            "copiada_hoy": False,
-            "order_text": order_text,
-        })
-
-    return render_template(
-        'secretarias_solicitudes_copiar.html',
-        solicitudes=solicitudes,
-        q="", q_enabled=False,
-        endpoint='secretarias_copiar_solicitudes'
-    )
+    from core.handlers import secretarias_solicitudes_handlers as secretarias_solicitudes_h
+    return secretarias_solicitudes_h.secretarias_copiar_solicitudes()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -5398,23 +2752,8 @@ def secretarias_copiar_solicitudes():
 @app.route('/secretarias/solicitudes/<int:id>/copiar', methods=['POST'])
 @roles_required('admin', 'secretaria')
 def secretarias_copiar_solicitud(id):
-    s = Solicitud.query.get_or_404(id)
-    try:
-        s.last_copiado_at = func.now()
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception("❌ Error marcando solicitud copiada")
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({"ok": False, "error": "No se pudo marcar como copiada"}), 500
-        flash('❌ No se pudo marcar la solicitud como copiada.', 'danger')
-        return redirect(url_for('secretarias_copiar_solicitudes'))
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify({"ok": True, "id": id, "codigo": _s(s.codigo_solicitud)}), 200
-
-    flash(f'Solicitud { _s(s.codigo_solicitud) } copiada. Ya no se mostrará hasta mañana.', 'success')
-    return redirect(url_for('secretarias_copiar_solicitudes'))
+    from core.handlers import secretarias_solicitudes_handlers as secretarias_solicitudes_h
+    return secretarias_solicitudes_h.secretarias_copiar_solicitud(id)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -5423,262 +2762,8 @@ def secretarias_copiar_solicitud(id):
 @app.route('/secretarias/solicitudes/buscar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def secretarias_buscar_solicitudes():
-    q           = (request.args.get('q') or '').strip()[:128]
-    estado      = (request.args.get('estado') or '').strip()[:20]
-    desde_str   = (request.args.get('desde') or '').strip()[:10]
-    hasta_str   = (request.args.get('hasta') or '').strip()[:10]
-    modalidad   = (request.args.get('modalidad') or '').strip()[:60]
-    mascota     = (request.args.get('mascota') or '').strip()[:3]      # '', 'si', 'no'
-    con_ninos   = (request.args.get('con_ninos') or '').strip()[:3]    # '', 'si', 'no'
-    page        = max(1, request.args.get('page', type=int, default=1))
-    per_page    = min(100, max(10, request.args.get('per_page', type=int, default=20)))
-
-    cols = (
-        Solicitud.id,
-        Solicitud.fecha_solicitud,
-        Solicitud.codigo_solicitud,
-        Solicitud.ciudad_sector,
-        Solicitud.rutas_cercanas,
-        Solicitud.modalidad_trabajo,
-        Solicitud.modalidad,
-        Solicitud.tipo_modalidad,
-        Solicitud.edad_requerida,
-        Solicitud.experiencia,
-        Solicitud.horario,
-        Solicitud.funciones,
-        Solicitud.funciones_otro,
-        Solicitud.adultos,
-        Solicitud.ninos,
-        Solicitud.edades_ninos,
-        Solicitud.mascota,
-        Solicitud.tipo_lugar,
-        Solicitud.habitaciones,
-        Solicitud.banos,
-        Solicitud.dos_pisos,
-        Solicitud.areas_comunes,
-        Solicitud.area_otro,
-        Solicitud.direccion,
-        Solicitud.sueldo,
-        Solicitud.pasaje_aporte,
-        Solicitud.nota_cliente,
-        Solicitud.last_copiado_at,
-        Solicitud.estado,
-    )
-
-    qy = (
-        db.session.query(Solicitud)
-        .options(load_only(*cols))
-        .execution_options(stream_results=True)
-    )
-
-    if q:
-        like = f"%{q}%"
-        qy = qy.filter(or_(
-            Solicitud.codigo_solicitud.ilike(like),
-            Solicitud.ciudad_sector.ilike(like)
-        ))
-
-    if estado:
-        qy = qy.filter(Solicitud.estado == estado)
-    if modalidad:
-        qy = qy.filter(or_(
-            Solicitud.modalidad_trabajo.ilike(f"%{modalidad}%"),
-            Solicitud.modalidad.ilike(f"%{modalidad}%"),
-            Solicitud.tipo_modalidad.ilike(f"%{modalidad}%"),
-        ))
-
-    if mascota == 'si':
-        qy = qy.filter(Solicitud.mascota.isnot(None), func.length(func.trim(Solicitud.mascota)) > 0)
-    elif mascota == 'no':
-        qy = qy.filter(or_(Solicitud.mascota.is_(None), func.length(func.trim(Solicitud.mascota)) == 0))
-
-    if con_ninos == 'si':
-        qy = qy.filter(Solicitud.ninos.isnot(None), Solicitud.ninos > 0)
-    elif con_ninos == 'no':
-        qy = qy.filter(or_(Solicitud.ninos.is_(None), Solicitud.ninos == 0))
-
-    def _parse_date(s):
-        try:
-            return datetime.strptime(s, "%Y-%m-%d")
-        except Exception:
-            return None
-
-    desde_dt = _parse_date(desde_str)
-    hasta_dt = _parse_date(hasta_str)
-    if desde_dt and hasta_dt:
-        hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
-        qy = qy.filter(and_(Solicitud.fecha_solicitud >= desde_dt,
-                            Solicitud.fecha_solicitud <= hasta_end))
-    elif desde_dt:
-        qy = qy.filter(Solicitud.fecha_solicitud >= desde_dt)
-    elif hasta_dt:
-        hasta_end = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
-        qy = qy.filter(Solicitud.fecha_solicitud <= hasta_end)
-
-    order_col = getattr(Solicitud, 'fecha_solicitud', None) or Solicitud.id
-    qy = qy.order_by(order_col.desc())
-
-    try:
-        paginado = qy.paginate(page=page, per_page=per_page, error_out=False)
-    except AttributeError:
-        paginado = db.paginate(qy, page=page, per_page=per_page, error_out=False)
-
-    # Mapear funciones code->label (como admin)
-    FUNCIONES_CHOICES = {}
-    try:
-        form = AdminSolicitudForm() if AdminSolicitudForm else None
-        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
-            FUNCIONES_CHOICES = dict(form.funciones.choices)
-    except Exception:
-        FUNCIONES_CHOICES = {}
-
-    items = []
-    for s in paginado.items:
-        modalidad_val = _normalize_modalidad_publicar((s.modalidad_trabajo or s.modalidad or s.tipo_modalidad or ''))
-
-        funcs = []
-        try:
-            seleccion = set(_as_list(getattr(s, 'funciones', None)))
-        except Exception:
-            seleccion = set()
-        for code in seleccion:
-            if code == 'otro':
-                continue
-            label = FUNCIONES_CHOICES.get(code)
-            if label:
-                funcs.append(label)
-        custom_otro = (getattr(s, 'funciones_otro', None) or '').strip()
-        if custom_otro:
-            funcs.append(custom_otro)
-
-        adultos = s.adultos or ""
-        ninos_line = ""
-        if getattr(s, 'ninos', None):
-            ninos_line = f"Niños: {s.ninos}"
-            if getattr(s, 'edades_ninos', None):
-                ninos_line += f" ({s.edades_ninos})"
-        mascota_val = (getattr(s, 'mascota', None) or '').strip()
-        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
-
-        # Hogar (armado; solo valor)
-        hogar_partes = []
-        if getattr(s, 'habitaciones', None):
-            hogar_partes.append(f"{s.habitaciones} habitaciones")
-        banos_txt = _fmt_banos(getattr(s, 'banos', None))
-        if banos_txt:
-            hogar_partes.append(f"{banos_txt} baños")
-        if bool(getattr(s, 'dos_pisos', False)):
-            hogar_partes.append("2 pisos")
-        areas = []
-        if getattr(s, 'areas_comunes', None):
-            try:
-                for a in s.areas_comunes:
-                    a = str(a).strip()
-                    if a:
-                        area_norm = _norm_area(a)
-                        if area_norm:
-                            areas.append(area_norm)
-            except Exception:
-                pass
-        area_otro = (getattr(s, 'area_otro', None) or "").strip()
-        if area_otro:
-            area_norm = _norm_area(area_otro)
-            if area_norm:
-                areas.append(area_norm)
-        if areas:
-            hogar_partes.append(", ".join(areas))
-        tipo_lugar = (getattr(s, 'tipo_lugar', "") or "").strip()
-        if tipo_lugar and hogar_partes:
-            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
-        elif tipo_lugar:
-            hogar_descr = tipo_lugar
-        else:
-            hogar_descr = ", ".join(hogar_partes)
-        hogar_val = hogar_descr.strip() if hogar_descr else ""
-
-        if isinstance(s.edad_requerida, (list, tuple, set)):
-            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
-        else:
-            edad_req = s.edad_requerida or ""
-
-        nota_cli  = (s.nota_cliente or "").strip()
-        nota_line = f"Nota: {nota_cli}" if nota_cli else ""
-        sueldo_txt = f"Sueldo: ${_s(s.sueldo)} mensual{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
-
-        # ===== Texto final (sin etiquetas fijas) =====
-        lines = [
-            f"Disponible ( {s.codigo_solicitud or ''} )",
-            f"📍 {s.ciudad_sector or ''}",
-            f"Ruta más cercana: {s.rutas_cercanas or ''}",
-            "",
-        ]
-        if modalidad_val:
-            lines += [modalidad_val, ""]
-
-        lines += [
-            f"Edad: {edad_req}",
-            "Dominicana",
-            "Que sepa leer y escribir",
-            f"Experiencia en: {s.experiencia or ''}",
-            f"Horario: {s.horario or ''}",
-            "",
-            f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
-        ]
-        if hogar_val:
-            lines += ["", hogar_val]
-
-        lines += ["", f"Adultos: {adultos}"]
-        if ninos_line:
-            lines.append(ninos_line)
-        if mascota_line:
-            lines.append(mascota_line)
-        lines += ["", sueldo_txt]
-        if nota_line:
-            lines += ["", nota_line]
-
-        order_text = "\n".join(lines).strip()[:4000]
-
-        items.append({
-            "id": s.id,
-            "codigo_solicitud": _s(s.codigo_solicitud),
-            "ciudad_sector": _s(s.ciudad_sector),
-            "modalidad": modalidad_val,
-            "estado": _s(s.estado),
-            "fecha_solicitud": format_rd_datetime(s.fecha_solicitud, "%Y-%m-%d %H:%M", "") if s.fecha_solicitud else "",
-            "copiada_ciclo": (s.last_copiado_at is not None),
-            "order_text": order_text,
-        })
-
-    current_params = request.args.to_dict(flat=True)
-    def page_url(p):
-        d = current_params.copy()
-        d['page'] = p
-        return url_for('secretarias_buscar_solicitudes') + ('?' + urlencode(d) if d else '')
-
-    total_pages = paginado.pages or 1
-    page_links = [{"n": p, "url": page_url(p), "active": (p == paginado.page)} for p in range(1, total_pages + 1)]
-    prev_url = page_url(paginado.page - 1) if paginado.page > 1 else None
-    next_url = page_url(paginado.page + 1) if paginado.page < total_pages else None
-
-    return render_template(
-        'secretarias_solicitudes_buscar.html',
-        items=items,
-        page=paginado.page,
-        pages=total_pages,
-        total=paginado.total,
-        per_page=per_page,
-        q=q,
-        estado=estado,
-        estados_opts=['proceso','activa','pagada','cancelada','reemplazo'],
-        desde=desde_str,
-        hasta=hasta_str,
-        modalidad=modalidad,
-        mascota=mascota,
-        con_ninos=con_ninos,
-        page_links=page_links,
-        prev_url=prev_url,
-        next_url=next_url
-    )
+    from core.handlers import secretarias_solicitudes_handlers as secretarias_solicitudes_h
+    return secretarias_solicitudes_h.secretarias_buscar_solicitudes()
 
 # ==== FINALIZAR PROCESO + PERFIL (con vuelta SIEMPRE al BUSCADOR) ====
 from flask import (
@@ -5736,242 +2821,28 @@ def _save_grupos_empleo_safe(candidata, grupos_list):
 @app.route('/finalizar_proceso/buscar', methods=['GET'])
 @roles_required('admin', 'secretaria')
 def finalizar_proceso_buscar():
-    q = (request.args.get('q') or '').strip()[:128]
-    resultados = []
-    if q:
-        like = f"%{q}%"
-        try:
-            resultados = (
-                Candidata.query
-                .options(load_only(
-                    Candidata.fila, Candidata.nombre_completo, Candidata.cedula,
-                    Candidata.estado, Candidata.codigo
-                ))
-                .filter(or_(
-                    Candidata.nombre_completo.ilike(like),
-                    Candidata.cedula.ilike(like),
-                    Candidata.codigo.ilike(like),
-                ))
-                .order_by(Candidata.nombre_completo.asc())
-                .limit(300)
-                .all()
-            )
-        except Exception:
-            current_app.logger.exception("❌ Error buscando en finalizar_proceso_buscar")
-            resultados = []
-    return render_template('finalizar_proceso_buscar.html', q=q, resultados=resultados)
+    from core.handlers import finalizar_proceso_handlers as finalizar_h
+    return finalizar_h.finalizar_proceso_buscar()
 
 
 # ---------- FORMULARIO FINALIZAR ----------
 @app.route('/finalizar_proceso', methods=['GET', 'POST'])
 @roles_required('admin', 'secretaria')
 def finalizar_proceso():
-    fila = request.values.get('fila', type=int)
-    if not fila:
-        flash("Falta el parámetro ?fila=<id>.", "warning")
-        return redirect(url_for('finalizar_proceso_buscar'))
-
-    candidata = Candidata.query.get(fila)
-    if not candidata:
-        abort(404, description=f"No existe la candidata con fila={fila}")
-
-    grupos = _cfg_grupos_empleo()
-
-    if request.method == 'GET':
-        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
-
-    # POST: validar archivos obligatorios
-    foto_perfil_file = request.files.get('foto_perfil')
-    cedula1_file     = request.files.get('cedula1')
-    cedula2_file     = request.files.get('cedula2')
-
-    faltan = []
-    if not foto_perfil_file or foto_perfil_file.filename == '':
-        faltan.append("Foto de perfil")
-    if not cedula1_file or cedula1_file.filename == '':
-        faltan.append("Cédula (frontal)")
-    if not cedula2_file or cedula2_file.filename == '':
-        faltan.append("Cédula (reverso)")
-
-    if faltan:
-        flash("Faltan archivos: " + ", ".join(faltan) + ".", "danger")
-        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
-
-    # Leer bytes
-    try:
-        foto_perfil_bytes = foto_perfil_file.read()
-        cedula1_bytes     = cedula1_file.read()
-        cedula2_bytes     = cedula2_file.read()
-    except Exception as e:
-        flash(f"Error leyendo archivos: {e}", "danger")
-        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
-
-    if safe_bytes_length(foto_perfil_bytes) <= 0 or safe_bytes_length(cedula1_bytes) <= 0 or safe_bytes_length(cedula2_bytes) <= 0:
-        flash("Los archivos no pueden estar vacíos.", "danger")
-        return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
-
-    foto_field = 'foto_perfil' if hasattr(candidata, 'foto_perfil') else ('perfil' if hasattr(candidata, 'perfil') else None)
-    ok_foto = foto_field is not None
-    ok_ced1 = hasattr(candidata, 'cedula1')
-    ok_ced2 = hasattr(candidata, 'cedula2')
-
-    if not (ok_foto and ok_ced1 and ok_ced2):
-        detalles = []
-        if not ok_foto: detalles.append("foto_perfil (o perfil) no existe en el modelo")
-        if not ok_ced1: detalles.append("cedula1 no existe en el modelo")
-        if not ok_ced2: detalles.append("cedula2 no existe en el modelo")
-        flash("No se pudieron guardar algunos campos binarios: " + "; ".join(detalles), "warning")
-
-    # Grupos (opcional)
-    grupos_sel = request.form.getlist('grupos_empleo')
-    if grupos_sel:
-        if not _save_grupos_empleo_safe(candidata, grupos_sel):
-            flash("No se encontró columna para guardar los grupos (grupos_empleo / grupos / grupos_empleo_json).", "warning")
-
-    try:
-        actor = (
-            getattr(current_user, "username", None)
-            or getattr(current_user, "id", None)
-            or session.get("usuario")
-            or "sistema"
-        )
-        actor = str(actor)
-    except Exception:
-        actor = "sistema"
-
-    expected_lengths = {}
-    if foto_field:
-        expected_lengths[foto_field] = safe_bytes_length(foto_perfil_bytes)
-    if ok_ced1:
-        expected_lengths["cedula1"] = safe_bytes_length(cedula1_bytes)
-    if ok_ced2:
-        expected_lengths["cedula2"] = safe_bytes_length(cedula2_bytes)
-
-    def _persist_finalizar(_attempt: int):
-        if foto_field:
-            setattr(candidata, foto_field, foto_perfil_bytes)
-        if ok_ced1:
-            candidata.cedula1 = cedula1_bytes
-        if ok_ced2:
-            candidata.cedula2 = cedula2_bytes
-        if grupos_sel:
-            _save_grupos_empleo_safe(candidata, grupos_sel)
-        try:
-            maybe_update_estado_por_completitud(candidata, actor=actor)
-        except Exception:
-            pass
-
-    result = execute_robust_save(
-        session=db.session,
-        persist_fn=_persist_finalizar,
-        verify_fn=lambda: _verify_candidata_docs_saved(int(candidata.fila), expected_lengths),
-    )
-
-    if result.ok:
-        log_candidata_action(
-            action_type="CANDIDATA_UPLOAD_DOCS",
-            candidata=candidata,
-            summary="Finalización de proceso con carga de documentos",
-            metadata={"fields": sorted(list(expected_lengths.keys())), "source": "finalizar_proceso", "attempt_count": int(result.attempts)},
-            success=True,
-        )
-        flash("✅ Proceso finalizado y datos guardados correctamente.", "success")
-        return redirect(url_for('candidata_ver_perfil', fila=candidata.fila))
-
-    db.session.rollback()
-    log_candidata_action(
-        action_type="CANDIDATA_UPLOAD_DOCS",
-        candidata=candidata,
-        summary="Fallo finalizando proceso con documentos",
-        metadata={"source": "finalizar_proceso", "attempt_count": int(result.attempts)},
-        success=False,
-        error=result.error_message,
-    )
-    flash("❌ Error guardando en la base de datos: no se pudo verificar la persistencia.", "danger")
-    return render_template('finalizar_proceso.html', candidata=candidata, grupos=grupos)
+    from core.handlers import finalizar_proceso_handlers as finalizar_h
+    return finalizar_h.finalizar_proceso()
 
 
-# ---------- PERFIL (HTML) ----------
-@app.route('/candidata/perfil', methods=['GET'], endpoint='candidata_ver_perfil')
-@roles_required('admin', 'secretaria')
+# ---------- PERFIL (HTML/IMAGEN) ----------
+# Compat temporal: handlers migrados a core.handlers.candidata_perfil_handlers
 def ver_perfil():
-    """
-    Perfil detallado de candidata. Usa carga con retry para evitar caídas por SSL.
-    """
-    fila = request.args.get('fila', type=int)
-    if fila is None:
-        abort(400, description="Falta el parámetro ?fila=<id>.")
+    from core.handlers import candidata_perfil_handlers as perfil_h
+    return perfil_h.ver_perfil()
 
-    try:
-        candidata = _get_candidata_safe_by_pk(fila)
-    except Exception:
-        current_app.logger.exception("Error consultando Candidata.fila=%s", fila)
-        abort(500, description="Error consultando la base de datos.")
 
-    if not candidata:
-        abort(404, description=f"No existe la candidata con fila={fila}")
-
-    # Normaliza grupos (por si vienen como string/JSON)
-    grupos = getattr(candidata, 'grupos_empleo', None)
-    if isinstance(grupos, str):
-        try:
-            parsed = json.loads(grupos)
-            grupos = parsed if isinstance(parsed, list) else [str(parsed)]
-        except Exception:
-            grupos = [g.strip() for g in grupos.split(',') if g.strip()] if grupos else []
-    elif grupos is None:
-        alt = getattr(candidata, 'grupos', None) or getattr(candidata, 'grupos_empleo_json', None)
-        if isinstance(alt, str):
-            try:
-                parsed = json.loads(alt)
-                grupos = parsed if isinstance(parsed, list) else [str(parsed)]
-            except Exception:
-                grupos = [g.strip() for g in alt.split(',') if g.strip()] if alt else []
-        else:
-            grupos = alt or []
-
-    tiene_foto = bool(getattr(candidata, 'foto_perfil', None) or getattr(candidata, 'perfil', None))
-    tiene_ced1 = bool(getattr(candidata, 'cedula1', None))
-    tiene_ced2 = bool(getattr(candidata, 'cedula2', None))
-
-    return render_template(
-        'candidata_perfil.html',
-        candidata=candidata,
-        tiene_foto=tiene_foto,
-        tiene_ced1=tiene_ced1,
-        tiene_ced2=tiene_ced2,
-        grupos=grupos
-    )
-
-@app.route('/perfil_candidata', methods=['GET'])
-@roles_required('admin', 'secretaria')
 def perfil_candidata():
-    """
-    Sirve la imagen de perfil (bytes) con ruta más robusta:
-    - Lee directo con engine.connect() y text(), con retry.
-    - Si no hay imagen, 404.
-    """
-    fila = request.args.get('fila', type=int)
-    if not fila:
-        abort(400, description="Falta el parámetro ?fila=<id>.")
-
-    try:
-        img_bytes = _fetch_image_bytes_safe(fila)
-    except Exception:
-        current_app.logger.exception("Error leyendo imagen de Candidata.fila=%s", fila)
-        abort(500, description="No se pudo leer la imagen.")
-
-    if not img_bytes:
-        abort(404, description="La candidata no tiene foto almacenada.")
-
-    bio = BytesIO(img_bytes); bio.seek(0)
-    return send_file(
-        bio,
-        mimetype='image/jpeg',
-        as_attachment=False,
-        download_name=f"perfil_{fila}.jpg",
-        max_age=0
-    )
+    from core.handlers import candidata_perfil_handlers as perfil_h
+    return perfil_h.perfil_candidata()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -6094,262 +2965,11 @@ CHOICES_DICT = {
 HORARIO_ORDER = {tok: idx for idx, (tok, _lbl) in enumerate(HORARIO_OPTIONS)}
 
 # ─────────────────────────────────────────────────────────────
-# RUTA PRINCIPAL
+# Compat temporal: handler migrado a core.handlers.compat_candidata_handlers
 # ─────────────────────────────────────────────────────────────
-@app.route('/secretarias/compat/candidata', methods=['GET', 'POST'])
-@roles_required('admin', 'secretaria')
 def compat_candidata():
-    """
-    - GET  sin ?fila  → buscador (acepta ?q= en GET).
-    - GET  con ?fila   → muestra formulario del test.
-    - POST (accion=guardar & fila) → guarda el test y redirige:
-        * si next=home  → home
-        * si no         → buscador del test (no al perfil/fotos)
-    """
-    fila = request.values.get('fila', type=int)
-
-    # ── 1) GUARDAR (POST) ────────────────────────────────────
-    if request.method == 'POST' and request.form.get('accion') == 'guardar' and fila:
-        c = Candidata.query.get_or_404(fila)
-        blocked = assert_candidata_no_descalificada(
-            c,
-            action="test de compatibilidad",
-            redirect_endpoint="compat_candidata",
-        )
-        if blocked is not None:
-            return blocked
-
-        # Normalizaciones de selects/radios
-        raw_comunicacion = request.form.get('comunicacion')
-        raw_experiencia_nivel = request.form.get('experiencia_nivel')
-        raw_puntualidad_1a5 = request.form.get('puntualidad_1a5')
-        raw_mascotas = request.form.get('mascotas')
-        raw_mascotas_importancia = request.form.get('mascotas_importancia')
-
-        ritmo     = _norm_choice(request.form.get('ritmo'),               {k for k, _ in COMPAT_RITMOS})
-        estilo    = _norm_choice(request.form.get('estilo'),              {k for k, _ in COMPAT_ESTILOS})
-        comun     = _norm_choice(raw_comunicacion,                        {k for k, _ in COMPAT_COMUNICACION})
-        rel_n     = _norm_choice(request.form.get('relacion_ninos'),      {k for k, _ in COMPAT_RELACION_NINOS})
-        exp_niv   = _norm_choice(raw_experiencia_nivel,                   {k for k, _ in COMPAT_EXPERIENCIA_NIVEL})
-        mascotas  = normalize_mascotas_token(raw_mascotas)
-        mascotas_importancia = normalize_mascotas_importancia(raw_mascotas_importancia, default=None)
-        puntual   = _int_1a5('puntualidad_1a5')
-        current_app.logger.debug(
-            "compat_candidata POST raw values fila=%s comunicacion=%r experiencia_nivel=%r puntualidad_1a5=%r mascotas=%r mascotas_importancia=%r",
-            fila, raw_comunicacion, raw_experiencia_nivel, raw_puntualidad_1a5, raw_mascotas, raw_mascotas_importancia
-        )
-        current_app.logger.debug(
-            "compat_candidata POST normalized fila=%s comun=%r exp_niv=%r puntual=%r mascotas=%r mascotas_importancia=%r",
-            fila, comun, exp_niv, puntual, mascotas, mascotas_importancia
-        )
-
-        # Checkboxes (filtramos a los permitidos)
-        fortalezas = _filter_allowed(_getlist_clean('fortalezas'),              {k for k, _ in FORTALEZAS})
-        evitar     = _filter_allowed(_getlist_clean('tareas_evitar'),           {k for k, _ in TAREAS_EVITAR})
-        limites    = _filter_allowed(_getlist_clean('limites_no_negociables'),  {k for k, _ in LIMITES_NO_NEG})
-        dias       = _filter_allowed(_getlist_clean('disponibilidad_dias'),     {k for k, _ in DIAS_SEMANA})
-        allowed_horarios = {k for k, _ in HORARIOS} | {
-            'interna', 'manana', 'mañana', 'tarde', 'noche', 'flexible',
-            'fin de semana', 'findesemana', 'weekend'
-        }
-        horarios_raw = _filter_allowed(_getlist_clean('disponibilidad_horarios'), allowed_horarios)
-        horarios = sorted(normalize_horarios_tokens(horarios_raw), key=lambda t: HORARIO_ORDER.get(t, 999))
-
-        notas = (request.form.get('nota') or '').strip()[:2000]
-
-        # Validaciones mínimas
-        err = []
-        if not ritmo:         err.append("Ritmo de hogar")
-        if not estilo:        err.append("Estilo de trabajo")
-        if not comun:         err.append("Comunicación preferida")
-        if not rel_n:         err.append("Relación con niños")
-        if puntual is None:   err.append("Puntualidad (1 a 5)")
-        if not mascotas:      err.append("Compatibilidad con mascotas")
-        if not mascotas_importancia: err.append("Importancia de mascotas")
-        if not fortalezas:    err.append("Fortalezas (al menos una)")
-        if not dias:          err.append("Disponibilidad en días")
-        if not horarios:      err.append("Disponibilidad en horarios")
-
-        if err:
-            flash("Completa: " + ", ".join(err), "warning")
-            data = {
-                "ritmo": ritmo, "estilo": estilo, "comunicacion": comun,
-                "relacion_ninos": rel_n, "experiencia_nivel": exp_niv,
-                "puntualidad_1a5": puntual, "fortalezas": fortalezas,
-                "tareas_evitar": evitar, "limites_no_negociables": limites,
-                "disponibilidad_dias": dias, "disponibilidad_horarios": horarios,
-                "mascotas": mascotas, "mascotas_importancia": mascotas_importancia, "nota": notas
-            }
-            return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
-
-        # Persistir en columnas dedicadas (soporta alias alternos)
-        try:
-            if hasattr(c, 'compat_ritmo_preferido'):   c.compat_ritmo_preferido = ritmo
-            if hasattr(c, 'compat_estilo_trabajo'):    c.compat_estilo_trabajo = estilo
-            if hasattr(c, 'compat_comunicacion'):      c.compat_comunicacion = comun
-            if hasattr(c, 'compat_relacion_ninos'):    c.compat_relacion_ninos = rel_n
-            if hasattr(c, 'compat_experiencia_nivel'): c.compat_experiencia_nivel = exp_niv
-            if hasattr(c, 'compat_puntualidad_1a5'):   c.compat_puntualidad_1a5 = puntual
-
-            if hasattr(c, 'compat_mascotas'):
-                c.compat_mascotas = mascotas
-            if hasattr(c, 'compat_mascotas_ok'):
-                c.compat_mascotas_ok = (mascotas == 'si')
-
-            if hasattr(c, 'compat_habilidades_fuertes'):
-                c.compat_habilidades_fuertes = fortalezas
-            elif hasattr(c, 'compat_fortalezas'):
-                c.compat_fortalezas = fortalezas
-
-            if hasattr(c, 'compat_habilidades_evitar'):
-                c.compat_habilidades_evitar = evitar
-            elif hasattr(c, 'compat_tareas_evitar'):
-                c.compat_tareas_evitar = evitar
-
-            if hasattr(c, 'compat_limites_no_negociables'):  c.compat_limites_no_negociables = limites
-            if hasattr(c, 'compat_disponibilidad_dias'):     c.compat_disponibilidad_dias = dias
-            if hasattr(c, 'compat_disponibilidad_horarios'): c.compat_disponibilidad_horarios = horarios
-            if hasattr(c, 'compat_disponibilidad_horario'):  c.compat_disponibilidad_horario = ", ".join(horarios)
-
-            if hasattr(c, 'compat_observaciones'):           c.compat_observaciones = notas
-
-            profile = {
-                "ritmo": ritmo,
-                "estilo": estilo,
-                "comunicacion": comun,
-                "relacion_ninos": rel_n,
-                "experiencia_nivel": exp_niv,
-                "puntualidad_1a5": puntual,
-                "fortalezas": fortalezas,
-                "tareas_evitar": evitar,
-                "limites_no_negociables": limites,
-                "disponibilidad_dias": dias,
-                "disponibilidad_horarios": horarios,
-                "mascotas": mascotas,
-                "mascotas_importancia": mascotas_importancia,
-                "nota": notas,
-            }
-            payload = {
-                "version": COMPAT_TEST_CANDIDATA_VERSION,
-                "timestamp": iso_utc_z(),
-                "engine": ENGINE_VERSION,
-                "profile": profile,
-            }
-            if hasattr(c, 'compat_test_candidata_json'):     c.compat_test_candidata_json = payload
-            if hasattr(c, 'compat_test_candidata_version'):  c.compat_test_candidata_version = COMPAT_TEST_CANDIDATA_VERSION
-            if hasattr(c, 'compat_test_candidata_at'):       c.compat_test_candidata_at = utc_now_naive()
-
-            def _verify_compat_saved() -> bool:
-                cand_db = _get_candidata_by_fila_or_pk(int(fila)) or c
-                if not cand_db:
-                    return False
-                payload_db = getattr(cand_db, 'compat_test_candidata_json', None) or {}
-                profile_db = payload_db.get('profile', {}) if isinstance(payload_db, dict) else {}
-                if (profile_db.get("ritmo") or "") != (ritmo or ""):
-                    return False
-                if (profile_db.get("estilo") or "") != (estilo or ""):
-                    return False
-                if (profile_db.get("comunicacion") or "") != (comun or ""):
-                    return False
-                if int(profile_db.get("puntualidad_1a5") or 0) != int(puntual or 0):
-                    return False
-                return True
-
-            result = execute_robust_save(
-                session=db.session,
-                persist_fn=lambda _attempt: None,
-                verify_fn=_verify_compat_saved,
-            )
-            if not result.ok:
-                raise RuntimeError(result.error_message or "No se pudo verificar guardado.")
-
-            flash("✅ Test de compatibilidad guardado correctamente.", "success")
-
-            next_url = request.values.get('next')
-            if next_url == 'home':
-                return redirect(url_for('home'))
-            return redirect(url_for('compat_candidata'))
-
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.exception("❌ Error guardando test de compatibilidad")
-            flash("❌ No se pudo guardar.", "danger")
-            return redirect(url_for('compat_candidata', fila=fila))
-
-    # ── 2) FORMULARIO (GET con fila) ──────────────────────────
-    if request.method == 'GET' and fila:
-        c = Candidata.query.get_or_404(fila)
-        blocked = assert_candidata_no_descalificada(
-            c,
-            action="test de compatibilidad",
-            redirect_endpoint="compat_candidata",
-        )
-        if blocked is not None:
-            return blocked
-        payload = getattr(c, 'compat_test_candidata_json', None) or {}
-        profile = payload.get('profile', {}) if isinstance(payload, dict) else {}
-        data = {
-            "ritmo":                   getattr(c, 'compat_ritmo_preferido', None),
-            "estilo":                  getattr(c, 'compat_estilo_trabajo', None),
-            "comunicacion":            getattr(c, 'compat_comunicacion', None) or profile.get('comunicacion'),
-            "relacion_ninos":          getattr(c, 'compat_relacion_ninos', None),
-            "experiencia_nivel":       getattr(c, 'compat_experiencia_nivel', None) or profile.get('experiencia_nivel'),
-            "puntualidad_1a5":         getattr(c, 'compat_puntualidad_1a5', None) or profile.get('puntualidad_1a5'),
-            "fortalezas":              getattr(c, 'compat_habilidades_fuertes', None)
-                                       or getattr(c, 'compat_fortalezas', [])
-                                       or profile.get('fortalezas', []) or [],
-            "tareas_evitar":           getattr(c, 'compat_habilidades_evitar', None)
-                                       or getattr(c, 'compat_tareas_evitar', [])
-                                       or profile.get('tareas_evitar', []) or [],
-            "limites_no_negociables":  getattr(c, 'compat_limites_no_negociables', [])
-                                       or profile.get('limites_no_negociables', []) or [],
-            "disponibilidad_dias":     getattr(c, 'compat_disponibilidad_dias', [])
-                                       or profile.get('disponibilidad_dias', []) or [],
-            "disponibilidad_horarios": sorted(
-                normalize_horarios_tokens(
-                    getattr(c, 'compat_disponibilidad_horarios', [])
-                    or profile.get('disponibilidad_horarios', [])
-                    or []
-                ),
-                key=lambda t: HORARIO_ORDER.get(t, 999)
-            ),
-            "mascotas":                (getattr(c, 'compat_mascotas', None)
-                                        if hasattr(c, 'compat_mascotas')
-                                        else ('si' if getattr(c, 'compat_mascotas_ok', False) else 'no')
-                                        if hasattr(c, 'compat_mascotas_ok') else profile.get('mascotas')),
-            "mascotas_importancia":    profile.get('mascotas_importancia') or 'media',
-            "nota":                    getattr(c, 'compat_observaciones', '') or profile.get('nota', '') or '',
-        }
-        return render_template('compat_candidata_form.html', candidata=c, data=data, CHOICES=CHOICES_DICT)
-
-    # ── 3) BUSCADOR (GET/POST sin fila) ───────────────────────
-    q = (request.values.get('q') or '').strip()[:128]
-    resultados = []
-    mensaje = None
-
-    if request.method == 'POST' and request.form.get('accion') == 'buscar':
-        q = (request.form.get('q') or '').strip()[:128]
-
-    if q:
-        try:
-            resultados = search_candidatas_limited(
-                q,
-                limit=80,
-                base_query=Candidata.query.filter(candidatas_activas_filter(Candidata)),
-                minimal_fields=True,
-                order_mode="id_desc",
-                log_label="compat_candidata",
-            )
-        except Exception:
-            current_app.logger.exception("❌ Error buscando candidatas en compat_candidata")
-            resultados = []
-        if not resultados:
-            mensaje = "⚠️ No se encontraron coincidencias."
-
-    return render_template('compat_candidata_buscar.html',
-                           resultados=resultados,
-                           mensaje=mensaje,
-                           q=q)
+    from core.handlers import compat_candidata_handlers as compat_h
+    return compat_h.compat_candidata()
 
 
 from flask import render_template, session, redirect, url_for, request
@@ -6357,53 +2977,8 @@ from flask import render_template, session, redirect, url_for, request
 @app.route('/candidatas_porcentaje')
 @roles_required('admin', 'secretaria')
 def candidatas_porcentaje():
-    """
-    Lista todas las candidatas que tienen un porcentaje configurado.
-    Optimizado con:
-      - with_entities (solo columnas necesarias)
-      - paginación
-    """
-
-    # Proteger la vista: si no hay usuario logueado, mandar a login
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
-
-    # Página actual (por defecto 1)
-    page = request.args.get('page', 1, type=int)
-    per_page = 50  # puedes subir o bajar este número
-
-    # Query optimizada: solo las columnas que usamos en la tabla
-    base_query = (
-        Candidata.query
-        .with_entities(
-            Candidata.fila,
-            Candidata.codigo,
-            Candidata.nombre_completo.label('nombre'),
-            Candidata.numero_telefono.label('telefono'),
-            Candidata.modalidad_trabajo_preferida.label('modalidad'),
-            Candidata.inicio.label('fecha_inicio'),
-            Candidata.fecha_de_pago.label('fecha_pago'),
-            Candidata.monto_total,
-            Candidata.porciento,
-        )
-        .filter(
-            Candidata.porciento.isnot(None),
-            Candidata.porciento > 0
-        )
-        .order_by(
-            Candidata.fecha_de_pago.asc().nullslast(),
-            Candidata.fila.asc()
-        )
-    )
-
-    pagination = base_query.paginate(page=page, per_page=per_page, error_out=False)
-    candidatas = pagination.items
-
-    return render_template(
-        'candidatas_porcentaje.html',
-        candidatas=candidatas,
-        pagination=pagination
-    )
+    from core.handlers import candidatas_porcentaje_handlers as porcentaje_h
+    return porcentaje_h.candidatas_porcentaje()
 
 
 @app.route('/candidatas/eliminar', methods=['GET', 'POST'])

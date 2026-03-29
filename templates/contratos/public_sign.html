@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ contract_ctx.document_title }}</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --paper: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --line: #d7dee8;
+      --brand: #0b3d91;
+      --brand-strong: #082a63;
+      --ok-bg: #dcfce7;
+      --ok-fg: #14532d;
+      --err-bg: #fee2e2;
+      --err-fg: #991b1b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #f8fafc 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.55;
+    }
+    .page { max-width: 980px; margin: 0 auto; padding: 18px 14px 28px; }
+    .contract-paper {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
+      padding: 22px 20px;
+    }
+    .contract-header { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; border-bottom: 2px solid #e6edf5; padding-bottom: 14px; margin-bottom: 18px; }
+    .company-logo { width: 132px; height: auto; }
+    .doc-label { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--brand); }
+    h1 { margin: 4px 0 6px; font-size: 26px; line-height: 1.2; }
+    .doc-meta { margin: 0; color: var(--muted); font-size: 14px; }
+    h2 { margin: 0 0 8px; font-size: 20px; color: var(--brand-strong); }
+    h3 { margin: 0 0 4px; font-size: 16px; }
+    section { margin-top: 18px; }
+    .data-grid { margin: 0; display: grid; grid-template-columns: minmax(160px, 230px) minmax(0, 1fr); gap: 7px 14px; }
+    .data-grid dt { margin: 0; font-weight: 700; color: #1e293b; }
+    .data-grid dd { margin: 0; }
+    .clauses { margin: 0; padding-left: 18px; }
+    .clauses li { margin-bottom: 12px; }
+    .clauses p { margin: 0; }
+    .acceptance { margin-top: 22px; padding-top: 16px; border-top: 2px solid #dfe7f1; }
+    .muted { color: var(--muted); }
+    .error { color: var(--err-fg); background: var(--err-bg); border: 1px solid #fecaca; padding: 9px 11px; border-radius: 8px; margin: 8px 0; }
+    .field-label { display: block; font-weight: 700; margin-bottom: 6px; }
+    input[type="text"] { width: 100%; padding: 11px; border: 1px solid #94a3b8; border-radius: 8px; font-size: 15px; }
+    .sig-label { margin: 14px 0 8px; font-weight: 700; }
+    canvas { border: 1px solid #94a3b8; border-radius: 8px; background: #fff; width: 100%; max-width: 640px; height: 220px; }
+    .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .btn { border: 0; border-radius: 8px; padding: 11px 16px; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block; }
+    .btn-primary { background: #0f172a; color: #fff; }
+    .btn-light { background: #e2e8f0; color: #0f172a; }
+    @media (max-width: 700px) {
+      .contract-header { grid-template-columns: 1fr; text-align: center; }
+      .company-logo { margin: 0 auto; }
+      .data-grid { grid-template-columns: 1fr; gap: 2px; }
+      h1 { font-size: 22px; }
+      h2 { font-size: 18px; }
+      .contract-paper { padding: 16px 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    {% set readonly = false %}
+    {% include 'contratos/_public_contract_document.html' %}
+  </main>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById('signature_canvas');
+      if (!canvas) return;
+      const hidden = document.getElementById('signature_data');
+      const clearBtn = document.getElementById('clear_btn');
+      const form = canvas.closest('form');
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      let drawing = false;
+      let drew = false;
+
+      function xy(ev) {
+        const rect = canvas.getBoundingClientRect();
+        if (ev.touches && ev.touches[0]) {
+          return { x: ev.touches[0].clientX - rect.left, y: ev.touches[0].clientY - rect.top };
+        }
+        return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+      }
+      function start(ev) {
+        drawing = true;
+        const p = xy(ev);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ev.preventDefault();
+      }
+      function move(ev) {
+        if (!drawing) return;
+        const p = xy(ev);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        drew = true;
+        ev.preventDefault();
+      }
+      function end(ev) {
+        drawing = false;
+        ev.preventDefault();
+      }
+
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      window.addEventListener('touchend', end, { passive: false });
+
+      clearBtn.addEventListener('click', function () {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drew = false;
+      });
+
+      form.addEventListener('submit', function (ev) {
+        if (!drew) {
+          ev.preventDefault();
+          alert('Debe dibujar su firma antes de continuar.');
+          return;
+        }
+        hidden.value = canvas.toDataURL('image/png');
+      });
+    })();
+  </script>
+</body>
+</html>

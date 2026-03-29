@@ -16,7 +16,15 @@
     </div>
   </div>
 
-  <form method="get" class="row g-2 mb-3" id="monitoreo-filters">
+  <form method="get"
+        class="row g-2 mb-3"
+        id="monitoreo-filters"
+        action="{{ url_for('admin.monitoreo_logs') }}"
+        data-admin-async-form
+        data-async-target="#monitoreoLogsAsyncRegion"
+        data-async-busy-container="#monitoreoLogsAsyncScope"
+        data-async-preserve-scroll="true"
+        data-async-fallback="native">
     <div class="col-md-2">
       <select class="form-select" name="user_id">
         <option value="">Todas las usuarias</option>
@@ -45,42 +53,21 @@
     <div class="col-md-2"><input class="form-control" type="date" name="date_to" value="{{ request.args.get('date_to','') }}"></div>
     <div class="col-md-2"><input class="form-control" type="text" name="search" placeholder="entity_id/resumen" value="{{ request.args.get('search','') }}"></div>
     <div class="col-12 d-flex gap-2">
-      <button class="btn btn-primary btn-sm" type="submit">Filtrar</button>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.monitoreo_logs') }}">Limpiar</a>
+      <button class="btn btn-primary btn-sm" type="submit" data-loading-text="Filtrando...">Filtrar</button>
+      <a class="btn btn-outline-secondary btn-sm"
+         href="{{ url_for('admin.monitoreo_logs') }}"
+         data-admin-async-link
+         data-async-target="#monitoreoLogsAsyncRegion"
+         data-async-busy-container="#monitoreoLogsAsyncScope"
+         data-async-preserve-scroll="true">Limpiar</a>
     </div>
   </form>
 
-  <div class="table-responsive">
-    <table class="table table-sm table-striped" id="liveLogsTable">
-      <thead><tr><th>Fecha</th><th>Usuaria</th><th>Acción</th><th>Entidad</th><th>Resumen</th><th>Resultado</th></tr></thead>
-      <tbody>
-      {% for log in logs %}
-        <tr data-log-id="{{ log.id }}">
-          <td>{{ log.created_at }}</td>
-          <td>{{ log.actor_username or '-' }}</td>
-          <td>{{ log.action_human or log.action_type }}</td>
-          <td>{{ log.entity_display or ((log.entity_type or '-') ~ ' ' ~ (log.entity_id or '')) }}</td>
-          <td>{{ log.summary or '-' }}</td>
-          <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">ERROR</span>{% endif %}</td>
-        </tr>
-      {% else %}
-        <tr><td colspan="6" class="text-muted">No hay logs para este filtro.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <div id="monitoreoLogsAsyncScope" data-admin-async-scope>
+    <div id="monitoreoLogsAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_monitoreo_logs_results.html' %}
+    </div>
   </div>
-
-  <nav>
-    <ul class="pagination pagination-sm">
-      {% if pagination.has_prev %}
-        <li class="page-item"><a class="page-link" href="{{ url_for('admin.monitoreo_logs', page=pagination.prev_num, user_id=request.args.get('user_id'), action_type=request.args.get('action_type'), entity_type=request.args.get('entity_type'), date_from=request.args.get('date_from'), date_to=request.args.get('date_to'), search=request.args.get('search')) }}">Anterior</a></li>
-      {% endif %}
-      <li class="page-item disabled"><span class="page-link">{{ pagination.page }} / {{ pagination.pages or 1 }}</span></li>
-      {% if pagination.has_next %}
-        <li class="page-item"><a class="page-link" href="{{ url_for('admin.monitoreo_logs', page=pagination.next_num, user_id=request.args.get('user_id'), action_type=request.args.get('action_type'), entity_type=request.args.get('entity_type'), date_from=request.args.get('date_from'), date_to=request.args.get('date_to'), search=request.args.get('search')) }}">Siguiente</a></li>
-      {% endif %}
-    </ul>
-  </nav>
 </div>
 {% endblock %}
 {% block scripts %}

@@ -1,14 +1,17 @@
-﻿import re
+﻿import hashlib
+import os
+import re
 from datetime import datetime
 from typing import Optional, Dict
 
 from flask_login import UserMixin
-from sqlalchemy import Enum as SAEnum, LargeBinary, event, text
+from sqlalchemy import Enum as SAEnum, LargeBinary, event, inspect as sa_inspect, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import synonym
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from config_app import db
+from utils.secrets_manager import get_secret
 from utils.timezone import utc_now_naive
 
 
@@ -465,6 +468,9 @@ class StaffUser(UserMixin, db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
     last_login_at = db.Column(db.DateTime, nullable=True)
     last_login_ip = db.Column(db.String(64), nullable=True)
+    mfa_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    mfa_secret = db.Column(db.String(512), nullable=True)
+    mfa_last_timestep = db.Column(db.Integer, nullable=True)
 
     def get_id(self) -> str:
         # Evita colisión con IDs numéricos de Cliente.
@@ -499,6 +505,92 @@ class StaffUser(UserMixin, db.Model):
         except Exception:
             return False
 
+    @staticmethod
+    def _mfa_cipher():
+        try:
+            import base64
+            from cryptography.fernet import Fernet
+
+            key_raw = (get_secret("STAFF_MFA_ENCRYPTION_KEY") or "").strip()
+            if key_raw:
+                key_bytes = key_raw.encode("utf-8")
+            else:
+                base_secret = (get_secret("FLASK_SECRET_KEY") or "").encode("utf-8")
+                digest = hashlib.sha256(base_secret).digest()
+                key_bytes = base64.urlsafe_b64encode(digest)
+            return Fernet(key_bytes)
+        except Exception:
+            return None
+
+    def set_mfa_secret(self, raw_secret: str) -> None:
+        value = (raw_secret or "").strip().upper()
+        if not value:
+            self.mfa_secret = None
+            return
+        cipher = self._mfa_cipher()
+        if cipher is None:
+            allow_plain = False
+            try:
+                from flask import current_app
+
+                allow_plain = bool(current_app.config.get("TESTING"))
+            except Exception:
+                allow_plain = False
+            allow_plain = allow_plain or (
+                (get_secret("STAFF_MFA_ALLOW_PLAINTEXT_SECRET") or "").strip().lower()
+                in {"1", "true", "yes", "on"}
+            )
+            if not allow_plain:
+                raise RuntimeError(
+                    "MFA encryption backend unavailable. Install cryptography or set STAFF_MFA_ENCRYPTION_KEY."
+                )
+            self.mfa_secret = f"plain:{value}"
+            return
+        token = cipher.encrypt(value.encode("utf-8")).decode("utf-8")
+        self.mfa_secret = f"enc:{token}"
+
+    def get_mfa_secret(self) -> str:
+        raw = (self.mfa_secret or "").strip()
+        if not raw:
+            return ""
+        if raw.startswith("plain:"):
+            return raw.split(":", 1)[1].strip().upper()
+        if raw.startswith("enc:"):
+            cipher = self._mfa_cipher()
+            if cipher is None:
+                return ""
+            try:
+                token = raw.split(":", 1)[1].strip().encode("utf-8")
+                return cipher.decrypt(token).decode("utf-8").strip().upper()
+            except Exception:
+                return ""
+        # Compatibilidad con posibles secretos legacy en texto simple.
+        return raw.upper()
+
+    def clear_mfa(self) -> None:
+        self.mfa_enabled = False
+        self.mfa_secret = None
+        self.mfa_last_timestep = None
+
+
+class TrustedDevice(db.Model):
+    __tablename__ = "trusted_devices"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "device_token_hash", name="uq_trusted_devices_user_token"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=False, index=True)
+    device_fingerprint = db.Column(db.String(128), nullable=False, index=True)
+    device_token_hash = db.Column(db.String(64), nullable=True, index=True)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(512), nullable=True)
+    last_used_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    is_trusted = db.Column(db.Boolean, nullable=False, default=True, server_default=text("true"))
+
+    user = db.relationship("StaffUser", backref=db.backref("trusted_devices", lazy="dynamic"))
+
 
 class StaffAuditLog(db.Model):
     __tablename__ = 'staff_audit_logs'
@@ -526,6 +618,22 @@ class StaffAuditLog(db.Model):
     error_message = db.Column(db.Text, nullable=True)
 
     actor_user = db.relationship('StaffUser', backref=db.backref('audit_logs', lazy='dynamic'))
+
+
+@event.listens_for(StaffAuditLog, "before_update")
+def _prevent_staff_audit_log_update(_mapper, _connection, _target):
+    run_env = (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "").strip().lower()
+    if run_env in {"test", "testing"}:
+        return
+    raise RuntimeError("StaffAuditLog is immutable and cannot be updated.")
+
+
+@event.listens_for(StaffAuditLog, "before_delete")
+def _prevent_staff_audit_log_delete(_mapper, _connection, _target):
+    run_env = (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "").strip().lower()
+    if run_env in {"test", "testing"}:
+        return
+    raise RuntimeError("StaffAuditLog is immutable and cannot be deleted.")
 
 
 class PublicSolicitudTokenUso(db.Model):
@@ -768,6 +876,8 @@ class Solicitud(db.Model):
     # Desde cuándo se está dando seguimiento ACTIVO a esta solicitud.
     # Se debe renovar cada vez que la pongas en 'activa' (o cuando tú decidas).
     fecha_inicio_seguimiento = db.Column(db.DateTime, nullable=True)
+    # Fecha manual de seguimiento operativo (recordatorio elegido por staff).
+    fecha_seguimiento_manual = db.Column(db.Date, nullable=True, index=True)
 
     # Cuántas veces se ha activado la solicitud (para control interno)
     veces_activada         = db.Column(db.Integer, nullable=False, default=0)
@@ -800,6 +910,14 @@ class Solicitud(db.Model):
                                 db.String(100),
                                 nullable=True,
                                 comment="Usuario que cambio espera de pago"
+                             )
+    # Versionado optimista para flujos críticos (pagos/estados).
+    row_version = db.Column(
+                                db.Integer,
+                                nullable=False,
+                                default=1,
+                                server_default=text("1"),
+                                comment="Version de concurrencia optimista de la solicitud"
                              )
 
     # Ubicación y rutas
@@ -925,6 +1043,10 @@ class Solicitud(db.Model):
     # Cancelación
     fecha_cancelacion      = db.Column(db.DateTime, nullable=True)
     motivo_cancelacion     = db.Column(db.String(255), nullable=True)
+
+    __mapper_args__ = {
+        "version_id_col": row_version,
+    }
 
     # ─────────────────────────────────────────────────────────────
     # LÓGICA DE PRIORIDAD / SEGUIMIENTO (SOLO CÁLCULO)
@@ -1785,6 +1907,79 @@ class SolicitudCandidata(db.Model):
         )
 
 
+class RequestIdempotencyKey(db.Model):
+    __tablename__ = "request_idempotency_keys"
+    __table_args__ = (
+        db.UniqueConstraint("scope", "idempotency_key", name="uq_request_idempotency_scope_key"),
+        db.Index("ix_request_idempotency_scope_actor", "scope", "actor_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    scope = db.Column(db.String(80), nullable=False, index=True)
+    idempotency_key = db.Column(db.String(128), nullable=False)
+    actor_id = db.Column(db.String(64), nullable=True, index=True)
+    entity_type = db.Column(db.String(50), nullable=True, index=True)
+    entity_id = db.Column(db.String(64), nullable=True, index=True)
+    request_hash = db.Column(db.String(64), nullable=False)
+    response_status = db.Column(db.Integer, nullable=True)
+    response_code = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    last_seen_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+
+class DomainOutbox(db.Model):
+    __tablename__ = "domain_outbox"
+    __table_args__ = (
+        db.Index("ix_domain_outbox_published_created", "published_at", "created_at"),
+        db.Index("ix_domain_outbox_aggregate", "aggregate_type", "aggregate_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    event_id = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    event_type = db.Column(db.String(80), nullable=False, index=True)
+    aggregate_type = db.Column(db.String(80), nullable=False, index=True)
+    aggregate_id = db.Column(db.String(64), nullable=False, index=True)
+    aggregate_version = db.Column(db.Integer, nullable=True)
+    occurred_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    actor_id = db.Column(db.String(64), nullable=True, index=True)
+    region = db.Column(db.String(40), nullable=True)
+    payload = db.Column(db.JSON, nullable=False, default=dict)
+    schema_version = db.Column(db.Integer, nullable=False, default=1, server_default=text("1"))
+    correlation_id = db.Column(db.String(64), nullable=True, index=True)
+    idempotency_key = db.Column(db.String(128), nullable=True, index=True)
+    published_attempts = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    relay_status = db.Column(db.String(20), nullable=False, default="pending", server_default=text("'pending'"), index=True)
+    first_failed_at = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(db.String(500), nullable=True)
+    last_attempt_at = db.Column(db.DateTime, nullable=True)
+    next_retry_at = db.Column(db.DateTime, nullable=True, index=True)
+    quarantined_at = db.Column(db.DateTime, nullable=True, index=True)
+    quarantine_reason = db.Column(db.String(80), nullable=True)
+    published_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+
+class OutboxConsumerReceipt(db.Model):
+    __tablename__ = "outbox_consumer_receipts"
+    __table_args__ = (
+        db.UniqueConstraint("consumer_name", "event_id", name="uq_outbox_consumer_event"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    consumer_name = db.Column(db.String(80), nullable=False, index=True)
+    event_id = db.Column(db.String(64), nullable=False, index=True)
+    processed_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+
+class OperationalMetricSnapshot(db.Model):
+    __tablename__ = "operational_metric_snapshots"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    captured_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    window_minutes = db.Column(db.Integer, nullable=False, default=15, server_default=text("15"))
+    metrics = db.Column(db.JSON, nullable=False, default=dict)
+
+
 class StaffNotificacion(db.Model):
     __tablename__ = "staff_notificaciones"
     __table_args__ = (
@@ -1862,4 +2057,146 @@ class ClienteNotificacion(db.Model):
         return (
             f"<ClienteNotificacion id={self.id} cliente_id={self.cliente_id} "
             f"solicitud_id={self.solicitud_id} tipo={self.tipo} is_read={self.is_read}>"
+        )
+
+
+class ContratoDigital(db.Model):
+    __tablename__ = "contratos_digitales"
+    __table_args__ = (
+        db.UniqueConstraint("solicitud_id", "version", name="uq_contrato_solicitud_version"),
+        db.UniqueConstraint("token_hash", name="uq_contrato_token_hash"),
+        db.CheckConstraint(
+            "estado IN ('borrador','enviado','visto','firmado','expirado','anulado')",
+            name="ck_contrato_estado_valido",
+        ),
+        db.CheckConstraint(
+            "token_hash IS NULL OR length(token_hash) = 64",
+            name="ck_contrato_token_hash_len",
+        ),
+        db.CheckConstraint(
+            "firma_png_sha256 IS NULL OR length(firma_png_sha256) = 64",
+            name="ck_contrato_firma_hash_len",
+        ),
+        db.CheckConstraint(
+            "pdf_final_sha256 IS NULL OR length(pdf_final_sha256) = 64",
+            name="ck_contrato_pdf_hash_len",
+        ),
+        db.CheckConstraint(
+            "token_expira_at IS NULL OR token_generado_at IS NULL OR token_expira_at > token_generado_at",
+            name="ck_contrato_expira_gt_generado",
+        ),
+        db.CheckConstraint(
+            "estado <> 'firmado' OR (firmado_at IS NOT NULL AND firma_png_sha256 IS NOT NULL AND pdf_final_sha256 IS NOT NULL AND pdf_generado_at IS NOT NULL)",
+            name="ck_contrato_firmado_campos_minimos",
+        ),
+        db.Index("ix_contrato_cliente_created", "cliente_id", "created_at"),
+        db.Index("ix_contrato_estado_expira", "estado", "token_expira_at"),
+        db.Index("ix_contrato_solicitud", "solicitud_id"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=False)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=False)
+    version = db.Column(db.SmallInteger, nullable=False, default=1, server_default=text("1"))
+    contrato_padre_id = db.Column(db.BigInteger, db.ForeignKey("contratos_digitales.id"), nullable=True)
+    estado = db.Column(db.String(16), nullable=False, default="borrador", server_default=text("'borrador'"))
+    contenido_snapshot_json = db.Column(db.JSON, nullable=False, default=dict)
+    snapshot_fijado_at = db.Column(db.DateTime, nullable=True)
+
+    token_version = db.Column(db.Integer, nullable=False, default=1, server_default=text("1"))
+    token_hash = db.Column(db.String(64), nullable=True)
+    token_generado_at = db.Column(db.DateTime, nullable=True)
+    token_expira_at = db.Column(db.DateTime, nullable=True)
+    token_revocado_at = db.Column(db.DateTime, nullable=True)
+
+    enviado_at = db.Column(db.DateTime, nullable=True)
+    primer_visto_at = db.Column(db.DateTime, nullable=True)
+    ultimo_visto_at = db.Column(db.DateTime, nullable=True)
+    primera_ip = db.Column(db.String(64), nullable=True)
+    primer_user_agent = db.Column(db.String(512), nullable=True)
+
+    firma_png = db.Column(LargeBinary, nullable=True)
+    firma_png_sha256 = db.Column(db.String(64), nullable=True)
+    firma_nombre = db.Column(db.String(180), nullable=True)
+    firmado_at = db.Column(db.DateTime, nullable=True)
+    firmado_ip = db.Column(db.String(64), nullable=True)
+    firmado_user_agent = db.Column(db.String(512), nullable=True)
+
+    pdf_final_bytea = db.Column(LargeBinary, nullable=True)
+    pdf_final_sha256 = db.Column(db.String(64), nullable=True)
+    pdf_final_size_bytes = db.Column(db.Integer, nullable=True)
+    pdf_generado_at = db.Column(db.DateTime, nullable=True)
+
+    anulado_at = db.Column(db.DateTime, nullable=True)
+    anulado_por_staff_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True)
+    anulado_motivo = db.Column(db.String(255), nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+    solicitud = db.relationship("Solicitud", lazy="joined")
+    cliente = db.relationship("Cliente", lazy="joined")
+    anulado_por_staff = db.relationship("StaffUser", lazy="joined")
+    contrato_padre = db.relationship("ContratoDigital", remote_side=[id], lazy="joined")
+
+
+class ContratoEvento(db.Model):
+    __tablename__ = "contratos_eventos"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(estado_anterior IS NULL OR estado_anterior IN ('borrador','enviado','visto','firmado','expirado','anulado'))"
+            " AND (estado_nuevo IS NULL OR estado_nuevo IN ('borrador','enviado','visto','firmado','expirado','anulado'))",
+            name="ck_evento_estados_validos",
+        ),
+        db.CheckConstraint(
+            "actor_tipo IN ('staff','cliente_publico','sistema')",
+            name="ck_evento_actor_tipo",
+        ),
+        db.Index("ix_evento_contrato_created", "contrato_id", "created_at"),
+        db.Index("ix_evento_tipo_created", "evento_tipo", "created_at"),
+        db.Index("ix_evento_success_created", "success", "created_at"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    contrato_id = db.Column(db.BigInteger, db.ForeignKey("contratos_digitales.id"), nullable=False)
+    evento_tipo = db.Column(db.String(48), nullable=False)
+    estado_anterior = db.Column(db.String(16), nullable=True)
+    estado_nuevo = db.Column(db.String(16), nullable=True)
+    actor_tipo = db.Column(db.String(16), nullable=False, default="sistema")
+    actor_staff_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True)
+    ip = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(512), nullable=True)
+    metadata_json = db.Column(db.JSON, nullable=False, default=dict)
+    success = db.Column(db.Boolean, nullable=False, default=True, server_default=text("true"))
+    error_code = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+
+    contrato = db.relationship("ContratoDigital", lazy="joined")
+    actor_staff = db.relationship("StaffUser", lazy="joined")
+
+
+@event.listens_for(ContratoDigital, "before_update")
+def _protect_signed_contract_immutability(_mapper, _connection, target: ContratoDigital):
+    state = sa_inspect(target)
+    if not state.persistent:
+        return
+    if state.attrs.estado.history.has_changes():
+        old_estado = state.attrs.estado.history.deleted[0] if state.attrs.estado.history.deleted else None
+    else:
+        old_estado = target.estado
+    was_signed = str(old_estado or "").strip().lower() == "firmado"
+    if not was_signed:
+        return
+
+    allowed_after_signed = {"ultimo_visto_at", "updated_at"}
+    changed = {
+        attr.key
+        for attr in state.attrs
+        if attr.history.has_changes()
+    }
+    blocked = sorted(changed - allowed_after_signed)
+    if blocked:
+        raise RuntimeError(
+            "Contrato firmado inmutable: columnas bloqueadas modificadas: "
+            + ", ".join(blocked)
         )

@@ -18,8 +18,8 @@ from flask import (
 from flask_login import current_user
 from . import public_bp
 
-from config_app import cache
 from utils.audit_logger import log_action
+from utils.distributed_backplane import bp_get, bp_set
 from utils.timezone import iso_utc_z, utc_now_naive
 
 # Límite de paginación pública
@@ -228,8 +228,8 @@ def public_live_ping():
     route_key = f"public_live:{minute_key}:{current_path}"
     count = 0
     try:
-        count = int(cache.get(route_key) or 0) + 1
-        cache.set(route_key, count, timeout=180)
+        count = int(bp_get(route_key, default=0, context="public_live_route_count_get") or 0) + 1
+        bp_set(route_key, count, timeout=180, context="public_live_route_count_set")
     except Exception:
         count = 0
 
@@ -237,8 +237,8 @@ def public_live_ping():
     dedupe_key = f"public_live_log:{minute_key}:{event_type}:{current_path}"
     should_log = (event_type != "heartbeat")
     try:
-        if should_log or not cache.get(dedupe_key):
-            cache.set(dedupe_key, 1, timeout=180)
+        if should_log or not bp_get(dedupe_key, default=0, context="public_live_dedupe_get"):
+            bp_set(dedupe_key, 1, timeout=180, context="public_live_dedupe_set")
             should_log = True
     except Exception:
         pass

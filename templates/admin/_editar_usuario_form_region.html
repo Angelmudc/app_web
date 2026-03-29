@@ -1,0 +1,65 @@
+<div class="p-0">
+  {% if async_feedback and async_feedback.message %}
+    {% set _cat = async_feedback.category or 'info' %}
+    <div class="alert alert-{{ 'danger' if _cat in ['danger', 'error'] else _cat }} border-0 mb-3" role="alert" aria-live="polite">
+      {{ async_feedback.message }}
+    </div>
+  {% endif %}
+
+  {% if form.errors %}
+    <div class="alert alert-warning border-0 mb-3" role="alert" aria-live="polite">
+      No se guardó. Revisa los campos marcados y corrige los errores.
+    </div>
+  {% endif %}
+
+  <form
+    method="post"
+    novalidate
+    data-admin-async-form
+    data-async-target="#editarUsuarioAsyncRegion"
+    data-async-busy-container="#editarUsuarioAsyncScope"
+    data-async-preserve-scroll="true"
+    data-async-fallback="native">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+      <label class="form-label" for="email">Email (opcional)</label>
+      {{ form.email(
+        class="form-control" + (" is-invalid" if form.email.errors else ""),
+        id="email",
+        placeholder="correo@dominio.com"
+      ) }}
+      {% if form.email.errors %}
+        <div class="invalid-feedback d-block">{{ form.email.errors[0] }}</div>
+      {% endif %}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label" for="role">Rol</label>
+      {{ form.role(
+        class="form-select",
+        id="role",
+        disabled=true
+      ) }}
+      <input type="hidden" name="role" value="{{ (user.role or '')|lower }}">
+      <div class="form-text">Rol no editable en esta fase. Cambiar desde Gestión de usuarios/roles.</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label" for="new_password">Reset password (opcional)</label>
+      {{ form.new_password(
+        class="form-control" + (" is-invalid" if form.new_password.errors else ""),
+        id="new_password",
+        placeholder="Mínimo " ~ min_password_len ~ " caracteres"
+      ) }}
+      <div class="form-text">Si se deja vacío, la contraseña actual no cambia.</div>
+      {% if form.new_password.errors %}
+        <div class="invalid-feedback d-block">{{ form.new_password.errors[0] }}</div>
+      {% endif %}
+    </div>
+
+    <button type="submit" class="btn btn-primary" data-loading-text="Guardando...">
+      Guardar cambios
+    </button>
+  </form>
+</div>

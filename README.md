@@ -69,3 +69,86 @@ Activar/desactivar:
   - `last_login_at`
   - `last_login_ip`
 - CRUD de usuarios internos funciona solo sobre `staff_users`.
+
+## Secretos (fase hardening)
+- Punto único de acceso: `utils/secrets_manager.py`
+- API:
+  - `get_secret("NOMBRE")`
+  - `get_required_secret("NOMBRE")`
+- Secretos críticos (fail-fast en producción):
+  - `FLASK_SECRET_KEY`
+  - `DATABASE_URL`
+- En `development/testing` se carga `.env` automáticamente (sin pisar variables ya definidas).
+- En `production` no se carga `.env`; se usan variables de entorno seguras o un Secret Manager externo.
+
+### Secret Manager externo (opcional)
+- `SECRET_MANAGER_BACKEND=aws|gcp`
+- `SECRET_MANAGER_PREFIX=mi-app/prod` (opcional)
+- `SECRET_REF_<SECRET_NAME>=ruta/o/id/especifico` (opcional por secreto)
+- AWS:
+  - requiere `boto3`
+- GCP:
+  - requiere `google-cloud-secret-manager`
+  - `GCP_PROJECT_ID` obligatorio
+
+### Rotación recomendada inmediata
+1. `DATABASE_URL` (usuario/password de Postgres)
+2. `FLASK_SECRET_KEY`
+3. `BREAKGLASS_PASSWORD_HASH` (cambiar contraseña + regenerar hash)
+4. `STAFF_MFA_ENCRYPTION_KEY` (si ya estaba expuesta)
+5. `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`
+
+### Rotación operativa (audit + apply)
+- Auditoría:
+  - `python3 scripts/security/secret_rotation.py audit-secrets`
+- Rotar un secreto:
+  - `python3 scripts/security/secret_rotation.py rotate-secret --secret FLASK_SECRET_KEY --apply --env-file .env --reason "scheduled_rotation"`
+  - `python3 scripts/security/secret_rotation.py rotate-secret --secret BREAKGLASS_PASSWORD_HASH --breakglass-password '<NUEVA_CLAVE>' --apply --env-file .env`
+  - `python3 scripts/security/secret_rotation.py rotate-secret --secret STAFF_MFA_ENCRYPTION_KEY --apply --env-file .env`
+  - `python3 scripts/security/secret_rotation.py rotate-secret --secret TELEGRAM_BOT_TOKEN --new-value '<TOKEN_NUEVO>' --apply --env-file .env`
+- Bundle crítico (opcional automatizado por scheduler):
+  - `python3 scripts/security/secret_rotation.py rotate-critical --apply --env-file .env --breakglass-password '<NUEVA_CLAVE>' --database-url '<DATABASE_URL_NUEVA>' --telegram-bot-token '<TOKEN_NUEVO>'`
+- Runbook detallado:
+  - `docs/runbooks/secret_rotation.md`
+
+## Logging y alertas de seguridad
+- Capa central: `utils/audit_logger.py`
+  - `log_security_event(...)`
+  - `log_auth_event(...)`
+  - `log_admin_action(...)`
+- Todos los eventos pasan por `log_action(...)` y generan:
+  - registro en `staff_audit_logs`
+  - salida estructurada JSON en logs de app (`SECURITY_EVENT {...}`)
+- Detección/anomalías: `utils/enterprise_layer.py`
+  - ráfagas de login fallido
+  - bloqueos/rate-limit repetidos
+  - accesos denegados repetidos
+  - actividad admin sensible en volumen anómalo
+  - burst de errores 500
+- Alertas:
+  - `ALERT_WARNING` / `ALERT_CRITICAL`
+  - envío opcional por Telegram (si canal activo)
+- Protección de evidencia:
+  - `StaffAuditLog` inmutable para update/delete en `production`
+  - payloads sensibles se enmascaran automáticamente (password/token/secret/email/teléfono/cédula/dirección)
+
+## Backup, restore y recuperación
+- Runbook operativo: `docs/runbooks/backup_restore.md`
+- CLI operativo:
+  - `python3 scripts/ops/backup_restore.py backup-db --output-dir backups/db --prefix app_web_db`
+  - `python3 scripts/ops/backup_restore.py backup-files --output-dir backups/files --prefix app_web_files`
+  - `python3 scripts/ops/backup_restore.py verify-backup --backup-file <ruta_backup>`
+  - `python3 scripts/ops/backup_restore.py restore-db --backup-file <ruta_backup> --target-database-url <DATABASE_URL> --dry-run`
+  - `python3 scripts/ops/backup_restore.py post-restore-check --database-url <DATABASE_URL>`
+- Automatización diaria (cron/scheduler): `scripts/ops/backup_nightly.sh`
+- Shipping externo automático (S3/GCS/local_fs): `scripts/ops/backup_ship.py`
+- Dependencias operativas cloud (solo host de backup): `requirements-ops-backup.txt`
+- Plantilla Render Cron Job: `render.backup-cron.yaml`
+
+## Respuesta a incidentes (operativo)
+- Runbook operativo: `docs/runbooks/security_incident_response.md`
+- Helper CLI:
+  - `python3 scripts/security/incident_response.py contain-staff-account --username <staff> --reason "confirmed_compromise"`
+  - `python3 scripts/security/incident_response.py contain-secret-exposure --secret BREAKGLASS_PASSWORD_HASH --breakglass-password '<NUEVA_CLAVE>' --apply --env-file .env --reason "secret_exposed_followup"`
+  - `python3 scripts/security/incident_response.py quick-security-check --minutes 120`
+  - `python3 scripts/security/incident_response.py collect-evidence --minutes 180 --label incident_20260320 --output-dir artifacts/incidents`

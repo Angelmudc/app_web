@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Contratos Digitales{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 1220px;">
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h4 mb-1">Contratos digitales</h1>
+      <div class="text-muted small">Listado operativo con filtros por estado</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm">Solicitudes</a>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <form method="get"
+            class="row g-2 align-items-end"
+            action="{{ url_for('contratos.listado_contratos_admin') }}"
+            data-admin-async-form
+            data-async-target="#contratosAsyncRegion"
+            data-async-busy-container="#contratosAsyncScope"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        <div class="col-md-4">
+          <label class="form-label mb-1 small">Buscar</label>
+          <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="ID contrato / solicitud / cliente">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label mb-1 small">Estado</label>
+          <select class="form-select" name="estado">
+            <option value="">Todos</option>
+            {% for st in ['borrador','enviado','visto','firmado','expirado','anulado'] %}
+            <option value="{{ st }}" {% if estado == st %}selected{% endif %}>{{ st }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button type="submit" class="btn btn-primary" data-loading-text="Filtrando...">Filtrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="contratosAsyncScope" data-admin-async-scope>
+    <div id="contratosAsyncRegion" data-async-preserve-scroll="true">
+      {% if list_region_html is defined and list_region_html %}
+        {{ list_region_html|safe }}
+      {% else %}
+        {% include 'admin/_contratos_list_results.html' %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

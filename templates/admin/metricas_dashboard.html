@@ -2,24 +2,10 @@
 {% block title %}Métricas{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Panel de métricas</h1>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.metricas_secretarias_view', period=period) }}">Por secretaria</a>
-      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.metricas_solicitudes_view', period=period) }}">Por solicitudes</a>
+  <div id="metricasDashboardAsyncScope" data-admin-async-scope>
+    <div id="metricasDashboardAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_metricas_dashboard_region.html' %}
     </div>
-  </div>
-  <form class="mb-3" method="get">
-    <label class="form-label">Periodo</label>
-    <select class="form-select" name="period" onchange="this.form.submit()">
-      <option value="today" {% if period=='today' %}selected{% endif %}>Hoy</option>
-      <option value="7d" {% if period=='7d' %}selected{% endif %}>7 días</option>
-      <option value="30d" {% if period=='30d' %}selected{% endif %}>30 días</option>
-    </select>
-  </form>
-  <div class="row g-3">
-    <div class="col-md-6"><div class="card"><div class="card-body"><h2 class="h6">Secretarias</h2><p class="mb-0 text-muted">Total registradas en periodo: {{ (payload.secretarias['items'] if payload.secretarias and ('items' in payload.secretarias) else [])|length }}</p></div></div></div>
-    <div class="col-md-6"><div class="card"><div class="card-body"><h2 class="h6">Tiempo promedio de colocación</h2><p class="mb-0"><strong>{{ payload.solicitudes.tiempo_promedio_colocacion_horas }}</strong> horas</p></div></div></div>
   </div>
 </div>
 {% endblock %}

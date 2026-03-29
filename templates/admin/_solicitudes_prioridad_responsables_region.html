@@ -1,0 +1,38 @@
+<div id="prioridadResponsablesAsyncRegion" data-async-preserve-scroll="true">
+  {% if responsible_summary is defined and responsible_summary %}
+    <div class="card border-0 shadow-sm mb-3" data-testid="responsable-summary-block">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <div class="fw-semibold">Carga por responsable (última gestión)</div>
+          <div class="small text-muted">Basado en la última gestión registrada, no en asignación formal.</div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Responsable</th>
+                <th class="text-end">Total</th>
+                <th class="text-end">Estancadas</th>
+                <th class="text-end">Alta</th>
+                <th class="text-end">Espera pago</th>
+                <th class="text-end">Requieren hoy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in responsible_summary %}
+                <tr data-testid="responsable-row">
+                  <td data-testid="responsable-name">{{ row.responsable_label }}</td>
+                  <td class="text-end" data-testid="responsable-total">{{ row.total }}</td>
+                  <td class="text-end" data-testid="responsable-stagnant">{{ row.stagnant }}</td>
+                  <td class="text-end" data-testid="responsable-high">{{ row.high_priority }}</td>
+                  <td class="text-end" data-testid="responsable-espera">{{ row.espera_pago }}</td>
+                  <td class="text-end" data-testid="responsable-needs">{{ row.needs_today }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>

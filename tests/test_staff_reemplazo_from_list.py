@@ -92,6 +92,13 @@ class ReemplazoFromListTest(unittest.TestCase):
         resp = self.client.post("/admin/login", data={"usuario": user, "clave": pwd}, follow_redirects=False)
         self.assertIn(resp.status_code, (302, 303))
 
+    def _async_headers(self):
+        return {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-Admin-Async": "1",
+        }
+
     def test_cancelar_reemplazo_desde_listado_solo_admin(self):
         sol = _SolicitudStub()
         repl = _ReemplazoStub()
@@ -123,6 +130,38 @@ class ReemplazoFromListTest(unittest.TestCase):
         self.assertIsNotNone(repl.fecha_fin_reemplazo)
         self.assertEqual(sol.estado, "activa")
         commit_mock.assert_called_once()
+
+    def test_cancelar_reemplazo_async_exitoso_eleva_a_region_padre_y_refresca_resumen(self):
+        sol = _SolicitudStub()
+        sol.codigo_solicitud = "SOL-010"
+        repl = _ReemplazoStub()
+
+        self._login("Cruz", "8998")
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
+                 patch.object(admin_routes.Reemplazo, "query", _ReemplazoQuery(repl)), \
+                 patch("admin.routes.db.session.commit"):
+                resp = self.client.post(
+                    "/admin/solicitudes/10/reemplazos/99/cancelar",
+                    data={
+                        "next": "/admin/solicitudes?estado=reemplazo&page=1",
+                        "_async_target": "#solicitudReemplazoActionsAsyncRegion-10",
+                    },
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertTrue(payload.get("success"))
+        self.assertEqual(payload.get("update_target"), "#solicitudesAsyncRegion")
+        self.assertIsNone(payload.get("replace_html"))
+        update_targets = payload.get("update_targets") or []
+        self.assertEqual(len(update_targets), 2)
+        self.assertEqual(update_targets[0].get("target"), "#solicitudesAsyncRegion")
+        self.assertTrue(update_targets[0].get("invalidate"))
+        self.assertEqual(update_targets[1].get("target"), "#solicitudesSummaryAsyncRegion")
+        self.assertTrue(update_targets[1].get("invalidate"))
 
     def test_culminar_reemplazo_desde_listado_asigna_candidata_valida(self):
         self._login("Karla", "9989")
@@ -173,6 +212,36 @@ class ReemplazoFromListTest(unittest.TestCase):
         self.assertEqual(sol.candidata_id, 1)
         self.assertIsNone(repl.candidata_new_id)
         commit_mock.assert_not_called()
+
+    def test_region_async_muestra_cierre_rapido_y_cta_cierre_completo(self):
+        self._login("Karla", "9989")
+        sol = _SolicitudStub()
+        sol.codigo_solicitud = "SOL-010"
+        repl = _ReemplazoStub()
+        sol.reemplazos = [repl]
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
+                 patch.object(admin_routes.Reemplazo, "query", _ReemplazoQuery(repl)):
+                resp = self.client.post(
+                    "/admin/solicitudes/10/reemplazos/99/cerrar_asignando",
+                    data={
+                        "candidata_new_id": "",
+                        "next": "/admin/solicitudes?estado=reemplazo&page=1",
+                        "_async_target": "#solicitudReemplazoActionsAsyncRegion-10",
+                    },
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json() or {}
+        self.assertFalse(payload.get("success"))
+        self.assertEqual(payload.get("update_target"), "#solicitudReemplazoActionsAsyncRegion-10")
+        html = payload.get("replace_html") or ""
+        self.assertIn("Cierre rápido", html)
+        self.assertIn("Cierre completo", html)
+        self.assertIn("/admin/solicitudes/10/reemplazos/99/finalizar", html)
 
 
 if __name__ == "__main__":

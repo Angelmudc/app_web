@@ -1,0 +1,27 @@
+{% for a in alerts %}
+<div class="alert alert-warning">
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <strong>{{ a.summary or 'Alerta' }}</strong>
+      <div class="small text-muted">{{ a.created_at }} · {{ a.route or '-' }}</div>
+    </div>
+    {% if not a.is_resolved %}
+    <form method="post"
+          action="{{ url_for('admin.resolver_alerta', alert_id=a.id) }}"
+          data-admin-async-form
+          data-async-target="#seguridadAlertasAsyncRegion"
+          data-async-busy-container="#seguridadAlertasAsyncScope"
+          data-async-fallback="native">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ request.path }}">
+      <input type="hidden" name="_async_target" value="#seguridadAlertasAsyncRegion">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Marcar resuelta</button>
+    </form>
+    {% else %}
+    <span class="badge bg-success">Resuelta</span>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="text-muted">No hay alertas registradas.</div>
+{% endfor %}

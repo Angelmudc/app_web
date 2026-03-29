@@ -9,10 +9,10 @@
       <a href="{{ url_for('admin.listar_usuarios') }}" class="btn btn-outline-secondary">Volver</a>
     </div>
 
-    <form method="post" novalidate>
-      {{ form.hidden_tag() }}
+    {% if nuevo %}
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
 
-      {% if nuevo %}
         <div class="mb-3">
           <label class="form-label" for="username">Username</label>
           {{ form.username(class="form-control", id="username", placeholder="ejemplo.usuario") }}
@@ -20,25 +20,23 @@
             <div class="text-danger small mt-1">{{ form.username.errors[0] }}</div>
           {% endif %}
         </div>
-      {% endif %}
 
-      <div class="mb-3">
-        <label class="form-label" for="email">Email (opcional)</label>
-        {{ form.email(class="form-control", id="email", placeholder="correo@dominio.com") }}
-        {% if form.email.errors %}
-          <div class="text-danger small mt-1">{{ form.email.errors[0] }}</div>
-        {% endif %}
-      </div>
+        <div class="mb-3">
+          <label class="form-label" for="email">Email (opcional)</label>
+          {{ form.email(class="form-control", id="email", placeholder="correo@dominio.com") }}
+          {% if form.email.errors %}
+            <div class="text-danger small mt-1">{{ form.email.errors[0] }}</div>
+          {% endif %}
+        </div>
 
-      <div class="mb-3">
-        <label class="form-label" for="role">Rol</label>
-        {{ form.role(class="form-select", id="role") }}
-        {% if form.role.errors %}
-          <div class="text-danger small mt-1">{{ form.role.errors[0] }}</div>
-        {% endif %}
-      </div>
+        <div class="mb-3">
+          <label class="form-label" for="role">Rol</label>
+          {{ form.role(class="form-select", id="role") }}
+          {% if form.role.errors %}
+            <div class="text-danger small mt-1">{{ form.role.errors[0] }}</div>
+          {% endif %}
+        </div>
 
-      {% if nuevo %}
         <div class="mb-3">
           <label class="form-label" for="password">Contraseña inicial</label>
           {{ form.password(class="form-control", id="password", placeholder="Mínimo " ~ min_password_len ~ " caracteres") }}
@@ -47,21 +45,18 @@
             <div class="text-danger small mt-1">{{ form.password.errors[0] }}</div>
           {% endif %}
         </div>
-      {% else %}
-        <div class="mb-3">
-          <label class="form-label" for="new_password">Reset password (opcional)</label>
-          {{ form.new_password(class="form-control", id="new_password", placeholder="Mínimo " ~ min_password_len ~ " caracteres") }}
-          <div class="form-text">Si se deja vacío, la contraseña actual no cambia.</div>
-          {% if form.new_password.errors %}
-            <div class="text-danger small mt-1">{{ form.new_password.errors[0] }}</div>
-          {% endif %}
-        </div>
-      {% endif %}
 
-      <button type="submit" class="btn btn-primary">
-        {{ 'Crear usuario' if nuevo else 'Guardar cambios' }}
-      </button>
-    </form>
+        <button type="submit" class="btn btn-primary">
+          Crear usuario
+        </button>
+      </form>
+    {% else %}
+      <div id="editarUsuarioAsyncScope" data-admin-async-scope>
+        <div id="editarUsuarioAsyncRegion" data-async-preserve-scroll="true">
+          {% include 'admin/_editar_usuario_form_region.html' %}
+        </div>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

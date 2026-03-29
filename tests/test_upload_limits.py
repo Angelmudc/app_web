@@ -40,7 +40,7 @@ def test_rejects_oversized_single_file_no_db_change():
     with flask_app.app_context():
         pre_count = StaffAuditLog.query.filter(StaffAuditLog.action_type == "CANDIDATA_UPLOAD_DOCS_SIZE_REJECT").count()
 
-    with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand):
+    with patch("core.handlers.archivos_handlers._get_candidata_by_fila_or_pk", return_value=cand):
         resp = client.post(
             "/subir_fotos?accion=subir&fila=1",
             data={"depuracion": (io.BytesIO(b"x" * 64), "depuracion.jpg")},
@@ -68,8 +68,8 @@ def test_accepts_under_limit_and_saves():
     assert _login_secretaria(client).status_code in (302, 303)
     cand = _DummyCandidata()
 
-    with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
-         patch("core.legacy_handlers.validate_upload_file", return_value=(True, b"dep-new", "", {"filename_safe": "dep.jpg"})):
+    with patch("core.handlers.archivos_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
+         patch("core.handlers.archivos_handlers.validate_upload_file", return_value=(True, b"dep-new", "", {"filename_safe": "dep.jpg"})):
         resp = client.post(
             "/subir_fotos?accion=subir&fila=1",
             data={"depuracion": (io.BytesIO(b"dep-new"), "dep.jpg")},
@@ -94,7 +94,7 @@ def test_413_handler_returns_user_friendly_message():
         client = flask_app.test_client()
         assert _login_secretaria(client).status_code in (302, 303)
         cand = _DummyCandidata()
-        with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand):
+        with patch("core.handlers.archivos_handlers._get_candidata_by_fila_or_pk", return_value=cand):
             resp = client.post(
                 "/subir_fotos?accion=subir&fila=1",
                 data={"depuracion": (io.BytesIO(b"mucho-contenido"), "depuracion.jpg")},
@@ -119,7 +119,7 @@ def test_js_limit_config_rendered():
     assert _login_secretaria(client).status_code in (302, 303)
     cand = _DummyCandidata()
 
-    with patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand):
+    with patch("core.handlers.archivos_handlers._get_candidata_by_fila_or_pk", return_value=cand):
         resp = client.get("/subir_fotos?accion=subir&fila=1", follow_redirects=False)
 
     assert resp.status_code == 200

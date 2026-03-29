@@ -2,18 +2,10 @@
 {% block title %}Métricas de solicitudes{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <h1 class="h4 mb-3">Métricas de solicitudes</h1>
-  <div class="row g-3 mb-3">
-    <div class="col-md-6"><div class="card"><div class="card-body"><small>Tiempo promedio de colocación</small><div class="h5 mb-0">{{ payload.tiempo_promedio_colocacion_horas }} horas</div></div></div></div>
-    <div class="col-md-6"><div class="card"><div class="card-body"><small>Ratio éxito/fallo</small><div class="h5 mb-0">{{ payload.ratio_exito_fallo.exitos }} / {{ payload.ratio_exito_fallo.fallos }}</div></div></div></div>
+  <div id="metricasSolicitudesAsyncScope" data-admin-async-scope>
+    <div id="metricasSolicitudesAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_metricas_solicitudes_region.html' %}
+    </div>
   </div>
-  <h2 class="h6">Pendientes por estado</h2>
-  <ul class="list-group">
-    {% for k,v in payload.pendientes_por_estado.items() %}
-      <li class="list-group-item d-flex justify-content-between"><span>{{ k }}</span><strong>{{ v }}</strong></li>
-    {% else %}
-      <li class="list-group-item text-muted">Sin datos de estados.</li>
-    {% endfor %}
-  </ul>
 </div>
 {% endblock %}

@@ -1,0 +1,74 @@
+{% if q %}
+  {% if candidatas and candidatas|length > 0 %}
+    <div class="table-responsive mb-4">
+      <table class="table table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Nombre</th>
+            <th>Cédula</th>
+            <th>Teléfono</th>
+            <th>Código</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in candidatas %}
+            <tr>
+              <td class="fw-semibold">{{ c.nombre_completo or '' }}</td>
+              <td>{{ c.cedula or '' }}</td>
+              <td>{{ c.numero_telefono or '' }}</td>
+              <td>{{ c.codigo or '' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-warning mb-4">
+      <i class="bi bi-exclamation-triangle me-1"></i>
+      No se encontraron domésticas con “<strong>{{ q }}</strong>”.
+    </div>
+  {% endif %}
+{% else %}
+  <div class="alert alert-info mb-4">
+    <i class="bi bi-info-circle me-1"></i>
+    Escribe una búsqueda arriba para cargar domésticas.
+  </div>
+{% endif %}
+
+{% if pick_name == 'domestica_id' %}
+  {% set pick_field = form.domestica_id %}
+{% elif pick_name == 'candidata_new_id' %}
+  {% set pick_field = form.candidata_new_id %}
+{% else %}
+  {% set pick_field = form.candidata_id %}
+{% endif %}
+
+<label class="form-label">
+  <i class="bi bi-person-fill text-info me-1"></i>
+  {{ pick_field.label.text }} <span class="text-danger">*</span>
+</label>
+
+<div style="position: relative; z-index: 2;">
+  {% set sel_class = "form-select" %}
+  {% if pick_field.errors %}
+    {% set sel_class = "form-select is-invalid" %}
+  {% endif %}
+
+  {{ pick_field(class=sel_class, id=pick_name, style="pointer-events:auto;") }}
+
+  {% if pick_field.errors %}
+    <div class="invalid-feedback d-block">
+      {% for e in pick_field.errors %}
+        <div>{{ e }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
+{% if not q %}
+  <div class="form-text mt-1 text-warning">
+    Primero haz una búsqueda arriba para cargar opciones en el selector.
+  </div>
+{% else %}
+  <div class="form-text mt-1">Selecciona una doméstica de la lista filtrada.</div>
+{% endif %}

@@ -162,6 +162,23 @@ def test_new_public_form_token_invalid_returns_controlled_response():
     assert "Enlace expirado" in resp.get_data(as_text=True)
 
 
+def test_new_public_form_token_blocks_abuse_with_controlled_429():
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    fake_form = _FakeNewPublicForm()
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes.enforce_business_limit", return_value=(True, 99)):
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+
+    assert resp.status_code == 429
+    assert "límite diario".lower() in resp.get_data(as_text=True).lower()
+
+
 def test_next_cliente_codigo_publico_starts_from_2152():
     with flask_app.app_context():
         with patch("clientes.routes.db.session.query", return_value=SimpleNamespace(all=lambda: [])):

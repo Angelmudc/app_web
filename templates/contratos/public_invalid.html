@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enlace inválido</title>
+</head>
+<body style="font-family: Arial, sans-serif; margin: 0; background:#f4f6fb; color:#111827;">
+  <div style="max-width:720px;margin:0 auto;padding:20px;">
+    <div style="text-align:center;margin-bottom:14px;">
+      <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Logo empresa" style="max-width:170px;height:auto;">
+    </div>
+    <div style="background:#fff;border:1px solid #d1d5db;border-radius:12px;padding:18px;">
+      <h1 style="margin-top:0;">Enlace no válido</h1>
+      {% set friendly = {
+        'annulled': 'Este contrato fue anulado y ya no acepta firma.',
+        'csrf': 'La sesión de firma expiró. Vuelve a abrir el enlace original.',
+        'invalid_signature': 'El enlace no es válido o fue modificado.',
+        'token_revoked': 'Este enlace fue reemplazado por una versión más reciente.',
+        'invalid': 'No fue posible validar el enlace.'
+      } %}
+      <p>{{ friendly.get(reason_key or '', 'No fue posible validar el enlace del contrato.') }}</p>
+      <p style="color:#4b5563;">Si necesitas firmar, solicita al equipo administrativo un nuevo enlace.</p>
+    </div>
+  </div>
+</body>
+</html>
