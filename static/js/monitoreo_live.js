@@ -25,7 +25,7 @@
   }
 
   let lastId = Number(root.dataset.initialLastId || 0);
-  let paused = false;
+  let manualPaused = false;
   let sse = null;
   let logsPollTimer = null;
   let summaryPollTimer = null;
@@ -69,11 +69,19 @@
     document.addEventListener('visibilitychange', registerInteraction, { passive: true });
   }
 
+  function hasActivePolling() {
+    return Boolean(logsPollTimer || summaryPollTimer || productivityPollTimer || presencePollTimer);
+  }
+
+  function isRealtimeActive() {
+    return Boolean(sse || hasActivePolling());
+  }
+
   function setLiveStatus(isLive) {
     const liveStatus = getLiveStatusEl();
     const liveToggleBtn = getLiveToggleBtnEl();
     if (!liveStatus || !liveToggleBtn) return;
-    if (isLive && !paused) {
+    if (isLive && !manualPaused) {
       liveStatus.textContent = '● EN VIVO';
       liveStatus.classList.remove('paused');
       liveStatus.classList.add('live');
@@ -86,6 +94,14 @@
     liveToggleBtn.textContent = 'Reanudar';
   }
 
+  function syncLiveUi() {
+    if (!isMonitoringPage()) {
+      setLiveStatus(false);
+      return;
+    }
+    setLiveStatus(!manualPaused && isRealtimeActive());
+  }
+
   function updatePresencePingState(nextState, reason) {
     if (presencePingStatus === nextState) return;
     presencePingStatus = nextState;
@@ -93,7 +109,7 @@
       console.warn('[monitoreo] presence ping pausado: ' + reason);
       return;
     }
-    if (!paused) setLiveStatus(true);
+    if (!manualPaused) syncLiveUi();
     console.warn('[monitoreo] presence ping reanudado');
   }
 
@@ -495,7 +511,7 @@
   }
 
   async function pollLogs() {
-    if (paused || !logsUrl || !isMonitoringPage()) return;
+    if (manualPaused || !logsUrl || !isMonitoringPage()) return;
     const params = new URLSearchParams(window.location.search);
     params.set('since_id', String(lastId || 0));
     params.set('limit', '50');
@@ -508,19 +524,19 @@
   }
 
   async function pollSummary() {
-    if (paused || !summaryUrl || !isMonitoringPage()) return;
+    if (manualPaused || !summaryUrl || !isMonitoringPage()) return;
     const data = await fetchJson(summaryUrl);
     updateMetrics(data);
   }
 
   async function pollPresence() {
-    if (paused || !presenceUrl || !isMonitoringPage()) return;
+    if (manualPaused || !presenceUrl || !isMonitoringPage()) return;
     const data = await fetchJson(presenceUrl);
     updatePresenceTable((data && data.items) || []);
   }
 
   async function pollProductivity() {
-    if (paused || !productivityUrl || !isMonitoringPage()) return;
+    if (manualPaused || !productivityUrl || !isMonitoringPage()) return;
     const data = await fetchJson(productivityUrl);
     updateProductivity(data || {});
   }
@@ -550,7 +566,7 @@
   function startPolling() {
     if (!isMonitoringPage()) return;
     stopPolling();
-    setLiveStatus(true);
+    syncLiveUi();
     pollLogs().catch(() => {});
     pollSummary().catch(() => {});
     pollProductivity().catch(() => {});
@@ -562,7 +578,7 @@
   }
 
   function startSSE() {
-    if (!streamUrl || paused || !isMonitoringPage()) return;
+    if (!streamUrl || manualPaused || !isMonitoringPage()) return;
     stopSSE();
     sseStalled = false;
     const url = streamUrl + '?last_id=' + encodeURIComponent(String(lastId || 0));
@@ -579,7 +595,7 @@
 
     if (sseWatchdogTimer) clearInterval(sseWatchdogTimer);
     sseWatchdogTimer = setInterval(function () {
-      if (!sse || paused || !isMonitoringPage()) return;
+      if (!sse || manualPaused || !isMonitoringPage()) return;
       if (!lastSseEventAtMs) return;
       const elapsedMs = Date.now() - lastSseEventAtMs;
       if (elapsedMs <= SSE_STALL_AFTER_MS) return;
@@ -652,7 +668,7 @@
       startPolling();
     };
 
-    setLiveStatus(true);
+    syncLiveUi();
   }
 
   async function presencePing() {
@@ -719,17 +735,30 @@
   document.addEventListener('click', function (ev) {
     const btn = ev.target && ev.target.closest ? ev.target.closest('#liveToggleBtn') : null;
     if (!btn) return;
-    paused = !paused;
-    if (paused) {
+    manualPaused = !manualPaused;
+    if (manualPaused) {
       stopSSE();
       stopPolling();
-      setLiveStatus(false);
+      syncLiveUi();
       return;
     }
     if (page === 'dashboard' && !hasFilters) {
       startSSE();
     } else {
       startPolling();
+    }
+    syncLiveUi();
+  });
+
+  document.addEventListener('admin:content-updated', function (ev) {
+    const detail = (ev && ev.detail) ? ev.detail : {};
+    const targetSelector = String(detail.targetSelector || '');
+    if (targetSelector === '#monitoreoDashboardShellAsyncRegion') {
+      syncLiveUi();
+      return;
+    }
+    if (getLiveStatusEl() || getLiveToggleBtnEl()) {
+      syncLiveUi();
     }
   });
 
@@ -741,6 +770,7 @@
   startPresencePing();
   if (page === 'dashboard' && !hasFilters) startSSE();
   else startPolling();
+  syncLiveUi();
 
   window.addEventListener('popstate', function () {
     if (!isMonitoringPage()) stopMonitoringRealtime();
