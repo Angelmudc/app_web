@@ -174,20 +174,59 @@ from utils.timezone import (
     utc_now_naive,
     utc_timestamp,
 )
-from utils.chat_e2e_guard import (
-    E2EChatGuardError,
-    chat_e2e_enabled,
-    chat_e2e_scope_prefix,
-    chat_e2e_scope_key,
-    chat_e2e_run_id,
-    chat_e2e_subject,
-    chat_e2e_tag,
-    enforce_e2e_cliente_id,
-    enforce_e2e_conversation,
-    enforce_e2e_conversation_id,
-    enforce_e2e_solicitud_id,
-    e2e_message_meta,
-)
+try:
+    from utils.chat_e2e_guard import (
+        E2EChatGuardError,
+        chat_e2e_enabled,
+        chat_e2e_scope_prefix,
+        chat_e2e_scope_key,
+        chat_e2e_run_id,
+        chat_e2e_subject,
+        chat_e2e_tag,
+        enforce_e2e_cliente_id,
+        enforce_e2e_conversation,
+        enforce_e2e_conversation_id,
+        enforce_e2e_solicitud_id,
+        e2e_message_meta,
+    )
+except Exception:
+    class E2EChatGuardError(Exception):
+        reason = "disabled"
+
+    def chat_e2e_enabled() -> bool:
+        return False
+
+    def chat_e2e_scope_prefix() -> str:
+        return ""
+
+    def chat_e2e_scope_key(*, cliente_id: int, solicitud_id: int | None):
+        if int(solicitud_id or 0) > 0:
+            return f"solicitud:{int(solicitud_id)}"
+        return f"general:{int(cliente_id)}"
+
+    def chat_e2e_run_id() -> str:
+        return ""
+
+    def chat_e2e_subject(base: str) -> str:
+        return str(base or "")
+
+    def chat_e2e_tag() -> str:
+        return ""
+
+    def enforce_e2e_cliente_id(_cliente_id: int) -> None:
+        return
+
+    def enforce_e2e_conversation(_conversation) -> None:
+        return
+
+    def enforce_e2e_conversation_id(_conversation_id: int) -> None:
+        return
+
+    def enforce_e2e_solicitud_id(_solicitud_id: int | None) -> None:
+        return
+
+    def e2e_message_meta(meta):
+        return meta if isinstance(meta, dict) else {}
 from utils.staff_presence import (
     build_presence_snapshot,
     list_recent_staff_presence_states,
