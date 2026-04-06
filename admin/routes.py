@@ -36,8 +36,6 @@ from models import (
     StaffUser,
     SolicitudCandidata,
     ClienteNotificacion,
-    ChatConversation,
-    ChatMessage,
     ContratoDigital,
     Entrevista,
     StaffAuditLog,
@@ -48,6 +46,12 @@ from models import (
     RequestIdempotencyKey,
     DomainOutbox,
 )
+try:
+    from models import ChatConversation, ChatMessage
+except Exception:
+    # Mantiene el arranque aunque el modelo de chat no esté disponible en el build actual.
+    ChatConversation = None
+    ChatMessage = None
 from admin.forms import (
     StaffUserCreateForm,
     StaffUserEditForm,
