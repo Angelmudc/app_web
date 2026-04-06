@@ -58,6 +58,7 @@ def test_editar_usuario_async_ok_local_success_without_redirect():
             "email": unique_email,
             "role": "owner",
             "new_password": "NuevaPass123",
+            "new_password_confirm": "NuevaPass123",
         },
         headers=_async_headers(),
         follow_redirects=False,
@@ -76,6 +77,43 @@ def test_editar_usuario_async_ok_local_success_without_redirect():
     assert updated.email == unique_email
     assert updated.role == "secretaria"
     assert updated.check_password("NuevaPass123") is True
+
+
+def test_editar_usuario_async_new_password_without_confirm_fails_and_keeps_hash():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        user = _create_staff_user(role="admin")
+        user_id = int(user.id)
+        original_hash = str(user.password_hash or "")
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+
+    resp = client.post(
+        f"/admin/usuarios/{user_id}/editar",
+        data={
+            "email": "missing.confirm.{0}@example.com".format(uuid.uuid4().hex[:8]),
+            "role": "owner",
+            "new_password": "NuevaPass123",
+            "new_password_confirm": "",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    assert payload.get("success") is False
+    assert payload.get("error_code") == "invalid_input"
+    html = payload.get("replace_html") or ""
+    assert "Confirma la nueva contraseña." in html
+
+    updated = _get_staff_user(user_id)
+    assert updated is not None
+    assert str(updated.password_hash or "") == original_hash
+    assert updated.check_password("Pass12345") is True
 
 
 def test_editar_usuario_async_validation_error_returns_inline_errors():
@@ -149,6 +187,7 @@ def test_editar_usuario_fallback_clasico_still_redirects_and_saves():
     with flask_app.app_context():
         user = _create_staff_user(role="admin")
         user_id = int(user.id)
+        original_hash = str(user.password_hash or "")
 
     client = flask_app.test_client()
     assert _login_owner(client).status_code in (302, 303)
@@ -170,6 +209,8 @@ def test_editar_usuario_fallback_clasico_still_redirects_and_saves():
     assert updated is not None
     assert updated.email == fallback_email
     assert updated.role == "admin"
+    assert str(updated.password_hash or "") == original_hash
+    assert updated.check_password("Pass12345") is True
 
 
 def test_editar_usuario_async_ignores_role_change_even_if_post_is_tampered():

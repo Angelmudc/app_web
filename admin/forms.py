@@ -127,6 +127,11 @@ class StaffUserEditForm(FlaskForm):
         validators=[Optional(), Length(min=8, max=128)],
         render_kw={"autocomplete": "new-password"}
     )
+    new_password_confirm = PasswordField(
+        'Confirmar nueva contraseña',
+        validators=[Optional(), EqualTo('new_password', message='Las contraseñas no coinciden.')],
+        render_kw={"autocomplete": "new-password"}
+    )
     submit = SubmitField('Guardar cambios')
 
 

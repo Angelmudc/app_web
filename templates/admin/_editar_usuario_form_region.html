@@ -58,6 +58,18 @@
       {% endif %}
     </div>
 
+    <div class="mb-3">
+      <label class="form-label" for="new_password_confirm">Confirmar nueva contraseña</label>
+      {{ form.new_password_confirm(
+        class="form-control" + (" is-invalid" if form.new_password_confirm.errors else ""),
+        id="new_password_confirm",
+        placeholder="Repite la nueva contraseña"
+      ) }}
+      {% if form.new_password_confirm.errors %}
+        <div class="invalid-feedback d-block">{{ form.new_password_confirm.errors[0] }}</div>
+      {% endif %}
+    </div>
+
     <button type="submit" class="btn btn-primary" data-loading-text="Guardando...">
       Guardar cambios
     </button>

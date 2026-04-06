@@ -36,6 +36,8 @@ from models import (
     StaffUser,
     SolicitudCandidata,
     ClienteNotificacion,
+    ChatConversation,
+    ChatMessage,
     ContratoDigital,
     Entrevista,
     StaffAuditLog,
@@ -167,6 +169,20 @@ from utils.timezone import (
     to_rd,
     utc_now_naive,
     utc_timestamp,
+)
+from utils.chat_e2e_guard import (
+    E2EChatGuardError,
+    chat_e2e_enabled,
+    chat_e2e_scope_prefix,
+    chat_e2e_scope_key,
+    chat_e2e_run_id,
+    chat_e2e_subject,
+    chat_e2e_tag,
+    enforce_e2e_cliente_id,
+    enforce_e2e_conversation,
+    enforce_e2e_conversation_id,
+    enforce_e2e_solicitud_id,
+    e2e_message_meta,
 )
 from utils.staff_presence import (
     build_presence_snapshot,
@@ -397,6 +413,20 @@ def _incoming_correlation_id() -> str:
     return ""
 
 
+def _maybe_assign_sqlite_pk(model_obj, model_cls) -> None:
+    try:
+        bind = db.session.get_bind()
+        dialect = str(getattr(getattr(bind, "dialect", None), "name", "")).strip().lower()
+        if dialect != "sqlite":
+            return
+        if getattr(model_obj, "id", None):
+            return
+        max_id = db.session.query(db.func.max(model_cls.id)).scalar() or 0
+        model_obj.id = int(max_id) + 1
+    except Exception:
+        return
+
+
 def _emit_domain_outbox_event(
     *,
     event_type: str,
@@ -406,22 +436,65 @@ def _emit_domain_outbox_event(
     payload: dict | None = None,
 ):
     event_id = secrets.token_hex(16)
-    db.session.add(
-        DomainOutbox(
-            event_id=event_id,
-            event_type=(event_type or "")[:80],
-            aggregate_type=(aggregate_type or "")[:80],
-            aggregate_id=str(aggregate_id)[:64],
-            aggregate_version=aggregate_version,
-            occurred_at=utc_now_naive(),
-            actor_id=_request_actor_id(),
-            region="admin",
-            payload=dict(payload or {}),
-            schema_version=1,
-            correlation_id=_incoming_correlation_id() or None,
-            idempotency_key=_incoming_idempotency_key() or None,
-        )
+    payload_data = dict(payload or {})
+    if chat_e2e_enabled():
+        payload_data.setdefault("e2e_tag", chat_e2e_tag())
+        payload_data.setdefault("e2e_run_id", chat_e2e_run_id())
+    row = DomainOutbox(
+        event_id=event_id,
+        event_type=(event_type or "")[:80],
+        aggregate_type=(aggregate_type or "")[:80],
+        aggregate_id=str(aggregate_id)[:64],
+        aggregate_version=aggregate_version,
+        occurred_at=utc_now_naive(),
+        actor_id=_request_actor_id(),
+        region="admin",
+        payload=payload_data,
+        schema_version=1,
+        correlation_id=_incoming_correlation_id() or None,
+        idempotency_key=_incoming_idempotency_key() or None,
     )
+    _maybe_assign_sqlite_pk(row, DomainOutbox)
+    db.session.add(row)
+
+
+def _emit_cliente_live_solicitud_events(
+    *,
+    event_type: str,
+    solicitud: Solicitud | None,
+    cliente_id: int | None = None,
+    include_dashboard: bool = False,
+):
+    sid = _safe_int(getattr(solicitud, "id", 0), default=0)
+    cid = _safe_int(cliente_id or getattr(solicitud, "cliente_id", 0), default=0)
+    if sid <= 0 or cid <= 0:
+        return
+
+    _emit_domain_outbox_event(
+        event_type=event_type,
+        aggregate_type="Solicitud",
+        aggregate_id=int(sid),
+        aggregate_version=int(getattr(solicitud, "row_version", 0) or 0) + 1,
+        payload={
+            "cliente_id": int(cid),
+            "solicitud_id": int(sid),
+            "codigo_solicitud": str(getattr(solicitud, "codigo_solicitud", "") or "")[:40],
+            "estado": str(getattr(solicitud, "estado", "") or ""),
+        },
+    )
+    if include_dashboard:
+        reason = "solicitud_creada" if str(event_type or "").upper() == "CLIENTE_SOLICITUD_CREATED" else "solicitud_actualizada"
+        _emit_domain_outbox_event(
+            event_type="CLIENTE_DASHBOARD_UPDATED",
+            aggregate_type="Cliente",
+            aggregate_id=int(cid),
+            aggregate_version=None,
+            payload={
+                "cliente_id": int(cid),
+                "solicitud_id": int(sid),
+                "reason": reason,
+            },
+        )
 
 
 _F4_LIVE_ALLOWED_EVENT_TYPES = {str(ev or "").strip().upper() for ev in OUTBOX_RELAY_ALLOWED_EVENT_TYPES}
@@ -430,6 +503,7 @@ _F4_LIVE_POLL_APPROVED_VIEWS = {
     "cliente_detail",
     "solicitudes_summary",
     "solicitudes_prioridad_summary",
+    "chat_inbox",
 }
 _LIVE_INVALIDATION_MODE_RELAY = "relay_published"
 _LIVE_INVALIDATION_MODE_DEGRADED = "degraded_outbox_fallback"
@@ -866,6 +940,36 @@ def _normalize_live_invalidation_event(event: dict, *, stream_id: str | None = N
     payload = dict((event or {}).get("payload") or {})
     aggregate_type = str(aggregate.get("type") or "").strip() or "Solicitud"
     aggregate_id = str(aggregate.get("id") or "").strip()
+
+    if event_type.startswith("CHAT_"):
+        conversation_id = _safe_int(payload.get("conversation_id") or aggregate_id, default=0)
+        if conversation_id <= 0:
+            return None
+        cliente_id = _safe_int(payload.get("cliente_id"), default=0)
+        if cliente_id <= 0:
+            cliente_id = None
+        solicitud_id = _safe_int(payload.get("solicitud_id"), default=0)
+        if solicitud_id <= 0:
+            solicitud_id = None
+        return {
+            "event_id": str((event or {}).get("event_id") or ""),
+            "event_type": event_type,
+            "occurred_at": (event or {}).get("occurred_at"),
+            "recorded_at": (event or {}).get("recorded_at"),
+            "stream_id": str(stream_id or "") or None,
+            "aggregate": {
+                "type": "ChatConversation",
+                "id": str(conversation_id),
+                "version": aggregate.get("version"),
+            },
+            "target": {
+                "entity_type": "chat_conversation",
+                "conversation_id": int(conversation_id),
+                "solicitud_id": int(solicitud_id) if solicitud_id else None,
+                "cliente_id": cliente_id,
+            },
+        }
+
     solicitud_id_raw = payload.get("solicitud_id") or aggregate_id
     solicitud_id = _safe_int(solicitud_id_raw, default=0)
     if solicitud_id <= 0:
@@ -3360,6 +3464,7 @@ def editar_usuario(user_id: int):
     if form.validate_on_submit():
         email = (form.email.data or '').strip().lower() or None
         new_password = StaffUser.normalize_password(form.new_password.data or "")
+        new_password_confirm = StaffUser.normalize_password(form.new_password_confirm.data or "")
         old_role = (user.role or "").strip().lower()
         role_from_form = (form.role.data or '').strip().lower()
         role_to_apply = old_role if wants_async else role_from_form
@@ -3408,6 +3513,48 @@ def editar_usuario(user_id: int):
                     async_feedback={"message": f"La nueva contraseña debe tener al menos {min_password_len} caracteres.", "category": "danger"},
                 )
             flash(f'La nueva contraseña debe tener al menos {min_password_len} caracteres.', 'danger')
+            return _render_edit_page()
+
+        if new_password and not new_password_confirm:
+            form.new_password_confirm.errors.append('Confirma la nueva contraseña.')
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message='No se guardó. Revisa los campos marcados y corrige los errores.',
+                    category='warning',
+                    http_status=200,
+                    error_code='invalid_input',
+                    async_feedback={"message": "No se guardó. Revisa los campos marcados y corrige los errores.", "category": "warning"},
+                )
+            flash('No se guardó. Revisa los campos marcados y corrige los errores.', 'danger')
+            return _render_edit_page()
+
+        if new_password_confirm and not new_password:
+            form.new_password.errors.append('Debes escribir la nueva contraseña primero.')
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message='No se guardó. Revisa los campos marcados y corrige los errores.',
+                    category='warning',
+                    http_status=200,
+                    error_code='invalid_input',
+                    async_feedback={"message": "No se guardó. Revisa los campos marcados y corrige los errores.", "category": "warning"},
+                )
+            flash('No se guardó. Revisa los campos marcados y corrige los errores.', 'danger')
+            return _render_edit_page()
+
+        if new_password and new_password_confirm and new_password != new_password_confirm:
+            form.new_password_confirm.errors.append('Las contraseñas no coinciden.')
+            if wants_async:
+                return _async_edit_response(
+                    ok=False,
+                    message='No se guardó. Revisa los campos marcados y corrige los errores.',
+                    category='warning',
+                    http_status=200,
+                    error_code='invalid_input',
+                    async_feedback={"message": "No se guardó. Revisa los campos marcados y corrige los errores.", "category": "warning"},
+                )
+            flash('No se guardó. Revisa los campos marcados y corrige los errores.', 'danger')
             return _render_edit_page()
 
         try:
@@ -8593,6 +8740,12 @@ def nueva_solicitud_admin(cliente_id):
                 db.session.flush()
                 state["solicitud_id"] = int(getattr(s, "id", 0) or 0)
                 state["tipo_servicio"] = s.tipo_servicio
+                _emit_cliente_live_solicitud_events(
+                    event_type="CLIENTE_SOLICITUD_CREATED",
+                    solicitud=s,
+                    cliente_id=int(c.id),
+                    include_dashboard=True,
+                )
 
                 c.total_solicitudes = base_total + 1
                 c.fecha_ultima_solicitud = utc_now_naive()
@@ -8933,6 +9086,13 @@ def editar_solicitud_admin(cliente_id, id):
                     mode_raw=public_pasaje_mode,
                     text_raw=public_pasaje_otro,
                     default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
+                )
+                db.session.flush()
+                _emit_cliente_live_solicitud_events(
+                    event_type="CLIENTE_SOLICITUD_UPDATED",
+                    solicitud=s,
+                    cliente_id=int(cliente_id),
+                    include_dashboard=True,
                 )
 
             result = _execute_form_save(
@@ -12369,6 +12529,19 @@ def _upsert_cliente_notificacion_candidatas(solicitud: Solicitud, count: int) ->
         existing.titulo = titulo
         existing.cuerpo = cuerpo
         existing.updated_at = now
+        _emit_domain_outbox_event(
+            event_type="CLIENTE_NOTIFICACION_UPDATED",
+            aggregate_type="ClienteNotificacion",
+            aggregate_id=existing.id,
+            aggregate_version=None,
+            payload={
+                "cliente_id": int(getattr(solicitud, "cliente_id", 0) or 0),
+                "solicitud_id": int(getattr(solicitud, "id", 0) or 0),
+                "notificacion_id": int(getattr(existing, "id", 0) or 0),
+                "tipo": _NOTIF_TIPO_CANDIDATAS_ENVIADAS,
+                "count": int(existing.payload.get("count") or 0),
+            },
+        )
         return
 
     notif = ClienteNotificacion(
@@ -12382,6 +12555,20 @@ def _upsert_cliente_notificacion_candidatas(solicitud: Solicitud, count: int) ->
         is_deleted=False,
     )
     db.session.add(notif)
+    db.session.flush()
+    _emit_domain_outbox_event(
+        event_type="CLIENTE_NOTIFICACION_CREATED",
+        aggregate_type="ClienteNotificacion",
+        aggregate_id=notif.id,
+        aggregate_version=None,
+        payload={
+            "cliente_id": int(getattr(solicitud, "cliente_id", 0) or 0),
+            "solicitud_id": int(getattr(solicitud, "id", 0) or 0),
+            "notificacion_id": int(getattr(notif, "id", 0) or 0),
+            "tipo": _NOTIF_TIPO_CANDIDATAS_ENVIADAS,
+            "count": int(count or 0),
+        },
+    )
 
 
 def _matching_candidate_flags(solicitud: Solicitud, candidata_ids: list[int]) -> tuple[set[int], set[int]]:
@@ -17577,4 +17764,519 @@ def generar_link_publico_cliente_nuevo():
         'admin/cliente_nuevo_link_publico_solicitud.html',
         link_publico=link,
         max_age_days=max_age_days,
+    )
+
+
+_ADMIN_CHAT_MESSAGE_MAX_LEN = 1800
+_ADMIN_CHAT_CONV_LIMIT = 60
+_ADMIN_CHAT_MSG_LIMIT = 50
+
+
+def _chat_enabled() -> bool:
+    return bool(ChatConversation is not None and ChatMessage is not None)
+
+
+def _chat_scope_key(*, cliente_id: int, solicitud_id: int | None) -> str:
+    if chat_e2e_enabled():
+        return chat_e2e_scope_key(cliente_id=int(cliente_id or 0), solicitud_id=solicitud_id)
+    if int(solicitud_id or 0) > 0:
+        return f"solicitud:{int(solicitud_id)}"
+    return f"general:{int(cliente_id)}"
+
+
+def _chat_subject_for_solicitud(solicitud: Solicitud | None) -> str:
+    if not solicitud:
+        return chat_e2e_subject("Soporte general")
+    codigo = str(getattr(solicitud, "codigo_solicitud", "") or "").strip()
+    base = f"Soporte solicitud {codigo}" if codigo else f"Soporte solicitud #{int(getattr(solicitud, 'id', 0) or 0)}"
+    return chat_e2e_subject(base)
+
+
+def _chat_message_preview(body: str) -> str:
+    txt = re.sub(r"\s+", " ", str(body or "")).strip()
+    return txt[:220]
+
+
+def _chat_get_or_create_conversation(*, cliente_id: int, solicitud_id: int | None = None):
+    if not _chat_enabled():
+        abort(404)
+    cid = int(cliente_id or 0)
+    sid = int(solicitud_id or 0) or None
+    if cid <= 0:
+        abort(404)
+
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_cliente_id(cid)
+            enforce_e2e_solicitud_id(sid)
+        except E2EChatGuardError as exc:
+            abort(403, description=str(exc.reason))
+
+    cliente = Cliente.query.filter_by(id=cid).first_or_404()
+    solicitud = None
+    if sid:
+        solicitud = Solicitud.query.filter_by(id=sid, cliente_id=cid).first_or_404()
+
+    scope_key = _chat_scope_key(cliente_id=cid, solicitud_id=sid)
+    conv = ChatConversation.query.filter_by(scope_key=scope_key).first()
+    if conv is not None:
+        if chat_e2e_enabled():
+            try:
+                enforce_e2e_conversation(conv)
+            except E2EChatGuardError as exc:
+                abort(403, description=str(exc.reason))
+        return conv
+
+    now = utc_now_naive()
+    conv = ChatConversation(
+        scope_key=scope_key,
+        conversation_type="solicitud" if sid else "general",
+        status="open",
+        cliente_id=cid,
+        solicitud_id=sid,
+        subject=_chat_subject_for_solicitud(solicitud),
+        created_at=now,
+        updated_at=now,
+    )
+    db.session.add(conv)
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        conv = ChatConversation.query.filter_by(scope_key=scope_key).first()
+        if conv is None:
+            raise
+    return conv
+
+
+def _chat_staff_conversation_or_404(conversation_id: int):
+    if not _chat_enabled():
+        abort(404)
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation_id(int(conversation_id or 0))
+        except E2EChatGuardError as exc:
+            abort(403, description=str(exc.reason))
+    conv = ChatConversation.query.filter_by(id=int(conversation_id)).first_or_404()
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation(conv)
+        except E2EChatGuardError as exc:
+            abort(403, description=str(exc.reason))
+    return conv
+
+
+def _chat_staff_conversation_for_update_or_404(conversation_id: int):
+    if not _chat_enabled():
+        abort(404)
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation_id(int(conversation_id or 0))
+        except E2EChatGuardError as exc:
+            abort(403, description=str(exc.reason))
+    q = ChatConversation.query.filter_by(id=int(conversation_id))
+    try:
+        conv = q.with_for_update().first_or_404()
+    except Exception:
+        conv = q.first_or_404()
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation(conv)
+        except E2EChatGuardError as exc:
+            abort(403, description=str(exc.reason))
+    return conv
+
+
+def _chat_wants_json() -> bool:
+    accept = (request.headers.get("Accept") or "").lower()
+    xr = (request.headers.get("X-Requested-With") or "").lower()
+    return ("application/json" in accept) or (xr == "xmlhttprequest") or (str(request.args.get("ajax") or "").strip() == "1")
+
+
+def _chat_serialize_conversation_for_staff(conv) -> dict:
+    cliente = getattr(conv, "cliente", None)
+    solicitud = getattr(conv, "solicitud", None)
+    last_message_at = getattr(conv, "last_message_at", None)
+    return {
+        "id": int(conv.id),
+        "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
+        "status": str(getattr(conv, "status", "") or "open"),
+        "subject": str(getattr(conv, "subject", "") or "Soporte"),
+        "cliente_id": int(getattr(conv, "cliente_id", 0) or 0),
+        "cliente_codigo": str(getattr(cliente, "codigo", "") or ""),
+        "cliente_nombre": str(getattr(cliente, "nombre_completo", "") or ""),
+        "solicitud_id": int(getattr(conv, "solicitud_id", 0) or 0) or None,
+        "solicitud_codigo": str(getattr(solicitud, "codigo_solicitud", "") or "") if solicitud is not None else "",
+        "last_message_at": iso_utc_z(last_message_at) if last_message_at else None,
+        "last_message_preview": str(getattr(conv, "last_message_preview", "") or ""),
+        "last_message_sender_type": str(getattr(conv, "last_message_sender_type", "") or ""),
+        "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
+        "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+        "thread_url": url_for("admin.chat_staff_inbox", conversation_id=int(conv.id)),
+    }
+
+
+def _chat_serialize_message_for_staff(msg) -> dict:
+    sender_type = str(getattr(msg, "sender_type", "") or "")
+    sender_name = "Cliente"
+    if sender_type == "staff":
+        sender_name = "Tú"
+    else:
+        cliente_row = getattr(msg, "sender_cliente", None)
+        if cliente_row is not None:
+            sender_name = str(getattr(cliente_row, "nombre_completo", "") or "Cliente")
+    if sender_type == "staff":
+        staff_row = getattr(msg, "sender_staff_user", None)
+        if staff_row is not None and not str(getattr(msg, "sender_staff_user_id", "") or "") == str(getattr(current_user, "id", "") or ""):
+            sender_name = str(getattr(staff_row, "username", "") or "Staff")
+    return {
+        "id": int(getattr(msg, "id", 0) or 0),
+        "conversation_id": int(getattr(msg, "conversation_id", 0) or 0),
+        "sender_type": sender_type,
+        "sender_name": sender_name,
+        "body": str(getattr(msg, "body", "") or ""),
+        "created_at": iso_utc_z(getattr(msg, "created_at", None)),
+        "is_mine": sender_type == "staff" and int(getattr(msg, "sender_staff_user_id", 0) or 0) == int(getattr(current_user, "id", 0) or 0),
+    }
+
+
+def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type: str | None = None) -> None:
+    if conversation is None:
+        return
+    payload = {
+        "cliente_id": int(getattr(conversation, "cliente_id", 0) or 0),
+        "solicitud_id": int(getattr(conversation, "solicitud_id", 0) or 0) or None,
+        "conversation_id": int(getattr(conversation, "id", 0) or 0),
+        "conversation_type": str(getattr(conversation, "conversation_type", "") or "general"),
+        "cliente_unread_count": int(getattr(conversation, "cliente_unread_count", 0) or 0),
+        "staff_unread_count": int(getattr(conversation, "staff_unread_count", 0) or 0),
+    }
+    if message is not None:
+        payload.update(
+            {
+                "message_id": int(getattr(message, "id", 0) or 0),
+                "sender_type": str(getattr(message, "sender_type", "") or ""),
+                "preview": _chat_message_preview(getattr(message, "body", "") or ""),
+            }
+        )
+    if reader_type:
+        payload["reader_type"] = str(reader_type)[:20]
+
+    _emit_domain_outbox_event(
+        event_type=str(event_type or "").strip().upper(),
+        aggregate_type="ChatConversation",
+        aggregate_id=int(getattr(conversation, "id", 0) or 0),
+        aggregate_version=None,
+        payload=payload,
+    )
+
+
+def _admin_live_boot_after_id() -> int:
+    try:
+        return int(
+            db.session.query(db.func.max(DomainOutbox.id))
+            .filter(DomainOutbox.event_type.in_(sorted(_F4_LIVE_ALLOWED_EVENT_TYPES)))
+            .scalar()
+            or 0
+        )
+    except Exception:
+        return 0
+
+
+@admin_bp.route('/chat', methods=['GET'])
+@login_required
+@staff_required
+def chat_staff_inbox():
+    if not _chat_enabled():
+        abort(404)
+
+    conv_id = _safe_int(request.args.get("conversation_id"), default=0)
+    q = re.sub(r"\s+", " ", str(request.args.get("q") or "")).strip()[:80]
+    only_unread = str(request.args.get("only_unread") or "").strip() == "1"
+    live_after_id = _admin_live_boot_after_id()
+
+    query = ChatConversation.query
+    if chat_e2e_enabled():
+        prefix = chat_e2e_scope_prefix()
+        if not prefix:
+            abort(403, description="e2e_guard_blocked")
+        query = query.filter(ChatConversation.scope_key.like(f"{prefix}%"))
+    if only_unread:
+        query = query.filter(ChatConversation.staff_unread_count > 0)
+    if q:
+        like = f"%{q}%"
+        query = query.join(Cliente, Cliente.id == ChatConversation.cliente_id).filter(
+            or_(
+                Cliente.nombre_completo.ilike(like),
+                Cliente.codigo.ilike(like),
+                ChatConversation.subject.ilike(like),
+            )
+        )
+    conversations = (
+        query
+        .order_by(ChatConversation.staff_unread_count.desc(), ChatConversation.last_message_at.desc().nullslast(), ChatConversation.id.desc())
+        .limit(_ADMIN_CHAT_CONV_LIMIT)
+        .all()
+    )
+
+    selected = None
+    if conv_id > 0:
+        selected = _chat_staff_conversation_or_404(conv_id)
+    elif conversations:
+        selected = conversations[0]
+
+    messages = []
+    if selected is not None:
+        messages = (
+            ChatMessage.query
+            .filter_by(conversation_id=int(selected.id), is_deleted=False)
+            .order_by(ChatMessage.id.desc())
+            .limit(_ADMIN_CHAT_MSG_LIMIT)
+            .all()
+        )
+        messages = list(reversed(messages or []))
+
+    return render_template(
+        "admin/chat_inbox.html",
+        chat_conversations=conversations,
+        chat_selected=selected,
+        chat_messages=messages,
+        chat_query=q,
+        chat_only_unread=only_unread,
+        chat_message_max_len=_ADMIN_CHAT_MESSAGE_MAX_LEN,
+        chat_live_after_id=int(live_after_id or 0),
+    )
+
+
+@admin_bp.route('/chat/open', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_open():
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    payload = request.get_json(silent=True) or {}
+    cliente_id = _safe_int(request.form.get("cliente_id") or payload.get("cliente_id"), default=0)
+    solicitud_id = _safe_int(request.form.get("solicitud_id") or payload.get("solicitud_id"), default=0)
+    if cliente_id <= 0:
+        return jsonify({"ok": False, "error": "cliente_required"}), 400
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_cliente_id(int(cliente_id))
+            enforce_e2e_solicitud_id(int(solicitud_id or 0) or None)
+        except E2EChatGuardError as exc:
+            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+    conv = _chat_get_or_create_conversation(
+        cliente_id=int(cliente_id),
+        solicitud_id=(int(solicitud_id) if int(solicitud_id or 0) > 0 else None),
+    )
+    db.session.commit()
+    target_url = url_for("admin.chat_staff_inbox", conversation_id=int(conv.id))
+    if _chat_wants_json():
+        return jsonify({"ok": True, "conversation_id": int(conv.id), "redirect_url": target_url})
+    return redirect(target_url)
+
+
+@admin_bp.route('/chat/conversations.json', methods=['GET'])
+@login_required
+@staff_required
+def chat_staff_conversations_json():
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    q = re.sub(r"\s+", " ", str(request.args.get("q") or "")).strip()[:80]
+    only_unread = str(request.args.get("only_unread") or "").strip() == "1"
+
+    query = ChatConversation.query
+    if chat_e2e_enabled():
+        prefix = chat_e2e_scope_prefix()
+        if not prefix:
+            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": "allowlist_empty"}), 403
+        query = query.filter(ChatConversation.scope_key.like(f"{prefix}%"))
+    if only_unread:
+        query = query.filter(ChatConversation.staff_unread_count > 0)
+    if q:
+        like = f"%{q}%"
+        query = query.join(Cliente, Cliente.id == ChatConversation.cliente_id).filter(
+            or_(
+                Cliente.nombre_completo.ilike(like),
+                Cliente.codigo.ilike(like),
+                ChatConversation.subject.ilike(like),
+            )
+        )
+    rows = (
+        query
+        .order_by(ChatConversation.staff_unread_count.desc(), ChatConversation.last_message_at.desc().nullslast(), ChatConversation.id.desc())
+        .limit(_ADMIN_CHAT_CONV_LIMIT)
+        .all()
+    )
+    total_unread = int(sum(int(getattr(r, "staff_unread_count", 0) or 0) for r in (rows or [])))
+    return jsonify(
+        {
+            "ok": True,
+            "items": [_chat_serialize_conversation_for_staff(r) for r in (rows or [])],
+            "unread_count": total_unread,
+            "ts": iso_utc_z(),
+        }
+    )
+
+
+@admin_bp.route('/chat/conversations/<int:conversation_id>/messages.json', methods=['GET'])
+@login_required
+@staff_required
+def chat_staff_messages_json(conversation_id):
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    conv = _chat_staff_conversation_or_404(conversation_id)
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation(conv)
+        except E2EChatGuardError as exc:
+            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+    before_id = _safe_int(request.args.get("before_id"), default=0)
+    limit = max(1, min(_safe_int(request.args.get("limit"), default=_ADMIN_CHAT_MSG_LIMIT), 80))
+
+    query = (
+        ChatMessage.query
+        .filter_by(conversation_id=int(conv.id), is_deleted=False)
+        .order_by(ChatMessage.id.desc())
+    )
+    if before_id > 0:
+        query = query.filter(ChatMessage.id < int(before_id))
+    rows = query.limit(limit + 1).all()
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+    rows = list(reversed(rows or []))
+    next_before_id = int(rows[0].id) if rows else int(before_id or 0)
+
+    return jsonify(
+        {
+            "ok": True,
+            "conversation": _chat_serialize_conversation_for_staff(conv),
+            "items": [_chat_serialize_message_for_staff(m) for m in rows],
+            "has_more": bool(has_more),
+            "next_before_id": int(next_before_id),
+            "ts": iso_utc_z(),
+        }
+    )
+
+
+@admin_bp.route('/chat/conversations/<int:conversation_id>/messages', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_send_message(conversation_id):
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    conv = _chat_staff_conversation_or_404(conversation_id)
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation(conv)
+        except E2EChatGuardError as exc:
+            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+
+    payload = request.get_json(silent=True) or {}
+    body = re.sub(r"\s+", " ", str(request.form.get("body") or payload.get("body") or "")).strip()
+    if not body:
+        return jsonify({"ok": False, "error": "empty_message"}), 400
+    if len(body) > _ADMIN_CHAT_MESSAGE_MAX_LEN:
+        return jsonify({"ok": False, "error": "message_too_long", "max_len": _ADMIN_CHAT_MESSAGE_MAX_LEN}), 400
+
+    actor = f"staff:{int(getattr(current_user, 'id', 0) or 0)}"
+    blocked, _count = enforce_business_limit(
+        cache_obj=cache,
+        scope="chat_staff_send",
+        actor=actor,
+        limit=35,
+        window_seconds=60,
+        reason="chat_rate_limit",
+        summary="Rate limit en chat staff",
+        metadata={"conversation_id": int(conv.id)},
+        alert_on_block=False,
+    )
+    if blocked:
+        return jsonify({"ok": False, "error": "rate_limited"}), 429
+
+    blocked_fast, _elapsed = enforce_min_human_interval(
+        cache_obj=cache,
+        scope="chat_staff_human_interval",
+        actor=actor,
+        min_seconds=1,
+        reason="chat_too_fast",
+        summary="Patrón de chat muy rápido staff",
+        metadata={"conversation_id": int(conv.id)},
+    )
+    if blocked_fast:
+        return jsonify({"ok": False, "error": "too_fast"}), 429
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="chat_staff_send_message_v1",
+        entity_type="chat_conversation",
+        entity_id=int(conv.id),
+        action="send_message",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return jsonify({"ok": False, "error": "idempotency_conflict"}), 409
+        return jsonify({"ok": True, "duplicate": True}), 200
+
+    conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
+    now = utc_now_naive()
+    msg = ChatMessage(
+        conversation_id=int(conv.id),
+        sender_type="staff",
+        sender_staff_user_id=int(getattr(current_user, "id", 0) or 0),
+        body=body,
+        meta=e2e_message_meta({}),
+        created_at=now,
+    )
+    db.session.add(msg)
+
+    conv.last_message_at = now
+    conv.last_message_preview = _chat_message_preview(body)
+    conv.last_message_sender_type = "staff"
+    conv.cliente_unread_count = int(getattr(conv, "cliente_unread_count", 0) or 0) + 1
+    conv.updated_at = now
+    db.session.add(conv)
+    db.session.flush()
+    _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
+    _set_idempotency_response(idem_row, status=200, code="ok")
+    db.session.commit()
+
+    return jsonify(
+        {
+            "ok": True,
+            "conversation": _chat_serialize_conversation_for_staff(conv),
+            "message": _chat_serialize_message_for_staff(msg),
+            "ts": iso_utc_z(),
+        }
+    )
+
+
+@admin_bp.route('/chat/conversations/<int:conversation_id>/read', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_mark_read(conversation_id):
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation(conv)
+        except E2EChatGuardError as exc:
+            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+    changed = int(getattr(conv, "staff_unread_count", 0) or 0) > 0
+    now = utc_now_naive()
+    conv.staff_unread_count = 0
+    conv.staff_last_read_at = now
+    conv.updated_at = now
+    db.session.add(conv)
+    if changed:
+        _chat_emit_event(event_type="CHAT_CONVERSATION_READ", conversation=conv, reader_type="staff")
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "conversation_id": int(conv.id),
+            "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+            "ts": iso_utc_z(),
+        }
     )

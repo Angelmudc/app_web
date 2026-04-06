@@ -73,6 +73,7 @@ def test_staff_password_lifecycle_create_edit_and_login(role: str):
             "email": f"{username}@example.com",
             "role": role,
             "new_password": updated_password_raw,
+            "new_password_confirm": updated_password_raw,
         },
         follow_redirects=False,
     )
