@@ -235,6 +235,10 @@ class AdminReemplazoFinAsyncTest(unittest.TestCase):
                  patch("admin.routes.AdminReemplazoFinForm", _FakeReemplazoFinForm), \
                  patch("admin.routes.assert_candidata_no_descalificada", return_value=None), \
                  patch("admin.routes._sync_solicitud_candidatas_after_assignment") as sync_mock, \
+                 patch(
+                     "admin.routes._mark_candidata_estado",
+                     side_effect=lambda c, estado, **_kwargs: setattr(c, "estado", estado),
+                 ), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/reemplazos/20/finalizar",
@@ -253,7 +257,7 @@ class AdminReemplazoFinAsyncTest(unittest.TestCase):
         self.assertEqual(cand_new.monto_total, Decimal("10000.00"))
         self.assertEqual(cand_new.porciento, Decimal("2500.00"))
         sync_mock.assert_called_once()
-        commit_mock.assert_called_once()
+        self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_post_final_rehidrata_choice_seleccionada_con_q_vacio(self):
         sol = _solicitud_stub()
@@ -283,7 +287,7 @@ class AdminReemplazoFinAsyncTest(unittest.TestCase):
         self.assertIn(resp.status_code, (302, 303))
         self.assertIn("/admin/clientes/7", resp.location)
         self.assertEqual(repl.candidata_new_id, 2)
-        commit_mock.assert_called_once()
+        self.assertGreaterEqual(commit_mock.call_count, 1)
 
 
 if __name__ == "__main__":

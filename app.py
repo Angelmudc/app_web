@@ -2,7 +2,7 @@
 import os
 from datetime import timedelta
 
-from flask import session, request, redirect, url_for, render_template, jsonify
+from flask import session, request, redirect, url_for, render_template, jsonify, flash
 from flask_login import current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf.csrf import CSRFError
@@ -82,7 +82,18 @@ def handle_csrf_error(e):
         ), 400
     if path == '/clientes/solicitudes/nueva-publica':
         return redirect(url_for('clientes.solicitud_publica_nueva'))
-    return e
+    flash("Tu sesión de seguridad expiró. Recarga la página e intenta de nuevo.", "warning")
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        referrer = (request.referrer or "").strip()
+        if referrer:
+            try:
+                host_url = (request.host_url or "").rstrip("/")
+                if referrer.startswith(host_url + "/") or referrer == host_url:
+                    return redirect(referrer)
+            except Exception:
+                pass
+        return redirect(request.url)
+    return render_template("errors/403.html"), 400
 
 
 @app.before_request
@@ -104,7 +115,6 @@ app.config.setdefault("REMEMBER_COOKIE_SAMESITE", "Lax")
 app.config.setdefault("REMEMBER_COOKIE_SECURE", bool(IS_PROD))
 app.config.setdefault("PERMANENT_SESSION_LIFETIME", timedelta(hours=8))
 app.config.setdefault("SESSION_PERMANENT", False)
-app.config.setdefault("WTF_CSRF_TIME_LIMIT", 60 * 60 * 8)
 
 # Refuerzo explícito para despliegues detrás de Render/Cloudflare
 if not isinstance(app.wsgi_app, ProxyFix):

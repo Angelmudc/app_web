@@ -2,7 +2,7 @@
 {% block title %}Panel del Cliente{% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container py-4" data-client-live-view="dashboard">
 
   {# =====================
      Header / Bienvenida
@@ -31,10 +31,43 @@
           <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
             <i class="bi bi-chat-dots me-1"></i> Ayuda
           </a>
+          <a href="{{ url_for('clientes.chat_cliente') }}" class="btn btn-outline-dark">
+            <i class="bi bi-chat-left-text me-1"></i> Chat interno
+          </a>
         </div>
       </div>
 
       <hr class="my-3">
+
+      {% if guia_inteligente %}
+      <div
+        class="alert alert-{{ guia_inteligente.variant|default('info') }} d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3 mb-3"
+        role="status"
+        data-smart-guide
+        data-guide-key="{{ guia_inteligente.stage_key|default('general') }}"
+      >
+        <div>
+          <div class="fw-semibold">
+            <i class="bi {{ guia_inteligente.icon|default('bi-compass') }} me-1"></i>
+            {{ guia_inteligente.title }}
+          </div>
+          <div class="small">
+            {{ guia_inteligente.message }}
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ guia_inteligente.cta_url }}" class="btn btn-sm btn-light border">
+            {{ guia_inteligente.cta_label }}
+          </a>
+          <a href="{{ guia_inteligente.secondary_url }}" class="btn btn-sm btn-outline-dark">
+            {{ guia_inteligente.secondary_label }}
+          </a>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-smart-guide-dismiss>
+            Ocultar
+          </button>
+        </div>
+      </div>
+      {% endif %}
 
       <div class="row g-3">
         <div class="col-12 col-md-4">
@@ -191,6 +224,9 @@
         <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
           <i class="bi bi-chat-dots me-1"></i> Centro de ayuda
         </a>
+        <a href="{{ url_for('clientes.chat_cliente') }}" class="btn btn-outline-dark">
+          <i class="bi bi-chat-left-text me-1"></i> Abrir chat
+        </a>
         <a href="{{ url_for('clientes.informacion') }}" class="btn btn-outline-primary">
           <i class="bi bi-info-circle me-1"></i> Información
         </a>
@@ -202,4 +238,29 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  (function () {
+    const guide = document.querySelector('[data-smart-guide]');
+    if (!guide) return;
+
+    const stage = guide.getAttribute('data-guide-key') || 'general';
+    const key = 'clientes.smart_guide.dismissed.' + stage;
+    if (sessionStorage.getItem(key) === '1') {
+      guide.classList.add('d-none');
+      return;
+    }
+
+    const dismissBtn = guide.querySelector('[data-smart-guide-dismiss]');
+    if (!dismissBtn) return;
+
+    dismissBtn.addEventListener('click', function () {
+      sessionStorage.setItem(key, '1');
+      guide.classList.add('d-none');
+    });
+  })();
+</script>
 {% endblock %}

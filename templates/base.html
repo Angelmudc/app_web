@@ -120,6 +120,7 @@
   {% set _presence_operational_path = true %}
 {% endif %}
 {% set _presence_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and (request.endpoint not in _presence_auth_endpoints) and _presence_operational_path %}
+{% set _chat_badge_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -131,6 +132,11 @@
       data-presence-entity-code="{{ _p_code }}"
       data-entity-lock-url="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
       data-entity-lock-takeover-url="{% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
+      data-chat-global-badge-enabled="{% if _chat_badge_enabled %}1{% else %}0{% endif %}"
+      data-chat-global-badge-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_badge_json') }}{% endif %}"
+      data-chat-global-inbox-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_inbox') }}{% endif %}"
+      data-chat-global-stream-url="{% if _chat_badge_enabled and has_endpoint('admin.live_invalidation_stream') %}{{ url_for('admin.live_invalidation_stream') }}{% endif %}"
+      data-chat-global-poll-url="{% if _chat_badge_enabled and has_endpoint('admin.live_invalidation_poll') %}{{ url_for('admin.live_invalidation_poll') }}{% endif %}"
       data-staff-role="{{ _staff_role if current_user.is_authenticated else '' }}">
 
   <noscript>
@@ -247,28 +253,37 @@
           {% if has_endpoint('admin.chat_staff_inbox') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.chat_staff_inbox'] %}active{% endif %}"
-               href="{{ url_for('admin.chat_staff_inbox') }}">Inbox Chat</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.alertas_canales') and current_user.is_authenticated and (_staff_role == 'owner') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.alertas_canales'] %}active{% endif %}"
-               href="{{ url_for('admin.alertas_canales') }}">Canales</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (_staff_role == 'owner') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles'] %}active{% endif %}"
-               href="{{ url_for('admin.listar_usuarios') }}">Usuarios y roles</a>
+               href="{{ url_for('admin.chat_staff_inbox') }}"
+               id="adminChatGlobalBadgeLink">
+              Inbox Chat
+              <span id="adminChatGlobalBadge"
+                    class="badge rounded-pill text-bg-danger ms-1 d-none"
+                    aria-live="polite"
+                    aria-label="Conversaciones pendientes de staff">0</span>
+            </a>
           </li>
           {% endif %}
 
           {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (_staff_role == 'owner') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'admin.listar_usuarios' %}active{% endif %}"
-               href="{{ url_for('admin.listar_usuarios') }}">Usuarios</a>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles'] %}active{% endif %}"
+               href="#"
+               id="usuariosDropdown"
+               role="button"
+               data-bs-toggle="dropdown"
+               aria-expanded="false">
+              Usuarios
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="usuariosDropdown">
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'admin.listar_usuarios' %}active{% endif %}"
+                   href="{{ url_for('admin.listar_usuarios') }}">Listado de usuarios</a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'admin.admin_roles' %}active{% endif %}"
+                   href="{{ url_for('admin.listar_usuarios') }}">Usuarios y roles</a>
+              </li>
+            </ul>
           </li>
           {% endif %}
 
@@ -280,12 +295,6 @@
               {% set ns_rep.ep = ep %}
             {% endif %}
           {% endfor %}
-          {% if ns_rep.url %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint==ns_rep.ep %}active{% endif %}"
-               href="{{ ns_rep.url }}">Reportes</a>
-          </li>
-          {% endif %}
 
           {# Registro Interno (puede estar en app root o en admin) #}
           {% set ns_reg = namespace(url=None, ep=None) %}
@@ -295,10 +304,40 @@
               {% set ns_reg.ep = ep %}
             {% endif %}
           {% endfor %}
-          {% if ns_reg.url and current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint==ns_reg.ep %}active{% endif %}"
-               href="{{ ns_reg.url }}">Registrar candidata</a>
+
+          {% set _show_admin_more = current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
+          {% if _show_admin_more %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle"
+               href="#"
+               id="adminMoreDropdown"
+               role="button"
+               data-bs-toggle="dropdown"
+               aria-expanded="false">
+              Más
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminMoreDropdown">
+              {% if ns_rep.url %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint==ns_rep.ep %}active{% endif %}"
+                   href="{{ ns_rep.url }}">Reportes</a>
+              </li>
+              {% endif %}
+
+              {% if ns_reg.url and (_staff_role in ['owner', 'admin']) %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint==ns_reg.ep %}active{% endif %}"
+                   href="{{ ns_reg.url }}">Registrar candidata</a>
+              </li>
+              {% endif %}
+
+              {% if has_endpoint('admin.alertas_canales') and (_staff_role == 'owner') %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.alertas_canales'] %}active{% endif %}"
+                   href="{{ url_for('admin.alertas_canales') }}">Canales</a>
+              </li>
+              {% endif %}
+            </ul>
           </li>
           {% endif %}
 
@@ -407,6 +446,9 @@
   <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live_invalidation.js') }}" defer></script>
+  {% if _chat_badge_enabled %}
+  <script src="{{ url_for('static', filename='js/chat/chat_global_badge.js') }}" defer></script>
+  {% endif %}
   {% if _presence_enabled %}
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
   {% endif %}

@@ -120,6 +120,11 @@ def init_security(app, cache):
             fallback = 10
         return _env_int("LOGIN_BLOCK_THRESHOLD", fallback)
 
+    def _login_block_threshold_ip() -> int:
+        # Umbral más alto para bloqueos globales por IP (evita afectar a terceros en la misma red).
+        base = _login_block_threshold()
+        return _env_int("LOGIN_BLOCK_THRESHOLD_IP", max(50, base * 5))
+
     def _login_rate_ip_1m() -> int:
         return _env_int("LOGIN_RATE_IP_1M", 5)
 
@@ -158,7 +163,8 @@ def init_security(app, cache):
         "/admin/seguridad/locks/ping",
         "/admin/solicitudes/live",
         "/clientes/live/ping",
-        "/clientes/solicitudes/live",
+        "/clientes/live/invalidation/poll",
+        "/clientes/live/invalidation/stream",
         "/live/ping",
     }
 
@@ -785,7 +791,12 @@ def init_security(app, cache):
             attempts_ip_user = int(_cache_get(cache, attempts_key_ip_user) or 0) + 1
             _cache_set(cache, attempts_key_ip_user, attempts_ip_user, timeout=_login_window_seconds())
 
-        max_fail = max(attempts_ip, attempts_user, attempts_ip_user)
+        if raw_user:
+            max_fail = max(attempts_user, attempts_ip_user)
+        else:
+            # Sin identificador no aplicamos bloqueo "normal" por umbral estandar.
+            # Estos casos quedan cubiertos por rate-limit IP y umbral extremo IP.
+            max_fail = 0
 
         # Delay progresivo a partir de 5 fallos.
         delay_threshold = _login_delay_threshold()
@@ -794,15 +805,10 @@ def init_security(app, cache):
             delay_ms = min(5000, max(100, int(_login_delay_ms_base() * over)))
             time.sleep(delay_ms / 1000.0)
 
-        # Bloqueo temporal a partir de 10 fallos (IP o usuario)
+        # Bloqueo temporal a partir de N fallos (usuario o usuario+IP).
+        # El bloqueo por IP sola se reserva para umbral extremo.
         if max_fail >= _login_block_threshold():
             block_seconds = _login_block_seconds()
-            _cache_set(
-                cache,
-                block_key_ip,
-                int(time.time()) + block_seconds,
-                timeout=block_seconds
-            )
             if block_key_user:
                 _cache_set(
                     cache,
@@ -824,6 +830,24 @@ def init_security(app, cache):
                 username=raw_user,
                 reason="login_fail_threshold_reached",
                 metadata={"max_fail": max_fail, "block_seconds": block_seconds},
+            )
+            abort(429)
+
+        if attempts_ip >= _login_block_threshold_ip():
+            block_seconds = _login_block_seconds()
+            _cache_set(
+                cache,
+                block_key_ip,
+                int(time.time()) + block_seconds,
+                timeout=block_seconds
+            )
+            _log_auth_throttle(
+                "AUTH_LOGIN_BLOCKED",
+                ip=ip,
+                path=path,
+                username=raw_user,
+                reason="login_fail_ip_extreme_threshold_reached",
+                metadata={"attempts_ip": attempts_ip, "block_seconds": block_seconds},
             )
             abort(429)
 

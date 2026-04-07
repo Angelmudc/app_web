@@ -13,8 +13,8 @@
                 <th>Responsable</th>
                 <th class="text-end">Total</th>
                 <th class="text-end">Estancadas</th>
-                <th class="text-end">Alta</th>
-                <th class="text-end">Espera pago</th>
+                <th class="text-end">Urg.+Crít.</th>
+                <th class="text-end">Reemplazo</th>
                 <th class="text-end">Requieren hoy</th>
               </tr>
             </thead>
@@ -25,7 +25,7 @@
                   <td class="text-end" data-testid="responsable-total">{{ row.total }}</td>
                   <td class="text-end" data-testid="responsable-stagnant">{{ row.stagnant }}</td>
                   <td class="text-end" data-testid="responsable-high">{{ row.high_priority }}</td>
-                  <td class="text-end" data-testid="responsable-espera">{{ row.espera_pago }}</td>
+                  <td class="text-end" data-testid="responsable-espera">{{ row.reemplazo }}</td>
                   <td class="text-end" data-testid="responsable-needs">{{ row.needs_today }}</td>
                 </tr>
               {% endfor %}

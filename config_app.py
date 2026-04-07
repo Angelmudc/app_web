@@ -273,7 +273,7 @@ def create_app():
     # En prod, normalmente sí.
     app.config["WTF_CSRF_ENABLED"] = True
     app.config["WTF_CSRF_SSL_STRICT"] = (prod and _cookie_secure() and IS_RENDER)
-    app.config["WTF_CSRF_TIME_LIMIT"] = int(os.getenv("WTF_CSRF_TIME_LIMIT", "7200"))  # 2 horas
+    app.config["WTF_CSRF_TIME_LIMIT"] = int(os.getenv("WTF_CSRF_TIME_LIMIT", "28800"))  # 8 horas
     app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken", "X-CSRF-Token"]
     app.config["WTF_CSRF_CHECK_DEFAULT"] = True
     csrf.init_app(app)

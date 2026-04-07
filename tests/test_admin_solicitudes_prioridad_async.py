@@ -57,10 +57,9 @@ class _SolicitudQueryStub:
 
     def _filtered_rows(self):
         rows = list(self._rows)
-        now = admin_routes.utc_now_naive()
 
         estado = (request.args.get("estado") or "").strip().lower()
-        allowed_states = {"proceso", "activa", "reemplazo", "espera_pago", "pagada"}
+        allowed_states = {"activa", "reemplazo", "proceso", "espera_pago", "pagada"}
         estados = {estado} if estado in allowed_states else allowed_states
         rows = [r for r in rows if (getattr(r, "estado", "") or "").strip().lower() in estados]
 
@@ -73,67 +72,6 @@ class _SolicitudQueryStub:
                 or q in (getattr(getattr(r, "cliente", None), "nombre_completo", "") or "").lower()
             ]
 
-        prioridad = (request.args.get("prioridad") or "").strip().lower()
-        estancadas = (request.args.get("estancadas") or "").strip() in ("1", "true", "True", "yes", "si")
-
-        def last_activity(row):
-            for attr in ("fecha_ultima_actividad", "fecha_ultima_modificacion", "updated_at", "fecha_solicitud"):
-                dt = getattr(row, attr, None)
-                if dt:
-                    return dt
-            return None
-
-        def hours_since(row):
-            dt = last_activity(row)
-            if not dt:
-                return 9999
-            return max(0, int((now - dt).total_seconds() // 3600))
-
-        def state_points(row):
-            st = (getattr(row, "estado", "") or "").strip().lower()
-            if st == "espera_pago":
-                return 45
-            if st == "activa":
-                return 32
-            if st == "proceso":
-                return 22
-            if st == "reemplazo":
-                return 18
-            return 10
-
-        def inactivity_points(hours):
-            if hours < 24:
-                return 5
-            if hours < 48:
-                return 15
-            if hours < 72:
-                return 25
-            return 40
-
-        def recent_points(hours):
-            return 15 if hours < 24 else 0
-
-        def label(score):
-            if score >= 70:
-                return "alta"
-            if score >= 40:
-                return "media"
-            return "baja"
-
-        rows_enriched = []
-        for row in rows:
-            hrs = hours_since(row)
-            score = state_points(row) + inactivity_points(hrs) + recent_points(hrs)
-            lbl = label(score)
-            stale = hrs >= 72
-            if prioridad and lbl != prioridad:
-                continue
-            if estancadas and not stale:
-                continue
-            rows_enriched.append((row, score, stale, hrs))
-
-        rows_enriched.sort(key=lambda item: (-item[1], 0 if item[2] else 1, -item[3], int(getattr(item[0], "id", 0) or 0)))
-        rows = [item[0] for item in rows_enriched]
         return rows
 
     def count(self):
@@ -166,6 +104,7 @@ def _solicitud_stub(sol_id: int, codigo: str, estado: str, dias_seguimiento: int
         ciudad_sector="Santiago",
         estado=estado,
         fecha_solicitud=now - timedelta(days=30),
+        estado_actual_desde=now - timedelta(days=dias_seguimiento),
         fecha_inicio_seguimiento=now - timedelta(days=dias_seguimiento),
         rutas_cercanas="Monumental",
         modalidad_trabajo="Con dormida",
@@ -176,6 +115,7 @@ def _solicitud_stub(sol_id: int, codigo: str, estado: str, dias_seguimiento: int
         fecha_seguimiento_manual=None,
         fecha_ultima_actividad=now - timedelta(hours=horas_actividad),
         fecha_ultima_modificacion=now - timedelta(hours=horas_actividad),
+        reemplazos=[],
     )
 
 
@@ -197,7 +137,7 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
 
     def test_filtros_async_devuelven_json_con_html_parcial(self):
         rows = [
-            _solicitud_stub(10, "SOL-PRIO-10", "activa", 15, horas_actividad=6),
+            _solicitud_stub(10, "SOL-PRIO-10", "activa", 8, horas_actividad=6),
             _solicitud_stub(11, "SOL-PRIO-11", "proceso", 3, horas_actividad=90),
             _solicitud_stub(12, "SOL-OTRA-12", "reemplazo", 20, horas_actividad=90),
         ]
@@ -205,7 +145,7 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
             with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
                  patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
                 resp = self.client.get(
-                    "/admin/solicitudes/prioridad?q=PRIO&estado=activa&prioridad=media&page=1&per_page=10",
+                    "/admin/solicitudes/prioridad?q=PRIO&estado=activa&prioridad=atencion&page=1&per_page=10",
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )
@@ -217,8 +157,7 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         self.assertIn("SOL-PRIO-10", data["replace_html"])
         self.assertNotIn("SOL-PRIO-11", data["replace_html"])
         self.assertNotIn("SOL-OTRA-12", data["replace_html"])
-        self.assertIn("Score", data["replace_html"])
-        self.assertIn("hace", data["replace_html"])
+        self.assertIn("Lleva 8 días en estado activo", data["replace_html"])
         self.assertIn('data-testid="metric-total"', data["replace_html"])
 
     def test_paginacion_async_devuelve_pagina_sin_recarga(self):
@@ -242,7 +181,7 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
     def test_filtro_estancadas_muestra_solo_rows_con_72h_o_mas(self):
         rows = [
             _solicitud_stub(10, "SOL-P-010", "activa", 15, horas_actividad=80),
-            _solicitud_stub(11, "SOL-P-011", "activa", 15, horas_actividad=8),
+            _solicitud_stub(11, "SOL-P-011", "activa", 4, horas_actividad=8),
         ]
         with flask_app.app_context():
             with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
@@ -257,12 +196,12 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         html = (resp.get_json() or {}).get("replace_html", "")
         self.assertIn("SOL-P-010", html)
         self.assertNotIn("SOL-P-011", html)
-        self.assertIn("Estancada", html)
+        self.assertIn("Críticas", html)
 
     def test_badge_estancada_aparece_solo_cuando_aplica(self):
         rows = [
             _solicitud_stub(10, "SOL-P-010", "activa", 15, horas_actividad=80),
-            _solicitud_stub(11, "SOL-P-011", "activa", 15, horas_actividad=8),
+            _solicitud_stub(11, "SOL-P-011", "activa", 3, horas_actividad=8),
         ]
         with flask_app.app_context():
             with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
@@ -273,8 +212,8 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         html = (resp.get_json() or {}).get("replace_html", "")
         self.assertIn("SOL-P-010", html)
         self.assertIn("SOL-P-011", html)
-        self.assertIn("Estancada", html)
-        self.assertIn(">OK<", html)
+        self.assertIn("Críticas", html)
+        self.assertIn("Normales / Recientes", html)
 
     def test_proximo_paso_render_por_estado_y_estancamiento(self):
         rows = [
@@ -292,19 +231,11 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("replace_html", "")
-        self.assertIn(">Próximo paso<", html)
-        self.assertIn("Activar solicitud", html)
-        self.assertIn("Continuar seguimiento", html)
-        self.assertIn("Retomar hoy", html)
-        self.assertIn("Registrar pago", html)
-        self.assertIn("Gestionar reemplazo", html)
-        self.assertIn("Cerrada", html)
-        self.assertIn("data-testid=\"next-step-badge\"", html)
-        self.assertIn("data-testid=\"next-step-reason\"", html)
-        self.assertIn("data-testid=\"next-step-link\"", html)
+        self.assertIn("La solicitud aún no está en operación activa.", html)
+        self.assertIn("Lleva demasiados días activa sin cierre.", html)
+        self.assertIn("El reemplazo ya cruza umbral urgente/crítico.", html)
+        self.assertIn("Proceso finalizado sin acción operativa pendiente.", html)
         self.assertIn("data-testid=\"followup-today-badge\"", html)
-        self.assertNotIn('data-testid="next-step-link">Sin acción', html)
-        self.assertNotIn('method="post"', html)
 
     def test_badge_hoy_aparece_solo_cuando_requiere_seguimiento(self):
         rows = [
@@ -398,10 +329,10 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
 
     def test_metricas_operativas_calculadas_correctamente(self):
         rows = [
-            _solicitud_stub(10, "SOL-P-010", "activa", 15, horas_actividad=10),
-            _solicitud_stub(11, "SOL-P-011", "espera_pago", 15, horas_actividad=20),
-            _solicitud_stub(12, "SOL-P-012", "pagada", 15, horas_actividad=90),
-            _solicitud_stub(13, "SOL-P-013", "reemplazo", 15, horas_actividad=90),
+            _solicitud_stub(10, "SOL-P-010", "activa", 3, horas_actividad=10),
+            _solicitud_stub(11, "SOL-P-011", "activa", 8, horas_actividad=20),
+            _solicitud_stub(12, "SOL-P-012", "activa", 12, horas_actividad=90),
+            _solicitud_stub(13, "SOL-P-013", "reemplazo", 16, horas_actividad=90),
         ]
         with flask_app.app_context():
             with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
@@ -411,22 +342,24 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("replace_html", "")
         self.assertIn('data-testid="metric-total">4<', html)
-        self.assertIn('data-testid="metric-activa">1<', html)
-        self.assertIn('data-testid="metric-espera-pago">1<', html)
-        self.assertIn('data-testid="metric-pagada">1<', html)
-        self.assertIn('data-testid="metric-stagnant">2<', html)
+        self.assertIn('data-testid="metric-activa">3<', html)
+        self.assertIn('data-testid="metric-reemplazo">1<', html)
+        self.assertIn('data-testid="metric-critica">1<', html)
+        self.assertIn('data-testid="metric-urgente">1<', html)
+        self.assertIn('data-testid="metric-atencion">1<', html)
+        self.assertIn('data-testid="metric-normal">1<', html)
 
     def test_metricas_respetan_filtros_activos(self):
         rows = [
             _solicitud_stub(10, "SOL-P-010", "activa", 15, horas_actividad=10),
-            _solicitud_stub(11, "SOL-P-011", "espera_pago", 15, horas_actividad=90),
+            _solicitud_stub(11, "SOL-P-011", "reemplazo", 15, horas_actividad=90),
             _solicitud_stub(12, "SOL-P-012", "pagada", 15, horas_actividad=90),
         ]
         with flask_app.app_context():
             with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
                  patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
                 resp = self.client.get(
-                    "/admin/solicitudes/prioridad?estado=espera_pago&estancadas=1",
+                    "/admin/solicitudes/prioridad?estado=reemplazo&estancadas=1",
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )
@@ -435,9 +368,9 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         html = (resp.get_json() or {}).get("replace_html", "")
         self.assertIn('data-testid="metric-total">1<', html)
         self.assertIn('data-testid="metric-activa">0<', html)
-        self.assertIn('data-testid="metric-espera-pago">1<', html)
-        self.assertIn('data-testid="metric-pagada">0<', html)
-        self.assertIn('data-testid="metric-stagnant">1<', html)
+        self.assertIn('data-testid="metric-reemplazo">1<', html)
+        self.assertIn('data-testid="metric-critica">1<', html)
+        self.assertIn('data-testid="metric-normal">0<', html)
 
     def test_orden_prioriza_score_mas_alto(self):
         rows = [

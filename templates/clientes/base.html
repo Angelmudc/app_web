@@ -162,7 +162,12 @@
 <body class="clientes d-flex flex-column min-vh-100"
       data-portal="clientes"
       data-live-presence-enabled="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}1{% else %}0{% endif %}"
-      data-live-presence-url="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}{{ url_for('clientes.clientes_live_ping') }}{% endif %}">
+      data-live-presence-url="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}{{ url_for('clientes.clientes_live_ping') }}{% endif %}"
+      data-client-live-enabled="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}1{% else %}0{% endif %}"
+      data-client-live-stream-url="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}{{ url_for('clientes.clientes_live_invalidation_stream') }}{% endif %}"
+      data-client-live-poll-url="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}{{ url_for('clientes.clientes_live_invalidation_poll') }}{% endif %}"
+      data-client-live-notifications-url="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}{{ url_for('clientes.notificaciones_json') }}{% endif %}"
+      data-client-live-after-id="{% if (current_user.is_authenticated if current_user is defined else false) and (request.endpoint != 'clientes.login') %}{{ client_live_after_id or 0 }}{% endif %}">
   {% set is_login_page = (request.endpoint == 'clientes.login') %}
   {% set is_authed = (current_user.is_authenticated if current_user is defined else false) %}
   {% set show_shell = (is_authed and (not is_login_page)) %}
@@ -201,10 +206,23 @@
                href="{{ url_for('clientes.listar_solicitudes') }}">Mis Solicitudes</a>
           </li>
           <li class="nav-item">
+            <a class="nav-link {% if ep.endswith('clientes.chat_cliente') %}active{% endif %}"
+               href="{{ url_for('clientes.chat_cliente') }}">
+              Chat
+              {% if chat_unread_count %}
+              <span class="badge rounded-pill text-bg-danger ms-1">{{ chat_unread_count }}</span>
+              {% endif %}
+            </a>
+          </li>
+          <li class="nav-item">
             <a class="nav-link {% if ep.endswith('clientes.domesticas_list') %}active{% endif %}"
                href="{{ url_for('clientes.domesticas_list') }}">
               Domésticas disponibles
             </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if ep.endswith('clientes.proceso_contratacion') %}active{% endif %}"
+               href="{{ url_for('clientes.proceso_contratacion') }}">Cómo funciona</a>
           </li>
           <li class="nav-item">
             <a class="nav-link {% if ep.endswith('clientes.ayuda') %}active{% endif %}"
@@ -237,6 +255,8 @@
               <li><hr class="dropdown-divider"></li>
               <li><a class="dropdown-item" href="{{ url_for('clientes.dashboard') }}"><i class="bi bi-speedometer2 me-2"></i>Panel</a></li>
               <li><a class="dropdown-item" href="{{ url_for('clientes.listar_solicitudes') }}"><i class="bi bi-card-checklist me-2"></i>Mis solicitudes</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('clientes.proceso_contratacion') }}"><i class="bi bi-diagram-3 me-2"></i>Proceso de contratación</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('clientes.chat_cliente') }}"><i class="bi bi-chat-dots me-2"></i>Chat de soporte{% if chat_unread_count %} ({{ chat_unread_count }}){% endif %}</a></li>
               <li><a class="dropdown-item" href="{{ url_for('clientes.domesticas_list') }}"><i class="bi bi-people-fill me-2"></i>Domésticas disponibles</a></li>
               <li><a class="dropdown-item" href="{{ url_for('clientes.ayuda') }}"><i class="bi bi-life-preserver me-2"></i>Soporte</a></li>
               <li><hr class="dropdown-divider"></li>
@@ -371,6 +391,7 @@
   <!-- JS del portal de clientes (aislado del admin) -->
   <script src="{{ url_for('static', filename='clientes/js/clientes.js') }}"></script>
   <script src="{{ url_for('static', filename='js/client_notifications.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/client_live_invalidation.js') }}" defer></script>
 
   {% if show_shell %}
   <script>

@@ -28,6 +28,10 @@ OUTBOX_RELAY_ALLOWED_EVENT_TYPES = {
     "REEMPLAZO_CERRADO_ASIGNANDO",
     "SOLICITUD_CANDIDATA_ASIGNADA",
     "SOLICITUD_CANDIDATAS_LIBERADAS",
+    "CHAT_MESSAGE_CREATED",
+    "CHAT_CONVERSATION_READ",
+    "CHAT_CONVERSATION_STATUS_CHANGED",
+    "CHAT_CONVERSATION_ASSIGNED",
 }
 
 _INTERNAL_CONSUMER_NAME = "internal_operational_notifications_v1"
@@ -128,6 +132,10 @@ def _notification_text(event: dict[str, Any]) -> tuple[str, str]:
         "REEMPLAZO_CERRADO_ASIGNANDO": "Reemplazo cerrado con asignación",
         "SOLICITUD_CANDIDATA_ASIGNADA": "Candidata asignada a solicitud",
         "SOLICITUD_CANDIDATAS_LIBERADAS": "Candidatas liberadas de solicitud",
+        "CHAT_MESSAGE_CREATED": "Nuevo mensaje en chat cliente",
+        "CHAT_CONVERSATION_READ": "Conversación de chat leída",
+        "CHAT_CONVERSATION_STATUS_CHANGED": "Estado de conversación de chat actualizado",
+        "CHAT_CONVERSATION_ASSIGNED": "Asignación de conversación de chat actualizada",
     }
     titulo = mapping.get(event_type) or f"Evento crítico {event_type}"
     detalle = f"Solicitud {sid}" if sid is not None else "Solicitud"

@@ -7,7 +7,7 @@
 {% include 'admin/_solicitudes_prioridad_summary_region.html' %}
 {% include 'admin/_solicitudes_prioridad_responsables_region.html' %}
 
-<div class="text-muted small mb-2">
+<div class="text-muted small mb-3">
   Total: <strong>{{ total or 0 }}</strong>
   <span class="ms-2">Página {{ page or 1 }}</span>
 </div>
@@ -25,104 +25,72 @@
     {% endif %}
   </div>
 {% else %}
-  <div class="table-responsive">
-    <table class="table table-sm table-hover align-middle">
-      <thead class="table-dark">
-        <tr>
-          <th>Cliente</th>
-          <th>Estado</th>
-          <th>Última actividad</th>
-          <th>Prioridad</th>
-          <th>Estancamiento</th>
-          <th>Próximo paso</th>
-          <th class="text-end">Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for s in solicitudes %}
-          {% set row_class = 'table-danger' if s.priority_label == 'alta' else ('table-warning' if s.priority_label == 'media' else '') %}
-          {% if s.is_stagnant and row_class == '' %}
-            {% set row_class = 'table-warning' %}
-          {% endif %}
-          <tr class="{{ row_class }}">
-            <td>
-              <div class="fw-semibold">{{ s.cliente and s.cliente.nombre_completo or 'Sin cliente' }}</div>
-              <div class="small text-muted">
-                {{ s.codigo_solicitud or ('SOL-' ~ s.id) }}
-                {% if s.ciudad_sector %} · {{ s.ciudad_sector }}{% endif %}
-              </div>
-              {% if s.cliente %}
-                <div class="small text-muted">{{ s.cliente.codigo or '' }}</div>
-              {% endif %}
-            </td>
-            <td><span class="badge bg-secondary text-uppercase">{{ s.estado }}</span></td>
-            <td>
-              {% if s.last_activity_at %}
-                <div>{{ s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') }}</div>
-                <div class="small text-muted">{{ s.last_activity_human }}</div>
-              {% else %}
-                <span class="text-muted">Sin actividad</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if s.priority_label == 'alta' %}
-                <span class="badge bg-danger">Alta</span>
-              {% elif s.priority_label == 'media' %}
-                <span class="badge bg-warning text-dark">Media</span>
-              {% else %}
-                <span class="badge bg-success">Baja</span>
-              {% endif %}
-              {% if s.needs_followup_today %}
-                <span class="badge bg-primary ms-1" data-testid="followup-today-badge">Hoy</span>
-              {% endif %}
-              <div class="small text-muted mt-1">Score {{ s.priority_score }}</div>
-            </td>
-            <td>
-              {% if s.is_stagnant %}
-                <span class="badge bg-danger">Estancada</span>
-              {% else %}
-                <span class="text-muted small">OK</span>
-              {% endif %}
-              {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
-                <div class="mt-1">
-                  <span class="badge {{ s.manual_followup_badge_class }}" data-testid="manual-followup-badge">{{ s.manual_followup_label }}</span>
+  {% set blocks = [
+    ('critica', 'CRÍTICAS', 'danger', 'Acción inmediata requerida (15+ días)'),
+    ('urgente', 'URGENTES', 'warning', 'Riesgo alto (10–14 días)'),
+    ('atencion', 'ATENCIÓN', 'info', 'Seguimiento necesario (7–9 días)'),
+    ('normal', 'NORMALES', 'success', 'Dentro de rango (0–6 días)'),
+  ] %}
+
+  {% for block_code, block_title, block_tone, block_hint in blocks %}
+    {% set block_rows = solicitudes|selectattr('priority_label', 'equalto', block_code)|list %}
+    {% if block_rows %}
+      <section class="card prioridad-block border-{{ block_tone }}-subtle shadow-sm" data-testid="priority-block-{{ block_code }}">
+        <div class="card-header bg-{{ block_tone }}-subtle d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <span class="prioridad-block-title">{{ block_title }} — {{ block_hint }}</span>
+          </div>
+          <span class="badge text-bg-{{ block_tone }}">{{ block_rows|length }}</span>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for s in block_rows %}
+            <article class="list-group-item prioridad-item">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div class="d-flex gap-3 flex-grow-1">
+                  <div class="prioridad-days-wrap">
+                    <span class="prioridad-days-number">{{ s.days_in_state }}</span>
+                    <span class="prioridad-days-label">días en estado</span>
+                    <span class="prioridad-estado">{{ s.estado }}</span>
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+                      <span class="fw-semibold">{{ s.cliente and s.cliente.nombre_completo or 'Sin cliente' }}</span>
+                    {% if s.priority_source_estimated %}
+                      <span class="badge text-bg-warning" data-testid="priority-source-estimated-badge">Estimado</span>
+                    {% endif %}
+                    {% if s.needs_followup_today %}
+                      <span class="badge bg-primary" data-testid="followup-today-badge">Hoy</span>
+                    {% endif %}
+                  </div>
+                    <div class="prioridad-meta-line mb-1">
+                      {{ s.codigo_solicitud or ('SOL-' ~ s.id) }}
+                      {% if s.ciudad_sector %} · {{ s.ciudad_sector }}{% endif %}
+                      {% if s.cliente and s.cliente.codigo %} · {{ s.cliente.codigo }}{% endif %}
+                    </div>
+                    <p class="prioridad-main-msg">{{ s.priority_message }}</p>
+                    {% if s.estado_desde_at %}
+                      <div class="prioridad-meta-line mt-1">
+                        Desde {{ s.estado_desde_at|rd_datetime('%Y-%m-%d %H:%M') }}
+                      </div>
+                    {% endif %}
+                    {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
+                      <div class="mt-1">
+                        <span class="badge {{ s.manual_followup_badge_class }}" data-testid="manual-followup-badge">{{ s.manual_followup_label }}</span>
+                      </div>
+                    {% endif %}
+                  </div>
                 </div>
-              {% endif %}
-            </td>
-            <td>
-              {% set _step_label = s.next_step_label or 'Sin acción' %}
-              {% set _step_reason = s.next_step_reason or '' %}
-              {% if s.next_step_actionable %}
-                <span class="badge bg-info text-dark" data-testid="next-step-badge">{{ _step_label }}</span>
-              {% else %}
-                <span class="badge bg-secondary" data-testid="next-step-badge">{{ _step_label }}</span>
-              {% endif %}
-              {% if _step_reason %}
-                <div class="small text-muted mt-1" data-testid="next-step-reason">{{ _step_reason }}</div>
-              {% endif %}
-              {% if s.next_step_actionable and s.cliente_id %}
-                <div class="mt-1">
-                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}"
-                     class="small text-decoration-none"
-                     data-testid="next-step-link">Ir a gestionar</a>
+                <div class="d-flex gap-2">
+                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-primary">Ver</a>
+                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-outline-secondary">Gestionar</a>
                 </div>
-              {% endif %}
-            </td>
-            <td class="text-end">
-              <div class="d-flex justify-content-end flex-wrap gap-2">
-                <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-primary">
-                  Ver
-                </a>
-                <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-outline-secondary">
-                  Gestionar
-                </a>
               </div>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  {% endfor %}
 
   {% set _page = page|int %}
   {% set _per = _per_page|int %}

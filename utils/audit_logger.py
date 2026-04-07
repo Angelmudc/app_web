@@ -185,6 +185,8 @@ def log_action(
     changes: dict[str, Any] | None = None,
     success: bool = True,
     error: str | None = None,
+    actor_user_id: int | None = None,
+    actor_role: str | None = None,
 ) -> None:
     if not action_type:
         return
@@ -196,12 +198,14 @@ def log_action(
         ip = (request.headers.get("CF-Connecting-IP") or request.headers.get("X-Real-IP") or request.remote_addr or "")[:64] or None
         user_agent = (request.headers.get("User-Agent") or "")[:512] or None
 
-    actor_user_id, actor_role = _actor_from_context()
+    ctx_actor_user_id, ctx_actor_role = _actor_from_context()
+    resolved_actor_user_id = actor_user_id if actor_user_id is not None else ctx_actor_user_id
+    resolved_actor_role = actor_role if actor_role is not None else ctx_actor_role
 
     payload = {
         "created_at": utc_now_naive(),
-        "actor_user_id": actor_user_id,
-        "actor_role": actor_role,
+        "actor_user_id": resolved_actor_user_id,
+        "actor_role": resolved_actor_role,
         "action_type": (action_type or "")[:80],
         "entity_type": (entity_type or "")[:80] or None,
         "entity_id": str(entity_id)[:64] if entity_id is not None else None,
@@ -248,6 +252,8 @@ def log_security_event(
     summary: str | None = None,
     reason: str | None = None,
     metadata: dict[str, Any] | None = None,
+    actor_user_id: int | None = None,
+    actor_role: str | None = None,
 ) -> None:
     meta = dict(metadata or {})
     if reason and "reason" not in meta:
@@ -261,6 +267,8 @@ def log_security_event(
         metadata=meta,
         success=ok,
         error=None if ok else (reason or "security_event_failed"),
+        actor_user_id=actor_user_id,
+        actor_role=actor_role,
     )
 
 
@@ -278,6 +286,13 @@ def log_auth_event(
         meta["user_identifier"] = str(user_identifier)[:120]
     if reason and "reason" not in meta:
         meta["reason"] = str(reason)[:250]
+    auth_actor_user_id: int | None = None
+    try:
+        raw_uid = str(user_id).strip() if user_id is not None else ""
+        if raw_uid.isdigit():
+            auth_actor_user_id = int(raw_uid)
+    except Exception:
+        auth_actor_user_id = None
     log_security_event(
         event=event,
         status=status,
@@ -286,6 +301,7 @@ def log_auth_event(
         summary=event,
         reason=reason,
         metadata=meta,
+        actor_user_id=auth_actor_user_id,
     )
 
 

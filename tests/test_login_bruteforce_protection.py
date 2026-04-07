@@ -151,6 +151,34 @@ def test_bloqueo_por_fallos_usuario_aplica_a_ips_distintas(monkeypatch):
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
 
 
+def test_post_login_sin_usuario_no_activa_bloqueo_normal_por_ip(monkeypatch):
+    prev_testing = bool(flask_app.config.get("TESTING"))
+    prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = True
+
+    monkeypatch.setenv("ENABLE_OPERATIONAL_RATE_LIMITS", "1")
+    monkeypatch.setenv("LOGIN_RATE_IP_1M", "500")
+    monkeypatch.setenv("LOGIN_RATE_USER_1M", "500")
+    monkeypatch.setenv("LOGIN_RATE_IP_1H", "500")
+    monkeypatch.setenv("LOGIN_RATE_USER_1H", "500")
+    monkeypatch.setenv("LOGIN_BLOCK_THRESHOLD", "3")
+    monkeypatch.setenv("LOGIN_BLOCK_THRESHOLD_IP", "50")
+    monkeypatch.setenv("ADMIN_LOGIN_MAX_INTENTOS", "100")
+    monkeypatch.setenv("LOGIN_DELAY_MS_BASE", "1")
+
+    try:
+        client = flask_app.test_client()
+        statuses = []
+        for _ in range(6):
+            resp = _admin_post_login(client, "", "clave-incorrecta", "10.90.3.10")
+            statuses.append(resp.status_code)
+        assert all(code != 429 for code in statuses)
+    finally:
+        flask_app.config["TESTING"] = prev_testing
+        flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
+
+
 def test_error_de_login_es_generico_sin_enumerar_usuario(monkeypatch):
     prev_testing = bool(flask_app.config.get("TESTING"))
     prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))

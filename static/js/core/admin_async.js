@@ -65,11 +65,13 @@
     return ok ? "success" : "danger";
   }
 
-  function getCsrfToken(form) {
+  function getCSRFToken(form) {
     if (form && form.querySelector) {
       const input = form.querySelector('input[name="csrf_token"]');
       if (input && input.value) return input.value;
     }
+    const hidden = document.querySelector('input[name="csrf_token"]');
+    if (hidden && hidden.value) return hidden.value;
     const meta = document.querySelector('meta[name="csrf-token"]');
     return meta ? (meta.getAttribute("content") || "") : "";
   }
@@ -769,7 +771,7 @@
         body: null,
         updateTarget,
         noLoader,
-        headers: { "X-CSRFToken": getCsrfToken(form) },
+        headers: { "X-CSRFToken": getCSRFToken(form) },
       };
     }
 
@@ -787,7 +789,7 @@
       body: data,
       updateTarget,
       noLoader,
-      headers: { "X-CSRFToken": getCsrfToken(form) },
+      headers: { "X-CSRFToken": getCSRFToken(form) },
     };
   }
 
@@ -856,7 +858,7 @@
       submitter: link,
       updateTarget,
       noLoader: link.hasAttribute("data-no-loader"),
-      headers: { "X-CSRFToken": getCsrfToken(null) },
+      headers: { "X-CSRFToken": getCSRFToken(null) },
       preserveScroll,
     });
   }

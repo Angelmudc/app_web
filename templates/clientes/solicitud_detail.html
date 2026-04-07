@@ -3,7 +3,7 @@
 
 {% block content %}
 {% set compat_ui = compat|compat_fmt if compat else None %}
-<div class="container py-4">
+<div class="container py-4" data-client-live-view="solicitud_detail" data-solicitud-id="{{ s.id }}">
 
   <!-- Header -->
   <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
@@ -29,6 +29,13 @@
         <i class="bi bi-people me-1"></i> Candidatas enviadas
         <span class="badge bg-success ms-1">{{ candidatas_enviadas_count or 0 }}</span>
       </a>
+      <form method="post" action="{{ url_for('clientes.chat_cliente_open') }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="solicitud_id" value="{{ s.id }}">
+        <button class="btn btn-outline-dark" type="submit">
+          <i class="bi bi-chat-left-text me-1"></i> Chat de esta solicitud
+        </button>
+      </form>
       <button class="btn btn-outline-secondary" onclick="window.print()">
         <i class="bi bi-printer me-1"></i> Imprimir
       </button>

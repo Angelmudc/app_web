@@ -3,6 +3,15 @@
 import os
 
 from core import legacy_handlers as legacy
+from utils.audit_logger import log_auth_event
+
+
+def _admin_mfa_helpers():
+    try:
+        from admin import routes as admin_routes
+        return admin_routes
+    except Exception:
+        return None
 
 
 def robots_txt():
@@ -18,6 +27,18 @@ def home():
         except Exception:
             sid = 0
         pending_user = legacy.StaffUser.query.get(sid) if sid > 0 else None
+        admin_routes = _admin_mfa_helpers()
+        if admin_routes is not None:
+            mfa_path, mfa_reason = admin_routes._staff_user_mfa_bootstrap_path(pending_user)
+            if mfa_path == "verify":
+                return legacy.redirect(legacy.url_for("admin.mfa_verify"))
+            admin_routes._log_staff_mfa_setup_required(
+                pending_user,
+                reason=mfa_reason,
+                source="legacy_home",
+                path_hint="/admin/mfa/setup",
+            )
+            return legacy.redirect(legacy.url_for("admin.mfa_setup"))
         if pending_user is not None and bool(pending_user.mfa_enabled) and bool(pending_user.get_mfa_secret()):
             return legacy.redirect(legacy.url_for("admin.mfa_verify"))
         return legacy.redirect(legacy.url_for("admin.mfa_setup"))
@@ -149,6 +170,12 @@ def login():
             ), 503
 
         if staff_ok:
+            previous_fail_count = 0
+            if not bool(legacy.current_app.config.get("TESTING")):
+                try:
+                    previous_fail_count = int(legacy._fail_count(usuario_norm) or 0)
+                except Exception:
+                    previous_fail_count = 0
             # ✅ Login correcto: limpia intentos (los tuyos) + limpia lock global (IP+endpoint+usuario)
             legacy._reset_fail(usuario_norm)
 
@@ -171,21 +198,81 @@ def login():
             if legacy._staff_mfa_required_for_user(staff_user):
                 nxt = (legacy.request.args.get("next") or legacy.request.form.get("next") or "").strip()
                 next_url = nxt if legacy._is_safe_next(nxt) else legacy.url_for("home")
-                legacy.session.clear()
-                legacy.session.permanent = False
-                legacy.session_begin_mfa_pending(
-                    legacy.session,
-                    staff_user_id=int(staff_user.id),
-                    username=(staff_user.username or usuario_raw),
-                    role=legacy._normalize_staff_role_loose(staff_user.role) or "secretaria",
-                    next_url=next_url,
-                    source="legacy",
+                admin_routes = _admin_mfa_helpers()
+                if admin_routes is None:
+                    legacy.session.clear()
+                    legacy.session.permanent = False
+                    legacy.session_begin_mfa_pending(
+                        legacy.session,
+                        staff_user_id=int(staff_user.id),
+                        username=(staff_user.username or usuario_raw),
+                        role=legacy._normalize_staff_role_loose(staff_user.role) or "secretaria",
+                        next_url=next_url,
+                        source="legacy",
+                    )
+                    if not (bool(staff_user.mfa_enabled) and bool(staff_user.get_mfa_secret())):
+                        legacy.session[legacy.MFA_SETUP_SECRET_SESSION_KEY] = legacy.generate_mfa_secret()
+                        legacy.session.modified = True
+                        return legacy.redirect(legacy.url_for("admin.mfa_setup"))
+                    return legacy.redirect(legacy.url_for("admin.mfa_verify"))
+                is_testing = bool(legacy.current_app.config.get("TESTING"))
+                trust_eval = admin_routes.evaluate_staff_trusted_device_decision(
+                    staff_user=staff_user,
+                    previous_fail_count=previous_fail_count,
+                    is_testing=is_testing,
                 )
-                if not (bool(staff_user.mfa_enabled) and bool(staff_user.get_mfa_secret())):
-                    legacy.session[legacy.MFA_SETUP_SECRET_SESSION_KEY] = legacy.generate_mfa_secret()
+                trusted_device_allowed = bool(trust_eval.get("trusted_device_allowed"))
+                trusted_device_token = str(trust_eval.get("trusted_device_token") or "").strip()
+                trust_reason = str(trust_eval.get("trust_reason") or "new_device")
+
+                if trusted_device_allowed:
+                    legacy.session.clear()
+                    legacy.session.permanent = False
+                    legacy.login_user(staff_user, remember=False)
+                    legacy.session['usuario'] = (staff_user.username or usuario_raw)
+                    legacy.session['role'] = legacy._normalize_staff_role_loose(staff_user.role) or "secretaria"
+                    legacy.session['is_staff'] = True
+                    legacy.session['is_admin_session'] = True
+                    legacy.session['mfa_verified'] = True
+                    legacy.session['logged_at'] = legacy.utc_now_naive().isoformat(timespec='seconds')
+                    legacy.clear_breakglass_session(legacy.session)
                     legacy.session.modified = True
-                    return legacy.redirect(legacy.url_for("admin.mfa_setup"))
-                return legacy.redirect(legacy.url_for("admin.mfa_verify"))
+                    try:
+                        staff_user.last_login_at = legacy.utc_now_naive()
+                        staff_user.last_login_ip = legacy._client_ip()
+                        legacy.db.session.commit()
+                    except Exception:
+                        legacy.db.session.rollback()
+                    log_auth_event(
+                        event="STAFF_LOGIN_TRUSTED_DEVICE",
+                        status="success",
+                        user_id=staff_user.id,
+                        user_identifier=staff_user.username,
+                        metadata={"path": "/login", "trusted": True},
+                    )
+                    resp = legacy.safe_redirect_next('home')
+                    admin_routes._trusted_device_set_cookie(resp, trusted_device_token)
+                    return resp
+
+                legacy.session[admin_routes._TRUSTED_DEVICE_SESSION_REASON] = trust_reason
+                legacy.session.modified = True
+                log_auth_event(
+                    event="STAFF_2FA_REQUIRED",
+                    status="success",
+                    user_id=staff_user.id,
+                    user_identifier=staff_user.username,
+                    metadata={"path": "/login", "reason": trust_reason},
+                )
+                mfa_url = admin_routes._begin_pending_staff_mfa(
+                    staff_user=staff_user,
+                    source="legacy",
+                    next_url=next_url,
+                )
+                resp = legacy.redirect(mfa_url)
+                if not trusted_device_token:
+                    trusted_device_token = admin_routes._trusted_device_issue_token()
+                admin_routes._trusted_device_set_cookie(resp, trusted_device_token)
+                return resp
 
             # 🔒 Regenerar sesión completamente al autenticar
             legacy.session.clear()

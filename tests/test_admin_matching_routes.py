@@ -538,7 +538,7 @@ class AdminMatchingRoutesTest(unittest.TestCase):
             self.assertEqual(len(sc_rows), 1)
             commit_mock.assert_called_once()
 
-    def test_post_enviar_without_csrf_token_returns_400(self):
+    def test_post_enviar_without_csrf_token_returns_friendly_redirect(self):
         flask_app.config["WTF_CSRF_ENABLED"] = True
 
         with flask_app.app_context():
@@ -549,7 +549,8 @@ class AdminMatchingRoutesTest(unittest.TestCase):
                     follow_redirects=False,
                 )
 
-        self.assertEqual(resp.status_code, 400)
+        self.assertIn(resp.status_code, (302, 303))
+        self.assertIn("/admin/matching/solicitudes/10/enviar", (resp.headers.get("Location") or ""))
 
     def test_post_enviar_bloquea_si_activa_en_otro_cliente(self):
         ranked = [{"candidate": _DummyCandidata(101), "score": 88, "breakdown_snapshot": {"x": "y"}}]

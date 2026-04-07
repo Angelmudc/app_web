@@ -506,28 +506,59 @@ class StaffUser(UserMixin, db.Model):
             return False
 
     @staticmethod
-    def _mfa_cipher():
+    def _mfa_explicit_key() -> str:
+        return (get_secret("STAFF_MFA_ENCRYPTION_KEY") or "").strip()
+
+    @staticmethod
+    def _mfa_legacy_key_from_flask() -> str:
         try:
             import base64
+
+            base_secret = (get_secret("FLASK_SECRET_KEY") or "").encode("utf-8")
+            if not base_secret:
+                return ""
+            digest = hashlib.sha256(base_secret).digest()
+            return base64.urlsafe_b64encode(digest).decode("utf-8")
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _mfa_cipher_from_key(key_text: str):
+        try:
             from cryptography.fernet import Fernet
 
-            key_raw = (get_secret("STAFF_MFA_ENCRYPTION_KEY") or "").strip()
-            if key_raw:
-                key_bytes = key_raw.encode("utf-8")
-            else:
-                base_secret = (get_secret("FLASK_SECRET_KEY") or "").encode("utf-8")
-                digest = hashlib.sha256(base_secret).digest()
-                key_bytes = base64.urlsafe_b64encode(digest)
+            key_bytes = (key_text or "").strip().encode("utf-8")
+            if not key_bytes:
+                return None
             return Fernet(key_bytes)
         except Exception:
             return None
+
+    @classmethod
+    def _mfa_write_cipher(cls):
+        return cls._mfa_cipher_from_key(cls._mfa_explicit_key())
+
+    @classmethod
+    def _mfa_read_ciphers(cls):
+        ciphers = []
+        explicit_key = cls._mfa_explicit_key()
+        explicit_cipher = cls._mfa_cipher_from_key(explicit_key)
+        if explicit_cipher is not None:
+            ciphers.append(explicit_cipher)
+
+        legacy_key = cls._mfa_legacy_key_from_flask()
+        if legacy_key and legacy_key != explicit_key:
+            legacy_cipher = cls._mfa_cipher_from_key(legacy_key)
+            if legacy_cipher is not None:
+                ciphers.append(legacy_cipher)
+        return ciphers
 
     def set_mfa_secret(self, raw_secret: str) -> None:
         value = (raw_secret or "").strip().upper()
         if not value:
             self.mfa_secret = None
             return
-        cipher = self._mfa_cipher()
+        cipher = self._mfa_write_cipher()
         if cipher is None:
             allow_plain = False
             try:
@@ -542,7 +573,8 @@ class StaffUser(UserMixin, db.Model):
             )
             if not allow_plain:
                 raise RuntimeError(
-                    "MFA encryption backend unavailable. Install cryptography or set STAFF_MFA_ENCRYPTION_KEY."
+                    "STAFF_MFA_ENCRYPTION_KEY is required to write MFA secrets. "
+                    "Legacy FLASK_SECRET_KEY fallback is read-only."
                 )
             self.mfa_secret = f"plain:{value}"
             return
@@ -556,14 +588,28 @@ class StaffUser(UserMixin, db.Model):
         if raw.startswith("plain:"):
             return raw.split(":", 1)[1].strip().upper()
         if raw.startswith("enc:"):
-            cipher = self._mfa_cipher()
-            if cipher is None:
+            token = raw.split(":", 1)[1].strip().encode("utf-8")
+            read_ciphers = self._mfa_read_ciphers()
+            if not read_ciphers:
                 return ""
-            try:
-                token = raw.split(":", 1)[1].strip().encode("utf-8")
-                return cipher.decrypt(token).decode("utf-8").strip().upper()
-            except Exception:
-                return ""
+            for idx, cipher in enumerate(read_ciphers):
+                try:
+                    out = cipher.decrypt(token).decode("utf-8").strip().upper()
+                    if idx > 0:
+                        try:
+                            from flask import current_app
+
+                            current_app.logger.warning(
+                                "MFA legacy key fallback used for user_id=%s username=%s",
+                                int(getattr(self, "id", 0) or 0),
+                                str(getattr(self, "username", "") or "").strip(),
+                            )
+                        except Exception:
+                            pass
+                    return out
+                except Exception:
+                    continue
+            return ""
         # Compatibilidad con posibles secretos legacy en texto simple.
         return raw.upper()
 
@@ -836,6 +882,13 @@ class Cliente(UserMixin, db.Model):
         order_by='TareaCliente.fecha_creacion.desc()',
         cascade='all, delete-orphan'
     )
+    chat_conversations = db.relationship(
+        "ChatConversation",
+        order_by="desc(ChatConversation.last_message_at), desc(ChatConversation.id)",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+        back_populates="cliente",
+    )
 
     # ----- Métodos útiles -----
 
@@ -928,6 +981,8 @@ class Solicitud(db.Model):
 
     # Última vez que se cambió el estado
     fecha_ultimo_estado    = db.Column(db.DateTime, nullable=True)
+    # Desde cuándo está en el estado actual (fuente de verdad operativa).
+    estado_actual_desde    = db.Column(db.DateTime, nullable=True)
 
     # Plan y pago
     tipo_plan              = db.Column(db.String(50), nullable=True)
@@ -1074,6 +1129,7 @@ class Solicitud(db.Model):
     # Relaciones
     cliente                = db.relationship('Cliente', back_populates='solicitudes')
     candidata              = db.relationship('Candidata', back_populates='solicitudes')
+    chat_conversations     = db.relationship("ChatConversation", lazy="dynamic", back_populates="solicitud")
     reemplazos             = db.relationship(
                                 'Reemplazo',
                                 back_populates='solicitud',
@@ -1948,6 +2004,82 @@ class SolicitudCandidata(db.Model):
         return (
             f"<SolicitudCandidata id={self.id} solicitud_id={self.solicitud_id} "
             f"candidata_id={self.candidata_id} status={self.status}>"
+        )
+
+
+class ChatConversation(db.Model):
+    __tablename__ = "chat_conversations"
+    __table_args__ = (
+        db.UniqueConstraint("scope_key", name="uq_chat_conversation_scope_key"),
+        db.Index("ix_chat_conv_cliente_last_msg", "cliente_id", "last_message_at"),
+        db.Index("ix_chat_conv_staff_unread", "staff_unread_count", "last_message_at"),
+        db.Index("ix_chat_conv_cliente_unread", "cliente_unread_count", "last_message_at"),
+        db.Index("ix_chat_conv_assigned_staff_last_msg", "assigned_staff_user_id", "last_message_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    scope_key = db.Column(db.String(80), nullable=False, index=True)
+    conversation_type = db.Column(db.String(20), nullable=False, default="general", server_default=text("'general'"), index=True)
+    status = db.Column(db.String(20), nullable=False, default="open", server_default=text("'open'"), index=True)
+
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=False, index=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
+    assigned_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    assigned_at = db.Column(db.DateTime, nullable=True, index=True)
+    subject = db.Column(db.String(200), nullable=True)
+
+    last_message_at = db.Column(db.DateTime, nullable=True, index=True)
+    last_message_preview = db.Column(db.String(240), nullable=True)
+    last_message_sender_type = db.Column(db.String(20), nullable=True)
+    cliente_unread_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    staff_unread_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    client_last_read_at = db.Column(db.DateTime, nullable=True)
+    staff_last_read_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+
+    cliente = db.relationship("Cliente", lazy="select", back_populates="chat_conversations")
+    solicitud = db.relationship("Solicitud", lazy="select", back_populates="chat_conversations")
+    assigned_staff_user = db.relationship("StaffUser", lazy="joined")
+    messages = db.relationship(
+        "ChatMessage",
+        back_populates="conversation",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ChatConversation id={self.id} cliente_id={self.cliente_id} "
+            f"solicitud_id={self.solicitud_id} type={self.conversation_type}>"
+        )
+
+
+class ChatMessage(db.Model):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        db.Index("ix_chat_msg_conv_created", "conversation_id", "created_at"),
+        db.Index("ix_chat_msg_conv_id_desc", "conversation_id", "id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey("chat_conversations.id"), nullable=False, index=True)
+    sender_type = db.Column(db.String(20), nullable=False, index=True)
+    sender_cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=True, index=True)
+    sender_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    body = db.Column(db.Text, nullable=False)
+    meta = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    conversation = db.relationship("ChatConversation", back_populates="messages", lazy="joined")
+    sender_cliente = db.relationship("Cliente", lazy="joined")
+    sender_staff_user = db.relationship("StaffUser", lazy="joined")
+
+    def __repr__(self) -> str:
+        return (
+            f"<ChatMessage id={self.id} conversation_id={self.conversation_id} "
+            f"sender_type={self.sender_type}>"
         )
 
 

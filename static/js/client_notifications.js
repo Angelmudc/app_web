@@ -109,23 +109,34 @@
     return res.json();
   }
 
-  async function refresh() {
-    listNode.innerHTML = '<div class="text-muted small py-3">Cargando notificaciones...</div>';
+  let isOpen = false;
+
+  async function refresh(opts) {
+    const options = opts || {};
+    if (!options.silent) {
+      listNode.innerHTML = '<div class="text-muted small py-3">Cargando notificaciones...</div>';
+    }
     try {
       const payload = await fetchList();
       renderList(payload);
+      return payload;
     } catch (_e) {
-      listNode.innerHTML = '<div class="text-danger small py-3">No se pudo cargar la bandeja.</div>';
+      if (!options.silent) {
+        listNode.innerHTML = '<div class="text-danger small py-3">No se pudo cargar la bandeja.</div>';
+      }
+      return null;
     }
   }
 
   function openModal() {
+    isOpen = true;
     overlay.classList.remove("d-none");
     overlay.setAttribute("aria-hidden", "false");
     refresh();
   }
 
   function closeModal() {
+    isOpen = false;
     overlay.classList.add("d-none");
     overlay.setAttribute("aria-hidden", "true");
   }
@@ -134,6 +145,15 @@
   if (closeBtn) closeBtn.addEventListener("click", closeModal);
   overlay.addEventListener("click", function (ev) {
     if (ev.target === overlay) closeModal();
+  });
+
+  window.ClientNotifications = {
+    refresh,
+    isOpen: function () { return Boolean(isOpen); },
+    setUnreadCount,
+  };
+  window.addEventListener("client-notifications:refresh", function () {
+    refresh({ silent: !isOpen });
   });
 
   listNode.addEventListener("click", async function (ev) {

@@ -1,5 +1,76 @@
 {% extends 'base.html' %}
-{% block title %}Prioridad operativa diaria{% endblock %}
+{% block title %}Órdenes prioritarias{% endblock %}
+{% block extra_head %}
+  {{ super() }}
+  <style>
+    .prioridad-block {
+      margin-bottom: 1.25rem;
+      border-width: 2px;
+    }
+    .prioridad-block .card-header {
+      padding-top: 0.85rem;
+      padding-bottom: 0.85rem;
+    }
+    .prioridad-block-title {
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    .prioridad-block-subtitle {
+      display: block;
+      font-size: 0.83rem;
+      color: rgba(33, 37, 41, 0.78);
+      margin-top: 0.12rem;
+    }
+    .prioridad-item {
+      padding-top: 0.9rem;
+      padding-bottom: 0.9rem;
+    }
+    .prioridad-days-wrap {
+      min-width: 110px;
+      text-align: center;
+      line-height: 1.05;
+    }
+    .prioridad-days-number {
+      display: block;
+      font-size: 1.95rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .prioridad-days-label {
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #6c757d;
+      margin-top: 0.15rem;
+    }
+    .prioridad-estado {
+      display: block;
+      font-size: 0.78rem;
+      color: #495057;
+      margin-top: 0.2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+    .prioridad-main-msg {
+      font-size: 0.95rem;
+      margin-bottom: 0;
+    }
+    .prioridad-meta-line {
+      font-size: 0.79rem;
+      color: #6c757d;
+    }
+    @media (max-width: 767.98px) {
+      .prioridad-days-wrap {
+        min-width: 86px;
+      }
+      .prioridad-days-number {
+        font-size: 1.62rem;
+      }
+    }
+  </style>
+{% endblock %}
 
 {% block content %}
 <div class="container my-4"
@@ -14,9 +85,9 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-      <h2 class="mb-0">Prioridad operativa diaria</h2>
+      <h2 class="mb-0">Órdenes prioritarias</h2>
       <div class="text-muted small mt-1">
-        Qué atender primero hoy para acelerar cierres y evitar enfriamiento.
+        Priorizadas por días reales en estado (activa/reemplazo), no por última actividad.
       </div>
     </div>
 
@@ -60,7 +131,7 @@
         <div class="form-check mt-4">
           <input class="form-check-input" type="checkbox" value="1" id="estancadasOnly" name="estancadas" {% if estancadas %}checked{% endif %}>
           <label class="form-check-label small" for="estancadasOnly">
-            Estancadas
+            Solo urgentes y críticas
           </label>
         </div>
       </div>

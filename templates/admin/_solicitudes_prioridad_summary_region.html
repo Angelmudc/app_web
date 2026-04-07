@@ -17,26 +17,42 @@
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-warning-subtle h-100">
+      <div class="card border-secondary-subtle h-100">
         <div class="card-body py-2 px-3">
-          <div class="small text-warning-emphasis">Espera pago</div>
-          <div class="h5 mb-0 text-warning-emphasis" data-testid="metric-espera-pago">{{ count_espera_pago if count_espera_pago is defined else 0 }}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md">
-      <div class="card border-success-subtle h-100">
-        <div class="card-body py-2 px-3">
-          <div class="small text-success">Pagadas</div>
-          <div class="h5 mb-0 text-success" data-testid="metric-pagada">{{ count_pagada if count_pagada is defined else 0 }}</div>
+          <div class="small text-secondary">Reemplazo</div>
+          <div class="h5 mb-0 text-secondary" data-testid="metric-reemplazo">{{ count_reemplazo if count_reemplazo is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
       <div class="card border-danger-subtle h-100">
         <div class="card-body py-2 px-3">
-          <div class="small text-danger">Estancadas</div>
-          <div class="h5 mb-0 text-danger" data-testid="metric-stagnant">{{ count_stagnant if count_stagnant is defined else 0 }}</div>
+          <div class="small text-danger">Críticas</div>
+          <div class="h5 mb-0 text-danger" data-testid="metric-critica">{{ count_critica if count_critica is defined else 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="card border-warning-subtle h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-warning-emphasis">Urgentes</div>
+          <div class="h5 mb-0 text-warning-emphasis" data-testid="metric-urgente">{{ count_urgente if count_urgente is defined else 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="card border-info-subtle h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-info-emphasis">Atención</div>
+          <div class="h5 mb-0 text-info-emphasis" data-testid="metric-atencion">{{ count_atencion if count_atencion is defined else 0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="card border-success-subtle h-100">
+        <div class="card-body py-2 px-3">
+          <div class="small text-success">Normales</div>
+          <div class="h5 mb-0 text-success" data-testid="metric-normal">{{ count_normal if count_normal is defined else 0 }}</div>
         </div>
       </div>
     </div>

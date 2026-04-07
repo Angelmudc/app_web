@@ -17,7 +17,7 @@ from flask import render_template, redirect, url_for, flash, request, jsonify, a
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 
-from sqlalchemy import or_, func, cast, desc, case, inspect as sa_inspect, Table, MetaData, select as sa_select, event
+from sqlalchemy import and_, or_, func, cast, desc, case, inspect as sa_inspect, Table, MetaData, select as sa_select, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.types import Numeric
 from sqlalchemy.orm import joinedload, load_only, selectinload  # ➜ para evitar N+1 en copiar_solicitudes
@@ -162,6 +162,14 @@ from services.candidata_invariants import (
     change_candidate_state as invariant_change_candidate_state,
     release_solicitud_candidatas_on_cancel as invariant_release_solicitud_candidatas_on_cancel,
     sync_solicitud_candidatas_after_assignment as invariant_sync_solicitud_candidatas_after_assignment,
+)
+from services.solicitud_estado import (
+    days_in_state,
+    priority_band_for_days,
+    priority_band_rank,
+    priority_message_for_solicitud,
+    resolve_solicitud_estado_priority_anchor,
+    set_solicitud_estado,
 )
 from utils.timezone import (
     format_rd_datetime,
@@ -538,6 +546,35 @@ def _emit_cliente_live_solicitud_events(
                 "reason": reason,
             },
         )
+
+
+def _set_solicitud_estado(solicitud: Solicitud, nuevo_estado: str, *, now_dt: datetime | None = None):
+    return set_solicitud_estado(solicitud, nuevo_estado, now_dt=now_dt)
+
+
+def _set_solicitud_estado_with_outbox(
+    solicitud: Solicitud,
+    nuevo_estado: str,
+    *,
+    now_dt: datetime | None = None,
+    payload_extra: dict | None = None,
+):
+    transition = _set_solicitud_estado(solicitud, nuevo_estado, now_dt=now_dt)
+    if not bool(transition.get("changed")):
+        return transition
+    _emit_domain_outbox_event(
+        event_type="SOLICITUD_ESTADO_CAMBIADO",
+        aggregate_type="Solicitud",
+        aggregate_id=solicitud.id,
+        aggregate_version=(int(getattr(solicitud, "row_version", 0) or 0) + 1),
+        payload={
+            "solicitud_id": int(solicitud.id),
+            "from": transition.get("from"),
+            "to": transition.get("to"),
+            **(payload_extra or {}),
+        },
+    )
+    return transition
 
 
 _F4_LIVE_ALLOWED_EVENT_TYPES = {str(ev or "").strip().upper() for ev in OUTBOX_RELAY_ALLOWED_EVENT_TYPES}
@@ -1576,11 +1613,102 @@ def _begin_pending_staff_mfa(*, staff_user: StaffUser, source: str, next_url: st
         next_url=next_url,
         source=source,
     )
-    if bool(staff_user.mfa_enabled) and bool(staff_user.get_mfa_secret()):
+    mfa_path, mfa_reason = _staff_user_mfa_bootstrap_path(staff_user)
+    if mfa_path == "verify":
         return url_for("admin.mfa_verify")
+    _log_staff_mfa_setup_required(
+        staff_user,
+        reason=mfa_reason,
+        source=source,
+        path_hint="/admin/mfa/setup",
+    )
     session[MFA_SETUP_SECRET_SESSION_KEY] = generate_mfa_secret()
     session.modified = True
     return url_for("admin.mfa_setup")
+
+
+def _staff_user_mfa_bootstrap_path(staff_user: StaffUser | None) -> tuple[str, str]:
+    if not isinstance(staff_user, StaffUser):
+        return "setup", "invalid_staff_user"
+    if not bool(getattr(staff_user, "mfa_enabled", False)):
+        return "setup", "mfa_enabled_false"
+    raw_secret = str(getattr(staff_user, "mfa_secret", "") or "").strip()
+    if not raw_secret:
+        return "setup", "mfa_secret_missing"
+    try:
+        readable_secret = str(staff_user.get_mfa_secret() or "").strip()
+    except Exception:
+        readable_secret = ""
+    if not readable_secret:
+        return "setup", "mfa_secret_unreadable"
+    return "verify", "ok"
+
+
+def _log_staff_mfa_setup_required(
+    staff_user: StaffUser | None,
+    *,
+    reason: str,
+    source: str,
+    path_hint: str,
+) -> None:
+    user_id = int(getattr(staff_user, "id", 0) or 0) or None
+    username = str(getattr(staff_user, "username", "") or "").strip() or None
+    role = str(getattr(staff_user, "role", "") or "").strip().lower() or None
+    try:
+        current_app.logger.warning(
+            "MFA_SETUP_REQUIRED user_id=%s username=%s role=%s reason=%s source=%s path=%s ip=%s",
+            user_id,
+            username or "",
+            role or "",
+            reason,
+            source,
+            path_hint,
+            _client_ip(),
+        )
+    except Exception:
+        pass
+    try:
+        log_auth_event(
+            event="MFA_SETUP_REQUIRED",
+            status="success",
+            user_id=user_id,
+            user_identifier=username,
+            reason=(reason or "unknown"),
+            metadata={
+                "path": path_hint,
+                "source": source,
+                "role": role,
+            },
+        )
+    except Exception:
+        pass
+
+
+def evaluate_staff_trusted_device_decision(
+    *,
+    staff_user: StaffUser,
+    previous_fail_count: int,
+    is_testing: bool,
+) -> dict:
+    trusted_device_allowed = False
+    trusted_device_token = _trusted_device_current_token()
+    trust_reason = "new_device"
+    force_mfa_by_failures = (not is_testing) and (int(previous_fail_count or 0) >= _trusted_device_fail_threshold())
+    if force_mfa_by_failures:
+        trust_reason = "failed_attempts"
+    elif trusted_device_token:
+        trusted_device_hash = _trusted_device_token_hash(trusted_device_token)
+        if trusted_device_hash and is_trusted_device(staff_user, trusted_device_hash):
+            trusted_device_allowed = True
+        else:
+            trust_reason = _trusted_device_reason_from_session(default="new_device")
+    else:
+        trust_reason = "missing_cookie"
+    return {
+        "trusted_device_allowed": bool(trusted_device_allowed),
+        "trusted_device_token": (trusted_device_token or "").strip(),
+        "trust_reason": trust_reason,
+    }
 
 
 def _trusted_device_cookie_ttl_seconds() -> int:
@@ -2182,8 +2310,15 @@ def _admin_guard_and_rate_limit():
             if pending_user is None or not bool(getattr(pending_user, "is_active", False)):
                 session_clear_mfa_pending(session)
                 return redirect(url_for("admin.login"))
-            if bool(pending_user.mfa_enabled) and bool(pending_user.get_mfa_secret()):
+            mfa_path, mfa_reason = _staff_user_mfa_bootstrap_path(pending_user)
+            if mfa_path == "verify":
                 return redirect(url_for("admin.mfa_verify"))
+            _log_staff_mfa_setup_required(
+                pending_user,
+                reason=mfa_reason,
+                source="admin_guard",
+                path_hint="/admin/mfa/setup",
+            )
             return redirect(url_for("admin.mfa_setup"))
 
         # Si NO hay usuario logueado, que flask-login maneje @login_required más abajo
@@ -2281,6 +2416,23 @@ def _admin_guard_and_rate_limit():
 
         # Rate-limit solo para acciones que cambian cosas
         if _operational_rate_limits_enabled() and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            # Endpoints internos de telemetría/live ya tienen su propio rate-limit
+            # y no deben contaminar el bucket global de acciones administrativas.
+            ep_l = (ep or "").strip().lower()
+            path_l = (request.path or "").strip().lower()
+            if ep_l in {
+                "admin.monitoreo_presence_ping",
+                "admin.seguridad_locks_ping",
+                "admin.live_observability_ingest",
+            }:
+                return None
+            if path_l in {
+                "/admin/monitoreo/presence/ping",
+                "/admin/seguridad/locks/ping",
+                "/admin/live/observability",
+            }:
+                return None
+
             usuario_norm = ""
             try:
                 usuario_norm = (current_user.get_id() or "").strip().lower()
@@ -2288,8 +2440,6 @@ def _admin_guard_and_rate_limit():
                 usuario_norm = ""
 
             # Bucket automático según endpoint/path/método
-            ep_l = (ep or "").lower()
-            path_l = (request.path or "").lower()
             if request.method == "DELETE" or "eliminar" in ep_l or "/eliminar" in path_l:
                 bucket = "delete"
             elif "pago" in ep_l or "/pago" in path_l or "abono" in ep_l or "/abono" in path_l:
@@ -2841,21 +2991,14 @@ def login():
             _clear_security_layer_lock_admin(endpoint="/admin/login", usuario=str(authenticated_username))
 
             if isinstance(authenticated_user, StaffUser) and _staff_user_needs_mfa(authenticated_user):
-                trusted_device_allowed = False
-                trusted_device_token = _trusted_device_current_token()
-                trusted_device_hash = ""
-                trust_reason = "new_device"
-                force_mfa_by_failures = (not is_testing) and (previous_fail_count >= _trusted_device_fail_threshold())
-                if force_mfa_by_failures:
-                    trust_reason = "failed_attempts"
-                elif trusted_device_token:
-                    trusted_device_hash = _trusted_device_token_hash(trusted_device_token)
-                    if trusted_device_hash and is_trusted_device(authenticated_user, trusted_device_hash):
-                        trusted_device_allowed = True
-                    else:
-                        trust_reason = _trusted_device_reason_from_session(default="new_device")
-                else:
-                    trust_reason = "missing_cookie"
+                trust_eval = evaluate_staff_trusted_device_decision(
+                    staff_user=authenticated_user,
+                    previous_fail_count=previous_fail_count,
+                    is_testing=is_testing,
+                )
+                trusted_device_allowed = bool(trust_eval.get("trusted_device_allowed"))
+                trusted_device_token = str(trust_eval.get("trusted_device_token") or "").strip()
+                trust_reason = str(trust_eval.get("trust_reason") or "new_device")
 
                 if trusted_device_allowed:
                     _complete_staff_login_session(
@@ -3013,7 +3156,8 @@ def mfa_setup():
             breakglass_ok=False,
         )
         return redirect(_session_redirect_after_mfa(pending))
-    if bool(staff_user.mfa_enabled) and bool(staff_user.get_mfa_secret()):
+    mfa_path, _ = _staff_user_mfa_bootstrap_path(staff_user)
+    if mfa_path == "verify":
         return redirect(url_for("admin.mfa_verify"))
 
     setup_secret = (session.get(MFA_SETUP_SECRET_SESSION_KEY) or "").strip().upper()
@@ -3040,16 +3184,34 @@ def mfa_setup():
                 staff_user.mfa_enabled = True
                 staff_user.mfa_last_timestep = int(matched_counter)
                 db.session.commit()
-            except Exception:
+            except Exception as exc:
                 db.session.rollback()
                 error = "No fue posible activar MFA. Intenta de nuevo."
+                exc_type = type(exc).__name__
+                exc_msg = str(exc).strip()
+                if len(exc_msg) > 240:
+                    exc_msg = exc_msg[:240]
+                try:
+                    current_app.logger.exception(
+                        "MFA_SETUP_FAIL db_error user_id=%s username=%s exc_type=%s exc=%s",
+                        int(getattr(staff_user, "id", 0) or 0),
+                        str(getattr(staff_user, "username", "") or "").strip(),
+                        exc_type,
+                        exc_msg,
+                    )
+                except Exception:
+                    pass
                 log_auth_event(
                     event="MFA_SETUP_FAIL",
                     status="fail",
                     user_id=staff_user.id,
                     user_identifier=staff_user.username,
                     reason="mfa_setup_db_error",
-                    metadata={"path": "/admin/mfa/setup"},
+                    metadata={
+                        "path": "/admin/mfa/setup",
+                        "exc_type": exc_type,
+                        "exc": exc_msg,
+                    },
                 )
             else:
                 _complete_staff_login_session(
@@ -3127,9 +3289,16 @@ def mfa_verify():
         )
         return redirect(_session_redirect_after_mfa(pending))
 
-    secret = staff_user.get_mfa_secret()
-    if (not bool(staff_user.mfa_enabled)) or (not secret):
+    mfa_path, mfa_reason = _staff_user_mfa_bootstrap_path(staff_user)
+    if mfa_path != "verify":
+        _log_staff_mfa_setup_required(
+            staff_user,
+            reason=mfa_reason,
+            source="admin_verify",
+            path_hint="/admin/mfa/setup",
+        )
         return redirect(url_for("admin.mfa_setup"))
+    secret = staff_user.get_mfa_secret()
 
     error = None
     if request.method == "POST":
@@ -9631,31 +9800,10 @@ def gestionar_plan(cliente_id, id):
             s.abono = s_abono
 
             # --- Estado ---
-            # Guardamos el estado anterior para detectar reactivación real
-            estado_anterior = (s.estado or '').strip().lower()
-
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
-            s.estado = 'activa'
+            _set_solicitud_estado_with_outbox(s, 'activa')
             s.fecha_cancelacion = None
             s.motivo_cancelacion = None
-
-            # --- Timestamps ---
-            now = utc_now_naive()
-
-            # ✅ Seguimiento:
-            # Al guardar el ABONO/PLAN, refrescamos el inicio de seguimiento.
-            # - Si ya tiene fecha_inicio_seguimiento, se ACTUALIZA a ahora.
-            # - Si no tiene, se setea a ahora.
-            if hasattr(s, 'fecha_inicio_seguimiento'):
-                if getattr(s, 'fecha_inicio_seguimiento', None):
-                    # Ya existía -> refrescar
-                    s.fecha_inicio_seguimiento = now
-                else:
-                    # No existía -> iniciar
-                    s.fecha_inicio_seguimiento = now
-
-            s.fecha_ultima_actividad = now
-            s.fecha_ultima_modificacion = now
 
             db.session.commit()
             success_message = 'Plan y abono actualizados correctamente.'
@@ -9961,8 +10109,7 @@ def registrar_pago(cliente_id, id):
                 # Si el sueldo viene raro, no rompemos el pago
                 pass
 
-        s.estado = 'pagada'
-        s.fecha_ultima_modificacion = utc_now_naive()
+        _set_solicitud_estado(s, 'pagada')
         _emit_domain_outbox_event(
             event_type="SOLICITUD_PAGO_REGISTRADO",
             aggregate_type="Solicitud",
@@ -10256,9 +10403,7 @@ def nuevo_reemplazo(s_id):
                 r.fecha_inicio_reemplazo = ahora
                 r.oportunidad_nueva = True
 
-            sol.estado = 'reemplazo'
-            sol.fecha_ultima_actividad = ahora
-            sol.fecha_ultima_modificacion = ahora
+            _set_solicitud_estado(sol, 'reemplazo', now_dt=ahora)
             mark_lista_from_state = None
 
             if descalificar:
@@ -10714,15 +10859,9 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             estado_restore = (getattr(r, "estado_previo_solicitud", None) or "activa").strip().lower()
             if estado_restore == "reemplazo":
                 estado_restore = "activa"
-            s.estado = estado_restore
+            _set_solicitud_estado(s, estado_restore, now_dt=ahora)
             _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
             _mark_candidata_estado(cand_new, "trabajando")
-
-            # ✅ Timestamps (solo si existen en tu modelo)
-            if hasattr(s, 'fecha_ultima_actividad'):
-                s.fecha_ultima_actividad = ahora
-            if hasattr(s, 'fecha_ultima_modificacion'):
-                s.fecha_ultima_modificacion = ahora
 
             # Porcentaje (MISMA lógica que PAGO)
             if getattr(s, 'sueldo', None):
@@ -11091,11 +11230,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
         if estado_restore not in ("proceso", "activa", "pagada", "cancelada"):
             estado_restore = "activa"
-        s.estado = estado_restore
-        if hasattr(s, "fecha_ultima_actividad"):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, "fecha_ultima_modificacion"):
-            s.fecha_ultima_modificacion = utc_now_naive()
+        _set_solicitud_estado(s, estado_restore)
 
         _emit_domain_outbox_event(
             event_type="REEMPLAZO_CANCELADO",
@@ -11353,14 +11488,10 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
         estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
         if estado_restore in ("", "reemplazo", "cancelada"):
             estado_restore = "activa"
-        s.estado = estado_restore
+        _set_solicitud_estado(s, estado_restore)
 
         _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
         _mark_candidata_estado(cand_new, "trabajando")
-        if hasattr(s, "fecha_ultima_actividad"):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, "fecha_ultima_modificacion"):
-            s.fecha_ultima_modificacion = utc_now_naive()
 
         _emit_domain_outbox_event(
             event_type="REEMPLAZO_CERRADO_ASIGNANDO",
@@ -11517,53 +11648,22 @@ def _solicitud_last_activity_at(solicitud):
     return None
 
 
-def _solicitud_hours_since_activity(solicitud, *, now_dt: datetime) -> int:
-    dt = _solicitud_last_activity_at(solicitud)
-    if not dt:
-        return 9999
-    return max(0, int((now_dt - dt).total_seconds() // 3600))
-
-
-def _solicitud_priority_label(score: int) -> str:
-    if score >= 70:
-        return "alta"
-    if score >= 40:
-        return "media"
-    return "baja"
-
-
 def _solicitud_priority_snapshot(solicitud, *, now_dt: datetime):
     estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
-    hours = _solicitud_hours_since_activity(solicitud, now_dt=now_dt)
-    if estado == "espera_pago":
-        state_points = 45
-    elif estado == "activa":
-        state_points = 32
-    elif estado == "proceso":
-        state_points = 22
-    elif estado == "reemplazo":
-        state_points = 18
-    else:
-        state_points = 10
-
-    if hours < 24:
-        inactivity_points = 5
-    elif hours < 48:
-        inactivity_points = 15
-    elif hours < 72:
-        inactivity_points = 25
-    else:
-        inactivity_points = 40
-
-    recent_points = 15 if hours < 24 else 0
-    score = int(state_points + inactivity_points + recent_points)
-    label = _solicitud_priority_label(score)
-    is_stagnant = bool(hours >= 72)
-    return score, label, is_stagnant, hours
+    estado_desde, _source, _estimated = resolve_solicitud_estado_priority_anchor(solicitud)
+    days = days_in_state(estado_desde, now_dt=now_dt)
+    label = priority_band_for_days(days)
+    if estado not in ("activa", "reemplazo"):
+        label = "normal"
+    rank = priority_band_rank(label)
+    score = int(rank * 25)
+    is_stagnant = bool(label in {"urgente", "critica"})
+    return score, label, is_stagnant, int((days or 0) * 24)
 
 
 def _solicitud_needs_followup_today(*, is_stagnant: bool, priority_label: str) -> bool:
-    return bool(is_stagnant or str(priority_label or "").strip().lower() == "alta")
+    label = str(priority_label or "").strip().lower()
+    return bool(is_stagnant or label in {"urgente", "critica"})
 
 
 def _manual_followup_snapshot(fecha_manual, *, today_rd):
@@ -11883,12 +11983,12 @@ def _solicitudes_prioridad_next_step(*, estado_raw: str, is_stagnant: bool):
         return 'Activar solicitud', 'La solicitud aún no está en operación activa.', True
     if estado == 'activa':
         if is_stagnant:
-            return 'Retomar hoy', 'Lleva 72h o más sin movimiento y requiere empuje inmediato.', True
-        return 'Continuar seguimiento', 'Está en ejecución y necesita continuidad operativa.', True
-    if estado == 'espera_pago':
-        return 'Registrar pago', 'Completar el pago acerca el cierre de esta solicitud.', True
+            return 'Escalar hoy', 'Lleva demasiados días activa sin cierre.', True
+        return 'Seguimiento activo', 'Mantener el ritmo para cerrar antes de 7 días.', True
     if estado == 'reemplazo':
-        return 'Gestionar reemplazo', 'Hay un reemplazo en curso que debe destrabarse.', True
+        if is_stagnant:
+            return 'Destrabar reemplazo', 'El reemplazo ya cruza umbral urgente/crítico.', True
+        return 'Gestionar reemplazo', 'Hay un reemplazo abierto en curso.', True
     if estado == 'pagada':
         return 'Cerrada', 'Proceso finalizado sin acción operativa pendiente.', False
     if estado == 'cancelada':
@@ -11902,9 +12002,11 @@ class _SolicitudPrioridadVM:
         "priority_score",
         "priority_label",
         "is_stagnant",
-        "last_activity_at",
-        "hours_since_activity",
-        "last_activity_human",
+        "estado_desde_at",
+        "days_in_state",
+        "priority_message",
+        "priority_source",
+        "priority_source_estimated",
         "next_step_label",
         "next_step_reason",
         "next_step_actionable",
@@ -11914,14 +12016,20 @@ class _SolicitudPrioridadVM:
         "manual_followup_badge_class",
     )
 
-    def __init__(self, s, *, score: int, label: str, stagnant: bool, last_activity_at, hours_since: int, today_rd):
+    def __init__(self, s, *, score: int, label: str, stagnant: bool, now_dt: datetime, today_rd):
         self._s = s
         self.priority_score = int(score)
         self.priority_label = label
         self.is_stagnant = bool(stagnant)
-        self.last_activity_at = last_activity_at
-        self.hours_since_activity = int(hours_since)
-        self.last_activity_human = f"hace {self.hours_since_activity}h" if self.hours_since_activity >= 0 else "—"
+        estado_desde, source, estimated = resolve_solicitud_estado_priority_anchor(s)
+        self.estado_desde_at = estado_desde
+        self.days_in_state = int(days_in_state(estado_desde, now_dt=now_dt) or 0)
+        self.priority_message = priority_message_for_solicitud(
+            estado=str(getattr(s, "estado", "") or ""),
+            days_in_current_state=self.days_in_state,
+        )
+        self.priority_source = source
+        self.priority_source_estimated = bool(estimated)
         next_label, next_reason, next_actionable = _solicitudes_prioridad_next_step(
             estado_raw=getattr(s, 'estado', ''),
             is_stagnant=self.is_stagnant,
@@ -11967,13 +12075,14 @@ def _solicitudes_prioridad_context():
     ahora = utc_now_naive()
     today_value = rd_today()
 
-    allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pagada']
-    allowed_priority = ['alta', 'media', 'baja']
+    allowed_states = ['activa', 'reemplazo', 'proceso', 'espera_pago', 'pagada']
+    default_states = ['activa', 'reemplazo']
+    allowed_priority = ['critica', 'urgente', 'atencion', 'normal']
     if estado not in allowed_states:
         estado = ''
     if prioridad not in allowed_priority:
         prioridad = ''
-    estados_filtrados = [estado] if estado else list(allowed_states)
+    estados_filtrados = [estado] if estado else list(default_states)
 
     solicitud_attrs = []
     for attr in (
@@ -11983,6 +12092,7 @@ def _solicitudes_prioridad_context():
         'ciudad_sector',
         'estado',
         'fecha_solicitud',
+        'estado_actual_desde',
         'fecha_ultima_actividad',
         'fecha_ultima_modificacion',
         'updated_at',
@@ -12009,6 +12119,11 @@ def _solicitudes_prioridad_context():
             options_list.append(joinedload(Solicitud.cliente).load_only(*cliente_attrs))
         else:
             options_list.append(joinedload(Solicitud.cliente))
+        options_list.append(selectinload(Solicitud.reemplazos).load_only(
+            Reemplazo.id,
+            Reemplazo.fecha_inicio_reemplazo,
+            Reemplazo.fecha_fin_reemplazo,
+        ))
     except Exception:
         pass
     if options_list:
@@ -12069,16 +12184,14 @@ def _solicitudes_prioridad_context():
             score=score,
             label=label,
             stagnant=stale,
-            last_activity_at=_solicitud_last_activity_at(s),
-            hours_since=hours,
+            now_dt=ahora,
             today_rd=today_value,
         ))
 
     wrapped.sort(
         key=lambda item: (
-            -int(item.priority_score),
-            0 if item.is_stagnant else 1,
-            -int(item.hours_since_activity),
+            -priority_band_rank(getattr(item, "priority_label", "")),
+            -int(getattr(item, "days_in_state", 0) or 0),
             int(getattr(item, 'id', 0) or 0),
         )
     )
@@ -12094,9 +12207,11 @@ def _solicitudes_prioridad_context():
     username_by_actor = _staff_username_map(actor_ids)
 
     count_activa = 0
-    count_espera_pago = 0
-    count_pagada = 0
-    count_stagnant = 0
+    count_reemplazo = 0
+    count_critica = 0
+    count_urgente = 0
+    count_atencion = 0
+    count_normal = 0
 
     for item in wrapped:
         sid = int(getattr(item, 'id', 0) or 0)
@@ -12116,23 +12231,30 @@ def _solicitudes_prioridad_context():
                 "total": 0,
                 "stagnant": 0,
                 "high_priority": 0,
-                "espera_pago": 0,
+                "reemplazo": 0,
                 "needs_today": 0,
             }
         bucket = responsible_summary_raw[key]
         bucket["total"] += 1
-        if bool(getattr(item, 'is_stagnant', False)):
+        current_label = str(getattr(item, 'priority_label', '') or '').strip().lower()
+        if current_label == 'critica':
+            count_critica += 1
             bucket["stagnant"] += 1
-            count_stagnant += 1
-        if str(getattr(item, 'priority_label', '') or '').strip().lower() == 'alta':
             bucket["high_priority"] += 1
-        if str(getattr(item, 'estado', '') or '').strip().lower() == 'espera_pago':
-            bucket["espera_pago"] += 1
-            count_espera_pago += 1
-        elif str(getattr(item, 'estado', '') or '').strip().lower() == 'activa':
+        elif current_label == 'urgente':
+            count_urgente += 1
+            bucket["stagnant"] += 1
+            bucket["high_priority"] += 1
+        elif current_label == 'atencion':
+            count_atencion += 1
+        else:
+            count_normal += 1
+        current_estado = str(getattr(item, 'estado', '') or '').strip().lower()
+        if current_estado == 'activa':
             count_activa += 1
-        elif str(getattr(item, 'estado', '') or '').strip().lower() == 'pagada':
-            count_pagada += 1
+        elif current_estado == 'reemplazo':
+            count_reemplazo += 1
+            bucket["reemplazo"] += 1
         if bool(getattr(item, 'needs_followup_today', False)):
             bucket["needs_today"] += 1
 
@@ -12158,9 +12280,11 @@ def _solicitudes_prioridad_context():
         total=total,
         total_count=total,
         count_activa=count_activa,
-        count_espera_pago=count_espera_pago,
-        count_pagada=count_pagada,
-        count_stagnant=count_stagnant,
+        count_reemplazo=count_reemplazo,
+        count_critica=count_critica,
+        count_urgente=count_urgente,
+        count_atencion=count_atencion,
+        count_normal=count_normal,
         responsible_summary=responsible_summary,
         has_more=end < total,
         allowed_states=allowed_states,
@@ -12192,9 +12316,11 @@ def solicitudes_prioridad():
                     "estancadas": bool(list_ctx["estancadas"]),
                     "total_count": int(list_ctx["total_count"]),
                     "count_activa": int(list_ctx["count_activa"]),
-                    "count_espera_pago": int(list_ctx["count_espera_pago"]),
-                    "count_pagada": int(list_ctx["count_pagada"]),
-                    "count_stagnant": int(list_ctx["count_stagnant"]),
+                    "count_reemplazo": int(list_ctx["count_reemplazo"]),
+                    "count_critica": int(list_ctx["count_critica"]),
+                    "count_urgente": int(list_ctx["count_urgente"]),
+                    "count_atencion": int(list_ctx["count_atencion"]),
+                    "count_normal": int(list_ctx["count_normal"]),
                 },
             )
             response = jsonify(payload)
@@ -15008,15 +15134,11 @@ def pausar_espera_perfil_desde_copiar(id):
     try:
         if hasattr(s, 'estado_previo_espera_pago'):
             s.estado_previo_espera_pago = estado_actual or 'activa'
-        s.estado = 'espera_pago'
+        _set_solicitud_estado(s, 'espera_pago')
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
-        if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = utc_now_naive()
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PERFIL_PONER",
@@ -15069,15 +15191,11 @@ def reanudar_espera_perfil_desde_copiar(id):
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
         if restore in ('', 'espera_pago', 'cancelada', 'pagada'):
             restore = 'activa'
-        s.estado = restore
+        _set_solicitud_estado(s, restore)
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
-        if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = utc_now_naive()
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ESPERA_PERFIL_QUITAR",
@@ -15828,11 +15946,9 @@ def cancelar_solicitud_desde_copiar(id):
             actor=_staff_actor_name(),
             motivo=motivo,
         )
-        s.estado = 'cancelada'
+        _set_solicitud_estado(s, 'cancelada')
         s.motivo_cancelacion = motivo
         s.fecha_cancelacion = _now_utc()
-        s.fecha_ultima_modificacion = _now_utc()
-        s.fecha_ultima_actividad = _now_utc()
         if int(released.get("released_count", 0) or 0) > 0:
             _emit_domain_outbox_event(
                 event_type="SOLICITUD_CANDIDATAS_LIBERADAS",
@@ -16032,10 +16148,7 @@ def marcar_pagada_desde_copiar(id):
         _sync_solicitud_candidatas_after_assignment(s, cand.fila)
         _mark_candidata_estado(cand, "trabajando")
         s.monto_pagado = _parse_money_to_decimal_str(monto_raw)
-        s.estado = 'pagada'
-        s.fecha_ultima_modificacion = utc_now_naive()
-        if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = utc_now_naive()
+        _set_solicitud_estado(s, 'pagada')
         _emit_domain_outbox_event(
             event_type="SOLICITUD_CANDIDATA_ASIGNADA",
             aggregate_type="Solicitud",
@@ -16368,9 +16481,7 @@ def activar_solicitud_directa(id):
                 error_code='conflict',
             )
 
-        s.estado = 'activa'
-        s.fecha_ultima_modificacion = _now_utc()
-        s.fecha_ultima_actividad = _now_utc()
+        _set_solicitud_estado_with_outbox(s, 'activa')
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ACTIVAR",
@@ -16659,26 +16770,11 @@ def poner_espera_pago_solicitud(id):
     try:
         if hasattr(s, 'estado_previo_espera_pago'):
             s.estado_previo_espera_pago = estado_actual or 'activa'
-        s.estado = 'espera_pago'
+        _set_solicitud_estado_with_outbox(s, 'espera_pago')
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
-        if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = utc_now_naive()
-        _emit_domain_outbox_event(
-            event_type="SOLICITUD_ESTADO_CAMBIADO",
-            aggregate_type="Solicitud",
-            aggregate_id=s.id,
-            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
-            payload={
-                "solicitud_id": int(s.id),
-                "from": estado_actual,
-                "to": "espera_pago",
-            },
-        )
         _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
@@ -16779,26 +16875,11 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
     try:
         if hasattr(s, 'estado_previo_espera_pago'):
             s.estado_previo_espera_pago = estado_actual or 'activa'
-        s.estado = 'espera_pago'
+        _set_solicitud_estado_with_outbox(s, 'espera_pago')
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
-        if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = utc_now_naive()
-        _emit_domain_outbox_event(
-            event_type="SOLICITUD_ESTADO_CAMBIADO",
-            aggregate_type="Solicitud",
-            aggregate_id=s.id,
-            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
-            payload={
-                "solicitud_id": int(s.id),
-                "from": estado_actual,
-                "to": "espera_pago",
-            },
-        )
         _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
@@ -16957,26 +17038,11 @@ def quitar_espera_pago_solicitud(id):
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
         if restore in ('', 'espera_pago', 'cancelada'):
             restore = 'activa'
-        s.estado = restore
+        _set_solicitud_estado_with_outbox(s, restore)
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
-        if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = utc_now_naive()
-        _emit_domain_outbox_event(
-            event_type="SOLICITUD_ESTADO_CAMBIADO",
-            aggregate_type="Solicitud",
-            aggregate_id=s.id,
-            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
-            payload={
-                "solicitud_id": int(s.id),
-                "from": "espera_pago",
-                "to": restore,
-            },
-        )
         _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
@@ -17082,26 +17148,11 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
         if restore in ('', 'espera_pago', 'cancelada'):
             restore = 'activa'
-        s.estado = restore
+        _set_solicitud_estado_with_outbox(s, restore)
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()
         if hasattr(s, 'usuario_cambio_espera_pago'):
             s.usuario_cambio_espera_pago = _staff_actor_name()
-        if hasattr(s, 'fecha_ultima_actividad'):
-            s.fecha_ultima_actividad = utc_now_naive()
-        if hasattr(s, 'fecha_ultima_modificacion'):
-            s.fecha_ultima_modificacion = utc_now_naive()
-        _emit_domain_outbox_event(
-            event_type="SOLICITUD_ESTADO_CAMBIADO",
-            aggregate_type="Solicitud",
-            aggregate_id=s.id,
-            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
-            payload={
-                "solicitud_id": int(s.id),
-                "from": "espera_pago",
-                "to": restore,
-            },
-        )
         _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
@@ -17312,11 +17363,13 @@ def cancelar_solicitud(cliente_id, id):
             actor=_staff_actor_name(),
             motivo=motivo,
         )
-        s.estado = 'cancelada'
+        _set_solicitud_estado_with_outbox(
+            s,
+            'cancelada',
+            payload_extra={"motivo": motivo[:255]},
+        )
         s.motivo_cancelacion = motivo
         s.fecha_cancelacion = _now_utc()
-        s.fecha_ultima_modificacion = _now_utc()
-        s.fecha_ultima_actividad = _now_utc()
         if int(released.get("released_count", 0) or 0) > 0:
             _emit_domain_outbox_event(
                 event_type="SOLICITUD_CANDIDATAS_LIBERADAS",
@@ -17330,18 +17383,6 @@ def cancelar_solicitud(cliente_id, id):
                     "reason": "cancelacion_solicitud",
                 },
             )
-        _emit_domain_outbox_event(
-            event_type="SOLICITUD_ESTADO_CAMBIADO",
-            aggregate_type="Solicitud",
-            aggregate_id=s.id,
-            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
-            payload={
-                "solicitud_id": int(s.id),
-                "from": estado_prev,
-                "to": "cancelada",
-                "motivo": motivo[:255],
-            },
-        )
         _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         if wants_async:
@@ -17567,10 +17608,12 @@ def cancelar_solicitud_directa(id):
             actor=_staff_actor_name(),
             motivo=(request.form.get('motivo') or '').strip() or 'Cancelación directa (sin motivo)',
         )
-        s.estado = 'cancelada'
+        _set_solicitud_estado_with_outbox(
+            s,
+            'cancelada',
+            payload_extra={"motivo": (request.form.get('motivo') or '').strip()[:255]},
+        )
         s.fecha_cancelacion = _now_utc()
-        s.fecha_ultima_modificacion = _now_utc()
-        s.fecha_ultima_actividad = _now_utc()
         s.motivo_cancelacion = (request.form.get('motivo') or '').strip() or 'Cancelación directa (sin motivo)'
         if int(released.get("released_count", 0) or 0) > 0:
             _emit_domain_outbox_event(
@@ -17585,18 +17628,6 @@ def cancelar_solicitud_directa(id):
                     "reason": "cancelacion_solicitud_directa",
                 },
             )
-        _emit_domain_outbox_event(
-            event_type="SOLICITUD_ESTADO_CAMBIADO",
-            aggregate_type="Solicitud",
-            aggregate_id=s.id,
-            aggregate_version=(int(getattr(s, "row_version", 0) or 0) + 1),
-            payload={
-                "solicitud_id": int(s.id),
-                "from": estado_prev,
-                "to": "cancelada",
-                "motivo": (s.motivo_cancelacion or "")[:255],
-            },
-        )
         _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
@@ -17813,6 +17844,66 @@ def generar_link_publico_cliente_nuevo():
 _ADMIN_CHAT_MESSAGE_MAX_LEN = 1800
 _ADMIN_CHAT_CONV_LIMIT = 60
 _ADMIN_CHAT_MSG_LIMIT = 50
+_CHAT_STATUS_OPEN = "open"
+_CHAT_STATUS_PENDING = "pending"
+_CHAT_STATUS_CLOSED = "closed"
+_CHAT_STATUS_VALUES = {_CHAT_STATUS_OPEN, _CHAT_STATUS_PENDING, _CHAT_STATUS_CLOSED}
+_CHAT_SLA_LEVEL_NORMAL = "normal"
+_CHAT_SLA_LEVEL_WARNING = "warning"
+_CHAT_SLA_LEVEL_OVERDUE = "overdue"
+_CHAT_ASSIGNMENT_SCOPE_ALL = "all"
+_CHAT_ASSIGNMENT_SCOPE_MINE = "mine"
+_CHAT_ASSIGNMENT_SCOPE_UNASSIGNED = "unassigned"
+_CHAT_ASSIGNMENT_SCOPE_VALUES = {
+    _CHAT_ASSIGNMENT_SCOPE_ALL,
+    _CHAT_ASSIGNMENT_SCOPE_MINE,
+    _CHAT_ASSIGNMENT_SCOPE_UNASSIGNED,
+}
+_CHAT_STAFF_QUICK_REPLIES = (
+    {
+        "key": "saludo_inicial",
+        "category": "Inicio",
+        "title": "Saludo inicial",
+        "body": "Hola, gracias por escribirnos. Soy parte del equipo de soporte y te estaré ayudando por este medio.",
+    },
+    {
+        "key": "confirmacion_recibido",
+        "category": "Seguimiento",
+        "title": "Confirmar recibido",
+        "body": "Recibimos tu mensaje correctamente. Gracias por el detalle.",
+    },
+    {
+        "key": "pedir_mas_informacion",
+        "category": "Seguimiento",
+        "title": "Pedir más información",
+        "body": "Para ayudarte mejor, ¿podrías compartir un poco más de contexto? Si aplica, incluye fecha, horario y cualquier detalle importante.",
+    },
+    {
+        "key": "en_revision",
+        "category": "Seguimiento",
+        "title": "Estamos revisando",
+        "body": "Estamos revisando tu caso con el equipo y te actualizamos por aquí en breve.",
+    },
+    {
+        "key": "cierre_amable",
+        "category": "Cierre",
+        "title": "Cierre amable",
+        "body": "Quedamos atentos por si necesitas algo adicional. Gracias por comunicarte con nosotros.",
+    },
+)
+
+
+def _chat_sla_minutes_from_env(key: str, default_value: int) -> int:
+    try:
+        return max(1, int(str(os.getenv(key, str(default_value))).strip()))
+    except Exception:
+        return int(default_value)
+
+
+_CHAT_SLA_WARNING_MINUTES = _chat_sla_minutes_from_env("CHAT_SLA_WARNING_MINUTES", 15)
+_CHAT_SLA_OVERDUE_MINUTES = _chat_sla_minutes_from_env("CHAT_SLA_OVERDUE_MINUTES", 60)
+if _CHAT_SLA_OVERDUE_MINUTES <= _CHAT_SLA_WARNING_MINUTES:
+    _CHAT_SLA_OVERDUE_MINUTES = _CHAT_SLA_WARNING_MINUTES + 15
 
 
 def _chat_enabled() -> bool:
@@ -17838,6 +17929,193 @@ def _chat_subject_for_solicitud(solicitud: Solicitud | None) -> str:
 def _chat_message_preview(body: str) -> str:
     txt = re.sub(r"\s+", " ", str(body or "")).strip()
     return txt[:220]
+
+
+def _chat_valid_status(raw: str | None, *, default: str = _CHAT_STATUS_OPEN, allow_all: bool = False) -> str:
+    value = str(raw or "").strip().lower()
+    if allow_all and value == "all":
+        return "all"
+    return value if value in _CHAT_STATUS_VALUES else str(default)
+
+
+def _chat_valid_assignment_scope(raw: str | None, *, default: str = _CHAT_ASSIGNMENT_SCOPE_ALL) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in _CHAT_ASSIGNMENT_SCOPE_VALUES else str(default)
+
+
+def _chat_staff_can_reassign() -> bool:
+    return _current_staff_role() in {"owner", "admin"}
+
+
+def _chat_humanize_age_seconds(seconds: int | None) -> str:
+    total = int(seconds or 0)
+    if total <= 0:
+        return "ahora"
+    minutes = total // 60
+    if minutes < 1:
+        return "menos de 1 min"
+    if minutes < 60:
+        return f"{minutes} min"
+    hours = minutes // 60
+    if hours < 24:
+        rem = minutes % 60
+        return f"{hours} h" if rem == 0 else f"{hours} h {rem} min"
+    days = hours // 24
+    rem_h = hours % 24
+    return f"{days} d" if rem_h == 0 else f"{days} d {rem_h} h"
+
+
+def _chat_staff_quick_reply_groups() -> list[dict]:
+    groups: list[dict] = []
+    index_by_category: dict[str, int] = {}
+    for row in _CHAT_STAFF_QUICK_REPLIES:
+        category = str(row.get("category") or "General").strip() or "General"
+        pos = index_by_category.get(category)
+        if pos is None:
+            pos = len(groups)
+            index_by_category[category] = pos
+            groups.append({"category": category, "items": []})
+        groups[pos]["items"].append(
+            {
+                "key": str(row.get("key") or "").strip(),
+                "title": str(row.get("title") or "").strip(),
+                "body": str(row.get("body") or "").strip(),
+            }
+        )
+    return groups
+
+
+def _chat_operational_snapshot(conv, *, now_ref: datetime | None = None) -> dict:
+    now_value = now_ref or utc_now_naive()
+    status = _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN)
+    last_message_at = getattr(conv, "last_message_at", None)
+    last_sender = str(getattr(conv, "last_message_sender_type", "") or "").strip().lower()
+    staff_unread_count = int(getattr(conv, "staff_unread_count", 0) or 0)
+    waiting_on_staff = status == _CHAT_STATUS_OPEN and (last_sender == "cliente" or staff_unread_count > 0)
+
+    age_seconds = None
+    if last_message_at:
+        try:
+            age_seconds = max(0, int((now_value - last_message_at).total_seconds()))
+        except Exception:
+            age_seconds = None
+
+    warning_seconds = int(_CHAT_SLA_WARNING_MINUTES * 60)
+    overdue_seconds = int(_CHAT_SLA_OVERDUE_MINUTES * 60)
+
+    if status == _CHAT_STATUS_CLOSED:
+        return {
+            "sla_level": None,
+            "sla_label": "Cerrada",
+            "sla_summary": "Cerrada (fuera de foco operativo)",
+            "sla_age_seconds": age_seconds,
+            "sla_waiting_on_staff": False,
+            "sla_priority_rank": 40,
+            "sla_badge_class": "text-bg-secondary",
+        }
+
+    if status == _CHAT_STATUS_PENDING:
+        return {
+            "sla_level": _CHAT_SLA_LEVEL_NORMAL,
+            "sla_label": "Reciente",
+            "sla_summary": "Pendiente (prioridad operativa baja)",
+            "sla_age_seconds": age_seconds,
+            "sla_waiting_on_staff": False,
+            "sla_priority_rank": 30,
+            "sla_badge_class": "text-bg-light border text-muted",
+        }
+
+    if waiting_on_staff and age_seconds is not None and age_seconds >= overdue_seconds:
+        return {
+            "sla_level": _CHAT_SLA_LEVEL_OVERDUE,
+            "sla_label": "Atrasada",
+            "sla_summary": f"Atrasada: cliente esperando hace {_chat_humanize_age_seconds(age_seconds)}",
+            "sla_age_seconds": age_seconds,
+            "sla_waiting_on_staff": True,
+            "sla_priority_rank": 0,
+            "sla_badge_class": "text-bg-danger",
+        }
+
+    if waiting_on_staff and age_seconds is not None and age_seconds >= warning_seconds:
+        return {
+            "sla_level": _CHAT_SLA_LEVEL_WARNING,
+            "sla_label": "Atención",
+            "sla_summary": f"Atención: cliente esperando hace {_chat_humanize_age_seconds(age_seconds)}",
+            "sla_age_seconds": age_seconds,
+            "sla_waiting_on_staff": True,
+            "sla_priority_rank": 10,
+            "sla_badge_class": "text-bg-warning",
+        }
+
+    if waiting_on_staff and age_seconds is not None:
+        summary = f"Reciente: cliente esperando hace {_chat_humanize_age_seconds(age_seconds)}"
+    elif waiting_on_staff:
+        summary = "Reciente: pendiente de respuesta al cliente"
+    else:
+        summary = "Reciente: en seguimiento"
+
+    return {
+        "sla_level": _CHAT_SLA_LEVEL_NORMAL,
+        "sla_label": "Reciente",
+        "sla_summary": summary,
+        "sla_age_seconds": age_seconds,
+        "sla_waiting_on_staff": bool(waiting_on_staff),
+        "sla_priority_rank": 20,
+        "sla_badge_class": "text-bg-info",
+    }
+
+
+def _chat_priority_order_expression(*, now_ref: datetime):
+    warning_at = now_ref - timedelta(minutes=int(_CHAT_SLA_WARNING_MINUTES))
+    overdue_at = now_ref - timedelta(minutes=int(_CHAT_SLA_OVERDUE_MINUTES))
+    waiting_on_staff = or_(
+        ChatConversation.last_message_sender_type == "cliente",
+        ChatConversation.staff_unread_count > 0,
+    )
+    return case(
+        (
+            and_(
+                ChatConversation.status == _CHAT_STATUS_OPEN,
+                waiting_on_staff,
+                ChatConversation.last_message_at.isnot(None),
+                ChatConversation.last_message_at <= overdue_at,
+            ),
+            0,
+        ),
+        (
+            and_(
+                ChatConversation.status == _CHAT_STATUS_OPEN,
+                waiting_on_staff,
+                ChatConversation.last_message_at.isnot(None),
+                ChatConversation.last_message_at <= warning_at,
+            ),
+            1,
+        ),
+        (ChatConversation.status == _CHAT_STATUS_OPEN, 2),
+        (ChatConversation.status == _CHAT_STATUS_PENDING, 3),
+        else_=4,
+    )
+
+
+def _chat_set_status(conversation, *, to_status: str, actor_type: str) -> bool:
+    conv = conversation
+    if conv is None:
+        return False
+    next_status = _chat_valid_status(to_status, default=_CHAT_STATUS_OPEN)
+    current_status = _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN)
+    if current_status == next_status:
+        return False
+    now = utc_now_naive()
+    conv.status = next_status
+    conv.updated_at = now
+    db.session.add(conv)
+    _chat_emit_event(
+        event_type="CHAT_CONVERSATION_STATUS_CHANGED",
+        conversation=conv,
+        reader_type=(str(actor_type or "").strip().lower()[:20] or None),
+        extra_payload={"from": current_status, "to": next_status},
+    )
+    return True
 
 
 def _chat_get_or_create_conversation(*, cliente_id: int, solicitud_id: int | None = None):
@@ -17936,10 +18214,17 @@ def _chat_wants_json() -> bool:
     return ("application/json" in accept) or (xr == "xmlhttprequest") or (str(request.args.get("ajax") or "").strip() == "1")
 
 
-def _chat_serialize_conversation_for_staff(conv) -> dict:
+def _chat_serialize_conversation_for_staff(conv, *, now_ref: datetime | None = None) -> dict:
     cliente = getattr(conv, "cliente", None)
     solicitud = getattr(conv, "solicitud", None)
+    assigned_staff = getattr(conv, "assigned_staff_user", None)
     last_message_at = getattr(conv, "last_message_at", None)
+    assigned_at = getattr(conv, "assigned_at", None)
+    assigned_staff_user_id = int(getattr(conv, "assigned_staff_user_id", 0) or 0)
+    me_id = int(getattr(current_user, "id", 0) or 0)
+    is_assigned_to_me = assigned_staff_user_id > 0 and assigned_staff_user_id == me_id
+    is_assigned_to_other = assigned_staff_user_id > 0 and assigned_staff_user_id != me_id
+    operational = _chat_operational_snapshot(conv, now_ref=now_ref)
     return {
         "id": int(conv.id),
         "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
@@ -17955,6 +18240,18 @@ def _chat_serialize_conversation_for_staff(conv) -> dict:
         "last_message_sender_type": str(getattr(conv, "last_message_sender_type", "") or ""),
         "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
         "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+        "assigned_staff_user_id": assigned_staff_user_id or None,
+        "assigned_staff_username": str(getattr(assigned_staff, "username", "") or "") if assigned_staff_user_id > 0 else "",
+        "assigned_at": iso_utc_z(assigned_at) if assigned_at else None,
+        "is_assigned_to_me": bool(is_assigned_to_me),
+        "is_assigned_to_other": bool(is_assigned_to_other),
+        "sla_level": operational.get("sla_level"),
+        "sla_label": operational.get("sla_label"),
+        "sla_summary": operational.get("sla_summary"),
+        "sla_age_seconds": operational.get("sla_age_seconds"),
+        "sla_waiting_on_staff": bool(operational.get("sla_waiting_on_staff")),
+        "sla_priority_rank": int(operational.get("sla_priority_rank", 99) or 99),
+        "sla_badge_class": str(operational.get("sla_badge_class", "") or ""),
         "thread_url": url_for("admin.chat_staff_inbox", conversation_id=int(conv.id)),
     }
 
@@ -17983,7 +18280,7 @@ def _chat_serialize_message_for_staff(msg) -> dict:
     }
 
 
-def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type: str | None = None) -> None:
+def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type: str | None = None, extra_payload: dict | None = None) -> None:
     if conversation is None:
         return
     payload = {
@@ -17991,8 +18288,11 @@ def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type
         "solicitud_id": int(getattr(conversation, "solicitud_id", 0) or 0) or None,
         "conversation_id": int(getattr(conversation, "id", 0) or 0),
         "conversation_type": str(getattr(conversation, "conversation_type", "") or "general"),
+        "status": _chat_valid_status(getattr(conversation, "status", None), default=_CHAT_STATUS_OPEN),
         "cliente_unread_count": int(getattr(conversation, "cliente_unread_count", 0) or 0),
         "staff_unread_count": int(getattr(conversation, "staff_unread_count", 0) or 0),
+        "assigned_staff_user_id": int(getattr(conversation, "assigned_staff_user_id", 0) or 0) or None,
+        "assigned_at": iso_utc_z(getattr(conversation, "assigned_at", None)),
     }
     if message is not None:
         payload.update(
@@ -18004,6 +18304,8 @@ def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type
         )
     if reader_type:
         payload["reader_type"] = str(reader_type)[:20]
+    if isinstance(extra_payload, dict) and extra_payload:
+        payload.update(dict(extra_payload))
 
     _emit_domain_outbox_event(
         event_type=str(event_type or "").strip().upper(),
@@ -18012,6 +18314,33 @@ def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type
         aggregate_version=None,
         payload=payload,
     )
+
+
+def _chat_staff_global_badge_payload() -> dict:
+    if not _chat_enabled():
+        return {"unread_conversations": 0, "unread_messages": 0}
+
+    query = ChatConversation.query
+    if chat_e2e_enabled():
+        prefix = chat_e2e_scope_prefix()
+        if not prefix:
+            return {"unread_conversations": 0, "unread_messages": 0}
+        query = query.filter(ChatConversation.scope_key.like(f"{prefix}%"))
+
+    unread_conv_count, unread_message_count = (
+        query
+        .filter(ChatConversation.staff_unread_count > 0)
+        .with_entities(
+            func.count(ChatConversation.id),
+            func.coalesce(func.sum(ChatConversation.staff_unread_count), 0),
+        )
+        .first()
+        or (0, 0)
+    )
+    return {
+        "unread_conversations": int(unread_conv_count or 0),
+        "unread_messages": int(unread_message_count or 0),
+    }
 
 
 def _admin_live_boot_after_id() -> int:
@@ -18036,7 +18365,12 @@ def chat_staff_inbox():
     conv_id = _safe_int(request.args.get("conversation_id"), default=0)
     q = re.sub(r"\s+", " ", str(request.args.get("q") or "")).strip()[:80]
     only_unread = str(request.args.get("only_unread") or "").strip() == "1"
+    status_filter = _chat_valid_status(request.args.get("status"), default=_CHAT_STATUS_OPEN, allow_all=True)
+    assignment_filter = _chat_valid_assignment_scope(request.args.get("assignment"), default=_CHAT_ASSIGNMENT_SCOPE_ALL)
     live_after_id = _admin_live_boot_after_id()
+    my_staff_id = int(getattr(current_user, "id", 0) or 0)
+    now_ref = utc_now_naive()
+    priority_order = _chat_priority_order_expression(now_ref=now_ref)
 
     query = ChatConversation.query
     if chat_e2e_enabled():
@@ -18046,6 +18380,12 @@ def chat_staff_inbox():
         query = query.filter(ChatConversation.scope_key.like(f"{prefix}%"))
     if only_unread:
         query = query.filter(ChatConversation.staff_unread_count > 0)
+    if status_filter != "all":
+        query = query.filter(ChatConversation.status == status_filter)
+    if assignment_filter == _CHAT_ASSIGNMENT_SCOPE_MINE:
+        query = query.filter(ChatConversation.assigned_staff_user_id == my_staff_id)
+    elif assignment_filter == _CHAT_ASSIGNMENT_SCOPE_UNASSIGNED:
+        query = query.filter(ChatConversation.assigned_staff_user_id.is_(None))
     if q:
         like = f"%{q}%"
         query = query.join(Cliente, Cliente.id == ChatConversation.cliente_id).filter(
@@ -18057,10 +18397,17 @@ def chat_staff_inbox():
         )
     conversations = (
         query
-        .order_by(ChatConversation.staff_unread_count.desc(), ChatConversation.last_message_at.desc().nullslast(), ChatConversation.id.desc())
+        .order_by(
+            priority_order.asc(),
+            ChatConversation.staff_unread_count.desc(),
+            ChatConversation.last_message_at.desc().nullslast(),
+            ChatConversation.id.desc(),
+        )
         .limit(_ADMIN_CHAT_CONV_LIMIT)
         .all()
     )
+    for conv in conversations:
+        setattr(conv, "operational", _chat_operational_snapshot(conv, now_ref=now_ref))
 
     selected = None
     if conv_id > 0:
@@ -18070,6 +18417,7 @@ def chat_staff_inbox():
 
     messages = []
     if selected is not None:
+        setattr(selected, "operational", _chat_operational_snapshot(selected, now_ref=now_ref))
         messages = (
             ChatMessage.query
             .filter_by(conversation_id=int(selected.id), is_deleted=False)
@@ -18079,6 +18427,13 @@ def chat_staff_inbox():
         )
         messages = list(reversed(messages or []))
 
+    staff_assignable = (
+        StaffUser.query
+        .filter_by(is_active=True)
+        .order_by(StaffUser.username.asc())
+        .all()
+    )
+
     return render_template(
         "admin/chat_inbox.html",
         chat_conversations=conversations,
@@ -18086,6 +18441,11 @@ def chat_staff_inbox():
         chat_messages=messages,
         chat_query=q,
         chat_only_unread=only_unread,
+        chat_status_filter=status_filter,
+        chat_assignment_filter=assignment_filter,
+        chat_can_reassign=_chat_staff_can_reassign(),
+        chat_assignable_staff=staff_assignable,
+        chat_quick_reply_groups=_chat_staff_quick_reply_groups(),
         chat_message_max_len=_ADMIN_CHAT_MESSAGE_MAX_LEN,
         chat_live_after_id=int(live_after_id or 0),
     )
@@ -18127,6 +18487,11 @@ def chat_staff_conversations_json():
         return jsonify({"ok": False, "error": "chat_not_available"}), 404
     q = re.sub(r"\s+", " ", str(request.args.get("q") or "")).strip()[:80]
     only_unread = str(request.args.get("only_unread") or "").strip() == "1"
+    status_filter = _chat_valid_status(request.args.get("status"), default=_CHAT_STATUS_OPEN, allow_all=True)
+    assignment_filter = _chat_valid_assignment_scope(request.args.get("assignment"), default=_CHAT_ASSIGNMENT_SCOPE_ALL)
+    my_staff_id = int(getattr(current_user, "id", 0) or 0)
+    now_ref = utc_now_naive()
+    priority_order = _chat_priority_order_expression(now_ref=now_ref)
 
     query = ChatConversation.query
     if chat_e2e_enabled():
@@ -18136,6 +18501,12 @@ def chat_staff_conversations_json():
         query = query.filter(ChatConversation.scope_key.like(f"{prefix}%"))
     if only_unread:
         query = query.filter(ChatConversation.staff_unread_count > 0)
+    if status_filter != "all":
+        query = query.filter(ChatConversation.status == status_filter)
+    if assignment_filter == _CHAT_ASSIGNMENT_SCOPE_MINE:
+        query = query.filter(ChatConversation.assigned_staff_user_id == my_staff_id)
+    elif assignment_filter == _CHAT_ASSIGNMENT_SCOPE_UNASSIGNED:
+        query = query.filter(ChatConversation.assigned_staff_user_id.is_(None))
     if q:
         like = f"%{q}%"
         query = query.join(Cliente, Cliente.id == ChatConversation.cliente_id).filter(
@@ -18147,7 +18518,12 @@ def chat_staff_conversations_json():
         )
     rows = (
         query
-        .order_by(ChatConversation.staff_unread_count.desc(), ChatConversation.last_message_at.desc().nullslast(), ChatConversation.id.desc())
+        .order_by(
+            priority_order.asc(),
+            ChatConversation.staff_unread_count.desc(),
+            ChatConversation.last_message_at.desc().nullslast(),
+            ChatConversation.id.desc(),
+        )
         .limit(_ADMIN_CHAT_CONV_LIMIT)
         .all()
     )
@@ -18155,8 +18531,23 @@ def chat_staff_conversations_json():
     return jsonify(
         {
             "ok": True,
-            "items": [_chat_serialize_conversation_for_staff(r) for r in (rows or [])],
+            "items": [_chat_serialize_conversation_for_staff(r, now_ref=now_ref) for r in (rows or [])],
             "unread_count": total_unread,
+            "ts": iso_utc_z(),
+        }
+    )
+
+
+@admin_bp.route('/chat/badge.json', methods=['GET'])
+@login_required
+@staff_required
+def chat_staff_badge_json():
+    counters = _chat_staff_global_badge_payload()
+    return jsonify(
+        {
+            "ok": True,
+            "unread_conversations": int(counters.get("unread_conversations") or 0),
+            "unread_messages": int(counters.get("unread_messages") or 0),
             "ts": iso_utc_z(),
         }
     )
@@ -18194,7 +18585,7 @@ def chat_staff_messages_json(conversation_id):
     return jsonify(
         {
             "ok": True,
-            "conversation": _chat_serialize_conversation_for_staff(conv),
+            "conversation": _chat_serialize_conversation_for_staff(conv, now_ref=utc_now_naive()),
             "items": [_chat_serialize_message_for_staff(m) for m in rows],
             "has_more": bool(has_more),
             "next_before_id": int(next_before_id),
@@ -18262,11 +18653,26 @@ def chat_staff_send_message(conversation_id):
         return jsonify({"ok": True, "duplicate": True}), 200
 
     conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
+    actor_staff_id = int(getattr(current_user, "id", 0) or 0)
+    assignment_changed = False
+    previous_assigned_staff_id = int(getattr(conv, "assigned_staff_user_id", 0) or 0)
+    assignment_warning = None
+    if previous_assigned_staff_id <= 0 and actor_staff_id > 0:
+        conv.assigned_staff_user_id = actor_staff_id
+        conv.assigned_at = utc_now_naive()
+        assignment_changed = True
+    elif previous_assigned_staff_id > 0 and previous_assigned_staff_id != actor_staff_id:
+        assigned_row = StaffUser.query.filter_by(id=previous_assigned_staff_id).first()
+        assignment_warning = {
+            "code": "conversation_assigned_to_other_staff",
+            "assigned_staff_user_id": previous_assigned_staff_id,
+            "assigned_staff_username": str(getattr(assigned_row, "username", "") or "") or f"Staff #{previous_assigned_staff_id}",
+        }
     now = utc_now_naive()
     msg = ChatMessage(
         conversation_id=int(conv.id),
         sender_type="staff",
-        sender_staff_user_id=int(getattr(current_user, "id", 0) or 0),
+        sender_staff_user_id=actor_staff_id,
         body=body,
         meta=e2e_message_meta({}),
         created_at=now,
@@ -18277,9 +18683,21 @@ def chat_staff_send_message(conversation_id):
     conv.last_message_preview = _chat_message_preview(body)
     conv.last_message_sender_type = "staff"
     conv.cliente_unread_count = int(getattr(conv, "cliente_unread_count", 0) or 0) + 1
+    _chat_set_status(conv, to_status=_CHAT_STATUS_OPEN, actor_type="staff")
     conv.updated_at = now
     db.session.add(conv)
     db.session.flush()
+    if assignment_changed:
+        _chat_emit_event(
+            event_type="CHAT_CONVERSATION_ASSIGNED",
+            conversation=conv,
+            reader_type="staff",
+            extra_payload={
+                "from_assigned_staff_user_id": None,
+                "to_assigned_staff_user_id": int(getattr(conv, "assigned_staff_user_id", 0) or 0) or None,
+                "action": "auto_assigned_on_staff_reply",
+            },
+        )
     _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
     _set_idempotency_response(idem_row, status=200, code="ok")
     db.session.commit()
@@ -18287,8 +18705,9 @@ def chat_staff_send_message(conversation_id):
     return jsonify(
         {
             "ok": True,
-            "conversation": _chat_serialize_conversation_for_staff(conv),
+            "conversation": _chat_serialize_conversation_for_staff(conv, now_ref=utc_now_naive()),
             "message": _chat_serialize_message_for_staff(msg),
+            "assignment_warning": assignment_warning,
             "ts": iso_utc_z(),
         }
     )
@@ -18323,3 +18742,147 @@ def chat_staff_mark_read(conversation_id):
             "ts": iso_utc_z(),
         }
     )
+
+
+def _chat_staff_set_assignment(
+    conversation_id: int,
+    *,
+    assigned_staff_user_id: int | None,
+    action: str,
+    require_admin_level: bool = False,
+):
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    if require_admin_level and not _chat_staff_can_reassign():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation(conv)
+        except E2EChatGuardError as exc:
+            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+
+    current_assigned = int(getattr(conv, "assigned_staff_user_id", 0) or 0)
+    target_assigned = int(assigned_staff_user_id or 0)
+    actor_staff_id = int(getattr(current_user, "id", 0) or 0)
+    if str(action or "").strip().lower() == "release" and (not _chat_staff_can_reassign()):
+        if current_assigned > 0 and current_assigned != actor_staff_id:
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    if target_assigned > 0:
+        staff_row = StaffUser.query.filter_by(id=target_assigned, is_active=True).first()
+        if staff_row is None:
+            return jsonify({"ok": False, "error": "assigned_staff_not_found"}), 400
+    else:
+        target_assigned = 0
+
+    changed = current_assigned != target_assigned
+    now = utc_now_naive()
+    conv.assigned_staff_user_id = target_assigned or None
+    conv.assigned_at = now if target_assigned > 0 else None
+    conv.updated_at = now
+    db.session.add(conv)
+    if changed:
+        _chat_emit_event(
+            event_type="CHAT_CONVERSATION_ASSIGNED",
+            conversation=conv,
+            reader_type="staff",
+            extra_payload={
+                "from_assigned_staff_user_id": current_assigned or None,
+                "to_assigned_staff_user_id": target_assigned or None,
+                "action": str(action or "").strip().lower()[:40] or None,
+            },
+        )
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "changed": bool(changed),
+            "conversation": _chat_serialize_conversation_for_staff(conv, now_ref=utc_now_naive()),
+            "ts": iso_utc_z(),
+        }
+    )
+
+
+@admin_bp.route('/chat/conversations/<int:conversation_id>/take', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_take_conversation(conversation_id):
+    return _chat_staff_set_assignment(
+        int(conversation_id),
+        assigned_staff_user_id=int(getattr(current_user, "id", 0) or 0),
+        action="take",
+    )
+
+
+@admin_bp.route('/chat/conversations/<int:conversation_id>/release', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_release_conversation(conversation_id):
+    return _chat_staff_set_assignment(
+        int(conversation_id),
+        assigned_staff_user_id=None,
+        action="release",
+    )
+
+
+@admin_bp.route('/chat/conversations/<int:conversation_id>/assign', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_assign_conversation(conversation_id):
+    payload = request.get_json(silent=True) or {}
+    assigned_staff_user_id = _safe_int(
+        request.form.get("assigned_staff_user_id") or payload.get("assigned_staff_user_id"),
+        default=0,
+    )
+    if assigned_staff_user_id <= 0:
+        return jsonify({"ok": False, "error": "assigned_staff_required"}), 400
+    return _chat_staff_set_assignment(
+        int(conversation_id),
+        assigned_staff_user_id=int(assigned_staff_user_id),
+        action="reassign",
+        require_admin_level=True,
+    )
+
+
+def _chat_staff_change_status(conversation_id: int, *, to_status: str):
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
+    if chat_e2e_enabled():
+        try:
+            enforce_e2e_conversation(conv)
+        except E2EChatGuardError as exc:
+            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+    changed = _chat_set_status(conv, to_status=to_status, actor_type="staff")
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "changed": bool(changed),
+            "conversation": _chat_serialize_conversation_for_staff(conv, now_ref=utc_now_naive()),
+            "ts": iso_utc_z(),
+        }
+    )
+
+
+@admin_bp.route('/chat/<int:conversation_id>/mark_pending', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_mark_pending(conversation_id):
+    return _chat_staff_change_status(int(conversation_id), to_status=_CHAT_STATUS_PENDING)
+
+
+@admin_bp.route('/chat/<int:conversation_id>/mark_closed', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_mark_closed(conversation_id):
+    return _chat_staff_change_status(int(conversation_id), to_status=_CHAT_STATUS_CLOSED)
+
+
+@admin_bp.route('/chat/<int:conversation_id>/reopen', methods=['POST'])
+@login_required
+@staff_required
+def chat_staff_reopen(conversation_id):
+    return _chat_staff_change_status(int(conversation_id), to_status=_CHAT_STATUS_OPEN)

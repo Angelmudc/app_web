@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import os
 import re
+from unittest.mock import patch
 
 from app import app as flask_app
 
@@ -104,6 +106,71 @@ def test_login_does_not_trigger_operational_rate_blocking():
                 blocked = True
                 break
         assert blocked is False
+    finally:
+        flask_app.config["TESTING"] = prev_testing
+        flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
+
+
+def test_presence_ping_does_not_block_create_cliente_global_admin_bucket():
+    prev_testing = bool(flask_app.config.get("TESTING"))
+    prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    env = {
+        "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+        "STAFF_MFA_REQUIRED": "0",
+        "ADMIN_ACTION_MAX": "3",
+        "ADMIN_ACTION_WINDOW": "60",
+        "ADMIN_ACTION_LOCK": "120",
+        "LIVE_PING_MAX_USER": "500",
+        "LIVE_PING_MAX_IP": "500",
+        "LIVE_PING_MAX_SESSION": "500",
+        "LIVE_PING_WINDOW": "60",
+        "LIVE_PING_DEDUPE_SECONDS": "1",
+    }
+
+    try:
+        ip = "10.31.44.13"
+        with patch.dict(os.environ, env, clear=False):
+            client = flask_app.test_client()
+            login = client.post(
+                "/admin/login",
+                data={"usuario": "Cruz", "clave": "8998"},
+                follow_redirects=False,
+                environ_overrides={"REMOTE_ADDR": ip},
+            )
+            assert login.status_code in (302, 303)
+
+            # Simula telemetría intensa de presencia.
+            for i in range(6):
+                ping = client.post(
+                    "/admin/monitoreo/presence/ping",
+                    json={
+                        "session_id": f"presence-tab-{i}",
+                        "current_path": f"/admin/monitoreo?tab={i}",
+                        "page_title": "Monitoreo",
+                        "route_label": "Control Room",
+                    },
+                    follow_redirects=False,
+                    environ_overrides={"REMOTE_ADDR": ip},
+                )
+                assert ping.status_code in (200, 429)
+
+            create_resp = client.post(
+                "/admin/clientes/nuevo",
+                data={
+                    "codigo": "",
+                    "nombre_completo": "",
+                    "email": "",
+                    "telefono": "",
+                },
+                follow_redirects=False,
+                environ_overrides={"REMOTE_ADDR": ip},
+            )
+            assert create_resp.status_code == 200
+            html = create_resp.get_data(as_text=True)
+            assert "Nuevo Cliente" in html
     finally:
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf

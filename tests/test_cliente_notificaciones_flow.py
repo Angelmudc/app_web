@@ -5,6 +5,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 from werkzeug.exceptions import NotFound
+from flask import get_flashed_messages
 
 from app import app as flask_app
 import clientes.routes as clientes_routes
@@ -136,8 +137,10 @@ class ClienteNotificacionesFlowTest(unittest.TestCase):
             with patch.object(clientes_routes, "current_user", fake_user):
                 with flask_app.test_request_context("/clientes/notificaciones", method="GET"):
                     resp = target()
+                    flashed = get_flashed_messages(with_categories=True)
         self.assertIn(resp.status_code, (302, 303))
         self.assertIn("/clientes/dashboard", resp.location)
+        self.assertTrue(any("retirada" in str(msg).lower() for _cat, msg in flashed))
 
     def test_cliente_ownership_on_actions(self):
         fake_user = SimpleNamespace(id=7, nombre_completo="Cliente Demo")

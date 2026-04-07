@@ -1,0 +1,114 @@
+{% extends "clientes/base.html" %}
+{% block title %}Chat de Soporte{% endblock %}
+
+{% block head %}
+<link href="{{ url_for('static', filename='css/chat_client.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container py-3" data-client-live-view="chat">
+  <div class="card shadow-sm border-0 client-chat-shell"
+       id="clientChatRoot"
+       data-conversations-url="{{ url_for('clientes.chat_cliente_conversations_json') }}"
+       data-messages-url-template="{{ url_for('clientes.chat_cliente_messages_json', conversation_id=0) }}"
+       data-send-url-template="{{ url_for('clientes.chat_cliente_send_message', conversation_id=0) }}"
+       data-read-url-template="{{ url_for('clientes.chat_cliente_mark_read', conversation_id=0) }}"
+       data-open-url="{{ url_for('clientes.chat_cliente_open') }}"
+       data-selected-conversation-id="{{ chat_selected.id if chat_selected else '' }}"
+       data-message-max-len="{{ chat_message_max_len or 1800 }}">
+
+    <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+      <div>
+        <h1 class="h5 mb-1">Chat de soporte</h1>
+        <div class="small text-muted">Atención en horario laboral. Tus mensajes quedan dentro de la app.</div>
+      </div>
+      <form method="post" action="{{ url_for('clientes.chat_cliente_open') }}" class="m-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline-primary btn-sm" type="submit">
+          <i class="bi bi-plus-circle me-1"></i> Nuevo chat general
+        </button>
+      </form>
+    </div>
+
+    <div class="client-chat-grid">
+      <aside class="client-chat-inbox border-end">
+        <div class="list-group list-group-flush" id="clientChatConversationList">
+          {% for conv in chat_conversations %}
+          <a
+            class="list-group-item list-group-item-action client-chat-conv {% if chat_selected and chat_selected.id == conv.id %}active{% endif %}"
+            href="{{ url_for('clientes.chat_cliente', conversation_id=conv.id) }}"
+            data-conversation-id="{{ conv.id }}"
+          >
+            <div class="d-flex justify-content-between gap-2 align-items-start">
+              <div class="fw-semibold text-truncate">{{ conv.subject or 'Soporte' }}</div>
+              <span class="badge {% if conv.status == 'closed' %}text-bg-secondary{% elif conv.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}">
+                {{ (conv.status or 'open')|upper }}
+              </span>
+              {% if conv.cliente_unread_count %}
+              <span class="badge rounded-pill text-bg-danger">{{ conv.cliente_unread_count }}</span>
+              {% endif %}
+            </div>
+            {% if conv.solicitud_id %}
+            <div class="small text-muted">Solicitud #{{ conv.solicitud.codigo_solicitud if conv.solicitud else conv.solicitud_id }}</div>
+            {% endif %}
+            <div class="small text-muted text-truncate">{{ conv.last_message_preview or 'Sin mensajes' }}</div>
+          </a>
+          {% else %}
+          <div class="p-3 text-muted small">No hay conversaciones todavía.</div>
+          {% endfor %}
+        </div>
+      </aside>
+
+      <section class="client-chat-thread">
+        {% if chat_selected %}
+        <div class="client-chat-thread-header border-bottom px-3 py-2 d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold d-flex align-items-center gap-2">
+              <span id="clientChatThreadSubject">{{ chat_selected.subject or 'Soporte' }}</span>
+              <span class="badge {% if chat_selected.status == 'closed' %}text-bg-secondary{% elif chat_selected.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}" id="clientChatThreadStatus">
+                {{ (chat_selected.status or 'open')|upper }}
+              </span>
+            </div>
+            {% if chat_selected.solicitud_id %}
+            <div class="small text-muted">Solicitud #{{ chat_selected.solicitud.codigo_solicitud if chat_selected.solicitud else chat_selected.solicitud_id }}</div>
+            {% endif %}
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="clientChatMarkReadBtn">Marcar leídos</button>
+        </div>
+
+        <div class="client-chat-messages" id="clientChatMessages" data-conversation-id="{{ chat_selected.id }}">
+          <div class="p-2 border-bottom bg-light d-flex justify-content-between align-items-center" id="clientChatHistoryControls">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="clientChatLoadOlderBtn">Cargar mensajes anteriores</button>
+            <span class="small text-muted" id="clientChatHistoryState"></span>
+          </div>
+          {% for m in chat_messages %}
+          <article class="client-chat-msg {% if m.sender_type == 'cliente' %}mine{% else %}theirs{% endif %}" data-message-id="{{ m.id }}">
+            <div class="bubble">{{ m.body }}</div>
+            <div class="meta">{{ m.created_at|rd_datetime('%d/%m/%Y %I:%M %p') }} · {% if m.sender_type == 'cliente' %}Tú{% else %}Soporte{% endif %}</div>
+          </article>
+          {% else %}
+          <div class="text-muted small p-3" id="clientChatEmpty">Escribe el primer mensaje para iniciar la conversación.</div>
+          {% endfor %}
+        </div>
+
+        <form class="client-chat-compose border-top" id="clientChatComposeForm" method="post" action="{{ url_for('clientes.chat_cliente_send_message', conversation_id=chat_selected.id) }}" data-client-live-dirty="0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="input-group">
+            <textarea class="form-control" id="clientChatBody" name="body" rows="2" maxlength="{{ chat_message_max_len or 1800 }}" placeholder="Escribe tu mensaje..."></textarea>
+            <button class="btn btn-primary" type="submit" id="clientChatSendBtn">
+              <i class="bi bi-send"></i>
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <div class="p-4 text-muted">Selecciona o crea una conversación para comenzar.</div>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chat/client_chat.js') }}" defer></script>
+{% endblock %}
