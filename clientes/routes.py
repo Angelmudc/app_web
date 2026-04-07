@@ -1203,6 +1203,104 @@ def _build_cliente_guia_inteligente(cliente_id: int, recientes=None) -> dict:
     }
 
 
+def _build_dashboard_ayuda_contextual(stage_key: Optional[str]) -> dict:
+    key = (stage_key or "general").strip().lower() or "general"
+    base = {
+        "titulo": "Ayuda rápida para este momento",
+        "items": [
+            {
+                "q": "¿Qué pasa en esta etapa?",
+                "a": "Tu solicitud avanza por etapas y te mostramos solo el siguiente paso recomendado.",
+                "icon": "bi-signpost",
+            },
+            {
+                "q": "¿Qué debo hacer ahora?",
+                "a": "Revisa tus solicitudes activas y entra al detalle para confirmar acciones pendientes.",
+                "icon": "bi-check2-square",
+            },
+            {
+                "q": "¿Cuánto tarda normalmente?",
+                "a": "Depende del perfil y disponibilidad. Te notificamos cambios relevantes en el panel.",
+                "icon": "bi-clock-history",
+            },
+            {
+                "q": "¿Qué hago si necesito ayuda?",
+                "a": "Usa el chat de soporte para asistencia sobre tu solicitud.",
+                "icon": "bi-chat-left-text",
+            },
+        ],
+    }
+    if key == "sin_solicitudes":
+        base["items"][0]["a"] = "Aun no tienes solicitudes. Al crear la primera, veras guia y seguimiento por etapa."
+        base["items"][1]["a"] = "Completa una nueva solicitud con datos claros del hogar y modalidad."
+    elif key == "espera_pago":
+        base["items"][0]["a"] = "Tu solicitud quedo en espera de pago para avanzar a la siguiente fase."
+        base["items"][1]["a"] = "Entra al detalle, valida el estado y contacta soporte si necesitas confirmar instrucciones."
+        base["items"][2]["a"] = "Una vez confirmado el pago, el cambio de etapa se refleja en tu seguimiento."
+    elif key == "en_proceso":
+        base["items"][0]["a"] = "El equipo esta validando tu perfil para enviarte candidatas compatibles."
+        base["items"][1]["a"] = "Mantente pendiente del detalle y del chat por si se requiere alguna confirmacion."
+    elif key == "reemplazo":
+        base["items"][0]["a"] = "Estamos gestionando opciones de reemplazo segun tu caso."
+        base["items"][1]["a"] = "Revisa candidatas enviadas y usa el seguimiento para ver avances."
+    return base
+
+
+def _build_dashboard_resumen_ejecutivo(por_estado_dict: dict, guia_inteligente: Optional[dict]) -> dict:
+    estados = {str(k or "").strip().lower(): int(v or 0) for k, v in (por_estado_dict or {}).items()}
+
+    activas = int(estados.get("proceso", 0) + estados.get("activa", 0) + estados.get("reemplazo", 0))
+    pendientes_atencion = int(estados.get("proceso", 0) + estados.get("reemplazo", 0) + estados.get("espera_pago", 0))
+    en_espera_pago = int(estados.get("espera_pago", 0))
+    cerradas = int(estados.get("pagada", 0) + estados.get("cancelada", 0))
+
+    etapa_general = "Sin solicitudes"
+    if en_espera_pago > 0:
+        etapa_general = "En espera de pago"
+    elif int(estados.get("reemplazo", 0)) > 0:
+        etapa_general = "En reemplazo"
+    elif int(estados.get("proceso", 0)) > 0:
+        etapa_general = "En proceso"
+    elif int(estados.get("activa", 0)) > 0:
+        etapa_general = "Activa"
+    elif int(estados.get("pagada", 0)) > 0:
+        etapa_general = "Pagada"
+    elif int(estados.get("cancelada", 0)) > 0:
+        etapa_general = "Cancelada"
+
+    prioridad = {
+        "title": "Lo más importante ahora",
+        "subtitle": etapa_general,
+        "message": "Revisa tu panel para continuar con el siguiente paso recomendado.",
+        "cta_label": "Revisar solicitudes",
+        "cta_url": url_for("clientes.listar_solicitudes"),
+        "secondary_label": "Proceso de contratación",
+        "secondary_url": url_for("clientes.proceso_contratacion"),
+        "variant": "info",
+        "icon": "bi-compass",
+    }
+    if guia_inteligente:
+        prioridad["subtitle"] = _estado_cliente_label((guia_inteligente or {}).get("stage_key"))
+        prioridad["message"] = (guia_inteligente or {}).get("message") or prioridad["message"]
+        prioridad["cta_label"] = (guia_inteligente or {}).get("cta_label") or prioridad["cta_label"]
+        prioridad["cta_url"] = (guia_inteligente or {}).get("cta_url") or prioridad["cta_url"]
+        prioridad["secondary_label"] = (guia_inteligente or {}).get("secondary_label") or prioridad["secondary_label"]
+        prioridad["secondary_url"] = (guia_inteligente or {}).get("secondary_url") or prioridad["secondary_url"]
+        prioridad["variant"] = (guia_inteligente or {}).get("variant") or prioridad["variant"]
+        prioridad["icon"] = (guia_inteligente or {}).get("icon") or prioridad["icon"]
+
+    return {
+        "cards": {
+            "activas": activas,
+            "pendientes_atencion": pendientes_atencion,
+            "espera_pago": en_espera_pago,
+            "cerradas": cerradas,
+        },
+        "etapa_general": etapa_general,
+        "prioridad": prioridad,
+    }
+
+
 # ─────────────────────────────────────────────────────────────
 # Dashboard del cliente
 # ─────────────────────────────────────────────────────────────
@@ -1219,9 +1317,6 @@ def dashboard():
     )
     por_estado_dict = {estado or 'sin_definir': cnt for estado, cnt in por_estado}
 
-    total_activas = int(por_estado_dict.get('activa', 0) or 0)
-    total_pagadas = int(por_estado_dict.get('pagada', 0) or 0)
-
     # OJO: fecha_solicitud puede no existir en algunos modelos viejos
     q_rec = Solicitud.query.filter_by(cliente_id=current_user.id)
     if hasattr(Solicitud, 'fecha_solicitud'):
@@ -1231,6 +1326,13 @@ def dashboard():
 
     recientes = q_rec.limit(5).all()
     guia_inteligente = _build_cliente_guia_inteligente(current_user.id, recientes=recientes)
+    ayuda_contextual_dashboard = _build_dashboard_ayuda_contextual(
+        (guia_inteligente or {}).get("stage_key")
+    )
+    resumen_ejecutivo = _build_dashboard_resumen_ejecutivo(
+        por_estado_dict=por_estado_dict,
+        guia_inteligente=guia_inteligente,
+    )
 
     return render_template(
         'clientes/dashboard.html',
@@ -1238,9 +1340,9 @@ def dashboard():
         por_estado=por_estado_dict,
         recientes=recientes,
         hoy=rd_today(),
-        total_activas=total_activas,
-        total_pagadas=total_pagadas,
         guia_inteligente=guia_inteligente,
+        ayuda_contextual_dashboard=ayuda_contextual_dashboard,
+        resumen_ejecutivo=resumen_ejecutivo,
     )
 
 
@@ -1266,7 +1368,68 @@ def planes():
 @cliente_required
 def ayuda():
     whatsapp = "+1 809 429 6892"  # reemplaza por el real
-    return render_template('clientes/ayuda.html', whatsapp=whatsapp)
+    ayuda_secciones = [
+        {
+            "id": "proceso",
+            "titulo": "Proceso",
+            "icon": "bi-diagram-3",
+            "items": [
+                "El proceso inicia con tu solicitud y continua por etapas segun el estado.",
+                "Puedes ver el avance desde el detalle y el timeline de cada solicitud.",
+                f"Consulta la guia completa en {url_for('clientes.proceso_contratacion')}.",
+            ],
+        },
+        {
+            "id": "pagos",
+            "titulo": "Pagos",
+            "icon": "bi-credit-card",
+            "items": [
+                "Si tu solicitud esta en espera de pago, el siguiente paso se confirma desde seguimiento.",
+                "Para dudas sobre instrucciones o validacion de pago, usa el chat de soporte.",
+            ],
+        },
+        {
+            "id": "entrevistas",
+            "titulo": "Entrevistas",
+            "icon": "bi-calendar-check",
+            "items": [
+                "Cuando recibes candidatas, puedes revisar perfiles y coordinar la siguiente accion.",
+                "El estado de cada perfil enviado se refleja dentro de la solicitud.",
+            ],
+        },
+        {
+            "id": "candidatas",
+            "titulo": "Candidatas",
+            "icon": "bi-people",
+            "items": [
+                "En cada solicitud veras candidatas enviadas con detalles clave para decidir.",
+                "Si no hay candidatas aun, revisa seguimiento para confirmar la etapa actual.",
+            ],
+        },
+        {
+            "id": "reemplazos",
+            "titulo": "Reemplazos",
+            "icon": "bi-arrow-repeat",
+            "items": [
+                "Cuando una solicitud entra a reemplazo, puedes seguir el caso desde el detalle.",
+                "Las opciones de reemplazo se muestran en candidatas enviadas si ya estan disponibles.",
+            ],
+        },
+        {
+            "id": "contacto",
+            "titulo": "Contacto y chat",
+            "icon": "bi-chat-dots",
+            "items": [
+                "Para ayuda puntual de tu caso, usa el chat interno de cliente.",
+                "Tambien puedes escribir por WhatsApp para soporte rapido.",
+            ],
+        },
+    ]
+    return render_template(
+        'clientes/ayuda.html',
+        whatsapp=whatsapp,
+        ayuda_secciones=ayuda_secciones,
+    )
 
 
 @clientes_bp.route('/proceso')
@@ -2678,6 +2841,381 @@ def editar_solicitud(id):
 # ─────────────────────────────────────────────────────────────
 # Detalle de solicitud
 # ─────────────────────────────────────────────────────────────
+_ESTADO_CLIENTE_LABELS = {
+    "proceso": "En revision",
+    "activa": "Activa",
+    "espera_pago": "Pendiente de pago",
+    "pagada": "Pagada",
+    "cancelada": "Cancelada",
+    "reemplazo": "Reemplazo",
+}
+
+
+def _estado_cliente_label(estado: Optional[str]) -> str:
+    estado_norm = (estado or "").strip().lower()
+    if not estado_norm:
+        return "Sin estado"
+    return _ESTADO_CLIENTE_LABELS.get(estado_norm, estado_norm.replace("_", " ").title())
+
+
+def _pick_event_date(*values):
+    for v in values:
+        if v is not None:
+            return v
+    return None
+
+
+def _build_solicitud_timeline_simple(s: Solicitud, candidatas_enviadas: list) -> list:
+    estado_norm = str(getattr(s, "estado", "") or "").strip().lower()
+    total_enviadas = len(candidatas_enviadas or [])
+    seleccionadas = [sc for sc in (candidatas_enviadas or []) if str(getattr(sc, "status", "") or "").strip().lower() == "seleccionada"]
+
+    timeline = [
+        {
+            "id": "creada",
+            "titulo": "Solicitud creada",
+            "detalle": f"Codigo {getattr(s, 'codigo_solicitud', '') or ''}".strip(),
+            "fecha": getattr(s, "fecha_solicitud", None),
+            "tone": "primary",
+        }
+    ]
+
+    if estado_norm in {"proceso", "activa"}:
+        timeline.append({
+            "id": "revision",
+            "titulo": "En revision",
+            "detalle": "Tu solicitud esta siendo evaluada por el equipo.",
+            "fecha": _pick_event_date(getattr(s, "estado_actual_desde", None), getattr(s, "fecha_ultimo_estado", None)),
+            "tone": "info",
+        })
+
+    if total_enviadas > 0:
+        fecha_envio = _pick_event_date(
+            getattr(candidatas_enviadas[0], "created_at", None),
+            getattr(candidatas_enviadas[0], "updated_at", None),
+        )
+        timeline.append({
+            "id": "candidatas_enviadas",
+            "titulo": "Candidatas enviadas",
+            "detalle": f"Se enviaron {total_enviadas} perfiles para revision.",
+            "fecha": fecha_envio,
+            "tone": "success",
+        })
+
+    if seleccionadas:
+        sel = seleccionadas[0]
+        timeline.append({
+            "id": "entrevista",
+            "titulo": "Entrevista coordinada",
+            "detalle": "Confirmaste una candidata para entrevista.",
+            "fecha": _pick_event_date(getattr(sel, "updated_at", None), getattr(sel, "created_at", None)),
+            "tone": "success",
+        })
+
+    if estado_norm == "espera_pago":
+        timeline.append({
+            "id": "pendiente_pago",
+            "titulo": "Pendiente de pago",
+            "detalle": "Falta completar el pago para continuar el proceso.",
+            "fecha": _pick_event_date(
+                getattr(s, "fecha_cambio_espera_pago", None),
+                getattr(s, "estado_actual_desde", None),
+                getattr(s, "fecha_ultimo_estado", None),
+            ),
+            "tone": "warning",
+        })
+
+    if getattr(s, "candidata", None) is not None:
+        timeline.append({
+            "id": "candidata_elegida",
+            "titulo": "Candidata elegida",
+            "detalle": getattr(getattr(s, "candidata", None), "nombre_completo", None) or "Candidata asignada",
+            "fecha": _pick_event_date(
+                getattr(s, "fecha_ultimo_estado", None),
+                getattr(s, "estado_actual_desde", None),
+                getattr(s, "fecha_inicio_seguimiento", None),
+            ),
+            "tone": "success",
+        })
+
+    for idx, repl in enumerate(getattr(s, "reemplazos", []) or [], start=1):
+        fecha_repl = _pick_event_date(getattr(repl, "fecha_inicio_reemplazo", None), getattr(repl, "created_at", None))
+        if fecha_repl is None and not getattr(repl, "candidata_new", None):
+            continue
+        nombre_repl = getattr(getattr(repl, "candidata_new", None), "nombre_completo", None) or "En gestion"
+        timeline.append({
+            "id": f"reemplazo_{idx}",
+            "titulo": f"Reemplazo #{idx}",
+            "detalle": nombre_repl,
+            "fecha": fecha_repl,
+            "tone": "warning",
+        })
+
+    if estado_norm == "reemplazo":
+        timeline.append({
+            "id": "reemplazo_abierto",
+            "titulo": "Reemplazo activo",
+            "detalle": "Estamos gestionando nuevas opciones para tu solicitud.",
+            "fecha": _pick_event_date(getattr(s, "estado_actual_desde", None), getattr(s, "fecha_ultimo_estado", None)),
+            "tone": "warning",
+        })
+
+    if estado_norm == "pagada":
+        timeline.append({
+            "id": "proceso_finalizado",
+            "titulo": "Proceso finalizado",
+            "detalle": "Se registro el pago y el proceso esta en su etapa final.",
+            "fecha": _pick_event_date(getattr(s, "fecha_ultimo_estado", None), getattr(s, "estado_actual_desde", None)),
+            "tone": "success",
+        })
+
+    if estado_norm == "cancelada" and getattr(s, "fecha_cancelacion", None):
+        timeline.append({
+            "id": "cancelada",
+            "titulo": "Solicitud cancelada",
+            "detalle": getattr(s, "motivo_cancelacion", None) or "Cancelada por el cliente.",
+            "fecha": getattr(s, "fecha_cancelacion", None),
+            "tone": "secondary",
+        })
+
+    timeline.sort(key=lambda ev: ev.get("fecha") or datetime.min)
+    return timeline
+
+
+def _build_solicitud_que_sigue(s: Solicitud, candidatas_enviadas: list) -> dict:
+    estado_norm = str(getattr(s, "estado", "") or "").strip().lower()
+    total_enviadas = len(candidatas_enviadas or [])
+    hay_seleccionada = any(
+        str(getattr(sc, "status", "") or "").strip().lower() == "seleccionada"
+        for sc in (candidatas_enviadas or [])
+    )
+
+    if estado_norm == "cancelada":
+        return {
+            "icon": "bi-stop-circle",
+            "variant": "secondary",
+            "titulo": "Esta solicitud fue cancelada",
+            "mensaje": "El proceso se cerro. Si deseas continuar, puedes crear una nueva solicitud.",
+        }
+    if estado_norm == "espera_pago":
+        return {
+            "icon": "bi-credit-card",
+            "variant": "warning",
+            "titulo": "Ahora debes completar el pago pendiente",
+            "mensaje": "Al registrar el pago, continuamos con la siguiente etapa del proceso.",
+        }
+    if estado_norm == "reemplazo":
+        if total_enviadas > 0:
+            msg = "Ya puedes revisar los perfiles enviados para reemplazo."
+        else:
+            msg = "Estamos buscando nuevas candidatas para cubrir el reemplazo."
+        return {
+            "icon": "bi-arrow-repeat",
+            "variant": "warning",
+            "titulo": "Solicitud en reemplazo",
+            "mensaje": msg,
+        }
+    if getattr(s, "candidata_id", None) or hay_seleccionada:
+        if estado_norm == "pagada":
+            return {
+                "icon": "bi-check2-circle",
+                "variant": "success",
+                "titulo": "Estamos cerrando el proceso",
+                "mensaje": "Tu solicitud ya esta en etapa final de documentacion y entrega.",
+            }
+        return {
+            "icon": "bi-calendar-check",
+            "variant": "primary",
+            "titulo": "Estamos coordinando el inicio",
+            "mensaje": "Ya hay una candidata elegida y seguimos con los pasos finales.",
+        }
+    if total_enviadas > 0:
+        return {
+            "icon": "bi-people",
+            "variant": "success",
+            "titulo": "Ya puedes revisar los perfiles enviados",
+            "mensaje": "Entra al listado de candidatas para evaluar y seleccionar.",
+        }
+    if estado_norm in {"proceso", "activa"}:
+        return {
+            "icon": "bi-hourglass-split",
+            "variant": "info",
+            "titulo": "Tu solicitud esta siendo evaluada",
+            "mensaje": "Estamos validando el perfil para enviarte candidatas compatibles.",
+        }
+    return {
+        "icon": "bi-compass",
+        "variant": "info",
+        "titulo": "Te avisaremos el siguiente paso",
+        "mensaje": "Tu solicitud sigue activa y el equipo continuara el proceso.",
+    }
+
+
+def _build_solicitud_acciones_rapidas(
+    s: Solicitud,
+    candidatas_enviadas: list,
+    *,
+    chat_enabled: bool,
+) -> list[dict]:
+    estado_norm = str(getattr(s, "estado", "") or "").strip().lower()
+    total_enviadas = len(candidatas_enviadas or [])
+    acciones = []
+    usados = set()
+
+    def _add(accion_id: str, **payload):
+        if not accion_id or accion_id in usados:
+            return
+        usados.add(accion_id)
+        row = {"id": accion_id}
+        row.update(payload)
+        acciones.append(row)
+
+    _add(
+        "seguimiento",
+        label="Ver seguimiento",
+        hint="Linea de tiempo de esta solicitud.",
+        icon="bi-clock-history",
+        url=url_for("clientes.seguimiento_solicitud", id=s.id),
+        btn_class="btn-outline-primary",
+    )
+
+    if total_enviadas > 0:
+        _add(
+            "candidatas",
+            label="Ver candidatas enviadas",
+            hint="Perfiles disponibles para revisar.",
+            icon="bi-people",
+            url=url_for("clientes.solicitud_candidatas", solicitud_id=s.id),
+            btn_class="btn-outline-success",
+            badge=str(total_enviadas),
+        )
+
+    if estado_norm == "reemplazo":
+        if total_enviadas > 0:
+            _add(
+                "reemplazo",
+                label="Revisar reemplazo",
+                hint="Opciones enviadas durante el reemplazo.",
+                icon="bi-arrow-repeat",
+                url=url_for("clientes.solicitud_candidatas", solicitud_id=s.id),
+                btn_class="btn-outline-warning",
+            )
+        else:
+            _add(
+                "reemplazo",
+                label="Ver seguimiento del reemplazo",
+                hint="Estado actual del reemplazo en curso.",
+                icon="bi-arrow-repeat",
+                url=url_for("clientes.seguimiento_solicitud", id=s.id),
+                btn_class="btn-outline-warning",
+            )
+
+    if estado_norm == "espera_pago":
+        _add(
+            "pago",
+            label="Ver estado de pago",
+            hint="Confirma el avance de esta etapa.",
+            icon="bi-credit-card",
+            url=url_for("clientes.seguimiento_solicitud", id=s.id),
+            btn_class="btn-outline-warning",
+        )
+
+    if estado_norm == "proceso":
+        _add(
+            "editar",
+            label="Editar solicitud",
+            hint="Ajusta datos antes de la asignacion.",
+            icon="bi-pencil-square",
+            url=url_for("clientes.editar_solicitud", id=s.id),
+            btn_class="btn-outline-secondary",
+        )
+
+    if chat_enabled:
+        chat_label = "Ir al chat de esta solicitud"
+        chat_hint = "Soporte directo relacionado con este caso."
+        if estado_norm == "espera_pago":
+            chat_label = "Consultar pago por chat"
+            chat_hint = "Contacta soporte para instrucciones de pago."
+        _add(
+            "chat",
+            label=chat_label,
+            hint=chat_hint,
+            icon="bi-chat-left-text",
+            url=url_for("clientes.chat_cliente", solicitud_id=s.id),
+            btn_class="btn-outline-dark",
+        )
+
+    _add(
+        "proceso",
+        label="Ver como funciona el proceso",
+        hint="Guia general de etapas y tiempos.",
+        icon="bi-diagram-3",
+        url=url_for("clientes.proceso_contratacion"),
+        btn_class="btn-outline-info",
+    )
+
+    return acciones
+
+
+def _build_solicitud_ayuda_contextual(
+    s: Solicitud,
+    candidatas_enviadas: list,
+    *,
+    que_sigue: Optional[dict] = None,
+) -> dict:
+    estado_norm = str(getattr(s, "estado", "") or "").strip().lower()
+    total_enviadas = len(candidatas_enviadas or [])
+    base = {
+        "titulo": "Ayuda para esta solicitud",
+        "items": [
+            {
+                "q": "¿Qué pasa en esta etapa?",
+                "a": "Esta solicitud se mantiene actualizada por estado para que veas en que punto va.",
+                "icon": "bi-signpost",
+            },
+            {
+                "q": "¿Qué debo hacer ahora?",
+                "a": (que_sigue or {}).get("mensaje") or "Revisa las acciones disponibles de esta solicitud.",
+                "icon": "bi-check2-square",
+            },
+            {
+                "q": "¿Cuánto tarda normalmente esta parte?",
+                "a": "Puede variar segun disponibilidad y perfil. El timeline te mostrara cada avance registrado.",
+                "icon": "bi-clock-history",
+            },
+            {
+                "q": "¿Qué hago si necesito ayuda?",
+                "a": "Puedes abrir el chat de esta solicitud para soporte directo.",
+                "icon": "bi-chat-left-text",
+            },
+        ],
+    }
+
+    if estado_norm == "espera_pago":
+        base["items"][0]["a"] = "La solicitud esta en espera de pago para continuar con el proceso."
+        base["items"][1]["a"] = "Verifica el estado de pago y confirma por chat si necesitas instrucciones."
+        base["items"][2]["a"] = "Al confirmar el pago, el estado cambia y podras seguir la siguiente etapa."
+    elif estado_norm == "reemplazo":
+        base["items"][0]["a"] = "Esta solicitud esta en reemplazo y el equipo gestiona nuevas opciones."
+        if total_enviadas > 0:
+            base["items"][1]["a"] = "Revisa las candidatas enviadas para reemplazo y confirma tu decision."
+        else:
+            base["items"][1]["a"] = "Da seguimiento al timeline mientras preparamos nuevas candidatas."
+    elif estado_norm in {"proceso", "activa"}:
+        if total_enviadas > 0:
+            base["items"][0]["a"] = "Ya tienes candidatas enviadas para revisar en esta misma solicitud."
+            base["items"][1]["a"] = "Evalua los perfiles enviados y usa chat si necesitas orientacion."
+        else:
+            base["items"][0]["a"] = "Tu solicitud esta en evaluacion para enviarte perfiles compatibles."
+            base["items"][1]["a"] = "Mantente pendiente del detalle y del seguimiento para nuevos movimientos."
+    elif estado_norm == "pagada":
+        base["items"][0]["a"] = "Tu solicitud esta en etapa final tras la confirmacion de pago."
+    elif estado_norm == "cancelada":
+        base["items"][0]["a"] = "Esta solicitud fue cancelada y no tendra nuevos movimientos."
+        base["items"][1]["a"] = "Si deseas continuar, crea una nueva solicitud desde tu panel."
+    return base
+
+
 @clientes_bp.route('/solicitudes/<int:id>')
 @login_required
 @cliente_required
@@ -2726,6 +3264,19 @@ def detalle_solicitud(id):
         )
         candidatas_enviadas = [sc for sc in candidatas_enviadas if getattr(sc, "status", None) in visible_status]
         candidatas_enviadas_cards = [_candidate_public_payload(sc) for sc in candidatas_enviadas]
+    timeline_simple = _build_solicitud_timeline_simple(s, candidatas_enviadas)
+    que_sigue = _build_solicitud_que_sigue(s, candidatas_enviadas)
+    acciones_rapidas = _build_solicitud_acciones_rapidas(
+        s,
+        candidatas_enviadas,
+        chat_enabled=_chat_enabled(),
+    )
+    ayuda_contextual = _build_solicitud_ayuda_contextual(
+        s,
+        candidatas_enviadas,
+        que_sigue=que_sigue,
+    )
+    estado_legible = _estado_cliente_label(getattr(s, "estado", None))
 
     return render_template(
         'clientes/solicitud_detail.html',
@@ -2737,6 +3288,11 @@ def detalle_solicitud(id):
         candidatas_enviadas=candidatas_enviadas,
         candidatas_enviadas_cards=candidatas_enviadas_cards,
         candidatas_enviadas_count=len(candidatas_enviadas),
+        timeline_simple=timeline_simple,
+        que_sigue=que_sigue,
+        acciones_rapidas=acciones_rapidas,
+        ayuda_contextual=ayuda_contextual,
+        estado_legible=estado_legible,
     )
 
 

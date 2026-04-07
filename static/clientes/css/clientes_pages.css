@@ -259,6 +259,40 @@
   font-weight: 800;
 }
 
+/* ===== Dashboard ejecutivo cliente ===== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-exec-shell {
+  background: linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.03));
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-quick-actions .btn {
+  min-height: 38px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-kpi-card {
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.055);
+  padding: 14px;
+  min-height: 104px;
+  box-shadow: var(--c-shadow-soft);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-kpi-label {
+  color: var(--c-text-muted);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-kpi-value {
+  margin-top: 8px;
+  font-size: clamp(28px, 2.6vw, 34px);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--c-text);
+}
+
 /* Tags del detalle */
 :where(body.clientes, .clientes, [data-portal="clientes"]) .tags-list {
   display: flex;

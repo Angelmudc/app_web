@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
@@ -108,32 +109,67 @@ class ClientesParte2GuiaProcesoTest(unittest.TestCase):
                     html = self.dashboard_target()
         return html
 
+    @staticmethod
+    def _extract_kpi_value(html: str, label: str) -> int:
+        pattern = rf"{re.escape(label)}</div>\s*<div class=\"dashboard-kpi-value\">(\d+)</div>"
+        m = re.search(pattern, html)
+        if not m:
+            return -1
+        return int(m.group(1))
+
     def test_1_sin_solicitudes_muestra_banner_inicio(self):
         html = self._render_dashboard(rows=[])
-        self.assertIn("Para comenzar, crea tu primera solicitud.", html)
+        self.assertIn("Lo más importante ahora", html)
+        self.assertIn("Etapa general: Sin solicitudes", html)
         self.assertIn("Crear solicitud", html)
+        self.assertEqual(self._extract_kpi_value(html, "Solicitudes activas"), 0)
+        self.assertEqual(self._extract_kpi_value(html, "Pendientes de atención"), 0)
+        self.assertEqual(self._extract_kpi_value(html, "En espera de pago"), 0)
+        self.assertEqual(self._extract_kpi_value(html, "Cerradas"), 0)
         self.assertIn('data-guide-key="sin_solicitudes"', html)
 
     def test_2_proceso_o_activa_muestra_sugerencia_seguimiento(self):
         rows = [_SolicitudRow(10, 7, "proceso")]
         html = self._render_dashboard(rows=rows)
-        self.assertIn("Tu solicitud está en proceso.", html)
+        self.assertIn("Lo más importante ahora", html)
+        self.assertIn("Etapa general: En proceso", html)
         self.assertIn("Pronto recibirás candidatas según el perfil solicitado.", html)
         self.assertIn("Ver seguimiento", html)
         self.assertIn('data-guide-key="en_proceso"', html)
+        self.assertIn("Ver proceso", html)
+        self.assertIn("Ir al chat", html)
+        self.assertIn("Revisar solicitudes", html)
 
         rows_activa = [_SolicitudRow(11, 7, "activa")]
         html_activa = self._render_dashboard(rows=rows_activa)
-        self.assertIn("Tu solicitud está en proceso.", html_activa)
+        self.assertIn("Etapa general: Activa", html_activa)
         self.assertIn("Ver seguimiento", html_activa)
         self.assertIn('data-guide-key="en_proceso"', html_activa)
 
     def test_3_espera_pago_muestra_sugerencia_pago(self):
         rows = [_SolicitudRow(20, 7, "espera_pago")]
         html = self._render_dashboard(rows=rows)
-        self.assertIn("Tu proceso está en etapa de pago.", html)
+        self.assertIn("Lo más importante ahora", html)
+        self.assertIn("Etapa general: En espera de pago", html)
         self.assertIn("Siguiente paso sugerido: completa el pago inicial para continuar.", html)
         self.assertIn('data-guide-key="espera_pago"', html)
+        self.assertIn("espera de pago", html.lower())
+
+    def test_3b_resumen_ejecutivo_cuenta_estados_reales(self):
+        rows = [
+            _SolicitudRow(101, 7, "proceso", datetime(2026, 4, 4, 10, 0, 0)),
+            _SolicitudRow(102, 7, "activa", datetime(2026, 4, 3, 10, 0, 0)),
+            _SolicitudRow(103, 7, "reemplazo", datetime(2026, 4, 2, 10, 0, 0)),
+            _SolicitudRow(104, 7, "espera_pago", datetime(2026, 4, 5, 10, 0, 0)),
+            _SolicitudRow(105, 7, "pagada", datetime(2026, 4, 1, 10, 0, 0)),
+            _SolicitudRow(106, 7, "cancelada", datetime(2026, 3, 30, 10, 0, 0)),
+        ]
+        html = self._render_dashboard(rows=rows)
+        self.assertEqual(self._extract_kpi_value(html, "Solicitudes activas"), 3)
+        self.assertEqual(self._extract_kpi_value(html, "Pendientes de atención"), 3)
+        self.assertEqual(self._extract_kpi_value(html, "En espera de pago"), 1)
+        self.assertEqual(self._extract_kpi_value(html, "Cerradas"), 2)
+        self.assertIn("Etapa general: En espera de pago", html)
 
     def test_4_ocultar_banner_misma_etapa_permanece_oculto_por_misma_key(self):
         rows = [_SolicitudRow(30, 7, "proceso")]

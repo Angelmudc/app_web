@@ -205,6 +205,16 @@ def init_security(app, cache):
         run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
         return run_env in ("prod", "production")
 
+    def _authenticated_operational_rate_limits_enabled() -> bool:
+        """
+        Controla si el anti-scrape operativo aplica a tráfico autenticado.
+        Default OFF para no bloquear operación normal del panel/formularios.
+        """
+        raw = os.getenv("ENABLE_AUTHENTICATED_OPERATIONAL_RATE_LIMITS")
+        if raw is None or str(raw).strip() == "":
+            return False
+        return _is_true(str(raw))
+
     BOT_UA_PATTERNS = (
         "curl",
         "python-requests",
@@ -474,6 +484,11 @@ def init_security(app, cache):
         is_staff = _is_staff_authenticated()
         is_realtime = _is_realtime_monitoreo_path(path)
         is_bot = (not is_staff) and _is_likely_bot_ua()
+
+        # El tráfico autenticado (staff/clientes) ya tiene protecciones específicas
+        # por endpoint y controles de auth; evitar castigos globales operativos.
+        if is_auth and not _authenticated_operational_rate_limits_enabled():
+            return
 
         # Bloqueo temporal por comportamiento malicioso (ej. exceso de 404)
         if (not is_staff) and _cache_get(cache, f"scrape:block:{ip}"):

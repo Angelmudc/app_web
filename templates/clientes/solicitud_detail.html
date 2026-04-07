@@ -50,6 +50,79 @@
     </div>
   </div>
 
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+      <div>
+        <div class="text-muted small mb-1">Etapa actual</div>
+        <div class="fw-semibold fs-5">{{ estado_legible }}</div>
+        <div class="mt-2">
+          <span class="badge text-bg-{{ que_sigue.variant|default('info') }}">
+            <i class="bi {{ que_sigue.icon|default('bi-compass') }} me-1"></i> Qué sigue ahora
+          </span>
+        </div>
+      </div>
+      <div class="flex-grow-1">
+        <div class="fw-semibold">{{ que_sigue.titulo }}</div>
+        <div class="text-muted small">{{ que_sigue.mensaje }}</div>
+      </div>
+      <a href="{{ url_for('clientes.solicitud_candidatas', solicitud_id=s.id) }}" class="btn btn-sm btn-outline-primary no-print">
+        Ver candidatas
+      </a>
+    </div>
+  </div>
+
+  {% if acciones_rapidas %}
+  <div class="kard mb-4 no-print">
+    <div class="kard-h bg-light d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-lightning-charge me-2"></i>Acciones rápidas</div>
+      <span class="small text-muted">Opciones útiles para este momento</span>
+    </div>
+    <div class="kard-b">
+      <div class="row g-2">
+        {% for accion in acciones_rapidas %}
+          <div class="col-12 col-md-6 col-xl-4">
+            <a href="{{ accion.url }}" class="btn {{ accion.btn_class or 'btn-outline-primary' }} w-100 text-start d-flex align-items-start justify-content-between gap-2">
+              <span class="d-flex align-items-start gap-2">
+                <i class="bi {{ accion.icon or 'bi-arrow-right-circle' }} mt-1"></i>
+                <span>
+                  <span class="d-block fw-semibold">{{ accion.label }}</span>
+                  <span class="d-block small text-muted">{{ accion.hint }}</span>
+                </span>
+              </span>
+              {% if accion.badge %}
+                <span class="badge bg-secondary">{{ accion.badge }}</span>
+              {% endif %}
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if ayuda_contextual and ayuda_contextual['items'] %}
+  <div class="kard mb-4 no-print">
+    <div class="kard-h bg-light d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-life-preserver me-2"></i>{{ ayuda_contextual.titulo }}</div>
+      <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-sm btn-outline-secondary">Centro de ayuda</a>
+    </div>
+    <div class="kard-b">
+      <div class="row g-2">
+        {% for item in ayuda_contextual['items'] %}
+          <div class="col-12 col-md-6">
+            <div class="border rounded p-2 h-100">
+              <div class="small fw-semibold">
+                <i class="bi {{ item.icon or 'bi-question-circle' }} me-1"></i>{{ item.q }}
+              </div>
+              <div class="small text-muted mt-1">{{ item.a }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Resumen -->
   <div class="kard mb-4 print-zone" id="candidatas-enviadas">
     <div class="kard-h bg-light d-flex align-items-center justify-content-between">
@@ -58,10 +131,12 @@
         class="badge badge-state
           {% if s.estado == 'proceso' %} bg-secondary
           {% elif s.estado == 'activa' %} bg-primary
+          {% elif s.estado == 'espera_pago' %} bg-warning text-dark
           {% elif s.estado == 'pagada' %} bg-success
           {% elif s.estado == 'cancelada' %} bg-warning text-dark
+          {% elif s.estado == 'reemplazo' %} bg-warning text-dark
           {% else %} bg-info text-dark {% endif %}">
-        {{ s.estado }}
+        {{ estado_legible }}
       </span>
     </div>
     <div class="kard-b">
@@ -267,36 +342,34 @@
     </div>
   </div>
 
-  <!-- Seguimiento -->
+  <!-- Timeline -->
   <div class="kard mb-4 print-zone">
-    <div class="kard-h">
-      <span class="fw-semibold"><i class="bi bi-clock-history me-2"></i>Seguimiento</span>
+    <div class="kard-h d-flex align-items-center justify-content-between">
+      <span class="fw-semibold"><i class="bi bi-signpost-2 me-2"></i>Timeline del proceso</span>
+      <span class="small text-muted">Eventos relevantes de tu solicitud</span>
     </div>
     <div class="kard-b">
-      {% set hay_mov = (envios and envios|length) or (cancelaciones and cancelaciones|length) %}
-      {% if hay_mov %}
-        <div class="timeline">
-          {% for e in envios %}
-            <div class="t-item">
-              <span class="dot"></span>
-              <div class="fw-semibold">{{ e.tipo }}</div>
-              <div class="text-muted small">
-                {{ e.candidata }} — {{ e.fecha|rd_datetime('%d/%m/%Y %H:%M') }}
+      {% if timeline_simple and timeline_simple|length > 0 %}
+        <div class="timeline-v2">
+          {% for item in timeline_simple %}
+            <div class="timeline-v2-item">
+              <div class="timeline-v2-dot"></div>
+              <div class="timeline-v2-content">
+                <div class="fw-semibold">{{ item.titulo }}</div>
+                <div class="small text-muted">{{ item.detalle or 'Sin detalle' }}</div>
+                <div class="small text-muted">
+                  {% if item.fecha %}
+                    {{ item.fecha|rd_datetime('%d/%m/%Y %H:%M') }}
+                  {% else %}
+                    Fecha no disponible
+                  {% endif %}
+                </div>
               </div>
             </div>
           {% endfor %}
-          {% if cancelaciones %}
-            <div class="t-item">
-              <span class="dot" style="background:#f59e0b"></span>
-              <div class="fw-semibold text-warning">Cancelada</div>
-              <div class="text-muted small">
-                {{ cancelaciones[0].fecha|rd_datetime('%d/%m/%Y %H:%M') }} — {{ cancelaciones[0].motivo }}
-              </div>
-            </div>
-          {% endif %}
         </div>
       {% else %}
-        <div class="text-muted">Sin movimientos aún.</div>
+        <div class="text-muted">Aun no hay eventos para mostrar.</div>
       {% endif %}
     </div>
   </div>

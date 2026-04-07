@@ -83,3 +83,76 @@ def test_internal_routes_monitoring_and_forms_not_rate_blocked():
     finally:
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
+
+
+def test_admin_form_posts_not_blocked_by_global_admin_action_guard_default_off():
+    prev_testing = bool(flask_app.config.get("TESTING"))
+    prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = True
+
+    try:
+        with patch.dict(
+            "os.environ",
+            {
+                "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+                "STAFF_MFA_REQUIRED": "0",
+                "ADMIN_ACTION_MAX": "1",
+                "ADMIN_ACTION_WINDOW": "60",
+                "ADMIN_ACTION_LOCK": "120",
+                "ENABLE_ADMIN_GLOBAL_ACTION_GUARD": "0",
+            },
+            clear=False,
+        ):
+            ip = "10.77.10.3"
+            client = flask_app.test_client()
+            login = _login(client, "Cruz", "8998", ip)
+            assert login.status_code in (302, 303)
+
+            for _ in range(3):
+                page = client.get("/admin/clientes/nuevo", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
+                assert page.status_code == 200
+                token = _extract_csrf(page.data.decode("utf-8", errors="ignore"))
+                assert token
+                resp = client.post(
+                    "/admin/clientes/nuevo",
+                    data={"nombre_completo": "", "csrf_token": token},
+                    follow_redirects=False,
+                    environ_overrides={"REMOTE_ADDR": ip},
+                )
+                assert resp.status_code == 200
+    finally:
+        flask_app.config["TESTING"] = prev_testing
+        flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
+
+
+def test_authenticated_requests_not_throttled_by_scrape_guard_default_off():
+    prev_testing = bool(flask_app.config.get("TESTING"))
+    prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = True
+
+    try:
+        with patch.dict(
+            "os.environ",
+            {
+                "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+                "STAFF_MFA_REQUIRED": "0",
+                "STAFF_WORK_MAX_REQ": "1",
+                "AUTH_WORK_MAX_REQ": "1",
+                "SCRAPE_ADMIN_MAX_REQ": "1",
+                "ENABLE_AUTHENTICATED_OPERATIONAL_RATE_LIMITS": "0",
+            },
+            clear=False,
+        ):
+            ip = "10.77.10.4"
+            client = flask_app.test_client()
+            login = _login(client, "Cruz", "8998", ip)
+            assert login.status_code in (302, 303)
+
+            for _ in range(6):
+                resp = client.get("/admin/clientes", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
+                assert resp.status_code != 429
+    finally:
+        flask_app.config["TESTING"] = prev_testing
+        flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf

@@ -1,249 +1,76 @@
 {% extends "clientes/base.html" %}
-{% block title %}Ayuda & Contacto | Doméstica del Cibao A&D{% endblock %}
-
-{% block head %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-{% endblock %}
+{% block title %}Centro de ayuda | Doméstica del Cibao A&D{% endblock %}
 
 {% block content %}
 <div class="container py-4">
-
-  <!-- HERO -->
-  <div class="support-hero p-4 p-md-5 mb-4">
-    <div class="d-md-flex align-items-center">
-      <div class="flex-grow-1">
-        <h1 class="h4 mb-2"><i class="bi bi-life-preserver me-2 text-primary"></i> ¿Necesitas ayuda?</h1>
-        <p class="mb-0 text-secondary">
-          Estamos aquí para asistirte con tus solicitudes, planes y seguimiento de candidatas.
-          Usa cualquiera de estos canales o revisa las preguntas frecuentes.
-        </p>
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+      <div>
+        <h1 class="h4 mb-1"><i class="bi bi-life-preserver text-primary me-2"></i>Centro de ayuda</h1>
+        <div class="text-muted small">
+          Respuestas cortas para cada etapa: proceso, pagos, entrevistas, candidatas, reemplazos y contacto.
+        </div>
       </div>
-      <div class="mt-3 mt-md-0 d-flex gap-2">
-        <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
-          <i class="bi bi-plus-circle me-1"></i> Nueva solicitud
+      <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('clientes.chat_cliente') }}" class="btn btn-outline-dark">
+          <i class="bi bi-chat-left-text me-1"></i> Abrir chat
         </a>
-        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-primary">
-          <i class="bi bi-list-task me-1"></i> Mis solicitudes
+        <a href="https://wa.me/18094296892?text=Hola%20soporte%2C%20necesito%20ayuda%20con%20mi%20solicitud." class="btn btn-success" target="_blank" rel="noopener">
+          <i class="bi bi-whatsapp me-1"></i> WhatsApp
         </a>
       </div>
     </div>
   </div>
 
-  <!-- CONTACTO -->
-  <div class="row g-4 mb-4">
-    <div class="col-md-4">
-      <div class="card card-soft h-100">
-        <div class="card-body">
-          <h5 class="card-title mb-3"><i class="bi bi-whatsapp text-success me-2"></i> WhatsApp</h5>
-          <p class="text-secondary mb-3">Atención rápida y seguimiento por chat.</p>
-          <div class="d-flex align-items-center justify-content-between">
-            <a class="btn btn-success contact-btn"
-               href="https://wa.me/18094296892?text=Hola%20soporte%2C%20necesito%20ayuda%20con%20mi%20solicitud."
-               target="_blank" rel="noopener">
-              <i class="bi bi-whatsapp"></i> Escribir
-            </a>
-            <button type="button" class="btn btn-sm copy-btn" data-copy="+1 809 429 6892">
-              <i class="bi bi-clipboard"></i> Copiar número
-            </button>
-          </div>
-        </div>
-        <div class="card-footer bg-transparent">
-          <span class="badge badge-sla">Tiempo de respuesta: 10 min – 2 h</span>
-        </div>
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-4">
+      <div class="border rounded p-3 h-100 bg-light">
+        <div class="fw-semibold mb-1"><i class="bi bi-chat-dots me-1"></i>Ayuda puntual por caso</div>
+        <div class="small text-muted">Si la duda es de una solicitud concreta, escribe por chat desde esa misma solicitud.</div>
       </div>
     </div>
-
-    <div class="col-md-4">
-      <div class="card card-soft h-100">
-        <div class="card-body">
-          <h5 class="card-title mb-3"><i class="bi bi-envelope-paper text-primary me-2"></i> Email</h5>
-          <p class="text-secondary mb-3">Ideal para casos detallados o adjuntar documentos.</p>
-          <div class="d-flex align-items-center justify-content-between">
-            <a class="btn btn-primary contact-btn"
-               href="mailto:soporte.domesticacibao@gmail.com?subject=Ayuda%20con%20mi%20solicitud&body=Hola%2C%20necesito%20asistencia%20con..."
-               rel="noopener">
-              <i class="bi bi-envelope"></i> Enviar correo
-            </a>
-            <button type="button" class="btn btn-sm copy-btn" data-copy="soporte.domesticacibao@gmail.com">
-              <i class="bi bi-clipboard"></i> Copiar correo
-            </button>
-          </div>
-        </div>
-        <div class="card-footer bg-transparent">
-          <span class="badge badge-sla">Tiempo de respuesta: 24–48 h</span>
-        </div>
+    <div class="col-12 col-md-4">
+      <div class="border rounded p-3 h-100 bg-light">
+        <div class="fw-semibold mb-1"><i class="bi bi-signpost me-1"></i>Ver etapa actual</div>
+        <div class="small text-muted">Revisa "Qué sigue" y "Acciones rápidas" en el detalle para saber tu próximo paso.</div>
       </div>
     </div>
-
-    <div class="col-md-4">
-      <div class="card card-soft h-100">
-        <div class="card-body">
-          <h5 class="card-title mb-3"><i class="bi bi-telephone text-info me-2"></i> Teléfono</h5>
-          <p class="text-secondary mb-3">Para consultas directas en horario laboral.</p>
-          <div class="d-flex align-items-center justify-content-between">
-            <a class="btn btn-outline-secondary contact-btn" href="tel:+18094296892">
-              <i class="bi bi-telephone"></i> Llamar
-            </a>
-            <button type="button" class="btn btn-sm copy-btn" data-copy="(809) 429-6892">
-              <i class="bi bi-clipboard"></i> Copiar
-            </button>
-          </div>
-        </div>
-        <div class="card-footer bg-transparent">
-          <div class="d-flex flex-wrap gap-2">
-            <span class="time-chip"><i class="bi bi-clock me-1"></i> Lun–Vie 8:00–17:00</span>
-          </div>
-        </div>
+    <div class="col-12 col-md-4">
+      <div class="border rounded p-3 h-100 bg-light">
+        <div class="fw-semibold mb-1"><i class="bi bi-clock-history me-1"></i>Tiempos</div>
+        <div class="small text-muted">Los tiempos pueden variar según perfil y disponibilidad. El timeline muestra avances reales.</div>
       </div>
     </div>
   </div>
 
-  <!-- FAQ -->
-  <div class="card card-soft mb-4">
+  <div class="card shadow-sm border-0">
     <div class="card-body">
       <div class="d-flex align-items-center mb-3">
-        <i class="bi bi-question-circle me-2 text-primary"></i>
-        <h5 class="mb-0">Preguntas frecuentes</h5>
+        <i class="bi bi-journal-text me-2 text-primary"></i>
+        <h2 class="h5 mb-0">Temas de ayuda</h2>
       </div>
 
-      <div class="accordion" id="faq">
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="q1">
-            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#a1">
-              ¿Cómo creo una nueva solicitud?
-            </button>
-          </h2>
-          <div id="a1" class="accordion-collapse collapse show" data-bs-parent="#faq">
-            <div class="accordion-body">
-              Entra a <span class="kw">Mis Solicitudes</span> y haz clic en
-              <span class="kw">+ Nueva Solicitud</span>. Completa los datos y guarda.
-              Podrás editarla mientras esté en estado <em>proceso</em>.
+      <div class="accordion" id="centroAyudaAccordion">
+        {% for sec in ayuda_secciones %}
+          <div class="accordion-item">
+            <h3 class="accordion-header" id="heading-{{ sec.id }}">
+              <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ sec.id }}" aria-expanded="{{ 'true' if loop.first else 'false' }}">
+                <i class="bi {{ sec.icon or 'bi-question-circle' }} me-2"></i>{{ sec.titulo }}
+              </button>
+            </h3>
+            <div id="collapse-{{ sec.id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" data-bs-parent="#centroAyudaAccordion">
+              <div class="accordion-body">
+                <ul class="mb-0">
+                  {% for item in sec['items'] %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="q2">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#a2">
-              ¿Puedo cancelar mi solicitud?
-            </button>
-          </h2>
-          <div id="a2" class="accordion-collapse collapse" data-bs-parent="#faq">
-            <div class="accordion-body">
-              Sí, mientras esté en <em>proceso</em>. Ingresa al detalle y usa
-              <span class="kw">Cancelar</span>. Si ya cambió de estado, la cancelación
-              quedará pendiente de aprobación por la agencia.
-            </div>
-          </div>
-        </div>
-
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="q3">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#a3">
-              ¿Dónde veo el estado y el seguimiento?
-            </button>
-          </h2>
-          <div id="a3" class="accordion-collapse collapse" data-bs-parent="#faq">
-            <div class="accordion-body">
-              En <span class="kw">Mis Solicitudes</span> verás tus códigos y estados.
-              Al hacer clic en uno, verás el detalle, movimientos (envíos, reemplazos) y notas relevantes.
-            </div>
-          </div>
-        </div>
-
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="q4">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#a4">
-              ¿Cuáles son los planes y garantías?
-            </button>
-          </h2>
-          <div id="a4" class="accordion-collapse collapse" data-bs-parent="#faq">
-            <div class="accordion-body">
-              Consulta <a href="{{ url_for('clientes.planes') }}">Planes</a> para ver
-              diferencias entre Básico, Premium y VIP: cobertura, reemplazos,
-              tiempos de respuesta y condiciones.
-            </div>
-          </div>
-        </div>
-
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="q5">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#a5">
-              ¿Cómo puedo acceder al Banco de Domésticas y ver las domésticas disponibles?
-            </button>
-          </h2>
-          <div id="a5" class="accordion-collapse collapse" data-bs-parent="#faq">
-            <div class="accordion-body">
-              El <strong>Banco de Domésticas</strong> es una sección donde puedes ver candidatas disponibles con sus
-              perfiles organizados, modalidad, experiencia y detalles clave.
-              <br><br>
-              <strong>Para acceder:</strong>
-              <ul>
-                <li>Debes tener un plan <strong>Premium</strong> o <strong>VIP</strong>.</li>
-                <li>Debes tener al menos una <strong>solicitud activa</strong> registrada en el sistema.</li>
-              </ul>
-
-              Una vez cumplas esos requisitos, verás la opción de <strong>Banco de Domésticas</strong> en tu panel.
-              Desde ahí podrás:
-              <ul>
-                <li>Ver las domésticas disponibles.</li>
-                <li>Entrar al perfil de cada candidata.</li>
-                <li>Hacer una oferta o solicitar más información directamente.</li>
-              </ul>
-
-              Si no ves el banco disponible, revisa tu plan en <a href="{{ url_for('clientes.planes') }}">Planes</a>
-              o escribe a soporte por WhatsApp.
-            </div>
-          </div>
-        </div>
+        {% endfor %}
       </div>
     </div>
   </div>
-
-  <!-- INFO DE LA AGENCIA -->
-  <div class="card card-soft">
-    <div class="card-body">
-      <div class="d-flex align-items-center mb-2">
-        <i class="bi bi-building-check me-2 text-primary"></i>
-        <h5 class="mb-0">Sobre la agencia</h5>
-      </div>
-      <p class="text-secondary mb-3">
-        Doméstica del Cibao A&amp;D ofrece selección y seguimiento profesional de personal doméstico.
-        Priorizamos la seguridad, el perfil adecuado y la satisfacción del cliente.
-      </p>
-      <div class="row g-3">
-        <div class="col-md-4">
-          <div class="p-3 bg-light rounded-3 h-100">
-            <div class="fw-semibold mb-1"><i class="bi bi-shield-check me-1"></i> Proceso de verificación</div>
-            <div class="small text-secondary">Entrevista, referencias y validaciones documentales.</div>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="p-3 bg-light rounded-3 h-100">
-            <div class="fw-semibold mb-1"><i class="bi bi-people me-1"></i> Acompañamiento</div>
-            <div class="small text-secondary">Seguimiento post-envío y opción de reemplazo según plan.</div>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="p-3 bg-light rounded-3 h-100">
-            <div class="fw-semibold mb-1"><i class="bi bi-file-earmark-text me-1"></i> Transparencia</div>
-            <div class="small text-secondary">Detalle de estados y movimientos disponible en tu panel.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="card-footer bg-transparent d-flex gap-2">
-      <a href="{{ url_for('clientes.informacion') }}" class="btn btn-outline-primary">
-        <i class="bi bi-info-circle me-1"></i> Más información
-      </a>
-      <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary">
-        <i class="bi bi-stars me-1"></i> Ver planes
-      </a>
-    </div>
-  </div>
-
 </div>
-{% endblock %}
-
-{% block scripts %}
 {% endblock %}

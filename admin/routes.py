@@ -290,6 +290,18 @@ def _operational_rate_limits_enabled() -> bool:
     return run_env in ("prod", "production")
 
 
+def _admin_global_action_guard_enabled() -> bool:
+    """Guard global admin para POST/PUT/PATCH/DELETE.
+
+    Por defecto queda desactivado para evitar falsos positivos operativos.
+    Se puede reactivar explícitamente con ENABLE_ADMIN_GLOBAL_ACTION_GUARD=1.
+    """
+    raw = os.getenv("ENABLE_ADMIN_GLOBAL_ACTION_GUARD")
+    if raw is None or str(raw).strip() == "":
+        return False
+    return _is_true_env(str(raw), default=False)
+
+
 def _critical_concurrency_guards_enabled() -> bool:
     raw = os.getenv("ENABLE_CRITICAL_CONCURRENCY_GUARDS")
     if raw is None or str(raw).strip() == "":
@@ -2415,7 +2427,11 @@ def _admin_guard_and_rate_limit():
                 abort(403)
 
         # Rate-limit solo para acciones que cambian cosas
-        if _operational_rate_limits_enabled() and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if (
+            _operational_rate_limits_enabled()
+            and _admin_global_action_guard_enabled()
+            and request.method in ("POST", "PUT", "PATCH", "DELETE")
+        ):
             # Endpoints internos de telemetría/live ya tienen su propio rate-limit
             # y no deben contaminar el bucket global de acciones administrativas.
             ep_l = (ep or "").strip().lower()
