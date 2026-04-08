@@ -3748,11 +3748,20 @@ def _chat_cliente_conversation_for_update_or_404(conversation_id: int):
     cid = int(getattr(current_user, "id", 0) or 0)
     q = (
         ChatConversation.query
+        .enable_eagerloads(False)
         .filter_by(id=int(conversation_id), cliente_id=cid)
     )
     try:
-        conv = q.with_for_update().first_or_404()
-    except Exception:
+        conv = q.with_for_update(of=ChatConversation).first_or_404()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] with_for_update failed in client thread lookup; fallback unlocked query (conversation_id=%s, cliente_id=%s, error=%s: %s)",
+            int(conversation_id or 0),
+            int(cid or 0),
+            type(exc).__name__,
+            str(exc),
+        )
         conv = q.first_or_404()
     if chat_e2e_enabled():
         try:
@@ -4052,36 +4061,57 @@ def chat_cliente_send_message(conversation_id):
     if blocked_fast:
         return jsonify({"ok": False, "error": "too_fast"}), 429
 
-    conv = _chat_cliente_conversation_for_update_or_404(int(conversation_id))
-    now = utc_now_naive()
-    msg = ChatMessage(
-        conversation_id=int(conv.id),
-        sender_type="cliente",
-        sender_cliente_id=int(getattr(current_user, "id", 0) or 0),
-        body=body,
-        meta=e2e_message_meta({}),
-        created_at=now,
-    )
-    db.session.add(msg)
-
-    conv.last_message_at = now
-    conv.last_message_preview = _chat_message_preview(body)
-    conv.last_message_sender_type = "cliente"
-    conv.staff_unread_count = int(getattr(conv, "staff_unread_count", 0) or 0) + 1
-    prev_status = _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN)
-    conv.status = _CHAT_STATUS_OPEN
-    conv.updated_at = now
-    db.session.add(conv)
-    db.session.flush()
-    _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
-    if prev_status != _CHAT_STATUS_OPEN:
-        _chat_emit_event(
-            event_type="CHAT_CONVERSATION_STATUS_CHANGED",
-            conversation=conv,
-            reader_type="cliente",
-            extra_payload={"from": prev_status, "to": _CHAT_STATUS_OPEN},
+    try:
+        conv = _chat_cliente_conversation_for_update_or_404(int(conversation_id))
+        now = utc_now_naive()
+        msg = ChatMessage(
+            conversation_id=int(conv.id),
+            sender_type="cliente",
+            sender_cliente_id=int(getattr(current_user, "id", 0) or 0),
+            body=body,
+            meta=e2e_message_meta({}),
+            created_at=now,
         )
-    db.session.commit()
+        db.session.add(msg)
+
+        conv.last_message_at = now
+        conv.last_message_preview = _chat_message_preview(body)
+        conv.last_message_sender_type = "cliente"
+        conv.staff_unread_count = int(getattr(conv, "staff_unread_count", 0) or 0) + 1
+        prev_status = _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN)
+        conv.status = _CHAT_STATUS_OPEN
+        conv.updated_at = now
+        db.session.add(conv)
+        db.session.flush()
+        _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
+        if prev_status != _CHAT_STATUS_OPEN:
+            _chat_emit_event(
+                event_type="CHAT_CONVERSATION_STATUS_CHANGED",
+                conversation=conv,
+                reader_type="cliente",
+                extra_payload={"from": prev_status, "to": _CHAT_STATUS_OPEN},
+            )
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] client send message failed (conversation_id=%s, cliente_id=%s, sql_error=%s: %s)",
+            int(conversation_id or 0),
+            int(getattr(current_user, "id", 0) or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] client send message failed (conversation_id=%s, cliente_id=%s, error=%s: %s)",
+            int(conversation_id or 0),
+            int(getattr(current_user, "id", 0) or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
 
     payload = {
         "ok": True,
@@ -4098,21 +4128,42 @@ def chat_cliente_send_message(conversation_id):
 def chat_cliente_mark_read(conversation_id):
     if not _chat_enabled():
         return jsonify({"ok": False, "error": "chat_not_available"}), 404
-    conv = _chat_cliente_conversation_for_update_or_404(int(conversation_id))
-    if chat_e2e_enabled():
-        try:
-            enforce_e2e_conversation(conv)
-        except E2EChatGuardError as exc:
-            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
-    changed = int(getattr(conv, "cliente_unread_count", 0) or 0) > 0
-    now = utc_now_naive()
-    conv.cliente_unread_count = 0
-    conv.client_last_read_at = now
-    conv.updated_at = now
-    db.session.add(conv)
-    if changed:
-        _chat_emit_event(event_type="CHAT_CONVERSATION_READ", conversation=conv, reader_type="cliente")
-    db.session.commit()
+    try:
+        conv = _chat_cliente_conversation_for_update_or_404(int(conversation_id))
+        if chat_e2e_enabled():
+            try:
+                enforce_e2e_conversation(conv)
+            except E2EChatGuardError as exc:
+                return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+        changed = int(getattr(conv, "cliente_unread_count", 0) or 0) > 0
+        now = utc_now_naive()
+        conv.cliente_unread_count = 0
+        conv.client_last_read_at = now
+        conv.updated_at = now
+        db.session.add(conv)
+        if changed:
+            _chat_emit_event(event_type="CHAT_CONVERSATION_READ", conversation=conv, reader_type="cliente")
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] client mark read failed (conversation_id=%s, cliente_id=%s, sql_error=%s: %s)",
+            int(conversation_id or 0),
+            int(getattr(current_user, "id", 0) or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] client mark read failed (conversation_id=%s, cliente_id=%s, error=%s: %s)",
+            int(conversation_id or 0),
+            int(getattr(current_user, "id", 0) or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
     return jsonify(
         {
             "ok": True,

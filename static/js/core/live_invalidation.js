@@ -66,9 +66,31 @@
     let eventSource = null;
     let pollTimer = null;
     let sseRetryTimer = null;
+    let streamModeProbe = null;
     let afterId = 0;
     let fallbackMode = false;
+    let sseDisabledByMode = false;
     let stopped = false;
+    const SSE_MODE_STORAGE_KEY = "admin_live_invalidation_mode";
+
+    function readStoredSseMode() {
+      try {
+        return String(window.sessionStorage.getItem(SSE_MODE_STORAGE_KEY) || "").trim().toLowerCase();
+      } catch (_e) {
+        return "";
+      }
+    }
+
+    function markPollOnlyMode() {
+      sseDisabledByMode = true;
+      try {
+        window.sessionStorage.setItem(SSE_MODE_STORAGE_KEY, "poll_only");
+      } catch (_e) {}
+    }
+
+    if (readStoredSseMode() === "poll_only") {
+      sseDisabledByMode = true;
+    }
     const sharedFetchEnabled = (
       view === "cliente_detail"
       && (new Set(Array.from(regionMap.values()))).size < regionMap.size
@@ -398,6 +420,12 @@
       });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
+      const headerMode = String(res.headers.get("X-Live-Invalidation-Mode") || "").trim().toLowerCase();
+      const bodyMode = String((data && data.mode) || "").trim().toLowerCase();
+      if (headerMode === "poll_only" || bodyMode === "poll_only") {
+        markPollOnlyMode();
+        stopSseRetry();
+      }
       const items = Array.isArray(data && data.items) ? data.items : [];
       items.forEach((item) => processInvalidationPayload(item));
       const nextAfterId = Number((data && data.next_after_id) || 0);
@@ -406,7 +434,55 @@
       }
     }
 
+    async function probePollOnlyOrUnauthorized() {
+      if (sseDisabledByMode || !streamUrl) return sseDisabledByMode;
+      if (streamModeProbe) return streamModeProbe;
+      streamModeProbe = (async function () {
+        const ctl = new AbortController();
+        const timeoutId = window.setTimeout(function () {
+          try { ctl.abort(); } catch (_e) {}
+        }, 2200);
+        try {
+          const probeUrl = new URL(streamUrl, window.location.origin);
+          probeUrl.searchParams.set("probe", "1");
+          const resp = await fetch(probeUrl.toString(), {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            signal: ctl.signal,
+            headers: {
+              "Accept": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          });
+          if (resp.redirected || resp.status === 401 || resp.status === 403) {
+            markPollOnlyMode();
+            return true;
+          }
+          if (resp.status !== 503) return false;
+          const headerMode = String(resp.headers.get("X-Live-Invalidation-Mode") || "").trim().toLowerCase();
+          let bodyMode = "";
+          try {
+            const payload = await resp.json();
+            bodyMode = String((payload && payload.mode) || "").trim().toLowerCase();
+          } catch (_e) {}
+          if (headerMode === "poll_only" || bodyMode === "poll_only") {
+            markPollOnlyMode();
+            return true;
+          }
+          return false;
+        } catch (_e) {
+          return false;
+        } finally {
+          window.clearTimeout(timeoutId);
+          streamModeProbe = null;
+        }
+      })();
+      return streamModeProbe;
+    }
+
     function ensureSseRetry() {
+      if (sseDisabledByMode) return;
       if (sseRetryTimer) return;
       sseRetryTimer = window.setTimeout(function () {
         sseRetryTimer = null;
@@ -425,51 +501,67 @@
       pollTimer = window.setInterval(function () {
         pollOnce().catch(function () {});
       }, POLL_INTERVAL_MS);
-      ensureSseRetry();
+      if (!sseDisabledByMode) {
+        ensureSseRetry();
+      }
     }
 
     function startSSE() {
       if (!isViewActive()) return;
-      if (!streamUrl || !window.EventSource) {
+      if (sseDisabledByMode || !streamUrl || !window.EventSource) {
         startPolling();
         return;
       }
-
-      closeSSE();
-      stopSseRetry();
-
-      try {
-        eventSource = new EventSource(streamUrl, { withCredentials: true });
-      } catch (_) {
-        startPolling();
-        return;
-      }
-
-      eventSource.addEventListener("invalidation", function (ev) {
-        try {
-          processInvalidationPayload(JSON.parse(ev.data || "{}"));
-        } catch (_) {}
-      });
-
-      eventSource.addEventListener("heartbeat", function (ev) {
-        try {
-          const payload = JSON.parse(ev.data || "{}");
-          if (String((payload && payload.mode) || "") === "heartbeat_only") {
-            startPolling();
-          }
-        } catch (_) {}
-      });
-
-      eventSource.onopen = function () {
-        stopPolling();
-        stopSseRetry();
-        reportObservability("sse_open", {});
-      };
-
-      eventSource.onerror = function () {
+      probePollOnlyOrUnauthorized().then(function (disabled) {
+        if (disabled || sseDisabledByMode) {
+          closeSSE();
+          stopSseRetry();
+          startPolling();
+          return;
+        }
         closeSSE();
+        stopSseRetry();
+
+        try {
+          eventSource = new EventSource(streamUrl, { withCredentials: true });
+        } catch (_) {
+          startPolling();
+          return;
+        }
+
+        eventSource.addEventListener("invalidation", function (ev) {
+          try {
+            processInvalidationPayload(JSON.parse(ev.data || "{}"));
+          } catch (_) {}
+        });
+
+        eventSource.addEventListener("heartbeat", function (ev) {
+          try {
+            const payload = JSON.parse(ev.data || "{}");
+            if (String((payload && payload.mode) || "") === "heartbeat_only") {
+              startPolling();
+            }
+          } catch (_) {}
+        });
+
+        eventSource.onopen = function () {
+          stopPolling();
+          stopSseRetry();
+          reportObservability("sse_open", {});
+        };
+
+        eventSource.onerror = function () {
+          closeSSE();
+          startPolling();
+          probePollOnlyOrUnauthorized().then(function (isDisabled) {
+            if (isDisabled) {
+              stopSseRetry();
+            }
+          }).catch(function () {});
+        };
+      }).catch(function () {
         startPolling();
-      };
+      });
     }
 
     function cleanup() {

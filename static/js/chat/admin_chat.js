@@ -67,6 +67,26 @@
   const initialAfterId = Math.max(0, Number(root.getAttribute("data-initial-after-id") || 0) || 0);
   let afterId = initialAfterId;
   let lastStreamId = "$";
+  const SSE_MODE_STORAGE_KEY = "admin_live_invalidation_mode";
+
+  function readStoredSseMode() {
+    try {
+      return String(window.sessionStorage.getItem(SSE_MODE_STORAGE_KEY) || "").trim().toLowerCase();
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  function markPollOnlyMode() {
+    sseDisabledByMode = true;
+    try {
+      window.sessionStorage.setItem(SSE_MODE_STORAGE_KEY, "poll_only");
+    } catch (_e) {}
+  }
+
+  if (readStoredSseMode() === "poll_only") {
+    sseDisabledByMode = true;
+  }
 
   const seen = new Map();
   const EVENT_DEDUPE_TTL_MS = 8 * 60 * 1000;
@@ -870,6 +890,9 @@
     u.searchParams.set("limit", "60");
     u.searchParams.set("view", "chat_inbox");
     const payload = await fetchJson(u.toString());
+    if (String((payload && payload.mode) || "").trim().toLowerCase() === "poll_only") {
+      markPollOnlyMode();
+    }
     const items = Array.isArray(payload && payload.items) ? payload.items : [];
     items.forEach(handleLiveEvent);
     afterId = Math.max(afterId, Number((payload && payload.next_after_id) || 0));
@@ -925,6 +948,10 @@
             "X-Requested-With": "XMLHttpRequest",
           },
         });
+        if (resp.redirected || resp.status === 401 || resp.status === 403) {
+          markPollOnlyMode();
+          return true;
+        }
         if (resp.status !== 503) return false;
         const headerMode = String(resp.headers.get("X-Live-Invalidation-Mode") || "").trim().toLowerCase();
         let bodyMode = "";
@@ -933,7 +960,7 @@
           bodyMode = String((payload && payload.mode) || "").trim().toLowerCase();
         } catch (_e) {}
         if (headerMode === "poll_only" || bodyMode === "poll_only") {
-          sseDisabledByMode = true;
+          markPollOnlyMode();
           return true;
         }
         return false;
