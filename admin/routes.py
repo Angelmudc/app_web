@@ -290,6 +290,16 @@ def _operational_rate_limits_enabled() -> bool:
     return run_env in ("prod", "production")
 
 
+def _live_invalidation_stream_enabled() -> bool:
+    raw = os.getenv("ENABLE_ADMIN_LIVE_INVALIDATION_STREAM")
+    if raw is not None and str(raw).strip() != "":
+        return _is_true_env(str(raw), default=False)
+    if bool(current_app.config.get("TESTING")):
+        return True
+    run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
+    return run_env not in ("prod", "production")
+
+
 def _admin_global_action_guard_enabled() -> bool:
     """Guard global admin para POST/PUT/PATCH/DELETE.
 
@@ -1267,6 +1277,20 @@ def live_invalidation_stream():
         })
         response.status_code = 429
         response.headers["Retry-After"] = str(int(rl.get("retry_after_sec") or 1))
+        return response
+
+    if not _live_invalidation_stream_enabled():
+        response = jsonify(
+            {
+                "ok": False,
+                "error": "stream_disabled",
+                "mode": "poll_only",
+                "replaced_by": {"poll_url": url_for("admin.live_invalidation_poll")},
+                "ts": iso_utc_z(),
+            }
+        )
+        response.status_code = 503
+        response.headers["X-Live-Invalidation-Mode"] = "poll_only"
         return response
 
     stream_slot_id = secrets.token_hex(12)
@@ -19455,7 +19479,14 @@ def _chat_staff_conversation_for_update_or_404(conversation_id: int):
     q = ChatConversation.query.filter_by(id=int(conversation_id))
     try:
         conv = q.with_for_update().first_or_404()
-    except Exception:
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] with_for_update failed in admin thread lookup; fallback unlocked query (conversation_id=%s, error=%s: %s)",
+            int(conversation_id or 0),
+            type(exc).__name__,
+            str(exc),
+        )
         conv = q.first_or_404()
     if chat_e2e_enabled():
         try:
@@ -19909,55 +19940,74 @@ def chat_staff_send_message(conversation_id):
             return jsonify({"ok": False, "error": "idempotency_conflict"}), 409
         return jsonify({"ok": True, "duplicate": True}), 200
 
-    conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
-    actor_staff_id = int(getattr(current_user, "id", 0) or 0)
-    assignment_changed = False
-    previous_assigned_staff_id = int(getattr(conv, "assigned_staff_user_id", 0) or 0)
-    assignment_warning = None
-    if previous_assigned_staff_id <= 0 and actor_staff_id > 0:
-        conv.assigned_staff_user_id = actor_staff_id
-        conv.assigned_at = utc_now_naive()
-        assignment_changed = True
-    elif previous_assigned_staff_id > 0 and previous_assigned_staff_id != actor_staff_id:
-        assigned_row = StaffUser.query.filter_by(id=previous_assigned_staff_id).first()
-        assignment_warning = {
-            "code": "conversation_assigned_to_other_staff",
-            "assigned_staff_user_id": previous_assigned_staff_id,
-            "assigned_staff_username": str(getattr(assigned_row, "username", "") or "") or f"Staff #{previous_assigned_staff_id}",
-        }
-    now = utc_now_naive()
-    msg = ChatMessage(
-        conversation_id=int(conv.id),
-        sender_type="staff",
-        sender_staff_user_id=actor_staff_id,
-        body=body,
-        meta=e2e_message_meta({}),
-        created_at=now,
-    )
-    db.session.add(msg)
-
-    conv.last_message_at = now
-    conv.last_message_preview = _chat_message_preview(body)
-    conv.last_message_sender_type = "staff"
-    conv.cliente_unread_count = int(getattr(conv, "cliente_unread_count", 0) or 0) + 1
-    _chat_set_status(conv, to_status=_CHAT_STATUS_OPEN, actor_type="staff")
-    conv.updated_at = now
-    db.session.add(conv)
-    db.session.flush()
-    if assignment_changed:
-        _chat_emit_event(
-            event_type="CHAT_CONVERSATION_ASSIGNED",
-            conversation=conv,
-            reader_type="staff",
-            extra_payload={
-                "from_assigned_staff_user_id": None,
-                "to_assigned_staff_user_id": int(getattr(conv, "assigned_staff_user_id", 0) or 0) or None,
-                "action": "auto_assigned_on_staff_reply",
-            },
+    try:
+        conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
+        actor_staff_id = int(getattr(current_user, "id", 0) or 0)
+        assignment_changed = False
+        previous_assigned_staff_id = int(getattr(conv, "assigned_staff_user_id", 0) or 0)
+        assignment_warning = None
+        if previous_assigned_staff_id <= 0 and actor_staff_id > 0:
+            conv.assigned_staff_user_id = actor_staff_id
+            conv.assigned_at = utc_now_naive()
+            assignment_changed = True
+        elif previous_assigned_staff_id > 0 and previous_assigned_staff_id != actor_staff_id:
+            assigned_row = StaffUser.query.filter_by(id=previous_assigned_staff_id).first()
+            assignment_warning = {
+                "code": "conversation_assigned_to_other_staff",
+                "assigned_staff_user_id": previous_assigned_staff_id,
+                "assigned_staff_username": str(getattr(assigned_row, "username", "") or "") or f"Staff #{previous_assigned_staff_id}",
+            }
+        now = utc_now_naive()
+        msg = ChatMessage(
+            conversation_id=int(conv.id),
+            sender_type="staff",
+            sender_staff_user_id=actor_staff_id,
+            body=body,
+            meta=e2e_message_meta({}),
+            created_at=now,
         )
-    _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
-    _set_idempotency_response(idem_row, status=200, code="ok")
-    db.session.commit()
+        db.session.add(msg)
+
+        conv.last_message_at = now
+        conv.last_message_preview = _chat_message_preview(body)
+        conv.last_message_sender_type = "staff"
+        conv.cliente_unread_count = int(getattr(conv, "cliente_unread_count", 0) or 0) + 1
+        _chat_set_status(conv, to_status=_CHAT_STATUS_OPEN, actor_type="staff")
+        conv.updated_at = now
+        db.session.add(conv)
+        db.session.flush()
+        if assignment_changed:
+            _chat_emit_event(
+                event_type="CHAT_CONVERSATION_ASSIGNED",
+                conversation=conv,
+                reader_type="staff",
+                extra_payload={
+                    "from_assigned_staff_user_id": None,
+                    "to_assigned_staff_user_id": int(getattr(conv, "assigned_staff_user_id", 0) or 0) or None,
+                    "action": "auto_assigned_on_staff_reply",
+                },
+            )
+        _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
+        _set_idempotency_response(idem_row, status=200, code="ok")
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] staff send message failed (conversation_id=%s, sql_error=%s: %s)",
+            int(conversation_id or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] staff send message failed (conversation_id=%s, error=%s: %s)",
+            int(conversation_id or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
 
     return jsonify(
         {
@@ -19976,21 +20026,40 @@ def chat_staff_send_message(conversation_id):
 def chat_staff_mark_read(conversation_id):
     if not _chat_enabled():
         return jsonify({"ok": False, "error": "chat_not_available"}), 404
-    conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
-    if chat_e2e_enabled():
-        try:
-            enforce_e2e_conversation(conv)
-        except E2EChatGuardError as exc:
-            return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
-    changed = int(getattr(conv, "staff_unread_count", 0) or 0) > 0
-    now = utc_now_naive()
-    conv.staff_unread_count = 0
-    conv.staff_last_read_at = now
-    conv.updated_at = now
-    db.session.add(conv)
-    if changed:
-        _chat_emit_event(event_type="CHAT_CONVERSATION_READ", conversation=conv, reader_type="staff")
-    db.session.commit()
+    try:
+        conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
+        if chat_e2e_enabled():
+            try:
+                enforce_e2e_conversation(conv)
+            except E2EChatGuardError as exc:
+                return jsonify({"ok": False, "error": "e2e_guard_blocked", "reason": str(exc.reason)}), 403
+        changed = int(getattr(conv, "staff_unread_count", 0) or 0) > 0
+        now = utc_now_naive()
+        conv.staff_unread_count = 0
+        conv.staff_last_read_at = now
+        conv.updated_at = now
+        db.session.add(conv)
+        if changed:
+            _chat_emit_event(event_type="CHAT_CONVERSATION_READ", conversation=conv, reader_type="staff")
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] staff mark read failed (conversation_id=%s, sql_error=%s: %s)",
+            int(conversation_id or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] staff mark read failed (conversation_id=%s, error=%s: %s)",
+            int(conversation_id or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
     return jsonify(
         {
             "ok": True,
