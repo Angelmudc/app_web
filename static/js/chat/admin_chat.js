@@ -30,6 +30,7 @@
   const loadOlderBtn = document.getElementById("adminChatLoadOlderBtn");
   const historyStateNode = document.getElementById("adminChatHistoryState");
   const quickRepliesNode = document.getElementById("adminChatQuickReplies");
+  const sendBtnDefaultHtml = sendBtn ? sendBtn.innerHTML : "";
 
   const conversationsUrl = String(root.getAttribute("data-conversations-url") || "").trim();
   const messagesTpl = String(root.getAttribute("data-messages-url-template") || "").trim();
@@ -59,6 +60,8 @@
   let reconnectTimer = null;
   let nextBeforeId = 0;
   let hasMoreHistory = false;
+  let sendingMessage = false;
+  let composeStatusTimer = null;
   const initialAfterId = Math.max(0, Number(root.getAttribute("data-initial-after-id") || 0) || 0);
   let afterId = initialAfterId;
   let lastStreamId = "$";
@@ -236,6 +239,57 @@
     } catch (_e) {
       return value;
     }
+  }
+
+  function ensureComposeStatusNode() {
+    if (!form) return null;
+    let node = document.getElementById("adminChatComposeStatus");
+    if (node) return node;
+    node = document.createElement("div");
+    node.id = "adminChatComposeStatus";
+    node.className = "small mt-2 d-none";
+    node.setAttribute("role", "status");
+    node.setAttribute("aria-live", "polite");
+    form.appendChild(node);
+    return node;
+  }
+
+  function setComposeStatus(kind, text, autoClearMs) {
+    const node = ensureComposeStatusNode();
+    if (!node) return;
+    if (composeStatusTimer) {
+      window.clearTimeout(composeStatusTimer);
+      composeStatusTimer = null;
+    }
+    const message = String(text || "").trim();
+    if (!message) {
+      node.textContent = "";
+      node.className = "small mt-2 d-none";
+      return;
+    }
+    const cls = kind === "error" ? "text-danger" : (kind === "success" ? "text-success" : "text-muted");
+    node.textContent = message;
+    node.className = "small mt-2 " + cls;
+    const ms = Number(autoClearMs || 0) || 0;
+    if (ms > 0) {
+      composeStatusTimer = window.setTimeout(function () {
+        node.textContent = "";
+        node.className = "small mt-2 d-none";
+        composeStatusTimer = null;
+      }, ms);
+    }
+  }
+
+  function setSendButtonState(isSending) {
+    if (!sendBtn) return;
+    sendBtn.disabled = Boolean(isSending);
+    if (isSending) {
+      sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+      sendBtn.setAttribute("aria-label", "Enviando...");
+      return;
+    }
+    sendBtn.innerHTML = sendBtnDefaultHtml;
+    sendBtn.setAttribute("aria-label", "Enviar");
   }
 
   function insertIntoComposer(text) {
@@ -654,7 +708,6 @@
         window.history.replaceState({}, "", url.toString());
       }
       refreshMessages(cid, { silent: false, mode: "reset" });
-      refreshConversations({ silent: true });
     });
   }
 
@@ -740,12 +793,15 @@
   if (form && bodyInput && sendBtn) {
     form.addEventListener("submit", async function (ev) {
       ev.preventDefault();
+      if (sendingMessage) return;
       const cid = Number(selectedConversationId || (messagesNode && messagesNode.getAttribute("data-conversation-id")) || 0) || 0;
       if (!cid) return;
       const text = String(bodyInput.value || "").trim();
       if (!text) return;
       const csrfToken = getCSRFToken();
-      sendBtn.disabled = true;
+      sendingMessage = true;
+      setSendButtonState(true);
+      setComposeStatus("pending", "Enviando...");
       try {
         const body = new URLSearchParams();
         body.set("csrf_token", csrfToken);
@@ -761,6 +817,15 @@
           body: body.toString(),
         });
         bodyInput.value = "";
+        const sentMessage = sendPayload && sendPayload.message;
+        const sentConversation = sendPayload && sendPayload.conversation;
+        if (sentMessage && typeof sentMessage === "object") {
+          appendMessages([sentMessage]);
+          if (messagesNode) messagesNode.scrollTop = messagesNode.scrollHeight;
+        }
+        if (sentConversation && typeof sentConversation === "object") {
+          updateThreadMetaFromConversation(sentConversation);
+        }
         const warning = sendPayload && sendPayload.assignment_warning;
         if (warning && ownershipWarning) {
           ownershipWarning.classList.remove("d-none");
@@ -768,11 +833,14 @@
             ownershipWarningName.textContent = String(warning.assigned_staff_username || ("Staff #" + String(warning.assigned_staff_user_id || "")));
           }
         }
-        await refreshMessages(cid, { silent: true, mode: "sync" });
-      } catch (_e) {
-        // no-op
+        setComposeStatus("success", "Mensaje enviado.", 1800);
+        refreshMessages(cid, { silent: true, mode: "sync" }).catch(function () {});
+      } catch (e) {
+        const reason = (e && e.message) ? (" (" + String(e.message) + ")") : "";
+        setComposeStatus("error", "No se pudo enviar el mensaje. Intenta de nuevo." + reason);
       } finally {
-        sendBtn.disabled = false;
+        sendingMessage = false;
+        setSendButtonState(false);
       }
     });
   }

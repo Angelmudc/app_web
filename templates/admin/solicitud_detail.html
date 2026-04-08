@@ -1,9 +1,80 @@
 {% extends 'base.html' %}
 {% block title %}Detalle Solicitud {{ solicitud.codigo_solicitud }}{% endblock %}
 
+{% block head %}
+<style>
+  .solicitud-detail-contrast .glass-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+    border: 1px solid rgba(18, 52, 97, 0.14);
+    box-shadow: 0 12px 28px rgba(18, 52, 97, 0.08);
+  }
+
+  .solicitud-detail-contrast .glass-header {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    border-bottom: 1px solid rgba(18, 52, 97, 0.16);
+    background: linear-gradient(90deg, rgba(12, 98, 209, 0.14), rgba(12, 98, 209, 0.06));
+  }
+
+  .solicitud-detail-contrast .solicitud-detail-secondary {
+    color: #475467 !important;
+    font-weight: 500;
+  }
+
+  .solicitud-detail-contrast .detail-focus-card {
+    border-color: rgba(12, 98, 209, 0.26);
+    box-shadow: 0 14px 34px rgba(12, 98, 209, 0.11);
+  }
+
+  .solicitud-detail-contrast .detail-focus-row {
+    border: 1px solid rgba(18, 52, 97, 0.12);
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .solicitud-detail-contrast .operativa-data-item {
+    background: rgba(249, 251, 255, 0.95);
+    border: 1px solid rgba(18, 52, 97, 0.14);
+    border-radius: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    min-height: 100%;
+  }
+
+  .solicitud-detail-contrast .operativa-data-item strong {
+    color: #1d2939;
+    font-weight: 700;
+  }
+
+  .solicitud-detail-contrast .solicitud-callout {
+    border-width: 1px !important;
+    border-style: solid !important;
+    box-shadow: 0 6px 18px rgba(18, 52, 97, 0.08);
+  }
+
+  .solicitud-detail-contrast .solicitud-callout-neutral {
+    background: rgba(247, 250, 255, 0.94);
+    border-color: rgba(18, 52, 97, 0.18) !important;
+  }
+
+  .solicitud-detail-contrast .solicitud-callout-info {
+    background: rgba(238, 246, 255, 0.95);
+    border-color: rgba(12, 98, 209, 0.24) !important;
+  }
+
+  .solicitud-detail-contrast .solicitud-callout-warn {
+    background: rgba(255, 247, 230, 0.96);
+    border-color: rgba(245, 158, 11, 0.36) !important;
+  }
+
+  .solicitud-detail-contrast .solicitud-callout .fw-semibold {
+    color: #172b4d;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
-<div class="container py-5"
+<div class="container py-5 solicitud-detail-contrast"
      style="max-width: 1200px;"
      data-admin-focus-anchor
      data-live-invalidation-scope="1"
@@ -39,7 +110,7 @@
       <i class="bi bi-clipboard-check"></i> Resumen para enviar al cliente
     </div>
     <div class="p-4">
-      <p class="small text-muted mb-2">
+      <p class="small solicitud-detail-secondary mb-2">
         Texto organizado con emojis, listo para copiar y pegar en WhatsApp o correo.
       </p>
       <div class="mb-3">
@@ -58,7 +129,7 @@
       <i class="bi bi-journal-text"></i> Resumen interno
     </div>
     <div class="p-3 p-md-4">
-      <p class="small text-muted mb-3">
+      <p class="small solicitud-detail-secondary mb-3">
         Texto interno para el equipo. Listo para copiar y pegar tal cual.
       </p>
 
@@ -230,9 +301,9 @@
         {% set _interno = resumen_interno %}
       {% endif %}
 
-      <div class="glass-card p-3 p-md-4">
+      <div class="glass-card detail-focus-card p-3 p-md-4">
         <ul class="list-group list-unstyled mb-0">
-          <li class="list-group-item p-3 bg-body text-body border-bottom">
+          <li class="list-group-item detail-focus-row p-3 bg-body text-body border-bottom">
             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
               <div class="flex-grow-1">
                 <div class="d-flex align-items-center flex-wrap gap-2">

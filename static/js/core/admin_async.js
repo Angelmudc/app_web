@@ -498,6 +498,36 @@
     return replaceTargetHtml(targetSelector, next.innerHTML, options || {});
   }
 
+  async function loadAndReplaceManyFromUrl(url, targetOps, options) {
+    const ops = Array.isArray(targetOps) ? targetOps.filter((op) => op && op.target) : [];
+    if (!url || !ops.length) return false;
+
+    const resp = await fetch(url, {
+      credentials: "same-origin",
+      headers: wantsJsonHeaders({ "Accept": "text/html,application/xhtml+xml" }),
+    });
+    if (!resp.ok) return false;
+    const text = await resp.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, "text/html");
+
+    let anyApplied = false;
+    ops.forEach((op) => {
+      const selector = normalizeSelector(op && op.target);
+      if (!selector) return;
+      const next = doc.querySelector(selector);
+      if (!next) return;
+      const replaced = replaceTargetHtml(selector, next.innerHTML, {
+        preserveScroll: !!op.preserveScroll,
+        preserveOpenCollapses: !!(options && options.preserveOpenCollapses),
+        focusRowId: options && options.focusRowId,
+        flashRow: options ? options.flashRow !== false : true,
+      });
+      anyApplied = anyApplied || replaced;
+    });
+    return anyApplied;
+  }
+
   function closeEnclosingModal(sourceEl) {
     if (!sourceEl || !sourceEl.closest) return;
     const modalEl = sourceEl.closest(".modal");
@@ -696,6 +726,8 @@
 
   async function applyPayloadTargets(targets, requestId, options) {
     let anyApplied = false;
+    const fetchGroups = new Map(); // redirect_url -> targetOps[]
+
     for (const targetOp of (targets || [])) {
       if (!targetOp || !targetOp.target) continue;
       if (!canApplyRequestTarget(targetOp.target, requestId)) continue;
@@ -716,8 +748,38 @@
       }
 
       if ((targetOp.invalidate || targetOp.redirectUrl) && targetOp.redirectUrl) {
-        const refreshed = await loadAndReplaceFromUrl(targetOp.redirectUrl, selector, {
-          preserveScroll: !!targetOp.preserveScroll,
+        const key = String(targetOp.redirectUrl || "").trim();
+        if (!key) continue;
+        if (!fetchGroups.has(key)) fetchGroups.set(key, []);
+        fetchGroups.get(key).push(targetOp);
+      }
+    }
+
+    for (const [url, groupedOps] of fetchGroups.entries()) {
+      const ops = Array.isArray(groupedOps) ? groupedOps : [];
+      if (!ops.length) continue;
+      if (ops.length === 1) {
+        const op = ops[0];
+        const refreshed = await loadAndReplaceFromUrl(url, op.target, {
+          preserveScroll: !!op.preserveScroll,
+          preserveOpenCollapses: !!(options && options.preserveOpenCollapses),
+          focusRowId: options && options.focusRowId,
+          flashRow: options ? options.flashRow !== false : true,
+        });
+        anyApplied = anyApplied || refreshed;
+        continue;
+      }
+
+      const refreshedMany = await loadAndReplaceManyFromUrl(url, ops, options || {});
+      if (refreshedMany) {
+        anyApplied = true;
+        continue;
+      }
+
+      // Fallback seguro: comportamiento previo (un fetch por target).
+      for (const op of ops) {
+        const refreshed = await loadAndReplaceFromUrl(url, op.target, {
+          preserveScroll: !!op.preserveScroll,
           preserveOpenCollapses: !!(options && options.preserveOpenCollapses),
           focusRowId: options && options.focusRowId,
           flashRow: options ? options.flashRow !== false : true,
@@ -725,6 +787,7 @@
         anyApplied = anyApplied || refreshed;
       }
     }
+
     return anyApplied;
   }
 

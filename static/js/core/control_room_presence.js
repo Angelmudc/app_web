@@ -34,11 +34,22 @@
   var paused = false;
   var lastSentHash = '';
   var lastSentAtMs = 0;
+  var lastKnownRouteKey = '';
 
   var dirtyForms = new Set();
 
   function nowIso() {
     return new Date().toISOString();
+  }
+
+  function routeKeyFromUrlLike(urlLike) {
+    try {
+      var base = window.location && window.location.origin ? window.location.origin : undefined;
+      var resolved = new URL(String(urlLike || window.location.href || ''), base);
+      return String((resolved.pathname || '') + (resolved.search || ''));
+    } catch (_) {
+      return String((window.location.pathname || '') + (window.location.search || ''));
+    }
   }
 
   function toText(value) {
@@ -468,27 +479,28 @@
   function installRouteWatch() {
     var originalPushState = history.pushState;
     var originalReplaceState = history.replaceState;
+    lastKnownRouteKey = routeKeyFromUrlLike(window.location.href);
+
+    function notifyRouteChange(urlLike) {
+      var nextRouteKey = routeKeyFromUrlLike(urlLike);
+      if (!nextRouteKey || nextRouteKey === lastKnownRouteKey) return;
+      lastKnownRouteKey = nextRouteKey;
+      markInteraction();
+      queueImportantSend('route_change');
+    }
 
     history.pushState = function () {
       originalPushState.apply(history, arguments);
-      markInteraction();
-      queueImportantSend('route_change');
+      notifyRouteChange(arguments.length >= 3 ? arguments[2] : null);
     };
 
     history.replaceState = function () {
       originalReplaceState.apply(history, arguments);
-      markInteraction();
-      queueImportantSend('route_change');
+      notifyRouteChange(arguments.length >= 3 ? arguments[2] : null);
     };
 
     window.addEventListener('popstate', function () {
-      markInteraction();
-      queueImportantSend('route_change');
-    });
-
-    window.addEventListener('hashchange', function () {
-      markInteraction();
-      queueImportantSend('route_change');
+      notifyRouteChange(window.location.href);
     });
   }
 

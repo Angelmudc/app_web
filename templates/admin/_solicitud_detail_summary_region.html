@@ -1,10 +1,10 @@
   <!-- Encabezado -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-      <h1 class="h3 mb-1">
-        Detalle de solicitud <span class="text-info">{{ solicitud.codigo_solicitud }}</span>
+      <h1 class="h3 fw-bold mb-1 text-body-emphasis">
+        Detalle de solicitud <span class="text-primary">{{ solicitud.codigo_solicitud }}</span>
       </h1>
-      <div class="text-muted small">
+      <div class="solicitud-detail-secondary small">
         Estado:
         {% set estado_class =
           'badge-activa' if solicitud.estado == 'activa' else
@@ -45,22 +45,22 @@
     <div class="glass-header">
       <i class="bi bi-info-circle-fill"></i> Información general
     </div>
-    <dl class="row p-4 mb-0">
-      <dt class="col-sm-3">Fecha de solicitud</dt>
-      <dd class="col-sm-9">{{ solicitud.fecha_solicitud|rd_datetime('%Y-%m-%d') }}</dd>
+    <dl class="row p-4 mb-0 detail-meta">
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Fecha de solicitud</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.fecha_solicitud|rd_datetime('%Y-%m-%d') }}</dd>
 
-      <dt class="col-sm-3">Ciudad / sector</dt>
-      <dd class="col-sm-9">{{ solicitud.ciudad_sector }}</dd>
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Ciudad / sector</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.ciudad_sector }}</dd>
 
-      <dt class="col-sm-3">Modalidad</dt>
-      <dd class="col-sm-9">{{ solicitud.modalidad_trabajo }}</dd>
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Modalidad</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.modalidad_trabajo }}</dd>
 
       {% if solicitud.fecha_cancelacion %}
-      <dt class="col-sm-3">Fecha de cancelación</dt>
-      <dd class="col-sm-9">{{ solicitud.fecha_cancelacion|rd_datetime('%Y-%m-%d %H:%M') }}</dd>
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Fecha de cancelación</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.fecha_cancelacion|rd_datetime('%Y-%m-%d %H:%M') }}</dd>
 
-      <dt class="col-sm-3">Motivo de cancelación</dt>
-      <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Motivo de cancelación</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.motivo_cancelacion }}</dd>
       {% endif %}
     </dl>
   </div>

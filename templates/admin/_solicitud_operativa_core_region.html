@@ -70,15 +70,15 @@
         {{ async_feedback.message }}
       </div>
     {% endif %}
-    <div class="alert alert-light border mb-3" data-testid="manual-followup-panel">
+    <div class="alert alert-light solicitud-callout solicitud-callout-neutral mb-3" data-testid="manual-followup-panel">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div>
           <div class="fw-semibold">Seguimiento manual</div>
-          <div class="small text-muted">Fecha elegida manualmente. No reemplaza prioridad ni estancamiento automático.</div>
+          <div class="small solicitud-detail-secondary">Fecha elegida manualmente. No reemplaza prioridad ni estancamiento automático.</div>
         </div>
         <span class="badge {{ _manual_followup.badge_class }}" data-testid="manual-followup-detail-badge">{{ _manual_followup.label }}</span>
       </div>
-      <div class="small text-muted mt-1 mb-2">{{ _manual_followup.hint }}</div>
+      <div class="small solicitud-detail-secondary mt-1 mb-2">{{ _manual_followup.hint }}</div>
       <form method="post"
             action="{{ url_for('admin.actualizar_seguimiento_manual_solicitud', id=solicitud.id) }}"
             class="d-flex flex-wrap align-items-end gap-2"
@@ -109,7 +109,7 @@
       </form>
     </div>
     {% if _needs_followup_today %}
-    <div class="alert alert-warning border-0 d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-testid="followup-today-panel">
+    <div class="alert alert-warning solicitud-callout solicitud-callout-warn d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-testid="followup-today-panel">
       <div>
         <div class="fw-semibold">Atención hoy</div>
         <div class="small">Esta solicitud requiere acción hoy para no perder avance.</div>
@@ -142,22 +142,22 @@
 
     <div class="row g-3 mb-3">
       <div class="col-12 col-md-3">
-        <div><strong>Estado actual:</strong> <span class="badge {{ estado_class }}">{{ estado or '—' }}</span></div>
+        <div class="operativa-data-item"><strong>Estado actual:</strong> <span class="badge {{ estado_class }}">{{ estado or '—' }}</span></div>
       </div>
       <div class="col-12 col-md-3">
-        <div><strong>Plan:</strong> {{ solicitud.tipo_plan or '—' }}</div>
+        <div class="operativa-data-item"><strong>Plan:</strong> {{ solicitud.tipo_plan or '—' }}</div>
       </div>
       <div class="col-12 col-md-3">
-        <div><strong>Abono:</strong> {{ solicitud.abono or '—' }}</div>
+        <div class="operativa-data-item"><strong>Abono:</strong> {{ solicitud.abono or '—' }}</div>
       </div>
       <div class="col-12 col-md-3">
-        <div><strong>Monto pagado:</strong> {{ solicitud.monto_pagado or '—' }}</div>
+        <div class="operativa-data-item"><strong>Monto pagado:</strong> {{ solicitud.monto_pagado or '—' }}</div>
       </div>
       <div class="col-12 col-md-6">
-        <div><strong>Candidata asignada:</strong> {{ solicitud.candidata and solicitud.candidata.nombre_completo or '—' }}</div>
+        <div class="operativa-data-item"><strong>Candidata asignada:</strong> {{ solicitud.candidata and solicitud.candidata.nombre_completo or '—' }}</div>
       </div>
       <div class="col-12 col-md-6">
-        <div class="d-flex flex-wrap gap-2">
+        <div class="operativa-data-item d-flex flex-wrap gap-2">
           <span class="badge {{ 'bg-warning text-dark' if estado == 'espera_pago' else 'bg-secondary' }}">
             Espera pago: {{ 'Sí' if estado == 'espera_pago' else 'No' }}
           </span>
@@ -172,10 +172,10 @@
     </div>
 
     {% if _cta_label %}
-    <div class="alert alert-primary border-0 d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-testid="cta-recomendada-panel">
+    <div class="alert alert-primary solicitud-callout solicitud-callout-info d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-testid="cta-recomendada-panel">
       <div>
         <div class="fw-semibold">Acción recomendada ahora</div>
-        <div class="small text-muted">{{ _cta_help }}</div>
+        <div class="small solicitud-detail-secondary">{{ _cta_help }}</div>
       </div>
       <div>
         {% if _cta_as_form %}
@@ -200,17 +200,17 @@
       </div>
     </div>
     {% else %}
-    <div class="alert alert-light border mb-3" data-testid="cta-recomendada-info">
+    <div class="alert alert-light solicitud-callout solicitud-callout-neutral mb-3" data-testid="cta-recomendada-info">
       <div class="fw-semibold">Acción recomendada ahora</div>
-      <div class="small text-muted">Sin acción operativa prioritaria en este estado.</div>
+      <div class="small solicitud-detail-secondary">Sin acción operativa prioritaria en este estado.</div>
     </div>
     {% endif %}
 
     {% if _is_stagnant %}
-    <div class="alert alert-warning border-0 mb-3" data-testid="stagnation-recovery-panel">
+    <div class="alert alert-warning solicitud-callout solicitud-callout-warn mb-3" data-testid="stagnation-recovery-panel">
       <div class="fw-semibold">Solicitud sin movimiento</div>
       <div class="small">Esta solicitud lleva más de 72h sin avance.</div>
-      <div class="small text-muted mb-2">Se recomienda retomar contacto o tomar acción ahora.</div>
+      <div class="small solicitud-detail-secondary mb-2">Se recomienda retomar contacto o tomar acción ahora.</div>
       {% if _cta_label %}
         {% if _cta_as_form %}
         <form method="post"
