@@ -224,11 +224,11 @@
           {% endfor %}
         </section>
 
-        <form id="adminChatComposeForm" class="admin-chat-compose border-top" method="post" action="{{ url_for('admin.chat_staff_send_message', conversation_id=chat_selected.id) }}">
+        <form id="adminChatComposeForm" class="admin-chat-compose border-top" method="post" action="{{ url_for('admin.chat_staff_send_message', conversation_id=chat_selected.id) }}" data-no-loader="true">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="input-group">
             <textarea class="form-control" id="adminChatBody" name="body" rows="2" maxlength="{{ chat_message_max_len or 1800 }}" placeholder="Responder al cliente..."></textarea>
-            <button class="btn btn-primary" id="adminChatSendBtn" type="submit">
+            <button class="btn btn-primary" id="adminChatSendBtn" type="submit" data-no-loader="true">
               <i class="bi bi-send"></i>
             </button>
           </div>

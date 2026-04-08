@@ -17,6 +17,8 @@
   let eventSource = null;
   let pollTimer = null;
   let reconnectTimer = null;
+  let sseDisabledByMode = false;
+  let streamModeProbe = null;
   let refreshTimer = null;
   let afterId = 0;
   let lastStreamId = "$";
@@ -117,8 +119,58 @@
     eventSource = null;
   }
 
+  function clearReconnectTimer() {
+    if (!reconnectTimer) return;
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  async function probePollOnlyMode() {
+    if (sseDisabledByMode || !streamUrl) return sseDisabledByMode;
+    if (streamModeProbe) return streamModeProbe;
+    streamModeProbe = (async function () {
+      const ctl = new AbortController();
+      const timeoutId = window.setTimeout(function () {
+        try { ctl.abort(); } catch (_e) {}
+      }, 2200);
+      try {
+        const u = new URL(streamUrl, window.location.origin);
+        u.searchParams.set("probe", "1");
+        const resp = await fetch(u.toString(), {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: ctl.signal,
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        });
+        if (resp.status !== 503) return false;
+        const headerMode = String(resp.headers.get("X-Live-Invalidation-Mode") || "").trim().toLowerCase();
+        let bodyMode = "";
+        try {
+          const payload = await resp.json();
+          bodyMode = String((payload && payload.mode) || "").trim().toLowerCase();
+        } catch (_e) {}
+        if (headerMode === "poll_only" || bodyMode === "poll_only") {
+          sseDisabledByMode = true;
+          return true;
+        }
+        return false;
+      } catch (_e) {
+        return false;
+      } finally {
+        window.clearTimeout(timeoutId);
+        streamModeProbe = null;
+      }
+    })();
+    return streamModeProbe;
+  }
+
   function scheduleReconnect() {
-    if (reconnectTimer) window.clearTimeout(reconnectTimer);
+    if (sseDisabledByMode) return;
+    clearReconnectTimer();
     reconnectTimer = window.setTimeout(function () {
       startSSE();
     }, 12000);
@@ -126,40 +178,63 @@
 
   function startSSE() {
     closeSSE();
-    if (!("EventSource" in window) || !streamUrl) {
+    if (sseDisabledByMode || !("EventSource" in window) || !streamUrl) {
       startPolling();
       return;
     }
+    probePollOnlyMode().then(function (pollOnly) {
+      if (pollOnly) {
+        closeSSE();
+        clearReconnectTimer();
+        startPolling();
+        return;
+      }
+      if (sseDisabledByMode || !("EventSource" in window) || !streamUrl) {
+        startPolling();
+        return;
+      }
 
-    const u = new URL(streamUrl, window.location.origin);
-    u.searchParams.set("last_stream_id", String(lastStreamId || "$"));
-    eventSource = new EventSource(u.toString(), { withCredentials: true });
+      const u = new URL(streamUrl, window.location.origin);
+      u.searchParams.set("last_stream_id", String(lastStreamId || "$"));
+      eventSource = new EventSource(u.toString(), { withCredentials: true });
 
-    eventSource.addEventListener("invalidation", function (ev) {
-      try {
-        const data = JSON.parse(String(ev.data || "{}"));
-        handleLiveEvent(data);
-      } catch (_e) {}
-    });
-    eventSource.addEventListener("heartbeat", function (ev) {
-      try {
-        const hb = JSON.parse(String((ev && ev.data) || "{}"));
-        if (hb && hb.last_stream_id) lastStreamId = String(hb.last_stream_id || lastStreamId);
-      } catch (_e) {}
-    });
-    eventSource.onerror = function () {
-      closeSSE();
+      eventSource.addEventListener("invalidation", function (ev) {
+        try {
+          const data = JSON.parse(String(ev.data || "{}"));
+          handleLiveEvent(data);
+        } catch (_e) {}
+      });
+      eventSource.addEventListener("heartbeat", function (ev) {
+        try {
+          const hb = JSON.parse(String((ev && ev.data) || "{}"));
+          if (hb && hb.last_stream_id) lastStreamId = String(hb.last_stream_id || lastStreamId);
+        } catch (_e) {}
+      });
+      eventSource.onerror = function () {
+        closeSSE();
+        startPolling();
+        probePollOnlyMode().then(function (isPollOnly) {
+          if (isPollOnly) {
+            clearReconnectTimer();
+            return;
+          }
+          scheduleReconnect();
+        }).catch(function () {
+          scheduleReconnect();
+        });
+      };
+
+      startPolling();
+    }).catch(function () {
       startPolling();
       scheduleReconnect();
-    };
-
-    startPolling();
+    });
   }
 
   window.addEventListener("beforeunload", function () {
     closeSSE();
     stopPolling();
-    if (reconnectTimer) window.clearTimeout(reconnectTimer);
+    clearReconnectTimer();
     if (refreshTimer) window.clearTimeout(refreshTimer);
   });
 

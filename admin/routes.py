@@ -19476,9 +19476,9 @@ def _chat_staff_conversation_for_update_or_404(conversation_id: int):
             enforce_e2e_conversation_id(int(conversation_id or 0))
         except E2EChatGuardError as exc:
             abort(403, description=str(exc.reason))
-    q = ChatConversation.query.filter_by(id=int(conversation_id))
+    q = ChatConversation.query.enable_eagerloads(False).filter_by(id=int(conversation_id))
     try:
-        conv = q.with_for_update().first_or_404()
+        conv = q.with_for_update(of=ChatConversation).first_or_404()
     except Exception as exc:
         db.session.rollback()
         current_app.logger.exception(
