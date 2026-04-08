@@ -138,6 +138,9 @@ class AdminClientesSolicitudesNavigationTest(unittest.TestCase):
         self.assertIn("Panel de Solicitudes", html)
         self.assertIn("SOL-010", html)
         self.assertIn('href="/admin/solicitudes/copiar"', html)
+        self.assertIn('action="/admin/chat/open"', html)
+        self.assertIn('name="solicitud_id" value="10"', html)
+        self.assertIn('href="/admin/clientes/7"', html)
         self.assertNotIn("Ocurrió un problema", html)
 
 

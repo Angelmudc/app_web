@@ -6,16 +6,29 @@
           <div class="fw-semibold">Carga por responsable (última gestión)</div>
           <div class="small text-muted">Basado en la última gestión registrada, no en asignación formal.</div>
         </div>
+        {% if count_sin_responsable is defined and count_sin_responsable|int > 0 %}
+          <div class="alert alert-warning py-2 px-3 small mb-2" data-testid="sin-responsable-block">
+            <strong>{{ count_sin_responsable }}</strong> caso(s) siguen sin responsable operativo reciente.
+            <a href="{{ url_for('admin.solicitudes_prioridad', q=q, estado=estado, prioridad=prioridad, responsable='none', estancadas=(1 if estancadas else 0), page=1, per_page=per_page) }}"
+               data-admin-async-link
+               data-async-target="#prioridadAsyncRegion"
+               data-async-busy-container="#prioridadAsyncScope"
+               data-async-preserve-scroll="true"
+               class="alert-link ms-1">Ver sin responsable</a>
+          </div>
+        {% endif %}
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
             <thead>
               <tr>
                 <th>Responsable</th>
                 <th class="text-end">Total</th>
-                <th class="text-end">Estancadas</th>
-                <th class="text-end">Urg.+Crít.</th>
-                <th class="text-end">Reemplazo</th>
+                <th class="text-end">Riesgo</th>
+                <th class="text-end">Vencidas</th>
+                <th class="text-end">Alta prioridad</th>
+                <th class="text-end">En reemplazo</th>
                 <th class="text-end">Requieren hoy</th>
+                <th class="text-end">Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -23,10 +36,21 @@
                 <tr data-testid="responsable-row">
                   <td data-testid="responsable-name">{{ row.responsable_label }}</td>
                   <td class="text-end" data-testid="responsable-total">{{ row.total }}</td>
-                  <td class="text-end" data-testid="responsable-stagnant">{{ row.stagnant }}</td>
+                  <td class="text-end" data-testid="responsable-stagnant">{{ row.risk_total if row.risk_total is defined else row.stagnant }}</td>
+                  <td class="text-end" data-testid="responsable-overdue">{{ row.overdue if row.overdue is defined else 0 }}</td>
                   <td class="text-end" data-testid="responsable-high">{{ row.high_priority }}</td>
                   <td class="text-end" data-testid="responsable-espera">{{ row.reemplazo }}</td>
                   <td class="text-end" data-testid="responsable-needs">{{ row.needs_today }}</td>
+                  <td class="text-end">
+                    {% set _resp_value = row.actor_user_id if row.actor_user_id is not none else 'none' %}
+                    <a href="{{ url_for('admin.solicitudes_prioridad', q=q, estado=estado, prioridad=prioridad, responsable=_resp_value, estancadas=(1 if estancadas else 0), page=1, per_page=per_page) }}"
+                       data-admin-async-link
+                       data-async-target="#prioridadAsyncRegion"
+                       data-async-busy-container="#prioridadAsyncScope"
+                       data-async-preserve-scroll="true"
+                       class="btn btn-outline-secondary btn-sm"
+                       data-testid="responsable-filter-link-{{ _resp_value }}">Ver casos</a>
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>

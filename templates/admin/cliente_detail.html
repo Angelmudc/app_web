@@ -21,6 +21,10 @@
 
   <!-- ===== BOTONES NUEVOS — ACCESOS A TAREAS ===== -->
   <div class="d-flex flex-wrap gap-2 mb-4">
+    <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary">
+      Bandeja operativa
+    </a>
+
     <a href="{{ url_for('admin.tareas_pendientes') }}" class="btn btn-primary">
       📋 Tareas pendientes
     </a>
@@ -324,6 +328,19 @@
                      data-admin-nav="true">
                     👁️ <i class="bi bi-eye-fill ms-1"></i><span class="sr-only">Ver</span>
                   </a>
+
+                  {% if (chat_feature_enabled if chat_feature_enabled is defined else True) %}
+                  <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
+                    {% if csrf_token %}
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% endif %}
+                    <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
+                    <input type="hidden" name="solicitud_id" value="{{ s.id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Abrir chat de la solicitud" aria-label="Abrir chat">
+                      💬 <i class="bi bi-chat-dots-fill ms-1"></i><span class="sr-only">Chat</span>
+                    </button>
+                  </form>
+                  {% endif %}
 
                   <!-- ✅ NUEVO: Link público por solicitud (abre el generador y te devuelve el link del cliente) -->
                   <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"

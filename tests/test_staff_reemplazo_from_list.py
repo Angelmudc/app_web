@@ -87,6 +87,11 @@ class ReemplazoFromListTest(unittest.TestCase):
         flask_app.config["WTF_CSRF_ENABLED"] = False
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+        self._presence_patcher = patch("admin.routes._touch_staff_presence", return_value=None)
+        self._presence_patcher.start()
+
+    def tearDown(self):
+        self._presence_patcher.stop()
 
     def _login(self, user, pwd):
         resp = self.client.post("/admin/login", data={"usuario": user, "clave": pwd}, follow_redirects=False)

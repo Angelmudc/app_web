@@ -770,6 +770,7 @@
   function initSolicitudForm() {
     const formEl = $('#solicitud-form');
     if (!formEl) return;
+    const HAS_ERRORS = (formEl.dataset && formEl.dataset.hasErrors === '1');
 
     // ---------- Contadores ----------
     function bindCountBySelector(inputSel, outId) {
@@ -831,6 +832,145 @@
       submitBtn.addEventListener('click', () => {
         dirty = false;
       }, { passive: true });
+    }
+
+    // ---------- Wizard suave por pasos ----------
+    const wizardShell = $('#solicitud-soft-wizard', formEl);
+    const wizardNav = $('#wizard-step-nav', formEl);
+    const wizardProgressBar = $('#wizard-progress-bar', formEl);
+    const wizardToggleBtn = $('#wizard-toggle-view', formEl);
+    const wizardPrevBtn = $('#wizard-prev-btn', formEl);
+    const wizardNextBtn = $('#wizard-next-btn', formEl);
+    const wizardStepHidden = $('#wizard_step', formEl);
+    const stepCards = $$('.public-form-sections > .public-form-card', formEl);
+    const wizardEnabled = !!(wizardShell && stepCards.length > 1);
+
+    if (wizardEnabled) {
+      let showAll = false;
+      let activeStep = 1;
+      let navBuilt = false;
+
+      function clampStep(n) {
+        const max = stepCards.length;
+        const parsed = parseInt(String(n || '1').trim(), 10);
+        if (!Number.isFinite(parsed)) return 1;
+        if (parsed < 1) return 1;
+        if (parsed > max) return max;
+        return parsed;
+      }
+
+      function cardTitle(card, index) {
+        const t = card ? $('.public-form-card-title', card) : null;
+        const txt = (t && t.textContent) ? String(t.textContent).trim() : '';
+        return txt || `Paso ${index + 1}`;
+      }
+
+      function buildNav() {
+        if (!wizardNav || navBuilt) return;
+        wizardNav.innerHTML = '';
+        stepCards.forEach((card, idx) => {
+          const btn = d.createElement('button');
+          btn.type = 'button';
+          btn.className = 'soft-wizard-step';
+          btn.setAttribute('data-step-index', String(idx + 1));
+          btn.textContent = `${idx + 1}. ${cardTitle(card, idx)}`;
+          btn.addEventListener('click', () => {
+            activeStep = idx + 1;
+            showAll = false;
+            renderWizard();
+          });
+          wizardNav.appendChild(btn);
+        });
+        navBuilt = true;
+      }
+
+      function findFirstStepWithErrors() {
+        for (let i = 0; i < stepCards.length; i++) {
+          const card = stepCards[i];
+          if (!card) continue;
+          if (card.querySelector('.is-invalid, .invalid-feedback, .field-error, .error, [aria-invalid="true"]')) {
+            return i + 1;
+          }
+        }
+        return 0;
+      }
+
+      function updateNavState() {
+        const navButtons = $$('.soft-wizard-step', wizardNav || d);
+        navButtons.forEach((btn) => {
+          const idx = clampStep(btn.getAttribute('data-step-index'));
+          btn.classList.toggle('is-active', idx === activeStep);
+          btn.classList.toggle('is-complete', idx < activeStep);
+          btn.setAttribute('aria-current', idx === activeStep ? 'step' : 'false');
+        });
+      }
+
+      function updateProgress() {
+        if (!wizardProgressBar) return;
+        const total = Math.max(1, stepCards.length);
+        const pct = Math.round((activeStep / total) * 100);
+        wizardProgressBar.style.width = `${pct}%`;
+        wizardProgressBar.setAttribute('aria-valuenow', String(pct));
+      }
+
+      function renderWizard() {
+        const singleStepMode = !showAll;
+        stepCards.forEach((card, idx) => {
+          if (!card) return;
+          const visible = singleStepMode ? ((idx + 1) === activeStep) : true;
+          card.style.display = visible ? '' : 'none';
+        });
+
+        if (wizardToggleBtn) {
+          wizardToggleBtn.textContent = showAll ? 'Ver por pasos' : 'Ver todo';
+        }
+        if (wizardPrevBtn) {
+          wizardPrevBtn.disabled = showAll || activeStep <= 1;
+          wizardPrevBtn.style.display = showAll ? 'none' : '';
+        }
+        if (wizardNextBtn) {
+          wizardNextBtn.disabled = showAll || activeStep >= stepCards.length;
+          wizardNextBtn.style.display = showAll ? 'none' : '';
+        }
+        if (wizardStepHidden) {
+          wizardStepHidden.value = String(activeStep);
+        }
+
+        updateNavState();
+        updateProgress();
+      }
+
+      const desiredStepFromState = clampStep(
+        (wizardShell.dataset && wizardShell.dataset.initialStep)
+        || (wizardStepHidden && wizardStepHidden.value)
+        || '1'
+      );
+      const errorStep = HAS_ERRORS ? findFirstStepWithErrors() : 0;
+      activeStep = clampStep(errorStep || desiredStepFromState);
+
+      buildNav();
+      renderWizard();
+
+      if (wizardToggleBtn) {
+        wizardToggleBtn.addEventListener('click', () => {
+          showAll = !showAll;
+          renderWizard();
+        });
+      }
+      if (wizardPrevBtn) {
+        wizardPrevBtn.addEventListener('click', () => {
+          activeStep = clampStep(activeStep - 1);
+          showAll = false;
+          renderWizard();
+        });
+      }
+      if (wizardNextBtn) {
+        wizardNextBtn.addEventListener('click', () => {
+          activeStep = clampStep(activeStep + 1);
+          showAll = false;
+          renderWizard();
+        });
+      }
     }
 
     // ---------- Helpers ----------
@@ -1053,7 +1193,6 @@
     updateEdadesNinosVisibility();
 
     // ---------- Focus primer error ----------
-    const HAS_ERRORS = (formEl.dataset && formEl.dataset.hasErrors === '1');
     if (HAS_ERRORS) {
       const firstInvalid = d.querySelector('.is-invalid, .was-validated .form-control:invalid');
       try {

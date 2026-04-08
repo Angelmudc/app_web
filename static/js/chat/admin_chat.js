@@ -20,6 +20,8 @@
   const threadTitle = document.getElementById("adminChatThreadTitle");
   const threadStatus = document.getElementById("adminChatThreadStatus");
   const threadMeta = document.getElementById("adminChatThreadMeta");
+  const goClienteLink = document.getElementById("adminChatGoClienteLink");
+  const goSolicitudLink = document.getElementById("adminChatGoSolicitudLink");
   const threadAssignmentMeta = document.getElementById("adminChatThreadAssignmentMeta");
   const threadSlaSummary = document.getElementById("adminChatThreadSlaSummary");
   const ownershipWarning = document.getElementById("adminChatOwnershipWarning");
@@ -168,6 +170,19 @@
     return u.pathname + u.search;
   }
 
+  function clienteUrlForConversation(clienteId) {
+    const cid = Number(clienteId || 0) || 0;
+    if (cid <= 0) return "";
+    return "/admin/clientes/" + String(cid);
+  }
+
+  function solicitudUrlForConversation(clienteId, solicitudId) {
+    const cid = Number(clienteId || 0) || 0;
+    const sid = Number(solicitudId || 0) || 0;
+    if (cid <= 0 || sid <= 0) return "";
+    return "/admin/clientes/" + String(cid) + "/solicitudes/" + String(sid);
+  }
+
   function esc(raw) {
     return String(raw || "")
       .replace(/&/g, "&amp;")
@@ -267,7 +282,7 @@
         '<div class="small text-muted">' + esc(row.cliente_codigo || '') + '</div></div>',
         '<span class="badge ' + statusClass(st) + '">' + statusText(st) + '</span>',
         '<span class="badge ' + slaClass(row) + '">' + esc(slaLabel(row)) + '</span>',
-        unread > 0 ? '<span class="badge rounded-pill text-bg-danger">' + String(unread) + '</span>' : '',
+        unread > 0 ? '<span class="badge rounded-pill text-bg-danger admin-chat-unread-badge">' + String(unread) + '</span>' : '',
         '</div>',
         '<div class="small mt-1">' + esc(row.subject || 'Soporte general') + '</div>',
         solicitud,
@@ -378,6 +393,26 @@
       if (conv.cliente_nombre) parts.push(String(conv.cliente_nombre));
       if (conv.solicitud_codigo) parts.push("Solicitud #" + String(conv.solicitud_codigo));
       threadMeta.textContent = parts.join(" · ");
+    }
+    const clienteUrl = clienteUrlForConversation(conv.cliente_id);
+    const solicitudUrl = solicitudUrlForConversation(conv.cliente_id, conv.solicitud_id);
+    if (goClienteLink) {
+      if (clienteUrl) {
+        goClienteLink.setAttribute("href", clienteUrl);
+        goClienteLink.classList.remove("d-none");
+      } else {
+        goClienteLink.setAttribute("href", "#");
+        goClienteLink.classList.add("d-none");
+      }
+    }
+    if (goSolicitudLink) {
+      if (solicitudUrl) {
+        goSolicitudLink.setAttribute("href", solicitudUrl);
+        goSolicitudLink.classList.remove("d-none");
+      } else {
+        goSolicitudLink.setAttribute("href", "#");
+        goSolicitudLink.classList.add("d-none");
+      }
     }
     const assignedId = Number(conv.assigned_staff_user_id || 0) || 0;
     const assignedUsername = String(conv.assigned_staff_username || "");

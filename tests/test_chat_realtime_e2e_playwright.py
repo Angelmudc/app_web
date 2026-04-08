@@ -389,7 +389,7 @@ def test_chat_realtime_cliente_staff_roundtrip_safe():
             page_client_a.click("#clientChatSendBtn")
             _wait_badge_count(
                 page_staff,
-                f'#adminChatConversationList [data-conversation-id="{conv_solicitud}"] .badge',
+                f'#adminChatConversationList [data-conversation-id="{conv_solicitud}"] .admin-chat-unread-badge',
                 1,
             )
 
@@ -399,7 +399,7 @@ def test_chat_realtime_cliente_staff_roundtrip_safe():
             _admin_send(page_staff, msg_d_staff)
             _wait_badge_count(
                 page_client_a,
-                f'#clientChatConversationList [data-conversation-id="{conv_solicitud}"] .badge',
+                f'#clientChatConversationList [data-conversation-id="{conv_solicitud}"] .client-chat-unread-badge',
                 1,
             )
 
@@ -410,7 +410,7 @@ def test_chat_realtime_cliente_staff_roundtrip_safe():
                 """(cid) => {
                     const row = document.querySelector('#clientChatConversationList [data-conversation-id="' + String(cid) + '"]');
                     if (!row) return false;
-                    return !row.querySelector('.badge');
+                    return !row.querySelector('.client-chat-unread-badge');
                 }""",
                 arg=conv_solicitud,
                 timeout=12000,
@@ -422,7 +422,7 @@ def test_chat_realtime_cliente_staff_roundtrip_safe():
                 """(cid) => {
                     const row = document.querySelector('#adminChatConversationList [data-conversation-id="' + String(cid) + '"]');
                     if (!row) return false;
-                    return !row.querySelector('.badge');
+                    return !row.querySelector('.admin-chat-unread-badge');
                 }""",
                 arg=conv_solicitud,
                 timeout=12000,

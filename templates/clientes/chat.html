@@ -45,7 +45,7 @@
                 {{ (conv.status or 'open')|upper }}
               </span>
               {% if conv.cliente_unread_count %}
-              <span class="badge rounded-pill text-bg-danger">{{ conv.cliente_unread_count }}</span>
+              <span class="badge rounded-pill text-bg-danger client-chat-unread-badge">{{ conv.cliente_unread_count }}</span>
               {% endif %}
             </div>
             {% if conv.solicitud_id %}

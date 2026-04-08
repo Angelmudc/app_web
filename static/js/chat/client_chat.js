@@ -97,7 +97,7 @@
         '<div class="d-flex justify-content-between gap-2 align-items-start">',
         '<div class="fw-semibold text-truncate">' + esc(row.subject || 'Soporte') + '</div>',
         '<span class="badge ' + statusClass(st) + '">' + statusText(st) + '</span>',
-        unread > 0 ? '<span class="badge rounded-pill text-bg-danger">' + String(unread) + '</span>' : '',
+        unread > 0 ? '<span class="badge rounded-pill text-bg-danger client-chat-unread-badge">' + String(unread) + '</span>' : '',
         '</div>',
         solicitudLabel,
         '<div class="small text-muted text-truncate">' + esc(row.last_message_preview || 'Sin mensajes') + '</div>',

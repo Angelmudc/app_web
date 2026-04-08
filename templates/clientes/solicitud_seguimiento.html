@@ -13,6 +13,24 @@
     </a>
   </div>
 
+  {% if trust_signals %}
+    <div class="mb-3">
+      <div class="row g-2">
+        {% for signal in trust_signals %}
+          <div class="col-12 col-lg-6">
+            <div class="c-alert c-alert--{{ signal.variant|default('info') }}" role="note">
+              <i class="bi {{ signal.icon|default('bi-shield-check') }} mt-1"></i>
+              <div>
+                <p class="c-alert__title mb-0">{{ signal.title }}</p>
+                <p class="c-alert__text mb-0">{{ signal.text }}</p>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
   <div class="card shadow-sm border-0">
     <div class="card-body">
       {% if timeline and timeline|length > 0 %}

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Inbox de Soporte{% endblock %}
+{% block title %}Inbox de chat{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/chat_admin.css') }}">
@@ -31,28 +31,32 @@
 
   <div class="d-flex justify-content-between align-items-start mb-3 gap-2 flex-wrap">
     <div>
-      <h1 class="h4 mb-1">Inbox de Soporte</h1>
-      <div class="small text-muted">Mensajería interna cliente ↔ staff en tiempo real.</div>
+      <h1 class="h4 mb-1">Inbox de chat</h1>
+      <div class="small text-muted">Canal secundario para destrabes puntuales; la ejecución principal vive en bandeja.</div>
     </div>
-    <form method="get" class="d-flex gap-2" id="adminChatFilterForm">
-      <input type="text" name="q" class="form-control" value="{{ chat_query or '' }}" placeholder="Cliente, código o asunto">
-      <select name="status" class="form-select">
-        <option value="open" {% if (chat_status_filter or 'open') == 'open' %}selected{% endif %}>Open</option>
-        <option value="pending" {% if chat_status_filter == 'pending' %}selected{% endif %}>Pending</option>
-        <option value="closed" {% if chat_status_filter == 'closed' %}selected{% endif %}>Closed</option>
-        <option value="all" {% if chat_status_filter == 'all' %}selected{% endif %}>Todos</option>
-      </select>
-      <select name="assignment" class="form-select">
-        <option value="mine" {% if chat_assignment_filter == 'mine' %}selected{% endif %}>Mías</option>
-        <option value="unassigned" {% if chat_assignment_filter == 'unassigned' %}selected{% endif %}>Sin asignar</option>
-        <option value="all" {% if (chat_assignment_filter or 'all') == 'all' %}selected{% endif %}>Todas</option>
-      </select>
-      <div class="form-check d-flex align-items-center gap-1">
-        <input class="form-check-input" type="checkbox" id="onlyUnread" name="only_unread" value="1" {% if chat_only_unread %}checked{% endif %}>
-        <label class="form-check-label small" for="onlyUnread">Solo no leídos</label>
-      </div>
-      <button class="btn btn-primary" type="submit">Filtrar</button>
-    </form>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary">Volver a bandeja</a>
+      <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-outline-secondary">Trabajo del día</a>
+      <form method="get" class="d-flex gap-2" id="adminChatFilterForm">
+        <input type="text" name="q" class="form-control" value="{{ chat_query or '' }}" placeholder="Cliente, código o asunto">
+        <select name="status" class="form-select">
+          <option value="open" {% if (chat_status_filter or 'open') == 'open' %}selected{% endif %}>Abiertas</option>
+          <option value="pending" {% if chat_status_filter == 'pending' %}selected{% endif %}>Pendientes</option>
+          <option value="closed" {% if chat_status_filter == 'closed' %}selected{% endif %}>Cerradas</option>
+          <option value="all" {% if chat_status_filter == 'all' %}selected{% endif %}>Todos</option>
+        </select>
+        <select name="assignment" class="form-select">
+          <option value="mine" {% if chat_assignment_filter == 'mine' %}selected{% endif %}>Mías</option>
+          <option value="unassigned" {% if chat_assignment_filter == 'unassigned' %}selected{% endif %}>Sin asignar</option>
+          <option value="all" {% if (chat_assignment_filter or 'all') == 'all' %}selected{% endif %}>Todas</option>
+        </select>
+        <div class="form-check d-flex align-items-center gap-1">
+          <input class="form-check-input" type="checkbox" id="onlyUnread" name="only_unread" value="1" {% if chat_only_unread %}checked{% endif %}>
+          <label class="form-check-label small" for="onlyUnread">Solo no leídos</label>
+        </div>
+        <button class="btn btn-primary" type="submit">Filtrar</button>
+      </form>
+    </div>
   </div>
 
   <div class="card shadow-sm border-0 admin-chat-shell">
@@ -68,11 +72,11 @@
               <div class="small text-muted">{{ conv.cliente.codigo if conv.cliente else '' }}</div>
             </div>
             <span class="badge {% if conv.status == 'closed' %}text-bg-secondary{% elif conv.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}">
-              {{ (conv.status or 'open')|upper }}
+              {% if (conv.status or 'open') == 'closed' %}CERRADA{% elif (conv.status or 'open') == 'pending' %}PENDIENTE{% else %}ABIERTA{% endif %}
             </span>
             <span class="badge {{ conv.operational.sla_badge_class }}">{{ conv.operational.sla_label }}</span>
             {% if conv.staff_unread_count %}
-            <span class="badge rounded-pill text-bg-danger">{{ conv.staff_unread_count }}</span>
+            <span class="badge rounded-pill text-bg-danger admin-chat-unread-badge">{{ conv.staff_unread_count }}</span>
             {% endif %}
           </div>
           <div class="small mt-1">{{ conv.subject or 'Soporte general' }}</div>
@@ -81,7 +85,7 @@
           {% endif %}
           <div class="small mt-1">
             {% if conv.assigned_staff_user_id %}
-            <span class="badge bg-primary">Asignada: {{ conv.assigned_staff_user.username if conv.assigned_staff_user else ('Staff #' ~ conv.assigned_staff_user_id) }}</span>
+            <span class="badge bg-primary">Asignada a: {{ conv.assigned_staff_user.username if conv.assigned_staff_user else ('Staff #' ~ conv.assigned_staff_user_id) }}</span>
             {% else %}
             <span class="badge text-bg-light border text-muted">Sin asignar</span>
             {% endif %}
@@ -101,16 +105,48 @@
             <div class="fw-semibold d-flex align-items-center gap-2">
               <span id="adminChatThreadTitle">{{ chat_selected.subject or 'Soporte' }}</span>
               <span class="badge {% if chat_selected.status == 'closed' %}text-bg-secondary{% elif chat_selected.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}" id="adminChatThreadStatus">
-                {{ (chat_selected.status or 'open')|upper }}
+                {% if (chat_selected.status or 'open') == 'closed' %}CERRADA{% elif (chat_selected.status or 'open') == 'pending' %}PENDIENTE{% else %}ABIERTA{% endif %}
               </span>
             </div>
             <div class="small text-muted" id="adminChatThreadMeta">
               {{ chat_selected.cliente.nombre_completo if chat_selected.cliente else ('Cliente #' ~ chat_selected.cliente_id) }}
               {% if chat_selected.solicitud_id %} · Solicitud #{{ chat_selected.solicitud.codigo_solicitud if chat_selected.solicitud else chat_selected.solicitud_id }}{% endif %}
             </div>
+            <div class="small mt-1 d-flex align-items-center flex-wrap gap-2" id="adminChatThreadContextNav">
+              {% if chat_selected.cliente_id %}
+              <a id="adminChatGoClienteLink"
+                 href="{{ url_for('admin.detalle_cliente', cliente_id=chat_selected.cliente_id) }}"
+                 class="link-secondary text-decoration-none"
+                 data-admin-nav="true">
+                <i class="bi bi-person-lines-fill me-1"></i>Ver cliente
+              </a>
+              {% else %}
+              <a id="adminChatGoClienteLink"
+                 href="#"
+                 class="link-secondary text-decoration-none d-none"
+                 data-admin-nav="true">
+                <i class="bi bi-person-lines-fill me-1"></i>Ver cliente
+              </a>
+              {% endif %}
+              {% if chat_selected.solicitud_id and chat_selected.cliente_id %}
+              <a id="adminChatGoSolicitudLink"
+                 href="{{ url_for('admin.detalle_solicitud', cliente_id=chat_selected.cliente_id, id=chat_selected.solicitud_id) }}"
+                 class="link-secondary text-decoration-none"
+                 data-admin-nav="true">
+                <i class="bi bi-file-earmark-text me-1"></i>Ver solicitud
+              </a>
+              {% else %}
+              <a id="adminChatGoSolicitudLink"
+                 href="#"
+                 class="link-secondary text-decoration-none d-none"
+                 data-admin-nav="true">
+                <i class="bi bi-file-earmark-text me-1"></i>Ver solicitud
+              </a>
+              {% endif %}
+            </div>
             <div class="small mt-1" id="adminChatThreadAssignmentMeta">
               {% if chat_selected.assigned_staff_user_id %}
-              <span class="badge bg-primary">Asignada: {{ chat_selected.assigned_staff_user.username if chat_selected.assigned_staff_user else ('Staff #' ~ chat_selected.assigned_staff_user_id) }}</span>
+              <span class="badge bg-primary">Asignada a: {{ chat_selected.assigned_staff_user.username if chat_selected.assigned_staff_user else ('Staff #' ~ chat_selected.assigned_staff_user_id) }}</span>
               {% else %}
               <span class="badge text-bg-light border text-muted">Sin asignar</span>
               {% endif %}
@@ -134,10 +170,10 @@
               <button type="button" class="btn btn-outline-dark btn-sm" id="adminChatReassignBtn">Aplicar</button>
             </div>
             {% endif %}
-            <button type="button" class="btn btn-outline-warning btn-sm" id="adminChatMarkPendingBtn">Pending</button>
+            <button type="button" class="btn btn-outline-warning btn-sm" id="adminChatMarkPendingBtn">Marcar pendiente</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" id="adminChatMarkClosedBtn">Cerrar</button>
             <button type="button" class="btn btn-outline-success btn-sm" id="adminChatReopenBtn">Reabrir</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="adminChatMarkReadBtn">Marcar leídos</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="adminChatMarkReadBtn">Marcar como leído</button>
           </div>
         </div>
         <div class="alert alert-warning rounded-0 border-0 border-bottom mb-0 py-2 px-3 {% if not (chat_selected.assigned_staff_user_id and chat_selected.assigned_staff_user_id != current_user.id) %}d-none{% endif %}" id="adminChatOwnershipWarning" role="alert">
@@ -174,7 +210,7 @@
           <div class="admin-chat-quick-group">
             <div class="admin-chat-quick-category">{{ group.category }}</div>
             <div class="d-flex flex-wrap gap-2">
-              {% for item in (group.items or []) %}
+              {% for item in (group['items'] or []) %}
               <button
                 type="button"
                 class="btn btn-sm btn-outline-secondary admin-chat-quick-reply-btn"

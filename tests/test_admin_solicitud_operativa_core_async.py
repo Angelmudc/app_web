@@ -311,6 +311,7 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
                  patch.object(admin_routes, "rd_today", return_value=date(2026, 3, 24)), \
+                 patch("admin.routes._touch_staff_presence", return_value=None), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/seguimiento_manual",
@@ -338,6 +339,7 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
                  patch.object(admin_routes, "rd_today", return_value=date(2026, 3, 24)), \
+                 patch("admin.routes._touch_staff_presence", return_value=None), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/seguimiento_manual",
@@ -416,6 +418,7 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
         solicitud = _solicitud_stub(10, "activa")
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch("admin.routes._touch_staff_presence", return_value=None), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/poner_espera_pago",
@@ -476,7 +479,7 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn("Detalle Solicitud", html)
+        self.assertIn("Detalle de solicitud", html)
         self.assertNotIn("Resumen para enviar al cliente", html)
         self.assertEqual(resp.headers.get("X-Async-Fragment-Region"), "solicitudSummaryAsyncRegion")
         self.assertIn("X-P1C1-Perf-DB-Queries", resp.headers)

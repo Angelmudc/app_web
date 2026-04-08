@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Panel de Solicitudes{% endblock %}
+{% block title %}Bandeja de solicitudes{% endblock %}
 
 {% block content %}
 <div class="container py-4"
@@ -14,19 +14,37 @@
      data-live-region-summary-url="{{ url_for('admin.solicitudes_summary_fragment') }}">
   <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
     <div>
-      <h1 class="h4 mb-1">Panel de Solicitudes</h1>
-      <div class="text-muted small">Operación rápida STAFF desde listado</div>
+      <h1 class="h4 mb-1">Bandeja de solicitudes</h1>
+      <div class="small text-muted">Panel de Solicitudes</div>
+      <div class="text-muted small">Pantalla principal diaria del staff para operar sin duplicar trabajo.</div>
     </div>
     <div class="d-flex gap-2">
       <a href="{{ url_for('contratos.listado_contratos_admin') }}" class="btn btn-outline-primary">
         <i class="bi bi-file-earmark-text me-1"></i> Contratos digitales
       </a>
       <a href="{{ url_for('admin.copiar_solicitudes') }}" class="btn btn-primary">
-        <i class="bi bi-clipboard-check me-1"></i> Copiar / Publicar
+        <i class="bi bi-clipboard-check me-1"></i> Copiar y publicar
       </a>
       <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left-circle me-1"></i> Volver a Clientes
+        <i class="bi bi-arrow-left-circle me-1"></i> Volver a clientes
       </a>
+    </div>
+  </div>
+
+  <div class="glass-card p-3 mb-3" data-testid="flujo-diario-staff">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <div class="fw-semibold">Flujo diario recomendado</div>
+        <div class="small text-muted">1) Urgentes y críticas, 2) Hoy y vencidas, 3) Espera de pago / reemplazos, 4) Cierre o reprogramación.</div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="btn btn-sm btn-outline-danger">Revisar urgentes</a>
+        <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-sm btn-outline-primary">Trabajo del día</a>
+        {% set _chat_enabled = (chat_feature_enabled if chat_feature_enabled is defined else True) %}
+        {% if _chat_enabled %}
+        <a href="{{ url_for('admin.chat_staff_inbox') }}" class="btn btn-sm btn-outline-success">Chat staff</a>
+        {% endif %}
+      </div>
     </div>
   </div>
 
@@ -46,8 +64,9 @@
               data-async-busy-container="#solicitudesAsyncScope"
               data-async-preserve-scroll="true"
               data-async-fallback="native">
+          <input type="hidden" name="triage" value="{{ triage or '' }}">
           <div class="col-md-5">
-            <label class="form-label mb-1 small">Buscar</label>
+            <label class="form-label mb-1 small">Buscar solicitud</label>
             <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="Código, cliente o ciudad">
           </div>
           <div class="col-md-4">
@@ -68,7 +87,9 @@
   </div>
 
   <div id="solicitudesAsyncScope" data-admin-async-scope>
-    <div id="solicitudesAsyncRegion" data-async-preserve-scroll="true">
+    <div id="solicitudesAsyncRegion"
+         data-async-preserve-scroll="true"
+         data-async-remember-collapse="true">
       {% include 'admin/_solicitudes_list_results.html' %}
     </div>
   </div>

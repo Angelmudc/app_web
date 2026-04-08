@@ -17,7 +17,7 @@
           </span>
           <span>
             Solicitudes:
-            <span class="fw-semibold text-light">
+            <span class="fw-semibold text-body-emphasis">
               {{ kpi_cliente.total_solicitudes or 0 }}
             </span>
           </span>
@@ -27,22 +27,36 @@
 
     <!-- ✅ ACCIONES HEADER (AQUÍ VA EL BOTÓN) -->
     <div class="d-flex flex-wrap gap-2">
+      {% if (chat_feature_enabled if chat_feature_enabled is defined else True) %}
+      <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-chat-dots me-1"></i> Abrir chat
+        </button>
+      </form>
+      {% endif %}
       <!-- ✅ NUEVO: Link público del cliente (para crear solicitud sin login) -->
       <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
          class="btn btn-info">
-        🔗 Link público
+        <i class="bi bi-link-45deg me-1"></i> Generar link público
       </a>
 
       <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
-        ✏️ <i class="bi bi-pencil-fill ms-1"></i> Editar Cliente
+        <i class="bi bi-pencil-fill me-1"></i> Editar cliente
       </a>
       <a href="{{ url_for('admin.listar_solicitudes') }}"
          class="btn btn-outline-primary"
          data-admin-nav="true">
-        Panel solicitudes
+        Bandeja de solicitudes
+      </a>
+      <a href="{{ url_for('admin.listar_solicitudes', q=(cliente.codigo or cliente.nombre_completo or '')) }}"
+         class="btn btn-outline-secondary"
+         data-admin-nav="true">
+        Ver solicitudes del cliente
       </a>
       <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-light">
-        ↩️ <i class="bi bi-arrow-left-short ms-1"></i> Volver
+        <i class="bi bi-arrow-left-short me-1"></i> Volver a clientes
       </a>
     </div>
   </div>

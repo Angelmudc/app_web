@@ -5,6 +5,8 @@ import os
 import time
 from unittest.mock import patch
 
+import pytest
+
 from app import app as flask_app
 from config_app import db, cache
 from models import StaffAuditLog
@@ -25,10 +27,19 @@ def _latest_audit(action_type: str):
         )
 
 
+@pytest.fixture(autouse=True)
+def _clear_live_state_cache():
+    # Aisla contadores/rate-limit/concurrency entre tests del bloque live.
+    cache.clear()
+    try:
+        yield
+    finally:
+        cache.clear()
+
+
 def test_s1c1_live_endpoints_allow_secretaria_role():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
-    cache.clear()
     client = flask_app.test_client()
     assert _login(client, "Karla", "9989").status_code in (302, 303)
 
@@ -36,12 +47,12 @@ def test_s1c1_live_endpoints_allow_secretaria_role():
     stream = client.get("/admin/live/invalidation/stream?once=1", follow_redirects=False)
     assert poll.status_code == 200
     assert stream.status_code == 200
+    assert "event: heartbeat" in (stream.get_data(as_text=True) or "")
 
 
 def test_s1c1_live_poll_returns_429_on_burst():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
-    cache.clear()
     env = {
         "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
         "LIVE_POLL_WINDOW": "60",
@@ -69,7 +80,6 @@ def test_s1c1_live_poll_returns_429_on_burst():
 def test_s1c1_presence_ping_returns_429_on_abuse():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
-    cache.clear()
     env = {
         "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
         "LIVE_PING_WINDOW": "60",
@@ -101,7 +111,6 @@ def test_s1c1_presence_ping_returns_429_on_abuse():
 def test_s1c1_locks_ping_returns_429_on_abuse():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
-    cache.clear()
     env = {
         "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
         "LIVE_LOCKS_PING_WINDOW": "60",
@@ -126,7 +135,6 @@ def test_s1c1_locks_ping_returns_429_on_abuse():
 def test_s1c1_live_stream_blocks_n_plus_1_with_429():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
-    cache.clear()
     env = {
         "LIVE_STREAM_MAX_CONCURRENT_USER": "3",
         "LIVE_STREAM_MAX_CONCURRENT_SESSION": "3",
@@ -155,7 +163,6 @@ def test_s1c1_live_stream_blocks_n_plus_1_with_429():
 def test_s1c1_live_endpoints_keep_authorized_admin_happy_path():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
-    cache.clear()
     env = {
         "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
         "LIVE_POLL_MAX_USER": "50",
@@ -177,4 +184,5 @@ def test_s1c1_live_endpoints_keep_authorized_admin_happy_path():
         ping = client.post("/admin/monitoreo/presence/ping", json={"current_path": "/admin/monitoreo"}, follow_redirects=False)
         assert poll.status_code == 200
         assert stream.status_code == 200
+        assert "event: heartbeat" in (stream.get_data(as_text=True) or "")
         assert ping.status_code == 200

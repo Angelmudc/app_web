@@ -1,42 +1,182 @@
 {% extends 'base.html' %}
-{% block title %}Tareas de hoy{% endblock %}
+{% block title %}Trabajo del día{% endblock %}
 
 {% block content %}
-<h1 class="mb-3">Tareas de hoy ({{ hoy|rd_datetime('%d/%m/%Y') }})</h1>
+<div class="container py-4" style="max-width: 1220px;">
+  <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+    <div>
+      <h1 class="h4 mb-1">Trabajo del día ({{ hoy|rd_datetime('%d/%m/%Y') }})</h1>
+      <div class="text-muted small">Resuelve/reprograma aquí y vuelve a bandeja para continuar ejecución operativa.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.tareas_pendientes') }}" class="btn btn-outline-secondary btn-sm">Ver tareas pendientes</a>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary btn-sm">Abrir bandeja de solicitudes</a>
+    </div>
+  </div>
 
-{% if tareas %}
-  <table class="table table-sm align-middle">
-    <thead>
-      <tr>
-        <th>Cliente</th>
-        <th>Título</th>
-        <th>Estado</th>
-        <th>Prioridad</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in tareas %}
-        <tr>
-          <td>
-            <a href="{{ url_for('admin.detalle_cliente', cliente_id=t.cliente.id) }}">
-              {{ t.cliente.nombre_completo }} ({{ t.cliente.codigo }})
-            </a>
-          </td>
-          <td>{{ t.titulo }}</td>
-          <td>{{ t.estado|capitalize }}</td>
-          <td>{{ t.prioridad|capitalize }}</td>
-          <td>
-            <a class="btn btn-sm btn-outline-primary"
-               href="{{ url_for('admin.detalle_cliente', cliente_id=t.cliente.id) }}">
-              Ver cliente
-            </a>
-          </td>
-        </tr>
+  {% set _kpis = kpis_operativos or {} %}
+  {% set _cards = _kpis.cards or [] %}
+  {% set _top_responsables = _kpis.top_responsables or [] %}
+  <div class="glass-card p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <div>
+        <div class="fw-semibold">Control operativo diario</div>
+        <div class="small text-muted">Señales directas para destrabar la operación sin reportes complejos.</div>
+      </div>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-sm btn-outline-primary">Abrir bandeja operativa</a>
+    </div>
+    <div class="row g-2 mb-2">
+      {% for card in _cards %}
+      {% set _tone = card.tone or 'secondary' %}
+      {% set _text_class = 'text-danger' if _tone == 'danger' else ('text-warning' if _tone == 'warning' else ('text-primary' if _tone == 'primary' else ('text-info' if _tone == 'info' else 'text-dark')) ) %}
+      <div class="col-6 col-lg-3">
+        <div class="border rounded p-2 h-100">
+          <div class="small text-muted">{{ card.label }}</div>
+          <div class="h5 mb-1 {{ _text_class }}">{{ card.value or 0 }}</div>
+          <div class="small text-muted mb-2">{{ card.hint }}</div>
+          {% if card.href %}
+          <a href="{{ card.href }}" class="btn btn-sm btn-outline-secondary">{{ card.cta_label or 'Ver' }}</a>
+          {% endif %}
+        </div>
+      </div>
       {% endfor %}
-    </tbody>
-  </table>
-{% else %}
-  <p class="text-muted">Hoy no tienes tareas programadas.</p>
-{% endif %}
+    </div>
+    {% if _top_responsables %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Responsable</th>
+            <th class="text-end">Carga</th>
+            <th class="text-end">En riesgo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in _top_responsables %}
+          <tr>
+            <td>{{ row.responsable_label }}</td>
+            <td class="text-end fw-semibold">{{ row.total or 0 }}</td>
+            <td class="text-end">{{ row.riesgo or 0 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-lg-2"><div class="glass-card p-2 text-center"><div class="small text-muted">Total</div><div class="fw-semibold">{{ resumen.total or 0 }}</div></div></div>
+    <div class="col-6 col-lg-2"><div class="glass-card p-2 text-center"><div class="small text-muted">Vencidas</div><div class="fw-semibold text-danger">{{ resumen.vencidas or 0 }}</div></div></div>
+    <div class="col-6 col-lg-2"><div class="glass-card p-2 text-center"><div class="small text-muted">Hoy</div><div class="fw-semibold text-primary">{{ resumen.hoy or 0 }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="glass-card p-2 text-center"><div class="small text-muted">Seguimientos</div><div class="fw-semibold">{{ resumen.seguimientos or 0 }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="glass-card p-2 text-center"><div class="small text-muted">Tareas</div><div class="fw-semibold">{{ resumen.tareas or 0 }}</div></div></div>
+  </div>
+
+  {% if items %}
+    <div class="table-responsive glass-card">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Cliente</th>
+            <th>Trabajo</th>
+            <th>Fecha</th>
+            <th>Contexto</th>
+            <th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in items %}
+          <tr>
+            <td>
+              {% if i.kind == 'seguimiento_solicitud' %}
+                <span class="badge text-bg-info">Seguimiento</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Tarea</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if i.cliente %}
+              <a href="{{ url_for('admin.detalle_cliente', cliente_id=i.cliente.id) }}">
+                {{ i.cliente.nombre_completo }} ({{ i.cliente.codigo or '—' }})
+              </a>
+              {% else %}
+              <span class="text-muted">Sin cliente</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="fw-semibold">{{ i.titulo }}</div>
+              <div class="small text-muted">
+                {% if i.prioridad == 'alta' %}
+                  Prioridad alta
+                {% elif i.prioridad == 'media' %}
+                  Prioridad media
+                {% else %}
+                  Prioridad {{ i.prioridad|capitalize }}
+                {% endif %}
+              </div>
+            </td>
+            <td>
+              {% if i.fecha %}
+                {% if i.is_overdue %}
+                <span class="badge text-bg-danger">Vencida</span>
+                {% else %}
+                <span class="badge text-bg-primary">Hoy</span>
+                {% endif %}
+                <div class="small mt-1">{{ i.fecha|rd_datetime('%d/%m/%Y') }}</div>
+              {% else %}
+                <span class="text-muted small">Sin fecha</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if i.kind == 'seguimiento_solicitud' and i.solicitud %}
+                <a class="btn btn-sm btn-outline-primary"
+                   href="{{ url_for('admin.detalle_solicitud', cliente_id=i.solicitud.cliente_id, id=i.solicitud.id) }}">Ver solicitud</a>
+              {% else %}
+                <a class="btn btn-sm btn-outline-dark"
+                   href="{{ url_for('admin.detalle_cliente', cliente_id=i.cliente.id) }}">Ver cliente</a>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="d-inline-flex gap-1 flex-wrap justify-content-end">
+                {% if i.kind == 'seguimiento_solicitud' and i.solicitud %}
+                  <form method="post" action="{{ url_for('admin.actualizar_seguimiento_manual_solicitud', id=i.solicitud.id) }}" class="d-inline">
+                    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <input type="hidden" name="fecha_seguimiento_manual" value="">
+                    <button type="submit" class="btn btn-sm btn-success">Hecho</button>
+                  </form>
+                  <form method="post" action="{{ url_for('admin.actualizar_seguimiento_manual_solicitud', id=i.solicitud.id) }}" class="d-inline-flex gap-1">
+                    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <input type="date" class="form-control form-control-sm" name="fecha_seguimiento_manual" required>
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Reprogramar</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{{ url_for('admin.completar_tarea_cliente', id=i.tarea.id) }}" class="d-inline">
+                    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <button type="submit" class="btn btn-sm btn-success">Hecho</button>
+                  </form>
+                  <form method="post" action="{{ url_for('admin.reprogramar_tarea_cliente', id=i.tarea.id) }}" class="d-inline-flex gap-1">
+                    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <input type="date" class="form-control form-control-sm" name="fecha_vencimiento" required>
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Reprogramar</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="glass-card p-4 text-center text-muted">
+      No hay trabajo vencido ni pendiente para hoy en seguimientos y tareas.
+    </div>
+  {% endif %}
+</div>
 {% endblock %}

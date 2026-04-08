@@ -119,6 +119,21 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id)", solicitud_summary_txt)
         self.assertIn('data-admin-nav="true"', solicitud_summary_txt)
 
+    def test_bandeja_operativa_incluye_vista_rapida_mvp(self):
+        solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitudes_list_results.html")
+        with open(solicitudes_tpl, "r", encoding="utf-8") as f:
+            solicitudes_txt = f.read()
+
+        self.assertIn("Vista rápida", solicitudes_txt)
+        self.assertIn("sol-quick-view-", solicitudes_txt)
+        self.assertIn("{% include 'admin/_solicitud_quick_view_region.html' %}", solicitudes_txt)
+
+        quick_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitud_quick_view_region.html")
+        with open(quick_tpl, "r", encoding="utf-8") as f:
+            quick_txt = f.read()
+        self.assertIn("Ir a detalle completo", quick_txt)
+        self.assertIn("url_for('admin.chat_staff_open'", quick_txt)
+
     def test_motor_admin_nav_cubre_fallback_historial_titulo(self):
         js_path = os.path.join(os.getcwd(), "static", "js", "core", "admin_nav.js")
         with open(js_path, "r", encoding="utf-8") as f:
@@ -196,7 +211,7 @@ class AdminPjaxPilotTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn("<title>Panel de Solicitudes</title>", html)
+        self.assertIn("<title>Bandeja de solicitudes</title>", html)
         self.assertIn('href="/admin/clientes/7"', html)
         self.assertIn('data-admin-nav="true"', html)
         self.assertIn('id="adminMainViewport"', html)

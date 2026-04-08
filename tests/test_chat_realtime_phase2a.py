@@ -975,8 +975,12 @@ def test_chat_templates_and_assets_are_wired():
     assert "adminChatQuickReplies" in chat_admin_txt
     assert "admin-chat-quick-reply-btn" in chat_admin_txt
     assert "data-quick-reply-body" in chat_admin_txt
+    assert "adminChatGoClienteLink" in chat_admin_txt
+    assert "adminChatGoSolicitudLink" in chat_admin_txt
     assert "insertIntoComposer" in js_admin_txt
     assert "parseQuickReplyBody" in js_admin_txt
+    assert "clienteUrlForConversation" in js_admin_txt
+    assert "solicitudUrlForConversation" in js_admin_txt
     assert "adminChatQuickReplies" not in chat_cli_txt
     assert "data-chat-global-badge-enabled" in base_admin_txt
     assert "unread_conversations" in js_global_badge_txt

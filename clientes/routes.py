@@ -1333,6 +1333,7 @@ def dashboard():
         por_estado_dict=por_estado_dict,
         guia_inteligente=guia_inteligente,
     )
+    solicitud_draft = _cliente_solicitud_draft_meta(int(getattr(current_user, "id", 0) or 0))
 
     return render_template(
         'clientes/dashboard.html',
@@ -1343,6 +1344,7 @@ def dashboard():
         guia_inteligente=guia_inteligente,
         ayuda_contextual_dashboard=ayuda_contextual_dashboard,
         resumen_ejecutivo=resumen_ejecutivo,
+        solicitud_draft=solicitud_draft,
     )
 
 
@@ -1991,6 +1993,7 @@ def listar_solicitudes():
             .all()
         ) if (e[0] or '').strip()
     ])
+    solicitud_draft = _cliente_solicitud_draft_meta(int(getattr(current_user, "id", 0) or 0))
 
     return render_template(
         'clientes/solicitudes_list.html',
@@ -2004,7 +2007,8 @@ def listar_solicitudes():
         fecha_desde=fecha_desde_raw, fecha_hasta=fecha_hasta_raw,
         estados_disponibles=estados_disponibles,
         ciudades_disponibles=ciudades_disponibles,
-        modalidades_disponibles=modalidades_disponibles
+        modalidades_disponibles=modalidades_disponibles,
+        solicitud_draft=solicitud_draft,
     )
 
 
@@ -2225,6 +2229,193 @@ def _cache_del(cache_obj, key: str) -> bool:
     return bool(bp_delete(key, context="cliente_cache_del"))
 
 
+_CLIENTE_SOLICITUD_DRAFT_TTL_SECONDS = int((os.getenv("CLIENTE_SOLICITUD_DRAFT_TTL_SECONDS") or str(14 * 24 * 3600)).strip() or (14 * 24 * 3600))
+_SOLICITUD_DRAFT_EXTRA_FIELDS = {
+    "pasaje_mode",
+    "pasaje_otro_text",
+    "modalidad_grupo",
+    "modalidad_especifica",
+    "modalidad_otro_text",
+    "pisos_selector",
+    "wizard_step",
+}
+_SOLICITUD_DRAFT_DROP_FIELDS = {
+    "csrf_token", "submit", "token", "codigo_solicitud", "id", "created_at", "updated_at",
+    "save_draft", "discard_draft",
+}
+
+
+def _cliente_solicitud_draft_key(cliente_id: int) -> str:
+    return f"cliente:solicitud:draft:{int(cliente_id or 0)}"
+
+
+def _safe_trim_draft_value(value, *, max_len: int = 1200):
+    if value is None:
+        return ""
+    txt = str(value).strip()
+    if len(txt) > max_len:
+        txt = txt[:max_len]
+    return txt
+
+
+def _extract_solicitud_draft_payload_from_request(form_obj) -> dict:
+    payload = {}
+    allowed = set(getattr(form_obj, "_fields", {}).keys()) | set(_SOLICITUD_DRAFT_EXTRA_FIELDS)
+    for name in sorted(allowed):
+        if name in _SOLICITUD_DRAFT_DROP_FIELDS:
+            continue
+        vals = request.form.getlist(name)
+        if not vals:
+            continue
+
+        field = getattr(form_obj, "_fields", {}).get(name)
+        field_type = str(getattr(field, "type", "") or "")
+        if field_type == "SelectMultipleField":
+            clean_vals = [_safe_trim_draft_value(v, max_len=180) for v in vals if _safe_trim_draft_value(v, max_len=180)]
+            if clean_vals:
+                payload[name] = clean_vals[:40]
+            continue
+
+        val = _safe_trim_draft_value(vals[-1], max_len=1600)
+        if val:
+            payload[name] = val
+    return payload
+
+
+def _draft_payload_has_content(payload: dict) -> bool:
+    for _, v in (payload or {}).items():
+        if isinstance(v, (list, tuple, set)):
+            if any(str(x or "").strip() for x in v):
+                return True
+            continue
+        if str(v or "").strip():
+            return True
+    return False
+
+
+def _save_cliente_solicitud_draft(*, cliente_id: int, payload: dict) -> bool:
+    cid = int(cliente_id or 0)
+    if cid <= 0:
+        return False
+    if not _draft_payload_has_content(payload):
+        return _clear_cliente_solicitud_draft(cliente_id=cid)
+    envelope = {
+        "saved_at": iso_utc_z(),
+        "payload": payload,
+    }
+    key = _cliente_solicitud_draft_key(cid)
+    raw = json.dumps(envelope, ensure_ascii=False, sort_keys=True)
+    if _cache_ok():
+        return bool(bp_set(key, raw, timeout=max(1800, int(_CLIENTE_SOLICITUD_DRAFT_TTL_SECONDS)), context="cliente_solicitud_draft_set"))
+    try:
+        bucket = dict(session.get("_cliente_solicitud_drafts") or {})
+        bucket[str(cid)] = envelope
+        session["_cliente_solicitud_drafts"] = bucket
+        session.modified = True
+        return True
+    except Exception:
+        return False
+
+
+def _get_cliente_solicitud_draft(*, cliente_id: int) -> Optional[dict]:
+    cid = int(cliente_id or 0)
+    if cid <= 0:
+        return None
+
+    envelope = None
+    if _cache_ok():
+        key = _cliente_solicitud_draft_key(cid)
+        raw = bp_get(key, default=None, context="cliente_solicitud_draft_get")
+        if raw:
+            try:
+                envelope = json.loads(raw) if isinstance(raw, str) else dict(raw)
+            except Exception:
+                envelope = None
+    if envelope is None:
+        try:
+            bucket = dict(session.get("_cliente_solicitud_drafts") or {})
+            envelope = bucket.get(str(cid))
+        except Exception:
+            envelope = None
+    if not isinstance(envelope, dict):
+        return None
+
+    payload = envelope.get("payload") or {}
+    if not isinstance(payload, dict) or not _draft_payload_has_content(payload):
+        return None
+    return {
+        "saved_at": envelope.get("saved_at"),
+        "payload": payload,
+    }
+
+
+def _clear_cliente_solicitud_draft(*, cliente_id: int) -> bool:
+    cid = int(cliente_id or 0)
+    if cid <= 0:
+        return False
+    ok = False
+    key = _cliente_solicitud_draft_key(cid)
+    if _cache_ok():
+        ok = bool(bp_delete(key, context="cliente_solicitud_draft_del"))
+    try:
+        bucket = dict(session.get("_cliente_solicitud_drafts") or {})
+        if str(cid) in bucket:
+            bucket.pop(str(cid), None)
+            session["_cliente_solicitud_drafts"] = bucket
+            session.modified = True
+            ok = True
+    except Exception:
+        pass
+    return ok
+
+
+def _apply_solicitud_draft_to_form(form_obj, payload: dict):
+    for name, field in (getattr(form_obj, "_fields", {}) or {}).items():
+        if name in _SOLICITUD_DRAFT_DROP_FIELDS or name not in payload:
+            continue
+        value = payload.get(name)
+        field_type = str(getattr(field, "type", "") or "")
+        try:
+            if field_type == "BooleanField":
+                field.data = str(value or "").strip().lower() in {"1", "true", "on", "y", "yes", "si"}
+            elif field_type == "SelectMultipleField":
+                if isinstance(value, (list, tuple, set)):
+                    field.data = [str(v) for v in value if str(v).strip()]
+                else:
+                    txt = str(value or "").strip()
+                    field.data = [txt] if txt else []
+            elif field_type == "IntegerField":
+                txt = str(value or "").strip()
+                field.data = int(txt) if txt else None
+            elif field_type == "FloatField":
+                txt = str(value or "").strip()
+                field.data = float(txt) if txt else None
+            else:
+                if isinstance(value, (list, tuple, set)):
+                    field.data = str(list(value)[-1]) if value else ""
+                else:
+                    field.data = value
+        except Exception:
+            continue
+
+
+def _cliente_solicitud_draft_meta(cliente_id: int) -> Optional[dict]:
+    draft = _get_cliente_solicitud_draft(cliente_id=cliente_id)
+    if not draft:
+        return None
+    saved_at_raw = draft.get("saved_at")
+    saved_dt = None
+    if saved_at_raw:
+        try:
+            saved_dt = to_rd(saved_at_raw)
+        except Exception:
+            saved_dt = None
+    return {
+        "saved_at": saved_dt,
+        "continue_url": url_for("clientes.nueva_solicitud", continuar=1),
+    }
+
+
 def _solicitud_fingerprint(form_obj) -> str:
     """Fingerprint estable del contenido de la solicitud para evitar duplicados por doble click/reintento."""
     try:
@@ -2325,8 +2516,25 @@ def nueva_solicitud():
     public_modalidad_group = ""
     public_modalidad_specific = ""
     public_modalidad_other = ""
+    draft_meta = None
+    draft_restored = False
+    draft_payload = {}
+    initial_wizard_step = 1
+    cliente_id = int(getattr(current_user, "id", 0) or 0)
+
+    if request.method == "GET" and str(request.args.get("fresh") or "").strip() in {"1", "true", "yes"}:
+        _clear_cliente_solicitud_draft(cliente_id=cliente_id)
+        flash("Borrador descartado. Puedes iniciar una solicitud nueva.", "info")
+        return redirect(url_for("clientes.nueva_solicitud"))
 
     if request.method == 'GET':
+        existing_draft = _get_cliente_solicitud_draft(cliente_id=cliente_id)
+        if existing_draft:
+            draft_payload = existing_draft.get("payload") or {}
+            _apply_solicitud_draft_to_form(form, draft_payload)
+            draft_restored = True
+            draft_meta = _cliente_solicitud_draft_meta(cliente_id)
+
         form.funciones.data       = form.funciones.data or []
         form.areas_comunes.data   = form.areas_comunes.data or []
         form.edad_requerida.data  = form.edad_requerida.data or []
@@ -2337,7 +2545,42 @@ def nueva_solicitud():
 
     public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
     public_pasaje_otro = ""
+    if request.method == "GET" and draft_payload:
+        draft_pasaje_mode = str((draft_payload or {}).get("pasaje_mode") or "").strip().lower()
+        if draft_pasaje_mode in {"incluido", "aparte", "otro"}:
+            public_pasaje_mode = draft_pasaje_mode
+        public_pasaje_otro = str((draft_payload or {}).get("pasaje_otro_text") or "").strip()[:120]
+        public_modalidad_group = str((draft_payload or {}).get("modalidad_grupo") or "").strip()[:40]
+        public_modalidad_specific = str((draft_payload or {}).get("modalidad_especifica") or "").strip()[:120]
+        public_modalidad_other = str((draft_payload or {}).get("modalidad_otro_text") or "").strip()[:120]
+        try:
+            initial_wizard_step = int(str((draft_payload or {}).get("wizard_step") or "1").strip() or 1)
+        except Exception:
+            initial_wizard_step = 1
+        if initial_wizard_step < 1:
+            initial_wizard_step = 1
+
     if request.method == "POST":
+        try:
+            initial_wizard_step = int(str(request.form.get("wizard_step") or initial_wizard_step).strip() or 1)
+        except Exception:
+            initial_wizard_step = 1
+        if initial_wizard_step < 1:
+            initial_wizard_step = 1
+
+        if "discard_draft" in request.form:
+            _clear_cliente_solicitud_draft(cliente_id=cliente_id)
+            flash("Borrador descartado.", "info")
+            return redirect(url_for("clientes.nueva_solicitud"))
+
+        if "save_draft" in request.form:
+            draft_payload = _extract_solicitud_draft_payload_from_request(form)
+            if _save_cliente_solicitud_draft(cliente_id=cliente_id, payload=draft_payload):
+                flash("Borrador guardado. Puedes salir y continuar luego.", "success")
+            else:
+                flash("No se pudo guardar el borrador en este momento.", "warning")
+            return redirect(url_for("clientes.nueva_solicitud", continuar=1))
+
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
             request.form.get("pasaje_mode"),
             request.form.get("pasaje_otro_text"),
@@ -2357,7 +2600,15 @@ def nueva_solicitud():
             public_modalidad_other,
         ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=False)
 
-    if form.validate_on_submit():
+    is_valid_submit = form.validate_on_submit()
+    if request.method == "POST" and request.form and not is_valid_submit:
+        try:
+            draft_payload = _extract_solicitud_draft_payload_from_request(form)
+            _save_cliente_solicitud_draft(cliente_id=cliente_id, payload=draft_payload)
+        except Exception:
+            pass
+
+    if is_valid_submit:
         actor_user = str(int(getattr(current_user, 'id', 0) or 0))
         actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
 
@@ -2550,6 +2801,7 @@ def nueva_solicitud():
                 },
             )
             db.session.commit()
+            _clear_cliente_solicitud_draft(cliente_id=cliente_id)
             flash(f'Solicitud {codigo} creada correctamente.', 'success')
             return redirect(url_for('clientes.listar_solicitudes'))
 
@@ -2581,16 +2833,21 @@ def nueva_solicitud():
                     _cache_del(cache, lock_key)
             except Exception:
                 pass
+    elif request.method == "GET":
+        draft_meta = draft_meta or _cliente_solicitud_draft_meta(cliente_id)
 
     return render_template(
         'clientes/solicitud_form.html',
         form=form,
         nuevo=True,
+        initial_wizard_step=initial_wizard_step,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
         public_modalidad_group=public_modalidad_group,
         public_modalidad_specific=public_modalidad_specific,
         public_modalidad_other=public_modalidad_other,
+        draft_meta=(draft_meta or _cliente_solicitud_draft_meta(cliente_id)),
+        draft_restored=draft_restored,
     )
 
 
@@ -3216,6 +3473,84 @@ def _build_solicitud_ayuda_contextual(
     return base
 
 
+def _build_solicitud_trust_signals(
+    s: Solicitud,
+    candidatas_enviadas: Optional[list] = None,
+) -> list[dict]:
+    estado_norm = str(getattr(s, "estado", "") or "").strip().lower()
+    rows = list(candidatas_enviadas or [])
+    has_selected = any(
+        str(getattr(sc, "status", "") or "").strip().lower() == "seleccionada"
+        for sc in rows
+    )
+    has_candidate = bool(
+        getattr(s, "candidata_id", None)
+        or getattr(s, "candidata", None)
+        or has_selected
+    )
+    signals = []
+    ids = set()
+
+    def _push(sig_id: str, *, variant: str, icon: str, title: str, text: str) -> None:
+        if not sig_id or sig_id in ids:
+            return
+        ids.add(sig_id)
+        signals.append(
+            {
+                "id": sig_id,
+                "variant": variant,
+                "icon": icon,
+                "title": title,
+                "text": text,
+            }
+        )
+
+    if estado_norm == "espera_pago":
+        _push(
+            "pago_modelo",
+            variant="warning",
+            icon="bi-credit-card-2-front",
+            title="Pago claro en esta etapa",
+            text="El proceso se activa con 50% inicial. El restante se completa al finalizar. La gestion es 25% sobre la primera quincena y no es un cobro recurrente.",
+        )
+        _push(
+            "pago_avance",
+            variant="info",
+            icon="bi-signpost-split",
+            title="Que cambia al confirmar pago",
+            text="Al confirmar el pago, actualizamos el estado y continuamos con la etapa operativa siguiente.",
+        )
+
+    if estado_norm in {"proceso", "activa"}:
+        _push(
+            "proceso_activo",
+            variant="info",
+            icon="bi-hourglass-split",
+            title="Evaluacion activa del equipo",
+            text="Tu solicitud se esta evaluando activamente. Cada movimiento se refleja en tu timeline y en el chat de esta solicitud.",
+        )
+
+    if has_candidate and estado_norm not in {"pagada", "cancelada"}:
+        _push(
+            "candidata_elegida",
+            variant="success",
+            icon="bi-person-check",
+            title="Candidata elegida: siguiente paso definido",
+            text="Con candidata elegida, pasamos a coordinacion de inicio y validaciones finales segun el estado de pago.",
+        )
+
+    if estado_norm == "reemplazo":
+        _push(
+            "reemplazo_cobertura",
+            variant="warning",
+            icon="bi-shield-check",
+            title="Reemplazo con cobertura de la agencia",
+            text="Tu caso sigue cubierto durante el reemplazo. No reinicias desde cero: mantenemos seguimiento hasta cerrar una nueva opcion.",
+        )
+
+    return signals
+
+
 @clientes_bp.route('/solicitudes/<int:id>')
 @login_required
 @cliente_required
@@ -3276,6 +3611,7 @@ def detalle_solicitud(id):
         candidatas_enviadas,
         que_sigue=que_sigue,
     )
+    trust_signals = _build_solicitud_trust_signals(s, candidatas_enviadas)
     estado_legible = _estado_cliente_label(getattr(s, "estado", None))
 
     return render_template(
@@ -3292,6 +3628,7 @@ def detalle_solicitud(id):
         que_sigue=que_sigue,
         acciones_rapidas=acciones_rapidas,
         ayuda_contextual=ayuda_contextual,
+        trust_signals=trust_signals,
         estado_legible=estado_legible,
     )
 
@@ -3787,6 +4124,10 @@ def chat_cliente_mark_read(conversation_id):
 
 
 _NOTIF_TIPO_CANDIDATAS_ENVIADAS = "candidatas_enviadas"
+_NOTIF_TIPO_CANDIDATAS_DETALLE = {
+    "candidatas_enviadas",
+    "candidata_seleccionada",
+}
 
 
 def _cliente_notif_query_base():
@@ -3806,7 +4147,10 @@ def _get_cliente_notificacion_or_404(notificacion_id: int):
 def _notificacion_target_url(notif) -> str:
     solicitud_id = getattr(notif, "solicitud_id", None)
     if solicitud_id:
-        return url_for("clientes.solicitud_candidatas", solicitud_id=solicitud_id) + "#candidatas-enviadas"
+        notif_tipo = str(getattr(notif, "tipo", "") or "").strip().lower()
+        if notif_tipo in _NOTIF_TIPO_CANDIDATAS_DETALLE:
+            return url_for("clientes.solicitud_candidatas", solicitud_id=solicitud_id) + "#candidatas-enviadas"
+        return url_for("clientes.detalle_solicitud", id=solicitud_id)
     return url_for("clientes.listar_solicitudes")
 
 
@@ -3917,6 +4261,13 @@ def notificacion_marcar_leida(notificacion_id):
             },
         )
         db.session.commit()
+    if _notif_wants_json():
+        unread_count = (
+            ClienteNotificacion.query
+            .filter_by(cliente_id=current_user.id, is_read=False, is_deleted=False)
+            .count()
+        )
+        return jsonify({"ok": True, "marked_id": int(getattr(notif, "id", 0) or 0), "unread_count": int(unread_count or 0)})
     return redirect(url_for("clientes.notificaciones_list"))
 
 
@@ -4270,8 +4621,14 @@ def seguimiento_solicitud(id):
         })
 
     timeline.sort(key=lambda x: x.get('fecha') or datetime.min)
+    trust_signals = _build_solicitud_trust_signals(s)
 
-    return render_template('clientes/solicitud_seguimiento.html', s=s, timeline=timeline)
+    return render_template(
+        'clientes/solicitud_seguimiento.html',
+        s=s,
+        timeline=timeline,
+        trust_signals=trust_signals,
+    )
 
 
 # ─────────────────────────────────────────────────────────────

@@ -196,6 +196,35 @@ class ClienteSolicitudDetailTimelineTest(unittest.TestCase):
         self.assertIsInstance(acciones, list)
         self.assertNotIn("candidatas", [x["id"] for x in acciones])
 
+    def test_k_trust_espera_pago_explica_modelo_real(self):
+        solicitud = _make_solicitud(estado="espera_pago", fecha_cambio_espera_pago=datetime(2026, 4, 7, 8, 0, 0))
+        ctx = self._call_detalle(solicitud)["ctx"]
+        trust_text = " ".join((x.get("text") or "") for x in ctx.get("trust_signals") or []).lower()
+        self.assertIn("50% inicial", trust_text)
+        self.assertIn("no es un cobro recurrente", trust_text)
+        self.assertIn("25%", trust_text)
+
+    def test_l_trust_proceso_refuerza_evaluacion_activa(self):
+        solicitud = _make_solicitud(estado="proceso")
+        ctx = self._call_detalle(solicitud)["ctx"]
+        ids = [x.get("id") for x in (ctx.get("trust_signals") or [])]
+        trust_text = " ".join((x.get("text") or "") for x in ctx.get("trust_signals") or []).lower()
+        self.assertIn("proceso_activo", ids)
+        self.assertIn("evaluando activamente", trust_text)
+
+    def test_m_trust_reemplazo_y_candidata_elegida(self):
+        solicitud = _make_solicitud(
+            estado="reemplazo",
+            candidata_id=501,
+            candidata=SimpleNamespace(nombre_completo="Ana Perez"),
+        )
+        ctx = self._call_detalle(solicitud, candidatas=[_make_sc(status="seleccionada")])["ctx"]
+        ids = [x.get("id") for x in (ctx.get("trust_signals") or [])]
+        trust_text = " ".join((x.get("text") or "") for x in ctx.get("trust_signals") or []).lower()
+        self.assertIn("reemplazo_cobertura", ids)
+        self.assertIn("candidata_elegida", ids)
+        self.assertIn("sigue cubierto", trust_text)
+
 
 if __name__ == "__main__":
     unittest.main()

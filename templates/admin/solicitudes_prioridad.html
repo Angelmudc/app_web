@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Órdenes prioritarias{% endblock %}
+{% block title %}Solicitudes prioritarias{% endblock %}
 {% block extra_head %}
   {{ super() }}
   <style>
@@ -79,21 +79,22 @@
      data-live-invalidation-stream-url="{{ url_for('admin.live_invalidation_stream') }}"
      data-live-invalidation-poll-url="{{ url_for('admin.live_invalidation_poll') }}"
      data-live-invalidation-source-url="{{ request.full_path }}"
-     data-live-region-summary-url="{{ url_for('admin.solicitudes_prioridad_summary_fragment', q=q, estado=estado, prioridad=prioridad, estancadas=(1 if estancadas else 0), page=page, per_page=per_page) }}"
-     data-live-region-responsables-url="{{ url_for('admin.solicitudes_prioridad_responsables_fragment', q=q, estado=estado, prioridad=prioridad, estancadas=(1 if estancadas else 0), page=page, per_page=per_page) }}"
+     data-live-region-summary-url="{{ url_for('admin.solicitudes_prioridad_summary_fragment', q=q, estado=estado, prioridad=prioridad, responsable=responsable, estancadas=(1 if estancadas else 0), page=page, per_page=per_page) }}"
+     data-live-region-responsables-url="{{ url_for('admin.solicitudes_prioridad_responsables_fragment', q=q, estado=estado, prioridad=prioridad, responsable=responsable, estancadas=(1 if estancadas else 0), page=page, per_page=per_page) }}"
      data-live-observability-url="{{ url_for('admin.live_observability_ingest') }}">
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-      <h2 class="mb-0">Órdenes prioritarias</h2>
+      <h2 class="mb-0">Solicitudes prioritarias</h2>
       <div class="text-muted small mt-1">
-        Priorizadas por días reales en estado (activa/reemplazo), no por última actividad.
+        Vista de triage por días en estado (activa/reemplazo). Toma decisión aquí y ejecuta en bandeja/detalle.
       </div>
     </div>
 
     <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-outline-primary btn-sm">Trabajo del día</a>
       <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary btn-sm">Volver a clientes</a>
-      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary btn-sm">Ver todas las solicitudes</a>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-primary btn-sm">Abrir bandeja de solicitudes</a>
     </div>
   </div>
 
@@ -123,6 +124,17 @@
           <option value="" {% if not prioridad %}selected{% endif %}>Todos</option>
           {% for pr in (allowed_priority or []) %}
             <option value="{{ pr }}" {% if prioridad == pr %}selected{% endif %}>{{ pr|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Responsable</label>
+        <select name="responsable" class="form-select form-select-sm">
+          {% for opt in (responsible_filter_options or []) %}
+            <option value="{{ opt.value }}" {% if (responsable or '') == (opt.value|string) %}selected{% endif %}>
+              {{ opt.label }}{% if opt.count is defined %} ({{ opt.count }}){% endif %}
+            </option>
           {% endfor %}
         </select>
       </div>

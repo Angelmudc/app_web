@@ -2,7 +2,7 @@
 
 import os
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -200,6 +200,65 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertIn("SOL-011", data["replace_html"])
         self.assertNotIn("SOL-001", data["replace_html"])
 
+    def test_triage_espera_pago_filtra_en_async(self):
+        rows = [
+            _solicitud_stub(10, "SOL-EP", "espera_pago"),
+            _solicitud_stub(11, "SOL-RE", "reemplazo"),
+            _solicitud_stub(12, "SOL-AC", "activa"),
+        ]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
+                resp = self.client.get(
+                    "/admin/solicitudes?triage=espera_pago",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertTrue(data.get("success"))
+        self.assertEqual(data.get("triage"), "espera_pago")
+        html = data.get("replace_html") or ""
+        self.assertIn("SOL-EP", html)
+        self.assertNotIn("SOL-RE", html)
+        self.assertNotIn("SOL-AC", html)
+        self.assertIn("Bloque en foco: <strong>Espera de pago</strong>", html)
+
+    def test_listado_muestra_accion_rapida_espera_pago_y_quitar_espera(self):
+        rows = [
+            _solicitud_stub(10, "SOL-ACTIVA", "activa"),
+            _solicitud_stub(11, "SOL-ESPERA", "espera_pago"),
+            _solicitud_stub(12, "SOL-CANCEL", "cancelada"),
+        ]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
+                resp = self.client.get(
+                    "/admin/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html") or ""
+        self.assertIn("Marcar espera de pago</button>", html)
+        self.assertIn("Quitar espera de pago</button>", html)
+        self.assertIn('data-collapse-open-label="Ocultar resumen"', html)
+        self.assertIn('data-collapse-open-label="Ocultar acciones"', html)
+
+    def test_paginacion_preserva_triage_en_links(self):
+        rows = [_solicitud_stub(i, f"SOL-{i:03d}", "espera_pago") for i in range(1, 23)]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
+                resp = self.client.get(
+                    "/admin/solicitudes?triage=espera_pago&page=1&per_page=10",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html") or ""
+        self.assertIn("triage=espera_pago&amp;page=2", html)
+
     def test_estado_vacio_async_muestra_mensaje_y_limpiar_filtros(self):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([])):
@@ -213,6 +272,117 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertIn("No hay solicitudes para mostrar", data["replace_html"])
         self.assertIn("Limpiar filtros", data["replace_html"])
+
+    def test_senal_operativa_principal_vencida_tiene_precedencia(self):
+        sol = _solicitud_stub(10, "SOL-010", "espera_pago")
+        sol.fecha_seguimiento_manual = date(2026, 3, 4)
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([sol])), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 5)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 5, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        html = data.get("replace_html") or ""
+        self.assertIn("Vencida", html)
+        self.assertNotIn("Esperando pago", html)
+
+    def test_senal_operativa_detecta_espera_pago_prolongada(self):
+        sol = _solicitud_stub(10, "SOL-PAGO-LARGO", "espera_pago")
+        sol.fecha_solicitud = datetime(2026, 3, 1, 10, 0, 0)
+        sol.estado_actual_desde = datetime(2026, 3, 1, 10, 0, 0)
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([sol])), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html") or ""
+        self.assertIn("Espera de pago prolongada", html)
+
+    def test_senal_operativa_detecta_reemplazo_sin_seguimiento(self):
+        sol = _solicitud_stub(10, "SOL-REEMP-SIN-SEG", "reemplazo")
+        sol.reemplazos = [
+            SimpleNamespace(
+                id=99,
+                fecha_inicio_reemplazo=datetime(2026, 3, 5, 10, 0, 0),
+                fecha_fin_reemplazo=None,
+                created_at=datetime(2026, 3, 5, 10, 0, 0),
+            )
+        ]
+        sol.fecha_seguimiento_manual = None
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([sol])), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html") or ""
+        self.assertIn("Reemplazo sin seguimiento", html)
+
+    def test_listado_prioriza_arriba_lo_mas_critico(self):
+        estable = _solicitud_stub(10, "SOL-ESTABLE", "activa")
+        estable.fecha_seguimiento_manual = date(2026, 3, 7)
+        estable.fecha_ultima_actividad = datetime(2026, 3, 5, 9, 0, 0)
+
+        hoy = _solicitud_stub(11, "SOL-HOY", "activa")
+        hoy.fecha_seguimiento_manual = date(2026, 3, 5)
+        hoy.fecha_ultima_actividad = datetime(2026, 3, 5, 8, 0, 0)
+
+        vencida = _solicitud_stub(12, "SOL-VENCIDA", "activa")
+        vencida.fecha_seguimiento_manual = date(2026, 3, 4)
+        vencida.fecha_ultima_actividad = datetime(2026, 3, 1, 8, 0, 0)
+
+        rows = [estable, hoy, vencida]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 5)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 5, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html") or ""
+        self.assertLess(html.find("SOL-VENCIDA"), html.find("SOL-HOY"))
+        self.assertLess(html.find("SOL-HOY"), html.find("SOL-ESTABLE"))
+
+    def test_usa_solo_una_senal_operativa_badge_y_seguimiento_como_texto(self):
+        sol = _solicitud_stub(10, "SOL-010", "activa")
+        sol.fecha_seguimiento_manual = date(2026, 3, 5)
+        sol.fecha_ultima_actividad = datetime(2026, 3, 5, 9, 0, 0)
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([sol])), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 5)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 5, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html") or ""
+        self.assertIn("Atención hoy", html)
+        self.assertIn("Seguimiento: Hoy", html)
+        self.assertNotIn("Seguimiento Hoy</span>", html)
 
     def test_accion_por_fila_async_poner_espera_pago(self):
         solicitud = _solicitud_stub(10, "SOL-010", "activa")
@@ -238,7 +408,10 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertTrue(update_targets[1].get("invalidate"))
         self.assertIn("/admin/solicitudes/_summary", update_targets[1].get("redirect_url") or "")
         self.assertIn("/admin/solicitudes?page=1", data["redirect_url"])
-        commit_mock.assert_called_once()
+        self.assertEqual(data.get("focus_row_id"), 10)
+        self.assertTrue(data.get("flash_row"))
+        self.assertTrue(data.get("preserve_open_collapses"))
+        self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_fallback_clasico_se_mantiene_en_accion_por_fila(self):
         solicitud = _solicitud_stub(10, "SOL-010", "activa")
@@ -276,7 +449,10 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(update_targets[0].get("target"), "#solicitudesAsyncRegion")
         self.assertEqual(update_targets[1].get("target"), "#solicitudesSummaryAsyncRegion")
         self.assertIn("/admin/solicitudes/_summary", update_targets[1].get("redirect_url") or "")
-        commit_mock.assert_called_once()
+        self.assertEqual(data.get("focus_row_id"), 10)
+        self.assertTrue(data.get("flash_row"))
+        self.assertTrue(data.get("preserve_open_collapses"))
+        self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_summary_fragment_devuelve_html_liviano_y_headers_baseline(self):
         rows = [_solicitud_stub(10, "SOL-A-10", "activa")]
@@ -466,7 +642,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(update_targets[1].get("target"), "#solicitudesSummaryAsyncRegion")
         self.assertIn("/admin/solicitudes?page=1", data["redirect_url"])
         self.assertIsNone(data.get("replace_html"))
-        commit_mock.assert_called_once()
+        self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_cancelar_reemplazo_async_exitoso_refresca_region_padre_cliente(self):
         self.client = flask_app.test_client()
@@ -509,7 +685,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(update_targets[1].get("target"), "#clienteSummaryAsyncRegion")
         self.assertIn("/admin/clientes/7#sol-10", data["redirect_url"])
         self.assertIsNone(data.get("replace_html"))
-        commit_mock.assert_called_once()
+        self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_quick_search_cierre_reemplazo_devuelve_items(self):
         rows = [

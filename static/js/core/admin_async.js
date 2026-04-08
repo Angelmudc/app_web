@@ -12,6 +12,7 @@
   const REEMPLAZO_MODAL_ATTR = 'data-reemplazo-modal';
   const reemplazoModalAncestorState = new WeakMap();
   const reemplazoModalTeleportState = new WeakMap();
+  const rowHighlightTimers = new WeakMap();
   let globalRequestSeq = 0;
   const latestRequestByTarget = new Map();
 
@@ -23,6 +24,16 @@
       ...extra,
     };
     return headers;
+  }
+
+  function escapeCssToken(value) {
+    const raw = String(value || "");
+    try {
+      if (window.CSS && typeof window.CSS.escape === "function") {
+        return window.CSS.escape(raw);
+      }
+    } catch (_) {}
+    return raw.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
   }
 
   function clearGlobalLoaders() {
@@ -316,6 +327,13 @@
     if (target.innerHTML === html) return true;
 
     const preserveScroll = resolvePreserveScroll(targetSelector, options && options.preserveScroll);
+    const rememberCollapse = (
+      (options && options.preserveOpenCollapses === true)
+      || target.getAttribute("data-async-remember-collapse") === "true"
+    );
+    const openCollapseIds = rememberCollapse
+      ? Array.from(target.querySelectorAll(".collapse.show[id]")).map((el) => String(el.id || "").trim()).filter(Boolean)
+      : [];
     const beforeRect = target.getBoundingClientRect();
     const beforeScrollY = window.scrollY || window.pageYOffset || 0;
     const beforeHeight = Math.max(0, target.offsetHeight || 0);
@@ -329,6 +347,13 @@
     target.style.transition = "opacity 120ms ease";
     target.innerHTML = html;
     window.requestAnimationFrame(() => {
+      if (openCollapseIds.length) {
+        restoreOpenCollapses(target, openCollapseIds);
+      }
+      if (options && options.focusRowId) {
+        highlightSolicitudRow(target, options.focusRowId, options.flashRow !== false);
+      }
+      syncCollapseToggleLabels(target);
       target.style.opacity = "1";
       target.style.minHeight = "";
       if (preserveScroll) {
@@ -344,6 +369,79 @@
     }));
     cleanupModalState(false);
     return true;
+  }
+
+  function restoreOpenCollapses(target, openCollapseIds) {
+    if (!target || !Array.isArray(openCollapseIds) || !openCollapseIds.length) return;
+    openCollapseIds.forEach((id) => {
+      const selector = `#${escapeCssToken(id)}`;
+      const panel = target.querySelector(selector);
+      if (!panel || !panel.classList || !panel.classList.contains("collapse")) return;
+      try {
+        if (window.bootstrap && window.bootstrap.Collapse) {
+          window.bootstrap.Collapse.getOrCreateInstance(panel, { toggle: false }).show();
+        } else {
+          panel.classList.add("show");
+        }
+      } catch (_) {
+        panel.classList.add("show");
+      }
+    });
+  }
+
+  function highlightSolicitudRow(target, rowId, flashRow) {
+    const id = Number(rowId || 0);
+    if (!target || !Number.isFinite(id) || id <= 0) return;
+    const row = target.querySelector(`#sol-${id}`);
+    if (!row) return;
+
+    try {
+      row.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    } catch (_) {}
+
+    if (!flashRow) return;
+    row.classList.add("admin-async-row-updated");
+    const prevTimer = rowHighlightTimers.get(row);
+    if (prevTimer) {
+      window.clearTimeout(prevTimer);
+    }
+    const timer = window.setTimeout(() => {
+      row.classList.remove("admin-async-row-updated");
+      rowHighlightTimers.delete(row);
+    }, 1500);
+    rowHighlightTimers.set(row, timer);
+  }
+
+  function collapseTargetFromToggle(toggle) {
+    if (!toggle || !toggle.getAttribute) return null;
+    const rawTarget = String(toggle.getAttribute("data-bs-target") || "").trim();
+    if (rawTarget && rawTarget.startsWith("#")) {
+      return document.querySelector(rawTarget);
+    }
+    const href = String(toggle.getAttribute("href") || "").trim();
+    if (href && href.startsWith("#")) {
+      return document.querySelector(href);
+    }
+    return null;
+  }
+
+  function updateCollapseToggleLabel(toggle, expanded) {
+    if (!toggle) return;
+    const openLabel = (toggle.getAttribute("data-collapse-open-label") || "").trim();
+    const closedLabel = (toggle.getAttribute("data-collapse-closed-label") || "").trim();
+    if (!openLabel || !closedLabel) return;
+    toggle.textContent = expanded ? openLabel : closedLabel;
+  }
+
+  function syncCollapseToggleLabels(root) {
+    const host = root && root.querySelectorAll ? root : document;
+    const toggles = host.querySelectorAll("[data-bs-toggle='collapse'][data-collapse-open-label][data-collapse-closed-label]");
+    toggles.forEach((toggle) => {
+      const target = collapseTargetFromToggle(toggle);
+      const isOpen = !!(target && target.classList && target.classList.contains("show"));
+      toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      updateCollapseToggleLabel(toggle, isOpen);
+    });
   }
 
   function normalizeSelector(raw) {
@@ -596,7 +694,7 @@
     return out;
   }
 
-  async function applyPayloadTargets(targets, requestId) {
+  async function applyPayloadTargets(targets, requestId, options) {
     let anyApplied = false;
     for (const targetOp of (targets || [])) {
       if (!targetOp || !targetOp.target) continue;
@@ -607,13 +705,23 @@
       if (!targetEl) continue;
 
       if (typeof targetOp.replaceHtml === "string") {
-        const replaced = replaceTargetHtml(selector, targetOp.replaceHtml, { preserveScroll: !!targetOp.preserveScroll });
+        const replaced = replaceTargetHtml(selector, targetOp.replaceHtml, {
+          preserveScroll: !!targetOp.preserveScroll,
+          preserveOpenCollapses: !!(options && options.preserveOpenCollapses),
+          focusRowId: options && options.focusRowId,
+          flashRow: options ? options.flashRow !== false : true,
+        });
         anyApplied = anyApplied || replaced;
         continue;
       }
 
       if ((targetOp.invalidate || targetOp.redirectUrl) && targetOp.redirectUrl) {
-        const refreshed = await loadAndReplaceFromUrl(targetOp.redirectUrl, selector, { preserveScroll: !!targetOp.preserveScroll });
+        const refreshed = await loadAndReplaceFromUrl(targetOp.redirectUrl, selector, {
+          preserveScroll: !!targetOp.preserveScroll,
+          preserveOpenCollapses: !!(options && options.preserveOpenCollapses),
+          focusRowId: options && options.focusRowId,
+          flashRow: options ? options.flashRow !== false : true,
+        });
         anyApplied = anyApplied || refreshed;
       }
     }
@@ -628,7 +736,11 @@
     const targetOps = normalizePayloadTargets(payload || {}, context || {});
     targetOps.forEach((op) => registerRequestClaim(op && op.target, context.requestId));
     const hadTargets = targetOps.length > 0;
-    const hadAppliedTarget = await applyPayloadTargets(targetOps, context.requestId);
+    const hadAppliedTarget = await applyPayloadTargets(targetOps, context.requestId, {
+      focusRowId: payload && payload.focus_row_id,
+      flashRow: payload ? payload.flash_row !== false : true,
+      preserveOpenCollapses: payload && payload.preserve_open_collapses === true,
+    });
 
     if (payload && payload.remove_element) {
       removeElement(payload.remove_element);
@@ -866,9 +978,30 @@
   function init() {
     document.addEventListener("submit", onSubmit, true);
     document.addEventListener("click", onClick, true);
+    document.addEventListener("shown.bs.collapse", (ev) => {
+      const target = ev && ev.target;
+      if (!target || !target.id) return;
+      const toggle = document.querySelector(`[data-bs-toggle='collapse'][data-bs-target='#${escapeCssToken(target.id)}']`);
+      if (!toggle) return;
+      toggle.setAttribute("aria-expanded", "true");
+      updateCollapseToggleLabel(toggle, true);
+    });
+    document.addEventListener("hidden.bs.collapse", (ev) => {
+      const target = ev && ev.target;
+      if (!target || !target.id) return;
+      const toggle = document.querySelector(`[data-bs-toggle='collapse'][data-bs-target='#${escapeCssToken(target.id)}']`);
+      if (!toggle) return;
+      toggle.setAttribute("aria-expanded", "false");
+      updateCollapseToggleLabel(toggle, false);
+    });
     document.addEventListener("input", onReemplazoSearchInput, true);
     document.addEventListener("keydown", onReemplazoSearchKeydown, true);
     document.addEventListener("click", onReemplazoSearchTrigger, true);
+    document.addEventListener("admin:content-updated", (ev) => {
+      const container = ev && ev.detail ? ev.detail.container : null;
+      syncCollapseToggleLabels(container || document);
+    });
+    syncCollapseToggleLabels(document);
     bindReemplazoModalGuards();
   }
 

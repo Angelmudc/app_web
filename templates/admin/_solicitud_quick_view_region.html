@@ -1,0 +1,53 @@
+<div class="border rounded p-3 bg-light-subtle" data-testid="quick-view-region-{{ s.id }}">
+  <div class="row g-3">
+    <div class="col-12 col-lg-8">
+      <div class="small text-uppercase text-muted fw-semibold">Resumen rápido</div>
+      <div class="small mt-1">{{ s.quick_summary }}</div>
+
+      <div class="small text-uppercase text-muted fw-semibold mt-3">Contexto operativo</div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
+        <span class="badge {{ s.operational_signal_badge_class }}" title="{{ s.operational_signal_hint }}">{{ s.operational_signal_label }}</span>
+        <span class="small text-muted">{{ s.days_in_state }} días en estado</span>
+      </div>
+      <div class="small mt-1"><strong>Siguiente paso:</strong> {{ s.primary_cta_help }}</div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="small">
+        <span class="text-muted">Responsable:</span>
+        <span class="fw-semibold">{{ s.last_actor_label }}</span>
+        {% if (s.last_actor_label or '')|lower == 'sin responsable' %}
+          <span class="badge text-bg-warning ms-1">Sin responsable</span>
+        {% endif %}
+      </div>
+      <div class="small mt-1">
+        <span class="text-muted">Seguimiento:</span>
+        {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
+          <span>{{ s.manual_followup_label }}</span>
+          <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}">{{ s.manual_followup_label }}</span>
+        {% else %}
+          <span class="text-muted">Sin fecha</span>
+        {% endif %}
+      </div>
+      <div class="small mt-1">
+        <span class="text-muted">Última actividad:</span>
+        <span class="fw-semibold">{{ s.last_activity_at and s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') or 'Sin actividad registrada' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2 mt-3">
+    <a href="{{ detail_url }}" class="btn btn-sm btn-primary" data-admin-nav="true">Ir a detalle completo</a>
+    {% if cliente_url %}
+      <a href="{{ cliente_url }}" class="btn btn-sm btn-outline-dark" data-admin-nav="true">Ver cliente</a>
+    {% endif %}
+    {% if (chat_feature_enabled if chat_feature_enabled is defined else True) and s.cliente_id %}
+    <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+      <input type="hidden" name="cliente_id" value="{{ s.cliente_id }}">
+      <input type="hidden" name="solicitud_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Abrir chat</button>
+    </form>
+    {% endif %}
+  </div>
+</div>

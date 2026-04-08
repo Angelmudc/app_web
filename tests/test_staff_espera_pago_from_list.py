@@ -29,8 +29,13 @@ class EsperaPagoFromListTest(unittest.TestCase):
         flask_app.config["WTF_CSRF_ENABLED"] = False
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+        self._presence_patcher = patch("admin.routes._touch_staff_presence", return_value=None)
+        self._presence_patcher.start()
         login = self.client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
         self.assertIn(login.status_code, (302, 303))
+
+    def tearDown(self):
+        self._presence_patcher.stop()
 
     def test_post_poner_espera_pago_desde_listado(self):
         solicitud = _SolicitudStub(estado="activa")

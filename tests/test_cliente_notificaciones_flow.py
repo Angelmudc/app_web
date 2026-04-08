@@ -213,6 +213,33 @@ class ClienteNotificacionesFlowTest(unittest.TestCase):
         self.assertTrue(notif.is_deleted)
         commit_mock.assert_called_once()
 
+    def test_marcar_leida_json_responde_ok_y_unread_count(self):
+        fake_user = SimpleNamespace(id=7, nombre_completo="Cliente Demo")
+        notif = _DummyNotif(notif_id=5, cliente_id=7, solicitud_id=10, is_read=False)
+        target = clientes_routes.notificacion_marcar_leida
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with flask_app.app_context():
+            with patch.object(clientes_routes, "current_user", fake_user), \
+                 patch.object(clientes_routes.ClienteNotificacion, "query", _NotifQuery([notif])), \
+                 patch("clientes.routes.db.session.commit") as commit_mock:
+                with flask_app.test_request_context(
+                    "/clientes/notificaciones/5/marcar-leida",
+                    method="POST",
+                    data={"csrf_token": "ok"},
+                    headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                ):
+                    resp = target(5)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data.get("ok"), True)
+        self.assertEqual(data.get("marked_id"), 5)
+        self.assertEqual(data.get("unread_count"), 0)
+        self.assertTrue(notif.is_read)
+        commit_mock.assert_called_once()
+
     def test_solicitud_candidatas_template_includes_csrf_meta_and_notifications_js(self):
         fake_user = SimpleNamespace(id=7, nombre_completo="Cliente Demo")
         solicitud = _DummySolicitud(10, "SOL-010")

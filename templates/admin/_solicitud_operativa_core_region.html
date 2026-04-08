@@ -262,7 +262,7 @@
         <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
         <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
         <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-        <button type="submit" class="btn btn-sm btn-outline-warning" data-loading-text="Guardando...">Poner espera</button>
+        <button type="submit" class="btn btn-sm btn-outline-warning" data-loading-text="Guardando...">Marcar espera de pago</button>
       </form>
       {% else %}
       <form method="post"
@@ -278,7 +278,7 @@
         <input type="hidden" name="next" value="{{ _solicitud_detail_url }}">
         <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
         <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-        <button type="submit" class="btn btn-sm btn-outline-success" data-loading-text="Guardando...">Quitar espera</button>
+        <button type="submit" class="btn btn-sm btn-outline-success" data-loading-text="Guardando...">Quitar espera de pago</button>
       </form>
       {% endif %}
 

@@ -23,7 +23,7 @@
         <i class="bi bi-arrow-left-short me-1"></i> Volver
       </a>
       <a href="{{ url_for('clientes.seguimiento_solicitud', id=s.id) }}" class="btn btn-outline-primary">
-        <i class="bi bi-clock-history me-1"></i> Seguimiento
+        <i class="bi bi-clock-history me-1"></i> Ver seguimiento
       </a>
       <a href="{{ url_for('clientes.solicitud_candidatas', solicitud_id=s.id) }}" class="btn btn-outline-success">
         <i class="bi bi-people me-1"></i> Candidatas enviadas
@@ -70,6 +70,22 @@
       </a>
     </div>
   </div>
+
+  {% if trust_signals %}
+  <div class="row g-2 mb-4 no-print">
+    {% for signal in trust_signals %}
+      <div class="col-12 col-lg-6">
+        <div class="c-alert c-alert--{{ signal.variant|default('info') }}" role="note">
+          <i class="bi {{ signal.icon|default('bi-shield-check') }} mt-1"></i>
+          <div>
+            <p class="c-alert__title mb-0">{{ signal.title }}</p>
+            <p class="c-alert__text mb-0">{{ signal.text }}</p>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   {% if acciones_rapidas %}
   <div class="kard mb-4 no-print">
@@ -381,7 +397,7 @@
         <i class="bi bi-life-preserver fs-4 text-primary"></i>
         <div>
           <div class="fw-semibold">¿Necesitas ayuda con tu solicitud?</div>
-          <div class="text-muted small">Nuestro equipo de servicio al cliente está disponible en horario laboral.</div>
+          <div class="text-muted small">Nuestro equipo de soporte está disponible en horario laboral.</div>
         </div>
       </div>
       <div class="d-flex gap-2">
@@ -397,16 +413,8 @@
 
   <!-- Acciones inferiores -->
   <div class="d-flex gap-2 no-print">
-    {% if s.estado == 'proceso' %}
-      <a href="{{ url_for('clientes.editar_solicitud', id=s.id) }}" class="btn btn-primary">
-        <i class="bi bi-pencil-square me-1"></i> Editar
-      </a>
-      <a href="{{ url_for('clientes.cancelar_solicitud', id=s.id) }}" class="btn btn-outline-danger">
-        <i class="bi bi-x-circle me-1"></i> Cancelar
-      </a>
-    {% endif %}
     <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-light ms-auto">
-      <i class="bi bi-arrow-left-short me-1"></i> Volver
+      <i class="bi bi-arrow-left-short me-1"></i> Volver a solicitudes
     </a>
   </div>
 </div>

@@ -213,7 +213,7 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         self.assertIn("SOL-P-010", html)
         self.assertIn("SOL-P-011", html)
         self.assertIn("Críticas", html)
-        self.assertIn("Normales / Recientes", html)
+        self.assertIn("NORMALES", html)
 
     def test_proximo_paso_render_por_estado_y_estancamiento(self):
         rows = [
@@ -300,8 +300,77 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         self.assertIn('data-testid="responsable-summary-block"', html)
         self.assertIn("Karla", html)
         self.assertNotIn("Anyi", html)
-        self.assertNotIn("Sin responsable", html)
+        self.assertNotIn('data-testid="responsable-name">Sin responsable<', html)
         self.assertIn('data-testid="responsable-total">1<', html)
+
+    def test_filtro_por_responsable_muestra_solo_sus_casos(self):
+        rows = [
+            _solicitud_stub(10, "SOL-P-010", "activa", 15, horas_actividad=80),
+            _solicitud_stub(11, "SOL-P-011", "activa", 15, horas_actividad=80),
+            _solicitud_stub(12, "SOL-P-012", "activa", 15, horas_actividad=80),
+        ]
+        with flask_app.app_context():
+            with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
+                 patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch.object(admin_routes, "_resolve_solicitud_last_actor_user_ids", return_value={10: 1, 11: 2}), \
+                 patch.object(admin_routes, "_staff_username_map", return_value={1: "Karla", 2: "Anyi"}):
+                resp = self.client.get(
+                    "/admin/solicitudes/prioridad?responsable=1",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html", "")
+        self.assertIn("SOL-P-010", html)
+        self.assertNotIn("SOL-P-011", html)
+        self.assertNotIn("SOL-P-012", html)
+        self.assertIn('data-testid="metric-total">1<', html)
+        self.assertIn("Karla", html)
+        self.assertNotIn("Anyi", html)
+
+    def test_filtro_sin_responsable_muestra_bloque_operativo(self):
+        rows = [
+            _solicitud_stub(10, "SOL-P-010", "activa", 15, horas_actividad=80),
+            _solicitud_stub(11, "SOL-P-011", "activa", 15, horas_actividad=80),
+        ]
+        with flask_app.app_context():
+            with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
+                 patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch.object(admin_routes, "_resolve_solicitud_last_actor_user_ids", return_value={10: 1}), \
+                 patch.object(admin_routes, "_staff_username_map", return_value={1: "Karla"}):
+                resp = self.client.get(
+                    "/admin/solicitudes/prioridad?responsable=none",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html", "")
+        self.assertNotIn("SOL-P-010", html)
+        self.assertIn("SOL-P-011", html)
+        self.assertIn('data-testid="sin-responsable-block"', html)
+        self.assertIn('data-testid="metric-sin-responsable">1<', html)
+
+    def test_resumen_responsable_incluye_vencidas_y_riesgo(self):
+        rows = [
+            _solicitud_stub(10, "SOL-P-010", "activa", 15, horas_actividad=80),
+            _solicitud_stub(11, "SOL-P-011", "activa", 15, horas_actividad=8),
+        ]
+        rows[0].fecha_seguimiento_manual = date(2026, 3, 23)  # vencida
+        rows[1].fecha_seguimiento_manual = date(2026, 3, 24)  # hoy
+        with flask_app.app_context():
+            with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
+                 patch.object(admin_routes, "rd_today", return_value=date(2026, 3, 24)), \
+                 patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch.object(admin_routes, "_resolve_solicitud_last_actor_user_ids", return_value={10: 1, 11: 1}), \
+                 patch.object(admin_routes, "_staff_username_map", return_value={1: "Karla"}):
+                resp = self.client.get("/admin/solicitudes/prioridad", headers=self._async_headers(), follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html", "")
+        self.assertIn('data-testid="responsable-overdue">1<', html)
+        self.assertIn('data-testid="responsable-stagnant">3<', html)
 
     def test_badge_seguimiento_manual_render_por_estado(self):
         rows = [
@@ -348,6 +417,34 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         self.assertIn('data-testid="metric-urgente">1<', html)
         self.assertIn('data-testid="metric-atencion">1<', html)
         self.assertIn('data-testid="metric-normal">1<', html)
+
+    def test_metricas_riesgo_operativo_incluyen_pago_prolongado_y_reemplazo_sin_seguimiento(self):
+        rows = [
+            _solicitud_stub(10, "SOL-PAGO-LARGO", "espera_pago", 8, horas_actividad=6),
+            _solicitud_stub(11, "SOL-REEMP-SIN-SEG", "reemplazo", 6, horas_actividad=6),
+        ]
+        rows[1].reemplazos = [
+            SimpleNamespace(
+                id=501,
+                fecha_inicio_reemplazo=datetime(2026, 3, 20, 8, 0, 0),
+                fecha_fin_reemplazo=None,
+                created_at=datetime(2026, 3, 20, 8, 0, 0),
+            )
+        ]
+        rows[1].fecha_seguimiento_manual = None
+
+        with flask_app.app_context():
+            with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
+                 patch.object(admin_routes, "rd_today", return_value=date(2026, 3, 24)), \
+                 patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
+                resp = self.client.get("/admin/solicitudes/prioridad", headers=self._async_headers(), follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("replace_html", "")
+        self.assertIn('data-testid="metric-espera-pago-prolongada">1<', html)
+        self.assertIn('data-testid="metric-reemplazo-sin-seguimiento">1<', html)
+        self.assertIn("Espera de pago prolongada", html)
+        self.assertIn("Reemplazo sin seguimiento", html)
 
     def test_metricas_respetan_filtros_activos(self):
         rows = [

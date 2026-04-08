@@ -120,7 +120,7 @@
   {% set _presence_operational_path = true %}
 {% endif %}
 {% set _presence_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and (request.endpoint not in _presence_auth_endpoints) and _presence_operational_path %}
-{% set _chat_badge_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') %}
+{% set _chat_badge_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -255,7 +255,7 @@
             <a class="nav-link {% if request.endpoint in ['admin.chat_staff_inbox'] %}active{% endif %}"
                href="{{ url_for('admin.chat_staff_inbox') }}"
                id="adminChatGlobalBadgeLink">
-              Inbox Chat
+              Chat staff
               <span id="adminChatGlobalBadge"
                     class="badge rounded-pill text-bg-danger ms-1 d-none"
                     aria-live="polite"

@@ -48,14 +48,18 @@
 
   function notifItemHtml(item) {
     const unreadCls = item.is_read ? "" : " unread";
-    const stateLabel = item.is_read ? "Leida" : "No leida";
+    const stateLabel = item.is_read ? "Leída" : "No leída";
+    const markReadBtn = item.is_read
+      ? ""
+      : `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="mark-read" data-id="${escapeHtml(item.id)}">Marcar leída</button>`;
     return [
       `<article class="client-notif-item${unreadCls}" data-id="${escapeHtml(item.id)}">`,
       `<div class="fw-semibold">${escapeHtml(item.title || "Notificacion")}</div>`,
       `<div class="small text-muted">${escapeHtml(item.body || "")}</div>`,
       `<div class="client-notif-meta mt-1">${escapeHtml(fmtDate(item.created_at))} · ${escapeHtml(stateLabel)}</div>`,
       `<div class="client-notif-actions">`,
-      `<button type="button" class="btn btn-sm btn-primary" data-action="view" data-id="${escapeHtml(item.id)}" data-url="${escapeHtml(safeUrl(item.url || "#"))}">Ver</button>`,
+      `<button type="button" class="btn btn-sm btn-primary" data-action="view" data-id="${escapeHtml(item.id)}" data-url="${escapeHtml(safeUrl(item.url || "#"))}">Ver detalle</button>`,
+      markReadBtn,
       `<button type="button" class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${escapeHtml(item.id)}">Eliminar</button>`,
       `</div>`,
       `</article>`,
@@ -189,6 +193,31 @@
         setUnreadCount(payload.unread_count || 0);
         if (!listNode.querySelector(".client-notif-item")) {
           listNode.innerHTML = '<div class="text-muted small py-3">No tienes notificaciones recientes.</div>';
+        }
+      } catch (_e) {
+        // no-op: se registra en postAction
+      } finally {
+        btn.classList.remove("is-loading");
+        btn.disabled = false;
+      }
+    }
+
+    if (action === "mark-read") {
+      btn.classList.add("is-loading");
+      btn.disabled = true;
+      try {
+        const payload = await postAction(`/clientes/notificaciones/${id}/marcar-leida`);
+        setUnreadCount(payload.unread_count || 0);
+        const row = listNode.querySelector(`.client-notif-item[data-id="${id}"]`);
+        if (row) {
+          row.classList.remove("unread");
+          const meta = row.querySelector(".client-notif-meta");
+          if (meta) {
+            const txt = String(meta.textContent || "");
+            meta.textContent = txt.replace("No leída", "Leída").replace("No leida", "Leída");
+          }
+          const markBtn = row.querySelector('button[data-action="mark-read"]');
+          if (markBtn) markBtn.remove();
         }
       } catch (_e) {
         // no-op: se registra en postAction

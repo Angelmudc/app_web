@@ -2,7 +2,7 @@
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
       <h1 class="h3 mb-1">
-        📄 Detalle Solicitud <span class="text-info">{{ solicitud.codigo_solicitud }}</span>
+        Detalle de solicitud <span class="text-info">{{ solicitud.codigo_solicitud }}</span>
       </h1>
       <div class="text-muted small">
         Estado:
@@ -18,11 +18,24 @@
       </div>
     </div>
     <div class="d-flex gap-2">
+      {% if (chat_feature_enabled if chat_feature_enabled is defined else True) and solicitud.cliente_id %}
+      <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="cliente_id" value="{{ solicitud.cliente_id }}">
+        <input type="hidden" name="solicitud_id" value="{{ solicitud.id }}">
+        <button type="submit" class="btn btn-outline-success">
+          <i class="bi bi-chat-dots me-1"></i> Abrir chat
+        </button>
+      </form>
+      {% endif %}
       <a href="{{ url_for('admin.sugerencias_solicitud', solicitud_id=solicitud.id) }}" class="btn btn-outline-primary">
         <i class="bi bi-lightbulb me-1"></i> Ver sugerencias
       </a>
+      <a href="{{ url_for('admin.listar_solicitudes', q=(solicitud.codigo_solicitud or ('SOL-' ~ solicitud.id))) }}" class="btn btn-outline-secondary" data-admin-nav="true">
+        <i class="bi bi-list-ul me-1"></i> Bandeja de solicitudes
+      </a>
       <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary" data-admin-nav="true">
-        <i class="bi bi-arrow-left-circle me-1"></i> Volver al Cliente
+        <i class="bi bi-arrow-left-circle me-1"></i> Volver al cliente
       </a>
     </div>
   </div>
@@ -30,23 +43,23 @@
   <!-- Información general -->
   <div class="glass-card mb-4">
     <div class="glass-header">
-      <i class="bi bi-info-circle-fill"></i> Información General
+      <i class="bi bi-info-circle-fill"></i> Información general
     </div>
     <dl class="row p-4 mb-0">
-      <dt class="col-sm-3">📅 Fecha Solicitud</dt>
+      <dt class="col-sm-3">Fecha de solicitud</dt>
       <dd class="col-sm-9">{{ solicitud.fecha_solicitud|rd_datetime('%Y-%m-%d') }}</dd>
 
-      <dt class="col-sm-3">🏙️ Ciudad / Sector</dt>
+      <dt class="col-sm-3">Ciudad / sector</dt>
       <dd class="col-sm-9">{{ solicitud.ciudad_sector }}</dd>
 
-      <dt class="col-sm-3">⚙️ Modalidad</dt>
+      <dt class="col-sm-3">Modalidad</dt>
       <dd class="col-sm-9">{{ solicitud.modalidad_trabajo }}</dd>
 
       {% if solicitud.fecha_cancelacion %}
-      <dt class="col-sm-3">⛔ Fecha Cancelación</dt>
+      <dt class="col-sm-3">Fecha de cancelación</dt>
       <dd class="col-sm-9">{{ solicitud.fecha_cancelacion|rd_datetime('%Y-%m-%d %H:%M') }}</dd>
 
-      <dt class="col-sm-3">💬 Motivo Cancelación</dt>
+      <dt class="col-sm-3">Motivo de cancelación</dt>
       <dd class="col-sm-9">{{ solicitud.motivo_cancelacion }}</dd>
       {% endif %}
     </dl>

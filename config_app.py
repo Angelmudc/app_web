@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, List
 from urllib.parse import urlsplit
 
-from flask import Flask, request, redirect, url_for, abort, session, render_template, g
+from flask import Flask, request, redirect, url_for, abort, session, render_template, g, jsonify
 from datetime import timedelta
 from werkzeug.exceptions import RequestEntityTooLarge, HTTPException
 
@@ -437,7 +437,7 @@ def create_app():
         or cache_type_env in {"redis", "rediscache"}
     )
     distributed_backplane_required = _is_true(
-        os.getenv("DISTRIBUTED_BACKPLANE_REQUIRED", "1" if prod else "0")
+        os.getenv("DISTRIBUTED_BACKPLANE_REQUIRED", "1" if (prod and not is_sqlite) else "0")
     )
     strict_runtime = _is_true(
         os.getenv("DISTRIBUTED_BACKPLANE_STRICT_RUNTIME", "0")
@@ -1018,6 +1018,10 @@ def create_app():
     @app.after_request
     def _staff_audit_post_fallback(resp):
         return log_staff_post_fallback(resp)
+
+    @app.route("/healthz", methods=["GET"])
+    def public_healthz():
+        return jsonify({"ok": True, "status": "ok"}), 200
 
     # ─────────────────────────────────────────────────────────
     # Blueprints

@@ -136,9 +136,9 @@ class ClientesParte2GuiaProcesoTest(unittest.TestCase):
         self.assertIn("Pronto recibirás candidatas según el perfil solicitado.", html)
         self.assertIn("Ver seguimiento", html)
         self.assertIn('data-guide-key="en_proceso"', html)
-        self.assertIn("Ver proceso", html)
-        self.assertIn("Ir al chat", html)
-        self.assertIn("Revisar solicitudes", html)
+        self.assertIn("Cómo funciona", html)
+        self.assertIn("Abrir chat", html)
+        self.assertIn("Ver mis solicitudes", html)
 
         rows_activa = [_SolicitudRow(11, 7, "activa")]
         html_activa = self._render_dashboard(rows=rows_activa)

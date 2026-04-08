@@ -2,10 +2,20 @@
 {% block title %}Tareas pendientes{% endblock %}
 
 {% block content %}
-<h1 class="mb-3">Tareas pendientes</h1>
+<div class="container py-4" style="max-width: 1080px;">
+  <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+    <div>
+      <h1 class="h4 mb-1">Tareas pendientes</h1>
+      <div class="text-muted small">Tareas abiertas por cliente para seguimiento operativo.</div>
+    </div>
+    <div>
+      <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-sm btn-outline-primary">Ir a trabajo del día</a>
+    </div>
+  </div>
 
 {% if tareas %}
-  <table class="table table-sm align-middle">
+  <div class="table-responsive glass-card">
+  <table class="table table-sm align-middle mb-0">
     <thead>
       <tr>
         <th>Cliente</th>
@@ -44,7 +54,9 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 {% else %}
-  <p class="text-muted">No hay tareas pendientes por ahora.</p>
+  <div class="glass-card p-4 text-center text-muted">No hay tareas pendientes por ahora.</div>
 {% endif %}
+</div>
 {% endblock %}

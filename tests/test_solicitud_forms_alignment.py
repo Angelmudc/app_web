@@ -24,6 +24,15 @@ def test_public_admin_and_client_templates_use_shared_core_partial():
     assert 'class="admin-solicitud-form"' in admin_tpl
 
 
+def test_client_template_includes_soft_wizard_shell_and_hidden_step_field():
+    cliente_tpl = _read("templates/clientes/solicitud_form.html")
+    assert "id=\"solicitud-soft-wizard\"" in cliente_tpl
+    assert "id=\"wizard_step\"" in cliente_tpl
+    assert "name=\"wizard_step\"" in cliente_tpl
+    assert "id=\"wizard-prev-btn\"" in cliente_tpl
+    assert "id=\"wizard-next-btn\"" in cliente_tpl
+
+
 def test_shared_partial_keeps_core_order_aligned():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
 

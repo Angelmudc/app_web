@@ -2,6 +2,7 @@
 {% set _estado = estado or '' %}
 {% set _per_page = per_page or 25 %}
 {% set _prioridad = prioridad or '' %}
+{% set _responsable = responsable or '' %}
 {% set _estancadas = 1 if estancadas else 0 %}
 
 {% include 'admin/_solicitudes_prioridad_summary_region.html' %}
@@ -45,6 +46,34 @@
         <div class="list-group list-group-flush">
           {% for s in block_rows %}
             <article class="list-group-item prioridad-item">
+              {% set _detail_url = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) %}
+              {% set _estado_norm = (s.estado or '')|lower %}
+              {% set _is_followup_hot = s.needs_followup_today or s.manual_followup_state in ['hoy', 'vencida'] %}
+              {% set _today_iso = today_iso if today_iso is defined else '' %}
+              {% set _is_unassigned = ((s.last_actor_label or '')|lower == 'sin responsable') %}
+              {% set _cta = namespace(label='Ver detalle', kind='link', href=_detail_url, form_action='', btn_class='btn-outline-primary', loading='Procesando...') %}
+              {% if _estado_norm == 'proceso' %}
+                {% set _cta.label = 'Activar solicitud' %}
+                {% set _cta.kind = 'form' %}
+                {% set _cta.form_action = url_for('admin.activar_solicitud_directa', id=s.id) %}
+                {% set _cta.btn_class = 'btn-success' %}
+                {% set _cta.loading = 'Activando...' %}
+              {% elif _estado_norm == 'espera_pago' %}
+                {% set _cta.label = 'Registrar pago' %}
+                {% set _cta.kind = 'link' %}
+                {% set _cta.href = url_for('admin.registrar_pago', cliente_id=s.cliente_id, id=s.id, next=_detail_url) %}
+                {% set _cta.btn_class = 'btn-warning text-dark' %}
+              {% elif _estado_norm == 'reemplazo' %}
+                {% set _cta.label = 'Gestionar reemplazo' %}
+                {% set _cta.kind = 'link' %}
+                {% set _cta.href = url_for('admin.nuevo_reemplazo', s_id=s.id) %}
+                {% set _cta.btn_class = 'btn-warning text-dark' %}
+              {% elif _estado_norm == 'activa' and _is_followup_hot %}
+                {% set _cta.label = 'Dar seguimiento' %}
+                {% set _cta.kind = 'link' %}
+                {% set _cta.href = _detail_url %}
+                {% set _cta.btn_class = 'btn-primary' %}
+              {% endif %}
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                 <div class="d-flex gap-3 flex-grow-1">
                   <div class="prioridad-days-wrap">
@@ -55,6 +84,9 @@
                   <div class="flex-grow-1">
                     <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
                       <span class="fw-semibold">{{ s.cliente and s.cliente.nombre_completo or 'Sin cliente' }}</span>
+                    {% if s.operational_signal_code in ['espera_pago_prolongada', 'reemplazo_sin_seguimiento'] %}
+                      <span class="badge text-bg-danger" data-testid="priority-auto-risk-badge-{{ s.id }}">Riesgo automático</span>
+                    {% endif %}
                     {% if s.priority_source_estimated %}
                       <span class="badge text-bg-warning" data-testid="priority-source-estimated-badge">Estimado</span>
                     {% endif %}
@@ -68,6 +100,9 @@
                       {% if s.cliente and s.cliente.codigo %} · {{ s.cliente.codigo }}{% endif %}
                     </div>
                     <p class="prioridad-main-msg">{{ s.priority_message }}</p>
+                    {% if s.next_step_reason %}
+                      <div class="prioridad-meta-line mt-1">{{ s.next_step_reason }}</div>
+                    {% endif %}
                     {% if s.estado_desde_at %}
                       <div class="prioridad-meta-line mt-1">
                         Desde {{ s.estado_desde_at|rd_datetime('%Y-%m-%d %H:%M') }}
@@ -78,11 +113,110 @@
                         <span class="badge {{ s.manual_followup_badge_class }}" data-testid="manual-followup-badge">{{ s.manual_followup_label }}</span>
                       </div>
                     {% endif %}
+                    <div class="mt-1">
+                      <span class="badge {{ s.operational_signal_badge_class }}" title="{{ s.operational_signal_hint }}">{{ s.operational_signal_label }}</span>
+                    </div>
+                    <div class="border rounded px-2 py-1 mt-2 bg-light-subtle" data-testid="priority-operativa-mini-{{ s.id }}">
+                      <div class="small">
+                        <span class="text-muted">Responsable:</span>
+                        <span class="fw-semibold">{{ s.last_actor_label }}</span>
+                        {% if _is_unassigned %}
+                          <span class="badge text-bg-warning ms-1">Sin responsable</span>
+                        {% endif %}
+                      </div>
+                      <div class="small mt-1">
+                        <span class="text-muted">Seguimiento:</span>
+                        {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
+                          <span>{{ s.manual_followup_label }}</span>
+                          <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}">{{ s.manual_followup_label }}</span>
+                        {% else %}
+                          <span class="text-muted">Sin fecha</span>
+                        {% endif %}
+                      </div>
+                      <div class="small mt-1">
+                        <span class="text-muted">Última actividad:</span>
+                        <span class="fw-semibold">{{ s.last_activity_at and s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') or 'Sin actividad registrada' }}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div class="d-flex gap-2">
-                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-primary">Ver</a>
-                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}" class="btn btn-sm btn-outline-secondary">Gestionar</a>
+                <div class="d-flex flex-column align-items-end gap-2">
+                  {% if _cta.kind == 'form' %}
+                    <form method="post"
+                          action="{{ _cta.form_action }}"
+                          class="d-inline"
+                          data-admin-async-form
+                          data-async-target="#prioridadAsyncRegion"
+                          data-async-busy-container="#prioridadAsyncScope"
+                          data-async-preserve-scroll="true"
+                          data-async-fallback="native">
+                      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                      <input type="hidden" name="_async_target" value="#prioridadAsyncRegion">
+                      <input type="hidden" name="next" value="{{ request.full_path }}">
+                      <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                      <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                      <button type="submit" class="btn btn-sm {{ _cta.btn_class }}" data-loading-text="{{ _cta.loading }}" data-testid="priority-main-cta-{{ s.id }}">{{ _cta.label }}</button>
+                    </form>
+                  {% else %}
+                    <a href="{{ _cta.href }}" class="btn btn-sm {{ _cta.btn_class }}" data-testid="priority-main-cta-{{ s.id }}">{{ _cta.label }}</a>
+                  {% endif %}
+
+                  <div class="d-flex gap-2 flex-wrap justify-content-end">
+                    {% if _estado_norm == 'espera_pago' %}
+                      <form method="post"
+                            action="{{ url_for('admin.quitar_espera_pago_solicitud', id=s.id) }}"
+                            class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#prioridadAsyncRegion"
+                            data-async-busy-container="#prioridadAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                        <input type="hidden" name="_async_target" value="#prioridadAsyncRegion">
+                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-success" data-loading-text="Procesando..." data-testid="priority-secondary-quitar-espera-{{ s.id }}">Quitar espera de pago</button>
+                      </form>
+                    {% elif _estado_norm in ['proceso', 'activa', 'reemplazo'] %}
+                      <form method="post"
+                            action="{{ url_for('admin.poner_espera_pago_solicitud', id=s.id) }}"
+                            class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#prioridadAsyncRegion"
+                            data-async-busy-container="#prioridadAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                        <input type="hidden" name="_async_target" value="#prioridadAsyncRegion">
+                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-warning" data-loading-text="Procesando..." data-testid="priority-secondary-poner-espera-{{ s.id }}">Marcar espera de pago</button>
+                      </form>
+                    {% endif %}
+
+                    {% if _is_followup_hot and _today_iso and _estado_norm in ['proceso', 'activa', 'reemplazo', 'espera_pago'] and s.manual_followup_state != 'hoy' %}
+                      <form method="post"
+                            action="{{ url_for('admin.actualizar_seguimiento_manual_solicitud', id=s.id) }}"
+                            class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#prioridadAsyncRegion"
+                            data-async-busy-container="#prioridadAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                        <input type="hidden" name="_async_target" value="#prioridadAsyncRegion">
+                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <input type="hidden" name="fecha_seguimiento_manual" value="{{ _today_iso }}">
+                        <button type="submit" class="btn btn-sm btn-outline-primary" data-loading-text="Guardando..." data-testid="priority-secondary-followup-hoy-{{ s.id }}">Marcar hoy</button>
+                      </form>
+                    {% endif %}
+
+                    {% if _cta.label != 'Ver detalle' %}
+                      <a href="{{ _detail_url }}" class="btn btn-sm btn-outline-secondary" data-testid="priority-secondary-detalle-{{ s.id }}">Ver detalle</a>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </article>
@@ -100,7 +234,7 @@
     <ul class="pagination pagination-sm mb-0 flex-wrap">
       <li class="page-item {% if _page <= 1 %}disabled{% endif %}">
         <a class="page-link"
-           href="{{ url_for('admin.solicitudes_prioridad', q=_q, estado=_estado, prioridad=_prioridad, estancadas=_estancadas, per_page=_per, page=_page-1) if _page > 1 else '#' }}"
+           href="{{ url_for('admin.solicitudes_prioridad', q=_q, estado=_estado, prioridad=_prioridad, responsable=_responsable, estancadas=_estancadas, per_page=_per, page=_page-1) if _page > 1 else '#' }}"
            {% if _page > 1 %}data-admin-async-link
            data-async-target="#prioridadAsyncRegion"
            data-async-busy-container="#prioridadAsyncScope"
@@ -111,7 +245,7 @@
       </li>
       <li class="page-item {% if has_more is defined and not has_more %}disabled{% endif %}">
         <a class="page-link"
-           href="{{ url_for('admin.solicitudes_prioridad', q=_q, estado=_estado, prioridad=_prioridad, estancadas=_estancadas, per_page=_per, page=_page+1) if (has_more is defined and has_more) else '#' }}"
+           href="{{ url_for('admin.solicitudes_prioridad', q=_q, estado=_estado, prioridad=_prioridad, responsable=_responsable, estancadas=_estancadas, per_page=_per, page=_page+1) if (has_more is defined and has_more) else '#' }}"
            {% if has_more is defined and has_more %}data-admin-async-link
            data-async-target="#prioridadAsyncRegion"
            data-async-busy-container="#prioridadAsyncScope"
