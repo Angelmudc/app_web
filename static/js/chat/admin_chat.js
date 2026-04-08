@@ -332,7 +332,7 @@
       const st = String(row.status || "open").toLowerCase();
       const sLevel = slaLevel(row);
       return [
-        '<a class="list-group-item list-group-item-action admin-chat-conv admin-chat-sla-' + esc(sLevel) + (active ? ' active' : '') + '" href="' + esc(threadUrlForConversation(row.id)) + '" data-conversation-id="' + esc(row.id) + '">',
+        '<a class="list-group-item list-group-item-action admin-chat-conv admin-chat-sla-' + esc(sLevel) + (active ? ' active' : '') + '" href="' + esc(threadUrlForConversation(row.id)) + '" data-no-loader="true" data-conversation-id="' + esc(row.id) + '">',
         '<div class="d-flex justify-content-between align-items-start gap-2">',
         '<div><div class="fw-semibold text-truncate">' + esc(row.cliente_nombre || ("Cliente #" + String(row.cliente_id || ""))) + '</div>',
         '<div class="small text-muted">' + esc(row.cliente_codigo || '') + '</div></div>',

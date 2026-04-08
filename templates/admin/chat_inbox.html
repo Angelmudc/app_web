@@ -65,6 +65,7 @@
         {% for conv in chat_conversations %}
         <a class="list-group-item list-group-item-action admin-chat-conv admin-chat-sla-{{ conv.operational.sla_level or 'none' }} {% if chat_selected and chat_selected.id == conv.id %}active{% endif %}"
            href="{{ url_for('admin.chat_staff_inbox', conversation_id=conv.id) }}"
+           data-no-loader="true"
            data-conversation-id="{{ conv.id }}">
           <div class="d-flex justify-content-between align-items-start gap-2">
             <div>
