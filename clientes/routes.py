@@ -4015,12 +4015,14 @@ def chat_cliente_messages_json(conversation_id):
     )
 
 
-@clientes_bp.route('/chat/conversations/<int:conversation_id>/messages', methods=['POST'])
+@clientes_bp.route('/chat/conversations/<int:conversation_id>/messages', methods=['GET', 'POST'])
 @login_required
 @cliente_required
 def chat_cliente_send_message(conversation_id):
     if not _chat_enabled():
         return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    if request.method == 'GET':
+        return redirect(url_for("clientes.chat_cliente", conversation_id=int(conversation_id)))
 
     conv = _chat_cliente_conversation_or_404(conversation_id)
     if chat_e2e_enabled():
@@ -4122,12 +4124,14 @@ def chat_cliente_send_message(conversation_id):
     return jsonify(payload)
 
 
-@clientes_bp.route('/chat/conversations/<int:conversation_id>/read', methods=['POST'])
+@clientes_bp.route('/chat/conversations/<int:conversation_id>/read', methods=['GET', 'POST'])
 @login_required
 @cliente_required
 def chat_cliente_mark_read(conversation_id):
     if not _chat_enabled():
         return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    if request.method == 'GET':
+        return redirect(url_for("clientes.chat_cliente", conversation_id=int(conversation_id)))
     try:
         conv = _chat_cliente_conversation_for_update_or_404(int(conversation_id))
         if chat_e2e_enabled():

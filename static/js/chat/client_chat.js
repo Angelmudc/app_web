@@ -40,6 +40,13 @@
     return String(template || "").replace("/0/", "/" + String(id) + "/");
   }
 
+  function conversationIdFromFormAction(actionUrl) {
+    const raw = String(actionUrl || "").trim();
+    if (!raw) return 0;
+    const m = raw.match(/\/chat\/conversations\/(\d+)\/messages(?:\/)?(?:\?|#|$)/);
+    return m ? (Number(m[1] || 0) || 0) : 0;
+  }
+
   function statusClass(status) {
     const s = String(status || "open").toLowerCase();
     if (s === "closed") return "text-bg-secondary";
@@ -416,41 +423,71 @@
     form.addEventListener("submit", resetDirty);
   }
 
-  if (form && sendBtn) {
-    form.addEventListener("submit", async function (ev) {
-      ev.preventDefault();
-      const cid = Number(selectedConversationId || (messagesNode && messagesNode.getAttribute("data-conversation-id")) || 0) || 0;
-      if (!cid || !bodyInput) return;
-      const text = String(bodyInput.value || "").trim();
-      if (!text) return;
-      const csrfToken = getCSRFToken();
-      sendBtn.disabled = true;
-      sendBtn.classList.add("is-loading");
-      try {
-        const body = new URLSearchParams();
-        body.set("csrf_token", csrfToken);
-        body.set("body", text);
-        await fetchJson(endpointFor(sendTpl, cid), {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-            "X-CSRFToken": csrfToken,
-            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-          },
-          body: body.toString(),
-        });
-        bodyInput.value = "";
-        form.setAttribute("data-client-live-dirty", "0");
-        await refreshMessages(cid, { silent: true, mode: "sync" });
-      } catch (_e) {
-        // no-op, degradacion silenciosa
-      } finally {
-        sendBtn.disabled = false;
-        sendBtn.classList.remove("is-loading");
+  document.addEventListener("submit", async function (ev) {
+    const submitForm = ev.target;
+    if (!(submitForm instanceof HTMLFormElement)) return;
+    if (submitForm.id !== "clientChatComposeForm") return;
+    const activeRoot = document.getElementById("clientChatRoot");
+    if (!activeRoot || !activeRoot.contains(submitForm)) return;
+
+    ev.preventDefault();
+
+    const activeMessagesNode = document.getElementById("clientChatMessages");
+    const activeBodyInput = submitForm.querySelector("#clientChatBody, textarea[name='body']");
+    const activeSendBtn = submitForm.querySelector("#clientChatSendBtn, button[type='submit']");
+    const cid = Number(
+      selectedConversationId
+      || (activeMessagesNode && activeMessagesNode.getAttribute("data-conversation-id"))
+      || conversationIdFromFormAction(submitForm.getAttribute("action"))
+      || 0
+    ) || 0;
+    if (!cid || !activeBodyInput) return;
+    const text = String(activeBodyInput.value || "").trim();
+    if (!text) return;
+
+    const csrfToken = getCSRFToken();
+    if (activeSendBtn) {
+      activeSendBtn.disabled = true;
+      activeSendBtn.classList.add("is-loading");
+    }
+
+    try {
+      const body = new URLSearchParams();
+      body.set("csrf_token", csrfToken);
+      body.set("body", text);
+      const sendUrl = endpointFor(sendTpl, cid) || submitForm.getAttribute("action") || "";
+      const payload = await fetchJson(sendUrl, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRFToken": csrfToken,
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        },
+        body: body.toString(),
+      });
+      activeBodyInput.value = "";
+      submitForm.setAttribute("data-client-live-dirty", "0");
+      if (activeMessagesNode && payload && payload.message) {
+        const activeEmpty = activeMessagesNode.querySelector("#clientChatEmpty");
+        if (activeEmpty && activeEmpty.parentNode) activeEmpty.parentNode.removeChild(activeEmpty);
+        activeMessagesNode.insertAdjacentHTML("beforeend", messageHtml(payload.message));
+        activeMessagesNode.scrollTop = activeMessagesNode.scrollHeight;
       }
-    });
-  }
+      if (messagesNode && document.body.contains(messagesNode)) {
+        await refreshMessages(cid, { silent: true, mode: "sync" });
+      } else {
+        await refreshConversations({ silent: true });
+      }
+    } catch (_e) {
+      // no-op, degradacion silenciosa
+    } finally {
+      if (activeSendBtn) {
+        activeSendBtn.disabled = false;
+        activeSendBtn.classList.remove("is-loading");
+      }
+    }
+  }, true);
 
   window.ClientChat = {
     refreshConversations,
