@@ -203,6 +203,8 @@
     document.addEventListener(
       "click",
       (e) => {
+        if (e.defaultPrevented) return;
+
         // ❌ JAMÁS loader para el tema
         if (e.target.closest?.('#themeToggle, [data-theme-toggle="true"]')) {
           hideLoader();
@@ -210,9 +212,13 @@
         }
 
         if (e.target.closest?.('[data-no-loader="true"]')) return;
+        if (e.target.closest?.('[data-admin-nav="true"]')) return;
+        if (e.target.closest?.("[data-admin-async-link]")) return;
 
         const a = e.target.closest?.("a");
         if (!a) return;
+        if (a.hasAttribute("data-admin-nav")) return;
+        if (a.hasAttribute("data-admin-async-link")) return;
         const href = a.getAttribute("href");
         if (!href || href === "#" || href.startsWith("javascript:")) return;
         if (a.hasAttribute("download")) return;
@@ -228,14 +234,19 @@
     document.addEventListener(
       "submit",
       (e) => {
+        if (e.defaultPrevented) return;
+
         const form = e.target;
         if (!(form instanceof HTMLFormElement)) return;
+        if (form.matches?.("form[data-admin-async-form]")) return;
+
         const btn = e.submitter;
         if (btn?.closest?.('#themeToggle, [data-theme-toggle="true"]')) {
           hideLoader();
           return;
         }
         if (btn?.closest?.('[data-no-loader="true"]')) return;
+        if (btn?.closest?.("[data-admin-async-link]")) return;
         showLoader();
       },
       true

@@ -91,6 +91,27 @@
     } catch (_) {}
   }
 
+  function clearGlobalLoaders() {
+    try {
+      if (window.AppLoader && typeof window.AppLoader.hideAll === "function") {
+        window.AppLoader.hideAll();
+        return;
+      }
+      if (window.AppLoader && typeof window.AppLoader.hide === "function") {
+        window.AppLoader.hide();
+      }
+    } catch (_) {}
+
+    try {
+      ["globalLoader", "appGlobalLoader", "loader", "pageLoader", "loadingOverlay", "overlayLoader"].forEach((id) => {
+        const node = document.getElementById(id);
+        if (node) node.style.display = "none";
+      });
+      document.documentElement.classList.remove("is-loading");
+      if (document.body) document.body.classList.remove("is-loading");
+    } catch (_) {}
+  }
+
   function dispatchNavigationComplete(detail) {
     const eventDetail = detail || {};
     document.dispatchEvent(new CustomEvent("admin:content-updated", {
@@ -310,6 +331,7 @@
     } finally {
       isNavigating = false;
       setLoadingUi(false);
+      clearGlobalLoaders();
       if (pendingPopstate && pendingPopstate.url) {
         const queued = pendingPopstate;
         pendingPopstate = null;

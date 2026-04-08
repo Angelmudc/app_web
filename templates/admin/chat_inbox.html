@@ -83,13 +83,13 @@
           {% if conv.solicitud_id %}
           <div class="small text-muted">Solicitud #{{ conv.solicitud.codigo_solicitud if conv.solicitud else conv.solicitud_id }}</div>
           {% endif %}
-          <div class="small mt-1">
-            {% if conv.assigned_staff_user_id %}
+            <div class="small mt-1">
+              {% if conv.assigned_staff_user_id %}
             <span class="badge bg-primary">Asignada a: {{ conv.assigned_staff_user.username if conv.assigned_staff_user else ('Staff #' ~ conv.assigned_staff_user_id) }}</span>
-            {% else %}
-            <span class="badge text-bg-light border text-muted">Sin asignar</span>
-            {% endif %}
-          </div>
+              {% else %}
+            <span class="badge chat-badge-neutral">Sin asignar</span>
+              {% endif %}
+            </div>
           <div class="small mt-1 text-muted">{{ conv.operational.sla_summary }}</div>
           <div class="small text-muted text-truncate">{{ conv.last_message_preview or 'Sin mensajes' }}</div>
         </a>
@@ -116,14 +116,14 @@
               {% if chat_selected.cliente_id %}
               <a id="adminChatGoClienteLink"
                  href="{{ url_for('admin.detalle_cliente', cliente_id=chat_selected.cliente_id) }}"
-                 class="link-secondary text-decoration-none"
+                 class="chat-link-context text-decoration-none"
                  data-admin-nav="true">
                 <i class="bi bi-person-lines-fill me-1"></i>Ver cliente
               </a>
               {% else %}
               <a id="adminChatGoClienteLink"
                  href="#"
-                 class="link-secondary text-decoration-none d-none"
+                 class="chat-link-context text-decoration-none d-none"
                  data-admin-nav="true">
                 <i class="bi bi-person-lines-fill me-1"></i>Ver cliente
               </a>
@@ -131,14 +131,14 @@
               {% if chat_selected.solicitud_id and chat_selected.cliente_id %}
               <a id="adminChatGoSolicitudLink"
                  href="{{ url_for('admin.detalle_solicitud', cliente_id=chat_selected.cliente_id, id=chat_selected.solicitud_id) }}"
-                 class="link-secondary text-decoration-none"
+                 class="chat-link-context text-decoration-none"
                  data-admin-nav="true">
                 <i class="bi bi-file-earmark-text me-1"></i>Ver solicitud
               </a>
               {% else %}
               <a id="adminChatGoSolicitudLink"
                  href="#"
-                 class="link-secondary text-decoration-none d-none"
+                 class="chat-link-context text-decoration-none d-none"
                  data-admin-nav="true">
                 <i class="bi bi-file-earmark-text me-1"></i>Ver solicitud
               </a>
@@ -148,7 +148,7 @@
               {% if chat_selected.assigned_staff_user_id %}
               <span class="badge bg-primary">Asignada a: {{ chat_selected.assigned_staff_user.username if chat_selected.assigned_staff_user else ('Staff #' ~ chat_selected.assigned_staff_user_id) }}</span>
               {% else %}
-              <span class="badge text-bg-light border text-muted">Sin asignar</span>
+              <span class="badge chat-badge-neutral">Sin asignar</span>
               {% endif %}
             </div>
             <div class="small mt-1" id="adminChatThreadSlaSummary">
@@ -183,7 +183,7 @@
         </div>
 
         <div class="admin-chat-messages" id="adminChatMessages" data-conversation-id="{{ chat_selected.id }}">
-          <div class="p-2 border-bottom bg-light d-flex justify-content-between align-items-center" id="adminChatHistoryControls">
+          <div class="p-2 border-bottom d-flex justify-content-between align-items-center" id="adminChatHistoryControls">
             <button type="button" class="btn btn-sm btn-outline-secondary" id="adminChatLoadOlderBtn">Cargar mensajes anteriores</button>
             <span class="small text-muted" id="adminChatHistoryState"></span>
           </div>

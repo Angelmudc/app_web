@@ -19,7 +19,7 @@
   </div>
 </div>
 
-<div class="d-grid gap-3">
+<div class="d-grid gap-3 sol-list-scope">
   {% for s in (solicitudes or []) %}
   {% set repl = reemplazos_activos.get(s.id) %}
   {% set estado_norm = (s.estado or '')|lower %}
@@ -33,16 +33,16 @@
 
   <article id="sol-{{ s.id }}"
            data-solicitud-id="{{ s.id }}"
-           class="card shadow-sm border-0 {% if is_unassigned %}border border-warning-subtle{% endif %}">
+           class="card shadow-sm border-0 sol-card {% if is_unassigned %}sol-unassigned{% endif %}">
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <span class="fw-semibold">{{ s.cliente and s.cliente.nombre_completo or 'Sin cliente' }}</span>
-            <span class="badge text-bg-light border text-dark">{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</span>
+            <span class="badge sol-code-badge">{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</span>
             <span class="badge bg-secondary">{{ s.estado or '—' }}</span>
           </div>
-          <div class="small text-muted mt-1">
+          <div class="small sol-muted mt-1">
             {% if s.ciudad_sector %}{{ s.ciudad_sector }}{% else %}Zona sin especificar{% endif %}
           </div>
         </div>
@@ -73,35 +73,35 @@
 
       <div class="row g-3 mt-1">
         <div class="col-12 col-lg-8">
-          <div class="small text-muted">Situación operativa</div>
+          <div class="small sol-muted">Situación operativa</div>
           <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
             <span class="badge {{ s.operational_signal_badge_class }}" title="{{ s.operational_signal_hint }}">{{ s.operational_signal_label }}</span>
-            <span class="small text-muted">{{ s.days_in_state }} días en estado</span>
+            <span class="small sol-muted">{{ s.days_in_state }} días en estado</span>
           </div>
           <div class="small mt-2"><strong>Siguiente paso:</strong> {{ s.primary_cta_help }}</div>
         </div>
 
         <div class="col-12 col-lg-4">
-          <div class="border rounded p-2 bg-light-subtle h-100" data-testid="operativa-mini-block-{{ s.id }}">
+          <div class="border rounded p-2 sol-operativa-block h-100" data-testid="operativa-mini-block-{{ s.id }}">
             <div class="small">
-              <span class="text-muted">Responsable:</span>
+              <span class="sol-muted">Responsable:</span>
               <span class="fw-semibold">{{ s.last_actor_label }}</span>
               {% if is_unassigned %}
                 <span class="badge text-bg-warning ms-1" data-testid="sin-responsable-inline-{{ s.id }}">Sin responsable</span>
               {% endif %}
             </div>
             <div class="small mt-1">
-              <span class="text-muted">Seguimiento:</span>
+              <span class="sol-muted">Seguimiento:</span>
               {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
                 <span class="visually-hidden">Seguimiento: {{ s.manual_followup_label }}</span>
                 <span>{{ s.manual_followup_label }}</span>
                 <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}">{{ s.manual_followup_label }}</span>
               {% else %}
-                <span class="text-muted">Sin fecha</span>
+                <span class="sol-muted">Sin fecha</span>
               {% endif %}
             </div>
             <div class="small mt-1">
-              <span class="text-muted">Última actividad:</span>
+              <span class="sol-muted">Última actividad:</span>
               <span class="fw-semibold">{{ s.last_activity_at and s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') or 'Sin actividad registrada' }}</span>
             </div>
           </div>
@@ -189,7 +189,7 @@
       </div>
 
       <div class="collapse mt-3" id="{{ row_collapse_id }}">
-        <div class="border rounded p-3 bg-light-subtle">
+        <div class="border rounded p-3 sol-operativa-block">
           <div class="d-flex flex-wrap gap-2 align-items-center">
             {% if cliente_url %}
             <a href="{{ cliente_url }}"
@@ -246,7 +246,7 @@
   {% else %}
   <div class="card">
     <div class="card-body py-5">
-      <div class="text-center text-muted">
+      <div class="text-center sol-muted">
         <div class="mb-2"><i class="bi bi-inbox fs-4"></i></div>
         <div class="fw-semibold">No hay solicitudes para mostrar</div>
         {% if (q or '') or (estado or '') %}
@@ -269,7 +269,7 @@
 <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
   {% set shown_start = ((page - 1) * per_page) + 1 if (total or 0) > 0 else 0 %}
   {% set shown_end = [page * per_page, total or 0]|min %}
-  <small class="text-muted">Mostrando {{ shown_start }}–{{ shown_end }} de {{ total or 0 }}</small>
+  <small class="sol-muted">Mostrando {{ shown_start }}–{{ shown_end }} de {{ total or 0 }}</small>
   <nav>
     <ul class="pagination pagination-sm mb-0">
       <li class="page-item {% if page|int <= 1 %}disabled{% endif %}">

@@ -213,3 +213,53 @@ html[data-theme="dark"] .page-login .form-control.auth{
 /* ----------------------------------------------------------
    END — PAGOS
    ---------------------------------------------------------- */
+
+/* ----------------------------------------------------------
+   PAGE — SOLICITUDES LIST (Contraste operativo local)
+   Scope intencional: solo bandeja/listado de solicitudes
+   ---------------------------------------------------------- */
+
+#solicitudesAsyncRegion .sol-list-scope{
+  color: var(--text);
+}
+
+#solicitudesAsyncRegion .sol-list-scope .sol-card{
+  background: var(--panel);
+  border: 1px solid var(--border) !important;
+  color: var(--text);
+}
+
+#solicitudesAsyncRegion .sol-list-scope .sol-card.sol-unassigned{
+  border-color: color-mix(in srgb, var(--warning) 44%, var(--border)) !important;
+}
+
+#solicitudesAsyncRegion .sol-list-scope .sol-muted{
+  color: color-mix(in srgb, var(--text) 68%, var(--muted)) !important;
+}
+
+#solicitudesAsyncRegion .sol-list-scope .sol-operativa-block{
+  background: color-mix(in srgb, var(--panel-2) 82%, var(--panel));
+  border-color: var(--border) !important;
+}
+
+#solicitudesAsyncRegion .sol-list-scope .sol-code-badge{
+  background: color-mix(in srgb, var(--panel-2) 70%, var(--panel)) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+#solicitudesAsyncRegion .sol-list-scope .badge.bg-secondary{
+  background-color: #475569 !important;
+  color: #ffffff !important;
+}
+
+#solicitudesAsyncRegion .sol-list-scope .badge.text-bg-warning{
+  background-color: #f59e0b !important;
+  color: #111827 !important;
+}
+
+#solicitudesAsyncRegion .sol-list-scope .badge.text-bg-light{
+  background: color-mix(in srgb, var(--panel-2) 75%, var(--panel)) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
