@@ -6981,6 +6981,7 @@ def listar_clientes():
     if q:
         filtros = []
         q_lower = q.lower()
+        q_digits = _only_digits(q)
 
         # 1) Si es un ID exacto (entero), permite búsqueda directa por ID
         if q.isdigit():
@@ -7013,7 +7014,46 @@ def listar_clientes():
             if len(q) >= 2:
                 filtros.append(Cliente.email.ilike(f"%{q}%"))
 
-        # 4) Campos extra (solo cuando hay suficiente texto para evitar escaneo completo)
+        # 4) Teléfono:
+        #    - búsqueda textual (como antes)
+        #    - búsqueda por solo dígitos para soportar históricos con formato "809-555-0001"
+        looks_like_phone = bool(
+            q_digits
+            and len(q_digits) >= 6
+            and re.fullmatch(r"[\d\s\-\+\(\)\.\/]+", q or "")
+        )
+        if looks_like_phone:
+            try:
+                phone_digits_expr = func.replace(
+                    func.replace(
+                        func.replace(
+                            func.replace(
+                                func.replace(
+                                    func.replace(
+                                        func.replace(func.coalesce(Cliente.telefono, ''), ' ', ''),
+                                        '-',
+                                        '',
+                                    ),
+                                    '(',
+                                    '',
+                                ),
+                                ')',
+                                '',
+                            ),
+                            '+',
+                            '',
+                        ),
+                        '.',
+                        '',
+                    ),
+                    '/',
+                    '',
+                )
+                filtros.append(phone_digits_expr.like(f"%{q_digits}%"))
+            except Exception:
+                pass
+
+        # 5) Campos extra (solo cuando hay suficiente texto para evitar escaneo completo)
         if len(q) >= 2:
             filtros.extend([
                 Cliente.nombre_completo.ilike(f"%{q}%"),
