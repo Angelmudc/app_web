@@ -245,24 +245,37 @@
           </div>
         </div>
 
-        <section class="admin-chat-quick-replies border-top px-3 py-2" id="adminChatQuickReplies">
-          <div class="admin-chat-quick-replies-title small text-muted">Respuestas rápidas</div>
-          {% for group in (chat_quick_reply_groups or []) %}
-          <div class="admin-chat-quick-group">
-            <div class="admin-chat-quick-category">{{ group.category }}</div>
-            <div class="d-flex flex-wrap gap-2">
-              {% for item in (group['items'] or []) %}
-              <button
-                type="button"
-                class="btn btn-sm btn-outline-secondary admin-chat-quick-reply-btn"
-                data-quick-reply-key="{{ item.key }}"
-                data-quick-reply-body='{{ item.body|tojson|forceescape }}'>
-                {{ item.title }}
-              </button>
-              {% endfor %}
-            </div>
+        <section class="admin-chat-quick-replies border-top px-3 py-2 is-collapsed" id="adminChatQuickReplies">
+          <div class="admin-chat-quick-replies-head">
+            <div class="admin-chat-quick-replies-title small text-muted">Respuestas rápidas</div>
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary admin-chat-quick-toggle-btn"
+              id="adminChatQuickRepliesToggle"
+              aria-controls="adminChatQuickRepliesBody"
+              aria-expanded="false">
+              <i class="bi bi-chevron-down" aria-hidden="true"></i>
+              <span>Abrir</span>
+            </button>
           </div>
-          {% endfor %}
+          <div class="admin-chat-quick-replies-body" id="adminChatQuickRepliesBody">
+            {% for group in (chat_quick_reply_groups or []) %}
+            <div class="admin-chat-quick-group">
+              <div class="admin-chat-quick-category">{{ group.category }}</div>
+              <div class="d-flex flex-wrap gap-2">
+                {% for item in (group['items'] or []) %}
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary admin-chat-quick-reply-btn"
+                  data-quick-reply-key="{{ item.key }}"
+                  data-quick-reply-body='{{ item.body|tojson|forceescape }}'>
+                  {{ item.title }}
+                </button>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
         </section>
 
         <form id="adminChatComposeForm" class="admin-chat-compose border-top" method="post" action="{{ url_for('admin.chat_staff_send_message', conversation_id=chat_selected.id) }}" data-no-loader="true">

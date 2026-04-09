@@ -35,6 +35,8 @@
   const loadOlderBtn = document.getElementById("adminChatLoadOlderBtn");
   const historyStateNode = document.getElementById("adminChatHistoryState");
   const quickRepliesNode = document.getElementById("adminChatQuickReplies");
+  const quickRepliesToggleBtn = document.getElementById("adminChatQuickRepliesToggle");
+  const quickRepliesBodyNode = document.getElementById("adminChatQuickRepliesBody");
   const sendBtnDefaultHtml = sendBtn ? sendBtn.innerHTML : "";
 
   const conversationsUrl = String(root.getAttribute("data-conversations-url") || "").trim();
@@ -153,7 +155,7 @@
     const st = String((row && row.status) || "open").trim().toLowerCase();
     const level = slaLevel(row);
     if (st === "closed") return "text-bg-secondary";
-    if (st === "pending") return "text-bg-light border text-muted";
+    if (st === "pending") return "chat-badge-sla-pending";
     if (level === "overdue") return "text-bg-danger";
     if (level === "warning") return "text-bg-warning";
     return "text-bg-info";
@@ -436,6 +438,20 @@
       return String(parsed || "").trim();
     } catch (_e) {
       return value;
+    }
+  }
+
+  function setQuickRepliesCollapsed(collapsed) {
+    if (!quickRepliesNode) return;
+    const isCollapsed = Boolean(collapsed);
+    quickRepliesNode.classList.toggle("is-collapsed", isCollapsed);
+    if (quickRepliesBodyNode) {
+      quickRepliesBodyNode.setAttribute("aria-hidden", isCollapsed ? "true" : "false");
+    }
+    if (quickRepliesToggleBtn) {
+      quickRepliesToggleBtn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+      const labelNode = quickRepliesToggleBtn.querySelector("span");
+      if (labelNode) labelNode.textContent = isCollapsed ? "Abrir" : "Cerrar";
     }
   }
 
@@ -1139,6 +1155,13 @@
       const text = parseQuickReplyBody(btn.getAttribute("data-quick-reply-body"));
       if (!text) return;
       insertIntoComposer(text);
+    });
+  }
+
+  if (quickRepliesToggleBtn && quickRepliesNode) {
+    setQuickRepliesCollapsed(quickRepliesNode.classList.contains("is-collapsed"));
+    quickRepliesToggleBtn.addEventListener("click", function () {
+      setQuickRepliesCollapsed(!quickRepliesNode.classList.contains("is-collapsed"));
     });
   }
 
