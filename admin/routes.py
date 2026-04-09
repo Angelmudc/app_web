@@ -19715,11 +19715,28 @@ def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type
         "assigned_at": iso_utc_z(getattr(conversation, "assigned_at", None)),
     }
     if message is not None:
+        message_sender_type = str(getattr(message, "sender_type", "") or "").strip().lower()
+        message_sender_name = "Soporte"
+        if message_sender_type == "staff":
+            staff_row = getattr(message, "sender_staff_user", None)
+            if staff_row is not None:
+                message_sender_name = str(getattr(staff_row, "username", "") or "Soporte")
+        elif message_sender_type == "cliente":
+            message_sender_name = "Cliente"
         payload.update(
             {
                 "message_id": int(getattr(message, "id", 0) or 0),
                 "sender_type": str(getattr(message, "sender_type", "") or ""),
                 "preview": _chat_message_preview(getattr(message, "body", "") or ""),
+                "message": {
+                    "id": int(getattr(message, "id", 0) or 0),
+                    "conversation_id": int(getattr(message, "conversation_id", 0) or 0),
+                    "sender_type": str(getattr(message, "sender_type", "") or ""),
+                    "sender_name": message_sender_name,
+                    "body": str(getattr(message, "body", "") or ""),
+                    "created_at": iso_utc_z(getattr(message, "created_at", None)),
+                    "is_mine": False,
+                },
             }
         )
     if reader_type:

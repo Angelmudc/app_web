@@ -117,9 +117,6 @@
             <div class="small mt-1 text-muted{% if not chat_selected.cliente_presence_label %} d-none{% endif %}" id="adminChatClientePresence">
               {{ chat_selected.cliente_presence_label or '' }}
             </div>
-            <div class="small mt-1 text-muted{% if not chat_selected.cliente_typing_in_this_chat %} d-none{% endif %}" id="adminChatTypingIndicator">
-              {{ chat_selected.cliente_typing_label or 'Cliente está escribiendo...' }}
-            </div>
             <div class="small mt-1 d-flex align-items-center flex-wrap gap-2" id="adminChatThreadContextNav">
               {% if chat_selected.cliente_id %}
               <a id="adminChatGoClienteLink"
@@ -210,6 +207,14 @@
           {% else %}
           <div class="p-3 text-muted small" id="adminChatEmpty">Aún no hay mensajes en esta conversación.</div>
           {% endfor %}
+          <div class="admin-chat-typing-slot" id="adminChatTypingSlot" aria-live="polite" aria-atomic="true">
+            <div class="admin-chat-typing-indicator{% if not chat_selected.cliente_typing_in_this_chat %} d-none{% endif %}" id="adminChatTypingIndicator" role="status" aria-hidden="{% if chat_selected.cliente_typing_in_this_chat %}false{% else %}true{% endif %}">
+              <span class="admin-chat-typing-dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <span id="adminChatTypingLabel">{{ chat_selected.cliente_typing_label or 'Cliente está escribiendo...' }}</span>
+            </div>
+          </div>
         </div>
 
         <section class="admin-chat-quick-replies border-top px-3 py-2" id="adminChatQuickReplies">

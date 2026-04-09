@@ -1692,6 +1692,7 @@ def _normalize_cliente_live_event_from_outbox(row, *, current_cliente_id: int):
             "message_id": payload.get("message_id"),
             "sender_type": payload.get("sender_type"),
             "preview": payload.get("preview"),
+            "message": payload.get("message") if isinstance(payload.get("message"), dict) else None,
             "cliente_unread_count": payload.get("cliente_unread_count"),
             "staff_unread_count": payload.get("staff_unread_count"),
             "actor_type": payload.get("actor_type"),

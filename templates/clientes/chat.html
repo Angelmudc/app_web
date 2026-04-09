@@ -87,7 +87,6 @@
               Conversación abierta. Te responderemos por este mismo chat.
               {% endif %}
             </div>
-            <div class="small text-muted mt-1 d-none" id="clientChatTypingIndicator">Soporte está escribiendo...</div>
             {% if chat_selected.solicitud_id %}
             <div class="small text-muted">Solicitud #{{ chat_selected.solicitud.codigo_solicitud if chat_selected.solicitud else chat_selected.solicitud_id }}</div>
             {% endif %}
@@ -108,6 +107,14 @@
           {% else %}
           <div class="text-muted small p-3" id="clientChatEmpty">Escribe el primer mensaje para iniciar la conversación.</div>
           {% endfor %}
+          <div class="client-chat-typing-slot" id="clientChatTypingSlot" aria-live="polite" aria-atomic="true">
+            <div class="client-chat-typing-indicator{% if not (chat_selected and chat_selected.staff_typing_in_this_chat) %} d-none{% endif %}" id="clientChatTypingIndicator" role="status" aria-hidden="{% if chat_selected and chat_selected.staff_typing_in_this_chat %}false{% else %}true{% endif %}">
+              <span class="client-chat-typing-dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <span id="clientChatTypingLabel">{{ (chat_selected.staff_typing_label if chat_selected and chat_selected.staff_typing_label else 'Soporte está escribiendo...') }}</span>
+            </div>
+          </div>
         </div>
 
         <form class="client-chat-compose border-top" id="clientChatComposeForm" method="post" action="{{ url_for('clientes.chat_cliente_send_message', conversation_id=chat_selected.id) }}" data-client-live-dirty="0" data-no-loader="true">

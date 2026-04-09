@@ -14,6 +14,7 @@
   const threadStatusNode = document.getElementById("clientChatThreadStatus");
   const threadStatusHintNode = document.getElementById("clientChatThreadStatusHint");
   const typingIndicatorNode = document.getElementById("clientChatTypingIndicator");
+  const typingIndicatorLabelNode = document.getElementById("clientChatTypingLabel");
   const supportPresencePillNode = document.getElementById("clientChatSupportPresencePill");
   const loadOlderBtn = document.getElementById("clientChatLoadOlderBtn");
   const historyStateNode = document.getElementById("clientChatHistoryState");
@@ -147,16 +148,21 @@
       remoteTypingHideTimer = null;
     }
     if (!on) {
-      typingIndicatorNode.textContent = "";
+      if (typingIndicatorLabelNode) typingIndicatorLabelNode.textContent = "";
       typingIndicatorNode.classList.add("d-none");
+      typingIndicatorNode.setAttribute("aria-hidden", "true");
       return;
     }
-    typingIndicatorNode.textContent = String(label || "Soporte está escribiendo...");
+    if (typingIndicatorLabelNode) {
+      typingIndicatorLabelNode.textContent = String(label || "Soporte está escribiendo...");
+    }
     typingIndicatorNode.classList.remove("d-none");
+    typingIndicatorNode.setAttribute("aria-hidden", "false");
     const ttlMs = Math.max(1200, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
     remoteTypingHideTimer = window.setTimeout(function () {
-      typingIndicatorNode.textContent = "";
+      if (typingIndicatorLabelNode) typingIndicatorLabelNode.textContent = "";
       typingIndicatorNode.classList.add("d-none");
+      typingIndicatorNode.setAttribute("aria-hidden", "true");
       remoteTypingHideTimer = null;
     }, ttlMs);
   }
@@ -493,7 +499,12 @@
     list.forEach(function (m) {
       const id = Number((m && m.id) || 0) || 0;
       if (!id || hasMessageId(id)) return;
-      messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      if (anchor) {
+        anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
+      } else {
+        messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      }
       added += 1;
     });
     return added;
@@ -599,7 +610,12 @@
     clearThreadMessagesOnly();
 
     rows.forEach(function (m) {
-      messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      if (anchor) {
+        anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
+      } else {
+        messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      }
     });
     if (!rows.length) showEmptyState();
     setPaginationFromPayload(payload);
@@ -904,7 +920,31 @@
         const senderType = String(payload.sender_type || "").trim().toLowerCase();
         if (senderType !== "cliente") {
           setRemoteStaffTyping(false, "", 0);
-          scheduleMessageSync(cid, 90);
+          const liveMessage = (payload.message && typeof payload.message === "object") ? payload.message : null;
+          let insertedLiveMessage = false;
+          if (liveMessage) {
+            const liveMessageId = Number(liveMessage.id || 0) || 0;
+            if (liveMessageId > 0) {
+              const shouldStickBottom = isNearBottom();
+              const normalizedLiveMessage = Object.assign({}, liveMessage);
+              if (!Object.prototype.hasOwnProperty.call(normalizedLiveMessage, "is_mine")) {
+                normalizedLiveMessage.is_mine = false;
+              }
+              if (!Object.prototype.hasOwnProperty.call(normalizedLiveMessage, "sender_name")) {
+                normalizedLiveMessage.sender_name = "Soporte";
+              }
+              if (!Object.prototype.hasOwnProperty.call(normalizedLiveMessage, "conversation_id")) {
+                normalizedLiveMessage.conversation_id = cid;
+              }
+              insertedLiveMessage = appendMessages([normalizedLiveMessage]) > 0;
+              if (insertedLiveMessage && shouldStickBottom && messagesNode) {
+                messagesNode.scrollTop = messagesNode.scrollHeight;
+              }
+            }
+          }
+          if (!insertedLiveMessage) {
+            scheduleMessageSync(cid, 90);
+          }
         }
         scheduleMarkRead(cid, 140, 1);
         scheduleConversationsRefresh(220);

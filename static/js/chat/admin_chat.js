@@ -22,6 +22,7 @@
   const threadMeta = document.getElementById("adminChatThreadMeta");
   const clientePresenceNode = document.getElementById("adminChatClientePresence");
   const typingIndicatorNode = document.getElementById("adminChatTypingIndicator");
+  const typingIndicatorLabelNode = document.getElementById("adminChatTypingLabel");
   const goClienteLink = document.getElementById("adminChatGoClienteLink");
   const goSolicitudLink = document.getElementById("adminChatGoSolicitudLink");
   const threadAssignmentMeta = document.getElementById("adminChatThreadAssignmentMeta");
@@ -452,16 +453,21 @@
       remoteTypingHideTimer = null;
     }
     if (!on) {
-      typingIndicatorNode.textContent = "";
+      if (typingIndicatorLabelNode) typingIndicatorLabelNode.textContent = "";
       typingIndicatorNode.classList.add("d-none");
+      typingIndicatorNode.setAttribute("aria-hidden", "true");
       return;
     }
-    typingIndicatorNode.textContent = String(label || "Cliente está escribiendo...");
+    if (typingIndicatorLabelNode) {
+      typingIndicatorLabelNode.textContent = String(label || "Cliente está escribiendo...");
+    }
     typingIndicatorNode.classList.remove("d-none");
+    typingIndicatorNode.setAttribute("aria-hidden", "false");
     const ttlMs = Math.max(1200, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
     remoteTypingHideTimer = window.setTimeout(function () {
-      typingIndicatorNode.textContent = "";
+      if (typingIndicatorLabelNode) typingIndicatorLabelNode.textContent = "";
       typingIndicatorNode.classList.add("d-none");
+      typingIndicatorNode.setAttribute("aria-hidden", "true");
       remoteTypingHideTimer = null;
     }, ttlMs);
   }
@@ -632,7 +638,12 @@
     list.forEach(function (m) {
       const id = Number((m && m.id) || 0) || 0;
       if (!id || hasMessageId(id)) return;
-      messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      if (anchor) {
+        anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
+      } else {
+        messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      }
       added += 1;
     });
     return added;
@@ -785,7 +796,12 @@
     clearThreadMessagesOnly();
     const rows = Array.isArray(payload && payload.items) ? payload.items : [];
     rows.forEach(function (m) {
-      messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      if (anchor) {
+        anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
+      } else {
+        messagesNode.insertAdjacentHTML("beforeend", messageHtml(m));
+      }
     });
     if (!rows.length) showEmptyState();
     setPaginationFromPayload(payload || {});
