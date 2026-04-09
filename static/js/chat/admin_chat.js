@@ -21,6 +21,7 @@
   const threadStatus = document.getElementById("adminChatThreadStatus");
   const threadMeta = document.getElementById("adminChatThreadMeta");
   const clientePresenceNode = document.getElementById("adminChatClientePresence");
+  const typingSlotNode = document.getElementById("adminChatTypingSlot");
   const typingIndicatorNode = document.getElementById("adminChatTypingIndicator");
   const typingIndicatorLabelNode = document.getElementById("adminChatTypingLabel");
   const goClienteLink = document.getElementById("adminChatGoClienteLink");
@@ -72,6 +73,7 @@
   let lastTypingEmitAt = 0;
   let typingPulseTimer = null;
   let remoteTypingHideTimer = null;
+  let remoteTypingMutedUntil = 0;
   let conversationsRefreshTimer = null;
   let conversationsRefreshInflight = false;
   let conversationsRefreshQueued = false;
@@ -445,9 +447,23 @@
     sendBtn.setAttribute("aria-label", "Enviar");
   }
 
-  function setRemoteClientTyping(typingOn, label, expiresInSeconds) {
+  function typingAnchorNode() {
+    if (typingSlotNode && typingSlotNode.parentNode === messagesNode) return typingSlotNode;
+    if (typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode) return typingIndicatorNode;
+    return null;
+  }
+
+  function muteRemoteTyping(ms) {
+    const until = Date.now() + Math.max(0, Number(ms || 0) || 0);
+    remoteTypingMutedUntil = Math.max(remoteTypingMutedUntil, until);
+  }
+
+  function setRemoteClientTyping(typingOn, label, expiresInSeconds, opts) {
     if (!typingIndicatorNode) return;
+    const options = (opts && typeof opts === "object") ? opts : {};
+    const force = Boolean(options.force);
     const on = Boolean(typingOn);
+    if (on && !force && Date.now() < remoteTypingMutedUntil) return;
     if (remoteTypingHideTimer) {
       window.clearTimeout(remoteTypingHideTimer);
       remoteTypingHideTimer = null;
@@ -638,7 +654,7 @@
     list.forEach(function (m) {
       const id = Number((m && m.id) || 0) || 0;
       if (!id || hasMessageId(id)) return;
-      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      const anchor = typingAnchorNode();
       if (anchor) {
         anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
       } else {
@@ -795,8 +811,15 @@
     if (!messagesNode) return;
     clearThreadMessagesOnly();
     const rows = Array.isArray(payload && payload.items) ? payload.items : [];
+    const shouldHideTyping = rows.some(function (m) {
+      return String((m && m.sender_type) || "").trim().toLowerCase() === "cliente";
+    });
+    if (shouldHideTyping) {
+      muteRemoteTyping(1200);
+      setRemoteClientTyping(false, "", 0, { force: true });
+    }
     rows.forEach(function (m) {
-      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      const anchor = typingAnchorNode();
       if (anchor) {
         anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
       } else {
@@ -812,6 +835,13 @@
   function syncLatestMessages(payload) {
     if (!messagesNode) return;
     const rows = Array.isArray(payload && payload.items) ? payload.items : [];
+    const shouldHideTyping = rows.some(function (m) {
+      return String((m && m.sender_type) || "").trim().toLowerCase() === "cliente";
+    });
+    if (shouldHideTyping) {
+      muteRemoteTyping(1200);
+      setRemoteClientTyping(false, "", 0, { force: true });
+    }
     const stickBottom = isNearBottom();
     appendMessages(rows);
     if (getMessageCount() <= 0) showEmptyState();
@@ -1169,7 +1199,10 @@
       const shouldSyncMessage = eventType === "chat_message_created"
         && (senderType === "cliente" || (senderType === "staff" && !sendingMessage));
       if (shouldSyncMessage) {
-        if (senderType === "cliente") setRemoteClientTyping(false, "", 0);
+        if (senderType === "cliente") {
+          muteRemoteTyping(1200);
+          setRemoteClientTyping(false, "", 0, { force: true });
+        }
         scheduleMessageSync(cid, 100);
       }
       if (eventType === "chat_conversation_status_changed" && String(payload.status || "").trim()) {

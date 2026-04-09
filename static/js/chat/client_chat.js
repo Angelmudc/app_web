@@ -13,6 +13,7 @@
   const threadSubjectNode = document.getElementById("clientChatThreadSubject");
   const threadStatusNode = document.getElementById("clientChatThreadStatus");
   const threadStatusHintNode = document.getElementById("clientChatThreadStatusHint");
+  const typingSlotNode = document.getElementById("clientChatTypingSlot");
   const typingIndicatorNode = document.getElementById("clientChatTypingIndicator");
   const typingIndicatorLabelNode = document.getElementById("clientChatTypingLabel");
   const supportPresencePillNode = document.getElementById("clientChatSupportPresencePill");
@@ -48,6 +49,7 @@
   let lastTypingEmitAt = 0;
   let typingPulseTimer = null;
   let remoteTypingHideTimer = null;
+  let remoteTypingMutedUntil = 0;
 
   function getCSRFToken() {
     const input = document.querySelector('input[name="csrf_token"]');
@@ -140,9 +142,23 @@
     supportPresencePillNode.classList.add("d-none");
   }
 
-  function setRemoteStaffTyping(typingOn, label, expiresInSeconds) {
+  function typingAnchorNode() {
+    if (typingSlotNode && typingSlotNode.parentNode === messagesNode) return typingSlotNode;
+    if (typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode) return typingIndicatorNode;
+    return null;
+  }
+
+  function muteRemoteTyping(ms) {
+    const until = Date.now() + Math.max(0, Number(ms || 0) || 0);
+    remoteTypingMutedUntil = Math.max(remoteTypingMutedUntil, until);
+  }
+
+  function setRemoteStaffTyping(typingOn, label, expiresInSeconds, opts) {
     if (!typingIndicatorNode) return;
+    const options = (opts && typeof opts === "object") ? opts : {};
+    const force = Boolean(options.force);
     const on = Boolean(typingOn);
+    if (on && !force && Date.now() < remoteTypingMutedUntil) return;
     if (remoteTypingHideTimer) {
       window.clearTimeout(remoteTypingHideTimer);
       remoteTypingHideTimer = null;
@@ -499,7 +515,7 @@
     list.forEach(function (m) {
       const id = Number((m && m.id) || 0) || 0;
       if (!id || hasMessageId(id)) return;
-      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      const anchor = typingAnchorNode();
       if (anchor) {
         anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
       } else {
@@ -608,9 +624,16 @@
     if (!messagesNode) return;
     const rows = Array.isArray(payload && payload.items) ? payload.items : [];
     clearThreadMessagesOnly();
+    const shouldHideTyping = rows.some(function (m) {
+      return String((m && m.sender_type) || "").trim().toLowerCase() === "staff";
+    });
+    if (shouldHideTyping) {
+      muteRemoteTyping(1200);
+      setRemoteStaffTyping(false, "", 0, { force: true });
+    }
 
     rows.forEach(function (m) {
-      const anchor = typingIndicatorNode && typingIndicatorNode.parentNode === messagesNode ? typingIndicatorNode : null;
+      const anchor = typingAnchorNode();
       if (anchor) {
         anchor.insertAdjacentHTML("beforebegin", messageHtml(m));
       } else {
@@ -629,6 +652,13 @@
   function syncLatestMessages(payload) {
     if (!messagesNode) return;
     const rows = Array.isArray(payload && payload.items) ? payload.items : [];
+    const shouldHideTyping = rows.some(function (m) {
+      return String((m && m.sender_type) || "").trim().toLowerCase() === "staff";
+    });
+    if (shouldHideTyping) {
+      muteRemoteTyping(1200);
+      setRemoteStaffTyping(false, "", 0, { force: true });
+    }
     const shouldStickBottom = isNearBottom();
     appendMessages(rows);
     if (getMessageCount() <= 0) showEmptyState();
@@ -919,7 +949,8 @@
       if (eventType === "cliente.chat.message_created") {
         const senderType = String(payload.sender_type || "").trim().toLowerCase();
         if (senderType !== "cliente") {
-          setRemoteStaffTyping(false, "", 0);
+          muteRemoteTyping(1200);
+          setRemoteStaffTyping(false, "", 0, { force: true });
           const liveMessage = (payload.message && typeof payload.message === "object") ? payload.message : null;
           let insertedLiveMessage = false;
           if (liveMessage) {

@@ -128,23 +128,42 @@
 }
 
 .admin-chat-typing-slot {
-  min-height: 42px;
+  min-height: 0;
   display: flex;
   align-items: flex-end;
-  margin-top: 4px;
+  justify-content: flex-start;
+  margin: 2px 0 8px;
+  pointer-events: none;
 }
 
 .admin-chat-typing-indicator {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 7px 12px;
-  border-radius: 14px;
+  max-width: min(76%, 420px);
+  padding: 10px 13px;
+  border-radius: 16px;
   border: 1px solid var(--chat-border);
-  background: color-mix(in srgb, var(--chat-panel) 82%, var(--chat-panel-2) 18%);
+  background: color-mix(in srgb, var(--chat-panel) 86%, var(--chat-panel-2) 14%);
   color: var(--chat-muted);
-  font-size: 0.79rem;
-  line-height: 1.1;
+  font-size: 0.8rem;
+  line-height: 1.15;
+  box-shadow: 0 7px 18px rgba(14, 30, 57, 0.1);
+  position: relative;
+  animation: admin-chat-typing-enter 150ms ease-out;
+}
+
+.admin-chat-typing-indicator::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  bottom: 9px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-left: 1px solid var(--chat-border);
+  border-bottom: 1px solid var(--chat-border);
+  transform: rotate(28deg);
 }
 
 .admin-chat-typing-dots {
@@ -177,6 +196,17 @@
   35% {
     opacity: 1;
     transform: translateY(-2px);
+  }
+}
+
+@keyframes admin-chat-typing-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
