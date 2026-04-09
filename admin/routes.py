@@ -240,6 +240,7 @@ from utils.staff_presence import (
     list_recent_staff_presence_states,
     upsert_staff_presence_snapshot,
 )
+from utils.sqlite_pk import maybe_assign_sqlite_pk as _shared_maybe_assign_sqlite_pk
 from utils.staff_mfa import (
     MFA_PENDING_SESSION_KEY,
     MFA_SETUP_SECRET_SESSION_KEY,
@@ -487,17 +488,7 @@ def _incoming_correlation_id() -> str:
 
 
 def _maybe_assign_sqlite_pk(model_obj, model_cls) -> None:
-    try:
-        bind = db.session.get_bind()
-        dialect = str(getattr(getattr(bind, "dialect", None), "name", "")).strip().lower()
-        if dialect != "sqlite":
-            return
-        if getattr(model_obj, "id", None):
-            return
-        max_id = db.session.query(db.func.max(model_cls.id)).scalar() or 0
-        model_obj.id = int(max_id) + 1
-    except Exception:
-        return
+    _shared_maybe_assign_sqlite_pk(session=db.session, model_obj=model_obj, model_cls=model_cls)
 
 
 _DOMAIN_OUTBOX_TABLE_READY: bool | None = None
@@ -1179,6 +1170,8 @@ def _normalize_live_invalidation_event(event: dict, *, stream_id: str | None = N
                 "actor_type": payload.get("actor_type"),
                 "is_typing": payload.get("is_typing"),
                 "typing_expires_in": payload.get("typing_expires_in"),
+                "typing_expires_at": payload.get("typing_expires_at"),
+                "message": payload.get("message") if isinstance(payload.get("message"), dict) else None,
             },
         }
 
@@ -20173,22 +20166,26 @@ def chat_staff_send_message(conversation_id):
     if blocked_fast:
         return jsonify({"ok": False, "error": "too_fast"}), 429
 
-    idem_row, duplicate = _claim_idempotency(
-        scope="chat_staff_send_message_v1",
-        entity_type="chat_conversation",
-        entity_id=int(conv.id),
-        action="send_message",
-    )
-    if duplicate:
-        if _idempotency_request_conflict(idem_row):
-            return jsonify({"ok": False, "error": "idempotency_conflict"}), 409
-        return jsonify({"ok": True, "duplicate": True}), 200
+    idem_row = None
+    incoming_idem = _incoming_idempotency_key()
+    if incoming_idem:
+        idem_row, duplicate = _claim_idempotency(
+            scope="chat_staff_send_message_v1",
+            entity_type="chat_conversation",
+            entity_id=int(conv.id),
+            action="send_message",
+        )
+        if duplicate:
+            if _idempotency_request_conflict(idem_row):
+                return jsonify({"ok": False, "error": "idempotency_conflict"}), 409
+            return jsonify({"ok": True, "duplicate": True}), 200
 
     try:
         conv = _chat_staff_conversation_for_update_or_404(int(conversation_id))
         actor_staff_id = int(getattr(current_user, "id", 0) or 0)
         assignment_changed = False
         previous_assigned_staff_id = int(getattr(conv, "assigned_staff_user_id", 0) or 0)
+        prev_status = _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN)
         assignment_warning = None
         if previous_assigned_staff_id <= 0 and actor_staff_id > 0:
             conv.assigned_staff_user_id = actor_staff_id
@@ -20257,6 +20254,57 @@ def chat_staff_send_message(conversation_id):
             str(exc),
         )
         return jsonify({"ok": False, "error": "server_error"}), 500
+
+    _publish_fast_path_stream_event(
+        event_type="CHAT_MESSAGE_CREATED",
+        aggregate_type="ChatConversation",
+        aggregate_id=int(getattr(conv, "id", 0) or 0),
+        aggregate_version=None,
+        payload={
+            "cliente_id": int(getattr(conv, "cliente_id", 0) or 0),
+            "solicitud_id": int(getattr(conv, "solicitud_id", 0) or 0) or None,
+            "conversation_id": int(getattr(conv, "id", 0) or 0),
+            "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
+            "status": _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN),
+            "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
+            "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+            "assigned_staff_user_id": int(getattr(conv, "assigned_staff_user_id", 0) or 0) or None,
+            "message_id": int(getattr(msg, "id", 0) or 0),
+            "sender_type": str(getattr(msg, "sender_type", "") or ""),
+            "preview": _chat_message_preview(getattr(msg, "body", "") or ""),
+            "message": {
+                "id": int(getattr(msg, "id", 0) or 0),
+                "conversation_id": int(getattr(msg, "conversation_id", 0) or 0),
+                "sender_type": str(getattr(msg, "sender_type", "") or ""),
+                "sender_name": str(getattr(current_user, "username", "") or "Soporte"),
+                "body": str(getattr(msg, "body", "") or ""),
+                "created_at": iso_utc_z(getattr(msg, "created_at", None)),
+                "is_mine": False,
+            },
+        },
+        actor_id=f"staff:{int(getattr(current_user, 'id', 0) or 0)}",
+        region="admin",
+    )
+    if prev_status != _CHAT_STATUS_OPEN:
+        _publish_fast_path_stream_event(
+            event_type="CHAT_CONVERSATION_STATUS_CHANGED",
+            aggregate_type="ChatConversation",
+            aggregate_id=int(getattr(conv, "id", 0) or 0),
+            aggregate_version=None,
+            payload={
+                "cliente_id": int(getattr(conv, "cliente_id", 0) or 0),
+                "solicitud_id": int(getattr(conv, "solicitud_id", 0) or 0) or None,
+                "conversation_id": int(getattr(conv, "id", 0) or 0),
+                "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
+                "status": _CHAT_STATUS_OPEN,
+                "from": prev_status,
+                "to": _CHAT_STATUS_OPEN,
+                "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
+                "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+            },
+            actor_id=f"staff:{int(getattr(current_user, 'id', 0) or 0)}",
+            region="admin",
+        )
 
     return jsonify(
         {

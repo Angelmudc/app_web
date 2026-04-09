@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from config_app import db
 from models import DomainOutbox, OutboxConsumerReceipt
 from utils.staff_notifications import create_staff_notification
+from utils.sqlite_pk import maybe_assign_sqlite_pk as _shared_maybe_assign_sqlite_pk
 from utils.timezone import iso_utc_z, utc_now_naive
 
 
@@ -79,16 +80,7 @@ def _max_attempts() -> int:
 
 
 def _maybe_assign_sqlite_pk(model_obj, model_cls) -> None:
-    try:
-        bind = db.session.get_bind()
-        if str(getattr(getattr(bind, "dialect", None), "name", "")).strip().lower() != "sqlite":
-            return
-        if getattr(model_obj, "id", None):
-            return
-        max_id = db.session.query(db.func.max(model_cls.id)).scalar() or 0
-        model_obj.id = int(max_id) + 1
-    except Exception:
-        return
+    _shared_maybe_assign_sqlite_pk(session=db.session, model_obj=model_obj, model_cls=model_cls)
 
 
 def _event_envelope(row: DomainOutbox) -> dict[str, Any]:

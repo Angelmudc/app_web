@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
 import os
 from datetime import timedelta
 from types import SimpleNamespace
@@ -133,10 +134,18 @@ def test_client_chat_send_message_updates_unread_and_emits_outbox():
         for _ in range(2):
             target = target.__wrapped__
 
+        published = []
+
+        class _RedisStub:
+            def xadd(self, stream, fields):
+                published.append((stream, dict(fields or {})))
+
         with pytest.MonkeyPatch.context() as m:
             m.setattr(clientes_routes, "current_user", _cliente_user(int(cliente.id)))
             m.setattr(clientes_routes, "enforce_business_limit", lambda **_k: (False, 0))
             m.setattr(clientes_routes, "enforce_min_human_interval", lambda **_k: (False, 2))
+            m.setattr(clientes_routes, "relay_redis_client", lambda: _RedisStub())
+            m.setattr(clientes_routes, "relay_redis_stream_key", lambda: "sys:domain_events:v1")
             with flask_app.test_request_context(
                 f"/clientes/chat/conversations/{int(conv.id)}/messages",
                 method="POST",
@@ -176,6 +185,26 @@ def test_client_chat_send_message_updates_unread_and_emits_outbox():
             .first()
         )
         assert status_evt is not None
+        assert len(published) >= 1
+        assert any(str(p[0]) == "sys:domain_events:v1" for p in published)
+
+        decoded = []
+        for _stream, fields in published:
+            raw = (fields or {}).get("event")
+            if not raw:
+                continue
+            try:
+                decoded.append(json.loads(raw))
+            except Exception:
+                continue
+        message_events = [e for e in decoded if str((e or {}).get("event_type") or "").strip().upper() == "CHAT_MESSAGE_CREATED"]
+        assert message_events
+        message_payload = dict((message_events[-1] or {}).get("payload") or {})
+        msg_obj = dict(message_payload.get("message") or {})
+        assert int(message_payload.get("conversation_id") or 0) == int(conv.id)
+        assert int(msg_obj.get("conversation_id") or 0) == int(conv.id)
+        assert str(msg_obj.get("sender_type") or "") == "cliente"
+        assert str(msg_obj.get("body") or "") == "Hola soporte"
 
 
 def test_client_chat_blocks_cross_cliente_access():
@@ -1075,12 +1104,19 @@ def test_live_normalizers_accept_chat_events_and_route_to_chat_view():
             "event_id": "evt_chat_normalizer_admin",
             "event_type": "CHAT_CONVERSATION_STATUS_CHANGED",
             "aggregate": {"type": "ChatConversation", "id": "42", "version": None},
-            "payload": {"conversation_id": 42, "cliente_id": 7},
+            "payload": {
+                "conversation_id": 42,
+                "cliente_id": 7,
+                "typing_expires_at": "2026-01-01T00:00:00Z",
+                "message": {"id": 9001, "conversation_id": 42, "sender_type": "cliente", "body": "hola"},
+            },
         }
     )
     assert evt_admin is not None
     assert ((evt_admin.get("target") or {}).get("entity_type") or "") == "chat_conversation"
     assert int(((evt_admin.get("target") or {}).get("conversation_id") or 0)) == 42
+    assert str((evt_admin.get("payload") or {}).get("typing_expires_at") or "") == "2026-01-01T00:00:00Z"
+    assert int(((((evt_admin.get("payload") or {}).get("message") or {}).get("id")) or 0)) == 9001
 
     evt_admin_assignment = admin_routes._normalize_live_invalidation_event(
         {

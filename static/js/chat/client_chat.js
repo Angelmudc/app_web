@@ -369,13 +369,24 @@
     }, wait);
   }
 
-  function scheduleMessageSync(conversationId, delayMs) {
+  function scheduleMessageSync(conversationId, delayMs, retriesLeft) {
     const cid = Number(conversationId || 0) || 0;
     if (!cid) return;
+    const retries = Math.max(0, Number(retriesLeft || 0) || 0);
     if (messageSyncTimer) window.clearTimeout(messageSyncTimer);
     messageSyncTimer = window.setTimeout(function () {
       messageSyncTimer = null;
-      refreshMessages(cid, { silent: true, mode: "sync", postSync: false }).catch(function () {});
+      if (loadingLatest) {
+        if (retries > 0) {
+          scheduleMessageSync(cid, 140, retries - 1);
+        }
+        return;
+      }
+      refreshMessages(cid, { silent: true, mode: "sync", postSync: false }).catch(function () {
+        if (retries > 0) {
+          scheduleMessageSync(cid, 160, retries - 1);
+        }
+      });
     }, Math.max(60, Number(delayMs || 0) || 0));
   }
 
@@ -922,14 +933,22 @@
       const target = rawEvt.target && typeof rawEvt.target === "object" ? rawEvt.target : {};
       const eventType = String(rawEvt.event_type || "").trim().toLowerCase();
       const cid = Number(payload.conversation_id || target.conversation_id || 0) || 0;
+      const activeCid = Number(
+        selectedConversationId
+        || (messagesNode && messagesNode.getAttribute("data-conversation-id"))
+        || 0
+      ) || 0;
       if (!cid) {
         scheduleConversationsRefresh(220);
         return;
       }
 
       patchConversationRowFromPayload(cid, payload);
-      const selectedCid = Number(selectedConversationId || 0) || 0;
+      const selectedCid = activeCid;
       if (cid !== selectedCid) {
+        if (eventType === "cliente.chat.message_created" && selectedCid > 0) {
+          scheduleMessageSync(selectedCid, 120, 3);
+        }
         scheduleConversationsRefresh(260);
         return;
       }
@@ -974,7 +993,7 @@
             }
           }
           if (!insertedLiveMessage) {
-            scheduleMessageSync(cid, 90);
+            scheduleMessageSync(cid, 90, 3);
           }
         }
         scheduleMarkRead(cid, 140, 1);

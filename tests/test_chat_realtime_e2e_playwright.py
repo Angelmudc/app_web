@@ -291,6 +291,68 @@ def _admin_send(page, text: str):
     assert bool(submitted) is True
 
 
+def _client_set_typing(page, conv_id: int, is_typing: bool):
+    ok = page.evaluate(
+        """(payload) => {
+            const cid = Number((payload || {}).cid || 0);
+            const typing = Boolean((payload || {}).typing);
+            if (!cid) return false;
+            const root = document.getElementById('clientChatRoot');
+            if (!root) return false;
+            const tpl = String(root.getAttribute('data-typing-url-template') || '').trim();
+            if (!tpl) return false;
+            const endpoint = tpl.replace('/0/', '/' + String(cid) + '/');
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            const csrfToken = (csrfInput && csrfInput.value) || (csrfMeta && csrfMeta.getAttribute('content')) || '';
+            fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': String(csrfToken || ''),
+                },
+                body: JSON.stringify({ is_typing: typing, expires_in: 5 }),
+            }).catch(() => {});
+            return true;
+        }""",
+        arg={"cid": int(conv_id), "typing": bool(is_typing)},
+    )
+    assert bool(ok) is True
+
+
+def _admin_set_typing(page, conv_id: int, is_typing: bool):
+    ok = page.evaluate(
+        """(payload) => {
+            const cid = Number((payload || {}).cid || 0);
+            const typing = Boolean((payload || {}).typing);
+            if (!cid) return false;
+            const root = document.getElementById('adminChatRoot');
+            if (!root) return false;
+            const tpl = String(root.getAttribute('data-typing-url-template') || '').trim();
+            if (!tpl) return false;
+            const endpoint = tpl.replace('/0/', '/' + String(cid) + '/');
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            const csrfToken = (csrfInput && csrfInput.value) || (csrfMeta && csrfMeta.getAttribute('content')) || '';
+            fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': String(csrfToken || ''),
+                },
+                body: JSON.stringify({ is_typing: typing, expires_in: 5 }),
+            }).catch(() => {});
+            return true;
+        }""",
+        arg={"cid": int(conv_id), "typing": bool(is_typing)},
+    )
+    assert bool(ok) is True
+
+
 @pytest.mark.e2e
 def test_chat_realtime_cliente_staff_roundtrip_safe():
     tag = uuid.uuid4().hex[:8]
@@ -339,9 +401,23 @@ def test_chat_realtime_cliente_staff_roundtrip_safe():
             # Escenario A: inbox cliente abre conversación general y puede abrirla.
             page_client_a.wait_for_selector(f'#clientChatConversationList [data-conversation-id="{conv_general}"]', timeout=10000)
             _open_client_conversation(page_client_a, conv_general)
+            _open_staff_conversation(page_staff, conv_general)
 
-            # Escenario B: cliente -> staff sin F5.
+            perf = {}
+
+            # Escenario A: cliente escribe -> admin ve typing rápido.
+            page_staff.wait_for_function(
+                "() => (document.querySelector('#adminChatTypingIndicator')||{}).classList ? document.querySelector('#adminChatTypingIndicator').classList.contains('d-none') : true",
+                timeout=8000,
+            )
+            t0 = time.perf_counter()
+            _client_set_typing(page_client_a, conv_general, True)
+            page_staff.wait_for_selector("#adminChatTypingIndicator:not(.d-none)", timeout=8000)
+            perf["typing_client_to_admin_ms"] = int((time.perf_counter() - t0) * 1000)
+
+            # Escenario B: cliente envía -> admin ve mensaje rápido + typing se apaga.
             msg_b = f"e2e-B-client-to-staff-{tag}"
+            t0 = time.perf_counter()
             page_client_a.fill("#clientChatBody", msg_b)
             page_client_a.click("#clientChatSendBtn")
             page_staff.wait_for_function(
@@ -349,15 +425,41 @@ def test_chat_realtime_cliente_staff_roundtrip_safe():
                 arg=msg_b,
                 timeout=15000,
             )
+            perf["message_client_to_admin_ms"] = int((time.perf_counter() - t0) * 1000)
+            page_staff.wait_for_function(
+                "() => (document.querySelector('#adminChatTypingIndicator')||{}).classList ? document.querySelector('#adminChatTypingIndicator').classList.contains('d-none') : true",
+                timeout=8000,
+            )
 
-            # Escenario C: staff -> cliente sin F5.
-            msg_c = f"e2e-C-staff-to-client-{tag}"
+            # Escenario C: admin escribe -> cliente ve typing rápido.
+            page_client_a.wait_for_function(
+                "() => (document.querySelector('#clientChatTypingIndicator')||{}).classList ? document.querySelector('#clientChatTypingIndicator').classList.contains('d-none') : true",
+                timeout=8000,
+            )
+            t0 = time.perf_counter()
+            _admin_set_typing(page_staff, conv_general, True)
+            page_client_a.wait_for_selector("#clientChatTypingIndicator:not(.d-none)", timeout=8000)
+            perf["typing_admin_to_client_ms"] = int((time.perf_counter() - t0) * 1000)
+
+            # Escenario D: admin envía -> cliente ve mensaje rápido + typing se apaga.
+            msg_c = f"e2e-D-staff-to-client-{tag}"
+            t0 = time.perf_counter()
             _admin_send(page_staff, msg_c)
             page_client_a.wait_for_function(
                 "(txt) => (document.querySelector('#clientChatMessages')||{}).innerText.includes(txt)",
                 arg=msg_c,
                 timeout=15000,
             )
+            perf["message_admin_to_client_ms"] = int((time.perf_counter() - t0) * 1000)
+            page_client_a.wait_for_function(
+                "() => (document.querySelector('#clientChatTypingIndicator')||{}).classList ? document.querySelector('#clientChatTypingIndicator').classList.contains('d-none') : true",
+                timeout=8000,
+            )
+
+            assert int(perf.get("typing_client_to_admin_ms", 99999)) < 3500
+            assert int(perf.get("message_client_to_admin_ms", 99999)) < 4500
+            assert int(perf.get("typing_admin_to_client_ms", 99999)) < 3500
+            assert int(perf.get("message_admin_to_client_ms", 99999)) < 4500
 
             # Escenario F (parte 1): scope solicitud y general separados.
             _open_client_conversation(page_client_a, conv_solicitud)

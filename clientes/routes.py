@@ -102,6 +102,7 @@ from utils.chat_e2e_guard import (
     enforce_e2e_solicitud_id,
     e2e_message_meta,
 )
+from utils.sqlite_pk import maybe_assign_sqlite_pk as _shared_maybe_assign_sqlite_pk
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
 from .forms import (
@@ -1525,17 +1526,7 @@ def _safe_int(value, default: int = 0) -> int:
 
 
 def _maybe_assign_sqlite_pk(model_obj, model_cls) -> None:
-    try:
-        bind = db.session.get_bind()
-        dialect = str(getattr(getattr(bind, "dialect", None), "name", "")).strip().lower()
-        if dialect != "sqlite":
-            return
-        if getattr(model_obj, "id", None):
-            return
-        max_id = db.session.query(db.func.max(model_cls.id)).scalar() or 0
-        model_obj.id = int(max_id) + 1
-    except Exception:
-        return
+    _shared_maybe_assign_sqlite_pk(session=db.session, model_obj=model_obj, model_cls=model_cls)
 
 
 def _emit_cliente_outbox_event(
@@ -4002,11 +3993,28 @@ def _chat_emit_event(*, event_type: str, conversation, message=None, reader_type
         "staff_unread_count": int(getattr(conversation, "staff_unread_count", 0) or 0),
     }
     if message is not None:
+        message_sender_type = str(getattr(message, "sender_type", "") or "").strip().lower()
+        message_sender_name = "Soporte"
+        if message_sender_type == "cliente":
+            message_sender_name = "Cliente"
+        elif message_sender_type == "staff":
+            staff_row = getattr(message, "sender_staff_user", None)
+            if staff_row is not None:
+                message_sender_name = str(getattr(staff_row, "username", "") or "Soporte")
         payload.update(
             {
                 "message_id": int(getattr(message, "id", 0) or 0),
                 "sender_type": str(getattr(message, "sender_type", "") or ""),
                 "preview": _chat_message_preview(getattr(message, "body", "") or ""),
+                "message": {
+                    "id": int(getattr(message, "id", 0) or 0),
+                    "conversation_id": int(getattr(message, "conversation_id", 0) or 0),
+                    "sender_type": str(getattr(message, "sender_type", "") or ""),
+                    "sender_name": message_sender_name,
+                    "body": str(getattr(message, "body", "") or ""),
+                    "created_at": iso_utc_z(getattr(message, "created_at", None)),
+                    "is_mine": False,
+                },
             }
         )
     if reader_type:
@@ -4236,6 +4244,7 @@ def chat_cliente_send_message(conversation_id):
     if blocked_fast:
         return jsonify({"ok": False, "error": "too_fast"}), 429
 
+    prev_status = _CHAT_STATUS_OPEN
     try:
         conv = _chat_cliente_conversation_for_update_or_404(int(conversation_id))
         now = utc_now_naive()
@@ -4302,6 +4311,52 @@ def chat_cliente_send_message(conversation_id):
         "message": _chat_serialize_message_for_cliente(msg),
         "ts": iso_utc_z(),
     }
+    fast_path_payload = {
+        "cliente_id": int(getattr(conv, "cliente_id", 0) or 0),
+        "solicitud_id": int(getattr(conv, "solicitud_id", 0) or 0) or None,
+        "conversation_id": int(getattr(conv, "id", 0) or 0),
+        "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
+        "status": _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN),
+        "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
+        "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+        "message_id": int(getattr(msg, "id", 0) or 0),
+        "sender_type": str(getattr(msg, "sender_type", "") or ""),
+        "preview": _chat_message_preview(getattr(msg, "body", "") or ""),
+        "message": {
+            "id": int(getattr(msg, "id", 0) or 0),
+            "conversation_id": int(getattr(msg, "conversation_id", 0) or 0),
+            "sender_type": str(getattr(msg, "sender_type", "") or ""),
+            "sender_name": "Cliente",
+            "body": str(getattr(msg, "body", "") or ""),
+            "created_at": iso_utc_z(getattr(msg, "created_at", None)),
+            "is_mine": False,
+        },
+    }
+    _publish_cliente_fast_path_stream_event(
+        event_type="CHAT_MESSAGE_CREATED",
+        aggregate_type="ChatConversation",
+        aggregate_id=int(getattr(conv, "id", 0) or 0),
+        aggregate_version=None,
+        payload=fast_path_payload,
+    )
+    if prev_status != _CHAT_STATUS_OPEN:
+        _publish_cliente_fast_path_stream_event(
+            event_type="CHAT_CONVERSATION_STATUS_CHANGED",
+            aggregate_type="ChatConversation",
+            aggregate_id=int(getattr(conv, "id", 0) or 0),
+            aggregate_version=None,
+            payload={
+                "cliente_id": int(getattr(conv, "cliente_id", 0) or 0),
+                "solicitud_id": int(getattr(conv, "solicitud_id", 0) or 0) or None,
+                "conversation_id": int(getattr(conv, "id", 0) or 0),
+                "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
+                "status": _CHAT_STATUS_OPEN,
+                "from": prev_status,
+                "to": _CHAT_STATUS_OPEN,
+                "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
+                "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+            },
+        )
     return jsonify(payload)
 
 

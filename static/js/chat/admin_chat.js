@@ -8,6 +8,7 @@
   const messagesNode = document.getElementById("adminChatMessages");
   const form = document.getElementById("adminChatComposeForm");
   const bodyInput = document.getElementById("adminChatBody");
+  const charCountNode = document.getElementById("adminChatCharCount");
   const sendBtn = document.getElementById("adminChatSendBtn");
   const markReadBtn = document.getElementById("adminChatMarkReadBtn");
   const takeBtn = document.getElementById("adminChatTakeBtn");
@@ -54,6 +55,7 @@
   const initialStatusFilter = String(root.getAttribute("data-status-filter") || "open").trim().toLowerCase();
   const initialAssignmentFilter = String(root.getAttribute("data-assignment-filter") || "all").trim().toLowerCase();
   const canReassign = String(root.getAttribute("data-can-reassign") || "0").trim() === "1";
+  const messageMaxLen = Math.max(1, Number(root.getAttribute("data-chat-message-max-len") || 1800) || 1800);
 
   const PAGE_SIZE = 50;
   const POLL_INTERVAL_MS = 800;
@@ -128,7 +130,10 @@
   }
 
   function statusText(status) {
-    return String(status || "open").toUpperCase();
+    const s = String(status || "open").toLowerCase();
+    if (s === "closed") return "CERRADA";
+    if (s === "pending") return "PENDIENTE";
+    return "ABIERTA";
   }
 
   function slaLevel(row) {
@@ -165,10 +170,10 @@
   function assignmentBadgeHtml(row) {
     const assignedId = Number((row && row.assigned_staff_user_id) || 0) || 0;
     if (assignedId <= 0) {
-      return '<span class="badge text-bg-light border text-muted">Sin asignar</span>';
+      return '<span class="badge chat-badge-neutral admin-chat-assignment-badge">Sin asignar</span>';
     }
     const username = String((row && row.assigned_staff_username) || ("Staff #" + String(assignedId)));
-    return '<span class="badge bg-primary">Asignada: ' + esc(username) + '</span>';
+    return '<span class="badge bg-primary admin-chat-assignment-badge">Asignada a: ' + esc(username) + "</span>";
   }
 
   function currentFilters() {
@@ -296,11 +301,11 @@
       return;
     }
     if (!badge) {
-      const statusBadge = row.querySelector(".badge");
+      const topRight = row.querySelector(".admin-chat-conv-top-right");
       badge = document.createElement("span");
       badge.className = "badge rounded-pill text-bg-danger " + className;
-      if (statusBadge && statusBadge.parentNode) {
-        statusBadge.insertAdjacentElement("afterend", badge);
+      if (topRight) {
+        topRight.appendChild(badge);
       } else {
         row.appendChild(badge);
       }
@@ -314,9 +319,9 @@
 
     const statusRaw = String(payload.status || "").trim().toLowerCase();
     if (statusRaw) {
-      const statusBadge = row.querySelector(".badge");
+      const statusBadge = row.querySelector(".admin-chat-conv-status");
       if (statusBadge) {
-        statusBadge.className = "badge " + statusClass(statusRaw);
+        statusBadge.className = "badge admin-chat-conv-status " + statusClass(statusRaw);
         statusBadge.textContent = statusText(statusRaw);
       }
     }
@@ -325,7 +330,7 @@
     }
     const preview = String(payload.preview || "").trim();
     if (preview) {
-      const previewNode = row.querySelector(".small.text-muted.text-truncate");
+      const previewNode = row.querySelector(".admin-chat-conv-preview");
       if (previewNode) previewNode.textContent = preview;
     }
     if (row.parentNode === listNode) {
@@ -387,6 +392,13 @@
     const next = Math.max(minH, Math.min(maxH, Number(bodyInput.scrollHeight || minH)));
     bodyInput.style.height = String(next) + "px";
     bodyInput.style.overflowY = Number(bodyInput.scrollHeight || 0) > maxH ? "auto" : "hidden";
+    updateComposeCharCount();
+  }
+
+  function updateComposeCharCount() {
+    if (!charCountNode || !bodyInput) return;
+    const len = String(bodyInput.value || "").length;
+    charCountNode.textContent = String(len) + " / " + String(messageMaxLen);
   }
 
   function scheduleMarkRead(conversationId, delayMs, retriesLeft) {
@@ -602,25 +614,31 @@
     listNode.innerHTML = rows.map(function (row) {
       const active = Number(row.id || 0) === Number(selectedConversationId || 0);
       const unread = Math.max(0, Number(row.staff_unread_count || 0));
-      const solicitud = row.solicitud_codigo ? ('<div class="small text-muted">Solicitud #' + esc(row.solicitud_codigo) + '</div>') : '';
+      const solicitud = row.solicitud_codigo ? ('<div class="admin-chat-conv-linkmeta text-muted">Solicitud #' + esc(row.solicitud_codigo) + "</div>") : "";
       const st = String(row.status || "open").toLowerCase();
       const sLevel = slaLevel(row);
       return [
         '<a class="list-group-item list-group-item-action admin-chat-conv admin-chat-sla-' + esc(sLevel) + (active ? ' active' : '') + '" href="' + esc(threadUrlForConversation(row.id)) + '" data-no-loader="true" data-conversation-id="' + esc(row.id) + '">',
-        '<div class="d-flex justify-content-between align-items-start gap-2">',
-        '<div><div class="fw-semibold text-truncate">' + esc(row.cliente_nombre || ("Cliente #" + String(row.cliente_id || ""))) + '</div>',
-        '<div class="small text-muted">' + esc(row.cliente_codigo || '') + '</div></div>',
-        '<span class="badge ' + statusClass(st) + '">' + statusText(st) + '</span>',
-        '<span class="badge ' + slaClass(row) + '">' + esc(slaLabel(row)) + '</span>',
+        '<div class="admin-chat-conv-top">',
+        '<div class="admin-chat-conv-party">',
+        '<div class="admin-chat-conv-name text-truncate">' + esc(row.cliente_nombre || ("Cliente #" + String(row.cliente_id || ""))) + "</div>",
+        '<div class="admin-chat-conv-code">' + esc(row.cliente_codigo || "") + "</div>",
+        "</div>",
+        '<div class="admin-chat-conv-top-right">',
         unread > 0 ? '<span class="badge rounded-pill text-bg-danger admin-chat-unread-badge">' + String(unread) + '</span>' : '',
         '</div>',
-        '<div class="small mt-1">' + esc(row.subject || 'Soporte general') + '</div>',
+        "</div>",
+        '<div class="admin-chat-conv-subject text-truncate">' + esc(row.subject || "Soporte general") + "</div>",
+        '<div class="admin-chat-conv-tags">',
+        '<span class="badge admin-chat-conv-status ' + statusClass(st) + '">' + statusText(st) + "</span>",
+        '<span class="badge ' + slaClass(row) + '">' + esc(slaLabel(row)) + "</span>",
+        assignmentBadgeHtml(row),
+        "</div>",
+        '<div class="admin-chat-conv-summary text-muted">' + esc(slaSummary(row)) + "</div>",
         solicitud,
-        '<div class="small mt-1">' + assignmentBadgeHtml(row) + '</div>',
-        '<div class="small mt-1 text-muted">' + esc(slaSummary(row)) + '</div>',
-        '<div class="small text-muted text-truncate">' + esc(row.last_message_preview || 'Sin mensajes') + '</div>',
-        '</a>'
-      ].join('');
+        '<div class="admin-chat-conv-preview text-muted text-truncate">' + esc(row.last_message_preview || "Sin mensajes todavía.") + "</div>",
+        "</a>",
+      ].join("");
     }).join('');
   }
 
@@ -775,9 +793,9 @@
     if (threadAssignmentMeta) {
       if (assignedId > 0) {
         const safeName = esc(assignedUsername || ("Staff #" + String(assignedId)));
-        threadAssignmentMeta.innerHTML = '<span class="badge bg-primary">Asignada: ' + safeName + "</span>";
+        threadAssignmentMeta.innerHTML = '<span class="badge bg-primary">Asignada a: ' + safeName + "</span>";
       } else {
-        threadAssignmentMeta.innerHTML = '<span class="badge text-bg-light border text-muted">Sin asignar</span>';
+        threadAssignmentMeta.innerHTML = '<span class="badge chat-badge-neutral">Sin asignar</span>';
       }
     }
     if (threadSlaSummary) {
