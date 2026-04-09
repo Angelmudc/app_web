@@ -34,6 +34,7 @@
   let chatUnreadKnownCount = Math.max(0, Number(window.__clientChatUnreadCount || 0) || 0);
   let pollIntervalMs = 0;
   let fallbackMode = false;
+  let liveDisabled = false;
   const initialAfterId = Math.max(0, Number(body.getAttribute("data-client-live-after-id") || 0) || 0);
   let afterId = initialAfterId;
 
@@ -78,6 +79,24 @@
     });
     if (runtime.transitions.length > 100) runtime.transitions.splice(0, runtime.transitions.length - 100);
     emitRuntime();
+  }
+
+  function disableRealtime(reason) {
+    if (liveDisabled) return;
+    liveDisabled = true;
+    if (eventSource) {
+      try { eventSource.close(); } catch (_e) {}
+      eventSource = null;
+    }
+    if (reconnectTimer) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (pollTimer) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    markTransport("stopped_auth", String(reason || "auth_failed"));
   }
 
   function currentViewNode() {
@@ -565,6 +584,7 @@
   }
 
   async function pollOnce() {
+    if (liveDisabled) return;
     runtime.pollTicks += 1;
     emitRuntime();
     const u = new URL(pollUrl, window.location.origin);
@@ -576,7 +596,20 @@
       cache: "no-store",
       headers: { Accept: "application/json" },
     });
+    const authFailed = resp.redirected
+      || resp.status === 401
+      || resp.status === 403
+      || /\/clientes\/login(?:[/?#]|$)/i.test(String(resp.url || ""));
+    if (authFailed) {
+      disableRealtime("poll_auth_failed");
+      return;
+    }
     if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const contentType = String(resp.headers.get("Content-Type") || "").toLowerCase();
+    if (contentType.indexOf("application/json") < 0) {
+      disableRealtime("poll_non_json");
+      return;
+    }
     const payload = await resp.json();
     const items = Array.isArray(payload.items) ? payload.items : [];
     items.forEach(applyEvent);
@@ -593,6 +626,7 @@
   }
 
   function scheduleReconnect() {
+    if (liveDisabled) return;
     clearReconnectTimer();
     markTransport("sse_reconnecting", "timer_scheduled");
     reconnectTimer = window.setTimeout(function () {
@@ -601,6 +635,7 @@
   }
 
   function startPollingLoop() {
+    if (liveDisabled) return;
     const wait = fallbackMode ? POLL_MS_FALLBACK : POLL_MS_CONNECTED;
     if (pollTimer && pollIntervalMs === wait) return;
     if (pollTimer) window.clearInterval(pollTimer);
@@ -613,6 +648,7 @@
   }
 
   function setFallbackMode(enabled) {
+    if (liveDisabled) return;
     const next = Boolean(enabled);
     if (fallbackMode === next) return;
     fallbackMode = next;
@@ -628,6 +664,7 @@
   }
 
   function startSse() {
+    if (liveDisabled) return;
     clearReconnectTimer();
     stopSse();
     if (!("EventSource" in window)) {

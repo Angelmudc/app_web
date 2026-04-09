@@ -40,6 +40,7 @@ try:
         PublicSolicitudClienteNuevoTokenUso,
         PublicSolicitudShareAlias,
         DomainOutbox,
+        RequestIdempotencyKey,
     )
 except Exception:
     from models import Cliente, Solicitud
@@ -55,6 +56,7 @@ except Exception:
     PublicSolicitudClienteNuevoTokenUso = None
     PublicSolicitudShareAlias = None
     DomainOutbox = None
+    RequestIdempotencyKey = None
 
 from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.matching_explain import client_bullets_from_breakdown
@@ -1523,6 +1525,82 @@ def _safe_int(value, default: int = 0) -> int:
         return int(value)
     except Exception:
         return int(default)
+
+
+def _chat_incoming_idempotency_key() -> str:
+    for raw in (
+        request.headers.get("Idempotency-Key"),
+        request.form.get("idempotency_key"),
+        request.args.get("idempotency_key"),
+    ):
+        value = str(raw or "").strip()
+        if value:
+            return value[:128]
+    return ""
+
+
+def _chat_request_actor_id() -> str:
+    try:
+        uid = int(getattr(current_user, "id", 0) or 0)
+    except Exception:
+        uid = 0
+    if uid > 0:
+        return f"cliente:{uid}"
+    return "cliente:anon"
+
+
+def _chat_claim_idempotency(*, scope: str, entity_type: str, entity_id: Union[int, str], request_hash: str):
+    if RequestIdempotencyKey is None:
+        return None, False, False
+    key = _chat_incoming_idempotency_key()
+    if not key:
+        return None, False, False
+    row = RequestIdempotencyKey(
+        scope=str(scope or "")[:80],
+        idempotency_key=key,
+        actor_id=_chat_request_actor_id(),
+        entity_type=str(entity_type or "")[:50],
+        entity_id=str(entity_id)[:64],
+        request_hash=str(request_hash or "")[:64],
+    )
+    _maybe_assign_sqlite_pk(row, RequestIdempotencyKey)
+    try:
+        db.session.add(row)
+        db.session.flush()
+        return row, False, False
+    except IntegrityError as exc:
+        db.session.rollback()
+        msg = str(getattr(getattr(exc, "orig", None), "args", [""])[0] or str(exc) or "").lower()
+        if "uq_request_idempotency_scope_key" not in msg and "request_idempotency_keys.scope" not in msg:
+            return None, False, False
+        existing = (
+            RequestIdempotencyKey.query
+            .filter_by(scope=str(scope or "")[:80], idempotency_key=key)
+            .first()
+        )
+        if existing is None:
+            return None, False, False
+        existing_hash = str(getattr(existing, "request_hash", "") or "")
+        hash_conflict = existing_hash != str(request_hash or "")
+        existing.last_seen_at = utc_now_naive()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return existing, True, hash_conflict
+    except SQLAlchemyError:
+        db.session.rollback()
+        return None, False, False
+
+
+def _chat_idempotency_response_message_id(row) -> int:
+    code = str(getattr(row, "response_code", "") or "").strip()
+    if not code.lower().startswith("msg:"):
+        return 0
+    try:
+        return int(code.split(":", 1)[1])
+    except Exception:
+        return 0
 
 
 def _maybe_assign_sqlite_pk(model_obj, model_cls) -> None:
@@ -4232,17 +4310,45 @@ def chat_cliente_send_message(conversation_id):
     )
     if blocked:
         return jsonify({"ok": False, "error": "rate_limited"}), 429
-    blocked_fast, _elapsed = enforce_min_human_interval(
-        cache_obj=cache,
-        scope="chat_cliente_human_interval",
-        actor=actor,
-        min_seconds=1,
-        reason="chat_too_fast",
-        summary="Patrón de chat muy rápido cliente",
-        metadata={"conversation_id": int(conv.id)},
+    idem_scope = f"chat_cliente_send:{int(conv.id)}"
+    idem_hash_base = f"POST|chat_cliente_send|{int(conv.id)}|{int(getattr(current_user, 'id', 0) or 0)}|{body}"
+    idem_req_hash = hashlib.sha256(idem_hash_base.encode("utf-8")).hexdigest()
+    idem_row, idem_duplicate, idem_conflict = _chat_claim_idempotency(
+        scope=idem_scope,
+        entity_type="chat_conversation",
+        entity_id=int(conv.id),
+        request_hash=idem_req_hash,
     )
-    if blocked_fast:
-        return jsonify({"ok": False, "error": "too_fast"}), 429
+    if idem_conflict:
+        return jsonify({"ok": False, "error": "idempotency_conflict"}), 409
+    if idem_duplicate:
+        msg_id = _chat_idempotency_response_message_id(idem_row)
+        if msg_id > 0:
+            existing_conv = _chat_cliente_conversation_or_404(conversation_id)
+            existing_msg = (
+                ChatMessage.query
+                .filter_by(
+                    id=int(msg_id),
+                    conversation_id=int(existing_conv.id),
+                    sender_type="cliente",
+                    sender_cliente_id=int(getattr(current_user, "id", 0) or 0),
+                    is_deleted=False,
+                )
+                .first()
+            )
+            if existing_msg is not None:
+                payload = {
+                    "ok": True,
+                    "duplicate": True,
+                    "conversation": _chat_serialize_conversation_for_cliente(
+                        existing_conv,
+                        staff_presence_snapshot=_chat_staff_presence_snapshot_for_cliente_chat(),
+                    ),
+                    "message": _chat_serialize_message_for_cliente(existing_msg),
+                    "ts": iso_utc_z(),
+                }
+                return jsonify(payload)
+        return jsonify({"ok": False, "error": "duplicate_in_progress"}), 409
 
     prev_status = _CHAT_STATUS_OPEN
     try:
@@ -4280,6 +4386,11 @@ def chat_cliente_send_message(conversation_id):
                 reader_type="cliente",
                 extra_payload={"from": prev_status, "to": _CHAT_STATUS_OPEN},
             )
+        if idem_row is not None:
+            idem_row.response_status = 200
+            idem_row.response_code = f"msg:{int(getattr(msg, 'id', 0) or 0)}"
+            idem_row.last_seen_at = utc_now_naive()
+            db.session.add(idem_row)
         db.session.commit()
     except SQLAlchemyError as exc:
         db.session.rollback()

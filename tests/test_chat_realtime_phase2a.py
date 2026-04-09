@@ -207,6 +207,97 @@ def test_client_chat_send_message_updates_unread_and_emits_outbox():
         assert str(msg_obj.get("body") or "") == "Hola soporte"
 
 
+def test_client_chat_send_message_idempotency_replays_without_duplicates():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables()
+        _reset_tables()
+        cliente = _new_cliente(idx=11)
+        conv = _new_conversation(cliente_id=int(cliente.id))
+        db.session.commit()
+
+        target = clientes_routes.chat_cliente_send_message
+        for _ in range(2):
+            target = target.__wrapped__
+
+        idem_key = f"t-client-idem-replay-{int(conv.id)}"
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(clientes_routes, "current_user", _cliente_user(int(cliente.id)))
+            m.setattr(clientes_routes, "enforce_business_limit", lambda **_k: (False, 0))
+            for _idx in range(2):
+                with flask_app.test_request_context(
+                    f"/clientes/chat/conversations/{int(conv.id)}/messages",
+                    method="POST",
+                    data={"body": "Mensaje idempotente"},
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Idempotency-Key": idem_key,
+                    },
+                ):
+                    resp = target(int(conv.id))
+                    resp_obj, status_code = _resp_and_status(resp)
+                    assert status_code == 200
+                    payload = resp_obj.get_json() or {}
+                    assert payload.get("ok") is True
+                    assert (payload.get("message") or {}).get("body") == "Mensaje idempotente"
+
+        count = (
+            ChatMessage.query
+            .filter_by(
+                conversation_id=int(conv.id),
+                sender_type="cliente",
+                sender_cliente_id=int(cliente.id),
+                body="Mensaje idempotente",
+                is_deleted=False,
+            )
+            .count()
+        )
+        assert int(count or 0) == 1
+
+
+def test_client_chat_send_message_idempotency_conflict_returns_409():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables()
+        _reset_tables()
+        cliente = _new_cliente(idx=12)
+        conv = _new_conversation(cliente_id=int(cliente.id))
+        db.session.commit()
+
+        target = clientes_routes.chat_cliente_send_message
+        for _ in range(2):
+            target = target.__wrapped__
+
+        idem_key = f"t-client-idem-conflict-{int(conv.id)}"
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(clientes_routes, "current_user", _cliente_user(int(cliente.id)))
+            m.setattr(clientes_routes, "enforce_business_limit", lambda **_k: (False, 0))
+
+            with flask_app.test_request_context(
+                f"/clientes/chat/conversations/{int(conv.id)}/messages",
+                method="POST",
+                data={"body": "Mensaje A"},
+                headers={"Idempotency-Key": idem_key},
+            ):
+                first_resp = target(int(conv.id))
+                first_obj, first_status = _resp_and_status(first_resp)
+                assert first_status == 200
+                assert (first_obj.get_json() or {}).get("ok") is True
+
+            with flask_app.test_request_context(
+                f"/clientes/chat/conversations/{int(conv.id)}/messages",
+                method="POST",
+                data={"body": "Mensaje B distinto"},
+                headers={"Idempotency-Key": idem_key},
+            ):
+                second_resp = target(int(conv.id))
+                second_obj, second_status = _resp_and_status(second_resp)
+                assert second_status == 409
+                payload = second_obj.get_json() or {}
+                assert payload.get("error") == "idempotency_conflict"
+
+
 def test_client_chat_blocks_cross_cliente_access():
     flask_app.config["TESTING"] = True
     with flask_app.app_context():

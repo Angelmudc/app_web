@@ -35,6 +35,8 @@
   let loadingLatest = false;
   let loadingOlder = false;
   let sendingMessage = false;
+  let pendingLocalSeq = 0;
+  const pendingSendQueue = [];
   let nextBeforeId = 0;
   let hasMoreHistory = false;
   let conversationsRefreshTimer = null;
@@ -128,6 +130,81 @@
     } catch (_e) {}
     document.documentElement.classList.remove("is-loading");
     if (document.body) document.body.classList.remove("is-loading");
+  }
+
+  function nextPendingLocalId() {
+    pendingLocalSeq += 1;
+    return "cmsg-" + String(Date.now()) + "-" + String(pendingLocalSeq);
+  }
+
+  function buildMessageIdempotencyKey(conversationId, localId) {
+    const cid = Number(conversationId || 0) || 0;
+    let rand = "";
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        rand = String(window.crypto.randomUUID()).replace(/-/g, "");
+      }
+    } catch (_e) {}
+    if (!rand) rand = String(Math.random()).slice(2);
+    return ("chat-cli-" + String(cid) + "-" + String(localId) + "-" + rand).slice(0, 128);
+  }
+
+  function pendingMessageHtml(item) {
+    const body = String((item && item.body) || "");
+    return [
+      '<article class="client-chat-msg mine" data-pending-id="' + esc((item && item.localId) || "") + '">',
+      '<div class="bubble">' + esc(body) + '</div>',
+      '<div class="meta" data-pending-meta="1">Enviando...</div>',
+      '</article>'
+    ].join("");
+  }
+
+  function findPendingMessageNode(localId) {
+    if (!messagesNode) return null;
+    const id = String(localId || "").trim();
+    if (!id) return null;
+    return messagesNode.querySelector('article[data-pending-id="' + id + '"]');
+  }
+
+  function appendPendingMessage(item) {
+    if (!messagesNode || !item) return;
+    clearEmptyState();
+    const anchor = typingAnchorNode();
+    const html = pendingMessageHtml(item);
+    if (anchor) {
+      anchor.insertAdjacentHTML("beforebegin", html);
+    } else {
+      messagesNode.insertAdjacentHTML("beforeend", html);
+    }
+    messagesNode.scrollTop = messagesNode.scrollHeight;
+  }
+
+  function markPendingMessageState(localId, statusText) {
+    const node = findPendingMessageNode(localId);
+    if (!node) return;
+    const meta = node.querySelector("[data-pending-meta]");
+    if (meta) meta.textContent = String(statusText || "Enviando...");
+  }
+
+  function finalizePendingMessage(localId, message) {
+    const node = findPendingMessageNode(localId);
+    if (!node || !message || typeof message !== "object") return false;
+    const messageId = Number(message.id || 0) || 0;
+    if (!messageId) return false;
+    if (hasMessageId(messageId)) {
+      if (node.parentNode) node.parentNode.removeChild(node);
+      return true;
+    }
+    node.removeAttribute("data-pending-id");
+    node.setAttribute("data-message-id", String(messageId));
+    const bubble = node.querySelector(".bubble");
+    if (bubble) bubble.textContent = String(message.body || "");
+    const meta = node.querySelector(".meta");
+    if (meta) {
+      meta.removeAttribute("data-pending-meta");
+      meta.textContent = String(fmtDate(message.created_at)) + " · " + String(message.sender_name || "Tú");
+    }
+    return true;
   }
 
   function updateSupportPresence(conversation) {
@@ -414,7 +491,8 @@
 
   function setSendButtonState(button, isSending) {
     if (!button) return;
-    button.disabled = Boolean(isSending);
+    button.disabled = false;
+    button.setAttribute("aria-busy", isSending ? "true" : "false");
     if (isSending) {
       button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
       button.setAttribute("aria-label", "Enviando...");
@@ -484,12 +562,12 @@
 
   function getMessageCount() {
     if (!messagesNode) return 0;
-    return messagesNode.querySelectorAll("article[data-message-id]").length;
+    return messagesNode.querySelectorAll("article[data-message-id], article[data-pending-id]").length;
   }
 
   function clearThreadMessagesOnly() {
     if (!messagesNode) return;
-    const nodes = messagesNode.querySelectorAll("article[data-message-id], #clientChatEmpty");
+    const nodes = messagesNode.querySelectorAll("article[data-message-id], article[data-pending-id], #clientChatEmpty");
     nodes.forEach(function (node) {
       if (node && node.parentNode) node.parentNode.removeChild(node);
     });
@@ -787,6 +865,108 @@
     }
   }
 
+  function dequeueItem(item) {
+    const idx = pendingSendQueue.indexOf(item);
+    if (idx >= 0) pendingSendQueue.splice(idx, 1);
+  }
+
+  async function sendQueuedMessage(item, submitForm) {
+    const cid = Number((item && item.conversationId) || 0) || 0;
+    const bodyText = String((item && item.body) || "");
+    if (!cid || !bodyText) return null;
+    const csrfToken = getCSRFToken();
+    const body = new URLSearchParams();
+    body.set("csrf_token", csrfToken);
+    body.set("body", bodyText);
+    const sendUrl = endpointFor(sendTpl, cid) || submitForm.getAttribute("action") || "";
+    const resp = await fetch(sendUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": csrfToken,
+        "Idempotency-Key": String(item.idempotencyKey || ""),
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: body.toString(),
+    });
+    let payload = {};
+    try {
+      payload = await resp.json();
+    } catch (_e) {
+      payload = {};
+    }
+    if (!resp.ok) {
+      const error = new Error("HTTP " + String(resp.status || 0));
+      error.status = Number(resp.status || 0) || 0;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  }
+
+  async function flushPendingSendQueue(submitForm, activeSendBtn) {
+    if (sendingMessage) return;
+    if (!pendingSendQueue.length) {
+      setSendButtonState(activeSendBtn, false);
+      return;
+    }
+    const item = pendingSendQueue[0];
+    if (!item) return;
+    sendingMessage = true;
+    markPendingMessageState(item.localId, "Enviando...");
+    setSendButtonState(activeSendBtn, true);
+    clearGlobalLoaderState();
+    try {
+      const payload = await sendQueuedMessage(item, submitForm);
+      dequeueItem(item);
+      const payloadMessage = payload && payload.message ? payload.message : null;
+      const payloadConversation = payload && payload.conversation ? payload.conversation : null;
+      if (!finalizePendingMessage(item.localId, payloadMessage)) {
+        const activeCid = Number(selectedConversationId || 0) || 0;
+        if (activeCid > 0 && activeCid === Number(item.conversationId || 0) && payloadMessage) {
+          appendMessages([payloadMessage]);
+          if (messagesNode) messagesNode.scrollTop = messagesNode.scrollHeight;
+        }
+      }
+      if (payloadConversation) {
+        selectedConversationPayload = payloadConversation;
+        updateThreadHeader(payloadConversation);
+      }
+      scheduleMarkRead(item.conversationId, 120, 1);
+      scheduleConversationsRefresh(180);
+    } catch (err) {
+      item.attempts = Number(item.attempts || 0) + 1;
+      const status = Number((err && err.status) || 0) || 0;
+      const errorCode = String((err && err.payload && err.payload.error) || "").trim().toLowerCase();
+      const retryable = (status >= 500 || status === 0);
+      if (retryable && item.attempts < 3) {
+        markPendingMessageState(item.localId, "Reintentando...");
+      } else {
+        dequeueItem(item);
+        if (errorCode === "rate_limited") {
+          markPendingMessageState(item.localId, "No enviado (límite de envíos).");
+        } else if (errorCode === "idempotency_conflict") {
+          markPendingMessageState(item.localId, "No enviado (conflicto de idempotencia).");
+        } else {
+          markPendingMessageState(item.localId, "No enviado. Revisa tu conexión.");
+        }
+      }
+    } finally {
+      sendingMessage = false;
+      clearGlobalLoaderState();
+      const hasPending = pendingSendQueue.length > 0;
+      setSendButtonState(activeSendBtn, hasPending);
+      if (hasPending) {
+        window.setTimeout(function () {
+          flushPendingSendQueue(submitForm, activeSendBtn).catch(function () {});
+        }, 120);
+      }
+    }
+  }
+
   if (listNode) {
     listNode.addEventListener("click", function (ev) {
       const link = ev.target.closest("[data-conversation-id]");
@@ -842,7 +1022,7 @@
     bodyInput.addEventListener("keydown", function (ev) {
       if (ev.key !== "Enter" || ev.shiftKey) return;
       ev.preventDefault();
-      if (sendBtn && !sendBtn.disabled) sendBtn.click();
+      if (sendBtn) sendBtn.click();
     });
     form.addEventListener("submit", resetDirty);
   }
@@ -866,56 +1046,32 @@
       || 0
     ) || 0;
     if (!cid || !activeBodyInput) return;
-    if (sendingMessage) return;
     const text = String(activeBodyInput.value || "").trim();
     if (!text) return;
     stopLocalTypingSignal();
-
-    const csrfToken = getCSRFToken();
-    sendingMessage = true;
-    setSendButtonState(activeSendBtn, true);
-    clearGlobalLoaderState();
-
-    try {
-      const body = new URLSearchParams();
-      body.set("csrf_token", csrfToken);
-      body.set("body", text);
-      const sendUrl = endpointFor(sendTpl, cid) || submitForm.getAttribute("action") || "";
-      const payload = await fetchJson(sendUrl, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRFToken": csrfToken,
-          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-        },
-        body: body.toString(),
-      });
-      activeBodyInput.value = "";
-      postTypingState(cid, false).catch(function () {});
-      if (charCountNode) {
-        const maxLen = Number(activeBodyInput.getAttribute("maxlength") || root.getAttribute("data-message-max-len") || 1800) || 1800;
-        charCountNode.textContent = "0 / " + String(maxLen);
-      }
-      submitForm.setAttribute("data-client-live-dirty", "0");
-      if (activeMessagesNode && payload && payload.message) {
-        const activeEmpty = activeMessagesNode.querySelector("#clientChatEmpty");
-        if (activeEmpty && activeEmpty.parentNode) activeEmpty.parentNode.removeChild(activeEmpty);
-        activeMessagesNode.insertAdjacentHTML("beforeend", messageHtml(payload.message));
-        activeMessagesNode.scrollTop = activeMessagesNode.scrollHeight;
-      }
-      setSendButtonState(activeSendBtn, false);
-      sendingMessage = false;
-      clearGlobalLoaderState();
-      scheduleMarkRead(cid, 120, 1);
-      scheduleConversationsRefresh(180);
-    } catch (_e) {
-      // no-op, degradacion silenciosa
-    } finally {
-      setSendButtonState(activeSendBtn, false);
-      sendingMessage = false;
-      clearGlobalLoaderState();
+    const localId = nextPendingLocalId();
+    const item = {
+      localId: localId,
+      idempotencyKey: buildMessageIdempotencyKey(cid, localId),
+      conversationId: cid,
+      body: text,
+      attempts: 0,
+    };
+    pendingSendQueue.push(item);
+    appendPendingMessage(item);
+    activeBodyInput.value = "";
+    postTypingState(cid, false).catch(function () {});
+    if (charCountNode) {
+      const maxLen = Number(activeBodyInput.getAttribute("maxlength") || root.getAttribute("data-message-max-len") || 1800) || 1800;
+      charCountNode.textContent = "0 / " + String(maxLen);
     }
+    submitForm.setAttribute("data-client-live-dirty", "0");
+    if (activeMessagesNode) {
+      const activeEmpty = activeMessagesNode.querySelector("#clientChatEmpty");
+      if (activeEmpty && activeEmpty.parentNode) activeEmpty.parentNode.removeChild(activeEmpty);
+    }
+    setSendButtonState(activeSendBtn, true);
+    flushPendingSendQueue(submitForm, activeSendBtn).catch(function () {});
   }, true);
 
   window.ClientChat = {

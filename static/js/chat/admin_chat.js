@@ -58,7 +58,8 @@
   const messageMaxLen = Math.max(1, Number(root.getAttribute("data-chat-message-max-len") || 1800) || 1800);
 
   const PAGE_SIZE = 50;
-  const POLL_INTERVAL_MS = 800;
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_HIDDEN_INTERVAL_MS = 12000;
   const COMPOSE_MIN_HEIGHT_PX = 44;
   const COMPOSE_MAX_HEIGHT_PX = 168;
 
@@ -67,6 +68,10 @@
   let loadingOlder = false;
   let eventSource = null;
   let pollTimer = null;
+  let pollLoopActive = false;
+  let pollInFlight = false;
+  let pollCooldownUntil = 0;
+  let pollErrorStreak = 0;
   let reconnectTimer = null;
   let sseDisabledByMode = false;
   let streamModeProbe = null;
@@ -1296,32 +1301,97 @@
     }
   }
 
+  function pollDelayMs() {
+    const base = document.hidden ? POLL_HIDDEN_INTERVAL_MS : POLL_INTERVAL_MS;
+    const cooldownLeft = Math.max(0, Number(pollCooldownUntil || 0) - Date.now());
+    const errorPenalty = pollErrorStreak > 0 ? Math.min(12000, pollErrorStreak * 900) : 0;
+    return Math.max(base, cooldownLeft, errorPenalty, 120);
+  }
+
+  function schedulePollTick(delayMs) {
+    if (!pollLoopActive) return;
+    if (pollTimer) window.clearTimeout(pollTimer);
+    pollTimer = window.setTimeout(function () {
+      runPollLoop().catch(function () {});
+    }, Math.max(60, Number(delayMs || 0) || 0));
+  }
+
   async function pollOnce() {
-    if (!pollUrl) return;
+    if (!pollUrl) return { ok: false };
     const u = new URL(pollUrl, window.location.origin);
     u.searchParams.set("after_id", String(Math.max(0, afterId)));
     u.searchParams.set("limit", "60");
     u.searchParams.set("view", "chat_inbox");
-    const payload = await fetchJson(u.toString());
+    const resp = await fetch(u.toString(), {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const authFailed = resp.redirected
+      || resp.status === 401
+      || resp.status === 403
+      || /\/admin\/login(?:[/?#]|$)/i.test(String(resp.url || ""));
+    if (authFailed) {
+      stopPolling();
+      closeSSE();
+      clearReconnectTimer();
+      return { ok: false, stop: true };
+    }
+    if (resp.status === 429) {
+      const retryAfterRaw = String(resp.headers.get("Retry-After") || "").trim();
+      const retryAfterSec = Math.max(1, Number.parseInt(retryAfterRaw, 10) || 1);
+      pollCooldownUntil = Date.now() + (retryAfterSec * 1000);
+      return { ok: false, rateLimited: true, retryAfterMs: retryAfterSec * 1000 };
+    }
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const payload = await resp.json();
     if (String((payload && payload.mode) || "").trim().toLowerCase() === "poll_only") {
       markPollOnlyMode();
     }
     const items = Array.isArray(payload && payload.items) ? payload.items : [];
     items.forEach(handleLiveEvent);
     afterId = Math.max(afterId, Number((payload && payload.next_after_id) || 0));
+    return { ok: true };
+  }
+
+  async function runPollLoop() {
+    if (!pollLoopActive) return;
+    if (pollInFlight) {
+      schedulePollTick(180);
+      return;
+    }
+    pollInFlight = true;
+    let nextDelay = pollDelayMs();
+    try {
+      const result = await pollOnce();
+      if (result && result.stop) return;
+      if (result && result.rateLimited) {
+        pollErrorStreak = Math.min(8, pollErrorStreak + 1);
+      } else {
+        pollErrorStreak = 0;
+      }
+      nextDelay = pollDelayMs();
+    } catch (_e) {
+      pollErrorStreak = Math.min(8, pollErrorStreak + 1);
+      nextDelay = pollDelayMs();
+    } finally {
+      pollInFlight = false;
+    }
+    schedulePollTick(nextDelay);
   }
 
   function startPolling() {
-    if (pollTimer) return;
-    pollTimer = window.setInterval(function () {
-      pollOnce().catch(function () {});
-    }, POLL_INTERVAL_MS);
-    pollOnce().catch(function () {});
+    if (pollLoopActive || !pollUrl) return;
+    pollLoopActive = true;
+    schedulePollTick(40);
   }
 
   function stopPolling() {
+    pollLoopActive = false;
+    pollInFlight = false;
     if (pollTimer) {
-      window.clearInterval(pollTimer);
+      window.clearTimeout(pollTimer);
       pollTimer = null;
     }
   }
@@ -1415,14 +1485,21 @@
       const u = new URL(streamUrl, window.location.origin);
       u.searchParams.set("last_stream_id", String(lastStreamId || "$"));
       eventSource = new EventSource(u.toString(), { withCredentials: true });
+      eventSource.onopen = function () {
+        pollErrorStreak = 0;
+        pollCooldownUntil = 0;
+        stopPolling();
+      };
 
       eventSource.addEventListener("invalidation", function (ev) {
+        stopPolling();
         try {
           const data = JSON.parse(String(ev.data || "{}"));
           handleLiveEvent(data);
         } catch (_e) {}
       });
       eventSource.addEventListener("heartbeat", function (_ev) {
+        stopPolling();
         try {
           const hb = JSON.parse(String(_ev && _ev.data || "{}"));
           if (hb && hb.last_stream_id) {
@@ -1443,13 +1520,16 @@
           scheduleReconnect();
         });
       };
-
-      startPolling();
     }).catch(function () {
       startPolling();
       scheduleReconnect();
     });
   }
+
+  document.addEventListener("visibilitychange", function () {
+    if (!pollLoopActive) return;
+    schedulePollTick(document.hidden ? POLL_HIDDEN_INTERVAL_MS : 120);
+  });
 
   window.addEventListener("beforeunload", function () {
     stopLocalTypingSignal();

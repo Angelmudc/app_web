@@ -617,6 +617,79 @@ def test_chat_realtime_cliente_staff_roundtrip_safe():
                 for txt in seq_msgs:
                     assert int(by_body.get(txt, 0)) == 1
 
+            # Escenario J: ráfaga rápida desde cliente no pierde ni duplica mensajes.
+            burst_msgs = [f"e2e-J-burst-{idx + 1}-{tag}" for idx in range(5)]
+            _open_staff_conversation(page_staff, conv_general)
+            _open_client_conversation(page_client_a, conv_general)
+
+            for txt in burst_msgs:
+                page_client_a.fill("#clientChatBody", txt)
+                page_client_a.press("#clientChatBody", "Enter")
+
+            for txt in burst_msgs:
+                page_client_a.wait_for_function(
+                    "(v) => (document.querySelector('#clientChatMessages')||{}).innerText.includes(v)",
+                    arg=txt,
+                    timeout=15000,
+                )
+                page_staff.wait_for_function(
+                    "(v) => (document.querySelector('#adminChatMessages')||{}).innerText.includes(v)",
+                    arg=txt,
+                    timeout=15000,
+                )
+
+            for txt in burst_msgs:
+                page_client_a.wait_for_function(
+                    """([v, expected]) => {
+                        const host = document.querySelector('#clientChatMessages');
+                        if (!host) return false;
+                        const src = host.innerText || '';
+                        return src.split(v).length - 1 === Number(expected);
+                    }""",
+                    arg=[txt, 1],
+                    timeout=10000,
+                )
+                page_staff.wait_for_function(
+                    """([v, expected]) => {
+                        const host = document.querySelector('#adminChatMessages');
+                        if (!host) return false;
+                        const src = host.innerText || '';
+                        return src.split(v).length - 1 === Number(expected);
+                    }""",
+                    arg=[txt, 1],
+                    timeout=10000,
+                )
+
+            page_client_a.reload(wait_until="domcontentloaded")
+            _open_client_conversation(page_client_a, conv_general)
+            page_staff.reload(wait_until="domcontentloaded")
+            _open_staff_conversation(page_staff, conv_general)
+
+            for txt in burst_msgs:
+                page_client_a.wait_for_function(
+                    "(v) => (document.querySelector('#clientChatMessages')||{}).innerText.includes(v)",
+                    arg=txt,
+                    timeout=15000,
+                )
+                page_staff.wait_for_function(
+                    "(v) => (document.querySelector('#adminChatMessages')||{}).innerText.includes(v)",
+                    arg=txt,
+                    timeout=15000,
+                )
+
+            with flask_app.app_context():
+                burst_rows = (
+                    ChatMessage.query
+                    .filter(ChatMessage.conversation_id == conv_general)
+                    .filter(ChatMessage.body.in_(burst_msgs))
+                    .all()
+                )
+                burst_by_body = {}
+                for r in (burst_rows or []):
+                    burst_by_body[str(r.body)] = burst_by_body.get(str(r.body), 0) + 1
+                for txt in burst_msgs:
+                    assert int(burst_by_body.get(txt, 0)) == 1
+
             browser.close()
     finally:
         server.shutdown()
