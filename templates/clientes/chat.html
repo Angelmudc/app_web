@@ -6,25 +6,28 @@
 {% endblock %}
 
 {% block content %}
-<div class="container py-3" data-client-live-view="chat">
+<div class="container py-2 py-lg-3 client-chat-page" data-client-live-view="chat">
   <div class="card shadow-sm border-0 client-chat-shell"
        id="clientChatRoot"
        data-conversations-url="{{ url_for('clientes.chat_cliente_conversations_json') }}"
        data-messages-url-template="{{ url_for('clientes.chat_cliente_messages_json', conversation_id=0) }}"
        data-send-url-template="{{ url_for('clientes.chat_cliente_send_message', conversation_id=0) }}"
        data-read-url-template="{{ url_for('clientes.chat_cliente_mark_read', conversation_id=0) }}"
+       data-typing-url-template="{{ url_for('clientes.chat_cliente_typing', conversation_id=0) }}"
+       data-presence-ping-url="{{ url_for('clientes.clientes_live_ping') }}"
        data-open-url="{{ url_for('clientes.chat_cliente_open') }}"
        data-selected-conversation-id="{{ chat_selected.id if chat_selected else '' }}"
        data-message-max-len="{{ chat_message_max_len or 1800 }}">
 
-    <div class="card-header client-chat-header border-0 py-3 d-flex justify-content-between align-items-center">
-      <div>
-        <h1 class="h5 mb-1">Chat de soporte</h1>
-        <div class="small text-muted">Atención en horario laboral. Tus mensajes quedan dentro de la app.</div>
+    <div class="card-header client-chat-header border-0 py-3 d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div class="client-chat-header-main">
+        <div class="client-chat-header-eyebrow">Centro de soporte</div>
+        <h1 class="h4 mb-1">Chat de soporte</h1>
+        <div class="small text-muted">Te respondemos desde el equipo interno. Tus mensajes quedan registrados en tu portal.</div>
       </div>
       <form method="post" action="{{ url_for('clientes.chat_cliente_open') }}" class="m-0">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-outline-primary btn-sm" type="submit">
+        <button class="btn btn-outline-primary btn-sm client-chat-new-btn" type="submit">
           <i class="bi bi-plus-circle me-1"></i> Nuevo chat general
         </button>
       </form>
@@ -32,6 +35,10 @@
 
     <div class="client-chat-grid">
       <aside class="client-chat-inbox border-end">
+        <div class="client-chat-inbox-header px-3 py-2 border-bottom">
+          <div class="fw-semibold">Conversaciones</div>
+          <div class="small text-muted">Tu historial de soporte</div>
+        </div>
         <div class="list-group list-group-flush" id="clientChatConversationList">
           {% for conv in chat_conversations %}
           <a
@@ -42,7 +49,7 @@
             <div class="d-flex justify-content-between gap-2 align-items-start">
               <div class="fw-semibold text-truncate">{{ conv.subject or 'Soporte' }}</div>
               <span class="badge {% if conv.status == 'closed' %}text-bg-secondary{% elif conv.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}">
-                {{ (conv.status or 'open')|upper }}
+                {% if (conv.status or 'open') == 'closed' %}CERRADO{% elif (conv.status or 'open') == 'pending' %}EN ESPERA{% else %}ABIERTO{% endif %}
               </span>
               {% if conv.cliente_unread_count %}
               <span class="badge rounded-pill text-bg-danger client-chat-unread-badge">{{ conv.cliente_unread_count }}</span>
@@ -59,26 +66,38 @@
         </div>
       </aside>
 
-      <section class="client-chat-thread">
+      <section class="client-chat-thread{% if not chat_selected %} is-empty{% endif %}">
         {% if chat_selected %}
-        <div class="client-chat-thread-header border-bottom px-3 py-2 d-flex justify-content-between align-items-center">
+        <div class="client-chat-thread-header border-bottom px-3 py-3 d-flex justify-content-between align-items-center gap-3 flex-wrap">
           <div>
-            <div class="fw-semibold d-flex align-items-center gap-2">
+            <div class="fw-semibold d-flex align-items-center gap-2 flex-wrap">
               <span id="clientChatThreadSubject">{{ chat_selected.subject or 'Soporte' }}</span>
               <span class="badge {% if chat_selected.status == 'closed' %}text-bg-secondary{% elif chat_selected.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}" id="clientChatThreadStatus">
-                {{ (chat_selected.status or 'open')|upper }}
+                {% if (chat_selected.status or 'open') == 'closed' %}CERRADO{% elif (chat_selected.status or 'open') == 'pending' %}EN ESPERA{% else %}ABIERTO{% endif %}
               </span>
+              {% set _presence = (chat_staff_presence_snapshot and chat_staff_presence_snapshot.staff_in_chat_conversation_ids and chat_selected.id in chat_staff_presence_snapshot.staff_in_chat_conversation_ids) %}
+              <span class="client-chat-support-pill {% if not _presence %}d-none{% endif %}" id="clientChatSupportPresencePill"><span class="client-chat-support-dot"></span>Soporte en este chat</span>
             </div>
+            <div class="small text-muted mt-1" id="clientChatThreadStatusHint">
+              {% if (chat_selected.status or 'open') == 'closed' %}
+              Esta conversación está cerrada. Puedes abrir un chat nuevo si necesitas ayuda.
+              {% elif (chat_selected.status or 'open') == 'pending' %}
+              Tu caso está en seguimiento. Te avisaremos cuando haya actualización.
+              {% else %}
+              Conversación abierta. Te responderemos por este mismo chat.
+              {% endif %}
+            </div>
+            <div class="small text-muted mt-1 d-none" id="clientChatTypingIndicator">Soporte está escribiendo...</div>
             {% if chat_selected.solicitud_id %}
             <div class="small text-muted">Solicitud #{{ chat_selected.solicitud.codigo_solicitud if chat_selected.solicitud else chat_selected.solicitud_id }}</div>
             {% endif %}
           </div>
-          <button type="button" class="btn btn-outline-secondary btn-sm" id="clientChatMarkReadBtn">Marcar leídos</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm client-chat-markread-btn" id="clientChatMarkReadBtn">Marcar leídos</button>
         </div>
 
         <div class="client-chat-messages" id="clientChatMessages" data-conversation-id="{{ chat_selected.id }}">
           <div class="p-2 border-bottom d-flex justify-content-between align-items-center" id="clientChatHistoryControls">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="clientChatLoadOlderBtn">Cargar mensajes anteriores</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary client-chat-history-btn" id="clientChatLoadOlderBtn">Cargar mensajes anteriores</button>
             <span class="small text-muted" id="clientChatHistoryState"></span>
           </div>
           {% for m in chat_messages %}
@@ -91,17 +110,21 @@
           {% endfor %}
         </div>
 
-        <form class="client-chat-compose border-top" id="clientChatComposeForm" method="post" action="{{ url_for('clientes.chat_cliente_send_message', conversation_id=chat_selected.id) }}" data-client-live-dirty="0">
+        <form class="client-chat-compose border-top" id="clientChatComposeForm" method="post" action="{{ url_for('clientes.chat_cliente_send_message', conversation_id=chat_selected.id) }}" data-client-live-dirty="0" data-no-loader="true">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="input-group">
             <textarea class="form-control" id="clientChatBody" name="body" rows="2" maxlength="{{ chat_message_max_len or 1800 }}" placeholder="Escribe tu mensaje..."></textarea>
-            <button class="btn btn-primary" type="submit" id="clientChatSendBtn">
+            <button class="btn btn-primary client-chat-send-btn" type="submit" id="clientChatSendBtn" data-no-loader="true">
               <i class="bi bi-send"></i>
             </button>
           </div>
+          <div class="client-chat-compose-meta">
+            <span class="small text-muted">Presiona Enter para enviar. Usa Shift + Enter para salto de línea.</span>
+            <span class="small text-muted" id="clientChatCharCount">0 / {{ chat_message_max_len or 1800 }}</span>
+          </div>
         </form>
         {% else %}
-        <div class="p-4 text-muted">Selecciona o crea una conversación para comenzar.</div>
+        <div class="client-chat-thread-empty p-4 text-muted">Selecciona o crea una conversación para comenzar.</div>
         {% endif %}
       </section>
     </div>

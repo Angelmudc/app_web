@@ -12,6 +12,7 @@
      data-messages-url-template="{{ url_for('admin.chat_staff_messages_json', conversation_id=0) }}"
      data-send-url-template="{{ url_for('admin.chat_staff_send_message', conversation_id=0) }}"
      data-read-url-template="{{ url_for('admin.chat_staff_mark_read', conversation_id=0) }}"
+     data-typing-url-template="{{ url_for('admin.chat_staff_typing', conversation_id=0) }}"
      data-take-url-template="{{ url_for('admin.chat_staff_take_conversation', conversation_id=0) }}"
      data-release-url-template="{{ url_for('admin.chat_staff_release_conversation', conversation_id=0) }}"
      data-assign-url-template="{{ url_for('admin.chat_staff_assign_conversation', conversation_id=0) }}"
@@ -112,6 +113,12 @@
             <div class="small text-muted" id="adminChatThreadMeta">
               {{ chat_selected.cliente.nombre_completo if chat_selected.cliente else ('Cliente #' ~ chat_selected.cliente_id) }}
               {% if chat_selected.solicitud_id %} · Solicitud #{{ chat_selected.solicitud.codigo_solicitud if chat_selected.solicitud else chat_selected.solicitud_id }}{% endif %}
+            </div>
+            <div class="small mt-1 text-muted{% if not chat_selected.cliente_presence_label %} d-none{% endif %}" id="adminChatClientePresence">
+              {{ chat_selected.cliente_presence_label or '' }}
+            </div>
+            <div class="small mt-1 text-muted{% if not chat_selected.cliente_typing_in_this_chat %} d-none{% endif %}" id="adminChatTypingIndicator">
+              {{ chat_selected.cliente_typing_label or 'Cliente está escribiendo...' }}
             </div>
             <div class="small mt-1 d-flex align-items-center flex-wrap gap-2" id="adminChatThreadContextNav">
               {% if chat_selected.cliente_id %}

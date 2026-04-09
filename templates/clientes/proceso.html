@@ -1,56 +1,449 @@
 {% extends "clientes/base.html" %}
 {% block title %}Proceso de contratación{% endblock %}
 
+{% block head %}
+<style>
+  .clientes-proceso-page {
+    --cp-bg: radial-gradient(1200px 500px at 5% -5%, rgba(11, 94, 215, 0.15), transparent 55%),
+      radial-gradient(900px 500px at 100% -10%, rgba(13, 110, 253, 0.08), transparent 58%),
+      linear-gradient(180deg, #f6f9ff 0%, #f3f6fb 100%);
+    --cp-text: #0f172a;
+    --cp-muted: #5b6578;
+    --cp-card: #ffffff;
+    --cp-border: #d9e2f1;
+    --cp-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+    --cp-shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.05);
+    --cp-primary: #0b5ed7;
+    --cp-primary-strong: #0a4fb7;
+    --cp-ok: #0f9f6e;
+    --cp-warn: #c96d00;
+    --cp-danger: #b42318;
+    background: var(--cp-bg);
+    border-radius: 26px;
+    padding: 1.15rem;
+  }
+
+  .clientes-proceso-shell {
+    background: var(--cp-card);
+    border: 1px solid var(--cp-border);
+    border-radius: 24px;
+    box-shadow: var(--cp-shadow);
+    overflow: hidden;
+  }
+
+  .clientes-proceso-hero {
+    background: linear-gradient(130deg, #0d2d66 0%, #0b5ed7 45%, #1f6fe5 100%);
+    color: #f8fbff;
+    padding: 2rem 2rem 1.4rem;
+    position: relative;
+  }
+
+  .clientes-proceso-hero::after {
+    content: "";
+    position: absolute;
+    inset: auto -30% -48% auto;
+    width: 460px;
+    height: 460px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 70%);
+    pointer-events: none;
+  }
+
+  .clientes-proceso-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    padding: 0.38rem 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+  }
+
+  .clientes-proceso-title {
+    margin: 0.95rem 0 0.4rem;
+    font-size: clamp(1.56rem, 2.6vw, 2.15rem);
+    line-height: 1.18;
+    font-weight: 800;
+  }
+
+  .clientes-proceso-subtitle {
+    margin: 0;
+    color: rgba(248, 251, 255, 0.9);
+    max-width: 72ch;
+    font-size: 1rem;
+  }
+
+  .clientes-proceso-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+  }
+
+  .clientes-proceso-summary-card {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 14px;
+    padding: 0.72rem 0.84rem;
+  }
+
+  .clientes-proceso-summary-label {
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.71rem;
+    font-weight: 700;
+    color: rgba(248, 251, 255, 0.8);
+  }
+
+  .clientes-proceso-summary-value {
+    margin: 0.22rem 0 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .clientes-proceso-main {
+    padding: 1.4rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 1.15rem;
+  }
+
+  .clientes-proceso-panel {
+    background: #f8fbff;
+    border: 1px solid #deebff;
+    border-radius: 18px;
+    box-shadow: var(--cp-shadow-soft);
+  }
+
+  .clientes-proceso-panel-head {
+    border-bottom: 1px solid #e2ebf8;
+    padding: 0.9rem 1rem;
+  }
+
+  .clientes-proceso-panel-title {
+    margin: 0;
+    color: var(--cp-text);
+    font-size: 1.03rem;
+    font-weight: 800;
+  }
+
+  .clientes-proceso-panel-subtitle {
+    margin: 0.24rem 0 0;
+    color: var(--cp-muted);
+    font-size: 0.9rem;
+  }
+
+  .clientes-proceso-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 1rem;
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .clientes-proceso-step {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #dde8f6;
+    border-radius: 14px;
+    padding: 0.9rem 0.95rem 0.9rem 3rem;
+  }
+
+  .clientes-proceso-step::before {
+    content: "";
+    position: absolute;
+    left: 1.1rem;
+    top: 2.2rem;
+    bottom: -1.1rem;
+    width: 2px;
+    background: linear-gradient(180deg, #7bb4ff 0%, #dbe9ff 100%);
+  }
+
+  .clientes-proceso-step:last-child::before {
+    display: none;
+  }
+
+  .clientes-proceso-step-dot {
+    position: absolute;
+    left: 0.8rem;
+    top: 0.92rem;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 0.74rem;
+    font-weight: 700;
+    background: linear-gradient(180deg, var(--cp-primary) 0%, var(--cp-primary-strong) 100%);
+    box-shadow: 0 8px 18px rgba(11, 94, 215, 0.28);
+  }
+
+  .clientes-proceso-step-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-bottom: 0.34rem;
+  }
+
+  .clientes-proceso-step-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--cp-text);
+  }
+
+  .clientes-proceso-badge {
+    border-radius: 999px;
+    font-size: 0.69rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 0.27rem 0.58rem;
+    border: 1px solid transparent;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .clientes-proceso-badge.phase { background: #e9f2ff; border-color: #bfdaff; color: #12438f; }
+  .clientes-proceso-badge.payment { background: #fff4df; border-color: #ffd59c; color: #8e4a00; }
+  .clientes-proceso-badge.alert { background: #ffebe9; border-color: #f6c2be; color: #8f241b; }
+
+  .clientes-proceso-step-text {
+    margin: 0;
+    color: var(--cp-muted);
+    line-height: 1.48;
+    font-size: 0.95rem;
+  }
+
+  .clientes-proceso-sidebar {
+    display: grid;
+    gap: 0.95rem;
+    align-content: start;
+  }
+
+  .clientes-proceso-note {
+    border-radius: 14px;
+    border: 1px solid #e3eaf6;
+    background: #ffffff;
+    padding: 0.85rem 0.9rem;
+  }
+
+  .clientes-proceso-note-title {
+    margin: 0;
+    color: var(--cp-text);
+    font-size: 0.9rem;
+    font-weight: 800;
+    display: flex;
+    gap: 0.42rem;
+    align-items: center;
+  }
+
+  .clientes-proceso-note-text {
+    margin: 0.35rem 0 0;
+    color: var(--cp-muted);
+    font-size: 0.89rem;
+    line-height: 1.45;
+  }
+
+  .clientes-proceso-callout {
+    background: linear-gradient(180deg, #fff8ef 0%, #fff2df 100%);
+    border: 1px solid #ffd39d;
+  }
+
+  .clientes-proceso-actions {
+    padding: 1rem;
+    border-top: 1px solid #e2ebf8;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .clientes-proceso-btn {
+    border-radius: 10px;
+    padding: 0.55rem 0.9rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  @media (max-width: 991.98px) {
+    .clientes-proceso-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .clientes-proceso-main { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 575.98px) {
+    .clientes-proceso-page { border-radius: 18px; padding: 0.45rem; }
+    .clientes-proceso-shell { border-radius: 16px; }
+    .clientes-proceso-hero { padding: 1.3rem 1rem 1rem; }
+    .clientes-proceso-main { padding: 0.82rem; }
+    .clientes-proceso-summary { grid-template-columns: 1fr; }
+    .clientes-proceso-step { padding: 0.82rem 0.8rem 0.85rem 2.65rem; }
+    .clientes-proceso-step-dot { left: 0.62rem; top: 0.8rem; width: 22px; height: 22px; }
+    .clientes-proceso-step::before { left: 0.92rem; top: 2rem; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container py-4">
-  <div class="card shadow-sm border-0">
-    <div class="card-body p-4 p-lg-5">
-      <h1 class="h3 fw-bold mb-4">Cómo funciona la contratación de una empleada doméstica</h1>
+<div class="container py-4 py-lg-5">
+  <section class="clientes-proceso-page">
+    <div class="clientes-proceso-shell">
+      <header class="clientes-proceso-hero">
+        <span class="clientes-proceso-kicker">
+          <i class="bi bi-diagram-3-fill"></i> Ruta del servicio
+        </span>
+        <h1 class="clientes-proceso-title">Proceso de contratación, etapa por etapa</h1>
+        <p class="clientes-proceso-subtitle">
+          Esta guía resume el flujo real de trabajo desde la solicitud inicial hasta el cierre del proceso,
+          con puntos de control claros para pagos, evaluación y entrevistas.
+        </p>
 
-      <ol class="ps-3 ps-lg-4 mb-0">
-        <li class="mb-4">
-          <div class="fw-semibold mb-1">Información y solicitud</div>
-          <div class="text-muted">Cuéntanos el perfil que necesitas para tu hogar o lugar de trabajo.</div>
-        </li>
+        <div class="clientes-proceso-summary">
+          <article class="clientes-proceso-summary-card">
+            <p class="clientes-proceso-summary-label">Etapas clave</p>
+            <p class="clientes-proceso-summary-value">8 hitos operativos</p>
+          </article>
+          <article class="clientes-proceso-summary-card">
+            <p class="clientes-proceso-summary-label">Inicio del servicio</p>
+            <p class="clientes-proceso-summary-value">Con solicitud + abono inicial</p>
+          </article>
+          <article class="clientes-proceso-summary-card">
+            <p class="clientes-proceso-summary-label">Cierre de contratación</p>
+            <p class="clientes-proceso-summary-value">Selección + pago final</p>
+          </article>
+        </div>
+      </header>
 
-        <li class="mb-4">
-          <div class="fw-semibold mb-1">Completar el formulario</div>
-          <div class="text-muted">Completa los datos clave de tu solicitud para iniciar la evaluación.</div>
-        </li>
+      <div class="clientes-proceso-main">
+        <article class="clientes-proceso-panel">
+          <div class="clientes-proceso-panel-head">
+            <h2 class="clientes-proceso-panel-title">Mapa del proceso</h2>
+            <p class="clientes-proceso-panel-subtitle">Cada bloque indica qué se hace y cuándo avanzar al siguiente paso.</p>
+          </div>
 
-        <li class="mb-4">
-          <div class="fw-semibold mb-1">Pago inicial</div>
-          <div class="text-muted">Se deposita el 50% del plan elegido para iniciar el proceso.</div>
-        </li>
+          <ol class="clientes-proceso-timeline">
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">1</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Información y solicitud</h3>
+                <span class="clientes-proceso-badge phase">Inicio</span>
+              </div>
+              <p class="clientes-proceso-step-text">Cuéntanos el perfil que necesitas para tu hogar o lugar de trabajo.</p>
+            </li>
 
-        <li class="mb-4">
-          <div class="fw-semibold mb-1">Evaluación</div>
-          <div class="text-muted">Se analiza su solicitud y se seleccionan candidatas adecuadas.</div>
-        </li>
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">2</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Completar formulario</h3>
+                <span class="clientes-proceso-badge phase">Preparación</span>
+              </div>
+              <p class="clientes-proceso-step-text">Completa los datos clave de tu solicitud para iniciar la evaluación.</p>
+            </li>
 
-        <li class="mb-4">
-          <div class="fw-semibold mb-1">Entrevistas</div>
-          <div class="text-muted">Se envían perfiles para entrevistas (llamada o videollamada).</div>
-          <div class="text-muted">Si la entrevista es presencial y es en otra ciudad, el cliente cubre transporte.</div>
-          <div class="fw-semibold mt-1">⚠️ No pagar pasajes por adelantado.</div>
-        </li>
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">3</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Pago inicial</h3>
+                <span class="clientes-proceso-badge payment">50% del plan</span>
+              </div>
+              <p class="clientes-proceso-step-text">Se deposita el 50% del plan elegido para activar formalmente el proceso.</p>
+            </li>
 
-        <li class="mb-4">
-          <div class="fw-semibold mb-1">Selección</div>
-          <div class="text-muted">Se elige la candidata y se coordina la fecha de inicio.</div>
-        </li>
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">4</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Evaluación</h3>
+                <span class="clientes-proceso-badge phase">Validación</span>
+              </div>
+              <p class="clientes-proceso-step-text">Se analiza tu solicitud y se seleccionan candidatas adecuadas al perfil solicitado.</p>
+            </li>
 
-        <li class="mb-4">
-          <div class="fw-semibold mb-1">Pago final</div>
-          <div class="text-muted">Se completa el pago restante para entregar documentos y proceso final.</div>
-        </li>
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">5</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Entrevistas</h3>
+                <span class="clientes-proceso-badge phase">Coordinación</span>
+              </div>
+              <p class="clientes-proceso-step-text">Se envían perfiles para entrevistas por llamada o videollamada; en entrevistas presenciales en otra ciudad, el cliente cubre transporte.</p>
+            </li>
 
-        <li class="mb-0">
-          <div class="fw-semibold mb-1">Nota importante</div>
-          <div class="text-muted">En la primera quincena se retiene el 25% del salario como pago único por gestión y colocación.</div>
-        </li>
-      </ol>
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">6</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Selección</h3>
+                <span class="clientes-proceso-badge phase">Decisión</span>
+              </div>
+              <p class="clientes-proceso-step-text">Se elige la candidata final y se coordina la fecha de inicio del servicio.</p>
+            </li>
+
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">7</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Pago final</h3>
+                <span class="clientes-proceso-badge payment">Cierre económico</span>
+              </div>
+              <p class="clientes-proceso-step-text">Se completa el pago restante para entregar documentos y cerrar el proceso operativo.</p>
+            </li>
+
+            <li class="clientes-proceso-step">
+              <span class="clientes-proceso-step-dot">8</span>
+              <div class="clientes-proceso-step-head">
+                <h3 class="clientes-proceso-step-title">Nota de colocación</h3>
+                <span class="clientes-proceso-badge alert">Importante</span>
+              </div>
+              <p class="clientes-proceso-step-text">En la primera quincena se retiene el 25% del salario como pago único por gestión y colocación.</p>
+            </li>
+          </ol>
+
+          <div class="clientes-proceso-actions">
+            <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-primary clientes-proceso-btn">
+              <i class="bi bi-folder2-open me-1"></i> Ver mis solicitudes
+            </a>
+            <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary clientes-proceso-btn">
+              <i class="bi bi-life-preserver me-1"></i> Centro de ayuda
+            </a>
+          </div>
+        </article>
+
+        <aside class="clientes-proceso-sidebar">
+          <article class="clientes-proceso-note clientes-proceso-callout">
+            <h3 class="clientes-proceso-note-title">
+              <i class="bi bi-exclamation-triangle-fill text-warning-emphasis"></i>
+              Alerta de seguridad
+            </h3>
+            <p class="clientes-proceso-note-text">
+              No pagues pasajes por adelantado en etapas de entrevista. Toda coordinación oficial debe quedar registrada en la app.
+            </p>
+          </article>
+
+          <article class="clientes-proceso-note">
+            <h3 class="clientes-proceso-note-title">
+              <i class="bi bi-check2-circle text-success"></i>
+              Recomendación operativa
+            </h3>
+            <p class="clientes-proceso-note-text">
+              Mantén actualizados horarios, funciones y condiciones del puesto para acelerar la selección de candidatas.
+            </p>
+          </article>
+
+          <article class="clientes-proceso-note">
+            <h3 class="clientes-proceso-note-title">
+              <i class="bi bi-chat-left-dots text-primary"></i>
+              Seguimiento
+            </h3>
+            <p class="clientes-proceso-note-text">
+              Usa el chat y las notificaciones del portal para recibir avances del proceso sin perder contexto.
+            </p>
+          </article>
+        </aside>
+      </div>
     </div>
-  </div>
+  </section>
 </div>
 {% endblock %}

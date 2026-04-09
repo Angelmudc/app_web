@@ -104,6 +104,7 @@
     if (evt.stream_id) lastStreamId = String(evt.stream_id || lastStreamId);
     afterId = Math.max(afterId, Number(evt.outbox_id || 0) || 0);
     if (!isChatInvalidation(evt)) return;
+    if (String(evt.event_type || "").trim().toLowerCase() === "chat_conversation_typing") return;
     scheduleRefresh(120);
   }
 

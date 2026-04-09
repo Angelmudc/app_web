@@ -11,7 +11,8 @@ from werkzeug.exceptions import NotFound
 
 from app import app as flask_app
 from config_app import db
-from models import ChatConversation, ChatMessage, Cliente, DomainOutbox, RequestIdempotencyKey, StaffUser
+from models import ChatConversation, ChatMessage, Cliente, DomainOutbox, RequestIdempotencyKey, StaffUser, StaffPresenceState
+from utils.timezone import utc_now_naive, iso_utc_z
 import clientes.routes as clientes_routes
 import admin.routes as admin_routes
 from utils.outbox_relay import OUTBOX_RELAY_ALLOWED_EVENT_TYPES
@@ -20,6 +21,7 @@ from utils.outbox_relay import OUTBOX_RELAY_ALLOWED_EVENT_TYPES
 def _ensure_tables():
     Cliente.__table__.create(bind=db.engine, checkfirst=True)
     StaffUser.__table__.create(bind=db.engine, checkfirst=True)
+    StaffPresenceState.__table__.create(bind=db.engine, checkfirst=True)
     DomainOutbox.__table__.create(bind=db.engine, checkfirst=True)
     RequestIdempotencyKey.__table__.create(bind=db.engine, checkfirst=True)
     ChatMessage.__table__.drop(bind=db.engine, checkfirst=True)
@@ -31,6 +33,7 @@ def _ensure_tables():
 def _reset_tables():
     db.session.query(ChatMessage).delete()
     db.session.query(ChatConversation).delete()
+    db.session.query(StaffPresenceState).delete()
     db.session.query(DomainOutbox).delete()
     db.session.query(RequestIdempotencyKey).delete()
     db.session.query(Cliente).delete()
@@ -313,6 +316,99 @@ def test_admin_chat_send_message_updates_cliente_unread_and_emits_outbox():
             .first()
         )
         assert status_evt is not None
+
+
+def test_client_chat_messages_json_includes_staff_presence_in_this_chat():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables()
+        _reset_tables()
+        cliente = _new_cliente(idx=91)
+        staff = _new_staff(idx=91)
+        conv = _new_conversation(cliente_id=int(cliente.id))
+        now = utc_now_naive()
+        state = StaffPresenceState(
+            user_id=int(staff.id),
+            session_id="tab-chat-presence-1",
+            route=f"/admin/chat?conversation_id={int(conv.id)}",
+            route_label="Chat soporte",
+            entity_type="chat_conversation",
+            entity_id=str(int(conv.id)),
+            entity_name="",
+            entity_code="",
+            current_action="chatting",
+            action_label="En chat",
+            tab_visible=True,
+            is_idle=False,
+            is_typing=False,
+            has_unsaved_changes=False,
+            modal_open=False,
+            lock_owner="",
+            client_status="active",
+            page_title="Inbox chat",
+            last_interaction_at=now,
+            state_hash="presence-test",
+            started_at=now,
+            last_seen_at=now,
+            updated_at=now,
+        )
+        db.session.add(state)
+        db.session.commit()
+
+        target = clientes_routes.chat_cliente_messages_json
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(clientes_routes, "current_user", _cliente_user(int(cliente.id)))
+            with flask_app.test_request_context(
+                f"/clientes/chat/conversations/{int(conv.id)}/messages.json",
+                method="GET",
+                headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            ):
+                payload = target(int(conv.id)).get_json() or {}
+
+        conversation = payload.get("conversation") or {}
+        assert conversation.get("staff_presence_state") == "in_this_chat"
+        assert bool(conversation.get("staff_in_this_chat")) is True
+
+
+def test_admin_chat_messages_json_includes_cliente_presence_in_this_chat():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables()
+        _reset_tables()
+        cliente = _new_cliente(idx=92)
+        staff = _new_staff(idx=92)
+        conv = _new_conversation(cliente_id=int(cliente.id))
+        db.session.commit()
+
+        target = admin_routes.chat_staff_messages_json
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(admin_routes, "current_user", _staff_user(int(staff.id)))
+            m.setattr(
+                admin_routes,
+                "bp_get",
+                lambda key, default=None, context=None: {
+                    "cliente_id": int(cliente.id),
+                    "current_path": f"/clientes/chat?conversation_id={int(conv.id)}",
+                    "conversation_id": int(conv.id),
+                    "last_seen_at": iso_utc_z(),
+                },
+            )
+            with flask_app.test_request_context(
+                f"/admin/chat/conversations/{int(conv.id)}/messages.json",
+                method="GET",
+                headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            ):
+                payload = target(int(conv.id)).get_json() or {}
+
+        conversation = payload.get("conversation") or {}
+        assert conversation.get("cliente_presence_state") == "in_this_chat"
+        assert bool(conversation.get("cliente_in_this_chat")) is True
 
 
 def test_admin_chat_messages_pagination_is_incremental_ordered_and_scoped_to_thread():

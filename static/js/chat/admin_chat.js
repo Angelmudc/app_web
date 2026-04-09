@@ -20,6 +20,8 @@
   const threadTitle = document.getElementById("adminChatThreadTitle");
   const threadStatus = document.getElementById("adminChatThreadStatus");
   const threadMeta = document.getElementById("adminChatThreadMeta");
+  const clientePresenceNode = document.getElementById("adminChatClientePresence");
+  const typingIndicatorNode = document.getElementById("adminChatTypingIndicator");
   const goClienteLink = document.getElementById("adminChatGoClienteLink");
   const goSolicitudLink = document.getElementById("adminChatGoSolicitudLink");
   const threadAssignmentMeta = document.getElementById("adminChatThreadAssignmentMeta");
@@ -36,6 +38,7 @@
   const messagesTpl = String(root.getAttribute("data-messages-url-template") || "").trim();
   const sendTpl = String(root.getAttribute("data-send-url-template") || "").trim();
   const readTpl = String(root.getAttribute("data-read-url-template") || "").trim();
+  const typingTpl = String(root.getAttribute("data-typing-url-template") || "").trim();
   const takeTpl = String(root.getAttribute("data-take-url-template") || "").trim();
   const releaseTpl = String(root.getAttribute("data-release-url-template") || "").trim();
   const assignTpl = String(root.getAttribute("data-assign-url-template") || "").trim();
@@ -64,6 +67,15 @@
   let hasMoreHistory = false;
   let sendingMessage = false;
   let composeStatusTimer = null;
+  let localTypingActive = false;
+  let lastTypingEmitAt = 0;
+  let typingPulseTimer = null;
+  let remoteTypingHideTimer = null;
+  let conversationsRefreshTimer = null;
+  let conversationsRefreshInflight = false;
+  let conversationsRefreshQueued = false;
+  let messageSyncTimer = null;
+  let markReadTimer = null;
   const initialAfterId = Math.max(0, Number(root.getAttribute("data-initial-after-id") || 0) || 0);
   let afterId = initialAfterId;
   let lastStreamId = "$";
@@ -252,6 +264,124 @@
     return resp.json();
   }
 
+  function clearGlobalLoaderState() {
+    try {
+      if (window.AppLoader && typeof window.AppLoader.hideAll === "function") {
+        window.AppLoader.hideAll();
+      }
+    } catch (_e) {}
+    document.documentElement.classList.remove("is-loading");
+    if (document.body) document.body.classList.remove("is-loading");
+  }
+
+  function rowForConversation(conversationId) {
+    if (!listNode) return null;
+    const cid = Number(conversationId || 0) || 0;
+    if (!cid) return null;
+    return listNode.querySelector('[data-conversation-id="' + String(cid) + '"]');
+  }
+
+  function setConversationUnreadBadge(row, unreadCount, className) {
+    if (!row) return;
+    const count = Math.max(0, Number(unreadCount || 0) || 0);
+    let badge = row.querySelector("." + className);
+    if (count <= 0) {
+      if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
+      return;
+    }
+    if (!badge) {
+      const statusBadge = row.querySelector(".badge");
+      badge = document.createElement("span");
+      badge.className = "badge rounded-pill text-bg-danger " + className;
+      if (statusBadge && statusBadge.parentNode) {
+        statusBadge.insertAdjacentElement("afterend", badge);
+      } else {
+        row.appendChild(badge);
+      }
+    }
+    badge.textContent = String(count);
+  }
+
+  function patchConversationRowFromPayload(conversationId, payload) {
+    const row = rowForConversation(conversationId);
+    if (!row || !payload || typeof payload !== "object") return false;
+
+    const statusRaw = String(payload.status || "").trim().toLowerCase();
+    if (statusRaw) {
+      const statusBadge = row.querySelector(".badge");
+      if (statusBadge) {
+        statusBadge.className = "badge " + statusClass(statusRaw);
+        statusBadge.textContent = statusText(statusRaw);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "staff_unread_count")) {
+      setConversationUnreadBadge(row, payload.staff_unread_count, "admin-chat-unread-badge");
+    }
+    const preview = String(payload.preview || "").trim();
+    if (preview) {
+      const previewNode = row.querySelector(".small.text-muted.text-truncate");
+      if (previewNode) previewNode.textContent = preview;
+    }
+    if (row.parentNode === listNode) {
+      listNode.insertAdjacentElement("afterbegin", row);
+    }
+    return true;
+  }
+
+  function scheduleConversationsRefresh(delayMs) {
+    const wait = Math.max(40, Number(delayMs || 0) || 0);
+    if (conversationsRefreshTimer) window.clearTimeout(conversationsRefreshTimer);
+    conversationsRefreshTimer = window.setTimeout(function () {
+      conversationsRefreshTimer = null;
+      if (conversationsRefreshInflight) {
+        conversationsRefreshQueued = true;
+        return;
+      }
+      conversationsRefreshInflight = true;
+      refreshConversations({ silent: true }).catch(function () {
+        // no-op
+      }).finally(function () {
+        conversationsRefreshInflight = false;
+        if (conversationsRefreshQueued) {
+          conversationsRefreshQueued = false;
+          scheduleConversationsRefresh(140);
+        }
+      });
+    }, wait);
+  }
+
+  function scheduleMessageSync(conversationId, delayMs) {
+    const cid = Number(conversationId || 0) || 0;
+    if (!cid) return;
+    if (messageSyncTimer) window.clearTimeout(messageSyncTimer);
+    messageSyncTimer = window.setTimeout(function () {
+      messageSyncTimer = null;
+      refreshMessages(cid, { silent: true, mode: "sync", postSync: false }).catch(function () {});
+    }, Math.max(80, Number(delayMs || 0) || 0));
+  }
+
+  function scheduleMarkRead(conversationId, delayMs, retriesLeft) {
+    const cid = Number(conversationId || 0) || 0;
+    if (!cid) return;
+    if (markReadTimer) window.clearTimeout(markReadTimer);
+    markReadTimer = window.setTimeout(function () {
+      markReadTimer = null;
+      markRead(cid).then(function (ok) {
+        if (ok) {
+          scheduleConversationsRefresh(180);
+          return;
+        }
+        if ((Number(retriesLeft || 0) || 0) > 0) {
+          scheduleMarkRead(cid, 500, Number(retriesLeft || 0) - 1);
+        }
+      }).catch(function () {
+        if ((Number(retriesLeft || 0) || 0) > 0) {
+          scheduleMarkRead(cid, 500, Number(retriesLeft || 0) - 1);
+        }
+      });
+    }, Math.max(90, Number(delayMs || 0) || 0));
+  }
+
   function parseQuickReplyBody(raw) {
     const value = String(raw || "").trim();
     if (!value) return "";
@@ -312,6 +442,82 @@
     }
     sendBtn.innerHTML = sendBtnDefaultHtml;
     sendBtn.setAttribute("aria-label", "Enviar");
+  }
+
+  function setRemoteClientTyping(typingOn, label, expiresInSeconds) {
+    if (!typingIndicatorNode) return;
+    const on = Boolean(typingOn);
+    if (remoteTypingHideTimer) {
+      window.clearTimeout(remoteTypingHideTimer);
+      remoteTypingHideTimer = null;
+    }
+    if (!on) {
+      typingIndicatorNode.textContent = "";
+      typingIndicatorNode.classList.add("d-none");
+      return;
+    }
+    typingIndicatorNode.textContent = String(label || "Cliente está escribiendo...");
+    typingIndicatorNode.classList.remove("d-none");
+    const ttlMs = Math.max(1200, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
+    remoteTypingHideTimer = window.setTimeout(function () {
+      typingIndicatorNode.textContent = "";
+      typingIndicatorNode.classList.add("d-none");
+      remoteTypingHideTimer = null;
+    }, ttlMs);
+  }
+
+  async function postTypingState(conversationId, isTyping) {
+    const cid = Number(conversationId || 0) || 0;
+    if (!typingTpl || !cid) return;
+    const csrfToken = getCSRFToken();
+    try {
+      await fetch(endpointFor(typingTpl, cid), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({
+          is_typing: Boolean(isTyping),
+          expires_in: 5,
+        }),
+      });
+      lastTypingEmitAt = Date.now();
+    } catch (_e) {
+      // no-op
+    }
+  }
+
+  function stopLocalTypingSignal() {
+    if (typingPulseTimer) {
+      window.clearTimeout(typingPulseTimer);
+      typingPulseTimer = null;
+    }
+    if (!localTypingActive) return;
+    localTypingActive = false;
+    postTypingState(Number(selectedConversationId || 0), false).catch(function () {});
+  }
+
+  function scheduleLocalTypingSignal() {
+    const cid = Number(selectedConversationId || 0) || 0;
+    if (!cid || !bodyInput) return;
+    const hasText = String(bodyInput.value || "").trim().length > 0;
+    if (!hasText) {
+      stopLocalTypingSignal();
+      return;
+    }
+    const now = Date.now();
+    if (!localTypingActive || (now - lastTypingEmitAt) >= 1200) {
+      localTypingActive = true;
+      postTypingState(cid, true).catch(function () {});
+    }
+    if (typingPulseTimer) window.clearTimeout(typingPulseTimer);
+    typingPulseTimer = window.setTimeout(function () {
+      if (document.hidden) return;
+      scheduleLocalTypingSignal();
+    }, 1400);
   }
 
   function insertIntoComposer(text) {
@@ -470,6 +676,27 @@
       if (conv.solicitud_codigo) parts.push("Solicitud #" + String(conv.solicitud_codigo));
       threadMeta.textContent = parts.join(" · ");
     }
+    if (clientePresenceNode) {
+      const label = String(conv.cliente_presence_label || "").trim();
+      if (label) {
+        clientePresenceNode.textContent = label;
+        clientePresenceNode.classList.remove("d-none");
+      } else {
+        clientePresenceNode.textContent = "";
+        clientePresenceNode.classList.add("d-none");
+      }
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(conv, "cliente_typing_in_this_chat")
+      || Object.prototype.hasOwnProperty.call(conv, "cliente_typing_label")
+      || Object.prototype.hasOwnProperty.call(conv, "cliente_typing_expires_in")
+    ) {
+      setRemoteClientTyping(
+        Boolean(conv.cliente_typing_in_this_chat),
+        String(conv.cliente_typing_label || ""),
+        Number(conv.cliente_typing_expires_in || 0),
+      );
+    }
     const clienteUrl = clienteUrlForConversation(conv.cliente_id);
     const solicitudUrl = solicitudUrlForConversation(conv.cliente_id, conv.solicitud_id);
     if (goClienteLink) {
@@ -594,7 +821,7 @@
   }
 
   async function markRead(conversationId) {
-    if (!conversationId) return;
+    if (!conversationId) return false;
     const csrfToken = getCSRFToken();
     try {
       await fetchJson(endpointFor(readTpl, conversationId), {
@@ -607,7 +834,10 @@
         },
         body: "csrf_token=" + encodeURIComponent(csrfToken),
       });
-    } catch (_e) {}
+      return true;
+    } catch (_e) {
+      return false;
+    }
   }
 
   async function changeStatus(conversationId, template) {
@@ -657,6 +887,7 @@
     const previousConversationId = Number(selectedConversationId || 0) || 0;
     const cid = Number(conversationId || previousConversationId || 0);
     const mode = String((opts && opts.mode) || "sync").toLowerCase();
+    const postSync = !opts || opts.postSync !== false;
     if (!cid || loadingLatest) return null;
     loadingLatest = true;
     try {
@@ -672,8 +903,10 @@
         syncLatestMessages(payload || {});
       }
 
-      await markRead(cid);
-      await refreshConversations({ silent: true });
+      if (postSync) {
+        scheduleMarkRead(cid, 160, 1);
+        scheduleConversationsRefresh(240);
+      }
       return payload;
     } catch (_e) {
       if (!(opts && opts.silent) && messagesNode) {
@@ -721,6 +954,8 @@
       ev.preventDefault();
       const cid = Number(link.getAttribute("data-conversation-id") || 0) || 0;
       if (!cid) return;
+      stopLocalTypingSignal();
+      setRemoteClientTyping(false, "", 0);
       selectedConversationId = cid;
       nextBeforeId = 0;
       hasMoreHistory = false;
@@ -743,7 +978,7 @@
     markReadBtn.addEventListener("click", function () {
       const cid = Number(selectedConversationId || 0);
       if (!cid) return;
-      markRead(cid).then(function () { return refreshConversations({ silent: true }); }).catch(function () {});
+      markRead(cid).then(function () { scheduleConversationsRefresh(120); }).catch(function () {});
     });
   }
 
@@ -812,6 +1047,15 @@
     });
   }
 
+  if (bodyInput) {
+    bodyInput.addEventListener("input", function () {
+      scheduleLocalTypingSignal();
+    });
+    bodyInput.addEventListener("blur", function () {
+      stopLocalTypingSignal();
+    });
+  }
+
   if (form && bodyInput && sendBtn) {
     form.addEventListener("submit", async function (ev) {
       ev.preventDefault();
@@ -820,9 +1064,11 @@
       if (!cid) return;
       const text = String(bodyInput.value || "").trim();
       if (!text) return;
+      stopLocalTypingSignal();
       const csrfToken = getCSRFToken();
       sendingMessage = true;
       setSendButtonState(true);
+      clearGlobalLoaderState();
       setComposeStatus("pending", "Enviando...");
       try {
         const body = new URLSearchParams();
@@ -839,6 +1085,7 @@
           body: body.toString(),
         });
         bodyInput.value = "";
+        postTypingState(cid, false).catch(function () {});
         const sentMessage = sendPayload && sendPayload.message;
         const sentConversation = sendPayload && sendPayload.conversation;
         if (sentMessage && typeof sentMessage === "object") {
@@ -856,13 +1103,16 @@
           }
         }
         setComposeStatus("success", "Mensaje enviado.", 1800);
-        refreshMessages(cid, { silent: true, mode: "sync" }).catch(function () {});
+        clearGlobalLoaderState();
+        scheduleMarkRead(cid, 120, 1);
+        scheduleConversationsRefresh(180);
       } catch (e) {
         const reason = (e && e.message) ? (" (" + String(e.message) + ")") : "";
         setComposeStatus("error", "No se pudo enviar el mensaje. Intenta de nuevo." + reason);
       } finally {
         sendingMessage = false;
         setSendButtonState(false);
+        clearGlobalLoaderState();
       }
     });
   }
@@ -876,10 +1126,44 @@
     }
     const target = (evt.target && typeof evt.target === "object") ? evt.target : {};
     if (String(target.entity_type || "") !== "chat_conversation") return;
-    const cid = Number(target.conversation_id || 0) || 0;
-    refreshConversations({ silent: true });
+    const payload = (evt.payload && typeof evt.payload === "object") ? evt.payload : {};
+    const eventType = String(evt.event_type || "").trim().toLowerCase();
+    const cid = Number(payload.conversation_id || target.conversation_id || 0) || 0;
+    if (!cid) return;
+
+    if (eventType === "chat_conversation_typing") {
+      if (cid === Number(selectedConversationId || 0)) {
+        const actorType = String(payload.actor_type || "").trim().toLowerCase();
+        if (actorType === "cliente") {
+          setRemoteClientTyping(
+            Boolean(payload.is_typing),
+            "Cliente está escribiendo...",
+            Number(payload.typing_expires_in || 0),
+          );
+        }
+      }
+      return;
+    }
+
+    patchConversationRowFromPayload(cid, payload);
+    scheduleConversationsRefresh(280);
+
     if (cid > 0 && cid === Number(selectedConversationId || 0)) {
-      refreshMessages(cid, { silent: true, mode: "sync" });
+      const senderType = String(payload.sender_type || "").trim().toLowerCase();
+      const shouldSyncMessage = eventType === "chat_message_created"
+        && (senderType === "cliente" || (senderType === "staff" && !sendingMessage));
+      if (shouldSyncMessage) {
+        if (senderType === "cliente") setRemoteClientTyping(false, "", 0);
+        scheduleMessageSync(cid, 100);
+      }
+      if (eventType === "chat_conversation_status_changed" && String(payload.status || "").trim()) {
+        const st = String(payload.status || "").trim().toLowerCase();
+        if (threadStatus) {
+          threadStatus.className = "badge " + statusClass(st);
+          threadStatus.textContent = statusText(st);
+        }
+      }
+      scheduleMarkRead(cid, 160, 1);
     }
   }
 
@@ -1039,9 +1323,14 @@
   }
 
   window.addEventListener("beforeunload", function () {
+    stopLocalTypingSignal();
     closeSSE();
     stopPolling();
     clearReconnectTimer();
+    if (remoteTypingHideTimer) {
+      window.clearTimeout(remoteTypingHideTimer);
+      remoteTypingHideTimer = null;
+    }
   });
 
   refreshConversations({ silent: true });

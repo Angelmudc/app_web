@@ -111,12 +111,15 @@
     if (txt === 'candidatas' || txt === 'candidate') return 'candidata';
     if (txt === 'solicitudes' || txt === 'request') return 'solicitud';
     if (txt === 'clientes' || txt === 'client') return 'cliente';
+    if (txt === 'conversation' || txt === 'conversacion' || txt === 'chatconversation' || txt === 'chat') return 'chat_conversation';
     return txt;
   }
 
   function parsePathEntity(pathname) {
     var p = String(pathname || '').toLowerCase();
-    var m = p.match(/\/clientes\/(\d+)\/solicitudes\/(\d+)/);
+    var m = p.match(/\/chat\/conversations?\/([a-z0-9_-]+)/);
+    if (m && m[1]) return { entity_type: 'chat_conversation', entity_id: m[1] };
+    m = p.match(/\/clientes\/(\d+)\/solicitudes\/(\d+)/);
     if (m && m[2]) return { entity_type: 'solicitud', entity_id: m[2] };
     m = p.match(/\/matching\/solicitudes\/(\d+)/);
     if (m && m[1]) return { entity_type: 'solicitud', entity_id: m[1] };
@@ -133,9 +136,13 @@
 
   function parseUrlEntity(pathname, search) {
     var params = new URLSearchParams(search || '');
+    var conversationId = toText(params.get('conversation_id'));
     var candidataId = toText(params.get('candidata_id') || params.get('fila'));
     var solicitudId = toText(params.get('solicitud_id'));
     var clienteId = toText(params.get('cliente_id'));
+    if (conversationId && String(pathname || '').toLowerCase().indexOf('/chat') >= 0) {
+      return { entity_type: 'chat_conversation', entity_id: conversationId };
+    }
     if (solicitudId) return { entity_type: 'solicitud', entity_id: solicitudId };
     if (candidataId) return { entity_type: 'candidata', entity_id: candidataId };
     if (clienteId) return { entity_type: 'cliente', entity_id: clienteId };
@@ -203,6 +210,7 @@
 
   function inferRouteLabel(pathname) {
     var p = String(pathname || '').toLowerCase();
+    if (p.indexOf('/admin/chat') >= 0) return 'Chat soporte';
     if (p.indexOf('/admin/matching') >= 0) return 'Matching';
     if (p.indexOf('/admin/solicitudes') >= 0) return 'Solicitudes';
     if (p.indexOf('/admin/clientes') >= 0) return 'Clientes';
@@ -216,6 +224,8 @@
   function inferAction(pathname, entityType) {
     var p = String(pathname || '').toLowerCase();
     if (state.is_typing) return 'typing';
+    if (p.indexOf('/admin/chat') >= 0 && entityType === 'chat_conversation') return 'chatting';
+    if (p.indexOf('/admin/chat') >= 0) return 'chatting';
     if (p.indexOf('matching') >= 0) return 'matching';
     if (p.indexOf('entrevista') >= 0) return 'editing_interview';
     if (p.indexOf('referencia') >= 0) return 'editing_references';
@@ -243,6 +253,10 @@
     }
 
     if (action === 'typing') return entityDisplay ? ('Escribiendo en ' + entityDisplay) : 'Escribiendo';
+    if (action === 'chatting') {
+      if (et === 'chat_conversation' && entity.entity_id) return 'En chat #' + toText(entity.entity_id);
+      return 'En chat de soporte';
+    }
     if (action === 'searching') return 'Buscando';
     if (action === 'matching') return entityDisplay ? ('Trabajando en matching de ' + entityDisplay) : 'Trabajando en matching';
     if (action === 'editing_request') return entityDisplay ? ('Editando ' + entityDisplay) : 'Editando solicitud';

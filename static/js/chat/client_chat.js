@@ -12,21 +12,41 @@
   const markReadBtn = document.getElementById("clientChatMarkReadBtn");
   const threadSubjectNode = document.getElementById("clientChatThreadSubject");
   const threadStatusNode = document.getElementById("clientChatThreadStatus");
+  const threadStatusHintNode = document.getElementById("clientChatThreadStatusHint");
+  const typingIndicatorNode = document.getElementById("clientChatTypingIndicator");
+  const supportPresencePillNode = document.getElementById("clientChatSupportPresencePill");
   const loadOlderBtn = document.getElementById("clientChatLoadOlderBtn");
   const historyStateNode = document.getElementById("clientChatHistoryState");
+  const charCountNode = document.getElementById("clientChatCharCount");
+  const sendBtnDefaultHtml = sendBtn ? sendBtn.innerHTML : "";
 
   const conversationsUrl = String(root.getAttribute("data-conversations-url") || "").trim();
   const messagesTpl = String(root.getAttribute("data-messages-url-template") || "").trim();
   const sendTpl = String(root.getAttribute("data-send-url-template") || "").trim();
   const readTpl = String(root.getAttribute("data-read-url-template") || "").trim();
+  const typingTpl = String(root.getAttribute("data-typing-url-template") || "").trim();
+  const presencePingUrl = String(root.getAttribute("data-presence-ping-url") || "").trim();
 
   const PAGE_SIZE = 50;
 
   let selectedConversationId = Number(root.getAttribute("data-selected-conversation-id") || 0) || 0;
   let loadingLatest = false;
   let loadingOlder = false;
+  let sendingMessage = false;
   let nextBeforeId = 0;
   let hasMoreHistory = false;
+  let conversationsRefreshTimer = null;
+  let conversationsRefreshInflight = false;
+  let conversationsRefreshQueued = false;
+  let messageSyncTimer = null;
+  let markReadTimer = null;
+  let presencePingTimer = null;
+  let lastPresencePingAt = 0;
+  let selectedConversationPayload = null;
+  let localTypingActive = false;
+  let lastTypingEmitAt = 0;
+  let typingPulseTimer = null;
+  let remoteTypingHideTimer = null;
 
   function getCSRFToken() {
     const input = document.querySelector('input[name="csrf_token"]');
@@ -55,7 +75,17 @@
   }
 
   function statusText(status) {
-    return String(status || "open").toUpperCase();
+    const s = String(status || "open").toLowerCase();
+    if (s === "closed") return "CERRADO";
+    if (s === "pending") return "EN ESPERA";
+    return "ABIERTO";
+  }
+
+  function statusHintText(status) {
+    const s = String(status || "open").toLowerCase();
+    if (s === "closed") return "Esta conversación está cerrada. Puedes abrir un chat nuevo si necesitas ayuda.";
+    if (s === "pending") return "Tu caso está en seguimiento. Te avisaremos cuando haya actualización.";
+    return "Conversación abierta. Te responderemos por este mismo chat.";
   }
 
   function esc(raw) {
@@ -87,6 +117,280 @@
     return resp.json();
   }
 
+  function clearGlobalLoaderState() {
+    try {
+      if (window.AppLoader && typeof window.AppLoader.hideAll === "function") {
+        window.AppLoader.hideAll();
+      }
+    } catch (_e) {}
+    document.documentElement.classList.remove("is-loading");
+    if (document.body) document.body.classList.remove("is-loading");
+  }
+
+  function updateSupportPresence(conversation) {
+    if (!supportPresencePillNode || !conversation || typeof conversation !== "object") return;
+    const inThisChat = Boolean(conversation.staff_in_this_chat);
+    const label = String(conversation.staff_presence_label || "").trim();
+    if (inThisChat) {
+      supportPresencePillNode.classList.remove("d-none");
+      supportPresencePillNode.innerHTML = '<span class="client-chat-support-dot"></span>' + esc(label || "Soporte en este chat");
+      return;
+    }
+    supportPresencePillNode.classList.add("d-none");
+  }
+
+  function setRemoteStaffTyping(typingOn, label, expiresInSeconds) {
+    if (!typingIndicatorNode) return;
+    const on = Boolean(typingOn);
+    if (remoteTypingHideTimer) {
+      window.clearTimeout(remoteTypingHideTimer);
+      remoteTypingHideTimer = null;
+    }
+    if (!on) {
+      typingIndicatorNode.textContent = "";
+      typingIndicatorNode.classList.add("d-none");
+      return;
+    }
+    typingIndicatorNode.textContent = String(label || "Soporte está escribiendo...");
+    typingIndicatorNode.classList.remove("d-none");
+    const ttlMs = Math.max(1200, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
+    remoteTypingHideTimer = window.setTimeout(function () {
+      typingIndicatorNode.textContent = "";
+      typingIndicatorNode.classList.add("d-none");
+      remoteTypingHideTimer = null;
+    }, ttlMs);
+  }
+
+  async function postTypingState(conversationId, isTyping) {
+    const cid = Number(conversationId || 0) || 0;
+    if (!typingTpl || !cid) return;
+    const csrfToken = getCSRFToken();
+    try {
+      await fetch(endpointFor(typingTpl, cid), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({
+          is_typing: Boolean(isTyping),
+          expires_in: 5,
+        }),
+      });
+      lastTypingEmitAt = Date.now();
+    } catch (_e) {
+      // no-op
+    }
+  }
+
+  function stopLocalTypingSignal() {
+    if (typingPulseTimer) {
+      window.clearTimeout(typingPulseTimer);
+      typingPulseTimer = null;
+    }
+    if (!localTypingActive) return;
+    localTypingActive = false;
+    postTypingState(Number(selectedConversationId || 0), false).catch(function () {});
+  }
+
+  function scheduleLocalTypingSignal() {
+    const cid = Number(selectedConversationId || 0) || 0;
+    if (!cid || !bodyInput) return;
+    const hasText = String(bodyInput.value || "").trim().length > 0;
+    if (!hasText) {
+      stopLocalTypingSignal();
+      return;
+    }
+    const now = Date.now();
+    if (!localTypingActive || (now - lastTypingEmitAt) >= 1200) {
+      localTypingActive = true;
+      postTypingState(cid, true).catch(function () {});
+    }
+    if (typingPulseTimer) window.clearTimeout(typingPulseTimer);
+    typingPulseTimer = window.setTimeout(function () {
+      if (document.hidden) return;
+      scheduleLocalTypingSignal();
+    }, 1400);
+  }
+
+  async function pingChatPresence(eventType) {
+    if (!presencePingUrl) return;
+    const cid = Number(selectedConversationId || 0) || 0;
+    if (!cid) return;
+    const csrfToken = getCSRFToken();
+    const payload = {
+      current_path: String(window.location.pathname || "") + String(window.location.search || ""),
+      event_type: String(eventType || "heartbeat").trim().toLowerCase() || "heartbeat",
+      action_hint: "chat_viewing",
+      conversation_id: cid,
+      solicitud_id: Number((selectedConversationPayload && selectedConversationPayload.solicitud_id) || 0) || null,
+    };
+    try {
+      await fetch(presencePingUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify(payload),
+      });
+      lastPresencePingAt = Date.now();
+    } catch (_e) {
+      // no-op
+    }
+  }
+
+  function startChatPresenceLoop() {
+    if (!presencePingUrl) return;
+    if (presencePingTimer) window.clearInterval(presencePingTimer);
+    pingChatPresence("chat_open").catch(function () {});
+    presencePingTimer = window.setInterval(function () {
+      if (document.hidden) return;
+      if ((Date.now() - lastPresencePingAt) < 1500) return;
+      pingChatPresence("heartbeat").catch(function () {});
+    }, 5000);
+  }
+
+  function rowForConversation(conversationId) {
+    if (!listNode) return null;
+    const cid = Number(conversationId || 0) || 0;
+    if (!cid) return null;
+    return listNode.querySelector('[data-conversation-id="' + String(cid) + '"]');
+  }
+
+  function setConversationUnreadBadge(row, unreadCount, className) {
+    if (!row) return;
+    const count = Math.max(0, Number(unreadCount || 0) || 0);
+    let badge = row.querySelector("." + className);
+    if (count <= 0) {
+      if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
+      return;
+    }
+    if (!badge) {
+      const statusBadge = row.querySelector(".badge");
+      badge = document.createElement("span");
+      badge.className = "badge rounded-pill text-bg-danger " + className;
+      if (statusBadge && statusBadge.parentNode) {
+        statusBadge.insertAdjacentElement("afterend", badge);
+      } else {
+        row.appendChild(badge);
+      }
+    }
+    badge.textContent = String(count);
+  }
+
+  function patchConversationRowFromPayload(conversationId, payload) {
+    const row = rowForConversation(conversationId);
+    if (!row || !payload || typeof payload !== "object") return false;
+    const statusRaw = String(payload.status || "").trim().toLowerCase();
+    if (statusRaw) {
+      const statusBadge = row.querySelector(".badge");
+      if (statusBadge) {
+        statusBadge.className = "badge " + statusClass(statusRaw);
+        statusBadge.textContent = statusText(statusRaw);
+      }
+      if (Number(conversationId || 0) === Number(selectedConversationId || 0)) {
+        updateThreadHeader({
+          subject: threadSubjectNode ? threadSubjectNode.textContent : "Soporte",
+          status: statusRaw,
+        });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "cliente_unread_count")) {
+      setConversationUnreadBadge(row, payload.cliente_unread_count, "client-chat-unread-badge");
+    }
+    const preview = String(payload.preview || "").trim();
+    if (preview) {
+      const previewNode = row.querySelector(".small.text-muted.text-truncate");
+      if (previewNode) previewNode.textContent = preview;
+    }
+    const senderType = String(payload.sender_type || "").trim().toLowerCase();
+    if (senderType) {
+      const signalNode = row.querySelector(".small:not(.text-muted.text-truncate)");
+      if (signalNode) {
+        if (senderType === "staff") {
+          signalNode.innerHTML = '<span class="text-success">Respondido por soporte</span>';
+        } else if (senderType === "cliente") {
+          signalNode.innerHTML = '<span class="text-muted">Esperando respuesta</span>';
+        }
+      }
+    }
+    if (row.parentNode === listNode) {
+      listNode.insertAdjacentElement("afterbegin", row);
+    }
+    return true;
+  }
+
+  function scheduleConversationsRefresh(delayMs) {
+    const wait = Math.max(40, Number(delayMs || 0) || 0);
+    if (conversationsRefreshTimer) window.clearTimeout(conversationsRefreshTimer);
+    conversationsRefreshTimer = window.setTimeout(function () {
+      conversationsRefreshTimer = null;
+      if (conversationsRefreshInflight) {
+        conversationsRefreshQueued = true;
+        return;
+      }
+      conversationsRefreshInflight = true;
+      refreshConversations({ silent: true }).catch(function () {
+        // no-op
+      }).finally(function () {
+        conversationsRefreshInflight = false;
+        if (conversationsRefreshQueued) {
+          conversationsRefreshQueued = false;
+          scheduleConversationsRefresh(120);
+        }
+      });
+    }, wait);
+  }
+
+  function scheduleMessageSync(conversationId, delayMs) {
+    const cid = Number(conversationId || 0) || 0;
+    if (!cid) return;
+    if (messageSyncTimer) window.clearTimeout(messageSyncTimer);
+    messageSyncTimer = window.setTimeout(function () {
+      messageSyncTimer = null;
+      refreshMessages(cid, { silent: true, mode: "sync", postSync: false }).catch(function () {});
+    }, Math.max(60, Number(delayMs || 0) || 0));
+  }
+
+  function scheduleMarkRead(conversationId, delayMs, retriesLeft) {
+    const cid = Number(conversationId || 0) || 0;
+    if (!cid) return;
+    if (markReadTimer) window.clearTimeout(markReadTimer);
+    markReadTimer = window.setTimeout(function () {
+      markReadTimer = null;
+      markRead(cid).then(function (ok) {
+        if (ok) {
+          scheduleConversationsRefresh(180);
+          return;
+        }
+        if ((Number(retriesLeft || 0) || 0) > 0) {
+          scheduleMarkRead(cid, 500, Number(retriesLeft || 0) - 1);
+        }
+      }).catch(function () {
+        if ((Number(retriesLeft || 0) || 0) > 0) {
+          scheduleMarkRead(cid, 500, Number(retriesLeft || 0) - 1);
+        }
+      });
+    }, Math.max(80, Number(delayMs || 0) || 0));
+  }
+
+  function setSendButtonState(button, isSending) {
+    if (!button) return;
+    button.disabled = Boolean(isSending);
+    if (isSending) {
+      button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+      button.setAttribute("aria-label", "Enviando...");
+      return;
+    }
+    button.innerHTML = sendBtnDefaultHtml;
+    button.setAttribute("aria-label", "Enviar");
+  }
+
   function renderConversations(items) {
     if (!listNode) return;
     const rows = Array.isArray(items) ? items : [];
@@ -99,6 +403,10 @@
       const unread = Math.max(0, Number(row.cliente_unread_count || 0));
       const st = String(row.status || "open").toLowerCase();
       const solicitudLabel = row.solicitud_codigo ? ('<div class="small text-muted">Solicitud #' + esc(row.solicitud_codigo) + '</div>') : '';
+      const lastSender = String(row.last_message_sender_type || "").toLowerCase();
+      const supportSignal = lastSender === "staff"
+        ? '<span class="text-success">Respondido por soporte</span>'
+        : (lastSender === "cliente" ? '<span class="text-muted">Esperando respuesta</span>' : '<span class="text-muted">Sin actividad reciente</span>');
       return [
         '<a class="list-group-item list-group-item-action client-chat-conv' + (active ? ' active' : '') + '" href="' + esc(row.thread_url || '#') + '" data-conversation-id="' + esc(row.id) + '">',
         '<div class="d-flex justify-content-between gap-2 align-items-start">',
@@ -108,6 +416,7 @@
         '</div>',
         solicitudLabel,
         '<div class="small text-muted text-truncate">' + esc(row.last_message_preview || 'Sin mensajes') + '</div>',
+        '<div class="small">' + supportSignal + '</div>',
         '</a>'
       ].join('');
     }).join('');
@@ -224,6 +533,27 @@
       threadStatusNode.className = "badge " + statusClass(st);
       threadStatusNode.textContent = statusText(st);
     }
+    if (threadStatusHintNode) {
+      threadStatusHintNode.textContent = statusHintText(conversation.status || "open");
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(conversation, "staff_presence_state")
+      || Object.prototype.hasOwnProperty.call(conversation, "staff_presence_label")
+      || Object.prototype.hasOwnProperty.call(conversation, "staff_in_this_chat")
+    ) {
+      updateSupportPresence(conversation);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(conversation, "staff_typing_in_this_chat")
+      || Object.prototype.hasOwnProperty.call(conversation, "staff_typing_label")
+      || Object.prototype.hasOwnProperty.call(conversation, "staff_typing_expires_in")
+    ) {
+      setRemoteStaffTyping(
+        Boolean(conversation.staff_typing_in_this_chat),
+        String(conversation.staff_typing_label || ""),
+        Number(conversation.staff_typing_expires_in || 0),
+      );
+    }
   }
 
   function updateHistoryControls() {
@@ -273,6 +603,9 @@
     });
     if (!rows.length) showEmptyState();
     setPaginationFromPayload(payload);
+    selectedConversationPayload = (payload && payload.conversation && typeof payload.conversation === "object")
+      ? payload.conversation
+      : selectedConversationPayload;
     updateThreadHeader(payload && payload.conversation);
     messagesNode.scrollTop = messagesNode.scrollHeight;
   }
@@ -283,6 +616,9 @@
     const shouldStickBottom = isNearBottom();
     appendMessages(rows);
     if (getMessageCount() <= 0) showEmptyState();
+    selectedConversationPayload = (payload && payload.conversation && typeof payload.conversation === "object")
+      ? payload.conversation
+      : selectedConversationPayload;
     updateThreadHeader(payload && payload.conversation);
     if (shouldStickBottom) {
       messagesNode.scrollTop = messagesNode.scrollHeight;
@@ -291,7 +627,7 @@
   }
 
   async function markRead(conversationId) {
-    if (!conversationId) return;
+    if (!conversationId) return false;
     const csrfToken = getCSRFToken();
     try {
       await fetchJson(endpointFor(readTpl, conversationId), {
@@ -304,7 +640,10 @@
         },
         body: "csrf_token=" + encodeURIComponent(csrfToken),
       });
-    } catch (_e) {}
+      return true;
+    } catch (_e) {
+      return false;
+    }
   }
 
   async function refreshConversations(opts) {
@@ -312,6 +651,8 @@
     try {
       const payload = await fetchJson(conversationsUrl);
       renderConversations(payload.items || []);
+      const unreadCount = Math.max(0, Number((payload && payload.unread_count) || 0));
+      window.dispatchEvent(new CustomEvent("client-chat:unread-updated", { detail: { unread_count: unreadCount } }));
       return payload;
     } catch (_e) {
       if (!(opts && opts.silent) && listNode) {
@@ -325,11 +666,15 @@
     const previousConversationId = Number(selectedConversationId || 0) || 0;
     const cid = Number(conversationId || previousConversationId || 0);
     const mode = String((opts && opts.mode) || "sync").toLowerCase();
+    const postSync = !opts || opts.postSync !== false;
     if (!cid || loadingLatest) return null;
     loadingLatest = true;
     try {
       const payload = await fetchJson(endpointFor(messagesTpl, cid) + "?limit=" + String(PAGE_SIZE));
       selectedConversationId = cid;
+      selectedConversationPayload = (payload && payload.conversation && typeof payload.conversation === "object")
+        ? payload.conversation
+        : selectedConversationPayload;
       root.setAttribute("data-selected-conversation-id", String(cid));
       if (messagesNode) messagesNode.setAttribute("data-conversation-id", String(cid));
 
@@ -340,8 +685,11 @@
         syncLatestMessages(payload || {});
       }
 
-      await markRead(cid);
-      await refreshConversations({ silent: true });
+      if (postSync) {
+        scheduleMarkRead(cid, 150, 1);
+        scheduleConversationsRefresh(220);
+      }
+      pingChatPresence(previousConversationId !== Number(cid) ? "chat_switch" : "heartbeat").catch(function () {});
       return payload;
     } catch (_e) {
       if (!(opts && opts.silent) && messagesNode) {
@@ -389,6 +737,8 @@
       ev.preventDefault();
       const cid = Number(link.getAttribute("data-conversation-id") || 0) || 0;
       if (!cid) return;
+      stopLocalTypingSignal();
+      setRemoteStaffTyping(false, "", 0);
       selectedConversationId = cid;
       nextBeforeId = 0;
       hasMoreHistory = false;
@@ -412,7 +762,7 @@
     markReadBtn.addEventListener("click", function () {
       const cid = Number(selectedConversationId || 0);
       if (!cid) return;
-      markRead(cid).then(function () { return refreshConversations({ silent: true }); }).catch(function () {});
+      markRead(cid).then(function () { scheduleConversationsRefresh(120); }).catch(function () {});
     });
   }
 
@@ -420,6 +770,23 @@
     const markDirty = function () { form.setAttribute("data-client-live-dirty", "1"); };
     const resetDirty = function () { form.setAttribute("data-client-live-dirty", "0"); };
     bodyInput.addEventListener("input", markDirty);
+    bodyInput.addEventListener("input", function () {
+      scheduleLocalTypingSignal();
+    });
+    bodyInput.addEventListener("blur", function () {
+      stopLocalTypingSignal();
+    });
+    bodyInput.addEventListener("input", function () {
+      if (!charCountNode) return;
+      const len = Number((bodyInput.value || "").length);
+      const maxLen = Number(bodyInput.getAttribute("maxlength") || root.getAttribute("data-message-max-len") || 1800) || 1800;
+      charCountNode.textContent = String(len) + " / " + String(maxLen);
+    });
+    bodyInput.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter" || ev.shiftKey) return;
+      ev.preventDefault();
+      if (sendBtn && !sendBtn.disabled) sendBtn.click();
+    });
     form.addEventListener("submit", resetDirty);
   }
 
@@ -442,14 +809,15 @@
       || 0
     ) || 0;
     if (!cid || !activeBodyInput) return;
+    if (sendingMessage) return;
     const text = String(activeBodyInput.value || "").trim();
     if (!text) return;
+    stopLocalTypingSignal();
 
     const csrfToken = getCSRFToken();
-    if (activeSendBtn) {
-      activeSendBtn.disabled = true;
-      activeSendBtn.classList.add("is-loading");
-    }
+    sendingMessage = true;
+    setSendButtonState(activeSendBtn, true);
+    clearGlobalLoaderState();
 
     try {
       const body = new URLSearchParams();
@@ -467,6 +835,11 @@
         body: body.toString(),
       });
       activeBodyInput.value = "";
+      postTypingState(cid, false).catch(function () {});
+      if (charCountNode) {
+        const maxLen = Number(activeBodyInput.getAttribute("maxlength") || root.getAttribute("data-message-max-len") || 1800) || 1800;
+        charCountNode.textContent = "0 / " + String(maxLen);
+      }
       submitForm.setAttribute("data-client-live-dirty", "0");
       if (activeMessagesNode && payload && payload.message) {
         const activeEmpty = activeMessagesNode.querySelector("#clientChatEmpty");
@@ -474,18 +847,17 @@
         activeMessagesNode.insertAdjacentHTML("beforeend", messageHtml(payload.message));
         activeMessagesNode.scrollTop = activeMessagesNode.scrollHeight;
       }
-      if (messagesNode && document.body.contains(messagesNode)) {
-        await refreshMessages(cid, { silent: true, mode: "sync" });
-      } else {
-        await refreshConversations({ silent: true });
-      }
+      setSendButtonState(activeSendBtn, false);
+      sendingMessage = false;
+      clearGlobalLoaderState();
+      scheduleMarkRead(cid, 120, 1);
+      scheduleConversationsRefresh(180);
     } catch (_e) {
       // no-op, degradacion silenciosa
     } finally {
-      if (activeSendBtn) {
-        activeSendBtn.disabled = false;
-        activeSendBtn.classList.remove("is-loading");
-      }
+      setSendButtonState(activeSendBtn, false);
+      sendingMessage = false;
+      clearGlobalLoaderState();
     }
   }, true);
 
@@ -497,11 +869,85 @@
       return refreshMessages(cid, Object.assign({ mode: "sync" }, opts || {}));
     },
     loadOlderMessages,
+    scheduleConversationsRefresh,
+    applyLiveEvent: function (evt) {
+      const rawEvt = evt && typeof evt === "object" ? evt : {};
+      const payload = rawEvt.payload && typeof rawEvt.payload === "object" ? rawEvt.payload : {};
+      const target = rawEvt.target && typeof rawEvt.target === "object" ? rawEvt.target : {};
+      const eventType = String(rawEvt.event_type || "").trim().toLowerCase();
+      const cid = Number(payload.conversation_id || target.conversation_id || 0) || 0;
+      if (!cid) {
+        scheduleConversationsRefresh(220);
+        return;
+      }
+
+      patchConversationRowFromPayload(cid, payload);
+      const selectedCid = Number(selectedConversationId || 0) || 0;
+      if (cid !== selectedCid) {
+        scheduleConversationsRefresh(260);
+        return;
+      }
+
+      if (eventType === "cliente.chat.typing") {
+        const actorType = String(payload.actor_type || "").trim().toLowerCase();
+        if (actorType === "staff") {
+          setRemoteStaffTyping(
+            Boolean(payload.is_typing),
+            "Soporte está escribiendo...",
+            Number(payload.typing_expires_in || 0),
+          );
+        }
+        return;
+      }
+
+      if (eventType === "cliente.chat.message_created") {
+        const senderType = String(payload.sender_type || "").trim().toLowerCase();
+        if (senderType !== "cliente") {
+          setRemoteStaffTyping(false, "", 0);
+          scheduleMessageSync(cid, 90);
+        }
+        scheduleMarkRead(cid, 140, 1);
+        scheduleConversationsRefresh(220);
+        return;
+      }
+
+      if (eventType === "cliente.chat.status_changed" || eventType === "cliente.chat.read") {
+        if (String(payload.status || "").trim()) {
+          updateThreadHeader({
+            subject: threadSubjectNode ? threadSubjectNode.textContent : "Soporte",
+            status: String(payload.status || "").trim().toLowerCase(),
+          });
+        }
+        scheduleConversationsRefresh(220);
+        return;
+      }
+
+      scheduleConversationsRefresh(260);
+    },
     selectedConversationId: function () { return Number(selectedConversationId || 0); },
   };
 
   refreshConversations({ silent: true });
+  if (messagesNode && getMessageCount() > 0) {
+    messagesNode.scrollTop = messagesNode.scrollHeight;
+  }
   if (selectedConversationId > 0) {
     refreshMessages(selectedConversationId, { silent: true, mode: "reset" });
+  }
+  startChatPresenceLoop();
+  window.addEventListener("beforeunload", function () {
+    stopLocalTypingSignal();
+    if (presencePingTimer) {
+      window.clearInterval(presencePingTimer);
+      presencePingTimer = null;
+    }
+    if (remoteTypingHideTimer) {
+      window.clearTimeout(remoteTypingHideTimer);
+      remoteTypingHideTimer = null;
+    }
+  });
+  if (charCountNode && bodyInput) {
+    const maxLen = Number(bodyInput.getAttribute("maxlength") || root.getAttribute("data-message-max-len") || 1800) || 1800;
+    charCountNode.textContent = "0 / " + String(maxLen);
   }
 })();

@@ -8,6 +8,7 @@
   const streamUrl = String(body.getAttribute("data-client-live-stream-url") || "").trim();
   const pollUrl = String(body.getAttribute("data-client-live-poll-url") || "").trim();
   const notificationsUrl = String(body.getAttribute("data-client-live-notifications-url") || "").trim();
+  const chatConversationsUrl = String(body.getAttribute("data-client-chat-conversations-url") || "").trim();
   if (!streamUrl || !pollUrl) return;
 
   const EVENT_DEDUPE_TTL_MS = 8 * 60 * 1000;
@@ -23,10 +24,14 @@
   const refreshQueued = new Map();
   const interactionWaiters = new Map();
   const lastRefreshAt = new Map();
+  const notifiedStaffMessages = new Map();
 
   let eventSource = null;
   let reconnectTimer = null;
   let pollTimer = null;
+  let chatUnreadRefreshTimer = null;
+  let chatUnreadRefreshInflight = false;
+  let chatUnreadKnownCount = Math.max(0, Number(window.__clientChatUnreadCount || 0) || 0);
   let pollIntervalMs = 0;
   let fallbackMode = false;
   const initialAfterId = Math.max(0, Number(body.getAttribute("data-client-live-after-id") || 0) || 0);
@@ -112,6 +117,112 @@
       for (let i = 0; i < removeCount; i += 1) seen.delete(stale[i][0]);
     }
     return false;
+  }
+
+  function isDuplicateStaffReply(messageId) {
+    const key = String(messageId || "").trim();
+    if (!key) return false;
+    const now = Date.now();
+    const prev = notifiedStaffMessages.get(key);
+    if (prev && (now - prev) <= EVENT_DEDUPE_TTL_MS) return true;
+    notifiedStaffMessages.set(key, now);
+    if (notifiedStaffMessages.size > 800) {
+      const stale = Array.from(notifiedStaffMessages.entries()).sort(function (a, b) { return a[1] - b[1]; });
+      const removeCount = Math.max(1, stale.length - 800);
+      for (let i = 0; i < removeCount; i += 1) notifiedStaffMessages.delete(stale[i][0]);
+    }
+    return false;
+  }
+
+  function updateChatUnreadBadges(unreadCount, emitEvent) {
+    const count = Math.max(0, Number(unreadCount || 0) || 0);
+    const shouldEmit = emitEvent !== false;
+    chatUnreadKnownCount = count;
+    window.__clientChatUnreadCount = count;
+    document.querySelectorAll("[data-client-chat-unread-badge]").forEach(function (node) {
+      node.textContent = String(count);
+      node.classList.toggle("d-none", count <= 0);
+    });
+    if (shouldEmit && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("client-chat:unread-updated", { detail: { unread_count: count } }));
+    }
+  }
+
+  async function refreshChatUnreadCount() {
+    if (!chatConversationsUrl || chatUnreadRefreshInflight) return;
+    chatUnreadRefreshInflight = true;
+    try {
+      const resp = await fetch(chatConversationsUrl, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (!resp.ok) return;
+      const payload = await resp.json();
+      updateChatUnreadBadges(Number((payload && payload.unread_count) || 0), true);
+    } catch (_e) {
+      // no-op
+    } finally {
+      chatUnreadRefreshInflight = false;
+    }
+  }
+
+  function scheduleChatUnreadRefresh(delayMs) {
+    if (!chatConversationsUrl) return;
+    if (chatUnreadRefreshTimer) window.clearTimeout(chatUnreadRefreshTimer);
+    chatUnreadRefreshTimer = window.setTimeout(function () {
+      refreshChatUnreadCount().catch(function () {});
+    }, Math.max(80, Number(delayMs || 0) || 0));
+  }
+
+  function truncateText(value, maxLen) {
+    const txt = String(value || "").trim();
+    if (!txt) return "";
+    const limit = Math.max(20, Number(maxLen || 0) || 0);
+    if (txt.length <= limit) return txt;
+    return txt.slice(0, limit - 1) + "…";
+  }
+
+  function showStaffReplyToast(evt) {
+    const payload = (evt && typeof evt.payload === "object") ? evt.payload : {};
+    const senderType = String(payload.sender_type || "").trim().toLowerCase();
+    if (senderType !== "staff") return;
+    const messageId = String(payload.message_id || "");
+    if (isDuplicateStaffReply(messageId)) return;
+    if (currentViewName() === "chat" && !document.hidden) return;
+
+    let wrap = document.querySelector(".client-chat-reply-toast-wrap");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.className = "client-chat-reply-toast-wrap";
+      document.body.appendChild(wrap);
+    }
+    const toastNode = document.createElement("div");
+    toastNode.className = "toast client-chat-reply-toast";
+    toastNode.setAttribute("role", "status");
+    toastNode.setAttribute("aria-live", "polite");
+    toastNode.setAttribute("aria-atomic", "true");
+    const preview = truncateText(payload.preview || "Tienes una nueva respuesta en tu chat de soporte.", 120);
+    toastNode.innerHTML = [
+      '<div class="toast-body">',
+      '<div class="client-chat-reply-toast-title">Nuevo mensaje de soporte</div>',
+      '<div class="client-chat-reply-toast-text">' + preview.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</div>',
+      '<div class="mt-2"><a class="btn btn-sm btn-primary" href="/clientes/chat">Abrir chat</a></div>',
+      '</div>',
+    ].join("");
+    wrap.appendChild(toastNode);
+    try {
+      const inst = new bootstrap.Toast(toastNode, { delay: 8500, autohide: true });
+      toastNode.addEventListener("hidden.bs.toast", function () {
+        if (toastNode && toastNode.parentNode) toastNode.parentNode.removeChild(toastNode);
+      }, { once: true });
+      inst.show();
+    } catch (_e) {
+      window.setTimeout(function () {
+        if (toastNode && toastNode.parentNode) toastNode.parentNode.removeChild(toastNode);
+      }, 9000);
+    }
   }
 
   async function fetchHtml(url) {
@@ -385,7 +496,17 @@
 
   function scheduleChatRefresh(evt) {
     const chatApi = window.ClientChat;
-    if (!chatApi || typeof chatApi.refreshConversations !== "function") return;
+    scheduleChatUnreadRefresh(120);
+    if (!chatApi) return;
+    if (typeof chatApi.applyLiveEvent === "function") {
+      try {
+        chatApi.applyLiveEvent(evt);
+        return;
+      } catch (_e) {
+        // fallback below
+      }
+    }
+    if (typeof chatApi.refreshConversations !== "function") return;
     try {
       chatApi.refreshConversations({ silent: true });
       const payload = (evt && evt.payload && typeof evt.payload === "object") ? evt.payload : {};
@@ -431,11 +552,15 @@
     runtime.afterId = Number(afterId || 0);
     const view = currentViewName();
     const invalidateViews = new Set(viewsFromEvent(evt));
+    const eventType = String((evt && evt.event_type) || "").trim().toLowerCase();
+    const isChatTypingEvent = eventType === "cliente.chat.typing";
 
     if (view === "dashboard" && invalidateViews.has("dashboard")) scheduleRefresh("dashboard");
     if (view === "solicitudes_list" && invalidateViews.has("solicitudes_list")) scheduleRefresh("solicitudes_list");
     if (shouldRefreshDetail(evt) && invalidateViews.has("solicitud_detail")) scheduleRefresh("solicitud_detail");
     if (view === "chat" && invalidateViews.has("chat")) scheduleChatRefresh(evt);
+    if (invalidateViews.has("chat") && view !== "chat" && !isChatTypingEvent) scheduleChatUnreadRefresh(120);
+    if (eventType === "cliente.chat.message_created") showStaffReplyToast(evt);
     if (invalidateViews.has("notifications")) scheduleNotificationRefresh();
   }
 
@@ -542,10 +667,17 @@
     startPollingLoop();
   }
 
+  window.addEventListener("client-chat:unread-updated", function (ev) {
+    const detail = (ev && ev.detail && typeof ev.detail === "object") ? ev.detail : {};
+    if (typeof detail.unread_count === "undefined") return;
+    updateChatUnreadBadges(Number(detail.unread_count || 0), false);
+  });
+
   window.addEventListener("beforeunload", function () {
     stopSse();
     clearReconnectTimer();
     if (pollTimer) window.clearInterval(pollTimer);
+    if (chatUnreadRefreshTimer) window.clearTimeout(chatUnreadRefreshTimer);
     interactionWaiters.forEach(function (waiter, view) {
       if (waiter && waiter.timer) window.clearTimeout(waiter.timer);
       if (waiter && waiter.activeEl && waiter.onDone && typeof waiter.activeEl.removeEventListener === "function") {
@@ -566,5 +698,7 @@
   };
 
   ensureDirtyFormTracking(currentViewNode());
+  updateChatUnreadBadges(chatUnreadKnownCount, false);
+  scheduleChatUnreadRefresh(120);
   startSse();
 })();

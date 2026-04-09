@@ -32,6 +32,7 @@ OUTBOX_RELAY_ALLOWED_EVENT_TYPES = {
     "CHAT_CONVERSATION_READ",
     "CHAT_CONVERSATION_STATUS_CHANGED",
     "CHAT_CONVERSATION_ASSIGNED",
+    "CHAT_CONVERSATION_TYPING",
 }
 
 _INTERNAL_CONSUMER_NAME = "internal_operational_notifications_v1"
@@ -136,6 +137,7 @@ def _notification_text(event: dict[str, Any]) -> tuple[str, str]:
         "CHAT_CONVERSATION_READ": "Conversación de chat leída",
         "CHAT_CONVERSATION_STATUS_CHANGED": "Estado de conversación de chat actualizado",
         "CHAT_CONVERSATION_ASSIGNED": "Asignación de conversación de chat actualizada",
+        "CHAT_CONVERSATION_TYPING": "Actividad de escritura en chat cliente",
     }
     titulo = mapping.get(event_type) or f"Evento crítico {event_type}"
     detalle = f"Solicitud {sid}" if sid is not None else "Solicitud"
@@ -160,6 +162,9 @@ def _register_consumer_receipt(*, consumer_name: str, event_id: str) -> bool:
 
 
 def _consume_internal_operational_notification(event: dict[str, Any], row: DomainOutbox) -> None:
+    event_type = str(event.get("event_type") or "").strip().upper()
+    if event_type == "CHAT_CONVERSATION_TYPING":
+        return
     event_id = str(event.get("event_id") or "")
     if not event_id:
         raise RuntimeError("Evento sin event_id para consumidor interno.")

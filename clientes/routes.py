@@ -35,6 +35,7 @@ try:
         ChatConversation,
         ChatMessage,
         StaffUser,
+        StaffPresenceState,
         PublicSolicitudTokenUso,
         PublicSolicitudClienteNuevoTokenUso,
         PublicSolicitudShareAlias,
@@ -49,6 +50,7 @@ except Exception:
     ChatConversation = None
     ChatMessage = None
     StaffUser = None
+    StaffPresenceState = None
     PublicSolicitudTokenUso = None
     PublicSolicitudClienteNuevoTokenUso = None
     PublicSolicitudShareAlias = None
@@ -1478,6 +1480,7 @@ _CLIENTE_LIVE_EVENT_TYPES = {
     "CHAT_MESSAGE_CREATED",
     "CHAT_CONVERSATION_READ",
     "CHAT_CONVERSATION_STATUS_CHANGED",
+    "CHAT_CONVERSATION_TYPING",
 }
 _CLIENTE_EVENT_CANONICAL_TYPE = {
     "SOLICITUD_ESTADO_CAMBIADO": "cliente.solicitud.status_changed",
@@ -1501,6 +1504,7 @@ _CLIENTE_EVENT_CANONICAL_TYPE = {
     "CHAT_MESSAGE_CREATED": "cliente.chat.message_created",
     "CHAT_CONVERSATION_READ": "cliente.chat.read",
     "CHAT_CONVERSATION_STATUS_CHANGED": "cliente.chat.status_changed",
+    "CHAT_CONVERSATION_TYPING": "cliente.chat.typing",
 }
 _CHAT_STATUS_OPEN = "open"
 _CHAT_STATUS_PENDING = "pending"
@@ -1687,8 +1691,12 @@ def _normalize_cliente_live_event_from_outbox(row, *, current_cliente_id: int):
             "conversation_id": payload.get("conversation_id"),
             "message_id": payload.get("message_id"),
             "sender_type": payload.get("sender_type"),
+            "preview": payload.get("preview"),
             "cliente_unread_count": payload.get("cliente_unread_count"),
             "staff_unread_count": payload.get("staff_unread_count"),
+            "actor_type": payload.get("actor_type"),
+            "is_typing": payload.get("is_typing"),
+            "typing_expires_in": payload.get("typing_expires_in"),
         },
     }
 
@@ -1725,6 +1733,7 @@ def clientes_live_ping():
     event_type = (payload.get('event_type') or 'heartbeat').strip().lower()[:32]
     action_hint = (payload.get('action_hint') or 'browsing').strip().lower()[:80]
     solicitud_id = str(payload.get('solicitud_id') or '').strip()[:64]
+    conversation_id = _safe_int(payload.get('conversation_id'), default=0)
     cliente_id = int(getattr(current_user, 'id', 0) or 0)
     if not cliente_id:
         abort(403)
@@ -1737,6 +1746,7 @@ def clientes_live_ping():
         'event_type': event_type,
         'action_hint': action_hint,
         'solicitud_id': solicitud_id,
+        'conversation_id': int(conversation_id or 0) or None,
         'last_seen_at': iso_utc_z(),
     }
     bp_set(
@@ -3636,6 +3646,51 @@ def detalle_solicitud(id):
 _CHAT_MESSAGE_MAX_LEN = 1800
 _CHAT_CONV_PAGE_LIMIT = 30
 _CHAT_MSG_PAGE_LIMIT = 50
+_CHAT_STAFF_PRESENCE_ACTIVE_SECONDS = 30
+_CHAT_TYPING_TTL_SECONDS = 5
+_CHAT_TYPING_EXPIRE_MIN = 2
+_CHAT_TYPING_EXPIRE_MAX = 8
+_CHAT_TYPING_CACHE_PREFIX = "chat:typing"
+
+
+def _chat_typing_cache_key(conversation_id: int, actor_type: str) -> str:
+    cid = max(0, int(conversation_id or 0))
+    actor = str(actor_type or "").strip().lower()[:16] or "unknown"
+    return f"{_CHAT_TYPING_CACHE_PREFIX}:{cid}:{actor}"
+
+
+def _chat_get_typing_state(*, conversation_id: int, actor_type: str) -> dict:
+    key = _chat_typing_cache_key(conversation_id, actor_type)
+    raw = bp_get(key, default=None, context="chat_typing_get")
+    payload = raw if isinstance(raw, dict) else {}
+    if not payload:
+        return {"is_typing": False, "expires_at": None, "expires_in": 0}
+    is_typing = bool(payload.get("is_typing"))
+    expires_at = str(payload.get("expires_at") or "").strip() or None
+    expires_in = max(0, int(payload.get("expires_in") or 0))
+    if not is_typing:
+        return {"is_typing": False, "expires_at": None, "expires_in": 0}
+    return {"is_typing": True, "expires_at": expires_at, "expires_in": expires_in}
+
+
+def _chat_set_typing_state(
+    *,
+    conversation_id: int,
+    actor_type: str,
+    is_typing: bool,
+    expires_seconds: Optional[int] = None,
+) -> dict:
+    ttl = int(expires_seconds or _CHAT_TYPING_TTL_SECONDS)
+    ttl = max(_CHAT_TYPING_EXPIRE_MIN, min(ttl, _CHAT_TYPING_EXPIRE_MAX))
+    key = _chat_typing_cache_key(conversation_id, actor_type)
+    if not bool(is_typing):
+        bp_set(key, {"is_typing": False}, timeout=max(2, _CHAT_TYPING_EXPIRE_MIN), context="chat_typing_set")
+        return {"is_typing": False, "expires_at": None, "expires_in": 0}
+    expires_at_dt = utc_now_naive() + timedelta(seconds=int(ttl))
+    expires_at = iso_utc_z(expires_at_dt)
+    payload = {"is_typing": True, "expires_at": expires_at, "expires_in": int(ttl)}
+    bp_set(key, payload, timeout=max(2, int(ttl) + 1), context="chat_typing_set")
+    return payload
 
 
 def _chat_enabled() -> bool:
@@ -3782,10 +3837,65 @@ def _chat_valid_status(raw: Optional[str], *, default: str = _CHAT_STATUS_OPEN) 
     return value if value in _CHAT_STATUS_VALUES else str(default)
 
 
-def _chat_serialize_conversation_for_cliente(conv) -> dict:
+def _chat_staff_presence_snapshot_for_cliente_chat() -> dict:
+    out = {"staff_in_chat_conversation_ids": set(), "staff_any_active": False}
+    if StaffPresenceState is None:
+        return out
+    now = utc_now_naive()
+    cutoff = now - timedelta(seconds=int(_CHAT_STAFF_PRESENCE_ACTIVE_SECONDS))
+    try:
+        rows = (
+            StaffPresenceState.query
+            .filter(StaffPresenceState.last_seen_at >= cutoff)
+            .all()
+        )
+    except Exception:
+        return out
+    ids = set()
+    any_active = False
+    for row in (rows or []):
+        route = str(getattr(row, "route", "") or "").strip().lower()
+        if not route.startswith("/admin"):
+            continue
+        status = str(getattr(row, "client_status", "") or "active").strip().lower()
+        if status in {"inactive", "hidden"}:
+            continue
+        any_active = True
+        etype = str(getattr(row, "entity_type", "") or "").strip().lower()
+        if etype in {"chat_conversation", "chatconversation"}:
+            conv_id = _safe_int(getattr(row, "entity_id", ""), default=0)
+            if conv_id > 0:
+                ids.add(int(conv_id))
+    out["staff_in_chat_conversation_ids"] = ids
+    out["staff_any_active"] = bool(any_active)
+    return out
+
+
+def _chat_staff_presence_for_conversation(conversation_id: int, snapshot: Optional[dict] = None) -> dict:
+    conv_id = int(conversation_id or 0)
+    snap = snapshot if isinstance(snapshot, dict) else _chat_staff_presence_snapshot_for_cliente_chat()
+    in_chat_ids = snap.get("staff_in_chat_conversation_ids") or set()
+    in_this_chat = conv_id > 0 and int(conv_id) in set(in_chat_ids)
+    any_active = bool(snap.get("staff_any_active"))
+    if in_this_chat:
+        return {"state": "in_this_chat", "label": "Soporte en este chat", "in_this_chat": True, "active_elsewhere": False}
+    if any_active:
+        return {"state": "active_elsewhere", "label": "Soporte activo en otra pantalla", "in_this_chat": False, "active_elsewhere": True}
+    return {"state": "offline", "label": "", "in_this_chat": False, "active_elsewhere": False}
+
+
+def _chat_serialize_conversation_for_cliente(conv, *, staff_presence_snapshot: Optional[dict] = None) -> dict:
     solicitud = getattr(conv, "solicitud", None)
     solicitud_id = int(getattr(conv, "solicitud_id", 0) or 0) or None
     last_message_at = getattr(conv, "last_message_at", None)
+    staff_presence = _chat_staff_presence_for_conversation(
+        int(getattr(conv, "id", 0) or 0),
+        snapshot=staff_presence_snapshot,
+    )
+    staff_typing = _chat_get_typing_state(
+        conversation_id=int(getattr(conv, "id", 0) or 0),
+        actor_type="staff",
+    )
     return {
         "id": int(conv.id),
         "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
@@ -3798,6 +3908,14 @@ def _chat_serialize_conversation_for_cliente(conv) -> dict:
         "last_message_sender_type": str(getattr(conv, "last_message_sender_type", "") or ""),
         "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
         "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+        "staff_presence_state": str(staff_presence.get("state") or ""),
+        "staff_presence_label": str(staff_presence.get("label") or ""),
+        "staff_in_this_chat": bool(staff_presence.get("in_this_chat")),
+        "staff_active_elsewhere": bool(staff_presence.get("active_elsewhere")),
+        "staff_typing_in_this_chat": bool(staff_typing.get("is_typing")),
+        "staff_typing_label": "Soporte está escribiendo..." if bool(staff_typing.get("is_typing")) else "",
+        "staff_typing_expires_at": staff_typing.get("expires_at"),
+        "staff_typing_expires_in": int(staff_typing.get("expires_in") or 0),
         "thread_url": url_for("clientes.chat_cliente", conversation_id=int(conv.id)),
     }
 
@@ -3901,6 +4019,7 @@ def chat_cliente():
         .limit(_CHAT_CONV_PAGE_LIMIT)
         .all()
     )
+    staff_presence_snapshot = _chat_staff_presence_snapshot_for_cliente_chat()
 
     messages = (
         ChatMessage.query
@@ -3917,6 +4036,7 @@ def chat_cliente():
         chat_selected=selected,
         chat_messages=messages,
         chat_message_max_len=_CHAT_MESSAGE_MAX_LEN,
+        chat_staff_presence_snapshot=staff_presence_snapshot,
     )
 
 
@@ -3963,11 +4083,12 @@ def chat_cliente_conversations_json():
         .limit(_CHAT_CONV_PAGE_LIMIT)
         .all()
     )
+    staff_presence_snapshot = _chat_staff_presence_snapshot_for_cliente_chat()
     total_unread = int(sum(int(getattr(r, "cliente_unread_count", 0) or 0) for r in (rows or [])))
     return jsonify(
         {
             "ok": True,
-            "items": [_chat_serialize_conversation_for_cliente(r) for r in (rows or [])],
+            "items": [_chat_serialize_conversation_for_cliente(r, staff_presence_snapshot=staff_presence_snapshot) for r in (rows or [])],
             "unread_count": total_unread,
             "ts": iso_utc_z(),
         }
@@ -4006,7 +4127,10 @@ def chat_cliente_messages_json(conversation_id):
     return jsonify(
         {
             "ok": True,
-            "conversation": _chat_serialize_conversation_for_cliente(conv),
+            "conversation": _chat_serialize_conversation_for_cliente(
+                conv,
+                staff_presence_snapshot=_chat_staff_presence_snapshot_for_cliente_chat(),
+            ),
             "items": [_chat_serialize_message_for_cliente(m) for m in rows],
             "has_more": bool(has_more),
             "next_before_id": int(next_before_id),
@@ -4085,6 +4209,11 @@ def chat_cliente_send_message(conversation_id):
         conv.updated_at = now
         db.session.add(conv)
         db.session.flush()
+        _chat_set_typing_state(
+            conversation_id=int(conv.id),
+            actor_type="cliente",
+            is_typing=False,
+        )
         _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
         if prev_status != _CHAT_STATUS_OPEN:
             _chat_emit_event(
@@ -4117,11 +4246,57 @@ def chat_cliente_send_message(conversation_id):
 
     payload = {
         "ok": True,
-        "conversation": _chat_serialize_conversation_for_cliente(conv),
+        "conversation": _chat_serialize_conversation_for_cliente(
+            conv,
+            staff_presence_snapshot=_chat_staff_presence_snapshot_for_cliente_chat(),
+        ),
         "message": _chat_serialize_message_for_cliente(msg),
         "ts": iso_utc_z(),
     }
     return jsonify(payload)
+
+
+@clientes_bp.route('/chat/conversations/<int:conversation_id>/typing', methods=['POST'])
+@login_required
+@cliente_required
+def chat_cliente_typing(conversation_id):
+    if not _chat_enabled():
+        return jsonify({"ok": False, "error": "chat_not_available"}), 404
+    conv = _chat_cliente_conversation_or_404(int(conversation_id))
+    payload = request.get_json(silent=True) or {}
+    raw_typing = payload.get("is_typing")
+    if isinstance(raw_typing, bool):
+        is_typing = raw_typing
+    else:
+        is_typing = str(raw_typing or "").strip().lower() in {"1", "true", "yes", "on", "typing"}
+    expires_in = _safe_int(payload.get("expires_in"), default=_CHAT_TYPING_TTL_SECONDS)
+    state = _chat_set_typing_state(
+        conversation_id=int(conv.id),
+        actor_type="cliente",
+        is_typing=bool(is_typing),
+        expires_seconds=int(expires_in or _CHAT_TYPING_TTL_SECONDS),
+    )
+    _chat_emit_event(
+        event_type="CHAT_CONVERSATION_TYPING",
+        conversation=conv,
+        reader_type="cliente",
+        extra_payload={
+            "actor_type": "cliente",
+            "is_typing": bool(state.get("is_typing")),
+            "typing_expires_in": int(state.get("expires_in") or 0),
+            "typing_expires_at": state.get("expires_at"),
+        },
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "conversation_id": int(conv.id),
+            "is_typing": bool(state.get("is_typing")),
+            "typing_expires_in": int(state.get("expires_in") or 0),
+            "typing_expires_at": state.get("expires_at"),
+            "ts": iso_utc_z(),
+        }
+    )
 
 
 @clientes_bp.route('/chat/conversations/<int:conversation_id>/read', methods=['GET', 'POST'])
