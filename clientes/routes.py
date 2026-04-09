@@ -2268,6 +2268,45 @@ def _map_tipo_lugar(value, extra):
     return value
 
 
+def _has_limpieza_funcion(funciones_selected):
+    vals = _clean_list(funciones_selected)
+    for raw in vals:
+        if str(raw or '').strip().lower() == 'limpieza':
+            return True
+    return False
+
+
+def _strip_pisos_marker_from_note(note_text):
+    txt = str(note_text or '')
+    lines = txt.split('\n')
+    keep = []
+    for raw in lines:
+        line = str(raw or '')
+        if line.strip().startswith('Pisos reportados:'):
+            continue
+        keep.append(line)
+    return '\n'.join(keep).strip()
+
+
+def _clear_house_structure_if_not_limpieza(solicitud_obj, funciones_selected):
+    if _has_limpieza_funcion(funciones_selected):
+        return
+    if hasattr(solicitud_obj, 'tipo_lugar'):
+        solicitud_obj.tipo_lugar = None
+    if hasattr(solicitud_obj, 'habitaciones'):
+        solicitud_obj.habitaciones = None
+    if hasattr(solicitud_obj, 'banos'):
+        solicitud_obj.banos = None
+    if hasattr(solicitud_obj, 'dos_pisos'):
+        solicitud_obj.dos_pisos = False
+    if hasattr(solicitud_obj, 'areas_comunes'):
+        solicitud_obj.areas_comunes = []
+    if hasattr(solicitud_obj, 'area_otro'):
+        solicitud_obj.area_otro = None
+    if hasattr(solicitud_obj, 'nota_cliente'):
+        solicitud_obj.nota_cliente = _strip_pisos_marker_from_note(getattr(solicitud_obj, 'nota_cliente', ''))
+
+
 def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
     try:
         if hasattr(solicitud_obj, "modalidad_trabajo"):
@@ -2887,6 +2926,7 @@ def nueva_solicitud():
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
+            _clear_house_structure_if_not_limpieza(s, selected_funciones)
             apply_pasaje_to_solicitud(
                 s,
                 mode_raw=public_pasaje_mode,
@@ -3174,6 +3214,7 @@ def editar_solicitud(id):
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
+            _clear_house_structure_if_not_limpieza(s, selected_funciones)
             apply_pasaje_to_solicitud(
                 s,
                 mode_raw=public_pasaje_mode,
@@ -5738,7 +5779,7 @@ def solicitud_publica_nueva_token(token):
 
                 if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
-                    if public_pisos_value == "3+":
+                    if _has_limpieza_funcion(selected_funciones) and public_pisos_value == "3+":
                         marker_pisos = "Pisos reportados: 3+."
                         if marker_pisos not in (s.nota_cliente or ""):
                             s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
@@ -5751,6 +5792,7 @@ def solicitud_publica_nueva_token(token):
 
                 if hasattr(s, 'sueldo'):
                     s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x', (object,), {'data': None})).data)
+                _clear_house_structure_if_not_limpieza(s, selected_funciones)
 
                 s.ciudad_sector = (form.ciudad_sector.data or '').strip()
                 if hasattr(s, 'fecha_ultima_modificacion'):
@@ -6255,7 +6297,7 @@ def solicitud_publica(token):
 
             if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
-                if pisos_selector == "3+":
+                if _has_limpieza_funcion(selected_funciones) and pisos_selector == "3+":
                     marker_pisos = "Pisos reportados: 3+."
                     if marker_pisos not in (s.nota_cliente or ""):
                         s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
@@ -6268,6 +6310,7 @@ def solicitud_publica(token):
 
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x',(object,),{'data':None})).data)
+            _clear_house_structure_if_not_limpieza(s, selected_funciones)
 
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = now_ref

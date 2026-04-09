@@ -1,5 +1,6 @@
 # clientes/forms.py
 
+from flask import request
 from flask_wtf import FlaskForm
 from wtforms import (
     StringField, PasswordField, SelectField, SelectMultipleField,
@@ -198,6 +199,7 @@ class SolicitudForm(FlaskForm):
             ("limpieza", "Limpieza General"),
             ("cocinar", "Cocinar"),
             ("lavar", "Lavar"),
+            ("planchar", "Planchar"),
             ("ninos", "Cuidar Niños"),
             ("envejeciente", "Cuidar envejecientes"),
             ("otro", "Otro"),
@@ -307,8 +309,60 @@ class SolicitudForm(FlaskForm):
 
     submit = SubmitField("Enviar")
 
+    @staticmethod
+    def _has_limpieza_selected() -> bool:
+        try:
+            raw = request.form.getlist('funciones')
+        except Exception:
+            raw = []
+        vals = [str(x).strip().lower() for x in (raw or []) if str(x).strip()]
+        return 'limpieza' in vals
+
     def validate(self, extra_validators=None):
+        requiere_limpieza = self._has_limpieza_selected()
+        if not requiere_limpieza:
+            def _strip_required(validators):
+                return [
+                    v for v in (validators or [])
+                    if not isinstance(v, (DataRequired, NumberRange))
+                ]
+            if hasattr(self, 'tipo_lugar'):
+                self.tipo_lugar.validators = _strip_required(self.tipo_lugar.validators)
+            if hasattr(self, 'habitaciones'):
+                self.habitaciones.validators = _strip_required(self.habitaciones.validators)
+            if hasattr(self, 'banos'):
+                self.banos.validators = _strip_required(self.banos.validators)
+            if hasattr(self, 'areas_comunes'):
+                self.areas_comunes.validators = _strip_required(self.areas_comunes.validators)
+
         ok = super().validate(extra_validators=extra_validators)
+        if not requiere_limpieza:
+            for fname in ('tipo_lugar', 'habitaciones', 'banos', 'areas_comunes'):
+                field = getattr(self, fname, None)
+                if not field:
+                    continue
+                try:
+                    field.errors = []
+                except Exception:
+                    pass
+                try:
+                    field.process_errors = []
+                except Exception:
+                    pass
+            ok = all(not f.errors for f in self._fields.values())
+        modalidad_group = ""
+        modalidad_specific = ""
+        try:
+            modalidad_group = str((request.form or {}).get("modalidad_grupo") or "").strip()
+            modalidad_specific = str((request.form or {}).get("modalidad_especifica") or "").strip()
+        except Exception:
+            modalidad_group = ""
+            modalidad_specific = ""
+
+        def _append_modalidad_error(msg: str):
+            if msg not in (self.modalidad_trabajo.errors or []):
+                self.modalidad_trabajo.errors.append(msg)
+
         funciones = self.funciones.data or []
 
         try:
@@ -324,6 +378,14 @@ class SolicitudForm(FlaskForm):
             if not (self.edades_ninos.data and str(self.edades_ninos.data).strip()):
                 self.edades_ninos.errors.append("Debes indicar las edades de los niños.")
                 ok = False
+
+        if not modalidad_group:
+            _append_modalidad_error("Selecciona la modalidad de trabajo.")
+            ok = False
+
+        if not modalidad_specific:
+            _append_modalidad_error("Selecciona la modalidad específica.")
+            ok = False
 
         return ok
 
@@ -346,6 +408,8 @@ class SolicitudForm(FlaskForm):
             raise ValidationError("Especifica la función cuando marcas 'Otro'.")
 
     def validate_tipo_lugar(self, field):
+        if not self._has_limpieza_selected():
+            return
         if field.data == 'otro' and not (self.tipo_lugar_otro.data and self.tipo_lugar_otro.data.strip()):
             raise ValidationError("Especifica el tipo de lugar cuando marcas 'Otro'.")
 

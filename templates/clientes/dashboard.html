@@ -27,7 +27,7 @@
           <a href="{{ url_for('clientes.proceso_contratacion') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-diagram-3 me-1"></i> Cómo funciona
           </a>
-          <a href="{{ url_for('clientes.chat_cliente') }}" class="btn btn-outline-dark btn-sm d-inline-flex align-items-center gap-2 client-chat-dashboard-link">
+          <a href="{{ url_for('clientes.chat_cliente') }}" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2 client-chat-dashboard-link">
             <span><i class="bi bi-chat-left-text me-1"></i> Abrir chat</span>
             <span
               class="badge rounded-pill text-bg-danger {% if not chat_unread_count %}d-none{% endif %}"
@@ -54,7 +54,7 @@
           </div>
         </div>
         <div class="d-flex gap-2">
-          <a href="{{ solicitud_draft.continue_url }}" class="btn btn-sm btn-dark">Continuar solicitud</a>
+          <a href="{{ solicitud_draft.continue_url }}" class="btn btn-sm btn-primary">Continuar solicitud</a>
           <a href="{{ url_for('clientes.nueva_solicitud', fresh=1) }}" class="btn btn-sm btn-outline-secondary">Descartar borrador</a>
         </div>
       </div>
@@ -82,7 +82,7 @@
           <a href="{{ resumen_ejecutivo.prioridad.cta_url }}" class="btn btn-sm btn-light border">
             {{ resumen_ejecutivo.prioridad.cta_label }}
           </a>
-          <a href="{{ resumen_ejecutivo.prioridad.secondary_url }}" class="btn btn-sm btn-outline-dark">
+          <a href="{{ resumen_ejecutivo.prioridad.secondary_url }}" class="btn btn-sm btn-outline-primary">
             {{ resumen_ejecutivo.prioridad.secondary_label }}
           </a>
           <button type="button" class="btn btn-sm btn-outline-secondary" data-smart-guide-dismiss>

@@ -51,7 +51,7 @@
 
   {% if show_shell %}
   <!-- NAVBAR -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm clientes-shell-nav">
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm clientes-shell-nav">
     <div class="container">
       <a class="navbar-brand d-flex align-items-center fw-semibold" href="{{ url_for('clientes.dashboard') }}">
         <img class="clientes-navbar-logo"
@@ -215,7 +215,7 @@
 
   {% if show_shell %}
   <!-- FOOTER -->
-  <footer class="py-4 mt-auto bg-dark text-white clientes-shell-footer">
+  <footer class="py-4 mt-auto clientes-shell-footer">
     <div class="container">
       <div class="row gy-3 align-items-center">
         <div class="col-md">
@@ -223,9 +223,9 @@
         </div>
         <div class="col-md text-md-end">
           <small>
-            <a href="{{ url_for('clientes.informacion') }}" class="me-3 link-light">Quiénes somos</a>
-            <a href="{{ url_for('clientes.planes') }}" class="me-3 link-light">Planes</a>
-            <a href="{{ url_for('clientes.ayuda') }}" class="link-light">Centro de ayuda</a>
+            <a href="{{ url_for('clientes.informacion') }}" class="me-3">Quiénes somos</a>
+            <a href="{{ url_for('clientes.planes') }}" class="me-3">Planes</a>
+            <a href="{{ url_for('clientes.ayuda') }}" >Centro de ayuda</a>
           </small>
         </div>
       </div>

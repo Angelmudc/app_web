@@ -79,10 +79,27 @@
               </div>
               <button type="button" id="wizard-toggle-view" class="btn btn-sm btn-outline-secondary">Ver todo</button>
             </div>
-            <div class="soft-wizard-progress mt-2">
+            <div class="d-flex align-items-center justify-content-between mt-2 gap-2 soft-wizard-progress-meta">
+              <span id="wizard-step-status" class="small text-muted">Paso 1 de 4</span>
+              <span id="wizard-step-percent" class="small text-muted">25%</span>
+            </div>
+            <div class="soft-wizard-progress mt-1">
               <div id="wizard-progress-bar" class="progress-bar" role="progressbar" style="width: 25%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25"></div>
             </div>
             <div id="wizard-step-nav" class="soft-wizard-nav" aria-label="Pasos de la solicitud"></div>
+            <div id="wizard-required-progress" class="soft-wizard-required mt-3" aria-live="polite">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span class="soft-wizard-required-title">Completitud requerida</span>
+                <span class="d-inline-flex align-items-center gap-2">
+                  <span id="wizard-required-count" class="soft-wizard-required-count">0 de 0 obligatorios</span>
+                  <span id="wizard-required-percent" class="soft-wizard-required-percent">0%</span>
+                </span>
+              </div>
+              <div class="soft-wizard-progress soft-wizard-progress--required mt-2">
+                <div id="wizard-required-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+              </div>
+              <div id="wizard-required-status" class="soft-wizard-required-status mt-2">Completa los campos obligatorios para dejar la solicitud lista para guardar.</div>
+            </div>
           </div>
 
           {% include 'clientes/_solicitud_form_fields.html' %}

@@ -838,12 +838,21 @@
     const wizardShell = $('#solicitud-soft-wizard', formEl);
     const wizardNav = $('#wizard-step-nav', formEl);
     const wizardProgressBar = $('#wizard-progress-bar', formEl);
+    const wizardStepStatus = $('#wizard-step-status', formEl);
+    const wizardStepPercent = $('#wizard-step-percent', formEl);
     const wizardToggleBtn = $('#wizard-toggle-view', formEl);
     const wizardPrevBtn = $('#wizard-prev-btn', formEl);
     const wizardNextBtn = $('#wizard-next-btn', formEl);
     const wizardStepHidden = $('#wizard_step', formEl);
+    const wizardRequiredWrap = $('#wizard-required-progress', formEl);
+    const wizardRequiredBar = $('#wizard-required-bar', formEl);
+    const wizardRequiredCount = $('#wizard-required-count', formEl);
+    const wizardRequiredPercent = $('#wizard-required-percent', formEl);
+    const wizardRequiredStatus = $('#wizard-required-status', formEl);
     const stepCards = $$('.public-form-sections > .public-form-card', formEl);
     const wizardEnabled = !!(wizardShell && stepCards.length > 1);
+    const visitedSteps = new Set();
+    const touchedSteps = new Set();
 
     if (wizardEnabled) {
       let showAll = false;
@@ -870,10 +879,18 @@
         wizardNav.innerHTML = '';
         stepCards.forEach((card, idx) => {
           const btn = d.createElement('button');
+          const idxTag = d.createElement('span');
+          const label = d.createElement('span');
+
           btn.type = 'button';
           btn.className = 'soft-wizard-step';
           btn.setAttribute('data-step-index', String(idx + 1));
-          btn.textContent = `${idx + 1}. ${cardTitle(card, idx)}`;
+          idxTag.className = 'soft-wizard-step-index';
+          idxTag.textContent = String(idx + 1);
+          label.className = 'soft-wizard-step-label';
+          label.textContent = cardTitle(card, idx);
+          btn.appendChild(idxTag);
+          btn.appendChild(label);
           btn.addEventListener('click', () => {
             activeStep = idx + 1;
             showAll = false;
@@ -896,11 +913,28 @@
       }
 
       function updateNavState() {
+        const stepStats = stepCards.map((card) => computeRequiredStatsWithin(card));
         const navButtons = $$('.soft-wizard-step', wizardNav || d);
         navButtons.forEach((btn) => {
           const idx = clampStep(btn.getAttribute('data-step-index'));
+          const stat = stepStats[idx - 1] || { total: 0, completed: 0 };
+          const isDone = stat.total === 0 || stat.completed >= stat.total;
+          const isActive = idx === activeStep;
+          const isWorked = visitedSteps.has(idx) || touchedSteps.has(idx);
+
+          btn.classList.remove('is-pending', 'is-incomplete', 'is-complete', 'is-active-complete', 'is-active-incomplete');
           btn.classList.toggle('is-active', idx === activeStep);
-          btn.classList.toggle('is-complete', idx < activeStep);
+
+          if (isActive) {
+            btn.classList.add(isDone ? 'is-active-complete' : 'is-active-incomplete');
+          } else if (isDone) {
+            btn.classList.add('is-complete');
+          } else if (isWorked) {
+            btn.classList.add('is-incomplete');
+          } else {
+            btn.classList.add('is-pending');
+          }
+
           btn.setAttribute('aria-current', idx === activeStep ? 'step' : 'false');
         });
       }
@@ -911,10 +945,17 @@
         const pct = Math.round((activeStep / total) * 100);
         wizardProgressBar.style.width = `${pct}%`;
         wizardProgressBar.setAttribute('aria-valuenow', String(pct));
+        if (wizardStepStatus) {
+          wizardStepStatus.textContent = `Paso ${activeStep} de ${total}`;
+        }
+        if (wizardStepPercent) {
+          wizardStepPercent.textContent = `${pct}%`;
+        }
       }
 
       function renderWizard() {
         const singleStepMode = !showAll;
+        visitedSteps.add(activeStep);
         stepCards.forEach((card, idx) => {
           if (!card) return;
           const visible = singleStepMode ? ((idx + 1) === activeStep) : true;
@@ -973,6 +1014,127 @@
       }
     }
 
+    // ---------- Barra de progreso por campos obligatorios ----------
+      function isFillableRequiredControl(el) {
+      if (!el || !el.tagName || !el.name) return false;
+      if (el.disabled) return false;
+
+      const tag = String(el.tagName).toLowerCase();
+      const type = String(el.type || '').toLowerCase();
+
+      if (!['input', 'select', 'textarea'].includes(tag)) return false;
+      if (['hidden', 'submit', 'button', 'reset', 'file', 'image'].includes(type)) return false;
+      if (!(el.required || String(el.getAttribute('aria-required') || '').toLowerCase() === 'true')) return false;
+
+      const hiddenParent = el.closest('[hidden], .d-none');
+      if (hiddenParent) return false;
+
+      return true;
+      }
+
+      function computeRequiredStatsWithin(rootEl) {
+        const controls = $$('input, select, textarea', rootEl || formEl).filter(isFillableRequiredControl);
+        const groups = new Map();
+        controls.forEach((el) => {
+          if (!groups.has(el.name)) groups.set(el.name, []);
+          groups.get(el.name).push(el);
+        });
+
+        let completed = 0;
+        groups.forEach((arr) => {
+          if (arr.length && isControlCompleted(arr[0], groups)) completed += 1;
+        });
+
+        return { total: groups.size, completed };
+      }
+
+      function stepIndexForElement(el) {
+        if (!el || !wizardEnabled) return 0;
+        const card = el.closest('.public-form-card');
+        if (!card) return 0;
+        const idx = stepCards.indexOf(card);
+        return idx >= 0 ? idx + 1 : 0;
+      }
+
+      function currentRequiredControls() {
+        return $$('input, select, textarea', formEl).filter(isFillableRequiredControl);
+      }
+
+    function isControlCompleted(el, controlsByName) {
+      if (!el || !el.name) return false;
+
+      const tag = String(el.tagName || '').toLowerCase();
+      const type = String(el.type || '').toLowerCase();
+
+      if (type === 'radio' || type === 'checkbox') {
+        const peers = controlsByName.get(el.name) || [el];
+        return peers.some((x) => !!x.checked);
+      }
+
+      if (tag === 'select') {
+        return String(el.value || '').trim() !== '';
+      }
+
+      return String(el.value || '').trim() !== '';
+    }
+
+      function updateRequiredProgressUI() {
+        if (!wizardRequiredWrap || !wizardRequiredBar || !wizardRequiredCount || !wizardRequiredStatus) return;
+
+      const controls = currentRequiredControls();
+      const groups = new Map();
+      controls.forEach((el) => {
+        if (!groups.has(el.name)) groups.set(el.name, []);
+        groups.get(el.name).push(el);
+      });
+
+      const total = groups.size;
+      if (total === 0) {
+        wizardRequiredWrap.classList.add('d-none');
+        return;
+      }
+      wizardRequiredWrap.classList.remove('d-none');
+
+      let completed = 0;
+      groups.forEach((arr) => {
+        if (arr.length && isControlCompleted(arr[0], groups)) completed += 1;
+      });
+
+      const pct = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+      const pending = Math.max(0, total - completed);
+
+      wizardRequiredBar.style.width = `${pct}%`;
+      wizardRequiredBar.setAttribute('aria-valuenow', String(pct));
+      wizardRequiredCount.textContent = `${completed} de ${total} obligatorios`;
+      if (wizardRequiredPercent) {
+        wizardRequiredPercent.textContent = `${pct}%`;
+      }
+
+      if (completed >= total) {
+        wizardRequiredWrap.classList.add('is-ready');
+        wizardRequiredStatus.textContent = 'Lista para guardar.';
+      } else {
+        wizardRequiredWrap.classList.remove('is-ready');
+        wizardRequiredStatus.textContent = `${pending} campo${pending === 1 ? '' : 's'} obligatorio${pending === 1 ? '' : 's'} pendiente${pending === 1 ? '' : 's'}.`;
+      }
+    }
+
+    const syncWizardVisuals = debounce(() => {
+      updateRequiredProgressUI();
+      if (wizardEnabled) updateNavState();
+    }, 80);
+    formEl.addEventListener('input', (e) => {
+      const idx = stepIndexForElement(e.target);
+      if (idx > 0) touchedSteps.add(idx);
+      syncWizardVisuals();
+    }, { passive: true });
+    formEl.addEventListener('change', (e) => {
+      const idx = stepIndexForElement(e.target);
+      if (idx > 0) touchedSteps.add(idx);
+      syncWizardVisuals();
+    }, { passive: true });
+    syncWizardVisuals();
+
     // ---------- Helpers ----------
     function _normTxt(t) {
       return String(t || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -1009,6 +1171,7 @@
 
     edadChecks.forEach((ch) => ch.addEventListener('change', updateEdadOtro));
     updateEdadOtro();
+    syncWizardVisuals();
 
     // ---------- Toggle "Otro" (Funciones) ----------
     const funcWrap = d.getElementById('wrap-funciones-otro');
@@ -1027,6 +1190,7 @@
 
     funcChecks.forEach((ch) => ch.addEventListener('change', updateFuncionesOtro));
     updateFuncionesOtro();
+    syncWizardVisuals();
 
     // ---------- "Todas las anteriores" (genérico) ----------
     function findTodasLasAnteriores(checkboxes) {
@@ -1090,6 +1254,7 @@
     if (tipoSel) {
       tipoSel.addEventListener('change', updateTipoLugarOtro);
       updateTipoLugarOtro();
+      syncWizardVisuals();
     }
 
     // ---------- "Todas las anteriores" (Áreas comunes) + limpiar area_otro ----------
@@ -1191,6 +1356,7 @@
     }
 
     updateEdadesNinosVisibility();
+    syncWizardVisuals();
 
     // ---------- Focus primer error ----------
     if (HAS_ERRORS) {
