@@ -606,7 +606,7 @@
   }
 
   .client-chat-markread-btn {
-    width: 100%;
+    width: auto;
   }
 
   #clientChatHistoryControls {
@@ -625,7 +625,16 @@
 
 @media (max-width: 767.98px) {
   .client-chat-grid {
-    grid-template-rows: minmax(128px, 30dvh) 1fr;
+    grid-template-rows: minmax(92px, auto) minmax(0, 1fr);
+  }
+
+  .client-chat-inbox {
+    max-height: 124px;
+    border-bottom: 0;
+  }
+
+  .client-chat-inbox-header {
+    display: none;
   }
 
   #clientChatConversationList {
@@ -633,15 +642,20 @@
     overflow-x: auto;
     overflow-y: hidden;
     gap: 10px;
-    padding: 10px 10px 12px;
+    padding: 8px 10px 10px;
     scroll-snap-type: x proximity;
   }
 
   .client-chat-conv {
-    min-width: min(280px, 84vw);
+    min-width: min(230px, 74vw);
     margin-bottom: 0;
+    padding: 8px 10px;
     flex: 0 0 auto;
     scroll-snap-align: start;
+  }
+
+  .client-chat-conv .small.text-muted {
+    display: none;
   }
 
   .client-chat-conv.active::before {
