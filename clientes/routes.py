@@ -4276,17 +4276,39 @@ def chat_cliente_typing(conversation_id):
         is_typing=bool(is_typing),
         expires_seconds=int(expires_in or _CHAT_TYPING_TTL_SECONDS),
     )
-    _chat_emit_event(
-        event_type="CHAT_CONVERSATION_TYPING",
-        conversation=conv,
-        reader_type="cliente",
-        extra_payload={
-            "actor_type": "cliente",
-            "is_typing": bool(state.get("is_typing")),
-            "typing_expires_in": int(state.get("expires_in") or 0),
-            "typing_expires_at": state.get("expires_at"),
-        },
-    )
+    try:
+        _chat_emit_event(
+            event_type="CHAT_CONVERSATION_TYPING",
+            conversation=conv,
+            reader_type="cliente",
+            extra_payload={
+                "actor_type": "cliente",
+                "is_typing": bool(state.get("is_typing")),
+                "typing_expires_in": int(state.get("expires_in") or 0),
+                "typing_expires_at": state.get("expires_at"),
+            },
+        )
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] client typing failed (conversation_id=%s, cliente_id=%s, sql_error=%s: %s)",
+            int(conversation_id or 0),
+            int(getattr(current_user, "id", 0) or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "[chat] client typing failed (conversation_id=%s, cliente_id=%s, error=%s: %s)",
+            int(conversation_id or 0),
+            int(getattr(current_user, "id", 0) or 0),
+            type(exc).__name__,
+            str(exc),
+        )
+        return jsonify({"ok": False, "error": "server_error"}), 500
     return jsonify(
         {
             "ok": True,

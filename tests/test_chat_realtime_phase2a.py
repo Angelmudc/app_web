@@ -318,6 +318,89 @@ def test_admin_chat_send_message_updates_cliente_unread_and_emits_outbox():
         assert status_evt is not None
 
 
+def test_admin_chat_typing_persists_outbox_event():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables()
+        _reset_tables()
+        cliente = _new_cliente(idx=301)
+        staff = _new_staff(idx=301)
+        conv = _new_conversation(cliente_id=int(cliente.id))
+        db.session.commit()
+
+        target = admin_routes.chat_staff_typing
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(admin_routes, "current_user", _staff_user(int(staff.id)))
+            with flask_app.test_request_context(
+                f"/admin/chat/conversations/{int(conv.id)}/typing",
+                method="POST",
+                json={"is_typing": True, "expires_in": 5},
+                headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            ):
+                resp = target(int(conv.id))
+
+        resp_obj, status_code = _resp_and_status(resp)
+        assert status_code == 200
+        payload = resp_obj.get_json() or {}
+        assert payload.get("ok") is True
+        assert bool(payload.get("is_typing")) is True
+
+        outbox_row = (
+            DomainOutbox.query
+            .filter_by(event_type="CHAT_CONVERSATION_TYPING", aggregate_type="ChatConversation", aggregate_id=str(conv.id))
+            .order_by(DomainOutbox.id.desc())
+            .first()
+        )
+        assert outbox_row is not None
+        evt_payload = dict(getattr(outbox_row, "payload", None) or {})
+        assert str(evt_payload.get("actor_type") or "") == "staff"
+        assert bool(evt_payload.get("is_typing")) is True
+
+
+def test_client_chat_typing_persists_outbox_event():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables()
+        _reset_tables()
+        cliente = _new_cliente(idx=302)
+        conv = _new_conversation(cliente_id=int(cliente.id))
+        db.session.commit()
+
+        target = clientes_routes.chat_cliente_typing
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(clientes_routes, "current_user", _cliente_user(int(cliente.id)))
+            with flask_app.test_request_context(
+                f"/clientes/chat/conversations/{int(conv.id)}/typing",
+                method="POST",
+                json={"is_typing": True, "expires_in": 5},
+                headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            ):
+                resp = target(int(conv.id))
+
+        resp_obj, status_code = _resp_and_status(resp)
+        assert status_code == 200
+        payload = resp_obj.get_json() or {}
+        assert payload.get("ok") is True
+        assert bool(payload.get("is_typing")) is True
+
+        outbox_row = (
+            DomainOutbox.query
+            .filter_by(event_type="CHAT_CONVERSATION_TYPING", aggregate_type="ChatConversation", aggregate_id=str(conv.id))
+            .order_by(DomainOutbox.id.desc())
+            .first()
+        )
+        assert outbox_row is not None
+        evt_payload = dict(getattr(outbox_row, "payload", None) or {})
+        assert str(evt_payload.get("actor_type") or "") == "cliente"
+        assert bool(evt_payload.get("is_typing")) is True
+
+
 def test_client_chat_messages_json_includes_staff_presence_in_this_chat():
     flask_app.config["TESTING"] = True
     with flask_app.app_context():
