@@ -76,6 +76,18 @@
     maxAutosaveBytes: 150_000, // por seguridad
   };
 
+  const RUNTIME = w.__CLIENTES_APP_RUNTIME__ = w.__CLIENTES_APP_RUNTIME__ || {
+    shellInitDone: false,
+    formSubmitBound: false,
+    textareaObserverBound: false,
+    networkHintsBound: false,
+    confirmLinksBound: false,
+    prefetchBound: false,
+    navLifecycleBound: false,
+    beforeUnloadBound: false,
+    solicitudDirtyState: { dirty: false },
+  };
+
   // ===== Accesibilidad + UX =====
   function setAriaCurrent() {
     const path = location.pathname;
@@ -407,59 +419,64 @@
     } catch (_) {}
   }
   function initForms() {
-    d.addEventListener(
-      'submit',
-      (e) => {
-        const form = e.target;
-        if (!(form instanceof HTMLFormElement)) return;
+    const root = (arguments[0] && arguments[0].querySelectorAll) ? arguments[0] : d;
 
-        if (!form.closest('body.clientes,[data-portal="clientes"],.clientes')) return;
-        if (form.hasAttribute('data-no-lock')) return;
+    if (!RUNTIME.formSubmitBound) {
+      d.addEventListener(
+        'submit',
+        (e) => {
+          const form = e.target;
+          if (!(form instanceof HTMLFormElement)) return;
 
-        // 1) Bloqueo por submit en memoria (doble click / enter / lag)
-        if (form.__submitting__) {
-          e.preventDefault();
-          toast('Ya se está enviando…', 'warning', { duration: 1800 });
-          return;
-        }
+          if (!form.closest('body.clientes,[data-portal="clientes"],.clientes')) return;
+          if (form.hasAttribute('data-no-lock')) return;
 
-        // 2) Bloqueo por fingerprint (evita duplicados del mismo payload por reintento rápido)
-        const fp = _formFingerprint(form);
-        if (fp && _isLocked(fp)) {
-          e.preventDefault();
-          toast('Ese formulario ya se envió. Espera un momento…', 'warning', { duration: 2200 });
-          return;
-        }
-
-        form.__submitting__ = true;
-        if (fp) _setLock(fp);
-        form.__submit_fp__ = fp;
-
-        const submits = $$('button[type="submit"], input[type="submit"]', form);
-        submits.forEach((btn) => {
-          btn.__oldText = btn.tagName === 'BUTTON' ? btn.textContent : btn.value;
-          if (btn.tagName === 'BUTTON') btn.textContent = 'Guardando…';
-          else btn.value = 'Guardando…';
-          btn.disabled = true;
-        });
-
-        setTimeout(() => {
-          form.__submitting__ = false;
-          if (form.__submit_fp__) {
-            _clearLock(form.__submit_fp__);
-            form.__submit_fp__ = '';
+          // 1) Bloqueo por submit en memoria (doble click / enter / lag)
+          if (form.__submitting__) {
+            e.preventDefault();
+            toast('Ya se está enviando…', 'warning', { duration: 1800 });
+            return;
           }
+
+          // 2) Bloqueo por fingerprint (evita duplicados del mismo payload por reintento rápido)
+          const fp = _formFingerprint(form);
+          if (fp && _isLocked(fp)) {
+            e.preventDefault();
+            toast('Ese formulario ya se envió. Espera un momento…', 'warning', { duration: 2200 });
+            return;
+          }
+
+          form.__submitting__ = true;
+          if (fp) _setLock(fp);
+          form.__submit_fp__ = fp;
+
+          const submits = $$('button[type="submit"], input[type="submit"]', form);
           submits.forEach((btn) => {
-            try {
-              btn.disabled = false;
-              if (btn.tagName === 'BUTTON') btn.textContent = btn.__oldText || 'Guardar';
-              else btn.value = btn.__oldText || 'Guardar';
-            } catch (_) {}
+            btn.__oldText = btn.tagName === 'BUTTON' ? btn.textContent : btn.value;
+            if (btn.tagName === 'BUTTON') btn.textContent = 'Guardando…';
+            else btn.value = 'Guardando…';
+            btn.disabled = true;
           });
-        }, 12000);
-      },
-      true
-    );
+
+          setTimeout(() => {
+            form.__submitting__ = false;
+            if (form.__submit_fp__) {
+              _clearLock(form.__submit_fp__);
+              form.__submit_fp__ = '';
+            }
+            submits.forEach((btn) => {
+              try {
+                btn.disabled = false;
+                if (btn.tagName === 'BUTTON') btn.textContent = btn.__oldText || 'Guardar';
+                else btn.value = btn.__oldText || 'Guardar';
+              } catch (_) {}
+            });
+          }, 12000);
+        },
+        true
+      );
+      RUNTIME.formSubmitBound = true;
+    }
 
     const autosize = (ta) => {
       if (!ta) return;
@@ -467,30 +484,37 @@
       ta.style.height = Math.min(ta.scrollHeight, 560) + 'px';
     };
 
-    const initTextareas = () => {
-      $$('textarea', d).forEach((ta) => {
+    const initTextareas = (scopeRoot) => {
+      $$('textarea', scopeRoot || d).forEach((ta) => {
         if (!ta.closest('body.clientes,[data-portal="clientes"],.clientes')) return;
+        if (ta.getAttribute('data-clientes-autosize-bound') === '1') {
+          autosize(ta);
+          return;
+        }
+        ta.setAttribute('data-clientes-autosize-bound', '1');
         autosize(ta);
         ta.addEventListener('input', throttle(() => autosize(ta), 80), { passive: true });
       });
     };
 
-    initTextareas();
+    initTextareas(root);
 
-    if ('MutationObserver' in w) {
+    if (!RUNTIME.textareaObserverBound && 'MutationObserver' in w) {
       const mo = new MutationObserver(
         debounce(() => {
-          initTextareas();
+          initTextareas(d);
         }, 250)
       );
       mo.observe(d.body, { childList: true, subtree: true });
+      RUNTIME.textareaObserverBound = true;
     }
   }
 
   // ===== Autosave de formularios (opt-in) =====
   // Para activarlo en un form: data-autosave-key="solicitud_form"
   function initAutosave() {
-    const forms = $$('form[data-autosave-key]');
+    const root = (arguments[0] && arguments[0].querySelectorAll) ? arguments[0] : d;
+    const forms = $$('form[data-autosave-key]', root);
     if (!forms.length) return;
     let STORAGE = null;
     try {
@@ -595,6 +619,8 @@
 
     forms.forEach((form) => {
       if (!form.closest('body.clientes,[data-portal="clientes"],.clientes')) return;
+      if (form.getAttribute('data-clientes-autosave-bound') === '1') return;
+      form.setAttribute('data-clientes-autosave-bound', '1');
 
       const rawKey = form.getAttribute('data-autosave-key') || 'form';
       const key = `clientes_autosave:${location.pathname}:${rawKey}`;
@@ -620,6 +646,7 @@
 
   // ===== Prefetch de links internos (hover/focus) =====
   function initPrefetch() {
+    if (RUNTIME.prefetchBound) return;
     if (!('fetch' in w) || !('requestIdleCallback' in w)) return;
 
     const isSameOriginHTML = (href) => {
@@ -673,11 +700,13 @@
       },
       { passive: true }
     );
+    RUNTIME.prefetchBound = true;
   }
 
   // ===== Lazy images (data-src) =====
   function initLazyImages() {
-    const imgs = $$('img[data-src]');
+    const root = (arguments[0] && arguments[0].querySelectorAll) ? arguments[0] : d;
+    const imgs = $$('img[data-src]', root).filter((img) => img.getAttribute('data-clientes-lazy-bound') !== '1');
     if (!imgs.length) return;
 
     const loadImg = (img) => {
@@ -701,23 +730,32 @@
         { rootMargin: '220px 0px' }
       );
 
-      imgs.forEach((img) => io.observe(img));
+      imgs.forEach((img) => {
+        img.setAttribute('data-clientes-lazy-bound', '1');
+        io.observe(img);
+      });
     } else {
-      imgs.forEach(loadImg);
+      imgs.forEach((img) => {
+        img.setAttribute('data-clientes-lazy-bound', '1');
+        loadImg(img);
+      });
     }
   }
 
   // ===== Online/Offline indicator =====
   function initNetworkHints() {
+    if (RUNTIME.networkHintsBound) return;
     const on = () => toast('Conexión restaurada ✅', 'success', { duration: 2000 });
     const off = () =>
       toast('Sin internet. Algunos cambios podrían no guardarse.', 'warning', { duration: 3500 });
     w.addEventListener('online', on, { passive: true });
     w.addEventListener('offline', off, { passive: true });
+    RUNTIME.networkHintsBound = true;
   }
 
   // ===== Confirmaciones por data-confirm =====
   function initConfirmLinks() {
+    if (RUNTIME.confirmLinksBound) return;
     d.addEventListener(
       'click',
       async (e) => {
@@ -748,11 +786,13 @@
       },
       true
     );
+    RUNTIME.confirmLinksBound = true;
   }
 
   // ===== QoL: scroll suave a errores =====
   function scrollToFirstError() {
-    const err = $('.field-error, .error, .invalid-feedback, .form-error, [data-error="1"]');
+    const root = (arguments[0] && arguments[0].querySelector) ? arguments[0] : d;
+    const err = $('.field-error, .error, .invalid-feedback, .form-error, [data-error="1"]', root);
     if (!err) return;
     const card = err.closest('.c-card,.card,.panel,.form-card') || err;
     try {
@@ -768,8 +808,11 @@
   // - Vive aquí (clientes.js) y solo corre si existe #solicitud-form
   // ==========================================================
   function initSolicitudForm() {
-    const formEl = $('#solicitud-form');
+    const root = (arguments[0] && arguments[0].querySelector) ? arguments[0] : d;
+    const formEl = $('#solicitud-form', root);
     if (!formEl) return;
+    if (formEl.getAttribute('data-clientes-solicitud-bound') === '1') return;
+    formEl.setAttribute('data-clientes-solicitud-bound', '1');
     const HAS_ERRORS = (formEl.dataset && formEl.dataset.hasErrors === '1');
 
     // ---------- Contadores ----------
@@ -816,23 +859,30 @@
     }
 
     // ---------- Aviso de cambios sin guardar ----------
-    let dirty = false;
+    const dirtyState = RUNTIME.solicitudDirtyState || { dirty: false };
+    RUNTIME.solicitudDirtyState = dirtyState;
+    dirtyState.dirty = false;
     formEl.addEventListener('input', () => {
-      dirty = true;
+      dirtyState.dirty = true;
     }, { passive: true });
-
-    w.addEventListener('beforeunload', function (e) {
-      if (!dirty) return;
-      e.preventDefault();
-      e.returnValue = '';
-    });
+    if (!RUNTIME.beforeUnloadBound) {
+      w.addEventListener('beforeunload', function (e) {
+        if (!(RUNTIME.solicitudDirtyState && RUNTIME.solicitudDirtyState.dirty)) return;
+        e.preventDefault();
+        e.returnValue = '';
+      });
+      RUNTIME.beforeUnloadBound = true;
+    }
 
     const submitBtn = $('#btn-submit', formEl);
     if (submitBtn) {
       submitBtn.addEventListener('click', () => {
-        dirty = false;
+        dirtyState.dirty = false;
       }, { passive: true });
     }
+    formEl.addEventListener('submit', () => {
+      dirtyState.dirty = false;
+    }, { passive: true });
 
     // ---------- Wizard suave por pasos ----------
     const wizardShell = $('#solicitud-soft-wizard', formEl);
@@ -1367,23 +1417,49 @@
     }
   }
 
+  function getViewportRoot() {
+    return d.querySelector('#clientMainViewport') || d;
+  }
+
+  function mountViewport(root) {
+    const mountRoot = (root && root.querySelectorAll) ? root : getViewportRoot();
+
+    setAriaCurrent();
+    initForms(mountRoot);
+    initSolicitudForm(mountRoot);
+
+    setTimeout(() => {
+      initAutosave(mountRoot);
+      initLazyImages(mountRoot);
+      scrollToFirstError(mountRoot);
+    }, 0);
+  }
+
+  function bindNavLifecycle() {
+    if (RUNTIME.navLifecycleBound) return;
+    d.addEventListener('client:navigation-complete', (evt) => {
+      if (evt && evt.detail && evt.detail.bootstrap) return;
+      const root = (evt && evt.detail && evt.detail.container) ? evt.detail.container : getViewportRoot();
+      mountViewport(root);
+    });
+    RUNTIME.navLifecycleBound = true;
+  }
+
+  function initShell() {
+    if (RUNTIME.shellInitDone) return;
+    initConfirmLinks();
+    initNetworkHints();
+    initPrefetch();
+    bindNavLifecycle();
+    RUNTIME.shellInitDone = true;
+  }
+
   // ===== Init =====
   function init() {
     const t0 = now();
 
-    setAriaCurrent();
-    initForms();
-    initConfirmLinks();
-
-    initSolicitudForm();
-
-    setTimeout(() => {
-      initAutosave();
-      initLazyImages();
-      initNetworkHints();
-      initPrefetch();
-      scrollToFirstError();
-    }, 0);
+    initShell();
+    mountViewport(getViewportRoot());
 
     raf(() => {
       d.documentElement.classList.add('clientes-ready');
@@ -1410,5 +1486,6 @@
   w.ClientesPortal = w.ClientesPortal || {};
   w.ClientesPortal.toast = toast;
   w.ClientesPortal.confirm = confirmBox;
+  w.ClientesPortal.mount = (root) => mountViewport(root || getViewportRoot());
 
 })();

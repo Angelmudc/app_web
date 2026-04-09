@@ -33,6 +33,16 @@ from utils.timezone import (
     utc_now_naive,
 )
 from utils.secrets_manager import get_secret
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover
+    load_dotenv = None
+
+if load_dotenv is not None:
+    # Carga .env local sin sobrescribir variables ya definidas por el entorno (prod/panel).
+    _DOTENV_PATH = Path(__file__).resolve().parent / ".env"
+    if _DOTENV_PATH.exists():
+        load_dotenv(dotenv_path=_DOTENV_PATH, override=False)
 
 # Instancias globales
 # ─────────────────────────────────────────────────────────────
@@ -214,6 +224,14 @@ def create_app():
             "REMEMBER_COOKIE_SECURE": _cookie_secure(),
             # Dominio público canónico para metadatos compartibles (OG/Twitter/links públicos).
             "PUBLIC_BASE_URL": _env_str("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com"),
+            # Feature flag rollout: navegación parcial clientes (infra, sin activar comportamiento aún).
+            "CLIENTES_PARTIAL_NAV_ENABLED": _is_true(os.getenv("CLIENTES_PARTIAL_NAV_ENABLED", "0")),
+            # CSV de rutas piloto exactas (ej: "/clientes/informacion,/clientes/planes").
+            "CLIENTES_PARTIAL_NAV_PILOT_ROUTES": _env_str("CLIENTES_PARTIAL_NAV_PILOT_ROUTES", ""),
+            # Lista derivada del CSV para inspección/diagnóstico de config.
+            "CLIENTES_PARTIAL_NAV_PILOT_ROUTES_LIST": _split_csv(
+                _env_str("CLIENTES_PARTIAL_NAV_PILOT_ROUTES", "")
+            ),
         }
     )
 

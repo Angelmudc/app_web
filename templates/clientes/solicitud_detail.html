@@ -11,7 +11,7 @@
       <div class="d-flex flex-column flex-xl-row align-items-start justify-content-between gap-3">
         <div class="me-3 mb-1">
           <div class="d-flex align-items-center gap-2">
-            <h1 class="h3 mb-0">Solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
+            <h1 class="h3 mb-0" data-client-focus-anchor>Solicitud <span class="text-primary">{{ s.codigo_solicitud }}</span></h1>
           </div>
           <div class="small text-muted mt-2 d-flex flex-wrap gap-2 solicitud-detail-meta-row">
             <span class="solicitud-detail-meta-chip"><i class="bi bi-calendar3 me-1"></i> Enviada: {{ s.fecha_solicitud|rd_datetime('%d/%m/%Y') }}</span>
@@ -61,7 +61,7 @@
             <button class="btn btn-outline-secondary" onclick="window.print()">
               <i class="bi bi-printer me-1"></i> Imprimir
             </button>
-            <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-light">
+            <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-light" data-client-nav="true">
               <i class="bi bi-arrow-left-short me-1"></i> Volver
             </a>
             {% if s.estado == 'proceso' %}

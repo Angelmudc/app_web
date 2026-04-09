@@ -13,12 +13,13 @@ from typing import Optional, Union  # ✅ PARA PYTHON 3.9
 
 from flask import (
     render_template, redirect, url_for, flash,
-    request, abort, g, session, current_app, jsonify, make_response, send_file, Response, stream_with_context
+    request, abort, g, session, current_app, jsonify, make_response, send_file, Response, stream_with_context, has_request_context
 )
 from flask_login import (
     login_required, current_user, login_user, logout_user
 )
 from werkzeug.security import check_password_hash
+from sqlalchemy import literal
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
 
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -138,6 +139,11 @@ from utils.compat_engine import (
 
 PLANES_BANCO_DOMESTICAS = {'premium', 'vip'}
 ESTADOS_SOLICITUD_ACTIVA = {'activa'}
+_CLIENTES_BASELINE_HEADER_PREFIX = "X-Clientes-Baseline-"
+_CLIENTES_FIXED_COST_HEADER_PREFIX = "X-Clientes-FixedCost-"
+_CACHE_STRICT_NO_STORE = "no-store, no-cache, must-revalidate, max-age=0"
+_CACHE_PRIVATE_REVALIDATE = "private, no-cache, must-revalidate, max-age=0"
+_CACHE_REALTIME = "no-cache, must-revalidate, max-age=0"
 CLIENTE_CODIGO_PUBLICO_MIN = 2152
 PUBLIC_SHARE_CODE_LENGTH = 10
 PUBLIC_SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -153,6 +159,46 @@ BUSINESS_MAX_PUBLIC_IP_DIA = int((os.getenv("BUSINESS_MAX_PUBLIC_IP_DIA") or "20
 _CLIENTE_LOGIN_MAX_INTENTOS = int((os.getenv("CLIENTE_LOGIN_MAX_INTENTOS") or "10").strip() or 10)
 _CLIENTE_LOGIN_LOCK_MINUTOS = int((os.getenv("CLIENTE_LOGIN_LOCK_MINUTOS") or "10").strip() or 10)
 _CLIENTE_LOGIN_KEY_PREFIX   = "cliente_login"
+
+
+def _flag_true(value) -> bool:
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _clientes_partial_nav_global_enabled() -> bool:
+    cfg = current_app.config.get("CLIENTES_PARTIAL_NAV_ENABLED", False)
+    if isinstance(cfg, bool):
+        return cfg
+    return _flag_true(cfg)
+
+
+def _clientes_partial_nav_pilot_routes() -> set[str]:
+    raw = str(current_app.config.get("CLIENTES_PARTIAL_NAV_PILOT_ROUTES", "") or "")
+    out = set()
+    for item in raw.split(","):
+        route = str(item or "").strip().lower()
+        if not route:
+            continue
+        if not route.startswith("/"):
+            route = "/" + route
+        if len(route) > 1:
+            route = route.rstrip("/")
+        out.add(route)
+    return out
+
+
+def _clientes_partial_nav_enabled_for_request() -> bool:
+    if not _clientes_partial_nav_global_enabled():
+        return False
+    if not has_request_context():
+        return True
+    pilot_routes = _clientes_partial_nav_pilot_routes()
+    if not pilot_routes:
+        return True
+    path = str(request.path or "").strip().lower() or "/"
+    if len(path) > 1:
+        path = path.rstrip("/")
+    return path in pilot_routes
 
 
 def _operational_rate_limits_enabled() -> bool:
@@ -372,12 +418,309 @@ def _clientes_force_login_view():
     return None
 
 
+@clientes_bp.before_request
+def _clientes_baseline_mark_started_at():
+    if bool(current_app.config.get("CLIENTES_BASELINE_ENABLED", False)):
+        request.environ["_clientes_baseline_started_at"] = time.perf_counter()
+    return None
+
+
+def _apply_clientes_baseline_headers(response):
+    if not bool(current_app.config.get("CLIENTES_BASELINE_ENABLED", False)):
+        return response
+    started_at = request.environ.get("_clientes_baseline_started_at")
+    if started_at is None:
+        return response
+
+    elapsed_ms = max(0.0, (time.perf_counter() - float(started_at)) * 1000.0)
+    html_bytes = response.calculate_content_length()
+    if html_bytes is None and not bool(getattr(response, "is_streamed", False)):
+        try:
+            html_bytes = len(response.get_data())
+        except Exception:
+            html_bytes = None
+
+    response.headers[f"{_CLIENTES_BASELINE_HEADER_PREFIX}Scope"] = str(request.endpoint or "")
+    response.headers[f"{_CLIENTES_BASELINE_HEADER_PREFIX}Latency-Ms"] = f"{elapsed_ms:.2f}"
+    if html_bytes is not None and int(html_bytes) >= 0:
+        response.headers[f"{_CLIENTES_BASELINE_HEADER_PREFIX}HTML-Bytes"] = str(int(html_bytes))
+    return response
+
+
+def _clientes_fixed_cost_inventory_enabled() -> bool:
+    return bool(current_app.config.get("CLIENTES_FIXED_COST_INVENTORY_ENABLED", False))
+
+
+def _clientes_fixed_cost_record(component: str, elapsed_ms: float, *, meta: Optional[dict] = None) -> None:
+    if not has_request_context():
+        return
+    if not _clientes_fixed_cost_inventory_enabled():
+        return
+    try:
+        items = request.environ.setdefault("_clientes_fixed_cost_items", [])
+        entry = {
+            "component": str(component or "").strip()[:80] or "unknown",
+            "elapsed_ms": round(max(0.0, float(elapsed_ms or 0.0)), 2),
+        }
+        if isinstance(meta, dict) and meta:
+            entry["meta"] = meta
+        items.append(entry)
+    except Exception:
+        return
+
+
+def _clientes_shell_assets_inventory() -> dict:
+    external_css = [
+        "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+        "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css",
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css",
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css",
+        "https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/css/select2.min.css",
+    ]
+    local_css = [
+        "clientes/css/clientes.css",
+        "clientes/css/clientes_components.css",
+        "clientes/css/clientes_pages.css",
+        "css/client_notifications.css",
+    ]
+    external_js = [
+        "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js",
+        "https://code.jquery.com/jquery-3.7.1.min.js",
+        "https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/js/select2.min.js",
+    ]
+    local_js = [
+        "clientes/js/clientes.js",
+        "js/client_notifications.js",
+        "js/core/client_live_invalidation.js",
+    ]
+    return {
+        "external_css": external_css,
+        "local_css": local_css,
+        "external_js": external_js,
+        "local_js": local_js,
+        "external_count": len(external_css) + len(external_js),
+        "local_count": len(local_css) + len(local_js),
+        "total_count": len(external_css) + len(local_css) + len(external_js) + len(local_js),
+    }
+
+
+def _apply_clientes_fixed_cost_headers(response):
+    if not _clientes_fixed_cost_inventory_enabled():
+        return response
+
+    items = request.environ.get("_clientes_fixed_cost_items") or []
+    if not items:
+        return response
+
+    total_ms = round(sum(float(x.get("elapsed_ms", 0.0) or 0.0) for x in items), 2)
+    sorted_items = sorted(items, key=lambda x: float(x.get("elapsed_ms", 0.0) or 0.0), reverse=True)
+    top = sorted_items[:3]
+    top_compact = ",".join(
+        f"{str(x.get('component') or '')}:{float(x.get('elapsed_ms', 0.0) or 0.0):.2f}" for x in top
+    )
+    by_component = {str(x.get("component") or ""): float(x.get("elapsed_ms", 0.0) or 0.0) for x in sorted_items}
+
+    response.headers[f"{_CLIENTES_FIXED_COST_HEADER_PREFIX}Items"] = str(len(items))
+    response.headers[f"{_CLIENTES_FIXED_COST_HEADER_PREFIX}Total-Ms"] = f"{total_ms:.2f}"
+    response.headers[f"{_CLIENTES_FIXED_COST_HEADER_PREFIX}Top"] = top_compact
+    response.headers[f"{_CLIENTES_FIXED_COST_HEADER_PREFIX}Notif-Unread-Ms"] = f"{by_component.get('ctx.notif_unread', 0.0):.2f}"
+    response.headers[f"{_CLIENTES_FIXED_COST_HEADER_PREFIX}Chat-Unread-Ms"] = f"{by_component.get('ctx.chat_unread', 0.0):.2f}"
+    response.headers[f"{_CLIENTES_FIXED_COST_HEADER_PREFIX}Live-After-Id-Ms"] = f"{by_component.get('ctx.live_after_id', 0.0):.2f}"
+    response.headers[f"{_CLIENTES_FIXED_COST_HEADER_PREFIX}Shell-Assets-Ms"] = f"{by_component.get('ctx.shell_assets', 0.0):.2f}"
+
+    try:
+        payload = {
+            "path": str(request.path or ""),
+            "endpoint": str(request.endpoint or ""),
+            "total_ms": total_ms,
+            "items": sorted_items,
+            "top": top,
+        }
+        current_app.logger.info("[clientes-fixed-cost] %s", json.dumps(payload, ensure_ascii=True, sort_keys=True))
+    except Exception:
+        pass
+    return response
+
+
+def _query_client_fixed_metrics_combined(cliente_id: int) -> dict:
+    cid = int(cliente_id or 0)
+    if cid <= 0:
+        return {"notif_unread_count": 0, "chat_unread_count": 0, "client_live_after_id": 0}
+
+    try:
+        notif_sq = None
+        if ClienteNotificacion is not None:
+            notif_sq = (
+                db.session.query(db.func.count(ClienteNotificacion.id))
+                .filter_by(cliente_id=cid, is_read=False, is_deleted=False)
+                .scalar_subquery()
+            )
+        chat_sq = None
+        if ChatConversation is not None:
+            chat_sq = (
+                db.session.query(db.func.coalesce(db.func.sum(ChatConversation.cliente_unread_count), 0))
+                .filter_by(cliente_id=cid, status="open")
+                .scalar_subquery()
+            )
+        live_sq = None
+        if DomainOutbox is not None:
+            live_sq = (
+                db.session.query(db.func.max(DomainOutbox.id))
+                .filter(DomainOutbox.event_type.in_(sorted(_CLIENTE_LIVE_EVENT_TYPES)))
+                .scalar_subquery()
+            )
+
+        cols = []
+        if notif_sq is not None:
+            cols.append(db.func.coalesce(notif_sq, 0).label("notif_unread_count"))
+        else:
+            cols.append(literal(0).label("notif_unread_count"))
+        if chat_sq is not None:
+            cols.append(db.func.coalesce(chat_sq, 0).label("chat_unread_count"))
+        else:
+            cols.append(literal(0).label("chat_unread_count"))
+        if live_sq is not None:
+            cols.append(db.func.coalesce(live_sq, 0).label("client_live_after_id"))
+        else:
+            cols.append(literal(0).label("client_live_after_id"))
+
+        row = db.session.query(*cols).first()
+        if row is None:
+            return {"notif_unread_count": 0, "chat_unread_count": 0, "client_live_after_id": 0}
+
+        return {
+            "notif_unread_count": int(getattr(row, "notif_unread_count", 0) or 0),
+            "chat_unread_count": int(getattr(row, "chat_unread_count", 0) or 0),
+            "client_live_after_id": int(getattr(row, "client_live_after_id", 0) or 0),
+        }
+    except Exception:
+        notif_unread = 0
+        chat_unread = 0
+        live_after_id = 0
+        try:
+            if ClienteNotificacion is not None:
+                notif_unread = int(
+                    ClienteNotificacion.query
+                    .filter_by(cliente_id=cid, is_read=False, is_deleted=False)
+                    .count()
+                    or 0
+                )
+        except Exception:
+            notif_unread = 0
+        try:
+            if ChatConversation is not None:
+                chat_unread = int(
+                    ChatConversation.query
+                    .filter_by(cliente_id=cid, status="open")
+                    .with_entities(db.func.coalesce(db.func.sum(ChatConversation.cliente_unread_count), 0))
+                    .scalar()
+                    or 0
+                )
+        except Exception:
+            chat_unread = 0
+        try:
+            live_after_id = int(_cliente_live_boot_after_id() or 0)
+        except Exception:
+            live_after_id = 0
+        return {
+            "notif_unread_count": notif_unread,
+            "chat_unread_count": chat_unread,
+            "client_live_after_id": live_after_id,
+        }
+
+
+def _cliente_fixed_metrics_snapshot() -> dict:
+    base = {"notif_unread_count": 0, "chat_unread_count": 0, "client_live_after_id": 0}
+    if not has_request_context():
+        return base
+    cached = request.environ.get("_clientes_ctx_metrics_snapshot")
+    if isinstance(cached, dict):
+        return cached
+    if not (getattr(current_user, "is_authenticated", False) and isinstance(current_user, Cliente)):
+        request.environ["_clientes_ctx_metrics_snapshot"] = base
+        return base
+
+    cid = int(getattr(current_user, "id", 0) or 0)
+    snapshot = _query_client_fixed_metrics_combined(cid)
+    if not isinstance(snapshot, dict):
+        snapshot = base
+    out = {
+        "notif_unread_count": int(snapshot.get("notif_unread_count", 0) or 0),
+        "chat_unread_count": int(snapshot.get("chat_unread_count", 0) or 0),
+        "client_live_after_id": int(snapshot.get("client_live_after_id", 0) or 0),
+    }
+    request.environ["_clientes_ctx_metrics_snapshot"] = out
+    return out
+
+
+def _apply_clientes_cache_policy(response):
+    existing = str(response.headers.get("Cache-Control") or "").strip()
+    if existing:
+        return response
+
+    method = (request.method or "GET").upper()
+    endpoint = str(request.endpoint or "")
+    path = str(request.path or "")
+    is_authenticated = bool(getattr(current_user, "is_authenticated", False))
+    content_type = (response.content_type or "").lower()
+    is_html = "text/html" in content_type
+    is_stream = "text/event-stream" in content_type
+    has_set_cookie = bool(response.headers.getlist("Set-Cookie"))
+
+    cache_control = _CACHE_STRICT_NO_STORE
+    pragma = "no-cache"
+    expires = "0"
+
+    auth_like_endpoints = {
+        "clientes.login",
+        "clientes.logout",
+        "clientes.reset_password",
+        "clientes.aceptar_politicas",
+        "clientes.rechazar_politicas",
+    }
+    realtime_endpoints = {
+        "clientes.clientes_live_invalidation_poll",
+        "clientes.clientes_live_invalidation_stream",
+        "clientes.clientes_live_ping",
+        "clientes.clientes_solicitudes_live",
+    }
+    public_sensitive_prefixes = (
+        "/clientes/solicitudes/publica",
+        "/clientes/f/",
+        "/clientes/politicas",
+    )
+
+    if method not in {"GET", "HEAD"}:
+        cache_control = _CACHE_STRICT_NO_STORE
+    elif has_set_cookie:
+        cache_control = _CACHE_STRICT_NO_STORE
+    elif is_stream or endpoint in realtime_endpoints or path.startswith("/clientes/live/"):
+        cache_control = _CACHE_REALTIME
+        pragma = "no-cache"
+        expires = "0"
+    elif endpoint in auth_like_endpoints:
+        cache_control = _CACHE_STRICT_NO_STORE
+    elif any(path.startswith(prefix) for prefix in public_sensitive_prefixes):
+        cache_control = _CACHE_STRICT_NO_STORE
+    elif is_authenticated and is_html:
+        cache_control = _CACHE_PRIVATE_REVALIDATE
+    elif is_authenticated:
+        cache_control = _CACHE_PRIVATE_REVALIDATE
+    else:
+        cache_control = _CACHE_STRICT_NO_STORE
+
+    response.headers["Cache-Control"] = cache_control
+    response.headers["Pragma"] = pragma
+    response.headers["Expires"] = expires
+    return response
+
+
 @clientes_bp.after_request
 def _clientes_no_cache_headers(response):
     try:
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+        response = _apply_clientes_cache_policy(response)
+        response = _apply_clientes_baseline_headers(response)
+        response = _apply_clientes_fixed_cost_headers(response)
     except Exception:
         pass
     return response
@@ -1045,52 +1388,75 @@ def login():
 
 @clientes_bp.app_context_processor
 def _inject_client_notif_unread_count():
-    unread = 0
-    try:
-        if (
-            ClienteNotificacion is not None
-            and getattr(current_user, "is_authenticated", False)
-            and isinstance(current_user, Cliente)
-        ):
-            unread = (
-                ClienteNotificacion.query
-                .filter_by(cliente_id=current_user.id, is_read=False, is_deleted=False)
-                .count()
-            )
-    except Exception:
-        unread = 0
+    started_at = time.perf_counter()
+    snapshot = _cliente_fixed_metrics_snapshot()
+    unread = int(snapshot.get("notif_unread_count", 0) or 0)
+    executed_query = bool(getattr(current_user, "is_authenticated", False) and isinstance(current_user, Cliente))
+    _clientes_fixed_cost_record(
+        "ctx.notif_unread",
+        (time.perf_counter() - started_at) * 1000.0,
+        meta={"query_executed": bool(executed_query), "unread_count": int(unread or 0), "query_kind": "count"},
+    )
     return {"notif_unread_count": int(unread or 0)}
 
 
 @clientes_bp.app_context_processor
 def _inject_client_chat_unread_count():
-    unread = 0
-    try:
-        if (
-            ChatConversation is not None
-            and getattr(current_user, "is_authenticated", False)
-            and isinstance(current_user, Cliente)
-        ):
-            unread = (
-                ChatConversation.query
-                .filter_by(cliente_id=current_user.id, status="open")
-                .with_entities(db.func.coalesce(db.func.sum(ChatConversation.cliente_unread_count), 0))
-                .scalar()
-            )
-    except Exception:
-        unread = 0
+    started_at = time.perf_counter()
+    snapshot = _cliente_fixed_metrics_snapshot()
+    unread = int(snapshot.get("chat_unread_count", 0) or 0)
+    executed_query = bool(getattr(current_user, "is_authenticated", False) and isinstance(current_user, Cliente))
+    _clientes_fixed_cost_record(
+        "ctx.chat_unread",
+        (time.perf_counter() - started_at) * 1000.0,
+        meta={"query_executed": bool(executed_query), "unread_count": int(unread or 0), "query_kind": "sum"},
+    )
     return {"chat_unread_count": int(unread or 0)}
 
 
 @clientes_bp.app_context_processor
 def _inject_client_live_after_id():
-    after_id = 0
-    try:
-        if getattr(current_user, "is_authenticated", False) and isinstance(current_user, Cliente):
-            after_id = _cliente_live_boot_after_id()
-    except Exception:
-        after_id = 0
+    started_at = time.perf_counter()
+    snapshot = _cliente_fixed_metrics_snapshot()
+    after_id = int(snapshot.get("client_live_after_id", 0) or 0)
+    executed_query = bool(getattr(current_user, "is_authenticated", False) and isinstance(current_user, Cliente))
+    _clientes_fixed_cost_record(
+        "ctx.live_after_id",
+        (time.perf_counter() - started_at) * 1000.0,
+        meta={"query_executed": bool(executed_query), "after_id": int(after_id or 0), "query_kind": "max"},
+    )
     return {"client_live_after_id": int(after_id or 0)}
+
+
+@clientes_bp.app_context_processor
+def _inject_client_shell_assets_inventory():
+    started_at = time.perf_counter()
+    assets = _clientes_shell_assets_inventory()
+    _clientes_fixed_cost_record(
+        "ctx.shell_assets",
+        (time.perf_counter() - started_at) * 1000.0,
+        meta={
+            "external_count": int(assets.get("external_count", 0) or 0),
+            "local_count": int(assets.get("local_count", 0) or 0),
+            "total_count": int(assets.get("total_count", 0) or 0),
+        },
+    )
+    return {"client_shell_assets_inventory": assets}
+
+
+@clientes_bp.app_context_processor
+def _inject_client_partial_nav_feature_flag():
+    enabled_global = _clientes_partial_nav_global_enabled()
+    enabled_route = _clientes_partial_nav_enabled_for_request()
+    pilot_routes = sorted(_clientes_partial_nav_pilot_routes())
+    return {
+        "client_partial_nav_enabled": bool(enabled_route),
+        "client_partial_nav_feature": {
+            "enabled_global": bool(enabled_global),
+            "enabled_route": bool(enabled_route),
+            "pilot_routes": pilot_routes,
+        },
+    }
 
 
 @clientes_bp.route('/logout', methods=['POST'])

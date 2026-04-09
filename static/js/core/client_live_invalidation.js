@@ -35,6 +35,7 @@
   let pollIntervalMs = 0;
   let fallbackMode = false;
   let liveDisabled = false;
+  let pausedForHidden = Boolean(document.hidden);
   const initialAfterId = Math.max(0, Number(body.getAttribute("data-client-live-after-id") || 0) || 0);
   let afterId = initialAfterId;
 
@@ -97,6 +98,11 @@
       pollTimer = null;
     }
     markTransport("stopped_auth", String(reason || "auth_failed"));
+  }
+
+  function isCriticalView(viewName) {
+    const view = String(viewName || "").trim();
+    return view === "dashboard" || view === "solicitudes_list" || view === "solicitud_detail" || view === "chat";
   }
 
   function currentViewNode() {
@@ -168,6 +174,7 @@
   }
 
   async function refreshChatUnreadCount() {
+    if (document.hidden) return;
     if (!chatConversationsUrl || chatUnreadRefreshInflight) return;
     chatUnreadRefreshInflight = true;
     try {
@@ -489,6 +496,7 @@
   }
 
   function scheduleNotificationRefresh() {
+    if (document.hidden) return;
     if (window.ClientNotifications && typeof window.ClientNotifications.refresh === "function") {
       window.ClientNotifications.refresh({ silent: !(window.ClientNotifications.isOpen && window.ClientNotifications.isOpen()) });
       return;
@@ -627,6 +635,7 @@
 
   function scheduleReconnect() {
     if (liveDisabled) return;
+    if (pausedForHidden) return;
     clearReconnectTimer();
     markTransport("sse_reconnecting", "timer_scheduled");
     reconnectTimer = window.setTimeout(function () {
@@ -634,13 +643,38 @@
     }, SSE_RETRY_MS);
   }
 
+  function stopPollingLoop() {
+    if (pollTimer) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    pollIntervalMs = 0;
+  }
+
+  function resolveFallbackPollInterval() {
+    const view = currentViewName();
+    const critical = isCriticalView(view);
+    if (document.hidden) return 30000;
+    if (critical) return POLL_MS_FALLBACK;
+    return Math.max(POLL_MS_FALLBACK, 5000);
+  }
+
   function startPollingLoop() {
     if (liveDisabled) return;
-    const wait = fallbackMode ? POLL_MS_FALLBACK : POLL_MS_CONNECTED;
+    if (pausedForHidden) {
+      stopPollingLoop();
+      markTransport("paused_hidden", "poll_suspended");
+      return;
+    }
+    if (!fallbackMode) {
+      stopPollingLoop();
+      return;
+    }
+    const wait = resolveFallbackPollInterval();
     if (pollTimer && pollIntervalMs === wait) return;
-    if (pollTimer) window.clearInterval(pollTimer);
+    stopPollingLoop();
     pollIntervalMs = wait;
-    markTransport(wait === POLL_MS_FALLBACK ? "polling_fallback" : "polling_connected", "interval_set");
+    markTransport("polling_fallback", "interval_set");
     pollTimer = window.setInterval(function () {
       pollOnce().catch(function () {});
     }, wait);
@@ -652,7 +686,7 @@
     const next = Boolean(enabled);
     if (fallbackMode === next) return;
     fallbackMode = next;
-    markTransport(next ? "polling_fallback" : "polling_connected", next ? "sse_down" : "sse_up");
+    markTransport(next ? "polling_fallback" : "sse_connected", next ? "sse_down" : "sse_up");
     startPollingLoop();
   }
 
@@ -665,6 +699,10 @@
 
   function startSse() {
     if (liveDisabled) return;
+    if (pausedForHidden) {
+      markTransport("paused_hidden", "sse_suspended");
+      return;
+    }
     clearReconnectTimer();
     stopSse();
     if (!("EventSource" in window)) {
@@ -713,7 +751,7 @@
   window.addEventListener("beforeunload", function () {
     stopSse();
     clearReconnectTimer();
-    if (pollTimer) window.clearInterval(pollTimer);
+    stopPollingLoop();
     if (chatUnreadRefreshTimer) window.clearTimeout(chatUnreadRefreshTimer);
     interactionWaiters.forEach(function (waiter, view) {
       if (waiter && waiter.timer) window.clearTimeout(waiter.timer);
@@ -734,8 +772,22 @@
     emitRuntime();
   };
 
+  window.addEventListener("visibilitychange", function () {
+    pausedForHidden = Boolean(document.hidden);
+    if (pausedForHidden) {
+      stopSse();
+      clearReconnectTimer();
+      stopPollingLoop();
+      markTransport("paused_hidden", "document_hidden");
+      return;
+    }
+    markTransport("resuming_visible", "document_visible");
+    startSse();
+  });
+
   ensureDirtyFormTracking(currentViewNode());
   updateChatUnreadBadges(chatUnreadKnownCount, false);
   scheduleChatUnreadRefresh(120);
-  startSse();
+  if (!pausedForHidden) startSse();
+  else markTransport("paused_hidden", "boot_hidden");
 })();

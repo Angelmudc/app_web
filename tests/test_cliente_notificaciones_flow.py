@@ -241,7 +241,7 @@ class ClienteNotificacionesFlowTest(unittest.TestCase):
         commit_mock.assert_called_once()
 
     def test_solicitud_candidatas_template_includes_csrf_meta_and_notifications_js(self):
-        fake_user = SimpleNamespace(id=7, nombre_completo="Cliente Demo")
+        fake_user = SimpleNamespace(id=7, nombre_completo="Cliente Demo", is_authenticated=True)
         solicitud = _DummySolicitud(10, "SOL-010")
         sc = _DummySC()
 
@@ -250,7 +250,7 @@ class ClienteNotificacionesFlowTest(unittest.TestCase):
             target = target.__wrapped__
 
         with flask_app.app_context():
-            with patch.object(clientes_routes, "current_user", fake_user), \
+            with patch("flask_login.utils._get_user", return_value=fake_user), \
                  patch.object(clientes_routes, "_get_solicitud_cliente_or_404", return_value=solicitud), \
                  patch.object(clientes_routes.SolicitudCandidata, "query", _NotifQuery([sc])):
                 with flask_app.test_request_context("/clientes/solicitudes/10/candidatas", method="GET"):

@@ -23,10 +23,10 @@
           <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
             <i class="bi bi-plus-circle me-1"></i> Crear nueva solicitud
           </a>
-          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary">
+          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary" data-client-nav="true">
             <i class="bi bi-stars me-1"></i> Ver planes y garantías
           </a>
-          <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+          <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary" data-client-nav="true">
             <i class="bi bi-life-preserver me-1"></i> Ayuda & Contacto
           </a>
         </div>
@@ -152,7 +152,7 @@
             <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
               <i class="bi bi-plus-circle me-1"></i> Crear solicitud
             </a>
-            <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary">
+            <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary" data-client-nav="true">
               <i class="bi bi-stars me-1"></i> Ver planes
             </a>
           </div>
@@ -189,7 +189,7 @@
           <div class="small text-secondary mb-2">
             Disponible solo para planes <strong>Premium</strong> y <strong>VIP</strong>.
           </div>
-          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary btn-sm w-100">
+          <a href="{{ url_for('clientes.planes') }}" class="btn btn-outline-primary btn-sm w-100" data-client-nav="true">
             Ver planes
           </a>
         </div>
@@ -219,7 +219,7 @@
       </div>
 
       <div class="mt-3 d-flex flex-wrap gap-2">
-        <a href="{{ url_for('clientes.planes') }}" class="btn btn-primary">
+        <a href="{{ url_for('clientes.planes') }}" class="btn btn-primary" data-client-nav="true">
           <i class="bi bi-stars me-1"></i> Ver planes
         </a>
         <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-outline-secondary">
@@ -274,7 +274,7 @@
     <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary me-2">
       <i class="bi bi-clipboard2-plus me-1"></i> Crear solicitud ahora
     </a>
-    <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+    <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary" data-client-nav="true">
       <i class="bi bi-life-preserver me-1"></i> Necesito ayuda
     </a>
   </section>

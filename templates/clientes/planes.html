@@ -19,7 +19,7 @@
       <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
         <i class="bi bi-clipboard2-plus me-1"></i> Crear solicitud
       </a>
-      <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+      <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary" data-client-nav="true">
         <i class="bi bi-life-preserver me-1"></i> Necesito ayuda
       </a>
     </div>
@@ -215,7 +215,7 @@
                target="_blank" rel="noopener">
               <i class="bi bi-whatsapp me-1"></i> WhatsApp
             </a>
-            <a class="btn btn-outline-primary" href="{{ url_for('clientes.ayuda') }}">
+            <a class="btn btn-outline-primary" href="{{ url_for('clientes.ayuda') }}" data-client-nav="true">
               <i class="bi bi-life-preserver me-1"></i> Centro de ayuda
             </a>
           </div>
@@ -230,7 +230,7 @@
     <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary me-2">
       <i class="bi bi-clipboard2-plus me-1"></i> Crear solicitud ahora
     </a>
-    <a href="{{ url_for('clientes.dashboard') }}" class="btn btn-outline-secondary">
+    <a href="{{ url_for('clientes.dashboard') }}" class="btn btn-outline-secondary" data-client-nav="true">
       <i class="bi bi-house-door me-1"></i> Ir a mi panel
     </a>
   </div>

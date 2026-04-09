@@ -267,3 +267,6 @@ def test_client_live_js_reconvergence_contract():
     assert "eventSource.onopen = function () {" in js_txt
     assert "if (pollTimer && pollIntervalMs === wait) return;" in js_txt
     assert "window.__clientLiveRuntime" in js_txt
+    assert 'window.addEventListener("visibilitychange"' in js_txt
+    assert "if (!fallbackMode) {" in js_txt
+    assert 'markTransport("paused_hidden", "document_hidden")' in js_txt

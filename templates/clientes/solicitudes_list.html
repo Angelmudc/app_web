@@ -5,7 +5,7 @@
 <div class="container py-4 clientes-solicitudes-page" data-client-live-view="solicitudes_list">
   <div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-4 clientes-solicitudes-head">
     <div>
-      <h1 class="h3 mb-1 fw-bold">Mis Solicitudes</h1>
+      <h1 class="h3 mb-1 fw-bold" data-client-focus-anchor>Mis Solicitudes</h1>
       <div class="text-muted small">Filtra por estado, ciudad, modalidad, fecha o texto para encontrar rápido.</div>
     </div>
     <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success">
@@ -32,12 +32,12 @@
     <div class="card-body">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="small text-muted fw-semibold text-uppercase">Filtros</div>
-        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm">
+        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm" data-client-nav="true">
           Limpiar filtros
         </a>
       </div>
 
-      <form method="get" class="row g-3 align-items-end solicitudes-filter-form">
+      <form method="get" class="row g-3 align-items-end solicitudes-filter-form" data-client-nav="true">
         <div class="col-12 col-lg-4">
           <label class="form-label fw-semibold">Buscar</label>
           <input type="text" class="form-control" name="q" value="{{ q or '' }}" placeholder="Código, ciudad, modalidad o experiencia">
@@ -126,7 +126,7 @@
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 solicitud-item-v2__row">
               <div class="flex-grow-1">
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                  <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="fw-bold text-decoration-none">
+                  <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="fw-bold text-decoration-none" data-client-nav="true">
                     {{ s.codigo_solicitud }}
                   </a>
                   <span class="badge estado-badge estado-{{ estado }}">{{ estado_label }}</span>
@@ -143,7 +143,7 @@
               </div>
 
               <div class="d-flex flex-wrap gap-2 solicitud-item-v2__actions">
-                <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-sm btn-outline-primary">
+                <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-sm btn-outline-primary" data-client-nav="true">
                   <i class="bi bi-eye me-1"></i> Ver detalle
                 </a>
                 {% if estado == 'proceso' %}
@@ -178,11 +178,11 @@
         <nav aria-label="Paginación">
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item {% if not has_prev %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('clientes.listar_solicitudes', q=q, estado=estado, ciudad=ciudad, modalidad=modalidad, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, per_page=per_page, page=prev_num or 1) }}">Anterior</a>
+              <a class="page-link" data-client-nav="true" href="{{ url_for('clientes.listar_solicitudes', q=q, estado=estado, ciudad=ciudad, modalidad=modalidad, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, per_page=per_page, page=prev_num or 1) }}">Anterior</a>
             </li>
             <li class="page-item disabled"><span class="page-link">Página {{ page }} de {{ pages or 1 }}</span></li>
             <li class="page-item {% if not has_next %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('clientes.listar_solicitudes', q=q, estado=estado, ciudad=ciudad, modalidad=modalidad, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, per_page=per_page, page=next_num or page) }}">Siguiente</a>
+              <a class="page-link" data-client-nav="true" href="{{ url_for('clientes.listar_solicitudes', q=q, estado=estado, ciudad=ciudad, modalidad=modalidad, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, per_page=per_page, page=next_num or page) }}">Siguiente</a>
             </li>
           </ul>
         </nav>
